@@ -7,8 +7,7 @@
 %%%-------------------------------------------------------------------
 -module(bcoding).
 
-%%-export([encode/1, decode/1]).
--compile(export_all).
+-export([encode/1, decode/1]).
 
 -author('jesper.louis.andersen@gmail.com').
 
