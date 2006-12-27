@@ -54,17 +54,17 @@ decode_b([]) ->
     {empty_string, "Empty String"};
 decode_b([H | Rest]) ->
     case H of
-	'i' ->
+	$i ->
 	    decode_integer(Rest);
-	'l' ->
+	$l ->
 	    decode_list(Rest);
-	'd' ->
+	$d ->
 	    decode_dict(Rest);
-	'e' ->
+	$e ->
 	    {end_of_data, Rest};
-	s ->
+	S ->
 	    %% This might fail, and so what ;)
-	    attempt_string_decode([s|Rest])
+	    attempt_string_decode([S|Rest])
     end.
 
 charPred(C) ->
@@ -73,7 +73,7 @@ charPred(C) ->
 
 attempt_string_decode(String) ->
     {Number, Data} = lists:splitwith(charPred($:), String),
-    ParsedNumber = string:to_integer(Number),
+    {ParsedNumber, _} = string:to_integer(Number),
     Rest1 = tl(Data),
     {StrData, Rest} = lists:split(ParsedNumber, Rest1),
     {{string, StrData}, Rest}.
@@ -104,6 +104,9 @@ decode_dict(String) ->
 decode_dict_items([], Accum) ->
     {Accum, []};
 decode_dict_items(String, Accum) ->
-    {Key, Rest1} = attempt_string_decode(String),
-    {Value, Rest2} = decode_b(Rest1),
-    decode_dict_items(Rest2, [{Key, Value} | Accum]).
+    case decode_b(String) of
+	{end_of_data, Rest} ->
+	    {Accum, Rest};
+	{Key, Rest1} -> {Value, Rest2} = decode_b(Rest1),
+			decode_list_items(Rest2, [{Key, Value} | Accum])
+    end.
