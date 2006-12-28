@@ -17,7 +17,9 @@ dirwatcher_kernel(Dir, State) ->
 	    io:format("Timer ticking~n", []),
 	    {Added, Removed, NewState} = scan_files_in_dir(Dir, State),
 	    io:format("Added: ~s~n", [sets:to_list(Added)]),
+	    process_added_files(Dir, sets:to_list(Added)),
 	    io:format("Removed: ~s~n", [sets:to_list(Removed)]),
+	    process_removed_files(sets:to_list(Removed)),
 	    io:format("State: ~s~n", [sets:to_list(NewState)]),
 	    dirwatcher:dirwatcher_kernel(Dir, NewState);
 	{report_on_files, Who} ->
@@ -42,8 +44,10 @@ process_added_files(Dir, Added) ->
 			  case torrent:parse(F) of
 			      {ok, Torrent} ->
 				  torrent_manager ! {start_torrent, Dir, F, Torrent};
-			      {error, _} ->
-				  io:format("File ~s is not a torrent file~n", [F])
+			      {not_a_torrent, Reason} ->
+				  io:format("~s is not a Torrent: ~s~n", [F, Reason]);
+			      {could_not_read_file, Reason} ->
+				  io:format("~s could not be read: ~s~n", [F, Reason])
 			  end
 	      end,
 	      Added).
