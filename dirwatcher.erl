@@ -36,8 +36,21 @@ scan_files_in_dir(Dir, State) ->
     NewState = FilesSet,
     {Added, Removed, NewState}.
 
-report_files(Message, Files) ->
-    io:format("~s~n", [Message]),
+process_added_files(Dir, Added) ->
+    %% for each file, try to parse it as a torrent file
     lists:foreach(fun(F) ->
-			   io:format("~s~n", F) end, sets:to_list(Files)).
+			  case torrent:parse(F) of
+			      {ok, Torrent} ->
+				  torrent_manager ! {start_torrent, Dir, F, Torrent};
+			      {error, _} ->
+				  io:format("File ~s is not a torrent file~n", [F])
+			  end
+	      end,
+	      Added).
+
+process_removed_files(Removed) ->
+    lists:foreach(fun(F) ->
+			  torrent_manager ! {stop_torrent, F} end,
+		  Removed).
+
 

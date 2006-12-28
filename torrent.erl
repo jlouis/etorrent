@@ -2,7 +2,18 @@
 -compile(export_all).
 -author("jesper.louis.andersen@gmail.com").
 
-init() ->
-    %%Get access to the inets application
-    application:start(inets).
+
+start(Dir, F, Torrent) ->
+    spawn(torrent, init, [Dir, F, Torrent]).
+
+init(_, F, Torrent) ->
+    torrent_loop(F, Torrent).
+
+torrent_loop(F, _) ->
+    io:format("Process for torrent ~s started", [F]),
+    receive
+	stop ->
+	    exit(normal)
+    end.
+
 
