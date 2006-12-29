@@ -109,3 +109,19 @@ decode_dict_items(String, Accum) ->
 	{Key, Rest1} -> {Value, Rest2} = decode_b(Rest1),
 			decode_list_items(Rest2, [{Key, Value} | Accum])
     end.
+
+%% Search the Dict for Key. Returns {ok, Val} or false. If We are not searching
+%  a dict, return not_a_dict.
+search_dict(Dict, Key) ->
+    case Dict of
+	{dict, Elems} ->
+	    case lists:keysearch(Key, 1, Elems) of
+		{value, {_, V}} ->
+		    {ok, V};
+		false ->
+		    false
+	    end;
+	_ ->
+	    not_a_dict
+    end.
+

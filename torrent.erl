@@ -3,17 +3,40 @@
 -author("jesper.louis.andersen@gmail.com").
 
 
-start(Dir, F, Torrent) ->
-    spawn(torrent, init, [Dir, F, Torrent]).
+start(Dir, F, Torrent, PeerId) ->
+    spawn(torrent, init, [Dir, F, Torrent, PeerId]).
 
-init(_, F, Torrent) ->
-    torrent_loop(F, Torrent).
+init(_, F, Torrent, PeerId) ->
+    StatePid = spawn(torrent_state, start, []),
+    TrackerDelegatePid = spawn(tracker_delegate, start,
+			       [self(), StatePid,
+				get_url(Torrent),
+				get_infohash(Torrent),
+				PeerId]),
+    torrent_loop(F, Torrent, StatePid, TrackerDelegatePid).
 
-torrent_loop(F, _) ->
+get_url(Torrent) ->
+    case bcoding:search_dict("announce", Torrent) of
+	{string, Url} ->
+	    Url
+    end.
+
+get_infohash(Torrent) ->
+    InfoDict = bcoding:search_dict("info", Torrent),
+    Digest = crypto:sha((bcoding:encode(InfoDict))),
+    %% We almost positively need to change this thing.
+    {define_me, Digest}.
+
+torrent_loop(F, _, StatePid, TrackerDelegatePid) ->
     io:format("Process for torrent ~s started", [F]),
     receive
+	start ->
+	    io:format("Starting torrent download of ~s~n", [F]),
+	    TrackerDelegatePid ! start;
 	stop ->
 	    io:format("Stopping torrent ~s~n", [F]),
+	    StatePid ! stop,
+	    TrackerDelegatePid ! stop,
 	    exit(normal)
     end.
 
