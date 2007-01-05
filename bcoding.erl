@@ -1,13 +1,13 @@
 %%%-------------------------------------------------------------------
 %%% File    : bcoding.erl
 %%% Author  : Jesper Louis Andersen <jlouis@succubus>
-%%% Description : 
+%%% Description : Routines for encoding and decoding the b-code.
 %%%
 %%% Created : 27 Dec 2006 by Jesper Louis Andersen <jlouis@succubus>
 %%%-------------------------------------------------------------------
 -module(bcoding).
 
--export([encode/1, decode/1]).
+-export([encode/1, decode/1, search_dict/2]).
 
 -author('jesper.louis.andersen@gmail.com').
 
@@ -25,6 +25,13 @@ encode_list(Items) ->
 encode_dict(Items) ->
     lists:concat(["d", lists:concat(Items), "e"]).
 
+encode_dict_items([]) ->
+    [];
+encode_dict_items([{I1, I2} | Rest]) ->
+    {ok, I} = encode(I1),
+    {ok, J} = encode(I2),
+    [I, J | encode_dict_items(Rest)].
+
 encode(BString) ->
     case BString of
 	{string, String} ->
@@ -35,7 +42,7 @@ encode(BString) ->
 	    EncodedItems = lists:map(encode, Items),
 	    {ok, encode_list(EncodedItems)};
 	{dict, Items} ->
-	    EncodedItems = lists:map(encode, Items),
+	    EncodedItems = encode_dict_items(Items),
 	    {ok, encode_dict(EncodedItems)};
 	_ ->
 	    {error, "Not a bencoded structure"}
@@ -107,12 +114,12 @@ decode_dict_items(String, Accum) ->
 	{end_of_data, Rest} ->
 	    {Accum, Rest};
 	{Key, Rest1} -> {Value, Rest2} = decode_b(Rest1),
-			decode_list_items(Rest2, [{Key, Value} | Accum])
+			decode_dict_items(Rest2, [{Key, Value} | Accum])
     end.
 
 %% Search the Dict for Key. Returns {ok, Val} or false. If We are not searching
 %  a dict, return not_a_dict.
-search_dict(Dict, Key) ->
+search_dict(Key, Dict) ->
     case Dict of
 	{dict, Elems} ->
 	    case lists:keysearch(Key, 1, Elems) of

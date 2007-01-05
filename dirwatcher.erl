@@ -1,31 +1,54 @@
 -module(dirwatcher).
+-behaviour(gen_server).
+
+-export([handle_cast/2, handle_call/3, init/1, terminate/2]).
+-export([handle_info/2, code_change/3]).
 
 -compile(export_all).
 
-start(Dir) ->
-    spawn(dirwatcher, init, [Dir]).
+start_link(Dir) ->
+    gen_server:start_link({local, dirwatcher}, dirwatcher, Dir, []).
 
 init(Dir) ->
-    io:format("Spawn~n"),
-    timer:send_interval(10 * 1000, self(), watch_directories),
-    register(dirwatcher, self()),
-    dirwatcher_kernel(Dir, empty_state()).
+    io:format("Spawning Dirwatcher~n"),
+    timer:send_interval(1000, self(), watch_directories),
+    {ok, {Dir, empty_state()}}.
 
-dirwatcher_kernel(Dir, State) ->
-    receive
-	watch_directories ->
-	    io:format("Timer ticking~n", []),
-	    {Added, Removed, NewState} = scan_files_in_dir(Dir, State),
+code_change(_OldVsn, State, _Extra) ->
+    {ok, State}.
+
+handle_info(_Foo, State) ->
+    {noreply, State}.
+
+terminate(shutdown, _State) ->
+    ok.
+
+handle_call(_A, _B, S) ->
+    {noreply, S}.
+
+handle_cast({report_on_files, Who}, {Dir, State}) ->
+    Who ! sets:to_list(State),
+    {noreply, {Dir, State}};
+handle_cast(watch_directories, {Dir, State}) ->
+    {Added, Removed, NewState} = scan_files_in_dir(Dir, State),
+    AddedPred = sets:size(Added) > 0,
+    RemovedPred = sets:size(Removed) >0,
+    if
+	AddedPred == true ->
 	    io:format("Added: ~s~n", [sets:to_list(Added)]),
-	    process_added_files(Dir, sets:to_list(Added)),
+	    process_added_files(Dir, sets:to_list(Added));
+	true ->
+	    false
+    end,
+
+    if
+	RemovedPred == true ->
 	    io:format("Removed: ~s~n", [sets:to_list(Removed)]),
-	    process_removed_files(sets:to_list(Removed)),
-	    io:format("State: ~s~n", [sets:to_list(NewState)]),
-	    dirwatcher:dirwatcher_kernel(Dir, NewState);
-	{report_on_files, Who} ->
-	    Who ! sets:to_list(State),
-	    dirwatcher:dirwatcher_kernel(Dir, State)
-    end.
+	    process_removed_files(sets:to_list(Removed));
+	true ->
+	    false
+    end,
+    {noreply, {Dir, NewState}}.
 
 empty_state() -> sets:new().
 

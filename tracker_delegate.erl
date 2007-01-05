@@ -21,18 +21,20 @@ tick_after(Secs) ->
 fetch_state(StatePid) ->
     StatePid ! {current_state, self()},
     receive
-	{data_transfer_amount, Uploaded, Downloaded, Left} ->
+	{data_transfer_amounts, Uploaded, Downloaded, Left} ->
 	    {Uploaded, Downloaded, Left}
     end.
 
 build_request_to_send(StatePid) ->
     {Uploaded, Downloaded, Left} = fetch_state(StatePid),
+    io:format("Building request to send~n"),
     #tracker_request{uploaded = Uploaded,
 		     downloaded = Downloaded,
 		     left = Left}.
 
 tracker_request(Master, StatePid, Url, InfoHash, PeerId, Event) ->
     RequestToSend = build_request_to_send(StatePid),
+    io:format("Sending request: ~w~n", [RequestToSend]),
     case perform_get_request(Url, RequestToSend, InfoHash, PeerId, Event) of
 	{ok, ResponseBody} ->
 	    case bcoding:decode(ResponseBody) of
@@ -47,15 +49,18 @@ tracker_request(Master, StatePid, Url, InfoHash, PeerId, Event) ->
 		    ok
 	    end;
 	{error, Err} ->
+	    io:format("Error occurred while contacting tracker"),
 	    Master ! {tracker_request_failed, Err},
 	    tick_after(180)
     end.
 
 delegate_loop(Master, StatePid, Url, InfoHash, PeerId) ->
+    io:format("Delegate loop entered~n"),
     receive
 	tracker_request_now ->
 	    tracker_request(Master, StatePid, Url, InfoHash, PeerId, none);
 	start ->
+	    io:format("Requesting tracker~n"),
 	    tracker_request(Master, StatePid, Url, InfoHash, PeerId,
 			    "started");
 	stop ->

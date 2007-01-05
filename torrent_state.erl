@@ -13,6 +13,7 @@ init() ->
     torrent_state_loop(#torrent_state{}).
 
 torrent_state_loop(State) ->
+    io:format("State looping~n"),
     NewState = receive
 		   {i_uploaded_data, Amount} ->
 		       update_uploaded(Amount, State);
@@ -21,12 +22,16 @@ torrent_state_loop(State) ->
 		   {i_got_a_piece, Amount} ->
 		       update_left(Amount, State);
 		   {current_state, Who} ->
+		       io:format("Reporting information to ~w~n", [Who]),
 		       Who ! report_state_information(State),
 		       State;
 		   stop ->
 		       exit(normal)
-    end,
+	       end,
     torrent_state:torrent_state_loop(NewState).
+
+new() ->
+    #torrent_state{}.
 
 report_state_information(State) ->
     {data_transfer_amounts,
