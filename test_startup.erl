@@ -5,5 +5,4 @@
 start() ->
     crypto:start(),
     inets:start(),
-    torrent_manager:start(),
-    dirwatcher:start("./test/").
+    etorrent:start_link("./test/").

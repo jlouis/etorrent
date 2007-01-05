@@ -9,6 +9,7 @@ start_link() ->
     gen_server:start_link({local, torrent_manager}, torrent_manager, [], []).
 
 init(_Args) ->
+    io:format("Spawning torrent manager~n"),
     {ok, {empty_tracking_map(), generate_peer_id()}}.
 
 empty_tracking_map() ->
