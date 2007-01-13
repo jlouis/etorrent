@@ -11,8 +11,11 @@ start_link(Dir) ->
 
 init(Dir) ->
     io:format("Spawning Dirwatcher~n"),
-    timer:send_interval(1000, self(), watch_directories),
+    timer:apply_interval(1000, dirwatcher, watch_dirs, []),
     {ok, {Dir, empty_state()}}.
+
+watch_dirs() ->
+    gen_server:cast(dirwatcher, watch_directories).
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
@@ -66,7 +69,9 @@ process_added_files(Dir, Added) ->
     lists:foreach(fun(F) ->
 			  case torrent:parse(F) of
 			      {ok, Torrent} ->
-				  torrent_manager ! {start_torrent, Dir, F, Torrent};
+				  gen_server:cast(torrent_manager,
+						  {start_torrent, Dir,
+						   F, Torrent});
 			      {not_a_torrent, Reason} ->
 				  io:format("~s is not a Torrent: ~s~n", [F, Reason]);
 			      {could_not_read_file, Reason} ->
@@ -77,7 +82,8 @@ process_added_files(Dir, Added) ->
 
 process_removed_files(Removed) ->
     lists:foreach(fun(F) ->
-			  torrent_manager ! {stop_torrent, F} end,
+			  gen_server:cast(torrent_manager,
+					  {stop_torrent, F}) end,
 		  Removed).
 
 
