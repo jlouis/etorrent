@@ -19,8 +19,8 @@ empty_tracking_map() ->
 generate_peer_id() ->
     "Setme".
 
-handle_cast({start_torrent, Dir, F, Torrent}, {TrackingMap, PeerId}) ->
-    {ok, TorrentPid} = gen_server:start_link(torrent, [Dir, F, Torrent, PeerId]),
+handle_cast({start_torrent, F, Torrent}, {TrackingMap, PeerId}) ->
+    {ok, TorrentPid} = gen_server:start_link(torrent, {F, Torrent, PeerId}, []),
     NewMap = dict:store(F, TorrentPid, TrackingMap),
     gen_server:cast(TorrentPid, start),
     {noreply, {NewMap, PeerId}};

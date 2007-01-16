@@ -14,14 +14,13 @@ code_change(_OldVsn, State, _Extra) ->
 handle_info(_Foo, State) ->
     {noreply, State}.
 
-
-init({_, F, Torrent, PeerId}) ->
-    {ok, StatePid} = gen_server:start_link(torrent_state, []),
+init({F, Torrent, PeerId}) ->
+    {ok, StatePid} = gen_server:start_link(torrent_state, [], []),
     {ok, TrackerDelegatePid} = gen_server:start_link(tracker_delegate,
-						     [self(), StatePid,
-						      get_url(Torrent),
-						      get_infohash(Torrent),
-						      PeerId]),
+ 						     {self(), StatePid,
+ 						      get_url(Torrent),
+ 						      get_infohash(Torrent),
+ 						      PeerId}, []),
     io:format("Process for torrent ~s started~n", [F]),
     {ok, {F, Torrent, StatePid, TrackerDelegatePid}}.
 

@@ -10,8 +10,11 @@
 			 downloaded = 0,
 			 left = 0}).
 
+default_request_timeout() ->
+    180.
+
 init({Master, StatePid, Url, InfoHash, PeerId}) ->
-    {Master, StatePid, Url, InfoHash, PeerId}.
+    {ok, {Master, StatePid, Url, InfoHash, PeerId}}.
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
@@ -31,12 +34,9 @@ tick_after(Secs) ->
 			      gen_server:cast(self(), tracker_request_now)
 		      end, []).
 
-fetch_state(StatePid) ->
-    {ok, Reply} = gen_server:call(StatePid, current_state),
-    Reply.
-
 build_request_to_send(StatePid) ->
-    {Uploaded, Downloaded, Left} = fetch_state(StatePid),
+    {data_transfer_amounts, Uploaded, Downloaded, Left} =
+	gen_server:call(StatePid, current_state),
     io:format("Building request to send~n"),
     #tracker_request{uploaded = Uploaded,
 		     downloaded = Downloaded,
@@ -49,16 +49,55 @@ handle_cast(start, State) ->
 handle_cast(stop, State) ->
     tracker_request(State, "stopped").
 
-find_next_request_time(BCoded) ->
-    case bcoding:search_dict("interval", BCoded) of
-	{ok, Num} ->
-	    Num;
+find_in_bcoded(BCoded, Term, Default) ->
+    case bcoding:search_dict(Term, BCoded) of
+	{ok, Val} ->
+	    Val;
 	_ ->
-	    default_request_timeout()
+	    Default
     end.
 
-default_request_timeout() ->
-    180.
+find_next_request_time(BCoded) ->
+    find_in_bcoded(BCoded, "interval", default_request_timeout()).
+
+find_ips_in_tracker_response(BCoded) ->
+    find_in_bcoded(BCoded, "peers", []).
+
+find_tracker_id(BCoded) ->
+    find_in_bcoded(BCoded, "trackerid", tracker_id_not_given).
+
+find_completes(BCoded) ->
+    find_in_bcoded(BCoded, "complete", no_completes).
+
+find_incompletes(BCoded) ->
+    find_in_bcoded(BCoded, "incomplete", no_incompletes).
+
+fetch_error_message(BC) ->
+    find_in_bcoded(BC, "failure reason", none).
+
+fetch_warning_message(BC) ->
+    find_in_bcoded(BC, "warning message", none).
+
+handle_tracker_response(BC, Master) ->
+    RequestTime = find_next_request_time(BC),
+    TrackerId = find_tracker_id(BC),
+    Complete = find_completes(BC),
+    Incomplete = find_incompletes(BC),
+    NewIPs = find_ips_in_tracker_response(BC),
+    ErrorMessage = fetch_error_message(BC),
+    WarningMessage = fetch_warning_message(BC),
+    if
+	ErrorMessage /= none ->
+	    gen_server:cast(Master, {tracker_error_report, ErrorMessage});
+	WarningMessage /= none ->
+	    gen_server:cast(Master, {tracker_warning_report, WarningMessage}),
+	    get_server:cast(Master, {tracker_report, TrackerId, Complete, Incomplete}),
+	    gen_server:cast(Master, {new_ips, NewIPs});
+	true ->
+	    get_server:cast(Master, {tracker_report, TrackerId, Complete, Incomplete}),
+	    gen_server:cast(Master, {new_ips, NewIPs})
+    end,
+    tick_after(RequestTime).
 
 tracker_request({Master, StatePid, Url, InfoHash, PeerId}, Event) ->
     RequestToSend = build_request_to_send(StatePid),
@@ -67,9 +106,7 @@ tracker_request({Master, StatePid, Url, InfoHash, PeerId}, Event) ->
 	{ok, ResponseBody} ->
 	    case bcoding:decode(ResponseBody) of
 		{ok, BC} ->
-		    RequestTime = find_next_request_time(BC),
-		    Master ! {new_tracker_response, BC},
-		    tick_after(RequestTime),
+		    handle_tracker_response(BC, Master),
 		    {noreply, {Master, StatePid, Url, InfoHash, PeerId}};
 		{error, Err} ->
 		    Master ! {tracker_responded_not_bcode, Err},
@@ -77,9 +114,10 @@ tracker_request({Master, StatePid, Url, InfoHash, PeerId}, Event) ->
 		    {noreply, {Master, StatePid, Url, InfoHash, PeerId}}
 	    end;
 	{error, Err} ->
-	    io:format("Error occurred while contacting tracker"),
+	    io:format("Error occurred while contacting tracker~n"),
 	    Master ! {tracker_request_failed, Err},
-	    tick_after(180)
+	    tick_after(180),
+	    {noreply, {Master, StatePid, Url, InfoHash, PeerId}}
     end.
 
 perform_get_request(Url, InfoHash, PeerId, Status, Event) ->
@@ -92,6 +130,8 @@ perform_get_request(Url, InfoHash, PeerId, Status, Event) ->
 	_ ->
 	    %% TODO: We need to fix this. If we can't find anything, this is
 	    %% triggered. So we must handle it. Oh, we must fix this.
+	    %% We can take a look on some of the errors and report them back gracefully since it is much easier
+	    %% to read and understand then.
 	    {error, "Some error happened in the request get"}
     end.
 

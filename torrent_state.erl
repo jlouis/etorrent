@@ -7,7 +7,7 @@
 			left = 0}).
 
 init(_I) ->
-    new().
+    {ok, new()}.
 
 terminate(showdown, _State) ->
     ok.

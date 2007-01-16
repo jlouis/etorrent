@@ -39,7 +39,7 @@ handle_cast(watch_directories, {Dir, State}) ->
     if
 	AddedPred == true ->
 	    io:format("Added: ~s~n", [sets:to_list(Added)]),
-	    process_added_files(Dir, sets:to_list(Added));
+	    process_added_files(sets:to_list(Added));
 	true ->
 	    false
     end,
@@ -64,14 +64,12 @@ scan_files_in_dir(Dir, State) ->
     NewState = FilesSet,
     {Added, Removed, NewState}.
 
-process_added_files(Dir, Added) ->
+process_added_files(Added) ->
     %% for each file, try to parse it as a torrent file
     lists:foreach(fun(F) ->
 			  case torrent:parse(F) of
 			      {ok, Torrent} ->
-				  gen_server:cast(torrent_manager,
-						  {start_torrent, Dir,
-						   F, Torrent});
+				  gen_server:cast(torrent_manager, {start_torrent, F, Torrent});
 			      {not_a_torrent, Reason} ->
 				  io:format("~s is not a Torrent: ~s~n", [F, Reason]);
 			      {could_not_read_file, Reason} ->
