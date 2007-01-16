@@ -1,37 +1,50 @@
 -module(torrent).
--compile(export_all).
+-behaviour(gen_server).
+
+-export([handle_cast/2, handle_call/3, init/1, terminate/2]).
+-export([handle_info/2, code_change/3]).
+
+-export([parse/1]).
+
 -author("jesper.louis.andersen@gmail.com").
 
+code_change(_OldVsn, State, _Extra) ->
+    {ok, State}.
 
-start(Dir, F, Torrent, PeerId) ->
-    spawn(torrent, init, [Dir, F, Torrent, PeerId]).
+handle_info(_Foo, State) ->
+    {noreply, State}.
 
-init(_, F, Torrent, PeerId) ->
-    StatePid = torrent_state:start(),
-    TrackerDelegatePid = tracker_delegate:start(self(), StatePid,
-						get_url(Torrent),
-						get_infohash(Torrent),
-						PeerId),
+
+init({_, F, Torrent, PeerId}) ->
+    {ok, StatePid} = gen_server:start_link(torrent_state, []),
+    {ok, TrackerDelegatePid} = gen_server:start_link(tracker_delegate,
+						     [self(), StatePid,
+						      get_url(Torrent),
+						      get_infohash(Torrent),
+						      PeerId]),
     io:format("Process for torrent ~s started~n", [F]),
-    torrent_loop(F, Torrent, StatePid, TrackerDelegatePid).
+    {ok, {F, Torrent, StatePid, TrackerDelegatePid}}.
 
-torrent_loop(F, Torrent, StatePid, TrackerDelegatePid) ->
-    io:format("Torrent looping...~n"),
-    receive
-	start ->
-	    io:format("Starting torrent download of ~s~n", [F]),
-	    io:format("TrackerDelegatePid ~w~n", [TrackerDelegatePid]),
-	    TrackerDelegatePid ! start,
-	    io:format("Message sent~n");
-	stop ->
-	    io:format("Stopping torrent ~s~n", [F]),
-	    StatePid ! stop,
-	    TrackerDelegatePid ! stop,
-	    exit(normal);
-	{tracker_request_failed, Err} ->
-	    io:format("Tracker request failed: ~s~n", [Err])
-    end,
-    torrent:torrent_loop(F, Torrent, StatePid, TrackerDelegatePid).
+handle_call(_Call, _Who, S) ->
+    {noreply, S}.
+
+terminate_children(_StatePid, _TrackerDelegatePid) ->
+    ok.
+
+terminate(shutdown, {_F, _Torrent, StatePid, TrackerDelegatePid}) ->
+    terminate_children(StatePid, TrackerDelegatePid),
+    ok.
+
+handle_cast(start, {F, Torrent, StatePid, TrackerDelegatePid}) ->
+    gen_server:cast(TrackerDelegatePid, start),
+    {noreply, {F, Torrent, StatePid, TrackerDelegatePid}};
+handle_cast(stop, {_F, _Torrent, StatePid, TrackerDelegatePid}) ->
+    gen_server:cast(StatePid, stop),
+    gen_server:cast(TrackerDelegatePid, stop);
+handle_cast({tracker_request_failed, Err}, State) ->
+    io:format("Tracker request failed ~s~n", [Err]),
+    {noreply, State}.
+
 
 %%%%% Subroutines
 

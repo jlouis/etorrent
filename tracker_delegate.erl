@@ -1,6 +1,7 @@
 -module(tracker_delegate).
+-behaviour(gen_server).
 
--compile(export_all).
+-export([init/1, handle_cast/2, code_change/3, terminate/2, handle_info/2, handle_call/3]).
 
 -author("jesper.louis.andersen@gmail.com").
 
@@ -9,23 +10,30 @@
 			 downloaded = 0,
 			 left = 0}).
 
+init({Master, StatePid, Url, InfoHash, PeerId}) ->
+    {Master, StatePid, Url, InfoHash, PeerId}.
 
+code_change(_OldVsn, State, _Extra) ->
+    {ok, State}.
 
-start(Master, StatePid, Url, InfoHash, PeerId) ->
-    spawn(tracker_delegate, init, [Master, StatePid, Url, InfoHash, PeerId]).
+handle_info(_Foo, State) ->
+    {noreply, State}.
 
-init(Master, StatePid, Url, InfoHash, PeerId) ->
-    delegate_loop(Master, StatePid, Url, InfoHash, PeerId).
+terminate(shutdown, _State) ->
+    ok.
+
+handle_call(_Call, _Who, S) ->
+    {noreply, S}.
 
 tick_after(Secs) ->
-    timer:send_after(Secs * 1000, self(), tracker_request_now).
+    timer:apply_after(Secs * 1000, self(),
+		      fun () ->
+			      gen_server:cast(self(), tracker_request_now)
+		      end, []).
 
 fetch_state(StatePid) ->
-    StatePid ! {current_state, self()},
-    receive
-	{data_transfer_amounts, Uploaded, Downloaded, Left} ->
-	    {Uploaded, Downloaded, Left}
-    end.
+    {ok, Reply} = gen_server:call(StatePid, current_state),
+    Reply.
 
 build_request_to_send(StatePid) ->
     {Uploaded, Downloaded, Left} = fetch_state(StatePid),
@@ -34,27 +42,12 @@ build_request_to_send(StatePid) ->
 		     downloaded = Downloaded,
 		     left = Left}.
 
-dummy_request() ->
-    #tracker_request{uploaded = 0, downloaded = 0, left = 0}.
-
-delegate_loop(Master, StatePid, Url, InfoHash, PeerId) ->
-    io:format("Delegate loop entered~n"),
-    receive
-	tracker_request_now ->
-	    tracker_request(Master, StatePid, Url, InfoHash, PeerId, none);
-	start ->
-	    io:format("Requesting tracker~n"),
-	    tracker_request(Master, StatePid, Url, InfoHash, PeerId,
-			    "started");
-	stop ->
-	    %% Ignore answer
-	    RequestToSend = build_request_to_send(StatePid),
-	    perform_get_request(Url, InfoHash, PeerId, RequestToSend,
-			       "stopped"),
-	    exit(normal)
-    end,
-    tracker_delegate:delegate_loop(Master, StatePid, Url, InfoHash,
-				   PeerId).
+handle_cast(tracker_request_now, State) ->
+    tracker_request(State, none);
+handle_cast(start, State) ->
+    tracker_request(State, "started");
+handle_cast(stop, State) ->
+    tracker_request(State, "stopped").
 
 find_next_request_time(BCoded) ->
     case bcoding:search_dict("interval", BCoded) of
@@ -67,7 +60,7 @@ find_next_request_time(BCoded) ->
 default_request_timeout() ->
     180.
 
-tracker_request(Master, StatePid, Url, InfoHash, PeerId, Event) ->
+tracker_request({Master, StatePid, Url, InfoHash, PeerId}, Event) ->
     RequestToSend = build_request_to_send(StatePid),
     io:format("Sending request: ~w~n", [RequestToSend]),
     case perform_get_request(Url, InfoHash, PeerId, RequestToSend, Event) of
@@ -77,11 +70,11 @@ tracker_request(Master, StatePid, Url, InfoHash, PeerId, Event) ->
 		    RequestTime = find_next_request_time(BC),
 		    Master ! {new_tracker_response, BC},
 		    tick_after(RequestTime),
-		    ok;
+		    {noreply, {Master, StatePid, Url, InfoHash, PeerId}};
 		{error, Err} ->
 		    Master ! {tracker_responded_not_bcode, Err},
 		    tick_after(180),
-		    ok
+		    {noreply, {Master, StatePid, Url, InfoHash, PeerId}}
 	    end;
 	{error, Err} ->
 	    io:format("Error occurred while contacting tracker"),

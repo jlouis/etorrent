@@ -1,34 +1,33 @@
 -module(torrent_state).
-
--compile(export_all).
+-behaviour(gen_server).
+-export([code_change/3, handle_call/3, handle_cast/2, handle_info/2, init/1, terminate/2]).
 
 -record(torrent_state, {uploaded = 0,
 			downloaded = 0,
 			left = 0}).
 
-start() ->
-    spawn(torrent_state, init, []).
+init(_I) ->
+    new().
 
-init() ->
-    torrent_state_loop(#torrent_state{}).
+terminate(showdown, _State) ->
+    ok.
 
-torrent_state_loop(State) ->
-    io:format("State looping~n"),
-    NewState = receive
-		   {i_uploaded_data, Amount} ->
-		       update_uploaded(Amount, State);
-		   {i_downloaded_data, Amount} ->
-		       update_downloaded(Amount, State);
-		   {i_got_a_piece, Amount} ->
-		       update_left(Amount, State);
-		   {current_state, Who} ->
-		       io:format("Reporting information to ~w~n", [Who]),
-		       Who ! report_state_information(State),
-		       State;
-		   stop ->
-		       exit(normal)
-	       end,
-    torrent_state:torrent_state_loop(NewState).
+code_change(_OldVsn, State, _Extra) ->
+    {ok, State}.
+
+handle_info(_Foo, State) ->
+    {noreply, State}.
+
+handle_call(current_state, Who, State) ->
+    io:format("Reporting information to ~w~n", [Who]),
+    {reply, report_state_information(State), State}.
+
+handle_cast({i_uploaded_data, Amount}, State) ->
+    {noreply, update_uploaded(Amount, State)};
+handle_cast({i_downloaded_data, Amount}, State) ->
+    {noreply, update_downloaded(Amount, State)};
+handle_cast({i_got_a_piece, Amount}, State) ->
+    {noreply, update_left(Amount, State)}.
 
 new() ->
     #torrent_state{}.
