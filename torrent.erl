@@ -4,7 +4,7 @@
 -export([handle_cast/2, handle_call/3, init/1, terminate/2]).
 -export([handle_info/2, code_change/3]).
 
--export([parse/1]).
+-export([parse/1, start_link/3, start/1, stop/1]).
 
 -author("jesper.louis.andersen@gmail.com").
 
@@ -13,6 +13,15 @@ code_change(_OldVsn, State, _Extra) ->
 
 handle_info(_Foo, State) ->
     {noreply, State}.
+
+start_link(F, Torrent, PeerId) ->
+    gen_server:start_link(torrent, {F, Torrent, PeerId}, []).
+
+start(TorrentPid) ->
+    gen_server:cast(TorrentPid, start).
+
+stop(TorrentPid) ->
+    gen_server:cast(TorrentPid, stop).
 
 init({F, Torrent, PeerId}) ->
     {ok, StatePid} = gen_server:start_link(torrent_state, [], []),

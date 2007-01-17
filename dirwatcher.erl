@@ -2,9 +2,7 @@
 -behaviour(gen_server).
 
 -export([handle_cast/2, handle_call/3, init/1, terminate/2]).
--export([handle_info/2, code_change/3]).
-
--compile(export_all).
+-export([handle_info/2, code_change/3, start_link/1, watch_dirs/0]).
 
 start_link(Dir) ->
     gen_server:start_link({local, dirwatcher}, dirwatcher, Dir, []).
@@ -13,9 +11,6 @@ init(Dir) ->
     io:format("Spawning Dirwatcher~n"),
     timer:apply_interval(1000, dirwatcher, watch_dirs, []),
     {ok, {Dir, empty_state()}}.
-
-watch_dirs() ->
-    gen_server:cast(dirwatcher, watch_directories).
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
@@ -34,24 +29,14 @@ handle_cast({report_on_files, Who}, {Dir, State}) ->
     {noreply, {Dir, State}};
 handle_cast(watch_directories, {Dir, State}) ->
     {Added, Removed, NewState} = scan_files_in_dir(Dir, State),
-    AddedPred = sets:size(Added) > 0,
-    RemovedPred = sets:size(Removed) >0,
-    if
-	AddedPred == true ->
-	    io:format("Added: ~s~n", [sets:to_list(Added)]),
-	    process_added_files(sets:to_list(Added));
-	true ->
-	    false
-    end,
-
-    if
-	RemovedPred == true ->
-	    io:format("Removed: ~s~n", [sets:to_list(Removed)]),
-	    process_removed_files(sets:to_list(Removed));
-	true ->
-	    false
-    end,
+    lists:foreach(fun(F) -> handle_new_torrent(F) end, sets:to_list(Added)),
+    lists:foreach(fun(F) -> torrent_manager:stop_torrent(F) end, sets:to_list(Removed)),
     {noreply, {Dir, NewState}}.
+
+
+%% Operations
+watch_dirs() ->
+    gen_server:cast(dirwatcher, watch_directories).
 
 empty_state() -> sets:new().
 
@@ -64,24 +49,14 @@ scan_files_in_dir(Dir, State) ->
     NewState = FilesSet,
     {Added, Removed, NewState}.
 
-process_added_files(Added) ->
-    %% for each file, try to parse it as a torrent file
-    lists:foreach(fun(F) ->
-			  case torrent:parse(F) of
-			      {ok, Torrent} ->
-				  gen_server:cast(torrent_manager, {start_torrent, F, Torrent});
-			      {not_a_torrent, Reason} ->
-				  io:format("~s is not a Torrent: ~s~n", [F, Reason]);
-			      {could_not_read_file, Reason} ->
-				  io:format("~s could not be read: ~s~n", [F, Reason])
-			  end
-	      end,
-	      Added).
-
-process_removed_files(Removed) ->
-    lists:foreach(fun(F) ->
-			  gen_server:cast(torrent_manager,
-					  {stop_torrent, F}) end,
-		  Removed).
+handle_new_torrent(F) ->
+    case torrent:parse(F) of
+	{ok, Torrent} ->
+	    torrent_manager:start_torrent(F, Torrent);
+	{not_a_torrent, Reason} ->
+	    error_logger:warning_msg("~s is not a torrent: ~s~n", [F, Reason]);
+	{could_not_read_file, Reason} ->
+	    error_logger:warning_msg("~s could not be read: ~s~n", [F, Reason])
+    end.
 
 
