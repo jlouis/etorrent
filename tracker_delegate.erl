@@ -10,8 +10,7 @@
 			 downloaded = 0,
 			 left = 0}).
 
-default_request_timeout() ->
-    180.
+-define(DEFAULT_REQUEST_TIMEOUT, 180).
 
 init({Master, StatePid, Url, InfoHash, PeerId}) ->
     {ok, {Master, StatePid, Url, InfoHash, PeerId}}.
@@ -30,17 +29,7 @@ handle_call(_Call, _Who, S) ->
 
 tick_after(Secs) ->
     timer:apply_after(Secs * 1000, self(),
-		      fun () ->
-			      gen_server:cast(self(), tracker_request_now)
-		      end, []).
-
-build_request_to_send(StatePid) ->
-    {data_transfer_amounts, Uploaded, Downloaded, Left} =
-	gen_server:call(StatePid, current_state),
-    io:format("Building request to send~n"),
-    #tracker_request{uploaded = Uploaded,
-		     downloaded = Downloaded,
-		     left = Left}.
+		      fun () -> request_tracker_immediately(self()) end, []).
 
 handle_cast(tracker_request_now, State) ->
     tracker_request(State, none);
@@ -48,6 +37,19 @@ handle_cast(start, State) ->
     tracker_request(State, "started");
 handle_cast(stop, State) ->
     tracker_request(State, "stopped").
+
+%% Operations
+request_tracker_immediately(Pid) ->
+    gen_server:cast(Pid, tracker_request_now).
+
+%% Helpers
+build_request_to_send(StatePid) ->
+    {data_transfer_amounts, Uploaded, Downloaded, Left} =
+	torrent_state:current_state(StatePid),
+    io:format("Building request to send~n"),
+    #tracker_request{uploaded = Uploaded,
+		     downloaded = Downloaded,
+		     left = Left}.
 
 find_in_bcoded(BCoded, Term, Default) ->
     case bcoding:search_dict(Term, BCoded) of
@@ -58,7 +60,7 @@ find_in_bcoded(BCoded, Term, Default) ->
     end.
 
 find_next_request_time(BCoded) ->
-    find_in_bcoded(BCoded, "interval", default_request_timeout()).
+    find_in_bcoded(BCoded, "interval", ?DEFAULT_REQUEST_TIMEOUT).
 
 find_ips_in_tracker_response(BCoded) ->
     find_in_bcoded(BCoded, "peers", []).
@@ -101,7 +103,6 @@ handle_tracker_response(BC, Master) ->
 
 tracker_request({Master, StatePid, Url, InfoHash, PeerId}, Event) ->
     RequestToSend = build_request_to_send(StatePid),
-    io:format("Sending request: ~w~n", [RequestToSend]),
     case perform_get_request(Url, InfoHash, PeerId, RequestToSend, Event) of
 	{ok, ResponseBody} ->
 	    case bcoding:decode(ResponseBody) of
@@ -114,16 +115,13 @@ tracker_request({Master, StatePid, Url, InfoHash, PeerId}, Event) ->
 		    {noreply, {Master, StatePid, Url, InfoHash, PeerId}}
 	    end;
 	{error, Err} ->
-	    io:format("Error occurred while contacting tracker~n"),
 	    Master ! {tracker_request_failed, Err},
 	    tick_after(180),
 	    {noreply, {Master, StatePid, Url, InfoHash, PeerId}}
     end.
 
 perform_get_request(Url, InfoHash, PeerId, Status, Event) ->
-    io:format("building tracker url~n"),
     NewUrl = build_tracker_url(Url, Status, InfoHash, PeerId, Event),
-    io:format("Built...~n"),
     case http:request(NewUrl) of
 	{ok, {{_, 200, _}, _, Body}} ->
 	    {ok, Body};
