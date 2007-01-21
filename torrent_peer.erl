@@ -126,7 +126,6 @@ transmit_piece(Index, Begin, Len, State) ->
     Data = filesystem:request_piece(State#cstate.filesystem_pid, Index, Begin, Len),
     send_message_reply(State, {piece, Index, Begin, Len, Data}).
 
-
 insert_into_his_queue(Item, State) ->
     Q = queue:in(State#cstate.his_requested_queue, Item),
     State#cstate{his_requested_queue = Q}.
@@ -143,7 +142,7 @@ send_message_reply(State, Message) ->
 
 send_choke(State) ->
     send_message(State, choke),
-    State#cstate{me_choking = yes}.
+    State#cstate{me_choking = true}.
 
 send_unchoke(State) ->
     send_message(State, unchoke),

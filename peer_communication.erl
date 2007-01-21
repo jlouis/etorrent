@@ -98,14 +98,12 @@ recv_handshake(Socket, PeerId, InfoHash) ->
     {ok, Packet} = gen_tcp:recv(Socket, Size),
     <<PSL:8,
      ?PROTOCOL_STRING,
-     ReservedBytes:64/binary, IH:160/binary, PI:160/binary>> = Packet,
+     _ReservedBytes:64/binary, IH:160/binary, PI:160/binary>> = Packet,
     if
 	PSL /= Size ->
 	    {error, "Size mismatch"};
 	IH /= InfoHash ->
 	    {error, "Infohash mismatch"};
-	ReservedBytes /= ?RESERVED_BYTES ->
-	    {error, "ReservedBytes error"};
 	true ->
 	    {ok, PI}
     end.

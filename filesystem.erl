@@ -32,4 +32,3 @@ start_link() ->
 request_piece(Pid, Index, Begin, Len) ->
     %% Retrieve data from the file system for the requested bit.
     gen_server:call(Pid, {request_piece, Index, Begin, Len}).
-
