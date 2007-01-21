@@ -3,7 +3,7 @@
 
 -export([init/1, handle_cast/2, handle_call/3, terminate/2, handle_info/2, code_change/3]).
 
--export([start_link/0]).
+-export([start_link/0, request_piece/4]).
 
 -record(fs_state, {completed = 0}).
 
@@ -28,4 +28,8 @@ code_change(_OldVsn, State, _Extra) ->
 %% functions
 start_link() ->
     gen_server:start_link(filesystem, no, []).
+
+request_piece(Pid, Index, Begin, Len) ->
+    %% Retrieve data from the file system for the requested bit.
+    gen_server:call(Pid, {request_piece, Index, Begin, Len}).
 

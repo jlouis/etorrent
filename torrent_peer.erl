@@ -4,20 +4,28 @@
 -export([init/1, handle_cast/2, handle_info/2, handle_call/3, terminate/2]).
 -export([code_change/3]).
 
--export([start_link/1, get_states/1, choke/1, unchoke/1, interested/1, not_interested/1]).
+-export([start_link/4, get_states/1, choke/1, unchoke/1, interested/1, not_interested/1]).
 
--record(cstate, {my_state = {choking, not_interested},
-		 his_state = {choking, not_intersted},
+-record(cstate, {me_choking = true,
+		 me_interested = false,
+		 he_choking = true,
+		 he_interested = false,
 		 socket = none,
 		 transmitting = no,
 		 connection_manager_pid = no,
 		 name = no,
-		 send_pid = no}).
+		 send_pid = no,
+		 filesystem_pid = no,
+		 his_requested_queue = no,
+		 my_requested_queue = no}).
 
-init({Socket, ConnectionManagerPid, Name}) ->
+init({Socket, ConnectionManagerPid, FileSystemPid, Name}) ->
     {ok, #cstate{socket = Socket,
 		 connection_manager_pid = ConnectionManagerPid,
-		 name = Name}}.
+		 filesystem_pid = FileSystemPid,
+		 name = Name,
+		 his_requested_queue = queue:new(),
+		 my_requested_queue = queue:new()}}.
 
 terminate(shutdown, State) ->
     gen_tcp:close(State#cstate.socket),
@@ -53,7 +61,9 @@ handle_cast({receive_message, Message}, State) ->
 handle_cast(choke, State) ->
     {noreply, send_choke(State)};
 handle_cast(unchoke, State) ->
-    {noreply, send_unchoke(State)}.
+    {noreply, send_unchoke(State)};
+handle_cast(datagram_sent, State) ->
+    {noreply, transmit_next_piece(State)}.
 
 handle_info({'EXIT', _FromPid, Reason}, State) ->
     error_logger:warning_msg("Recv loop exited: ~s~n", [Reason]),
@@ -63,8 +73,8 @@ handle_info({'EXIT', _FromPid, Reason}, State) ->
     exit(recv_loop_died).
 
 handle_call(get_states, _Who, State) ->
-    {reply, {State#cstate.my_state,
-	     State#cstate.his_state}}.
+    {reply, {State#cstate.me_choking, State#cstate.me_interested,
+	     State#cstate.he_choking, State#cstate.he_interested}}.
 
 %% Message handling code
 handle_message(keep_alive, State) ->
@@ -72,36 +82,66 @@ handle_message(keep_alive, State) ->
     %% It is probably mostly there to please firewalls state tracking and NAT.
     State;
 handle_message(choke, State) ->
-    %% This is sent if we have been choked upstream. We can't do anything about it locally, so
-    %% we are just going to alter our local state.
-    {_Choke, Interest} = State#cstate.his_state,
-    State#cstate{his_state = {choked, Interest}};
+    State#cstate{he_choking = true};
 handle_message(interested, State) ->
-    %% The peer just got interested in our pieces. Wohoo!
-    {Choke, _Interest} = State#cstate.his_state,
     connection_manager:is_interested(State#cstate.connection_manager_pid),
-    State#cstate{his_state = {Choke, interested}};
+    State#cstate{he_interested = true};
 handle_message(not_interested, State) ->
-    {Choke, _Interest} = State#cstate.his_state,
     connection_manager:is_not_intersted(State#cstate.connection_manager_pid),
-    State#cstate{his_state = {Choke, not_interested}}.
+    State#cstate{he_interested = false};
+handle_message({cancel, Index, Begin, Len}, State) ->
+    %% Canceling a message is equivalent to deleting it from the queue
+    NewQ = remove_from_queue({Index, Begin, Len}, State#cstate.his_requested_queue),
+    State#cstate{his_requested_queue = NewQ};
+handle_message({request, Index, Begin, Len}, State) ->
+    case queue:is_empty(State#cstate.his_requested_queue) of
+	false ->
+	    {noreply, insert_into_his_queue({Index, Begin, Len}, State)};
+	true ->
+	    case State#cstate.me_choking of
+		no ->
+		    {noreply, insert_into_his_queue({Index, Begin, Len}, State)};
+		yes ->
+		    transmit_piece(Index, Begin, Len, State),
+	            {noreply, State}
+	    end
+    end.
+
+transmit_next_piece(State) ->
+    case queue:out(State#cstate.his_requested_queue) of
+	{{value, {Index, Begin, Len}}, Q} ->
+	    transmit_piece(Index, Begin, Len, State),
+	    State#cstate{his_requested_queue = Q};
+	{empty, _Q} ->
+	    State
+    end.
+
+transmit_piece(Index, Begin, Len, State) ->
+    Data = filesystem:request_piece(State#cstate.filesystem_pid, Index, Begin, Len),
+    send_message_reply(State, {piece, Index, Begin, Len, Data}).
+
+
+insert_into_his_queue(Item, State) ->
+    Q = queue:in(State#cstate.his_requested_queue, Item),
+    State#cstate{his_requested_queue = Q}.
+
+remove_from_queue(Item, Q) ->
+    %% This is probably _slow_, but who cares unless the profiler quacks like a duck?
+    queue:from_list(lists:delete(Item, queue:to_list(Q))).
 
 send_message(State, Message) ->
     State#cstate.send_pid ! {datagram, Message}.
 
-%% To be used for piece sending later on.
-%% send_message_reply(State, Message) ->
-%%     State#cstate.send_pid ! {reply_datagram, Message}.
+send_message_reply(State, Message) ->
+    State#cstate.send_pid ! {reply_datagram, Message}.
 
 send_choke(State) ->
     send_message(State, choke),
-    {_Choked, Interested} = State#cstate.my_state,
-    State#cstate{my_state = {choked, Interested}}.
+    State#cstate{me_choking = yes}.
 
 send_unchoke(State) ->
     send_message(State, unchoke),
-    {_Choked, Interested} = State#cstate.my_state,
-    State#cstate{my_state = {unchoked, Interested}}.
+    State#cstate{me_choking = false}.
 
 %% send_interested(State) ->
 %%     send_message(State, interested),
@@ -114,8 +154,8 @@ send_unchoke(State) ->
 %%     State#cstate{my_state = {Choked, not_intersted}}.
 
 %% Calls
-start_link(Socket) ->
-    gen_server:start_link(torrent_peer, Socket, []).
+start_link(Socket, ConnectionManager, FileSystem, Name) ->
+    gen_server:start_link(torrent_peer, {Socket, ConnectionManager, FileSystem, Name}, []).
 
 get_states(Pid) ->
     gen_server:call(Pid, get_states).

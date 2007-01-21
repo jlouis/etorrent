@@ -75,9 +75,9 @@ send_message(Socket, Message) ->
 	       {request, Index, Begin, Len} ->
 		   <<13:32/big, ?REQUEST,
 		     Index:32/big, Begin:32/big, Len:32/big>>;
-	       {piece, Index, Begin, Data} ->
+	       {piece, Index, Begin, Len, Data} ->
 		   Size = size(Data)+9,
-		   <<Size, ?PIECE, Index:32/big, Begin:32/big, Data/binary>>;
+		   <<Size, ?PIECE, Index:32/big, Begin:32/big, Len:32/big, Data/binary>>;
 	       {cancel, Index, Begin, Len} ->
 		   <<13:32/big, ?CANCEL,
 		     Index:32/big, Begin:32/big, Len:32/big>>;
