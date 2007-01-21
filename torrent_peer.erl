@@ -16,8 +16,8 @@
 
 init({Socket, ConnectionManagerPid, Name}) ->
     {ok, #cstate{socket = Socket,
-			      connection_manager_pid = ConnectionManagerPid,
-			      name = Name}}.
+		 connection_manager_pid = ConnectionManagerPid,
+		 name = Name}}.
 
 terminate(shutdown, State) ->
     gen_tcp:close(State#cstate.socket),
