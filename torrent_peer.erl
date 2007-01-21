@@ -1,93 +1,56 @@
 -module(torrent_peer).
+-behaviour(gen_server).
 
--export([init/1, recv_handshake/3, send_handshake/3]).
--export([send_message/2]).
+-export([init/1, handle_cast/2, handle_info/2, handle_call/3, terminate/2]).
+-export([code_change/3]).
 
--define(PROTOCOL_STRING, "BitTorrent protocol").
--define(RESERVED_BYTES, <<0:64>>).
+-export([start_link/1, get_states/1]).
 
-%% Packet types
--define(KEEP_ALIVE, 0:32/big).
--define(CHOKE, 1:32/big, 0:8).
--define(UNCHOKE, 1:32/big, 1:8).
--define(INTERESTED, 1:32/big, 2:8).
--define(NOT_INTERESTED, 1:32/big, 3:8).
--define(HAVE, 5:32/big, 4:8). %% PieceNum:32/big
--define(BITFIELD, 5:8). %% Binds
-                        %% <<Len+1:32/big, ?BITFIELD, BitField:Len*8/binary>>
--define(REQUEST, 13:32/big, 6:8). %% Index:32/big, Begin:32/big, Len:32/big
--define(PIECE, 7:8). %% Binds
-                     %% <<(9+Len):32/big, ?PIECE, Index:32/big, Begin:32/big,
-                     %%   Data:Len*8/binary>>
--define(CANCEL, 13:32/big, 8:8). %% Index:32/big, Begin:32/big, Len:32/big
--define(PORT, 3:32/big, 9:8). %% Port:16/big
-
-send_message(Socket, Message) ->
-    Datagram = case Message of
-	       keep_alive ->
-		   <<?KEEP_ALIVE>>;
-	       choke ->
-		   <<?CHOKE>>;
-	       unchoke ->
-		   <<?UNCHOKE>>;
-	       interested ->
-		   <<?INTERESTED>>;
-	       not_interested ->
-		   <<?NOT_INTERESTED>>;
-	       {have, PieceNum} ->
-		   <<?HAVE, PieceNum:32/big>>;
-	       {bitfield, BitField} ->
-		   Size = size(BitField)+1,
-		   <<Size:32/big, ?BITFIELD, BitField/binary>>;
-	       {request, Index, Begin, Len} ->
-		   <<?REQUEST, Index:32/big, Begin:32/big, Len:32/big>>;
-	       {piece, Index, Begin, Data} ->
-		   Size = size(Data)+9,
-		   <<Size, ?PIECE, Index:32/big, Begin:32/big, Data/binary>>;
-	       {cancel, Index, Begin, Len} ->
-		   <<?CANCEL, Index:32/big, Begin:32/big, Len:32/big>>;
-	       {port, PortNum} ->
-		   <<?PORT, PortNum:16/big>>
-	  end,
-    gen_tcp:send(Socket, Datagram).
+-record(communication_state, {my_state = {choking, not_interested},
+			      his_state = {choking, not_intersted},
+			      socket = none}).
 
 init(Socket) ->
-    {ok, {Socket, choked, noninterested}}.
+    {ok, #communication_state{socket = Socket}}.
 
-%% recv_loop({Socket, Choke, Interest}) ->
-%%     case gen_tcp:recv(Socket, ...) of
-%% 	{ok, Packet} ->
-%% 	    NewState = dispatch_on_packet(Packet, {Socket, Choke, Interest}),
-%% 	    torrent_peer_receive:recv_loop(NewState);
-%% 	{error, closed} ->
-%% 	    report_closed({Socket, Choke, Interest});
-%% 	{error, Reason} ->
-%% 	    report_closed({Socket, Choke, Interest}, Reason)
-%%     end.
+terminate(shutdown, State) ->
+    gen_tcp:close(State#communication_state.socket),
+    ok.
 
-%% dispatch_on_packet(Packet, {Socket, Choke, Interest}) ->
+code_change(_OldVsn, State, _Extra) ->
+    {ok, State}.
 
-build_handshake(PeerId, InfoHash) ->
-    PStringLength = lists:length(?PROTOCOL_STRING),
-    <<PStringLength:8, ?PROTOCOL_STRING, ?RESERVED_BYTES, InfoHash, PeerId>>.
+recv_loop(Socket, Master) ->
+    Message = peer_communication:recv_message(Socket),
+    gen_server:cast(Master, {packet_received, Message}),
+    torrent_peer:recv_loop(Socket, Master).
 
-send_handshake(Socket, PeerId, InfoHash) ->
-    ok = gen_tcp:send(Socket, build_handshake(PeerId, InfoHash)).
+handle_cast(startup, State) ->
+    spawn_link(fun(Socket, Pid) -> recv_loop(Socket, Pid) end,
+	       [State#communication_state.socket, self()]),
+    {noreply, State};
+handle_cast({receive_message, Message}, State) ->
+    NewState = handle_message(Message, State),
+    {noreply, NewState}.
 
-recv_handshake(Socket, PeerId, InfoHash) ->
-    Size = size(build_handshake(PeerId, InfoHash)),
-    {ok, Packet} = gen_tcp:recv(Socket, Size),
-    <<PSL:8,
-     ?PROTOCOL_STRING,
-     ReservedBytes:64/binary, IH:160/binary, PI:160/binary>> = Packet,
-    if
-	PSL /= Size ->
-	    {error, "Size mismatch"};
-	IH /= InfoHash ->
-	    {error, "Infohash mismatch"};
-	ReservedBytes /= ?RESERVED_BYTES ->
-	    {error, "ReservedBytes error"};
-	true ->
-	    {ok, PI}
-    end.
+handle_info({'EXIT', _FromPid, Reason}, State) ->
+    error_logger:warning_msg("Recv loop exited: ~s~n", [Reason]),
+    %% There is nothing to do. If our recv_loop is dead we can't make anything out of the receiving
+    %% socket.
+    gen_tcp:close(State#communication_state.socket),
+    exit(recv_loop_died).
 
+handle_call(get_states, _Who, State) ->
+    {reply, {State#communication_state.my_state,
+	     State#communication_state.his_state}}.
+
+%% Message handling code
+handle_message(keep_alive, State) ->
+    State.
+
+%% Calls
+start_link(Socket) ->
+    gen_server:start_link(torrent_peer, Socket, []).
+
+get_states(Pid) ->
+    gen_server:call(Pid, get_states).
