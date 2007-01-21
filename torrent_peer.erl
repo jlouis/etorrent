@@ -11,7 +11,7 @@
 		 he_choking = true,
 		 he_interested = false,
 		 socket = none,
-		 transmitting = no,
+		 transmitting = false,
 		 connection_manager_pid = no,
 		 name = no,
 		 send_pid = no,
@@ -63,7 +63,12 @@ handle_cast(choke, State) ->
 handle_cast(unchoke, State) ->
     {noreply, send_unchoke(State)};
 handle_cast(datagram_sent, State) ->
-    {noreply, transmit_next_piece(State)}.
+    case State#cstate.me_choking of
+	true ->
+	    {noreply, State};
+	false ->
+	    {noreply, transmit_next_piece(State#cstate{transmitting = false})}
+    end.
 
 handle_info({'EXIT', _FromPid, Reason}, State) ->
     error_logger:warning_msg("Recv loop exited: ~s~n", [Reason]),
@@ -94,26 +99,27 @@ handle_message({cancel, Index, Begin, Len}, State) ->
     NewQ = remove_from_queue({Index, Begin, Len}, State#cstate.his_requested_queue),
     State#cstate{his_requested_queue = NewQ};
 handle_message({request, Index, Begin, Len}, State) ->
-    case queue:is_empty(State#cstate.his_requested_queue) of
-	false ->
-	    {noreply, insert_into_his_queue({Index, Begin, Len}, State)};
+    case State#cstate.me_choking of
 	true ->
-	    case State#cstate.me_choking of
-		no ->
-		    {noreply, insert_into_his_queue({Index, Begin, Len}, State)};
-		yes ->
-		    transmit_piece(Index, Begin, Len, State),
-	            {noreply, State}
-	    end
+	    {noreply, insert_into_his_queue({Index, Begin, Len}, State)};
+	false ->
+	    NS = insert_into_his_queue({Index, Begin, Len}, State),
+	    {noreply, transmit_next_piece(NS)}
     end.
 
 transmit_next_piece(State) ->
-    case queue:out(State#cstate.his_requested_queue) of
-	{{value, {Index, Begin, Len}}, Q} ->
-	    transmit_piece(Index, Begin, Len, State),
-	    State#cstate{his_requested_queue = Q};
-	{empty, _Q} ->
-	    State
+    case State#cstate.transmitting of
+	true ->
+	    State;
+	false ->
+	    case queue:out(State#cstate.his_requested_queue) of
+		{{value, {Index, Begin, Len}}, Q} ->
+		    transmit_piece(Index, Begin, Len, State),
+		    State#cstate{his_requested_queue = Q,
+				 transmitting = yes};
+		{empty, _Q} ->
+		    State
+	    end
     end.
 
 transmit_piece(Index, Begin, Len, State) ->
