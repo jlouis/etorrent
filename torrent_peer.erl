@@ -4,7 +4,7 @@
 -export([init/1, handle_cast/2, handle_info/2, handle_call/3, terminate/2]).
 -export([code_change/3]).
 
--export([start_link/4, get_states/1, choke/1, unchoke/1, interested/1, not_interested/1]).
+-export([start_link/6, get_states/1, choke/1, unchoke/1, interested/1, not_interested/1]).
 
 -record(cstate, {me_choking = true,
 		 me_interested = false,
@@ -13,17 +13,22 @@
 		 socket = none,
 		 transmitting = false,
 		 connection_manager_pid = no,
+		 peerid = no,
+		 infohash = no,
 		 name = no,
 		 send_pid = no,
+		 his_peerid = no,
 		 filesystem_pid = no,
 		 his_requested_queue = no,
 		 my_requested_queue = no}).
 
-init({Socket, ConnectionManagerPid, FileSystemPid, Name}) ->
+init({Socket, ConnectionManagerPid, FileSystemPid, Name, PeerId, InfoHash}) ->
     {ok, #cstate{socket = Socket,
 		 connection_manager_pid = ConnectionManagerPid,
 		 filesystem_pid = FileSystemPid,
 		 name = Name,
+		 peerid = PeerId,
+		 infohash = InfoHash,
 		 his_requested_queue = queue:new(),
 		 my_requested_queue = queue:new()}}.
 
@@ -50,11 +55,19 @@ send_loop(Socket, Master) ->
     torrent_peer:send_loop(Socket, Master).
 
 handle_cast(startup, State) ->
+    SendPid = spawn_link(fun(Socket, Pid, PeerId, InfoHash) ->
+				 peer_communication:send_handshake(Socket, PeerId, InfoHash),
+				 send_loop(Socket, Pid) end,
+			 [State#cstate.socket, self(),
+			  State#cstate.peerid,
+			  State#cstate.infohash]),
+    {ok, HisPeerId} = peer_communication:recv_handshake(State#cstate.socket,
+							State#cstate.peerid,
+							State#cstate.infohash),
     spawn_link(fun(Socket, Pid) -> recv_loop(Socket, Pid) end,
 	       [State#cstate.socket, self()]),
-    SendPid = spawn_link(fun(Socket, Pid) -> send_loop(Socket, Pid) end,
-			 [State#cstate.socket, self()]),
-    {noreply, State#cstate{send_pid = SendPid}};
+    {noreply, State#cstate{send_pid = SendPid,
+			   his_peerid = HisPeerId}};
 handle_cast({receive_message, Message}, State) ->
     NewState = handle_message(Message, State),
     {noreply, NewState};
@@ -159,8 +172,10 @@ send_unchoke(State) ->
 %%     State#cstate{my_state = {Choked, not_intersted}}.
 
 %% Calls
-start_link(Socket, ConnectionManager, FileSystem, Name) ->
-    gen_server:start_link(torrent_peer, {Socket, ConnectionManager, FileSystem, Name}, []).
+start_link(Socket, ConnectionManager, FileSystem, Name,
+	   PeerId, InfoHash) ->
+    gen_server:start_link(torrent_peer, {Socket, ConnectionManager, FileSystem, Name,
+					 PeerId, InfoHash}, []).
 
 get_states(Pid) ->
     gen_server:call(Pid, get_states).
