@@ -21,39 +21,41 @@
 
 recv_message(Socket) ->
     MsgLen = get_message_length(Socket),
-    Message = gen_tcp:recv(Socket, MsgLen),
-    case Message of
-	none ->
-	    keep_alive;
-	<<?CHOKE>> ->
-	    choke;
-	<<?UNCHOKE>> ->
-	    unchoke;
-	<<?INTERESTED>> ->
-	    interested;
-	<<?NOT_INTERESTED>> ->
-	    not_interested;
-	<<?HAVE, PieceNum:32/big>> ->
-	    {have, PieceNum};
-	<<?BITFIELD, BitField/binary>> ->
-	    {bitfield, BitField};
-	<<?REQUEST, Index:32/big, Begin:32/big, Len:32/big>> ->
-	    {request, Index, Begin, Len};
-	<<?PIECE, Index:32/big, Begin:32/big, Len:32/big, Data/binary>> ->
-	    {piece, Index, Begin, Len, Data};
-	<<?CANCEL, Index:32/big, Begin:32/big, Len:32/big>> ->
-	    {cancel, Index, Begin, Len};
-	<<?PORT, Port:16/big>> ->
-	    {port, Port}
+    if
+	MsgLen > 0 ->
+	    Message = gen_tcp:recv(Socket, MsgLen),
+	    case Message of
+		<<?CHOKE>> ->
+		    choke;
+		<<?UNCHOKE>> ->
+		    unchoke;
+		<<?INTERESTED>> ->
+		    interested;
+		<<?NOT_INTERESTED>> ->
+		    not_interested;
+		<<?HAVE, PieceNum:32/big>> ->
+		    {have, PieceNum};
+		<<?BITFIELD, BitField/binary>> ->
+		    {bitfield, BitField};
+		<<?REQUEST, Index:32/big, Begin:32/big, Len:32/big>> ->
+		    {request, Index, Begin, Len};
+		<<?PIECE, Index:32/big, Begin:32/big, Len:32/big, Data/binary>> ->
+		    {piece, Index, Begin, Len, Data};
+		<<?CANCEL, Index:32/big, Begin:32/big, Len:32/big>> ->
+		    {cancel, Index, Begin, Len};
+		<<?PORT, Port:16/big>> ->
+		    {port, Port}
+	    end;
+	%% Ignore keep-alives silently.
+	true ->
+	    peer_communication:recv_msg(Socket)
     end.
+
 
 get_message_length(Socket) ->
     Packet = gen_tcp:recv(Socket, 4),
     <<Length:32/big>> = Packet,
-    case Length of
-	0 -> none;
-	L -> L
-    end.
+    Length.
 
 send_message(Socket, Message) ->
     Datagram = case Message of
