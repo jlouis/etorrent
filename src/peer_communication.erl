@@ -48,7 +48,7 @@ recv_message(Socket) ->
 	    end;
 	%% Ignore keep-alives silently.
 	true ->
-	    peer_communication:recv_msg(Socket)
+	    peer_communication:recv_message(Socket)
     end.
 
 
