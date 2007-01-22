@@ -132,7 +132,7 @@ transmit_next_piece(State) ->
 		{{value, {Index, Begin, Len}}, Q} ->
 		    transmit_piece(Index, Begin, Len, State),
 		    State#cstate{his_requested_queue = Q,
-				 transmitting = yes};
+				 transmitting = true};
 		{empty, _Q} ->
 		    State
 	    end
@@ -143,7 +143,7 @@ transmit_piece(Index, Begin, Len, State) ->
     send_message_reply(State, {piece, Index, Begin, Len, Data}).
 
 insert_into_his_queue(Item, State) ->
-    Q = queue:in(State#cstate.his_requested_queue, Item),
+    Q = queue:in(Item, State#cstate.his_requested_queue),
     State#cstate{his_requested_queue = Q}.
 
 remove_from_queue(Item, Q) ->

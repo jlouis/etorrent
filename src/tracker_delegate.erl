@@ -96,7 +96,7 @@ handle_tracker_response(BC, Master) ->
 	    gen_server:cast(Master, {tracker_report, TrackerId, Complete, Incomplete}),
 	    gen_server:cast(Master, {new_ips, NewIPs});
 	true ->
-	    get_server:cast(Master, {tracker_report, TrackerId, Complete, Incomplete}),
+	    gen_server:cast(Master, {tracker_report, TrackerId, Complete, Incomplete}),
 	    gen_server:cast(Master, {new_ips, NewIPs})
     end,
     tick_after(RequestTime).
