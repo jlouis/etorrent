@@ -110,12 +110,12 @@ tracker_request({Master, StatePid, Url, InfoHash, PeerId}, Event) ->
 		    handle_tracker_response(BC, Master),
 		    {noreply, {Master, StatePid, Url, InfoHash, PeerId}};
 		{error, Err} ->
-		    Master ! {tracker_responded_not_bcode, Err},
+		    gen_server:cast(Master, {tracker_responded_not_bcode, Err}),
 		    tick_after(180),
 		    {noreply, {Master, StatePid, Url, InfoHash, PeerId}}
 	    end;
 	{error, Err} ->
-	    Master ! {tracker_request_failed, Err},
+	    gen_server:cast(Master, {tracker_request_failed, Err}),
 	    tick_after(180),
 	    {noreply, {Master, StatePid, Url, InfoHash, PeerId}}
     end.

@@ -49,13 +49,17 @@ handle_cast(start, {F, Torrent, StatePid, TrackerDelegatePid}) ->
 handle_cast(stop, {_F, _Torrent, StatePid, TrackerDelegatePid}) ->
     gen_server:cast(StatePid, stop),
     gen_server:cast(TrackerDelegatePid, stop);
+
+
+%% These are Error cases. We should just try again later (Default request timeout value)
 handle_cast({tracker_request_failed, Err}, State) ->
-    io:format("Tracker request failed ~s~n", [Err]),
+    error_logger:error_msg("Tracker request failed ~s~n", [Err]),
+    {noreply, State};
+handle_cast({tracker_responded_not_bcode, Err}, State) ->
+    error_logger:error_msg("Tracker did not respond with a bcoded dict: ~s~n", [Err]),
     {noreply, State}.
 
-
 %%%%% Subroutines
-
 parse(File) ->
     case file:open(File, [read]) of
 	{ok, IODev} ->
