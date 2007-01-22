@@ -1,10 +1,11 @@
 -module(etorrent).
 -behaviour(supervisor).
 
--export([start_link/1]).
+-export([start_link/0]).
 -export([init/1]).
 
-start_link(Dir) ->
+start_link() ->
+    Dir = application:get_env(etorrent, dir),
     supervisor:start_link(etorrent, [Dir]).
 
 init(Dir) ->
