@@ -2,7 +2,7 @@
 -behaviour(gen_server).
 
 -export([start_link/1, init/1, handle_call/3, handle_cast/2, code_change/3, handle_info/2]).
--export([terminate/2]).
+-export([terminate/2, merge_shuffle/1, merge/2, partition/1, test/0]).
 
 start_link(Amount) ->
     gen_server:start_link(torrent_piecemap, Amount, []).
@@ -72,5 +72,51 @@ find_eligible_pieces(PiecesPeerHas, PieceTable) ->
 pick_random(PieceSet) ->
     Size = sets:size(PieceSet),
     lists:nth(random:uniform(Size), sets:to_list(PieceSet)).
+
+flip_coin() ->
+    F = random:uniform(),
+    if
+	F > 0.5 ->
+	    1;
+	true ->
+	    0
+    end.
+
+merge(A, []) ->
+    A;
+merge([], B) ->
+    B;
+merge([A | As], [B | Bs]) ->
+    case flip_coin() of
+	0 ->
+	    [A | merge(As, [B | Bs])];
+	1 ->
+	    [B | merge([A | As], Bs)]
+    end.
+
+partition(List) ->
+    partition_l(List, [], []).
+
+partition_l([], A, B) ->
+    {A, B};
+partition_l([Item], A, B) ->
+    {B, [Item | A]};
+partition_l([Item | Rest], A, B) ->
+    partition_l(Rest, B, [Item | A]).
+
+merge_shuffle([]) ->
+    [];
+merge_shuffle([Item]) ->
+    [Item];
+merge_shuffle(List) ->
+    {A, B} = partition(List),
+    merge(merge_shuffle(A), merge_shuffle(B)).
+
+
+
+
+
+
+
 
 
