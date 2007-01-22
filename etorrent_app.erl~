@@ -1,0 +1,3 @@
+-module(etorrent_app).
+-behaviour(application).
+
