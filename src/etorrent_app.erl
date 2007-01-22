@@ -3,8 +3,8 @@
 
 -export([start/2, stop/1]).
 
-start(_Type, [Dir]) ->
-    etorrent:start_link(Dir).
+start(_Type, _Args) ->
+    etorrent:start_link().
 
 stop(_State) ->
     ok.
