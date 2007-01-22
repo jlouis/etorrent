@@ -93,7 +93,7 @@ handle_tracker_response(BC, Master) ->
 	    gen_server:cast(Master, {tracker_error_report, ErrorMessage});
 	WarningMessage /= none ->
 	    gen_server:cast(Master, {tracker_warning_report, WarningMessage}),
-	    get_server:cast(Master, {tracker_report, TrackerId, Complete, Incomplete}),
+	    gen_server:cast(Master, {tracker_report, TrackerId, Complete, Incomplete}),
 	    gen_server:cast(Master, {new_ips, NewIPs});
 	true ->
 	    get_server:cast(Master, {tracker_report, TrackerId, Complete, Incomplete}),

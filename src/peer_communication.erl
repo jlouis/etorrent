@@ -89,7 +89,7 @@ send_message(Socket, Message) ->
     gen_tcp:send(Socket, Datagram).
 
 build_handshake(PeerId, InfoHash) ->
-    PStringLength = lists:length(?PROTOCOL_STRING),
+    PStringLength = length(?PROTOCOL_STRING),
     <<PStringLength:8, ?PROTOCOL_STRING, ?RESERVED_BYTES, InfoHash, PeerId>>.
 
 send_handshake(Socket, PeerId, InfoHash) ->
