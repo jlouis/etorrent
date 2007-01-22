@@ -105,7 +105,8 @@ handle_message(keep_alive, State) ->
 handle_message(choke, State) ->
     State#cstate{he_choking = true};
 handle_message(interested, State) ->
-    connection_manager:is_interested(State#cstate.connection_manager_pid),
+    connection_manager:is_interested(State#cstate.connection_manager_pid,
+				     State#cstate.peerid),
     State#cstate{he_interested = true};
 handle_message(not_interested, State) ->
     connection_manager:is_not_intersted(State#cstate.connection_manager_pid),
