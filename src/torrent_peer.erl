@@ -109,7 +109,8 @@ handle_message(interested, State) ->
 				     State#cstate.peerid),
     State#cstate{he_interested = true};
 handle_message(not_interested, State) ->
-    connection_manager:is_not_intersted(State#cstate.connection_manager_pid),
+    connection_manager:is_not_interested(State#cstate.connection_manager_pid,
+					 State#cstate.peerid),
     State#cstate{he_interested = false};
 handle_message({cancel, Index, Begin, Len}, State) ->
     %% Canceling a message is equivalent to deleting it from the queue
