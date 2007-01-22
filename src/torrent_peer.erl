@@ -60,7 +60,7 @@ send_loop(Socket, Master) ->
     torrent_peer:send_loop(Socket, Master).
 
 handle_cast(startup, State) ->
-    SendPid = spawn_link(fun(Socket, Pid, PeerId, InfoHash) ->
+    SendPid = spawn_link(torrent_peer, fun(Socket, Pid, PeerId, InfoHash) ->
 				 peer_communication:send_handshake(Socket, PeerId, InfoHash),
 				 send_loop(Socket, Pid) end,
 			 [State#cstate.socket, self(),
@@ -69,7 +69,7 @@ handle_cast(startup, State) ->
     {ok, HisPeerId} = peer_communication:recv_handshake(State#cstate.socket,
 							State#cstate.peerid,
 							State#cstate.infohash),
-    spawn_link(fun(Socket, Pid) -> recv_loop(Socket, Pid) end,
+    spawn_link(torrent_peer, fun(Socket, Pid) -> recv_loop(Socket, Pid) end,
 	       [State#cstate.socket, self()]),
     {noreply, State#cstate{send_pid = SendPid,
 			   his_peerid = HisPeerId}};

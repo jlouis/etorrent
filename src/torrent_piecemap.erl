@@ -9,7 +9,8 @@ start_link(Amount) ->
 
 init(NumberOfPieces) ->
     PieceTable = initialize_piece_table(NumberOfPieces),
-    random:seed(erlang:now(), erlang:now()+1, erlang:now()-1),
+    {A, B, C} = erlang:now(),
+    random:seed(A, B, C),
     {ok, PieceTable}.
 
 code_change(_OldVsn, State, _Extra) ->
