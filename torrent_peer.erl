@@ -6,6 +6,8 @@
 
 -export([start_link/6, get_states/1, choke/1, unchoke/1, interested/1, not_interested/1]).
 
+-define(DEFAULT_KEEP_ALIVE_INTERVAL, 120*1000).
+
 -record(cstate, {me_choking = true,
 		 me_interested = false,
 		 he_choking = true,
@@ -51,6 +53,9 @@ send_loop(Socket, Master) ->
 	{reply_datagram, Message} ->
 	    ok = peer_communication:send_message(Socket, Message),
 	    gen_server:cast(Master, datagram_sent)
+    after
+	?DEFAULT_KEEP_ALIVE_INTERVAL ->
+	    ok = peer_communication:send_message(Socket, keep_alive)
     end,
     torrent_peer:send_loop(Socket, Master).
 
