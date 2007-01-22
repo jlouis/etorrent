@@ -39,7 +39,7 @@ encode(BString) ->
 	{integer, Integer} ->
 	    {ok, encode_integer(Integer)};
 	{list, Items} ->
-	    EncodedItems = lists:map(encode, Items),
+	    EncodedItems = lists:map(fun (I) -> encode(I) end, Items),
 	    {ok, encode_list(EncodedItems)};
 	{dict, Items} ->
 	    EncodedItems = encode_dict_items(Items),
