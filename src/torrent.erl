@@ -6,6 +6,8 @@
 
 -export([parse/1, start_link/3, start/1, stop/1]).
 
+-export([get_piece_length/1]).
+
 -author("jesper.louis.andersen@gmail.com").
 
 code_change(_OldVsn, State, _Extra) ->
@@ -95,10 +97,16 @@ get_url(Torrent) ->
 
 get_infohash(Torrent) ->
     {ok, InfoDict} = bcoding:search_dict({string, "info"}, Torrent),
-    {ok, InfoString}  = bcoding:encode(InfoDict),
+    {ok, InfoString} = bcoding:encode(InfoDict),
     Digest = crypto:sha(list_to_binary(InfoString)),
     %% We almost positively need to change this thing.
     hexify(Digest).
+
+get_piece_length(Torrent) ->
+    {ok, InfoDict} = bcoding:search_dict({string, "info"}, Torrent),
+    {ok, PL} = bcoding:search_dict({integer, "piece_length"}, InfoDict),
+    {integer, Size} = PL,
+    Size.
 
 hexify(Digest) ->
     Characters = lists:map(fun(Item) ->

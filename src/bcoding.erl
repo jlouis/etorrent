@@ -11,7 +11,6 @@
 
 -author('jesper.louis.andersen@gmail.com').
 
-
 encode_string(Str) ->
     L = length(Str),
     lists:concat([L, ':', Str]).
@@ -131,4 +130,3 @@ search_dict(Key, Dict) ->
 	_ ->
 	    not_a_dict
     end.
-

@@ -7,9 +7,12 @@
 
 -record(fs_state, {completed = 0}).
 
-init(_Arg) ->
-    {ok, #fs_state{}}.
+init(Torrent) ->
+    Pieces = split_pieces(Torrent),
+    {ok, #fs_state{pieces = Pieces}}.
 
+split_pieces(Torrent) ->
+    
 handle_cast({piece, _PieceData}, State) ->
     {noreply, State}.
 

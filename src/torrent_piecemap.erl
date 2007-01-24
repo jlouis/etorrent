@@ -2,7 +2,7 @@
 -behaviour(gen_server).
 
 -export([start_link/1, init/1, handle_call/3, handle_cast/2, code_change/3, handle_info/2]).
--export([terminate/2, merge_shuffle/1, merge/2, partition/1, test/0]).
+-export([terminate/2, merge_shuffle/1, merge/2, partition/1]).
 
 start_link(Amount) ->
     gen_server:start_link(torrent_piecemap, Amount, []).
@@ -44,7 +44,6 @@ handle_call({request_piece, PiecesPeerHas}, Who, PieceTable) ->
 handle_cast({peer_got_piece, _PieceNum}, PieceTable) ->
     {noreply, PieceTable}. %% This can later be used for rarest first selection
 
-
 find_appropriate_piece(PieceTable, Who, PiecesPeerHas) ->
     case find_eligible_pieces(PiecesPeerHas, PieceTable) of
 	{ok, Pieces} ->
@@ -74,13 +73,7 @@ pick_random(PieceSet) ->
     lists:nth(random:uniform(Size), sets:to_list(PieceSet)).
 
 flip_coin() ->
-    F = random:uniform(),
-    if
-	F > 0.5 ->
-	    1;
-	true ->
-	    0
-    end.
+    random:uniform(2) - 1.
 
 merge(A, []) ->
     A;
@@ -111,12 +104,3 @@ merge_shuffle([Item]) ->
 merge_shuffle(List) ->
     {A, B} = partition(List),
     merge(merge_shuffle(A), merge_shuffle(B)).
-
-
-
-
-
-
-
-
-
