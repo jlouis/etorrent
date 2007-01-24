@@ -6,7 +6,7 @@
 
 -export([parse/1, start_link/3, start/1, stop/1]).
 
--export([get_piece_length/1]).
+-export([get_piece_length/1, get_pieces/1]).
 
 -author("jesper.louis.andersen@gmail.com").
 
@@ -104,9 +104,21 @@ get_infohash(Torrent) ->
 
 get_piece_length(Torrent) ->
     {ok, InfoDict} = bcoding:search_dict({string, "info"}, Torrent),
-    {ok, PL} = bcoding:search_dict({integer, "piece_length"}, InfoDict),
+    {ok, PL} = bcoding:search_dict({string, "piece_length"}, InfoDict),
     {integer, Size} = PL,
     Size.
+
+get_pieces(Torrent) ->
+    {ok, InfoDict} = bcoding:search_dict({string, "info"}, Torrent),
+    {ok, PString} = bcoding:search_dict({string, "pieces"}, InfoDict),
+    {string, Ps} = PString,
+    split_into_chunks(20, [], Ps).
+
+split_into_chunks(_N, Accum, []) ->
+    Accum;
+split_into_chunks(N, Accum, String) ->
+    {Chunk, Rest} = lists:split(N, String),
+    split_into_chunks(N, [Chunk | Accum], Rest).
 
 hexify(Digest) ->
     Characters = lists:map(fun(Item) ->
