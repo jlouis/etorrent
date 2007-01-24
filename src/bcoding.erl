@@ -1,16 +1,74 @@
 %%%-------------------------------------------------------------------
 %%% File    : bcoding.erl
 %%% Author  : Jesper Louis Andersen <jlouis@succubus>
-%%% Description : Routines for encoding and decoding the b-code.
+%%% Description : Functions for handling bcoded values
 %%%
-%%% Created : 27 Dec 2006 by Jesper Louis Andersen <jlouis@succubus>
+%%% Created : 24 Jan 2007 by Jesper Louis Andersen <jlouis@succubus>
 %%%-------------------------------------------------------------------
 -module(bcoding).
+-author("Jesper Louis Andersen <jesper.louis.andersen@gmail.com>").
+-vsn("1").
 
+%% API
 -export([encode/1, decode/1, search_dict/2]).
 
--author('jesper.louis.andersen@gmail.com').
+%%====================================================================
+%% API
+%%====================================================================
+%%--------------------------------------------------------------------
+%% Function: encode/1
+%% Description: Encode an erlang term into a String
+%%--------------------------------------------------------------------
+encode(BString) ->
+    case BString of
+	{string, String} ->
+	    {ok, encode_string(String)};
+	{integer, Integer} ->
+	    {ok, encode_integer(Integer)};
+	{list, Items} ->
+	    EncodedItems = lists:map(fun (I) -> encode(I) end, Items),
+	    {ok, encode_list(EncodedItems)};
+	{dict, Items} ->
+	    EncodedItems = encode_dict_items(Items),
+	    {ok, encode_dict(EncodedItems)};
+	_ ->
+	    {error, "Not a bencoded structure"}
+    end.
 
+%%--------------------------------------------------------------------
+%% Function: decode/1
+%% Description: Decode a string to an erlang term.
+%%--------------------------------------------------------------------
+decode(String) ->
+    case decode_b(String) of
+	{Res, []} ->
+	    {ok, Res};
+	_ ->
+	    {error, "There was data after the bcoded structure"}
+    end.
+
+%%--------------------------------------------------------------------
+%% Function: search_dict/1
+%% Description: Search the dict for a key. Returns {ok, Val} or false.
+%%   if the bastard is not a dict, return not_a_dict.
+%%--------------------------------------------------------------------
+search_dict(Key, Dict) ->
+    case Dict of
+	{dict, Elems} ->
+	    case lists:keysearch(Key, 1, Elems) of
+		{value, {_, V}} ->
+		    {ok, V};
+		false ->
+		    false
+	    end;
+	_ ->
+	    not_a_dict
+    end.
+
+
+%%====================================================================
+%% Internal functions
+%%====================================================================
 encode_string(Str) ->
     L = length(Str),
     lists:concat([L, ':', Str]).
@@ -30,30 +88,6 @@ encode_dict_items([{I1, I2} | Rest]) ->
     {ok, I} = encode(I1),
     {ok, J} = encode(I2),
     [I, J | encode_dict_items(Rest)].
-
-encode(BString) ->
-    case BString of
-	{string, String} ->
-	    {ok, encode_string(String)};
-	{integer, Integer} ->
-	    {ok, encode_integer(Integer)};
-	{list, Items} ->
-	    EncodedItems = lists:map(fun (I) -> encode(I) end, Items),
-	    {ok, encode_list(EncodedItems)};
-	{dict, Items} ->
-	    EncodedItems = encode_dict_items(Items),
-	    {ok, encode_dict(EncodedItems)};
-	_ ->
-	    {error, "Not a bencoded structure"}
-    end.
-
-decode(String) ->
-    case decode_b(String) of
-	{Res, []} ->
-	    {ok, Res};
-	_ ->
-	    {error, "There was data after the bcoded structure"}
-    end.
 
 decode_b([]) ->
     {empty_string, "Empty String"};
@@ -116,17 +150,3 @@ decode_dict_items(String, Accum) ->
 			decode_dict_items(Rest2, [{Key, Value} | Accum])
     end.
 
-%% Search the Dict for Key. Returns {ok, Val} or false. If We are not searching
-%  a dict, return not_a_dict.
-search_dict(Key, Dict) ->
-    case Dict of
-	{dict, Elems} ->
-	    case lists:keysearch(Key, 1, Elems) of
-		{value, {_, V}} ->
-		    {ok, V};
-		false ->
-		    false
-	    end;
-	_ ->
-	    not_a_dict
-    end.
