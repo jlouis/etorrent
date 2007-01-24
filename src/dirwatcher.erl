@@ -10,6 +10,7 @@
 -author("Jesper Louis Andersen <jesper.louis.andersen@gmail.com>").
 -behaviour(gen_server).
 
+-vsn("1").
 %% API
 -export([start_link/1, watch_dirs/0]).
 

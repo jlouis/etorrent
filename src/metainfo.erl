@@ -26,20 +26,27 @@
 %% Description: Search a torrent file, return the piece length
 %%--------------------------------------------------------------------
 get_piece_length(Torrent) ->
-    {ok, InfoDict} = bcoding:search_dict({string, "info"}, Torrent),
-    {ok, PL} = bcoding:search_dict({string, "piece_length"}, InfoDict),
-    {integer, Size} = PL,
-    Size.
+    case bcoding:search_dict({string, "info"}, Torrent) of
+	{ok, D} ->
+	    case bcoding:search_dict({string, "piece length"}, D) of
+		{ok, {integer, Size}} ->
+		    Size
+	    end
+    end.
 
 %%--------------------------------------------------------------------
 %% Function: get_pieces/1
 %% Description: Search a torrent, return pieces as a list
 %%--------------------------------------------------------------------
 get_pieces(Torrent) ->
-    {ok, InfoDict} = bcoding:search_dict({string, "info"}, Torrent),
-    {ok, PString} = bcoding:search_dict({string, "pieces"}, InfoDict),
-    {string, Ps} = PString,
-    split_into_chunks(20, [], Ps).
+    case bcoding:search_dict({string, "info"}, Torrent) of
+	{ok, D} ->
+	    case bcoding:search_dict({string, "pieces"}, D) of
+		{ok, {string, Ps}} ->
+		    lists:map(fun(Str) -> list_to_binary(Str) end,
+			      split_into_chunks(20, [], Ps))
+	    end
+    end.
 
 %%--------------------------------------------------------------------
 %% Function: get_url/1
