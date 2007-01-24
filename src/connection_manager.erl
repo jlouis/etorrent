@@ -3,18 +3,26 @@
 
 -export([handle_call/3, init/1, terminate/2, code_change/3, handle_info/2, handle_cast/2]).
 
--export([is_interested/2, is_not_interested/2, start_link/0,
+-export([is_interested/2, is_not_interested/2, start_link/3,
 	 spawn_new_torrent/6]).
 
--export([socket_connect/3]).
+-export([socket_connect/5]).
+
 -record(state, {state_table = none,
+		filesystem = none,
+		peerid = none,
+		infohash = none,
 		managed_pids = none}).
 
-start_link() ->
-    gen_server:start_link(connection_manager, none, []).
+start_link(FileSystemPid, PeerId, InfoHash) ->
+    gen_server:start_link(connection_manager,
+			  {FileSystemPid, PeerId, InfoHash}, []).
 
-init(_Args) ->
+init({FileSystemPid, PeerId, InfoHash}) ->
     {ok, #state{state_table = ets:new(connection_table, []),
+		filesystem = FileSystemPid,
+		peerid = PeerId,
+		infohash = InfoHash,
 		managed_pids = dict:new()}}.
 
 handle_info({'EXIT', Who, Reason}, S) ->
@@ -37,8 +45,18 @@ code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 handle_cast({new_ip, Port, IP}, S) ->
-    spawn_socket_connect(IP, Port),
+    spawn_socket_connect(IP, Port, S),
     {noreply, S};
+handle_cast({connect_socket, Socket, HisPeerId}, S) ->
+    Pid = torrent_peer:start_link(Socket, self(),
+				  S#state.filesystem,
+				  "FOO",
+				  S#state.peerid,
+				  S#state.infohash),
+    torrent_peer:startup(Pid),
+    ets:insert_new(S#state.state_table, {HisPeerId, not_interested, choked}),
+    {noreply, S#state{managed_pids = dict:store(S#state.managed_pids,
+					        Pid, HisPeerId)}};
 handle_cast({is_interested, PeerId}, State) ->
     [{_, _, Choke}] = ets:lookup(State, PeerId),
     {noreply, ets:insert_new(State, {PeerId, interested, Choke})};
@@ -63,10 +81,15 @@ spawn_new_torrent(Socket, FileSystem, Name, PeerId, InfoHash, S) ->
 				  InfoHash),
     S#state{managed_pids = dict:store(Pid, PeerId, S#state.managed_pids)}.
 
-socket_connect(Pid, IP, Port) ->
+socket_connect(Pid, IP, Port, PeerId, InfoHash) ->
     {ok, Sock} = gen_tcp:connect(IP, Port, [binary, {active, false}]),
-    gen_server:cast(Pid, {connect, Sock}),
+    {ok, HisPeerId} = peer_communication:recv_handshake(Sock,
+							PeerId,
+							InfoHash),
+    gen_server:cast(Pid, {connect, Sock, HisPeerId}),
     exit(normal).
 
-spawn_socket_connect(IP, Port) ->
-    spawn(connection_manager, socket_connect, [self(), IP, Port]).
+spawn_socket_connect(IP, Port, S) ->
+    spawn(connection_manager, socket_connect, [self(), IP, Port,
+					       S#state.peerid,
+					       S#state.infohash]).
