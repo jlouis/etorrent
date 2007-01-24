@@ -1,18 +1,28 @@
 -module(filesystem).
 -behaviour(gen_server).
 
--export([init/1, handle_cast/2, handle_call/3, terminate/2, handle_info/2, code_change/3]).
+-export([init/1, handle_cast/2, handle_call/3,
+	 terminate/2, handle_info/2, code_change/3]).
 
 -export([start_link/0, request_piece/4]).
 
--record(fs_state, {completed = 0}).
+-record(fs_state, {completed = 0,
+		   piecelength = none,
+		   piecemap = none,
+		   data = none}).
 
 init(Torrent) ->
-    Pieces = split_pieces(Torrent),
-    {ok, #fs_state{pieces = Pieces}}.
+    PieceMap = build_piecemap(metainfo:get_pieces(Torrent)),
+    PieceLength = metainfo:get_piece_length(Torrent),
+    Disk = dets:new(disk_data, []),
+    {ok, #fs_state{piecemap = PieceMap,
+		   piecelength = PieceLength,
+		   data = Disk}}.
 
-split_pieces(Torrent) ->
-    
+build_piecemap(Pieces) ->
+    ZL = lists:zip(lists:seq(1, length(Pieces)), Pieces),
+    dict:from_list(ZL).
+
 handle_cast({piece, _PieceData}, State) ->
     {noreply, State}.
 

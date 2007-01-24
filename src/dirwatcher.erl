@@ -50,7 +50,7 @@ scan_files_in_dir(Dir, State) ->
     {Added, Removed, NewState}.
 
 handle_new_torrent(F) ->
-    case torrent:parse(F) of
+    case metainfo:parse(F) of
 	{ok, Torrent} ->
 	    torrent_manager:start_torrent(F, Torrent);
 	{not_a_torrent, Reason} ->
