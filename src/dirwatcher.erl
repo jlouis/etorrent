@@ -1,38 +1,69 @@
+%%%-------------------------------------------------------------------
+%%% File    : dirwatcher.erl
+%%% Author  : Jesper Louis Andersen <jlouis@succubus>
+%%% Description : Watch a directory for the presence of torrent files.
+%%%               Send commands when files are added and removed.
+%%%
+%%% Created : 24 Jan 2007 by Jesper Louis Andersen <jlouis@succubus>
+%%%-------------------------------------------------------------------
 -module(dirwatcher).
+-author("Jesper Louis Andersen <jesper.louis.andersen@gmail.com>").
 -behaviour(gen_server).
 
--export([handle_cast/2, handle_call/3, init/1, terminate/2]).
--export([handle_info/2, code_change/3, start_link/1, watch_dirs/0]).
+%% API
+-export([start_link/1, watch_dirs/0]).
 
+%% gen_server callbacks
+-export([init/1, handle_call/3, handle_cast/2, handle_info/2,
+	 terminate/2, code_change/3]).
+
+-record(state, {dir = none,
+	        fileset = none}).
+-define(WATCH_WAIT_TIME, 1000).
+
+%%====================================================================
+%% API
+%%====================================================================
+%%--------------------------------------------------------------------
+%% Function: start_link() -> {ok,Pid} | ignore | {error,Error}
+%% Description: Starts the server
+%%--------------------------------------------------------------------
 start_link(Dir) ->
-    gen_server:start_link({local, dirwatcher}, dirwatcher, Dir, []).
+    gen_server:start_link(?MODULE, [Dir], []).
 
-init(Dir) ->
-    io:format("Spawning Dirwatcher~n"),
-    timer:apply_interval(1000, dirwatcher, watch_dirs, []),
-    {ok, {Dir, empty_state()}}.
+%%====================================================================
+%% gen_server callbacks
+%%====================================================================
+init([Dir]) ->
+    timer:apply_interval(?WATCH_WAIT_TIME, ?MODULE, watch_dirs, []),
+    {ok, #state{dir = Dir, fileset = empty_state()}}.
+
+handle_call(report_on_files, _Who, S) ->
+    {reply, sets:to_list(S#state.fileset)};
+handle_call(_Request, _From, State) ->
+    Reply = ok,
+    {reply, Reply, State}.
+
+handle_cast(watch_directories, S) ->
+    {A, R, N} = scan_files_in_dir(S),
+    lists:foreach(fun(F) -> handle_new_torrent(F) end,
+		  sets:to_list(A)),
+        lists:foreach(fun(F) -> torrent_manager:stop_torrent(F) end,
+		  sets:to_list(R)),
+    {noreply, N}.
+
+handle_info(_Info, State) ->
+    {noreply, State}.
+
+terminate(_Reason, _State) ->
+    ok.
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
-handle_info(_Foo, State) ->
-    {noreply, State}.
-
-terminate(shutdown, _State) ->
-    ok.
-
-handle_call(_A, _B, S) ->
-    {noreply, S}.
-
-handle_cast({report_on_files, Who}, {Dir, State}) ->
-    Who ! sets:to_list(State),
-    {noreply, {Dir, State}};
-handle_cast(watch_directories, {Dir, State}) ->
-    {Added, Removed, NewState} = scan_files_in_dir(Dir, State),
-    lists:foreach(fun(F) -> handle_new_torrent(F) end, sets:to_list(Added)),
-    lists:foreach(fun(F) -> torrent_manager:stop_torrent(F) end, sets:to_list(Removed)),
-    {noreply, {Dir, NewState}}.
-
+%%--------------------------------------------------------------------
+%%% Internal functions
+%%--------------------------------------------------------------------
 
 %% Operations
 watch_dirs() ->
@@ -40,13 +71,14 @@ watch_dirs() ->
 
 empty_state() -> sets:new().
 
-scan_files_in_dir(Dir, State) ->
-    Files = filelib:fold_files(Dir, ".*\.torrent", false, fun(F, Accum) ->
-								  [F | Accum] end, []),
+scan_files_in_dir(S) ->
+    Files = filelib:fold_files(S#state.dir, ".*\.torrent", false,
+			       fun(F, Accum) ->
+				       [F | Accum] end, []),
     FilesSet = sets:from_list(Files),
-    Added = sets:subtract(FilesSet, State),
-    Removed = sets:subtract(State, FilesSet),
-    NewState = FilesSet,
+    Added = sets:subtract(FilesSet, S#state.fileset),
+    Removed = sets:subtract(S#state.fileset, FilesSet),
+    NewState = S#state{fileset = FilesSet},
     {Added, Removed, NewState}.
 
 handle_new_torrent(F) ->
@@ -58,5 +90,3 @@ handle_new_torrent(F) ->
 	{could_not_read_file, Reason} ->
 	    error_logger:warning_msg("~s could not be read: ~s~n", [F, Reason])
     end.
-
-
