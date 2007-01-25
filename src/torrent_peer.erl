@@ -10,7 +10,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/6, startup/1, choke/1, unchoke/1]).
+-export([start_link/5, startup/1, choke/1, unchoke/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -37,8 +37,8 @@
 %%====================================================================
 %% API
 %%====================================================================
-start_link(Socket, ConnectionManager, FileSystem, Name, PeerId, InfoHash) ->
-    gen_server:start_link(torrent_peer, {Socket, ConnectionManager,
+start_link(ConnectionManager, FileSystem, Name, PeerId, InfoHash) ->
+    gen_server:start_link(torrent_peer, {ConnectionManager,
 					 FileSystem,
 					 Name,
 					 PeerId,
@@ -56,9 +56,8 @@ unchoke(Pid) ->
 %%====================================================================
 %% gen_server callbacks
 %%====================================================================
-init({Socket, ConnectionManagerPid, FileSystemPid, Name, PeerId, InfoHash}) ->
-    {ok, #state{socket = Socket,
-		connection_manager_pid = ConnectionManagerPid,
+init({ConnectionManagerPid, FileSystemPid, Name, PeerId, InfoHash}) ->
+    {ok, #state{connection_manager_pid = ConnectionManagerPid,
 		filesystem_pid = FileSystemPid,
 		name = Name,
 		peerid = PeerId,
@@ -71,8 +70,12 @@ handle_call(Request, From, State) ->
     Reply = ok,
     {reply, Reply, State}.
 
-handle_cast(startup, S) ->
-    SendPid = spawn_link(fun() -> start_send_loop(S, self()) end),
+handle_cast({startup_connect, IP, Port}, S) ->
+    {ok, Sock} = gen_tcp:connect(IP, Port, [binary, {active, false}]),
+    SendPid = spawn_link(fun() -> start_send_loop(Sock,
+						  S#state.peerid,
+						  S#state.infohash,
+						  self()) end),
     {ok, HisPeerId} = peer_communication:recv_handshake(S#state.socket,
 							S#state.peerid,
 							S#state.infohash),
@@ -157,11 +160,9 @@ send_loop(Socket, Master) ->
 %% Func: start_send_loop(State, Pid)
 %% Description: start up the send loop.
 %%--------------------------------------------------------------------
-start_send_loop(State, Pid) ->
-    peer_communication:send_handshake(State#state.socket,
-				      State#state.peerid,
-				      State#state.infohash),
-    send_loop(State#state.socket, Pid).
+start_send_loop(Socket, PeerId, InfoHash, Pid) ->
+    peer_communication:send_handshake(Socket, PeerId, InfoHash),
+    send_loop(Socket, Pid).
 
 %%--------------------------------------------------------------------
 %% Func: handle_message(Msg, State)
@@ -240,3 +241,4 @@ send_unchoke(State) ->
 
 enable_messages(Socket) ->
     inet:setopts(Socket, [binary, {active, true}, {packet, 4}]).
+

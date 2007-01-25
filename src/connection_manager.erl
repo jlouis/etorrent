@@ -45,18 +45,14 @@ code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 handle_cast({new_ip, Port, IP}, S) ->
-    spawn_socket_connect(IP, Port, S),
-    {noreply, S};
-handle_cast({connect_socket, Socket, HisPeerId}, S) ->
-    Pid = torrent_peer:start_link(Socket, self(),
+    Pid = torrent_peer:start_link(self(),
 				  S#state.filesystem,
 				  "FOO",
 				  S#state.peerid,
 				  S#state.infohash),
-    torrent_peer:startup(Pid),
-    ets:insert_new(S#state.state_table, {HisPeerId, not_interested, choked}),
-    {noreply, S#state{managed_pids = dict:store(S#state.managed_pids,
-					        Pid, HisPeerId)}};
+    torrent_peer:startup_connect(Pid, IP, Port),
+    ets:insert_new(S#state.state_table, {Pid, unknown, not_interested, choked}),
+    {noreply, S};
 handle_cast({is_interested, PeerId}, State) ->
     [{_, _, Choke}] = ets:lookup(State, PeerId),
     {noreply, ets:insert_new(State, {PeerId, interested, Choke})};
@@ -88,8 +84,3 @@ socket_connect(Pid, IP, Port, PeerId, InfoHash) ->
 							InfoHash),
     gen_server:cast(Pid, {connect, Sock, HisPeerId}),
     exit(normal).
-
-spawn_socket_connect(IP, Port, S) ->
-    spawn(connection_manager, socket_connect, [self(), IP, Port,
-					       S#state.peerid,
-					       S#state.infohash]).
