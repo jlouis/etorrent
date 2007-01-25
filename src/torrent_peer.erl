@@ -10,7 +10,8 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/5, startup/1, choke/1, unchoke/1]).
+-export([start_link/5, startup_connect/3, startup_accept/2,
+	 choke/1, unchoke/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -44,8 +45,11 @@ start_link(ConnectionManager, FileSystem, Name, PeerId, InfoHash) ->
 					 PeerId,
 					 InfoHash}, []).
 
-startup(Pid) ->
-    gen_server:cast(Pid, startup).
+startup_connect(Pid, IP, Port) ->
+    gen_server:cast(Pid, {startup_connect, IP, Port}).
+
+startup_accept(Pid, ListenSock) ->
+    gen_server:cast(Pid, {startup_accept, ListenSock}).
 
 choke(Pid) ->
     gen_server:cast(Pid, choke).
@@ -70,16 +74,26 @@ handle_call(Request, From, State) ->
     Reply = ok,
     {reply, Reply, State}.
 
-handle_cast({startup_connect, IP, Port}, S) ->
-    {ok, Sock} = gen_tcp:connect(IP, Port, [binary, {active, false}]),
-    SendPid = spawn_link(fun() -> start_send_loop(Sock,
+handle_connect(Socket, S) ->
+    SendPid = spawn_link(fun() -> start_send_loop(Socket,
 						  S#state.peerid,
 						  S#state.infohash,
 						  self()) end),
-    {ok, HisPeerId} = peer_communication:recv_handshake(S#state.socket,
+    {ok, HisPeerId} = peer_communication:recv_handshake(Socket,
 							S#state.peerid,
 							S#state.infohash),
     enable_messages(S#state.socket),
+    {ok, SendPid, HisPeerId}.
+
+handle_cast({startup_connect, IP, Port}, S) ->
+    {ok, Sock} = gen_tcp:connect(IP, Port, [binary, {active, false}]),
+    {ok, SendPid, HisPeerId} = handle_connect(Sock, S),
+    {noreply, S#state{send_pid = SendPid,
+		      his_peerid = HisPeerId}};
+handle_cast({startup_accept, ListenSock}, S) ->
+    {ok, Socket} = gen_tcp:accept(ListenSock),
+    {ok, SendPid, HisPeerId} = handle_connect(Socket, S),
+    gen_server:cast(S#state.connection_manager_pid, new_accept_needed),
     {noreply, S#state{send_pid = SendPid,
 		      his_peerid = HisPeerId}};
 handle_cast(choke, S) ->

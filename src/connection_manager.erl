@@ -3,23 +3,34 @@
 
 -export([handle_call/3, init/1, terminate/2, code_change/3, handle_info/2, handle_cast/2]).
 
--export([is_interested/2, is_not_interested/2, start_link/3,
+-export([is_interested/2, is_not_interested/2, start_link/4,
 	 spawn_new_torrent/6]).
 
 -export([socket_connect/5]).
 
 -record(state, {state_table = none,
+		listen_socket = none,
+		accept_pid = none,
 		filesystem = none,
 		peerid = none,
 		infohash = none,
 		managed_pids = none}).
 
-start_link(FileSystemPid, PeerId, InfoHash) ->
+start_link(PortToListen, FileSystemPid, PeerId, InfoHash) ->
     gen_server:start_link(connection_manager,
-			  {FileSystemPid, PeerId, InfoHash}, []).
+			  {PortToListen, FileSystemPid, PeerId, InfoHash}, []).
 
-init({FileSystemPid, PeerId, InfoHash}) ->
+init({PortToListen, FileSystemPid, PeerId, InfoHash}) ->
+    {ok, ListenSocket} = gen_tcp:listen(PortToListen,
+					[binary, {active, false}]),
+    AcceptPid = spawn_listen_accept(ListenSocket,
+				    FileSystemPid,
+				    PeerId,
+				    InfoHash,
+				    "FOO"),
     {ok, #state{state_table = ets:new(connection_table, []),
+		listen_socket = ListenSocket,
+		accept_pid = AcceptPid,
 		filesystem = FileSystemPid,
 		peerid = PeerId,
 		infohash = InfoHash,
@@ -53,6 +64,13 @@ handle_cast({new_ip, Port, IP}, S) ->
     torrent_peer:startup_connect(Pid, IP, Port),
     ets:insert_new(S#state.state_table, {Pid, unknown, not_interested, choked}),
     {noreply, S};
+handle_cast(new_accept_needed, S) ->
+    AcceptPid = spawn_listen_accept(S#state.listen_socket,
+				    S#state.filesystem,
+				    S#state.peerid,
+				    S#state.infohash,
+				    "FOO"),
+    {noreply, S#state{accept_pid = AcceptPid}};
 handle_cast({is_interested, PeerId}, State) ->
     [{_, _, Choke}] = ets:lookup(State, PeerId),
     {noreply, ets:insert_new(State, {PeerId, interested, Choke})};
@@ -84,3 +102,13 @@ socket_connect(Pid, IP, Port, PeerId, InfoHash) ->
 							InfoHash),
     gen_server:cast(Pid, {connect, Sock, HisPeerId}),
     exit(normal).
+
+spawn_listen_accept(ListenSocket, FileSystem, PeerId, InfoHash, Name) ->
+    Pid = torrent_peer:start_link(self(),
+				  FileSystem,
+				  Name,
+				  PeerId,
+				  InfoHash),
+    torrent_peer:startup_accept(Pid, ListenSocket),
+    Pid.
+
