@@ -1,3 +1,14 @@
+* Fix connection_manager
+We need to fix the state code for the connection manager. It has some
+state tables that obviously needs to be managed. But it has to be
+simplified a lot. And it really can. Mapping of pids to torrents and
+peerids should be handled by a separate process which only has this as
+the primary goal.
+
+* Reduce the number of ets tables
+Fix and reduce the number of ets tables to a constant amount. This
+will allow us to scale into post-1000 concurrent torrents.
+
 * Add license facts
 
 * Add author facts
