@@ -9,6 +9,15 @@ the primary goal.
 Fix and reduce the number of ets tables to a constant amount. This
 will allow us to scale into post-1000 concurrent torrents.
 
+* Choke/Unchoke management
+We need to manage choke and unchoke
+
+* Filesystem management
+We need FS management
+
+* Local requests at other end.
+...
+
 * Add license facts
 
 * Add author facts
