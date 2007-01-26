@@ -17,6 +17,8 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3]).
 
+-export([queue_requests/4]).
+
 -record(state, {me_choking = true,
 		me_interested = false,
 		he_choking = true,
@@ -30,6 +32,7 @@
 		send_pid = no,
 		his_peerid = no,
 		filesystem_pid = no,
+		piecemap_pid = no,
 		his_requested_queue = no,
 		my_requested = no,
 		piece_table = no,
@@ -269,19 +272,24 @@ queue_requests(N, FromQ, ToSet, S) ->
 	    case fetch_new_from_queue(S) of
 		{ok, NFQ} ->
 		    queue_requests(N, NFQ, ToSet, S);
-		piece_exhaust ->
+		no_interesting_piece ->
 		    {not_interested, N, ToSet}
 	    end;
 	false ->
 	    {{value, Item}, NQ} = queue:out(FromQ),
 	    TNQ = sets:add_element(Item, ToSet),
 	    send_request(S, Item),
-	    queue_messages(N-1, NQ, TNQ, S)
+	    queue_requests(N-1, NQ, TNQ, S)
+    end.
+
+fetch_new_from_queue(S) ->
+    case torrent_piecemap:request_piece(S#state.piecemap_pid,
+					S#state.torrent_id,
+					S#state.piece_table) of
+	{ok, RequestList} ->
+	    {ok, queue:from_list(RequestList)};
+	no_interesting_piece ->
+	    no_interesting_piece
     end.
 
 
-fetch_new_from_queue(S) ->
-    torrent_piecemap:request_piece(S#state.piecemap_pid,
-				   S#state.torrent_id,
-				   S#state.piece_table
-				 
