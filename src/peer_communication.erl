@@ -10,7 +10,8 @@
 
 %% API
 -export([recv_handshake/3, send_handshake/3]).
--export([send_message/2, recv_message/1, construct_bitfield/2]).
+-export([send_message/2, recv_message/1,
+	 construct_bitfield/2, destruct_bitfield/2]).
 
 -define(PROTOCOL_STRING, "BitTorrent protocol").
 -define(RESERVED_BYTES, <<0:64>>).
@@ -129,9 +130,50 @@ construct_bitfield(Size, PieceSet) ->
     PadBits = Size rem 8,
     build_byte(Size, 8 - PadBits, 0, PieceSet, []).
 
+destruct_bitfield(Size, BinaryLump) ->
+    ByteList = binary_to_list(BinaryLump),
+    Numbers = decode_bytes(0, ByteList, []),
+    PieceSet = sets:from_list(lists:flatten(Numbers)),
+    case max_element(PieceSet) =< Size of
+	true ->
+	    {ok, PieceSet};
+	false ->
+	    {error, bitfield_had_wrong_padding}
+    end.
+
 %%====================================================================
 %% Internal functions
 %%====================================================================
+max_element(Set) ->
+    sets:fold(fun(E, Max) ->
+		      case E > Max of
+			  true ->
+			      E;
+			  false ->
+			      Max
+		      end
+	      end, 0, Set).
+
+decode_byte(B, Add) ->
+    <<b1:1, b2:1, b3:1, b4:1, b5:1, b6:1, b7:1, b8:1>> = B,
+    Select = lists:filter(fun(X) ->
+				  case X of
+				      {1, _} ->
+					  true;
+				      _ ->
+					  false
+				  end
+			  end, [{b1, 1}, {b2, 2}, {b3, 3}, {b4, 4},
+				{b5, 5}, {b6, 6}, {b7, 7}, {b8, 8}]),
+    lists:map(fun({_, N}) ->
+		      N + Add
+	      end, Select).
+
+decode_bytes(_SoFar, [], Numbers) ->
+    Numbers;
+decode_bytes(SoFar, [Byte | Rest], Numbers) ->
+    decode_bytes(SoFar + 8, Rest, [decode_byte(Byte, SoFar) | Numbers]).
+
 build_byte(N, 0, Byte, PieceMap, Accum) ->
     build_byte(N, 8, 0, PieceMap, [Byte | Accum]);
 build_byte(0, _, Byte, _PieceMap, Accum) ->
