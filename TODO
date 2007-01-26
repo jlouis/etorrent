@@ -1,3 +1,22 @@
+MANTRA: Handle most of the stuff in the torrent_peer code before
+moving on to other parts. What is made here dictates the layout of the
+rest of the code.
+
+MANTRA: ets tables have processes before them to manage them easily.
+
+UNDECIDED: Merge filesystem and piecemap into the same erlang process?
+
+* Set torrent_id in torrent_peer
+We have added torrent_id to the torrent peer code. But we have not
+given it any value yet.
+
+* Implement sending and retrieval of piece maps
+The first thing one does in a torrent is to retrieve piece bit-arrays
+and send bit-arrays so both parties know how much they have and what
+they should request. This needs to be implemented first, before we try
+to implement other stuff, as it is clear it is needed for many
+operations in the system.
+
 * Fix connection_manager
 We need to fix the state code for the connection manager. It has some
 state tables that obviously needs to be managed. But it has to be

@@ -31,7 +31,9 @@
 		his_peerid = no,
 		filesystem_pid = no,
 		his_requested_queue = no,
-		my_requested_queue = no}).
+		my_requested = no,
+		piece_table = no,
+	        torrent_id = no}).
 
 -define(DEFAULT_KEEP_ALIVE_INTERVAL, 120*1000).
 
@@ -67,7 +69,7 @@ init({ConnectionManagerPid, FileSystemPid, Name, PeerId, InfoHash}) ->
 		peerid = PeerId,
 		infohash = InfoHash,
 		his_requested_queue = queue:new(),
-		my_requested_queue = queue:new()}}.
+		my_requested = sets:new()}}.
 
 handle_call(Request, From, State) ->
     error_logger:error_report([Request, From]),
@@ -253,6 +255,33 @@ send_unchoke(State) ->
     send_message(State, unchoke),
     State#state{me_choking = false}.
 
+send_request(State, {Index, Begin, Len}) ->
+    send_message(State, {request, {Index, Begin, Len}}).
+
 enable_messages(Socket) ->
     inet:setopts(Socket, [binary, {active, true}, {packet, 4}]).
 
+queue_requests(0, FromQ, ToQ, _S) ->
+    {done, FromQ, ToQ};
+queue_requests(N, FromQ, ToSet, S) ->
+    case queue:is_empty(FromQ) of
+	true ->
+	    case fetch_new_from_queue(S) of
+		{ok, NFQ} ->
+		    queue_requests(N, NFQ, ToSet, S);
+		piece_exhaust ->
+		    {not_interested, N, ToSet}
+	    end;
+	false ->
+	    {{value, Item}, NQ} = queue:out(FromQ),
+	    TNQ = sets:add_element(Item, ToSet),
+	    send_request(S, Item),
+	    queue_messages(N-1, NQ, TNQ, S)
+    end.
+
+
+fetch_new_from_queue(S) ->
+    torrent_piecemap:request_piece(S#state.piecemap_pid,
+				   S#state.torrent_id,
+				   S#state.piece_table
+				 
