@@ -91,7 +91,7 @@ handle_connect(Socket, S) ->
     enable_messages(S#state.socket),
     {ok, PiecesWeHave, TotalPieces} =
 	torrent_piecemap:pieces_downloaded(S#state.piecemap_pid),
-    torrent_peer_end:send_bitfield(S#state.send_pid,
+    torrent_peer_send:send_bitfield(S#state.send_pid,
 				   PiecesWeHave,
 				   TotalPieces),
     {ok, SendPid, HisPeerId}.
