@@ -212,7 +212,7 @@ handle_message({cancel, Index, Begin, Len}, State) ->
 handle_message({bitfield, BitField}, S) ->
     {ok, _, AllPieces} = torrent_piecemap:pieces_downloaded(
 			   S#state.piecemap_pid),
-    {ok, PieceSet} = peer_communication:deconstruct_bitfield(AllPieces,
+    {ok, PieceSet} = peer_communication:destruct_bitfield(AllPieces,
 							     BitField),
     case sets:size(S#state.his_pieces) of
 	0 ->
