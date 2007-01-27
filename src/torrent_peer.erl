@@ -23,6 +23,7 @@
 		me_interested = false,
 		he_choking = true,
 		he_interested = false,
+		his_pieces = none,
 		socket = none,
 		transmitting = false,
 		connection_manager_pid = no,
@@ -72,6 +73,7 @@ init({ConnectionManagerPid, FileSystemPid, Name, PeerId, InfoHash}) ->
 		peerid = PeerId,
 		infohash = InfoHash,
 		his_requested_queue = queue:new(),
+		his_pieces = sets:new(),
 		my_requested = sets:new()}}.
 
 handle_call(Request, From, State) ->
@@ -88,6 +90,7 @@ handle_connect(Socket, S) ->
 							S#state.peerid,
 							S#state.infohash),
     enable_messages(S#state.socket),
+    send_bitfield(S),
     {ok, SendPid, HisPeerId}.
 
 handle_cast({startup_connect, IP, Port}, S) ->
@@ -290,6 +293,23 @@ fetch_new_from_queue(S) ->
 	    {ok, queue:from_list(RequestList)};
 	no_interesting_piece ->
 	    no_interesting_piece
+    end.
+
+
+send_bitfield(S) ->
+    {ok, PiecesWeHave, AllPieces} = torrent_piecemap:pieces_downloaded(
+				      S#state.piecemap_pid),
+    NumberOfPieces = sets:size(PiecesWeHave),
+    if
+	NumberOfPieces > 0 ->
+	    send_message(S#state.send_pid,
+			 {bitfield,
+			  peer_communication:construct_bitfield(
+			    AllPieces,
+			    PiecesWeHave)}),
+	    ok;
+	true ->
+	    ok
     end.
 
 

@@ -6,6 +6,10 @@ MANTRA: ets tables have processes before them to manage them easily.
 
 UNDECIDED: Merge filesystem and piecemap into the same erlang process?
 
+* Split out torrent_peer_send into its own thread.
+Doing this will greatly simplify code to a simpler format so we are
+keeping ourselves below the 400 lines of code per module limit.
+
 * Set torrent_id in torrent_peer
 We have added torrent_id to the torrent peer code. But we have not
 given it any value yet.
@@ -16,6 +20,11 @@ and send bit-arrays so both parties know how much they have and what
 they should request. This needs to be implemented first, before we try
 to implement other stuff, as it is clear it is needed for many
 operations in the system.
+** (DONE) Implement code for building piecemaps from bitfields
+** (DONE) Implement code for building bitfields from piecemaps
+** Hook the 2 previous into the main framework.
+Please note that a node may refrain from sending a map if he has 0
+pieces at the moment.
 
 * Fix connection_manager
 We need to fix the state code for the connection manager. It has some
