@@ -209,6 +209,17 @@ handle_message({cancel, Index, Begin, Len}, State) ->
     NewQ = remove_from_queue({Index, Begin, Len},
 			     State#state.his_requested_queue),
     State#state{his_requested_queue = NewQ};
+handle_message({bitfield, BitField}, S) ->
+    {ok, _, AllPieces} = torrent_piecemap:pieces_downloaded(
+			   S#state.piecemap_pid),
+    {ok, PieceSet} = peer_communication:deconstruct_bitfield(AllPieces,
+							     BitField),
+    case sets:size(S#state.his_pieces) of
+	0 ->
+	    S#state{his_pieces = PieceSet};
+	_ ->
+	    exit(peer_sent_bitfield_later_on)
+    end;
 handle_message({request, Index, Begin, Len}, State) ->
     case State#state.me_choking of
 	true ->
@@ -295,7 +306,6 @@ fetch_new_from_queue(S) ->
 	    no_interesting_piece
     end.
 
-
 send_bitfield(S) ->
     {ok, PiecesWeHave, AllPieces} = torrent_piecemap:pieces_downloaded(
 				      S#state.piecemap_pid),
@@ -311,5 +321,3 @@ send_bitfield(S) ->
 	true ->
 	    ok
     end.
-
-
