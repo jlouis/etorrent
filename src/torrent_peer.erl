@@ -39,7 +39,6 @@
 		piece_table = no,
 	        torrent_id = no}).
 
--define(DEFAULT_KEEP_ALIVE_INTERVAL, 120*1000).
 
 %%====================================================================
 %% API
@@ -82,15 +81,19 @@ handle_call(Request, From, State) ->
     {reply, Reply, State}.
 
 handle_connect(Socket, S) ->
-    SendPid = spawn_link(fun() -> start_send_loop(Socket,
-						  S#state.peerid,
-						  S#state.infohash,
-						  self()) end),
+    SendPid = torrent_peer_send:start_link(Socket,
+					   self(),
+					   S#state.peerid,
+					   S#state.infohash),
     {ok, HisPeerId} = peer_communication:recv_handshake(Socket,
 							S#state.peerid,
 							S#state.infohash),
     enable_messages(S#state.socket),
-    send_bitfield(S),
+    {ok, PiecesWeHave, TotalPieces} =
+	torrent_piecemap:pieces_downloaded(S#state.piecemap_pid),
+    torrent_peer_end:send_bitfield(S#state.send_pid,
+				   PiecesWeHave,
+				   TotalPieces),
     {ok, SendPid, HisPeerId}.
 
 handle_cast({startup_connect, IP, Port}, S) ->
@@ -105,10 +108,10 @@ handle_cast({startup_accept, ListenSock}, S) ->
     {noreply, S#state{send_pid = SendPid,
 		      his_peerid = HisPeerId}};
 handle_cast(choke, S) ->
-    send_choke(S),
+    torrent_peer_send:send_choke(S#state.send_pid),
     {noreply, S#state{me_choking = true}};
 handle_cast(unchoke, S) ->
-    send_unchoke(S),
+    torrent_peer_send:send_unchoke(S#state.send_pid),
     {noreply, S#state{me_choking = false}};
 handle_cast(datagram_sent, State) ->
     case State#state.me_choking of
@@ -159,33 +162,6 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%--------------------------------------------------------------------
 
-
-%%--------------------------------------------------------------------
-%% Func: send_loop(Socket, Master)
-%% Description: This loop is responsible for sending out messages on
-%%              the wire.
-%%--------------------------------------------------------------------
-send_loop(Socket, Master) ->
-    receive
-	{datagram, Message} ->
-	    ok = peer_communication:send_message(Socket, Message);
-	{reply_datagram, Message} ->
-	    ok = peer_communication:send_message(Socket, Message),
-	    gen_server:cast(Master, datagram_sent)
-    after
-	?DEFAULT_KEEP_ALIVE_INTERVAL ->
-	    ok = peer_communication:send_message(Socket, keep_alive)
-    end,
-    torrent_peer:send_loop(Socket, Master).
-
-%%--------------------------------------------------------------------
-%% Func: start_send_loop(State, Pid)
-%% Description: start up the send loop.
-%%--------------------------------------------------------------------
-start_send_loop(Socket, PeerId, InfoHash, Pid) ->
-    peer_communication:send_handshake(Socket, PeerId, InfoHash),
-    send_loop(Socket, Pid).
-
 %%--------------------------------------------------------------------
 %% Func: handle_message(Msg, State)
 %% Description: Handle an incoming message
@@ -213,7 +189,7 @@ handle_message({bitfield, BitField}, S) ->
     {ok, _, AllPieces} = torrent_piecemap:pieces_downloaded(
 			   S#state.piecemap_pid),
     {ok, PieceSet} = peer_communication:destruct_bitfield(AllPieces,
-							     BitField),
+							  BitField),
     case sets:size(S#state.his_pieces) of
 	0 ->
 	    S#state{his_pieces = PieceSet};
@@ -244,10 +220,11 @@ transmit_next_piece(State) ->
 	    end
     end.
 
-transmit_piece(Index, Begin, Len, State) ->
+transmit_piece(Index, Begin, Len, S) ->
     Data = filesystem:request_piece(
-	     State#state.filesystem_pid, Index, Begin, Len),
-    send_message_reply(State, {piece, Index, Begin, Len, Data}).
+	     S#state.filesystem_pid, Index, Begin, Len),
+    torrent_peer_send:send_reply_datagram(S#state.send_pid,
+					  {piece, Index, Begin, Len, Data}).
 
 insert_into_his_queue(Item, State) ->
     Q = queue:in(Item, State#state.his_requested_queue),
@@ -257,23 +234,6 @@ remove_from_queue(Item, Q) ->
     %% This is probably _slow_, but who cares unless
     %% the profiler quacks like a duck?
     queue:from_list(lists:delete(Item, queue:to_list(Q))).
-
-send_message(State, Message) ->
-    State#state.send_pid ! {datagram, Message}.
-
-send_message_reply(State, Message) ->
-    State#state.send_pid ! {reply_datagram, Message}.
-
-send_choke(State) ->
-    send_message(State, choke),
-    State#state{me_choking = true}.
-
-send_unchoke(State) ->
-    send_message(State, unchoke),
-    State#state{me_choking = false}.
-
-send_request(State, {Index, Begin, Len}) ->
-    send_message(State, {request, {Index, Begin, Len}}).
 
 enable_messages(Socket) ->
     inet:setopts(Socket, [binary, {active, true}, {packet, 4}]).
@@ -292,7 +252,7 @@ queue_requests(N, FromQ, ToSet, S) ->
 	false ->
 	    {{value, Item}, NQ} = queue:out(FromQ),
 	    TNQ = sets:add_element(Item, ToSet),
-	    send_request(S, Item),
+	    torrent_peer_send:send_request(S#state.send_pid, Item),
 	    queue_requests(N-1, NQ, TNQ, S)
     end.
 
@@ -306,18 +266,3 @@ fetch_new_from_queue(S) ->
 	    no_interesting_piece
     end.
 
-send_bitfield(S) ->
-    {ok, PiecesWeHave, AllPieces} = torrent_piecemap:pieces_downloaded(
-				      S#state.piecemap_pid),
-    NumberOfPieces = sets:size(PiecesWeHave),
-    if
-	NumberOfPieces > 0 ->
-	    send_message(S#state.send_pid,
-			 {bitfield,
-			  peer_communication:construct_bitfield(
-			    AllPieces,
-			    PiecesWeHave)}),
-	    ok;
-	true ->
-	    ok
-    end.
