@@ -6,10 +6,6 @@ MANTRA: ets tables have processes before them to manage them easily.
 
 UNDECIDED: Merge filesystem and piecemap into the same erlang process?
 
-* Split out torrent_peer_send into its own thread.
-Doing this will greatly simplify code to a simpler format so we are
-keeping ourselves below the 400 lines of code per module limit.
-
 * Set torrent_id in torrent_peer
 We have added torrent_id to the torrent peer code. But we have not
 given it any value yet.
