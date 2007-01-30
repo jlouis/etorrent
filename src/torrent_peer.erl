@@ -169,7 +169,7 @@ code_change(_OldVsn, State, _Extra) ->
 handle_message(keep_alive, State) ->
     %% This is just sent at a certain interval to keep the line alive.
     %%   It can be totally ignored.
-    State;
+   State;
 handle_message(choke, State) ->
     State#state{he_choking = true};
 handle_message(interested, State) ->
@@ -237,6 +237,7 @@ remove_from_queue(Item, Q) ->
 
 enable_messages(Socket) ->
     inet:setopts(Socket, [binary, {active, true}, {packet, 4}]).
+
 
 queue_requests(0, FromQ, ToQ, _S) ->
     {done, FromQ, ToQ};
