@@ -296,5 +296,11 @@ fetch_new_from_queue(S) ->
 attempt_to_queue_pieces(_S) ->
     exit(define_me).
 
-dequeue_request(_Index, _Begin, _Len, _S) ->
-    exit(define_me).
+dequeue_request(Index, Begin, Len, S) ->
+    case sets:is_element({Index, Begin, Len}, S#state.my_requested) of
+	true ->
+	    {ok, S#state{my_requested = sets:del_element({Index, Begin, Len},
+							 S#state.my_requested)}};
+	false ->
+	    {error, never_queued}
+    end.
