@@ -39,6 +39,8 @@
 		piece_table = no,
 	        torrent_id = no}).
 
+%% Default number of pieces to keep queued at other end.
+-define(REQUEST_QUEUE_SIZE, 5).
 
 %%====================================================================
 %% API
@@ -176,6 +178,28 @@ handle_message(interested, State) ->
     connection_manager:is_interested(State#state.connection_manager_pid,
 				     State#state.peerid),
     State#state{he_interested = true};
+handle_message({have, PieceNum}, S) ->
+    NewS = S#state{his_pieces = sets:add_element(PieceNum,
+						 S#state.his_pieces)},
+    case torrent_piecemap:peer_got_piece(S#state.piecemap_pid,
+					 PieceNum) of
+	interested ->
+	    RQSize = sets:size(S#state.my_requested),
+	    if
+		RQSize =< ?REQUEST_QUEUE_SIZE ->
+		    attempt_to_queue_pieces(NewS)
+	    end;
+	not_interested ->
+	    NewS
+    end;
+handle_message({piece, Index, Begin, Len, Data}, S) ->
+    filesystem:store_piece(S#state.filesystem_pid, Index, Begin, Len, Data),
+    case dequeue_request(Index, Begin, Len, S) of
+	{ok, NS} ->
+	    attempt_to_queue_pieces(NS);
+	{error, never_queued} ->
+	    exit(never_queued) %% May be optimized later on!
+    end;
 handle_message(not_interested, State) ->
     connection_manager:is_not_interested(State#state.connection_manager_pid,
 					 State#state.peerid),
@@ -192,7 +216,8 @@ handle_message({bitfield, BitField}, S) ->
 							  BitField),
     case sets:size(S#state.his_pieces) of
 	0 ->
-	    S#state{his_pieces = PieceSet};
+	    NS = S#state{his_pieces = PieceSet},
+	    attempt_to_queue_pieces(NS);
 	_ ->
 	    exit(peer_sent_bitfield_later_on)
     end;
@@ -267,3 +292,9 @@ fetch_new_from_queue(S) ->
 	    no_interesting_piece
     end.
 
+
+attempt_to_queue_pieces(_S) ->
+    exit(define_me).
+
+dequeue_request(_Index, _Begin, _Len, _S) ->
+    exit(define_me).
