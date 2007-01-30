@@ -1,7 +1,7 @@
 %%%-------------------------------------------------------------------
 %%% File    : etorrent.erl
 %%% Author  : User Jlouis <jlouis@succubus.localdomain>
-%%% Description : 
+%%% Description : Start up etorrent and supervise it.
 %%%
 %%% Created : 30 Jan 2007 by User Jlouis <jlouis@succubus.localdomain>
 %%%-------------------------------------------------------------------
@@ -27,15 +27,6 @@ start_link() ->
 %%====================================================================
 %% Supervisor callbacks
 %%====================================================================
-%%--------------------------------------------------------------------
-%% Func: init(Args) -> {ok,  {SupFlags,  [ChildSpec]}} |
-%%                     ignore                          |
-%%                     {error, Reason}
-%% Description: Whenever a supervisor is started using 
-%% supervisor:start_link/[2,3], this function is called by the new process 
-%% to find out about restart strategy, maximum restart frequency and child 
-%% specifications.
-%%--------------------------------------------------------------------
 init([Dir]) ->
     DirWatcher = {dirwatcher_sup, {dirwatcher_sup, start_link, [Dir]},
 		  permanent, 2000, worker, [dirwatcher_sup]},
