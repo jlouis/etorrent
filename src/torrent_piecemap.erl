@@ -1,39 +1,41 @@
+%%%-------------------------------------------------------------------
+%%% File    : torrent_piecemap.erl
+%%% Author  : User Jlouis <jlouis@succubus.localdomain>
+%%% Description : 
+%%%
+%%% Created : 31 Jan 2007 by User Jlouis <jlouis@succubus.localdomain>
+%%%-------------------------------------------------------------------
 -module(torrent_piecemap).
+
 -behaviour(gen_server).
 
--export([start_link/1, init/1, handle_call/3, handle_cast/2, code_change/3, handle_info/2]).
--export([terminate/2, merge_shuffle/1, merge/2, partition/1]).
+%% API
+-export([request_piece/3, start_link/1]).
 
--export([request_piece/3]).
+%% gen_server callbacks
+-export([init/1, handle_call/3, handle_cast/2, handle_info/2,
+	 terminate/2, code_change/3]).
 
+%%-record(state, {}).
+
+%%====================================================================
+%% API
+%%====================================================================
 start_link(Amount) ->
-    gen_server:start_link(torrent_piecemap, Amount, []).
+    gen_server:start_link(?MODULE, Amount, []).
+
+request_piece(Pid, _TorrentId, PiecesPeerHas) ->
+    gen_server:call(Pid, {request_piece, PiecesPeerHas}).
+
+%%====================================================================
+%% gen_server callbacks
+%%====================================================================
 
 init(NumberOfPieces) ->
     PieceTable = initialize_piece_table(NumberOfPieces),
     {A, B, C} = erlang:now(),
     random:seed(A, B, C),
     {ok, PieceTable}.
-
-code_change(_OldVsn, State, _Extra) ->
-    {ok, State}.
-
-handle_info(Info, State) ->
-    error_logger:info_report([{'INFO', Info}, {'State', State}]),
-    {noreply, State}.
-
-terminate(shutdown, _Piecemap) ->
-    ok.
-
-initialize_piece_table(Amount) ->
-    Table = ets:new(piece_table, []),
-    populate_table(Table, Amount).
-
-populate_table(Table, 0) ->
-    Table;
-populate_table(Table, N) ->
-    ets:insert(Table, {N, unclaimed}),
-    populate_table(Table, N-1).
 
 handle_call({request_piece, PiecesPeerHas}, Who, PieceTable) ->
     case find_appropriate_piece(PieceTable, Who, PiecesPeerHas) of
@@ -43,9 +45,47 @@ handle_call({request_piece, PiecesPeerHas}, Who, PieceTable) ->
 	    {reply, no_pieces_are_interesting}
     end.
 
-handle_cast({peer_got_piece, _PieceNum}, PieceTable) ->
-    {noreply, PieceTable}. %% This can later be used for rarest first selection
+handle_cast(_Msg, State) ->
+    {noreply, State}.
 
+%%--------------------------------------------------------------------
+%% Function: handle_info(Info, State) -> {noreply, State} |
+%%                                       {noreply, State, Timeout} |
+%%                                       {stop, Reason, State}
+%% Description: Handling all non call/cast messages
+%%--------------------------------------------------------------------
+handle_info(_Info, State) ->
+    {noreply, State}.
+
+%%--------------------------------------------------------------------
+%% Function: terminate(Reason, State) -> void()
+%% Description: This function is called by a gen_server when it is about to
+%% terminate. It should be the opposite of Module:init/1 and do any necessary
+%% cleaning up. When it returns, the gen_server terminates with Reason.
+%% The return value is ignored.
+%%--------------------------------------------------------------------
+terminate(_Reason, _State) ->
+    ok.
+
+%%--------------------------------------------------------------------
+%% Func: code_change(OldVsn, State, Extra) -> {ok, NewState}
+%% Description: Convert process state when code is changed
+%%--------------------------------------------------------------------
+code_change(_OldVsn, State, _Extra) ->
+    {ok, State}.
+
+%%--------------------------------------------------------------------
+%%% Internal functions
+%%--------------------------------------------------------------------
+initialize_piece_table(Amount) ->
+    Table = ets:new(piece_table, []),
+    populate_table(Table, Amount).
+
+populate_table(Table, 0) ->
+    Table;
+populate_table(Table, N) ->
+    ets:insert(Table, {N, unclaimed}),
+    populate_table(Table, N-1).
 
 find_appropriate_piece(PieceTable, Who, PiecesPeerHas) ->
     case find_eligible_pieces(PiecesPeerHas, PieceTable) of
@@ -75,38 +115,4 @@ pick_random(PieceSet) ->
     Size = sets:size(PieceSet),
     lists:nth(random:uniform(Size), sets:to_list(PieceSet)).
 
-flip_coin() ->
-    random:uniform(2) - 1.
 
-merge(A, []) ->
-    A;
-merge([], B) ->
-    B;
-merge([A | As], [B | Bs]) ->
-    case flip_coin() of
-	0 ->
-	    [A | merge(As, [B | Bs])];
-	1 ->
-	    [B | merge([A | As], Bs)]
-    end.
-
-partition(List) ->
-    partition_l(List, [], []).
-
-partition_l([], A, B) ->
-    {A, B};
-partition_l([Item], A, B) ->
-    {B, [Item | A]};
-partition_l([Item | Rest], A, B) ->
-    partition_l(Rest, B, [Item | A]).
-
-merge_shuffle([]) ->
-    [];
-merge_shuffle([Item]) ->
-    [Item];
-merge_shuffle(List) ->
-    {A, B} = partition(List),
-    merge(merge_shuffle(A), merge_shuffle(B)).
-
-request_piece(Pid, _TorrentId, PiecesPeerHas) ->
-    gen_server:call(Pid, {request_piece, PiecesPeerHas}).
