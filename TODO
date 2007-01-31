@@ -5,6 +5,8 @@ rest of the code.
 MANTRA: ets tables have processes before them to manage them easily.
 
 UNDECIDED: Merge filesystem and piecemap into the same erlang process?
+It should only be done if piecemap is a single ets table and then it
+is not even clear it should be done.
 
 * Go through the code and manage my interest correctly.
 It has come to my attention that we have some code which doesn't seem
@@ -34,9 +36,6 @@ We need FS management
 We must check if a given torrent file which has just been added is a
 duplicate of a torrent we already manage. If this is the case, then we
 should just ignore it.
-
-* Local requests at other end.
-...
 
 * Reduce the number of ets tables
 Fix and reduce the number of ets tables to a constant amount. This
