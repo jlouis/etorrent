@@ -24,6 +24,11 @@
 start_link(Amount) ->
     gen_server:start_link(?MODULE, Amount, []).
 
+
+%%--------------------------------------------------------------------
+%% Function: request_piece(Pid, TorrentId, PiecesPeerHas)
+%% Description: Request a new batch of pieces
+%%--------------------------------------------------------------------
 request_piece(Pid, _TorrentId, PiecesPeerHas) ->
     gen_server:call(Pid, {request_piece, PiecesPeerHas}).
 

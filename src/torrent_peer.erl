@@ -37,6 +37,7 @@
 		his_requested_queue = no,
 		my_requested = no,
 		piece_table = no,
+		piece_queue = no,
 	        torrent_id = no}).
 
 %% Default number of pieces to keep queued at other end.
@@ -74,6 +75,7 @@ init({ConnectionManagerPid, FileSystemPid, Name, PeerId, InfoHash}) ->
 		peerid = PeerId,
 		infohash = InfoHash,
 		his_requested_queue = queue:new(),
+		piece_queue = queue:new(),
 		his_pieces = sets:new(),
 		my_requested = sets:new()}}.
 
@@ -293,8 +295,40 @@ fetch_new_from_queue(S) ->
     end.
 
 
-attempt_to_queue_pieces(_S) ->
-    exit(define_me).
+attempt_to_queue_pieces(S) ->
+    PiecesToAdd = ?REQUEST_QUEUE_SIZE - sets:size(S#state.my_requested),
+    case request_chunks(PiecesToAdd, S) of
+	{ok, NS} ->
+	    NS;
+	{queue_exhausted, NS} ->
+	    request_more_chunks(NS)
+    end.
+
+request_more_chunks(S) ->
+    case torrent_piecemap:request_piece(S#state.piecemap_pid,
+					no,
+					S#state.piece_table) of
+	{pieces_to_get, Pieces} ->
+	    attempt_to_queue_pieces(S#state{piece_queue = Pieces});
+	no_pieces_are_interesting ->
+	    torrent_peer_send:send_datagram(S#state.send_pid, not_interested),
+	    S
+    end.
+
+request_chunks(0, S) ->
+    S;
+request_chunks(N, S) ->
+    case queue:is_empty(S#state.piece_queue) of
+	true ->
+	    {queue_exhausted, S};
+	false ->
+	    {{Index, Begin, Len}, PQ} = queue:out(S#state.piece_queue),
+	    RS = sets:add_element({Index, Begin, Len}, S#state.my_requested),
+	    torrent_peer_send:send_datagram(S#state.send_pid,
+					    {request, Index, Begin, Len}),
+	    request_chunks(N-1, S#state{piece_queue = PQ,
+					my_requested = RS})
+    end.
 
 dequeue_request(Index, Begin, Len, S) ->
     case sets:is_element({Index, Begin, Len}, S#state.my_requested) of

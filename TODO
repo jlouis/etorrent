@@ -6,6 +6,13 @@ MANTRA: ets tables have processes before them to manage them easily.
 
 UNDECIDED: Merge filesystem and piecemap into the same erlang process?
 
+* Go through the code and manage my interest correctly.
+It has come to my attention that we have some code which doesn't seem
+to handle interest the right way. Therefore, we must alter the code
+such that we set the local interest flag when we change interest.  It
+is most easily implemented as a seperate function that does it
+correctly.
+
 * Set torrent_id in torrent_peer
 We have added torrent_id to the torrent peer code. But we have not
 given it any value yet.
@@ -23,6 +30,11 @@ We need to manage choke and unchoke
 * Filesystem management
 We need FS management
 
+* Check if a torrent is duplicate.
+We must check if a given torrent file which has just been added is a
+duplicate of a torrent we already manage. If this is the case, then we
+should just ignore it.
+
 * Local requests at other end.
 ...
 
@@ -33,6 +45,3 @@ will allow us to scale into post-1000 concurrent torrents.
 * Add license facts
 
 * Add author facts
-
-* Kill -compile(export_all) and use -export.
-
