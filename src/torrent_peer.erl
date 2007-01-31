@@ -250,8 +250,8 @@ transmit_next_piece(State) ->
 transmit_piece(Index, Begin, Len, S) ->
     Data = filesystem:request_piece(
 	     S#state.filesystem_pid, Index, Begin, Len),
-    torrent_peer_send:send_reply_datagram(S#state.send_pid,
-					  {piece, Index, Begin, Len, Data}).
+    torrent_peer_send:send_piece(S#state.send_pid,
+				 Index, Begin, Len, Data).
 
 insert_into_his_queue(Item, State) ->
     Q = queue:in(Item, State#state.his_requested_queue),
@@ -311,21 +311,20 @@ request_more_chunks(S) ->
 	{pieces_to_get, Pieces} ->
 	    attempt_to_queue_pieces(S#state{piece_queue = Pieces});
 	no_pieces_are_interesting ->
-	    torrent_peer_send:send_datagram(S#state.send_pid, not_interested),
+	    torrent_peer_send:send_not_interested(S#state.send_pid),
 	    S
     end.
 
 request_chunks(0, S) ->
-    S;
+    {ok, S};
 request_chunks(N, S) ->
     case queue:is_empty(S#state.piece_queue) of
 	true ->
 	    {queue_exhausted, S};
 	false ->
-	    {{Index, Begin, Len}, PQ} = queue:out(S#state.piece_queue),
+	    {{value, {Index, Begin, Len}}, PQ} = queue:out(S#state.piece_queue),
 	    RS = sets:add_element({Index, Begin, Len}, S#state.my_requested),
-	    torrent_peer_send:send_datagram(S#state.send_pid,
-					    {request, Index, Begin, Len}),
+	    torrent_peer_send:send_request(S#state.send_pid,Index, Begin, Len),
 	    request_chunks(N-1, S#state{piece_queue = PQ,
 					my_requested = RS})
     end.
