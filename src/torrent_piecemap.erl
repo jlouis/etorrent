@@ -10,7 +10,7 @@
 -behaviour(gen_server).
 
 %% API
--export([request_piece/3, start_link/1]).
+-export([request_piece/3, start_link/1, peer_got_piece/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -24,13 +24,19 @@
 start_link(Amount) ->
     gen_server:start_link(?MODULE, Amount, []).
 
-
 %%--------------------------------------------------------------------
 %% Function: request_piece(Pid, TorrentId, PiecesPeerHas)
 %% Description: Request a new batch of pieces
 %%--------------------------------------------------------------------
 request_piece(Pid, _TorrentId, PiecesPeerHas) ->
     gen_server:call(Pid, {request_piece, PiecesPeerHas}).
+
+%%--------------------------------------------------------------------
+%% Function: peer_got_piece(Pid, Piece)
+%% Description: Called whenever a peer has a new piece
+%%--------------------------------------------------------------------
+peer_got_piece(Pid, Piece) ->
+    gen_server:call(Pid, {peer_got_piece, Piece}).
 
 %%====================================================================
 %% gen_server callbacks
@@ -48,10 +54,12 @@ handle_call({request_piece, PiecesPeerHas}, Who, PieceTable) ->
 	    {reply, {piece_to_get, P}};
 	none_applies ->
 	    {reply, no_pieces_are_interesting}
-    end.
+    end;
+handle_call({peer_got_piece, _Piece}, _Who, S) ->
+    {reply, interested, S}.
 
-handle_cast(_Msg, State) ->
-    {noreply, State}.
+handle_cast(_Msg, S) ->
+    {noreply, S}.
 
 %%--------------------------------------------------------------------
 %% Function: handle_info(Info, State) -> {noreply, State} |

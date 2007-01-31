@@ -8,13 +8,6 @@ UNDECIDED: Merge filesystem and piecemap into the same erlang process?
 It should only be done if piecemap is a single ets table and then it
 is not even clear it should be done.
 
-* Go through the code and manage my interest correctly.
-It has come to my attention that we have some code which doesn't seem
-to handle interest the right way. Therefore, we must alter the code
-such that we set the local interest flag when we change interest.  It
-is most easily implemented as a seperate function that does it
-correctly.
-
 * Set torrent_id in torrent_peer
 We have added torrent_id to the torrent peer code. But we have not
 given it any value yet.

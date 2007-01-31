@@ -186,10 +186,11 @@ handle_message({have, PieceNum}, S) ->
     case torrent_piecemap:peer_got_piece(S#state.piecemap_pid,
 					 PieceNum) of
 	interested ->
+	    S2 = update_interest(interested, NewS),
 	    RQSize = sets:size(S#state.my_requested),
 	    if
 		RQSize =< ?REQUEST_QUEUE_SIZE ->
-		    attempt_to_queue_pieces(NewS)
+		    attempt_to_queue_pieces(S2)
 	    end;
 	not_interested ->
 	    NewS
@@ -218,7 +219,7 @@ handle_message({bitfield, BitField}, S) ->
 							  BitField),
     case sets:size(S#state.his_pieces) of
 	0 ->
-	    NS = S#state{his_pieces = PieceSet},
+	    NS = process_bitfield_for_interest(PieceSet, S),
 	    attempt_to_queue_pieces(NS);
 	_ ->
 	    exit(peer_sent_bitfield_later_on)
@@ -311,8 +312,24 @@ request_more_chunks(S) ->
 	{pieces_to_get, Pieces} ->
 	    attempt_to_queue_pieces(S#state{piece_queue = Pieces});
 	no_pieces_are_interesting ->
-	    torrent_peer_send:send_not_interested(S#state.send_pid),
-	    S
+	    update_interest(not_interested, S)
+    end.
+
+process_bitfield_for_interest(PieceSet, S) ->
+    F = fun(Piece, Interested) ->
+		case torrent_piecemap:peer_got_piece(S#state.piecemap_pid,
+						     Piece) of
+		    interested ->
+			Interested or true;
+		    not_interested ->
+			Interested
+		end
+	end,
+    case sets:fold(F, false, PieceSet) of
+	true ->
+	    update_interest(interested, S);
+	false ->
+	    update_interest(not_interested, S)
     end.
 
 request_chunks(0, S) ->
@@ -337,3 +354,18 @@ dequeue_request(Index, Begin, Len, S) ->
 	false ->
 	    {error, never_queued}
     end.
+
+update_interest(Interest, S) ->
+    case {Interest, S#state.me_interested} of
+	{interested, true} ->
+	    S;
+	{not_interested, true} ->
+	    torrent_peer_send:send_not_interested(S#state.send_pid),
+	    S#state{me_interested = false};
+	{interested, false} ->
+	    torrent_peer_send:send_interested(S#state.send_pid),
+	    S#state{me_interested = true};
+	{not_interested, false} ->
+	    S
+    end.
+
