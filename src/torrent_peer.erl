@@ -112,11 +112,21 @@ handle_cast({startup_accept, ListenSock}, S) ->
     {noreply, S#state{send_pid = SendPid,
 		      his_peerid = HisPeerId}};
 handle_cast(choke, S) ->
-    torrent_peer_send:send_choke(S#state.send_pid),
-    {noreply, S#state{me_choking = true}};
+    case S#state.me_choking of
+	true ->
+	    {noreply, S};
+	false ->
+	    torrent_peer_send:send_choke(S#state.send_pid),
+	    {noreply, S#state{me_choking = true}}
+    end;
 handle_cast(unchoke, S) ->
-    torrent_peer_send:send_unchoke(S#state.send_pid),
-    {noreply, S#state{me_choking = false}};
+    case S#state.me_choking of
+	false ->
+	    {noreply, S};
+	true ->
+	    torrent_peer_send:send_unchoke(S#state.send_pid),
+	    {noreply, S#state{me_choking = false}}
+    end;
 handle_cast(datagram_sent, State) ->
     case State#state.me_choking of
 	true ->

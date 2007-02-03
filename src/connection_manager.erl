@@ -152,9 +152,9 @@ process_choke(S) ->
 							     + (?NON_CHOKERS - size(UnchokePids)),
 							     RestPids, []),
     ToUnchoke = lists:concat([UnchokePids, OptimisticUnchokePids]),
-    {ok, S2} = unchoke_choke_pids(ToUnchoke, S),
-    {ok, S3} = reset_download_data(S2),
-    S3.
+    unchoke_choke_pids(ToUnchoke, S),
+    {ok, S2} = reset_download_data(S),
+    S2.
 
 find_most_unchoked(Num, S) ->
     UnchokeHeap = construct_unchoke_heap(S),
@@ -193,8 +193,14 @@ find_pids_for_optimistic_unchoke(K, Eligible, Pids) ->
     find_pids_for_optimistic_unchoke(K-1, lists:delete(Pid, Eligible), [Pid | Pids]).
 
 
-unchoke_choke_pids(_ToUnchoke, S) ->
-    {ok, S}.
+unchoke_choke_pids(ToUnchoke, S) ->
+    ToChoke = find_rest_pids(ToUnchoke, S),
+    lists:foreach(fun(Pid) ->
+			  torrent_peer:choke(Pid)
+		  end, ToChoke),
+    lists:foreach(fun(Pid) ->
+			  torrent_peer:unchoke(Pid)
+		  end, ToUnchoke).
 
 update_download_data(Pid, Amount, S) ->
     F = fun(PeerData) ->
