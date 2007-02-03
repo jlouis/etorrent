@@ -1,7 +1,7 @@
 %%%-------------------------------------------------------------------
 %%% File    : connection_manager.erl
 %%% Author  : User Jlouis <jlouis@succubus.localdomain>
-%%% Description : 
+%%% Description : Handle a pool of connections for a torrent.
 %%%
 %%% Created : 30 Jan 2007 by User Jlouis <jlouis@succubus.localdomain>
 %%%-------------------------------------------------------------------
@@ -29,6 +29,7 @@
 
 -define(CHOKE_TIME, 30*1000). %% The spec hints that 30 secs is a good interval.
 -define(NON_CHOKERS, 4).
+-define(OPTIMISTIC_UNCHOKERS, 1).
 
 %%====================================================================
 %% API
@@ -146,17 +147,51 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 process_choke(S) ->
     UnchokePids = find_most_unchoked(?NON_CHOKERS, S),
-    OptimisticUnchokePids = find_pids_for_optimistic_unchoke(UnchokePids, S),
+    RestPids = find_rest_pids(UnchokePids, S),
+    OptimisticUnchokePids = find_pids_for_optimistic_unchoke(?OPTIMISTIC_UNCHOKERS
+							     + (?NON_CHOKERS - size(UnchokePids)),
+							     RestPids, []),
     ToUnchoke = lists:concat([UnchokePids, OptimisticUnchokePids]),
     {ok, S2} = unchoke_choke_pids(ToUnchoke, S),
     {ok, S3} = reset_download_data(S2),
     S3.
 
-find_most_unchoked(_Num, _S) ->
-    [].
+find_most_unchoked(Num, S) ->
+    UnchokeHeap = construct_unchoke_heap(S),
+    find_n_most_downloaded(Num, UnchokeHeap, []).
 
-find_pids_for_optimistic_unchoke(_Unchoked, _S) ->
-    [].
+construct_unchoke_heap(S) ->
+    F = fun(P, PD, H) ->
+		Downloaded = PD#peer_data.downloaded,
+		pairing_heap:insert(P, Downloaded, H)
+	end,
+    dict:fold(F, pairing_heap:new(), S#state.managed_pids).
+
+find_rest_pids(UnchokePids, S) ->
+    P = fun(Pid, _V, Pids) ->
+		case lists:member(Pid, UnchokePids) of
+		    true ->
+			[Pid | Pids];
+		    false ->
+			Pids
+		end
+	end,
+    dict:fold(P, [], S#state.managed_pids).
+
+find_n_most_downloaded(0, _, Accum) ->
+    Accum;
+find_n_most_downloaded(N, UnchokeHeap, Accum) ->
+    {ok, E, _, NH} = pairing_heap:extract_min(UnchokeHeap),
+    find_n_most_downloaded(N-1, NH, [E | Accum]).
+
+find_pids_for_optimistic_unchoke(0, _Eligible, Pids) ->
+    Pids;
+find_pids_for_optimistic_unchoke(_K, [], Pids) ->
+    Pids;
+find_pids_for_optimistic_unchoke(K, Eligible, Pids) ->
+    Pid = lists:nth(random:uniform(size(Eligible), Eligible)),
+    find_pids_for_optimistic_unchoke(K-1, lists:delete(Pid, Eligible), [Pid | Pids]).
+
 
 unchoke_choke_pids(_ToUnchoke, S) ->
     {ok, S}.

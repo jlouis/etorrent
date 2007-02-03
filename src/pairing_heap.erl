@@ -59,6 +59,10 @@ insert(E, P, {pairing_heap, H}) ->
 %%====================================================================
 %% Internal functions
 %%====================================================================
+
+%% These functions are mostly a basic implementation of pairing heaps
+%% without the {pairing_heap, ...} tag.
+
 heap_extract_max(H) ->
     case H of
 	empty ->
@@ -109,3 +113,4 @@ heap_mergify([H1]) ->
 heap_mergify([H1, H2 | Rest]) ->
     NH = heap_merge(H1, H2),
     heap_merge(NH, heap_mergify(Rest)).
+
