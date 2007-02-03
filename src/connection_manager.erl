@@ -24,6 +24,12 @@
 		infohash = none,
 		managed_pids = none}).
 
+-record(peer_data, {downloaded = 0,
+		    peerid = none}).
+
+-define(CHOKE_TIME, 30*1000). %% The spec hints that 30 secs is a good interval.
+-define(NON_CHOKERS, 4).
+
 %%====================================================================
 %% API
 %%====================================================================
@@ -40,7 +46,7 @@ is_not_interested(Pid, PeerId) ->
 spawn_new_torrent(Socket, FileSystem, Name, PeerId, InfoHash, S) ->
     Pid = torrent_peer:start_link(Socket, self(), FileSystem, Name, PeerId,
 				  InfoHash),
-    S#state{managed_pids = dict:store(Pid, PeerId, S#state.managed_pids)}.
+    S#state{managed_pids = dict:store(Pid, #peer_data{peerid = PeerId}, S#state.managed_pids)}.
 
 spawn_listen_accept(ListenSocket, FileSystem, PeerId, InfoHash, Name) ->
     Pid = torrent_peer:start_link(self(),
@@ -63,6 +69,7 @@ init({PortToListen, FileSystemPid, PeerId, InfoHash}) ->
 				    PeerId,
 				    InfoHash,
 				    "FOO"),
+    {ok, _} = timer:send_interval(?CHOKE_TIME, self(), process_choking),
     {ok, #state{state_table = ets:new(connection_table, []),
 		listen_socket = ListenSocket,
 		accept_pid = AcceptPid,
@@ -102,12 +109,16 @@ handle_cast({choked, PeerId}, State) ->
     {noreply, ets:insert_new(State, {PeerId, I, choked})};
 handle_cast({unchoked, PeerId}, State) ->
     [{_, I, _}] = ets:lookup(State, PeerId),
-    {noreply, ets:insert_new(State, {PeerId, I, unchoked})}.
+    {noreply, ets:insert_new(State, {PeerId, I, unchoked})};
+handle_cast({i_downloaded_data, Pid, Amount}, S) ->
+    {noreply, update_download_data(Pid, Amount, S)};
+handle_cast(process_choking, S) ->
+    {noreply, process_choke(S)}.
 
 handle_info({'EXIT', Who, Reason}, S) ->
     error_logger:error_report([Who, Reason]),
-    PeerId = dict:fetch(Who, S#state.managed_pids),
-    ets:delete(PeerId, S#state.state_table),
+    PeerState = dict:fetch(Who, S#state.managed_pids),
+    ets:delete(PeerState#peer_data.peerid, S#state.state_table),
     {noreply, S#state{managed_pids = dict:erase(Who, S#state.managed_pids)}};
 handle_info(Message, State) ->
     error_logger:error_report([Message, State]),
@@ -133,9 +144,35 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 %%% Internal functions
 %%--------------------------------------------------------------------
+process_choke(S) ->
+    UnchokePids = find_most_unchoked(?NON_CHOKERS, S),
+    OptimisticUnchokePids = find_pids_for_optimistic_unchoke(UnchokePids, S),
+    ToUnchoke = lists:concat([UnchokePids, OptimisticUnchokePids]),
+    {ok, S2} = unchoke_choke_pids(ToUnchoke, S),
+    {ok, S3} = reset_download_data(S2),
+    S3.
 
+find_most_unchoked(_Num, _S) ->
+    [].
 
+find_pids_for_optimistic_unchoke(_Unchoked, _S) ->
+    [].
 
+unchoke_choke_pids(_ToUnchoke, S) ->
+    {ok, S}.
 
+update_download_data(Pid, Amount, S) ->
+    F = fun(PeerData) ->
+		PeerData#peer_data {
+		  downloaded =
+		    PeerData#peer_data.downloaded + Amount}
+	end,
+    S#state{managed_pids = dict:update(Pid, F, S#state.managed_pids)}.
 
+reset_download_data(S) ->
+    F = fun(_Pid, PeerData) ->
+		PeerData#peer_data{downloaded = 0}
+	end,
+    NewDict = dict:map(F, S#state.managed_pids),
+    {ok, S#state{managed_pids= NewDict}}.
 
