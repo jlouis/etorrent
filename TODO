@@ -1,6 +1,4 @@
-MANTRA: Handle most of the stuff in the torrent_peer code before
-moving on to other parts. What is made here dictates the layout of the
-rest of the code.
+MANTRA: Processes are autonomous if they can be.
 
 MANTRA: ets tables have processes before them to manage them easily.
 
