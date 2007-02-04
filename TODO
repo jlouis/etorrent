@@ -8,6 +8,26 @@ UNDECIDED: Merge filesystem and piecemap into the same erlang process?
 It should only be done if piecemap is a single ets table and then it
 is not even clear it should be done.
 
+* Make torrent_piecemap request data in a rarest first scheme.
+Currently torrent_piecemap requests data in a scheme which is
+"pick-random-piece". It should use rarest first instead to drive
+up the download speed and make torrent health better.
+
+* Implement seeding
+We are not doing anything specific to take care of seeding right
+now. This must obviously be cared for.
+
+* Implement torrent_piecemap:pieces_downloaded/1
+The function asks to the piecemap what pieces we have downloaded. We
+must return a correct answer.
+
+* Implement code for putback when a connection dies.
+If a connection dies, all pieces on its request table should be
+remapped to be eligible for others to work on.
+
+* Think about generic piece/chunk management in the filesystem
+This has to be thought through!
+
 * Set torrent_id in torrent_peer
 We have added torrent_id to the torrent peer code. But we have not
 given it any value yet.
@@ -18,9 +38,6 @@ state tables that obviously needs to be managed. But it has to be
 simplified a lot. And it really can. Mapping of pids to torrents and
 peerids should be handled by a separate process which only has this as
 the primary goal.
-
-* Choke/Unchoke management
-We need to manage choke and unchoke
 
 * Filesystem management
 We need FS management

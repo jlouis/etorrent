@@ -1,7 +1,7 @@
 %%%-------------------------------------------------------------------
 %%% File    : torrent_piecemap.erl
 %%% Author  : User Jlouis <jlouis@succubus.localdomain>
-%%% Description : 
+%%% Description : Maintain a map of pieces downloaded and what is missing
 %%%
 %%% Created : 31 Jan 2007 by User Jlouis <jlouis@succubus.localdomain>
 %%%-------------------------------------------------------------------

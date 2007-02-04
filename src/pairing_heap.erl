@@ -45,8 +45,12 @@ find_max({pairing_heap, H}) ->
 %% Description: Find the maximum heap element.
 %% -------------------------------------------------------------------
 extract_max({pairing_heap, H}) ->
-    {ok, E, P, NH} = heap_extract_max(H),
-    {ok, E, P, {pairing_heap, NH}}.
+    case heap_extract_max(H) of
+	empty ->
+	    empty;
+	{ok, E, P, NH} ->
+	    {ok, E, P, {pairing_heap, NH}}
+    end.
 
 %% -------------------------------------------------------------------
 %% Function: insert(Element, Priority, heap()) -> heap()

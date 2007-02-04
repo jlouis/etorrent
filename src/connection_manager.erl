@@ -16,6 +16,9 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3]).
 
+%% Internals
+-export([process_choke/1]).
+
 -record(state, {state_table = none,
 		listen_socket = none,
 		accept_pid = none,
@@ -147,7 +150,7 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 process_choke(S) ->
     ToUnchoke = find_most_unchoked(?NON_CHOKERS, S),
-    Snubbed = ?NON_CHOKERS - size(ToUnchoke),
+    Snubbed = ?NON_CHOKERS - lists:size(ToUnchoke),
     OptimisticToUnchoke =
 	find_pids_for_optimistic_unchoke(?OPTIMISTIC_UNCHOKERS + Snubbed,
 					 ToUnchoke,
@@ -182,7 +185,7 @@ find_rest_pids(UnchokePids, S) ->
 find_n_most_downloaded(0, _, Accum) ->
     Accum;
 find_n_most_downloaded(N, UnchokeHeap, Accum) ->
-    case pairing_heap:extract_min(UnchokeHeap) of
+    case pairing_heap:extract_max(UnchokeHeap) of
 	empty ->
 	    Accum;
 	{ok, _E, 0, _NH} ->
@@ -196,7 +199,7 @@ find_pids_for_optimistic_unchoke(0, _Eligible, Pids) ->
 find_pids_for_optimistic_unchoke(_K, [], Pids) ->
     Pids;
 find_pids_for_optimistic_unchoke(K, Eligible, Pids) ->
-    Pid = lists:nth(random:uniform(size(Eligible), Eligible)),
+    Pid = lists:nth(random:uniform(lists:size(Eligible), Eligible)),
     find_pids_for_optimistic_unchoke(K-1, lists:delete(Pid, Eligible), [Pid | Pids]).
 
 unchoke_choke_pids(ToUnchoke, S) ->

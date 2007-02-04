@@ -7,7 +7,7 @@ DEBUG_FLAGS = -Ddebug +debug_info
 MODULES=bcoding dirwatcher dirwatcher_sup etorrent_app etorrent \
 	filesystem peer_communication torrent torrent_manager \
 	torrent_manager_sup torrent_peer torrent_piecemap \
-	torrent_state tracker_delegate connection_manager \
+	tracker_delegate connection_manager pairing_heap \
 	torrent_peer_send metainfo
 
 EBIN_FILES=$(MODULES:%=../ebin/%.$(EMULATOR)) ../ebin/etorrent.app
@@ -20,6 +20,9 @@ dialyzer: .dialyzer.ok
 .dialyzer.ok: $(MODULES:%=../ebin/%.$(EMULATOR))
 	dialyzer $(DIALYZER_FLAGS) -c ../ebin
 	touch .dialyzer.ok
+
+clean:
+	rm -fr $(MODULES:%=../ebin/%.$(EMULATOR))
 
 # Targets
 
@@ -34,3 +37,4 @@ dialyzer: .dialyzer.ok
 
 %.$(EMULATOR): %.erl
 	"$(ERLC)" $(ERLC_FLAGS) $<
+
