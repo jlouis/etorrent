@@ -8,47 +8,45 @@ UNDECIDED: Merge filesystem and piecemap into the same erlang process?
 It should only be done if piecemap is a single ets table and then it
 is not even clear it should be done.
 
-* Implement seeding
+GROUPS OF EFFORT:
+
+* Filesystem
+** Implement piece checking in the filesystem.
+** Think about generic piece/chunk management in the filesystem
+This has to be thought through!
+** Filesystem management
+We need FS management
+
+* Connection management
+** Implement seeding
 We are not doing anything specific to take care of seeding right
 now. This must obviously be cared for.
-
-* Implement torrent_piecemap:pieces_downloaded/1
+** Implement torrent_piecemap:pieces_downloaded/1
 The function asks to the piecemap what pieces we have downloaded. We
 must return a correct answer.
-
-* Implement code for putback when a connection dies.
+** Implement code for putback when a connection dies.
 If a connection dies, all pieces on its request table should be
 remapped to be eligible for others to work on.
-
-* Think about generic piece/chunk management in the filesystem
-This has to be thought through!
-
-* Set torrent_id in torrent_peer
+** Set torrent_id in torrent_peer
 We have added torrent_id to the torrent peer code. But we have not
 given it any value yet.
-
-* Fix connection_manager
+** Fix connection_manager
 We need to fix the state code for the connection manager. It has some
 state tables that obviously needs to be managed. But it has to be
 simplified a lot. And it really can. Mapping of pids to torrents and
 peerids should be handled by a separate process which only has this as
 the primary goal.
-
-* Filesystem management
-We need FS management
-
-* Check if a torrent is duplicate.
+** Check if a torrent is duplicate.
 We must check if a given torrent file which has just been added is a
 duplicate of a torrent we already manage. If this is the case, then we
 should just ignore it.
 
-* Reduce the number of ets tables
+* General stuff
+** Reduce the number of ets tables
 Fix and reduce the number of ets tables to a constant amount. This
 will allow us to scale into post-1000 concurrent torrents.
-
-* Add license facts
-
-* Add author facts
+** Add license facts
+** Add author facts
 
 ------------------------------------------------------------
 VERSION 2.0
