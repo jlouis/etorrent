@@ -8,11 +8,6 @@ UNDECIDED: Merge filesystem and piecemap into the same erlang process?
 It should only be done if piecemap is a single ets table and then it
 is not even clear it should be done.
 
-* Make torrent_piecemap request data in a rarest first scheme.
-Currently torrent_piecemap requests data in a scheme which is
-"pick-random-piece". It should use rarest first instead to drive
-up the download speed and make torrent health better.
-
 * Implement seeding
 We are not doing anything specific to take care of seeding right
 now. This must obviously be cared for.
@@ -54,3 +49,16 @@ will allow us to scale into post-1000 concurrent torrents.
 * Add license facts
 
 * Add author facts
+
+------------------------------------------------------------
+VERSION 2.0
+------------------------------------------------------------
+* Make torrent_piecemap request data in a rarest first scheme.
+Currently torrent_piecemap requests data in a scheme which is
+"pick-random-piece". It should use rarest first instead to drive
+up the download speed and make torrent health better.
+
+------------------------------------------------------------
+VERSION 3.0
+------------------------------------------------------------
+* Implement the fast extension.
