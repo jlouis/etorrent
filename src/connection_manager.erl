@@ -146,13 +146,14 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%--------------------------------------------------------------------
 process_choke(S) ->
-    UnchokePids = find_most_unchoked(?NON_CHOKERS, S),
-    RestPids = find_rest_pids(UnchokePids, S),
-    OptimisticUnchokePids = find_pids_for_optimistic_unchoke(?OPTIMISTIC_UNCHOKERS
-							     + (?NON_CHOKERS - size(UnchokePids)),
-							     RestPids, []),
-    ToUnchoke = lists:concat([UnchokePids, OptimisticUnchokePids]),
-    unchoke_choke_pids(ToUnchoke, S),
+    ToUnchoke = find_most_unchoked(?NON_CHOKERS, S),
+    Snubbed = ?NON_CHOKERS - size(ToUnchoke),
+    OptimisticToUnchoke =
+	find_pids_for_optimistic_unchoke(?OPTIMISTIC_UNCHOKERS + Snubbed,
+					 ToUnchoke,
+					 S),
+    Unchokers = lists:concat([ToUnchoke, OptimisticToUnchoke]),
+    unchoke_choke_pids(Unchokers, S),
     {ok, S2} = reset_download_data(S),
     S2.
 
@@ -181,8 +182,14 @@ find_rest_pids(UnchokePids, S) ->
 find_n_most_downloaded(0, _, Accum) ->
     Accum;
 find_n_most_downloaded(N, UnchokeHeap, Accum) ->
-    {ok, E, _, NH} = pairing_heap:extract_min(UnchokeHeap),
-    find_n_most_downloaded(N-1, NH, [E | Accum]).
+    case pairing_heap:extract_min(UnchokeHeap) of
+	empty ->
+	    Accum;
+	{ok, _E, 0, _NH} ->
+	    Accum;
+	{ok, E, _P, NH} ->
+	    find_n_most_downloaded(N-1, NH, [E | Accum])
+    end.
 
 find_pids_for_optimistic_unchoke(0, _Eligible, Pids) ->
     Pids;
@@ -191,7 +198,6 @@ find_pids_for_optimistic_unchoke(_K, [], Pids) ->
 find_pids_for_optimistic_unchoke(K, Eligible, Pids) ->
     Pid = lists:nth(random:uniform(size(Eligible), Eligible)),
     find_pids_for_optimistic_unchoke(K-1, lists:delete(Pid, Eligible), [Pid | Pids]).
-
 
 unchoke_choke_pids(ToUnchoke, S) ->
     ToChoke = find_rest_pids(ToUnchoke, S),
