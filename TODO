@@ -9,6 +9,9 @@ is not even clear it should be done.
 GROUPS OF EFFORT:
 
 * Filesystem
+** Implement a library piece read/write commands
+A library for finding out a set of read/write commands to issue to get
+a given piece loaded
 ** Implement piece checking in the filesystem.
 ** Think about generic piece/chunk management in the filesystem
 This has to be thought through!

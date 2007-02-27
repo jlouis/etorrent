@@ -44,6 +44,17 @@ get_pieces(Torrent) ->
 	    end
     end.
 
+
+%%--------------------------------------------------------------------
+%% Function: get_files/1
+%% Description: Get a file list from the torrent
+%%--------------------------------------------------------------------
+get_files(Torrent) ->
+    case bcoding:search_dict({string, "info"}, Torrent) of
+	{ok, D} ->
+	    ok
+    end.
+
 %%--------------------------------------------------------------------
 %% Function: get_url/1
 %% Description: Return the URL of a torrent
@@ -82,7 +93,6 @@ parse(File) ->
 	{error, Reason} ->
 	    {could_not_read_file, Reason}
     end.
-
 %%====================================================================
 %% Internal functions
 %%====================================================================

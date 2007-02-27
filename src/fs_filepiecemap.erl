@@ -38,7 +38,7 @@ construct_from(Torrent) ->
     dict:from_list(List).
 
 %% Metainfo has tools for this
-cut_files_from_torrent(_T) ->
+cut_files_from_torrent(T) ->
     ok.
 
 %% Work on each piece
