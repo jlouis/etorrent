@@ -4,5 +4,3 @@ death of a single process won't hurt everything then. If there is only
 1 filesystem, a crash means a complete restart of everything. If there
 are 1 per torrent, we only have to crash the torrent. Much less
 impact. Much better.
-
-* Test
