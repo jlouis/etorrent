@@ -7,43 +7,27 @@
 %%%-------------------------------------------------------------------
 -module(utils_test_SUITE).
 
--compile(export_all).
+-export([all/1, test_read_all_of_file/1]).
 
 -include("test_server.hrl").
-
-init_per_suite(Config) ->
-    Config.
-
-end_per_suite(_Config) ->
-    ok.
-
-init_per_testcase(_TestCase, Config) ->
-    Config.
-
-end_per_testcase(_TestCase, _Config) ->
-    ok.
 
 all(doc) ->
     ["Test the various utility functions"];
 
 all(suite) ->
-    [utils].
+    [test_read_all_of_file];
 
-utils(doc) ->
-    ["Test utility functions"];
-utils(suite) ->
-    [test_read_all_of_file].
-
+all(Config) when is_list(Config) ->
+    ok.
 %% Test cases starts here.
 %%--------------------------------------------------------------------
 test_read_all_of_file(doc) ->
-    ["Test we can read files"];
+    ["Test we can read files in full"];
 test_read_all_of_file(suite) ->
     [];
 test_read_all_of_file(Config) when is_list(Config) ->
-    ?line {ok, Data} = utils:read_all_of_file(
-			 "utils_test_SUITE_data/dummy_file.txt"),
     ?line ExpectedData = "1234567890",
+    ?line {ok, Data} = utils:read_all_of_file("utils_test_SUITE_data/dummy_file.txt"),
     ?line Data = ExpectedData,
     ok.
 

@@ -1,3 +1,4 @@
+{verbose,2}.
 {longnames,false}.
 {platform_id,"OTP R11B/Freebsd6.2/I386/Src"}.
 {platform_filename,"otp_r11b_freebsd6.2_i386_src"}.

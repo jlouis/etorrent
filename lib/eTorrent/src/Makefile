@@ -11,7 +11,7 @@ MODULES=bcoding dirwatcher dirwatcher_sup etorrent_app etorrent \
 	torrent_peer_send metainfo fs_filepiecemap utils
 
 EBIN_FILES=$(MODULES:%=../ebin/%.$(EMULATOR)) ../ebin/etorrent.app
-ERLC_FLAGS+= -W $(DEBUG_FLAGS) -pa ../../etorrent
+ERLC_FLAGS+= -W $(DEBUG_FLAGS) -pa ../../eTorrent
 
 all: $(EBIN_FILES)
 
