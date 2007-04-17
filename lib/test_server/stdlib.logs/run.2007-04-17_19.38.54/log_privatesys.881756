@@ -1,0 +1,2 @@
+*DBG* sys_SUITE_server got call {req,44} from <0.2097.3>
+*DBG* sys_SUITE_server sent {ok,-44} to <0.2097.3>, new state 1

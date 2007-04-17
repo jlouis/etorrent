@@ -1,0 +1,72 @@
+=== Suite started at 2007-04-17 18:43:06
+=== Starting test, 9 test cases
+=cases        9
+=user         jlouis
+=host         succubus
+=hosts        succubus 
+=emulator_vsn 5.5.3
+=emulator     beam
+=otp_release  R11B
+=started      2007-04-17 18:43:06
+=case    metainfo_test_SUITE:init_per_suite
+=logfile metainfo_test_suite.init_per_suite.html
+=started 2007-04-17 18:43:06
+=ended   2007-04-17 18:43:06
+=result    ok
+=elapsed   5.00000e-6
+=result   ok
+=case    metainfo_test_SUITE:all
+=logfile metainfo_test_suite.all.html
+=started 2007-04-17 18:43:06
+=ended   2007-04-17 18:43:06
+=result    failed:{metainfo_test_SUITE,all}
+=== *** FAILED *** test case 2 of 9
+=case    metainfo_test_SUITE:end_per_suite
+=logfile metainfo_test_suite.end_per_suite.html
+=started 2007-04-17 18:43:06
+=ended   2007-04-17 18:43:06
+=result    ok
+=elapsed   5.00000e-6
+=case    simple_test_SUITE:init_per_suite
+=logfile simple_test_suite.init_per_suite.html
+=started 2007-04-17 18:43:06
+=ended   2007-04-17 18:43:06
+=result    ok
+=elapsed   5.00000e-6
+=result   ok
+=case    simple_test_SUITE:all
+=logfile simple_test_suite.all.html
+=started 2007-04-17 18:43:06
+=ended   2007-04-17 18:43:06
+=result    failed:{simple_test_SUITE,all}
+=== *** FAILED *** test case 5 of 9
+=case    simple_test_SUITE:end_per_suite
+=logfile simple_test_suite.end_per_suite.html
+=started 2007-04-17 18:43:06
+=ended   2007-04-17 18:43:06
+=result    ok
+=elapsed   4.00000e-6
+=case    utils_test_SUITE:init_per_suite
+=logfile utils_test_suite.init_per_suite.html
+=started 2007-04-17 18:43:06
+=ended   2007-04-17 18:43:06
+=result    ok
+=elapsed   4.00000e-6
+=result   ok
+=case    utils_test_SUITE:all
+=logfile utils_test_suite.all.html
+=started 2007-04-17 18:43:06
+=ended   2007-04-17 18:43:06
+=result    failed:{utils_test_SUITE,all}
+=== *** FAILED *** test case 8 of 9
+=case    utils_test_SUITE:end_per_suite
+=logfile utils_test_suite.end_per_suite.html
+=started 2007-04-17 18:43:06
+=ended   2007-04-17 18:43:06
+=result    ok
+=elapsed   5.00000e-6
+=== TEST COMPLETE, 6 ok, 3 failed of 9 test cases
+=finished   2007-04-17 18:43:06
+=failed     3
+=successful 6
+=skipped    0

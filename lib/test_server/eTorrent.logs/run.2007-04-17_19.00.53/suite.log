@@ -1,0 +1,36 @@
+=== Suite started at 2007-04-17 19:00:53
+=== Starting test, 3 test cases
+=cases        3
+=user         jlouis
+=host         succubus
+=hosts        succubus 
+=emulator_vsn 5.5.3
+=emulator     beam
+=otp_release  R11B
+=started      2007-04-17 19:00:53
+=== The module metainfo_test_SUITE is not loaded
+=case    metainfo_test_SUITE:all
+=logfile metainfo_test_suite.all.html
+=started 2007-04-17 19:00:53
+=ended   2007-04-17 19:00:53
+=result    failed:{metainfo_test_SUITE,all}
+=== *** FAILED *** test case 1 of 3
+=== The module simple_test_SUITE is not loaded
+=case    simple_test_SUITE:all
+=logfile simple_test_suite.all.html
+=started 2007-04-17 19:00:53
+=ended   2007-04-17 19:00:53
+=result    failed:{simple_test_SUITE,all}
+=== *** FAILED *** test case 2 of 3
+=== The module utils_test_SUITE is not loaded
+=case    utils_test_SUITE:all
+=logfile utils_test_suite.all.html
+=started 2007-04-17 19:00:53
+=ended   2007-04-17 19:00:53
+=result    failed:{utils_test_SUITE,all}
+=== *** FAILED *** test case 3 of 3
+=== TEST COMPLETE, 0 ok, 3 failed of 3 test cases
+=finished   2007-04-17 19:00:53
+=failed     3
+=successful 0
+=skipped    0
