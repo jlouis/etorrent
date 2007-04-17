@@ -8,6 +8,8 @@ is not even clear it should be done.
 
 GROUPS OF EFFORT:
 
+* TESTS!
+
 * Filesystem
 ** Implement a library piece read/write commands
 A library for finding out a set of read/write commands to issue to get
