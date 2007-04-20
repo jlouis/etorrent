@@ -69,6 +69,8 @@ search_dict(Key, Dict) ->
 %%====================================================================
 %% Internal functions
 %%====================================================================
+
+%% Encode a string.
 encode_string(Str) ->
     L = length(Str),
     lists:concat([L, ':', Str]).
