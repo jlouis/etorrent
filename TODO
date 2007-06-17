@@ -10,16 +10,6 @@ GROUPS OF EFFORT:
 
 * TESTS!
 
-* Filesystem
-** Implement a library piece read/write commands
-A library for finding out a set of read/write commands to issue to get
-a given piece loaded
-** Implement piece checking in the filesystem.
-** Think about generic piece/chunk management in the filesystem
-This has to be thought through!
-** Filesystem management
-We need FS management
-
 * Supervisors
 It may be possible to use many more supervisor processes to keep track
 of other processes we do need.
