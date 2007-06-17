@@ -234,6 +234,10 @@ or pieces will be checked. If method 2 is chosen for piece storage, we
 need to identify read pieces. There must be some error-handling in the
 loading code, so we gracefully handle mis-loads.
 
+If a file is missing on disk, we will create it and pre-fill it with
+zeros. Hence, we have the following invariant: ``File system processes
+can assume there is access to the needed files''.
+
 \subsection{Handling checksum read errors}
 What happens when a checksum read reports an error? There are 2 causes
 for this: Disk corruption and a system crash/reset. The most probable
@@ -253,10 +257,31 @@ A central problem to the eTorrent project is the File system. The
 filesystem processes must be split because the death of one of them
 must not take all torrents down. It would rather bad architecture.
 
-\subsection{General idea}
-TODO
+\subsection{Processses}
+\subsubsection{File process}
+For each file which is managed, there is a process which is termed the
+``file process''. This process is responsible for managing the file
+reads and writes. It has a very simple interface by which it accepts
+read and write operations on the file given by byte offset and number
+of bytes to read/write. It also contains a timeout for when no-one has
+requested any data on the file for some time in which case it closes
+down gracefully.
 
-\subsection{File descriptor replacement}
+\subsubsection{General idea}
+For each torrent, there is a managing proces. This process is
+responsible for managing the torrents access to the disk. The
+management process is created when a given torrent has been processed
+for checksumming and is handed its status upon spawn-time.
+
+There are 2 main functions that the management process accepts:
+\texttt{read\_piece} and \texttt{write\_piece}. Upon getting a read or
+write request the process will look if there is a file process serving
+already. If not, it will spawn one and ask it to read/write the data
+in question. The process is linked to the file processes, so if any of
+these dies, we know it and can act accordingly by cleaning up our map
+of files and $pid$s.
+
+\subsubsection{File descriptor replacement}
 We want a simple algorithm for replacing file descriptors. A very way
 which is possible in erlang is to let each file be managed by a
 process. This process has a timeout on its main retrieval which will
@@ -266,7 +291,13 @@ have an LRU structure for the files. Thus file-descriptor processes can be
 purged if some new files has to be opened, but they auto-purge if
 no-one uses them.
 
-
+Ergo, whenever a file process is spawned, the LRU process is informed
+about it. It can then ask for a close of a given process if it runs
+out of file descriptors.
+\begin{remark}
+  This is a long term optimization. It should not be implemented in
+  the first release.
+\end{remark}
 
 \end{document}
 
