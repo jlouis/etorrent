@@ -1,6 +1,0 @@
--module(tmp).
--include_lib("stdlib/include/ms_transform.hrl").
--export([tmp/0]).
--record(a,{a,b}).
-tmp() ->
-dbg:fun2ms(fun([a,b] = A) -> A end).

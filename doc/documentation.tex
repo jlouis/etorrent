@@ -1,0 +1,276 @@
+\documentclass[a4paper]{report}
+\usepackage{amsmath}
+\usepackage{amssymb}
+
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}{Lemma}
+\newtheorem{example}{Example}
+\newtheorem{remark}{Remark}
+
+\begin{document}
+\tableofcontents{}
+
+\section{Introduction}
+Why write a complete analysis and documentation on the software? This
+is normally not the way Open Source software is written. Rather than
+sit down and think it seems most people are happy with writing code
+and let the code be documentation of what to do. But the problem with
+that approach is that I hop on-and-off on this project. It makes it
+impossible to do ad-hoc development.
+
+When you grow up, it becomes clear that writing extensive
+documentation for a piece of software gives a much better
+result. Documentation is key to correct and elegant
+software. Documentation is key to extensive analysis before
+code. Thus, we must write documentation.
+
+\chapter{Requirements}
+\label{chap:requirements}
+
+The plan is to build a Bittorrent client. What will set this client
+off from other clients is the fault-tolerance of the client. In
+general, it should not be possible to take the client down, even in
+the case of errors in the client, on the disk, system crashes etc.
+
+\paragraph{Fault tolerance} The client should be fault-tolerant. In
+general, if any part of the client has an error, it must not result in
+the client being brought down. The client should also be able to
+recover fast from such an error.
+
+The client should avoid disk-corruption at all costs. It is accepted
+if the client assumes the underlying operating system does not corrupt
+the disk.
+
+\paragraph{Unattended operation} The client must run unattended. The
+interface to the client is a directory hierachy: Torrent files in the
+hierachy are downloaded and when a file is removed, it is
+stopped. There are no requirement for an interactive interface.
+
+\paragraph{Performance} The client should run at an adequate speed. It
+should be able to run up to the usual limits of Disk I/O. The client
+should not pursue speed aggressively, use rtorrent for that. The
+client must be able to serve a large number of simultaneous
+torrents. We aim for thousands of torrents served at the same time, if
+the server is large enough. There are 3 iterations: 1 torrent, 100
+torrents and 1000 torrents which must be achieved in order in
+releases of the software.
+
+\chapter{Analysis}
+\section{Pieces}
+Pieces are the central elements we exchange between peers. A Torrent
+file consists of several pieces. Each are identified by a natural
+number indexed at $1$. This identification serves as the primary key
+in our implementation. Several informations are linked to the primary
+key. First, each piece has a size. This is important, since the last
+piece rarely have the size as the other pieces. Second, pieces have
+binary data associated with them of the given size. Third, this data
+has a checksum. Finally, the piece is mapped into a list of triples,
+$(path, offset, length)$ which designates to where the piece should
+go.
+\begin{example}
+  A simple piece could have a list like the following:
+\begin{verbatim}
+[{foo, 10, 20},
+ {bar, 30, 50}]
+\end{verbatim}
+It should be interpreted as if we should write 20 bytes to
+\texttt{foo} at offset 10 and then write 50 bytes to \texttt{bar} at
+offset 30.
+\end{example}
+\begin{remark}
+  Invariant: The sum of the sizes in the list of where the piece is
+  stored should be equal to the size of the piece.
+\end{remark}
+
+\paragraph{On piece size}
+It seems correct to keep track of piece size all over the
+system. First, if we run several torrents, they may have different
+piece sizes. Second, it will greatly reduce the need to take special
+care of the last piece.
+
+\paragraph{On piece checksum}
+We should always checksum a piece which has been read. First, it alleviates
+disk-corruption. A corrupted piece can then never be transmitted over
+the network. Second, it is cheap to check a piece in memory. Third, it
+serves as a great assertion invariant in the system: All written
+pieces should preserve their checksum when read.
+
+When writing a piece, it should be checked as well. There is no
+thought in writing something which became accidentally corrupted. As
+we mostly retrieve the binary data associated with a piece from a
+peer, we really have no control over its correctness, so checked it
+must be.
+
+\section{Filesystem interaction}
+\subsection{Piece serving}
+When we wish to serve a piece from disk, we must carry out a number of
+operations: We must locate the piece on disk. We must load it into
+memory and we must break it up so it can be sent to the peer who
+requested it.
+
+Locating a piece is piece number. If we have the piece
+number, we deduce the files which comprises the piece in question and
+the (offsets, lengths) we have to read inside them. In other
+words, let $pids$ be piece identifications. Further, let $path$ be a
+file system path (UNIX notation). Finally, let $offset, length \in
+\mathbb{N}$. We have the function:
+\begin{equation*}
+  \mathtt{locate\_piece} \colon (pid) \to (path, offset, length)\; list
+\end{equation*}
+
+Then, when the piece is located, we must load it. Assume the existence
+of a function that can read pieces
+\begin{equation*}
+  \mathtt{read\_piece} \colon (path, offset, length) \; list \to
+  binary
+\end{equation*}
+where $binary$ is binary data. When data has been read, we check
+its cryptographic checksum. If the check doesn't match at this point,
+we have an error situation which must be handled appropriately.
+
+Then the checksummed piece is sent to the process responsible for peer
+communication. Since peers can choose their block size as they see
+fit, the cut operation must not be handled centrally, but at the peer
+communication process.
+
+\subsection{Piece retrieval}
+
+When we get a piece from a peer, we begin by making a checksum
+check. If this check fails, we answer the peer communication process
+with an error and note it gave us a bad piece. This can be used by the
+piece communication process to mark its peer ``dirty'' and eventually
+for disconnecting and blacklisting.
+
+If the piece is ok, we look up the checksum in the map of
+checksums. It must match the identification of the piece. If not, it
+is an error as well. If both the checksum and identification matches,
+we will store the piece.
+
+There are several storage methods available to our disposal:
+
+\paragraph{Method 1}
+Create all files. Use the system call \texttt{fseek(3)} to
+fast-forward to the point in the file we want to write and write down
+the piece at its correct slot.
+
+The advantage of this approach is simplicity. It is easy to
+implement. It may introduce sparse files however. We may also pre-fill
+all files with an amount of zeros to avoid the sparse file
+production. However, this will be a problem because it takes time and
+it introduces files on-disk essentially without
+information. Pre-filling ensures that the file can always be written
+irregardless of free-space however.
+
+We note that the Azureus client seems to be using an approach like
+this.
+
+\paragraph{Method 2}
+Write the file contigously. Call the on-disk piece locations for
+slots. Then we first write to slot 1, then slot 2, then slot 3 and so
+forth. Pieces are written as they come in, so they may not be written
+in the correct slots in the first place.
+
+This can be alleviated by using a sorting algorithm on the
+pieces. There are several applicable sorting algorithms. A simple
+solution would be exchanging selection:
+
+Assume the pieces $1$ through $n$ are sorted correctly. We write
+pieces contigously to slot $n+1, n+2, \dotsc$. When piece $n+1$ is
+retrieved, we exchange the piece in slot $n+1$ with this new piece. To
+do this safely, we use a free slot on-disk as a temporary variable and
+ensure we copy the piece out of slot $n+1$ first. Thus, a crash will
+not result in the loss of data. Note that we then have pieces $1$
+through $n+1$ placed correctly. We then run again for slot $n+2$ which
+we may have already retrieved. The question is how many exchanges this
+makes as disk I/O is pretty heavy and a major limiting factor in
+BitTorrent clients.
+
+For a slot there are a maximum of 3 writes: One for the contiguous
+write, one when the piece that fits gets written and one for making
+place for the fitting piece. Thus, the algorithm is $\mathcal{O}(n)$
+with a constant factor of around 3.
+
+The original bittorrent client by Bram Cohen uses a variant of this
+approach.
+
+\paragraph{Method 3}
+Use \texttt{mmap(2)}. A file is mapped into memory at a given
+location. Writes are done to memory and the operating system is
+responsible for letting the write go to the disk at the correct
+location by the virtual memory subsystem. This is extremely easy. It
+is fast as well, but there are a couple of limitations.
+
+In a 32-bit architecture, we don't have enough memory to keep
+several gigabytes of data mapped in. Hence, we will either need to use
+a pure 64-bit operating system or we will need to devise an algorithm
+for mapping parts of files in and out. We need to do this anyway,
+since we can't expect to map several file descriptors at the same
+time.
+
+Rtorrent is using this approach.
+
+\paragraph{Method 4}
+Use internal storage. We can choose to represent the data internally
+in a on-disk persistent format. Then, when we have the whole file, we
+can write it out. Each piece will get written exactly 2 times, so it
+may seem to be better than method number 2. On the other hand, there
+are problems with the method: We can't look at data until everything
+is downloaded.
+
+\paragraph{Discussion}
+My intuition tells me, that method 1 with pre-fill is the easiest to
+implement. Thus, we choose to implement that solution first. We can
+change to another method later, when the client basics are there and
+works.
+
+\subsection{What to do at startup?}
+When the system starts, we have no idea of what we have piece-wise of
+a torrent. Hence, we must halt all communication with others until we
+know what pieces we have and what pieces we miss. We will check one
+torrent at a time, which will require some control.
+
+For each torrent, we will begin loading in pieces. Either pieces fail,
+or pieces will be checked. If method 2 is chosen for piece storage, we
+need to identify read pieces. There must be some error-handling in the
+loading code, so we gracefully handle mis-loads.
+
+\subsection{Handling checksum read errors}
+What happens when a checksum read reports an error? There are 2 causes
+for this: Disk corruption and a system crash/reset. The most probable
+is that the system was reset. Thus, we mark the piece as bad and
+ignore it as if it did not exist. Done correctly, it seems we can then
+continue running.
+
+Disk corruption is much more fatal. We will assume data is not
+corrupted on the disk. Modern file systems like ZFS (see \cite{zfs}),
+will carry out checks of all read blocks and thus it is near
+impossible to have disk corruption in such a scheme.
+
+\section{Peer processes}
+\chapter{Programming planning}
+\section{Filesystem}
+A central problem to the eTorrent project is the File system. The
+filesystem processes must be split because the death of one of them
+must not take all torrents down. It would rather bad architecture.
+
+\subsection{General idea}
+TODO
+
+\subsection{File descriptor replacement}
+We want a simple algorithm for replacing file descriptors. A very way
+which is possible in erlang is to let each file be managed by a
+process. This process has a timeout on its main retrieval which will
+make it close down if no operations have been served for some time. A
+main process will keep track of all file processes and it will also
+have an LRU structure for the files. Thus file-descriptor processes can be
+purged if some new files has to be opened, but they auto-purge if
+no-one uses them.
+
+
+
+\end{document}
+
+%%% Local Variables: 
+%%% mode: latex
+%%% TeX-master: t
+%%% End: 
