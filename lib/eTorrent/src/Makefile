@@ -8,7 +8,8 @@ MODULES=bcoding dirwatcher dirwatcher_sup etorrent_app etorrent \
 	filesystem peer_communication torrent torrent_manager \
 	torrent_manager_sup torrent_peer torrent_piecemap \
 	tracker_delegate connection_manager pairing_heap \
-	torrent_peer_send metainfo fs_filepiecemap utils
+	torrent_peer_send metainfo fs_filepiecemap utils \
+	file_process
 
 EBIN_FILES=$(MODULES:%=../ebin/%.$(EMULATOR)) ../ebin/etorrent.app
 ERLC_FLAGS+= -W $(DEBUG_FLAGS) -pa ../../eTorrent
