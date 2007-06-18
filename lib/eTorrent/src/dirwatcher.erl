@@ -40,7 +40,7 @@ init([Dir]) ->
     {ok, #state{dir = Dir, fileset = empty_state()}}.
 
 handle_call(report_on_files, _Who, S) ->
-    {reply, sets:to_list(S#state.fileset)};
+    {reply, sets:to_list(S#state.fileset), S};
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
