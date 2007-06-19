@@ -48,8 +48,9 @@ handle_cast(_Msg, State) ->
 %%                                       {stop, Reason, State}
 %% Description: Handling all non call/cast messages
 %%--------------------------------------------------------------------
-handle_info({'EXIT', Pid}, State) ->
-    {noprely, remove_file_process(Pid, State)};
+handle_info({'EXIT', Pid}, S) ->
+    Nd = remove_file_process(Pid, S#state.file_process_dict),
+    {noreply, S#state { file_process_dict = Nd }};
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -74,15 +75,43 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%--------------------------------------------------------------------
 
-read_pieces_and_assemble(_FilesToRead, _S) ->
-    none.
+create_file_process(Path, S) ->
+    Pid = file_process:start_link(Path),
+    NewDict = dict:store(Path, Pid, S#state.file_process_dict),
+    {ok, Pid, S#state{ file_process_dict = NewDict }}.
 
-write_piece_data(_Data, _FilesToWrite, _S) ->
-    none.
+read_pieces_and_assemble([], FileData, S) ->
+    {ok, list_to_binary(lists:reverse(FileData)), S};
+read_pieces_and_assemble([{Path, Offset, Size} | Rest], Done, S) ->
+    case dict:find(Path, S#state.file_process_dict) of
+	{ok, Pid} ->
+	    {ok, Data} = file_process:get_data(Pid, Offset, Size),
+	    read_pieces_and_assemble(Rest, [Data | Done], S);
+	error ->
+	    {ok, Pid, NS} = create_file_process(Path, S),
+	    {ok, Data} = file_process:get_data(Pid, Offset, Size),
+	    read_pieces_and_assemble(Rest, [Data | Done], NS)
+    end.
+
+write_piece_data(Data, [], S) ->
+    0 = size(Data),
+    {ok, S};
+write_piece_data(Data, [{Path, Offset, Size} | Rest], S) ->
+    Bytes = Size * 8,
+    <<Chunk:Bytes, Remaining>> = Data,
+    case dict:fetch(Path, S#state.file_process_dict) of
+	{ok, Pid} ->
+	    ok = file_process:put_data(Pid, Chunk, Offset, Size),
+	    write_piece_data(Remaining, Rest, S);
+	error ->
+	    {ok, Pid, NS} = create_file_process(Path, S),
+	    ok = file_process:put_data(Pid, Chunk, Offset, Size),
+	    write_piece_data(Remaining, Rest, NS)
+    end.
 
 read_piece(PieceNum, S) ->
     FilesToRead = dict:fetch(PieceNum, S#state.file_dict),
-    {ok, Data, NS} = read_pieces_and_assemble(FilesToRead, S),
+    {ok, Data, NS} = read_pieces_and_assemble(FilesToRead, [], S),
     {reply, {ok, Data}, NS}.
 
 write_piece(PieceNum, Data, S) ->
@@ -90,8 +119,8 @@ write_piece(PieceNum, Data, S) ->
     {ok, NS} = write_piece_data(Data, FilesToWrite, S),
     {reply, ok, NS}.
 
-remove_file_process(Pid, State) ->
-    erase_value(Pid, State#state.file_process_dict).
+remove_file_process(Pid, Dict) ->
+    erase_value(Pid, Dict).
 
 erase_value(Value, Dict) ->
     Pred = fun(_K, V) ->
