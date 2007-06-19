@@ -273,13 +273,19 @@ responsible for managing the torrents access to the disk. The
 management process is created when a given torrent has been processed
 for checksumming and is handed its status upon spawn-time.
 
+When spawned, we get a mapping between piece identifications and the
+files we need to read from/write to in order to get the piece loaded
+or saved. We use this mapping for lookup in the code.
+
 There are 2 main functions that the management process accepts:
 \texttt{read\_piece} and \texttt{write\_piece}. Upon getting a read or
 write request the process will look if there is a file process serving
 already. If not, it will spawn one and ask it to read/write the data
 in question. The process is linked to the file processes, so if any of
 these dies, we know it and can act accordingly by cleaning up our map
-of files and $pid$s.
+of files and $pid$s. Since a file process exists when it has done
+nothing for some time, it is expected that we will use this feature
+quite much.
 
 \subsubsection{File descriptor replacement}
 We want a simple algorithm for replacing file descriptors. A very way
