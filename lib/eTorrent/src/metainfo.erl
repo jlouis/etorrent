@@ -11,7 +11,7 @@
 
 %% API
 -export([get_piece_length/1, get_pieces/1, get_url/1, get_infohash/1,
-	 parse/1]).
+	 parse/1, get_files/1]).
 
 %%====================================================================
 %% API
@@ -51,8 +51,8 @@ get_pieces(Torrent) ->
 %%--------------------------------------------------------------------
 get_files(Torrent) ->
     case bcoding:search_dict({string, "info"}, Torrent) of
-	{ok, D} ->
-	    ok
+	{ok, _D} ->
+	    returns_wrong_info
     end.
 
 %%--------------------------------------------------------------------
