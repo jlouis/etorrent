@@ -11,7 +11,7 @@
 
 %% API
 -export([get_piece_length/1, get_pieces/1, get_url/1, get_infohash/1,
-	 parse/1, get_files/1]).
+	 parse/1, get_files/1, get_name/1]).
 
 %%====================================================================
 %% API
@@ -22,38 +22,34 @@
 %% Description: Search a torrent file, return the piece length
 %%--------------------------------------------------------------------
 get_piece_length(Torrent) ->
-    case bcoding:search_dict({string, "info"}, Torrent) of
-	{ok, D} ->
-	    case bcoding:search_dict({string, "piece length"}, D) of
-		{ok, {integer, Size}} ->
-		    Size
-	    end
-    end.
+    {integer, Size} = find_target(get_info(Torrent), "piece length"),
+    Size.
 
 %%--------------------------------------------------------------------
 %% Function: get_pieces/1
 %% Description: Search a torrent, return pieces as a list
 %%--------------------------------------------------------------------
 get_pieces(Torrent) ->
-    case bcoding:search_dict({string, "info"}, Torrent) of
-	{ok, D} ->
-	    case bcoding:search_dict({string, "pieces"}, D) of
-		{ok, {string, Ps}} ->
-		    lists:map(fun(Str) -> list_to_binary(Str) end,
-			      split_into_chunks(20, [], Ps))
-	    end
+    case find_target(get_info(Torrent), "pieces") of
+	{string, Ps} ->
+	    lists:map(fun(Str) -> list_to_binary(Str) end,
+		      split_into_chunks(20, [], Ps))
     end.
-
 
 %%--------------------------------------------------------------------
 %% Function: get_files/1
 %% Description: Get a file list from the torrent
 %%--------------------------------------------------------------------
 get_files(Torrent) ->
-    case bcoding:search_dict({string, "info"}, Torrent) of
-	{ok, _D} ->
-	    returns_wrong_info
-    end.
+    find_target(get_info(Torrent), "files").
+
+%%--------------------------------------------------------------------
+%% Function: get_files/1
+%% Description: Get the name of a torrent
+%%--------------------------------------------------------------------
+get_name(Torrent) ->
+    {string, N} = find_target(get_info(Torrent), "name"),
+    N.
 
 %%--------------------------------------------------------------------
 %% Function: get_url/1
@@ -96,6 +92,15 @@ parse(File) ->
 %%====================================================================
 %% Internal functions
 %%====================================================================
+find_target(D, Name) ->
+    case bcoding:search_dict({string, Name}, D) of
+	{ok, X} ->
+	    X
+    end.
+
+get_info(Torrent) ->
+    find_target(Torrent, "info").
+
 
 split_into_chunks(_N, Accum, []) ->
     Accum;
