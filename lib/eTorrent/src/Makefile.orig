@@ -1,0 +1,3 @@
+all:
+	latex synopsis.tex
+	latex synopsis.tex
