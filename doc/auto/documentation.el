@@ -10,8 +10,12 @@
     (TeX-run-style-hooks
      "amssymb"
      "amsmath"
+     "microtype"
+     "charter"
+     "fontenc"
+     "T1"
      "latex2e"
-     "rep10"
-     "report"
+     "memoir10"
+     "memoir"
      "a4paper")))
 
