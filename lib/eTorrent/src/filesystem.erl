@@ -93,9 +93,6 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 %%% Internal functions
 %%--------------------------------------------------------------------
-build_piecemap(Pieces) ->
-    ZL = lists:zip(lists:seq(1, length(Pieces)), Pieces),
-    dict:from_list(ZL).
 
 
 
