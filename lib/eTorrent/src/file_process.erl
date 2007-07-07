@@ -20,7 +20,8 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3]).
 
--record(state, {iodev = none}).
+-record(state, {path = none,
+		iodev = none}).
 
 % If no request has been recieved in this interval, close the server.
 -define(REQUEST_TIMEOUT, 60000).
@@ -47,7 +48,8 @@ put_data(Pid, Chunk, Offset, _Size) ->
 init([Path]) ->
     case file:open(Path, [read, write, binary, raw]) of
 	{ok, IODev} ->
-	    {ok, #state{iodev = IODev}, ?REQUEST_TIMEOUT};
+	    {ok, #state{iodev = IODev,
+		        path = Path}, ?REQUEST_TIMEOUT};
 	{error, Reason} ->
 	    {stop, Reason}
     end.
@@ -122,7 +124,8 @@ read_request(Offset, Size, State) ->
     case file:position(State#state.iodev, Offset) of
 	{error, PosixReason} ->
 	    {pos_error, PosixReason};
-	{ok, _NP} ->
+	{ok, NP} ->
+	    Offset = NP,
 	    case file:read(State#state.iodev, Size) of
 		{error, Reason} ->
 		    {read_error, Reason};
