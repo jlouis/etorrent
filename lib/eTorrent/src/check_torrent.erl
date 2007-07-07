@@ -34,14 +34,13 @@ check_torrent(Path) ->
 
 check_torrent_contents(FileDict) ->
     {ok, FileChecker} = file_system:start_link(FileDict),
-    dict:fold(fun (PN, {Hash, _Ops}, ok) ->
-		      {ok, Data} = file_system:read_piece(FileChecker, PN),
-		      io:format("~B: ~s <> ~s~n~n", [PN, Hash, crypto:sha(Data)]),
-		      %Hash = crypto:sha(Data),
-		      ok
-	      end,
-	      ok,
-	      FileDict),
+    dict:fold(fun (PN, {Hash, Ops}, ok) ->
+ 		      {ok, Data} = file_system:read_piece(FileChecker, PN),
+		      Hash = crypto:sha(Data),
+ 		      ok
+ 	      end,
+ 	      ok,
+ 	      FileDict),
     file_system:stop(FileChecker),
     ok.
 
@@ -106,9 +105,10 @@ construct_fpmap([], _O, _P, _LPS, _Pieces, _D) ->
 construct_fpmap(FileList, Offset, PieceSize, LastPieceSize,
 		[{Num, Hash}], Done) -> % Last piece
     {ok, FL, OS, Ops} = extract_piece(LastPieceSize, FileList, Offset, []),
-    construct_fpmap(FL, OS, PieceSize, LastPieceSize, [], [{Num, {Hash, Ops}} | Done]);
+    construct_fpmap(FL, OS, PieceSize, LastPieceSize, [],
+		    [{Num, {Hash, lists:reverse(Ops)}} | Done]);
 construct_fpmap(FileList, Offset, PieceSize, LastPieceSize,
 		[{Num, Hash} | Ps], Done) ->
     {ok, FL, OS, Ops} = extract_piece(PieceSize, FileList, Offset, []),
     construct_fpmap(FL, OS, PieceSize, LastPieceSize, Ps,
-		    [{Num, {Hash, Ops}} | Done]).
+		    [{Num, {Hash, lists:reverse(Ops)}} | Done]).
