@@ -28,11 +28,18 @@ check_torrent(Path) ->
 		  end,
 		  Files),
     size_check_files(FilesToCheck),
-    FileDict = build_dictionary_on_files(Torrent, FilesToCheck),
+    {ok, FileDict} =
+	build_dictionary_on_files(Torrent, FilesToCheck),
     check_torrent_contents(FileDict).
 
 check_torrent_contents(FileDict) ->
     {ok, FileChecker} = file_system:start_link(FileDict),
+    dict:fold(fun (PN, {_Hash, _Ops}, ok) ->
+		      {ok, _Data} = file_system:read_piece(FileChecker, PN),
+		      ok
+	      end,
+	      ok,
+	      FileDict),
     file_system:stop(FileChecker),
     ok.
 
