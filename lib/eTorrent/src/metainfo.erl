@@ -103,7 +103,7 @@ get_info(Torrent) ->
 
 
 split_into_chunks(_N, Accum, []) ->
-    Accum;
+    lists:reverse(Accum);
 split_into_chunks(N, Accum, String) ->
     {Chunk, Rest} = lists:split(N, String),
     split_into_chunks(N, [Chunk | Accum], Rest).
