@@ -99,7 +99,6 @@ handle_info(Info, State) ->
     {noreply, State}.
 
 terminate(_Reason, State) ->
-    io:format("Terminating...~n"),
     file:close(State#state.iodev),
     ok.
 
