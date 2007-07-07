@@ -11,7 +11,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/1, stop/1]).
+-export([start_link/1, stop/1, read_piece/2, write_piece/3]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -29,6 +29,12 @@ start_link(FileDict) ->
 stop(Pid) ->
     gen_server:cast(Pid, stop).
 
+read_piece(Pid, Pn) ->
+    gen_server:call(Pid, {read_piece, Pn}).
+
+write_piece(Pid, Pn, Data) ->
+    gen_server:call(Pid, {write_piece, Pn, Data}).
+
 %%====================================================================
 %% gen_server callbacks
 %%====================================================================
@@ -37,10 +43,14 @@ init([FileDict]) ->
     {ok, #state{file_dict = FileDict,
 	        file_process_dict = dict:new() }}.
 
-handle_call({read_piece, PieceNum}, _From, State) ->
-    read_piece(PieceNum, State);
-handle_call({write_piece, PieceNum, Data}, _From, State) ->
-    write_piece(PieceNum, Data, State).
+handle_call({read_piece, PieceNum}, _From, S) ->
+    {_Hash, FilesToRead} = dict:fetch(PieceNum, S#state.file_dict),
+    {ok, Data, NS} = read_pieces_and_assemble(FilesToRead, [], S),
+    {reply, {ok, Data}, NS};
+handle_call({write_piece, PieceNum, Data}, _From, S) ->
+    {_Hash, FilesToWrite} = dict:fetch(PieceNum, S#state.file_dict),
+    {ok, NS} = write_piece_data(Data, FilesToWrite, S),
+    {reply, ok, NS}.
 
 handle_cast(stop, S) ->
     {stop, normal, S};
@@ -79,9 +89,8 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 %%% Internal functions
 %%--------------------------------------------------------------------
-
 create_file_process(Path, S) ->
-    Pid = file_process:start_link(Path),
+    {ok, Pid} = file_process:start_link(Path),
     NewDict = dict:store(Path, Pid, S#state.file_process_dict),
     {ok, Pid, S#state{ file_process_dict = NewDict }}.
 
@@ -114,15 +123,6 @@ write_piece_data(Data, [{Path, Offset, Size} | Rest], S) ->
 	    write_piece_data(Remaining, Rest, NS)
     end.
 
-read_piece(PieceNum, S) ->
-    FilesToRead = dict:fetch(PieceNum, S#state.file_dict),
-    {ok, Data, NS} = read_pieces_and_assemble(FilesToRead, [], S),
-    {reply, {ok, Data}, NS}.
-
-write_piece(PieceNum, Data, S) ->
-    FilesToWrite = dict:fetch(PieceNum, S#state.file_dict),
-    {ok, NS} = write_piece_data(Data, FilesToWrite, S),
-    {reply, ok, NS}.
 
 remove_file_process(Pid, Dict) ->
     erase_value(Pid, Dict).
