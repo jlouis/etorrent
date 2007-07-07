@@ -67,7 +67,7 @@ init([Path]) ->
 handle_call({read_request, OffSet, Size}, _From, State) ->
     case read_request(OffSet, Size, State) of
 	{ok, Data} ->
-	    {reply, {ok, Data}, State};
+	    {reply, {ok, Data}, State, ?REQUEST_TIMEOUT};
 	{pos_error, E} ->
 	    {stop, E, error, State};
 	{read_error, E} ->
@@ -76,7 +76,7 @@ handle_call({read_request, OffSet, Size}, _From, State) ->
 handle_call({write_request, OffSet, Data}, _From, S) ->
     case write_request(OffSet, Data, S) of
 	ok ->
-	    {reply, ok, S};
+	    {reply, ok, S, ?REQUEST_TIMEOUT};
 	{pos_error, E} ->
 	    {stop, E, error, S};
 	{write_error, E} ->
@@ -90,14 +90,16 @@ handle_call({write_request, OffSet, Data}, _From, S) ->
 %% Description: Handling cast messages
 %%--------------------------------------------------------------------
 handle_cast(_Msg, State) ->
-    {noreply, State}.
+    {noreply, State, ?REQUEST_TIMEOUT}.
 
 handle_info(timeout, State) ->
-    {stop, timeout_request_recieved, State};
-handle_info(_Info, State) ->
+    {stop, shutdown, State};
+handle_info(Info, State) ->
+    io:format("Unknown: ~w", [Info]),
     {noreply, State}.
 
 terminate(_Reason, State) ->
+    io:format("Terminating...~n"),
     file:close(State#state.iodev),
     ok.
 
