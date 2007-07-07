@@ -80,6 +80,7 @@ parse(File) ->
     case file:open(File, [read]) of
 	{ok, IODev} ->
 	    Data = read_data(IODev),
+	    ok = file:close(IODev),
 	    case bcoding:decode(Data) of
 		{ok, Torrent} ->
 		    {ok, Torrent};
