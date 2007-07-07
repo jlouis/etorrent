@@ -128,7 +128,7 @@ decode_integer(String) ->
 
 decode_list(String) ->
     {ItemTree, Rest} = decode_list_items(String, []),
-    {{list, ItemTree}, Rest}.
+    {{list, lists:reverse(ItemTree)}, Rest}.
 
 decode_list_items([], Accum) -> {Accum, []};
 decode_list_items(Items, Accum) ->
