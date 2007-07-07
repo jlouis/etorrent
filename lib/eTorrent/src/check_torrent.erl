@@ -18,14 +18,23 @@ check_torrent(Path) ->
 
     {list, Files} = metainfo:get_files(Torrent),
     Name = metainfo:get_name(Torrent),
-    FilesToCheck = lists:map(fun (E) ->
-				     {Filename, Size} = report_files(E),
-				     io:format("Found ~s at length ~B~n", [Filename, Size]),
-				     {string:concat(string:concat(Name, "/"), Filename), Size}
-			     end,
-			     Files),
+    FilesToCheck =
+	lists:map(fun (E) ->
+			  {Filename, Size} = report_files(E),
+			  io:format("Found ~s at length ~B~n",
+				    [Filename, Size]),
+			  {string:concat(string:concat(Name, "/"), Filename),
+			   Size}
+		  end,
+		  Files),
     size_check_files(FilesToCheck),
-    build_dictionary_on_files(Torrent, FilesToCheck).
+    FileDict = build_dictionary_on_files(Torrent, FilesToCheck),
+    check_torrent_contents(FileDict).
+
+check_torrent_contents(FileDict) ->
+    {ok, FileChecker} = file_system:start_link(FileDict),
+    file_system:stop(FileChecker),
+    ok.
 
 size_check_files(Entries) ->
     lists:map(fun ({Pth, ISz}) ->
@@ -72,20 +81,25 @@ extract_piece(Left, [{Pth, Sz} | R], Offset, Building) ->
     case (Sz - Offset) > Left of
 	true ->
 	    % There is enough bytes left in Pth
-	    {ok, [{Pth, Sz} | R], Offset+Left, [{Pth, Offset, Left} | Building]};
+	    {ok, [{Pth, Sz} | R], Offset+Left, 
+	     [{Pth, Offset, Left} | Building]};
 	false ->
 	    % There is not enough space left in Pth
 	    BytesWeCanGet = Sz - Offset,
-	    extract_piece(Left - BytesWeCanGet, R, 0, [{Pth, Offset, BytesWeCanGet} | Building])
+	    extract_piece(Left - BytesWeCanGet, R, 0,
+			  [{Pth, Offset, BytesWeCanGet} | Building])
     end.
 
 construct_fpmap([], _Offset, _PieceSize, _LPS, [], Done) ->
     {ok, dict:from_list(Done)};
 construct_fpmap([], _O, _P, _LPS, _Pieces, _D) ->
     error_more_pieces;
-construct_fpmap(FileList, Offset, PieceSize, LastPieceSize, [{Num, Hash}], Done) -> % Last piece
+construct_fpmap(FileList, Offset, PieceSize, LastPieceSize,
+		[{Num, Hash}], Done) -> % Last piece
     {ok, FL, OS, Ops} = extract_piece(LastPieceSize, FileList, Offset, []),
     construct_fpmap(FL, OS, PieceSize, LastPieceSize, [], [{Num, {Hash, Ops}} | Done]);
-construct_fpmap(FileList, Offset, PieceSize, LastPieceSize, [{Num, Hash} | Ps], Done) ->
+construct_fpmap(FileList, Offset, PieceSize, LastPieceSize,
+		[{Num, Hash} | Ps], Done) ->
     {ok, FL, OS, Ops} = extract_piece(PieceSize, FileList, Offset, []),
-    construct_fpmap(FL, OS, PieceSize, LastPieceSize, Ps, [{Num, {Hash, Ops}} | Done]).
+    construct_fpmap(FL, OS, PieceSize, LastPieceSize, Ps,
+		    [{Num, {Hash, Ops}} | Done]).

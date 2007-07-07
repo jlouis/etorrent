@@ -11,7 +11,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/1]).
+-export([start_link/1, stop/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -26,6 +26,9 @@
 start_link(FileDict) ->
     gen_server:start_link(?MODULE, [FileDict], []).
 
+stop(Pid) ->
+    gen_server:cast(Pid, stop).
+
 %%====================================================================
 %% gen_server callbacks
 %%====================================================================
@@ -39,6 +42,8 @@ handle_call({read_piece, PieceNum}, _From, State) ->
 handle_call({write_piece, PieceNum, Data}, _From, State) ->
     write_piece(PieceNum, Data, State).
 
+handle_cast(stop, S) ->
+    {stop, normal, S};
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
