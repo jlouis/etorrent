@@ -44,11 +44,11 @@ init([FileDict]) ->
 	        file_process_dict = dict:new() }}.
 
 handle_call({read_piece, PieceNum}, _From, S) ->
-    {_Hash, FilesToRead} = dict:fetch(PieceNum, S#state.file_dict),
+    {_Hash, FilesToRead, _X} = dict:fetch(PieceNum, S#state.file_dict),
     {ok, Data, NS} = read_pieces_and_assemble(FilesToRead, [], S),
     {reply, {ok, Data}, NS};
 handle_call({write_piece, PieceNum, Data}, _From, S) ->
-    {_Hash, FilesToWrite} = dict:fetch(PieceNum, S#state.file_dict),
+    {_Hash, FilesToWrite, _X} = dict:fetch(PieceNum, S#state.file_dict),
     {ok, NS} = write_piece_data(Data, FilesToWrite, S),
     {reply, ok, NS}.
 

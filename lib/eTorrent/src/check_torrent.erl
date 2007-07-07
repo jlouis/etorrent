@@ -34,7 +34,7 @@ check_torrent(Path) ->
 
 check_torrent_contents(FileDict) ->
     {ok, FileChecker} = file_system:start_link(FileDict),
-    Res = dict:map(fun (PN, {Hash, Ops}) ->
+    Res = dict:map(fun (PN, {Hash, Ops, none}) ->
  		      {ok, Data} = file_system:read_piece(FileChecker, PN),
 		      case Hash == crypto:sha(Data) of
 			  true ->
@@ -131,9 +131,9 @@ construct_fpmap(FileList, Offset, PieceSize, LastPieceSize,
 		[{Num, Hash}], Done) -> % Last piece
     {ok, FL, OS, Ops} = extract_piece(LastPieceSize, FileList, Offset, []),
     construct_fpmap(FL, OS, PieceSize, LastPieceSize, [],
-		    [{Num, {Hash, lists:reverse(Ops)}} | Done]);
+		    [{Num, {Hash, lists:reverse(Ops), none}} | Done]);
 construct_fpmap(FileList, Offset, PieceSize, LastPieceSize,
 		[{Num, Hash} | Ps], Done) ->
     {ok, FL, OS, Ops} = extract_piece(PieceSize, FileList, Offset, []),
     construct_fpmap(FL, OS, PieceSize, LastPieceSize, Ps,
-		    [{Num, {Hash, lists:reverse(Ops)}} | Done]).
+		    [{Num, {Hash, lists:reverse(Ops)}, none} | Done]).
