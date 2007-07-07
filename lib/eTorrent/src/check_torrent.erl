@@ -34,15 +34,18 @@ check_torrent(Path) ->
 
 check_torrent_contents(FileDict) ->
     {ok, FileChecker} = file_system:start_link(FileDict),
-    dict:fold(fun (PN, {Hash, _Ops}, ok) ->
+    Res = dict:map(fun (PN, {Hash, Ops}) ->
  		      {ok, Data} = file_system:read_piece(FileChecker, PN),
-		      Hash = crypto:sha(Data),
- 		      ok
+		      case Hash == crypto:sha(Data) of
+			  true ->
+			      {Hash, Ops, ok};
+			  false ->
+			      {Hash, Ops, not_ok}
+		      end
  	      end,
- 	      ok,
  	      FileDict),
     file_system:stop(FileChecker),
-    ok.
+    {ok, Res}.
 
 size_check_files(Entries) ->
     lists:map(fun ({Pth, ISz}) ->
