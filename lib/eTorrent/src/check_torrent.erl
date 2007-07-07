@@ -34,7 +34,7 @@ check_torrent(Path) ->
 
 check_torrent_contents(FileDict) ->
     {ok, FileChecker} = file_system:start_link(FileDict),
-    dict:fold(fun (PN, {Hash, Ops}, ok) ->
+    dict:fold(fun (PN, {Hash, _Ops}, ok) ->
  		      {ok, Data} = file_system:read_piece(FileChecker, PN),
 		      Hash = crypto:sha(Data),
  		      ok
@@ -46,13 +46,35 @@ check_torrent_contents(FileDict) ->
 
 size_check_files(Entries) ->
     lists:map(fun ({Pth, ISz}) ->
-		      case (filelib:file_size(Pth) == ISz) of
+		      Sz = filelib:file_size(Pth),
+		      case (Sz == ISz) of
 			  true ->
-			      io:format("Path ~s is ok~n", [Pth])
+			      io:format("Path ~s is ok~n", [Pth]);
+			  false ->
+			      io:format("Path ~s is to small, filling", [Pth]),
+			      Missing = ISz - Sz,
+			      fill_bytes_to_file(Pth, Missing)
 		      end
 	      end,
 	      Entries),
     ok.
+
+fill_bytes_to_file(Path, Missing) ->
+    {ok, FD} = file:open(Path, [read, write, delayed_write, binary, raw]),
+    {ok, _NP} = file:position(FD, eof),
+    ok = create_file_slow(FD, Missing),
+    ok = file:close(FD),
+    ok.
+
+create_file_slow(FD, N) when integer(N), N >= 0 ->
+    ok = create_file_slow(FD, 0, N),
+    ok.
+
+create_file_slow(_FD, M, M) ->
+    ok;
+create_file_slow(FD, M, N) ->
+    ok = file:write(FD, <<M:8/unsigned>>),
+    create_file_slow(FD, M+1, N).
 
 %%====================================================================
 %% Internal functions
