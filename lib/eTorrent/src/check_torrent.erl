@@ -34,8 +34,10 @@ check_torrent(Path) ->
 
 check_torrent_contents(FileDict) ->
     {ok, FileChecker} = file_system:start_link(FileDict),
-    dict:fold(fun (PN, {_Hash, _Ops}, ok) ->
-		      {ok, _Data} = file_system:read_piece(FileChecker, PN),
+    dict:fold(fun (PN, {Hash, _Ops}, ok) ->
+		      {ok, Data} = file_system:read_piece(FileChecker, PN),
+		      io:format("~B: ~s <> ~s~n~n", [PN, Hash, crypto:sha(Data)]),
+		      %Hash = crypto:sha(Data),
 		      ok
 	      end,
 	      ok,
