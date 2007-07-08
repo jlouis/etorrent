@@ -66,19 +66,45 @@ size_check_files(Entries) ->
 fill_bytes_to_file(Path, Missing) ->
     {ok, FD} = file:open(Path, [read, write, delayed_write, binary, raw]),
     {ok, _NP} = file:position(FD, eof),
-    ok = create_file_slow(FD, Missing),
+    ok = create_file(FD, Missing),
     ok = file:close(FD),
     ok.
 
-create_file_slow(FD, N) when integer(N), N >= 0 ->
-    ok = create_file_slow(FD, 0, N),
-    ok.
+create_file(FD, N) ->
+    create_file(FD, 0, N).
 
-create_file_slow(_FD, M, M) ->
+create_file(_FD, M, M) ->
     ok;
-create_file_slow(FD, M, N) ->
-    ok = file:write(FD, <<M:8/unsigned>>),
-    create_file_slow(FD, M+1, N).
+create_file(FD, M, N) when M + 1024 =< N ->
+    create_file(FD, M, M + 1024, []),
+    create_file(FD, M + 1024, N);
+create_file(FD, M, N) ->
+    create_file(FD, M, N, []).
+
+create_file(FD, M, M, R) ->
+    ok = file:write(FD, R);
+create_file(FD, M, N0, R) when M + 8 =< N0 ->
+    N1  = N0-1,  N2  = N0-2,  N3  = N0-3,  N4  = N0-4,
+    N5  = N0-5,  N6  = N0-6,  N7  = N0-7,  N8  = N0-8,
+    create_file(FD, M, N8,
+                [<<N8:8/unsigned,  N7:8/unsigned,
+		   N6:8/unsigned,  N5:8/unsigned,
+		   N4:8/unsigned,  N3:8/unsigned,
+                   N2:8/unsigned,  N1:8/unsigned>> | R]);
+create_file(FD, M, N0, R) ->
+    N1 = N0-1,
+    create_file(FD, M, N1, [<<N1:8/unsigned>> | R]).
+
+
+%% create_file_slow(FD, N) when integer(N), N >= 0 ->
+%%     ok = create_file_slow(FD, 0, N),
+%%     ok.
+
+%% create_file_slow(_FD, M, M) ->
+%%     ok;
+%% create_file_slow(FD, M, N) ->
+%%     ok = file:write(FD, <<M:8/unsigned>>),
+%%     create_file_slow(FD, M+1, N).
 
 %%====================================================================
 %% Internal functions
