@@ -30,7 +30,8 @@ check_torrent(Path) ->
     size_check_files(FilesToCheck),
     {ok, FileDict} =
 	build_dictionary_on_files(Torrent, FilesToCheck),
-    check_torrent_contents(FileDict).
+    {ok, Res} = check_torrent_contents(FileDict),
+    Res.
 
 check_torrent_contents(FileDict) ->
     {ok, FileChecker} = file_system:start_link(FileDict),
@@ -114,7 +115,7 @@ extract_piece(Left, [{Pth, Sz} | R], Offset, Building) ->
     case (Sz - Offset) > Left of
 	true ->
 	    % There is enough bytes left in Pth
-	    {ok, [{Pth, Sz} | R], Offset+Left, 
+	    {ok, [{Pth, Sz} | R], Offset+Left,
 	     [{Pth, Offset, Left} | Building]};
 	false ->
 	    % There is not enough space left in Pth
