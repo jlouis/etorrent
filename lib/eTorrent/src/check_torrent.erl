@@ -112,17 +112,6 @@ create_file(FD, M, N0, R) ->
     N1 = N0-1,
     create_file(FD, M, N1, [<<N1:32/unsigned>> | R]).
 
-
-create_file_slow(FD, N) when integer(N), N >= 0 ->
-    ok = create_file_slow(FD, 0, N),
-    ok.
-
-create_file_slow(_FD, M, M) ->
-    ok;
-create_file_slow(FD, M, N) ->
-    ok = file:write(FD, <<M:8/unsigned>>),
-    create_file_slow(FD, M+1, N).
-
 %%====================================================================
 %% Internal functions
 %%====================================================================
