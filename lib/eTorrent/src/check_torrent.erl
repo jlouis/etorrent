@@ -57,18 +57,31 @@ size_check_files(Entries) ->
 			  false ->
 			      io:format("Path ~s is to small, filling", [Pth]),
 			      Missing = ISz - Sz,
-			      fill_bytes_to_file(Pth, Missing)
+			      fill_file_ensure_path(Pth, Missing)
 		      end
 	      end,
 	      Entries),
     ok.
 
-fill_bytes_to_file(Path, Missing) ->
-    {ok, FD} = file:open(Path, [read, write, delayed_write, binary, raw]),
+fill_file_ensure_path(Path, Missing) ->
+    case file:open(Path, [read, write, delayed_write, binary, raw]) of
+	{ok, FD} ->
+	    fill_file(FD, Missing);
+	{error, enoent} ->
+	    % File missing
+	    ok = filelib:ensure_dir(Path),
+	    case file:open(Path, [read, write, delayed_write, binary, raw]) of
+		{ok, FD} ->
+		    fill_file(FD, Missing);
+		{error, Reason} ->
+		    {error, Reason}
+	    end
+    end.
+
+fill_file(FD, Missing) ->
     {ok, _NP} = file:position(FD, eof),
-    ok = create_file(FD, Missing),
-    ok = file:close(FD),
-    ok.
+    ok = create_file_slow(FD, Missing),
+    file:close(FD).
 
 create_file(FD, N) ->
     create_file(FD, 0, N).
@@ -96,15 +109,15 @@ create_file(FD, M, N0, R) ->
     create_file(FD, M, N1, [<<N1:8/unsigned>> | R]).
 
 
-%% create_file_slow(FD, N) when integer(N), N >= 0 ->
-%%     ok = create_file_slow(FD, 0, N),
-%%     ok.
+create_file_slow(FD, N) when integer(N), N >= 0 ->
+    ok = create_file_slow(FD, 0, N),
+    ok.
 
-%% create_file_slow(_FD, M, M) ->
-%%     ok;
-%% create_file_slow(FD, M, N) ->
-%%     ok = file:write(FD, <<M:8/unsigned>>),
-%%     create_file_slow(FD, M+1, N).
+create_file_slow(_FD, M, M) ->
+    ok;
+create_file_slow(FD, M, N) ->
+    ok = file:write(FD, <<M:8/unsigned>>),
+    create_file_slow(FD, M+1, N).
 
 %%====================================================================
 %% Internal functions
@@ -163,4 +176,4 @@ construct_fpmap(FileList, Offset, PieceSize, LastPieceSize,
 		[{Num, Hash} | Ps], Done) ->
     {ok, FL, OS, Ops} = extract_piece(PieceSize, FileList, Offset, []),
     construct_fpmap(FL, OS, PieceSize, LastPieceSize, Ps,
-		    [{Num, {Hash, lists:reverse(Ops)}, none} | Done]).
+		    [{Num, {Hash, lists:reverse(Ops), none}} | Done]).
