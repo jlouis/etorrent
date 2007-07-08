@@ -55,7 +55,7 @@ size_check_files(Entries) ->
 			  true ->
 			      io:format("Path ~s is ok~n", [Pth]);
 			  false ->
-			      io:format("Path ~s is to small, filling", [Pth]),
+			      io:format("Path ~s is to small, filling~n", [Pth]),
 			      Missing = ISz - Sz,
 			      fill_file_ensure_path(Pth, Missing)
 		      end
@@ -80,11 +80,15 @@ fill_file_ensure_path(Path, Missing) ->
 
 fill_file(FD, Missing) ->
     {ok, _NP} = file:position(FD, eof),
-    ok = create_file_slow(FD, Missing),
+    ok = create_file(FD, Missing),
     file:close(FD).
 
 create_file(FD, N) ->
-    create_file(FD, 0, N).
+    SZ4 = N div 4,
+    Remaining = (N rem 4) * 8,
+    io:format("Writing ~B bytes, should write ~B~n", [SZ4*4 + (N rem 4), N]),
+    create_file(FD, 0, SZ4),
+    file:write(FD, <<0:Remaining/unsigned>>).
 
 create_file(_FD, M, M) ->
     ok;
@@ -100,13 +104,13 @@ create_file(FD, M, N0, R) when M + 8 =< N0 ->
     N1  = N0-1,  N2  = N0-2,  N3  = N0-3,  N4  = N0-4,
     N5  = N0-5,  N6  = N0-6,  N7  = N0-7,  N8  = N0-8,
     create_file(FD, M, N8,
-                [<<N8:8/unsigned,  N7:8/unsigned,
-		   N6:8/unsigned,  N5:8/unsigned,
-		   N4:8/unsigned,  N3:8/unsigned,
-                   N2:8/unsigned,  N1:8/unsigned>> | R]);
+                [<<N8:32/unsigned,  N7:32/unsigned,
+		   N6:32/unsigned,  N5:32/unsigned,
+		   N4:32/unsigned,  N3:32/unsigned,
+                   N2:32/unsigned,  N1:32/unsigned>> | R]);
 create_file(FD, M, N0, R) ->
     N1 = N0-1,
-    create_file(FD, M, N1, [<<N1:8/unsigned>> | R]).
+    create_file(FD, M, N1, [<<N1:32/unsigned>> | R]).
 
 
 create_file_slow(FD, N) when integer(N), N >= 0 ->
