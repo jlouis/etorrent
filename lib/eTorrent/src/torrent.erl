@@ -10,7 +10,7 @@
 -behaviour(gen_fsm).
 
 %% API
--export([start_link/0, token/1]).
+-export([start_link/0, token/1, start/1, stop/1]).
 
 %% gen_fsm callbacks
 -export([init/1, handle_event/3, initializing/2, waiting_check/2, started/2,
@@ -28,13 +28,19 @@
 %% Function: start_link() -> ok,Pid} | ignore | {error,Error}
 %% Description:Creates a gen_fsm process which calls Module:init/1 to
 %% initialize. To ensure a synchronized start-up procedure, this function
-%% does not return until Module:init/1 has returned.  
+%% does not return until Module:init/1 has returned.
 %%--------------------------------------------------------------------
 start_link() ->
     gen_fsm:start_link(?MODULE, [], []).
 
 token(Pid) ->
     gen_fsm:send_event(Pid, token).
+
+stop(Pid) ->
+    gen_fsm:send_event(Pid, stop).
+
+start(Pid) ->
+    gen_fsm:send_event(Pid, start).
 
 %%====================================================================
 %% gen_fsm callbacks
@@ -43,24 +49,24 @@ token(Pid) ->
 %% Function: init(Args) -> {ok, StateName, State} |
 %%                         {ok, StateName, State, Timeout} |
 %%                         ignore                              |
-%%                         {stop, StopReason}                   
+%%                         {stop, StopReason}
 %% Description:Whenever a gen_fsm is started using gen_fsm:start/[3,4] or
-%% gen_fsm:start_link/3,4, this function is called by the new process to 
-%% initialize. 
+%% gen_fsm:start_link/3,4, this function is called by the new process to
+%% initialize.
 %%--------------------------------------------------------------------
 init([]) ->
     {ok, state_name, #state{}}.
 
 %%--------------------------------------------------------------------
-%% Function: 
+%% Function:
 %% state_name(Event, State) -> {next_state, NextStateName, NextState}|
-%%                             {next_state, NextStateName, 
+%%                             {next_state, NextStateName,
 %%                                NextState, Timeout} |
 %%                             {stop, Reason, NewState}
 %% Description:There should be one instance of this function for each possible
 %% state name. Whenever a gen_fsm receives an event sent using
 %% gen_fsm:send_event/2, the instance of this function with the same name as
-%% the current state name StateName is called to handle the event. It is also 
+%% the current state name StateName is called to handle the event. It is also
 %% called if a timeout occurs.
 %%--------------------------------------------------------------------
 
@@ -80,22 +86,30 @@ initializing({load_torrent, Path, Torrent, PeerId}, S) ->
 
 waiting_check(token, S) ->
     ok = serializer:release_token(),
-    {next_state, started, S}.
-
-started(stop, S) ->
+    {next_state, started, S};
+waiting_check(stop, S) ->
     {next_state, stopped, S}.
 
-stopped(start, S) ->
+started(stop, S) ->
+    {next_state, stopped, S};
+started(token, S) ->
+    ok = serializer:release_token(),
     {next_state, started, S}.
+
+stopped(start, S) ->
+    {next_state, started, S};
+stopped(token, S) ->
+    ok = serializer:release_token(),
+    {next_state, stopped, S}.
 
 
 %%--------------------------------------------------------------------
 %% Function:
 %% state_name(Event, From, State) -> {next_state, NextStateName, NextState} |
-%%                                   {next_state, NextStateName, 
+%%                                   {next_state, NextStateName,
 %%                                     NextState, Timeout} |
 %%                                   {reply, Reply, NextStateName, NextState}|
-%%                                   {reply, Reply, NextStateName, 
+%%                                   {reply, Reply, NextStateName,
 %%                                    NextState, Timeout} |
 %%                                   {stop, Reason, NewState}|
 %%                                   {stop, Reason, Reply, NewState}
@@ -108,10 +122,10 @@ stopped(start, S) ->
 
 
 %%--------------------------------------------------------------------
-%% Function: 
-%% handle_event(Event, StateName, State) -> {next_state, NextStateName, 
+%% Function:
+%% handle_event(Event, StateName, State) -> {next_state, NextStateName,
 %%						  NextState} |
-%%                                          {next_state, NextStateName, 
+%%                                          {next_state, NextStateName,
 %%					          NextState, Timeout} |
 %%                                          {stop, Reason, NewState}
 %% Description: Whenever a gen_fsm receives an event sent using
@@ -122,13 +136,13 @@ handle_event(_Event, StateName, State) ->
     {next_state, StateName, State}.
 
 %%--------------------------------------------------------------------
-%% Function: 
-%% handle_sync_event(Event, From, StateName, 
+%% Function:
+%% handle_sync_event(Event, From, StateName,
 %%                   State) -> {next_state, NextStateName, NextState} |
-%%                             {next_state, NextStateName, NextState, 
+%%                             {next_state, NextStateName, NextState,
 %%                              Timeout} |
 %%                             {reply, Reply, NextStateName, NextState}|
-%%                             {reply, Reply, NextStateName, NextState, 
+%%                             {reply, Reply, NextStateName, NextState,
 %%                              Timeout} |
 %%                             {stop, Reason, NewState} |
 %%                             {stop, Reason, Reply, NewState}
@@ -141,9 +155,9 @@ handle_sync_event(_Event, _From, StateName, State) ->
     {reply, Reply, StateName, State}.
 
 %%--------------------------------------------------------------------
-%% Function: 
+%% Function:
 %% handle_info(Info,StateName,State)-> {next_state, NextStateName, NextState}|
-%%                                     {next_state, NextStateName, NextState, 
+%%                                     {next_state, NextStateName, NextState,
 %%                                       Timeout} |
 %%                                     {stop, Reason, NewState}
 %% Description: This function is called by a gen_fsm when it receives any
