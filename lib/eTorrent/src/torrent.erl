@@ -10,7 +10,7 @@
 -behaviour(gen_fsm).
 
 %% API
--export([start_link/0, token/1, start/1, stop/1]).
+-export([start_link/0, token/1, start/1, stop/1, load_new_torrent/4]).
 
 %% gen_fsm callbacks
 -export([init/1, handle_event/3, initializing/2, waiting_check/2, started/2,
@@ -41,6 +41,9 @@ stop(Pid) ->
 
 start(Pid) ->
     gen_fsm:send_event(Pid, start).
+
+load_new_torrent(Pid, File, Torrent, PeerId) ->
+    gen_fsm:sync_send_event(Pid, {load_new_torrent, File, Torrent, PeerId}).
 
 %%====================================================================
 %% gen_fsm callbacks
