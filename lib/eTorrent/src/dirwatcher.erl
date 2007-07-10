@@ -21,6 +21,7 @@
 -record(state, {dir = none,
 	        fileset = none}).
 -define(WATCH_WAIT_TIME, 1000).
+-define(SERVER, ?MODULE).
 
 %%====================================================================
 %% API
@@ -31,7 +32,7 @@
 %%--------------------------------------------------------------------
 start_link() ->
     Dir = application:get_env(etorrent, dir),
-    gen_server:start_link(?MODULE, [Dir], []).
+    gen_server:start_link({local, ?SERVER}, ?MODULE, [Dir], []).
 
 %%====================================================================
 %% gen_server callbacks

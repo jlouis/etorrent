@@ -62,8 +62,6 @@ spawn_new_torrent(F, Torrent, PeerId, TrackingMap) ->
 
 %% Utility
 generate_peer_id() ->
-    Prefix = string:join(string:join("-ET", ?VERSION), "-"),
-    Rand = random_source:random_peer_id(),
-    string:join(Prefix, Rand).
+    io_lib:format("-ET~B-~B", [?VERSION, random_source:random_peer_id()]).
 
 

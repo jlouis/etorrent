@@ -17,6 +17,7 @@
 	 terminate/2, code_change/3]).
 
 -record(state, {}).
+-define(SERVER, ?MODULE).
 
 %%====================================================================
 %% API
@@ -26,7 +27,7 @@
 %% Description: Starts the server
 %%--------------------------------------------------------------------
 start_link() ->
-    gen_server:start_link({local, random_source}, ?MODULE, [], []).
+    gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
 random_peer_id() ->
     gen_server:call(random_source, random_peer_id).
