@@ -5,10 +5,12 @@ EMULATOR=beam
 DEBUG_FLAGS = -Ddebug +debug_info
 
 MODULES=bcoding dirwatcher etorrent_app etorrent peer_communication	\
-	torrent torrent_manager torrent_peer torrent_piecemap \
-	tracker_delegate connection_manager pairing_heap \
-	torrent_peer_send metainfo fs_filepiecemap utils \
-	file_process file_system check_torrent serializer
+	torrent serializer check_torrent file_process file_system \
+	utils metainfo torrent_manager random_source
+# 	torrent_peer torrent_piecemap \
+# 	tracker_delegate  pairing_heap \
+# 	torrent_peer_send fs_filepiecemap \
+#	connection_manager
 
 EBIN_FILES=$(MODULES:%=../ebin/%.$(EMULATOR)) ../ebin/etorrent.app
 ERLC_FLAGS+= -W $(DEBUG_FLAGS) -pa ../../eTorrent
