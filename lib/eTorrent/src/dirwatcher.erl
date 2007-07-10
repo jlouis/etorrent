@@ -12,7 +12,7 @@
 
 -vsn("1").
 %% API
--export([start_link/1, watch_dirs/0]).
+-export([start_link/0, watch_dirs/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
