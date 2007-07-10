@@ -63,7 +63,7 @@ handle_call(random_peer_id, _From, S) ->
     Number = crypto:rand_uniform(0, 10000000),
     {reply, Number, S};
 handle_call({pick_random_piece, Size}, _From, S) ->
-    Number = crypto:rand_uniform(Size),
+    Number = crypto:rand_uniform(0, Size),
     {reply, {ok, Number}, S}.
 
 %%--------------------------------------------------------------------
