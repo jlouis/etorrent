@@ -4,9 +4,8 @@ DIALYZER_FLAGS+=-Wno_return
 EMULATOR=beam
 DEBUG_FLAGS = -Ddebug +debug_info
 
-MODULES=bcoding dirwatcher dirwatcher_sup etorrent_app etorrent \
-	peer_communication torrent torrent_manager \
-	torrent_manager_sup torrent_peer torrent_piecemap \
+MODULES=bcoding dirwatcher etorrent_app etorrent peer_communication	\
+	torrent torrent_manager torrent_peer torrent_piecemap \
 	tracker_delegate connection_manager pairing_heap \
 	torrent_peer_send metainfo fs_filepiecemap utils \
 	file_process file_system check_torrent serializer

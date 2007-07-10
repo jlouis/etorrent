@@ -1,10 +1,13 @@
 -module(torrent_manager).
 -behaviour(gen_server).
 
+-include("version.hrl").
+
 -export([start_link/0]).
 -export([handle_cast/2, handle_call/3, init/1, terminate/2]).
 -export([handle_info/2, code_change/3]).
 -export([start_torrent/2, stop_torrent/1]).
+
 
 %% API
 start_link() ->
@@ -60,5 +63,7 @@ spawn_new_torrent(F, Torrent, PeerId, TrackingMap) ->
 %% Utility
 generate_peer_id() ->
     Prefix = string:join(string:join("-ET", ?VERSION), "-"),
-    Rand = 
+    Rand = random_source:random_peer_id(),
+    string:join(Prefix, Rand).
+
 
