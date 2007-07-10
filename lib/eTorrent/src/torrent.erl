@@ -10,11 +10,12 @@
 -behaviour(gen_fsm).
 
 %% API
--export([start_link/0]).
+-export([start_link/0, token/1]).
 
 %% gen_fsm callbacks
--export([init/1, handle_event/3,
-	 handle_sync_event/4, handle_info/3, terminate/3, code_change/4]).
+-export([init/1, handle_event/3, initializing/2, waiting_check/2, started/2,
+	 stopped/2, handle_sync_event/4, handle_info/3, terminate/3,
+	 code_change/4]).
 
 -record(state, {path = none,
 		torrent = none,
@@ -31,6 +32,9 @@
 %%--------------------------------------------------------------------
 start_link() ->
     gen_fsm:start_link(?MODULE, [], []).
+
+token(Pid) ->
+    gen_fsm:send_event(Pid, token).
 
 %%====================================================================
 %% gen_fsm callbacks
@@ -57,10 +61,33 @@ init([]) ->
 %% state name. Whenever a gen_fsm receives an event sent using
 %% gen_fsm:send_event/2, the instance of this function with the same name as
 %% the current state name StateName is called to handle the event. It is also 
-%% called if a timeout occurs. 
+%% called if a timeout occurs.
 %%--------------------------------------------------------------------
-state_name(_Event, State) ->
-    {next_state, state_name, State}.
+
+% Load a torrent at Path with Torrent
+initializing({load_torrent, Path, Torrent, PeerId}, S) ->
+    NewState = S#state{path = Path,
+		       torrent = Torrent,
+		       peer_id = PeerId},
+    case serializer:request_token() of
+	ok ->
+	    ok = serializer:release_token(),
+	    {next_state, started, NewState};
+	wait ->
+	    {next_state, waiting_check, NewState}
+    end.
+
+
+waiting_check(token, S) ->
+    ok = serializer:release_token(),
+    {next_state, started, S}.
+
+started(stop, S) ->
+    {next_state, stopped, S}.
+
+stopped(start, S) ->
+    {next_state, started, S}.
+
 
 %%--------------------------------------------------------------------
 %% Function:
@@ -78,12 +105,7 @@ state_name(_Event, State) ->
 %% name as the current state name StateName is called to handle the event.
 %%--------------------------------------------------------------------
 
-% Load a torrent at Path with Torrent
-initializing({load_torrent, Path, Torrent, PeerId}, _From, S) ->
-    ok = serializer:request_token(),
-    {next_state, waiting_check, S#state{ path = Path,
-					 torrent = Torrent,
-					 peer_id = PeerId}}.
+
 
 %%--------------------------------------------------------------------
 %% Function: 
@@ -114,7 +136,7 @@ handle_event(_Event, StateName, State) ->
 %% gen_fsm:sync_send_all_state_event/2,3, this function is called to handle
 %% the event.
 %%--------------------------------------------------------------------
-handle_sync_event(Event, From, StateName, State) ->
+handle_sync_event(_Event, _From, StateName, State) ->
     Reply = ok,
     {reply, Reply, StateName, State}.
 
