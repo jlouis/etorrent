@@ -44,8 +44,6 @@ peer_got_piece(Pid, Piece) ->
 
 init(NumberOfPieces) ->
     PieceTable = initialize_piece_table(NumberOfPieces),
-    {A, B, C} = erlang:now(),
-    random:seed(A, B, C),
     {ok, PieceTable}.
 
 handle_call({request_piece, PiecesPeerHas}, Who, PieceTable) ->
@@ -126,6 +124,7 @@ find_eligible_pieces(PiecesPeerHas, PieceTable) ->
 
 pick_random(PieceSet) ->
     Size = sets:size(PieceSet),
-    lists:nth(random:uniform(Size), sets:to_list(PieceSet)).
+    {ok, N} = random_source:pick_random_piece(Size),
+    lists:nth(N, sets:to_list(PieceSet)).
 
 
