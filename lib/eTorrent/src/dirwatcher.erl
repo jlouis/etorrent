@@ -29,7 +29,8 @@
 %% Function: start_link() -> {ok,Pid} | ignore | {error,Error}
 %% Description: Starts the server
 %%--------------------------------------------------------------------
-start_link(Dir) ->
+start_link() ->
+    Dir = application:get_env(etorrent, dir),
     gen_server:start_link(?MODULE, [Dir], []).
 
 %%====================================================================

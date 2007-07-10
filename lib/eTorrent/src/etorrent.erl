@@ -21,19 +21,20 @@
 %% API functions
 %%====================================================================
 start_link() ->
-    Dir = application:get_env(etorrent, dir),
-    supervisor:start_link(etorrent, [Dir]).
+    supervisor:start_link(etorrent, []).
 
 %%====================================================================
 %% Supervisor callbacks
 %%====================================================================
-init([Dir]) ->
-    DirWatcher = {dirwatcher_sup, {dirwatcher_sup, start_link, [Dir]},
-		  permanent, 2000, worker, [dirwatcher_sup]},
-    TorrentMgr = {torrent_manager_sup, {torrent_manager_sup, start_link, []},
-		  permanent, 2000, worker, [torrent_manager_sup]},
+init([]) ->
+    RandomSource = {random_source, {random_source, start_link, []},
+		    permanent, brutal_kill, worker, [random_source]},
+    DirWatcher = {dirwatcher, {dirwatcher, start_link, []},
+		  permanent, 2000, worker, [dirwatcher]},
+    TorrentMgr = {torrent_manager, {torrent_manager, start_link, []},
+		  permanent, 2000, worker, [torrent_manager]},
     {ok, {{one_for_one, 1, 60},
-	  [DirWatcher, TorrentMgr]}}.
+	  [RandomSource, DirWatcher, TorrentMgr]}}.
 
 %%====================================================================
 %% Internal functions
