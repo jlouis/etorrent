@@ -73,8 +73,9 @@ init([]) ->
 %% called if a timeout occurs.
 %%--------------------------------------------------------------------
 waiting_check(token, S) ->
+    {ok, Torrent} = check_torrent(S#state.path),
     ok = serializer:release_token(),
-    {next_state, started, S};
+    {next_state, started, S#state{torrent = Torrent}};
 waiting_check(stop, S) ->
     {next_state, stopped, S}.
 
@@ -113,8 +114,9 @@ initializing({load_new_torrent, Path, PeerId}, _From, S) ->
 		       peer_id = PeerId},
     case serializer:request_token() of
 	ok ->
+	    {ok, Torrent} = check_torrent(Path),
 	    ok = serializer:release_token(),
-	    {reply, ok, started, NewState};
+	    {reply, ok, started, NewState#state{torrent = Torrent}};
 	wait ->
 	    {reply, ok, waiting_check, NewState}
     end.
@@ -186,6 +188,9 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 %%--------------------------------------------------------------------
 %%% Internal functions
 %%--------------------------------------------------------------------
+check_torrent(_Path) ->
+    {ok, none}.
+
 %% start(TorrentPid) ->
 %%     gen_server:cast(TorrentPid, start).
 
