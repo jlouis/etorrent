@@ -69,8 +69,7 @@ handle_call(_Request, _From, State) ->
 %% Description: Handling cast messages
 %%--------------------------------------------------------------------
 handle_cast({check_torrent_at, Torrent, From}, S) ->
-    Torrent = filename:join([S#state.path, Torrent]),
-    DiskState = check_torrent:check_torrent(Torrent),
+    DiskState = check_torrent:check_torrent(S#state.path, Torrent),
     ok = torrent:torrent_checked(From, DiskState),
     {noreply, S};
 handle_cast(stop, S) ->

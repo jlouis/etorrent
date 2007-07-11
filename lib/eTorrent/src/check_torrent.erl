@@ -8,14 +8,14 @@
 -module(check_torrent).
 
 %% API
--export([check_torrent/1]).
+-export([check_torrent/2]).
 
 %%====================================================================
 %% API
 %%====================================================================
-check_torrent(Path) ->
-    {ok, Torrent} = metainfo:parse(Path),
-
+check_torrent(WorkDir, Path) ->
+    P = filename:join([WorkDir, Path]),
+    {ok, Torrent} = metainfo:parse(P),
     {list, Files} = metainfo:get_files(Torrent),
     Name = metainfo:get_name(Torrent),
     FilesToCheck =
@@ -23,8 +23,7 @@ check_torrent(Path) ->
 			  {Filename, Size} = report_files(E),
 			  io:format("Found ~s at length ~B~n",
 				    [Filename, Size]),
-			  {string:concat(string:concat(Name, "/"), Filename),
-			   Size}
+			  {filename:join([WorkDir, Name, Filename]), Size}
 		  end,
 		  Files),
     size_check_files(FilesToCheck),
