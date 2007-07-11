@@ -31,8 +31,7 @@
 %% Description: Starts the server
 %%--------------------------------------------------------------------
 start_link() ->
-    {ok, Dir} = application:get_env(etorrent, dir),
-    gen_server:start_link({local, ?SERVER}, ?MODULE, [Dir], []).
+    gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
 watch_dirs() ->
     gen_server:cast(dirwatcher, watch_directories).
@@ -43,8 +42,9 @@ dir_watched() ->
 %%====================================================================
 %% gen_server callbacks
 %%====================================================================
-init([Dir]) ->
+init([]) ->
     timer:apply_interval(?WATCH_WAIT_TIME, ?MODULE, watch_dirs, []),
+    {ok, Dir} = application:get_env(etorrent, dir),
     {ok, #state{dir = Dir, fileset = empty_state()}}.
 
 handle_call(report_on_files, _Who, S) ->
