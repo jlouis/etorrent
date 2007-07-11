@@ -10,16 +10,18 @@
 -behaviour(gen_fsm).
 
 %% API
--export([start_link/0, token/1, start/1, stop/1, load_new_torrent/3]).
+-export([start_link/0, token/1, start/1, stop/1, load_new_torrent/3,
+	torrent_checked/2]).
 
 %% gen_fsm callbacks
 -export([init/1, handle_event/3, initializing/3, waiting_check/2, started/2,
 	 stopped/2, handle_sync_event/4, handle_info/3, terminate/3,
-	 code_change/4]).
+	 code_change/4, checking/2]).
 
 -record(state, {path = none,
 		torrent = none,
-		peer_id = none}).
+		peer_id = none,
+	        checker_pid = none}).
 
 %%====================================================================
 %% API
@@ -45,6 +47,8 @@ start(Pid) ->
 load_new_torrent(Pid, File, PeerId) ->
     gen_fsm:sync_send_event(Pid, {load_new_torrent, File, PeerId}).
 
+torrent_checked(Pid, _DiskState) ->
+    gen_fsm:send_event(Pid, torrent_checked).
 %%====================================================================
 %% gen_fsm callbacks
 %%====================================================================
@@ -73,11 +77,16 @@ init([]) ->
 %% called if a timeout occurs.
 %%--------------------------------------------------------------------
 waiting_check(token, S) ->
-    {ok, Torrent} = check_torrent(S#state.path),
-    ok = serializer:release_token(),
-    {next_state, started, S#state{torrent = Torrent}};
+    {ok, CheckerPid} = checker_server:start_link(),
+    checker_server:check_torrent(CheckerPid, S#state.path),
+    {next_state, checking, S#state{checker_pid = CheckerPid}};
 waiting_check(stop, S) ->
     {next_state, stopped, S}.
+
+checking(torrent_checked, S) ->
+    ok = serializer:release_token(),
+    checker_server:stop(S#state.checker_pid),
+    {next_state, started, S#state{checker_pid = none}}.
 
 started(stop, S) ->
     {next_state, stopped, S};
@@ -114,9 +123,9 @@ initializing({load_new_torrent, Path, PeerId}, _From, S) ->
 		       peer_id = PeerId},
     case serializer:request_token() of
 	ok ->
-	    {ok, Torrent} = check_torrent(Path),
-	    ok = serializer:release_token(),
-	    {reply, ok, started, NewState#state{torrent = Torrent}};
+	    {ok, CheckerPid} = checker_server:start_link(),
+	    checker_server:check_torrent(CheckerPid, Path),
+	    {reply, ok, checking, NewState#state{checker_pid = CheckerPid}};
 	wait ->
 	    {reply, ok, waiting_check, NewState}
     end.
@@ -188,48 +197,3 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 %%--------------------------------------------------------------------
 %%% Internal functions
 %%--------------------------------------------------------------------
-check_torrent(_Path) ->
-    {ok, none}.
-
-%% start(TorrentPid) ->
-%%     gen_server:cast(TorrentPid, start).
-
-%% stop(TorrentPid) ->
-%%     gen_server:cast(TorrentPid, stop).
-
-%% init({F, Torrent, PeerId}) ->
-%%     {ok, StatePid} = gen_server:start_link(torrent_state, [], []),
-%%     {ok, TrackerDelegatePid} =
-%% 	gen_server:start_link(tracker_delegate,
-%% 			      {self(), StatePid,
-%% 			       metainfo:get_url(Torrent),
-%% 			       metainfo:get_infohash(Torrent),
-%% 			       PeerId}, []),
-%%     io:format("Process for torrent ~s started~n", [F]),
-%%     {ok, {F, Torrent, StatePid, TrackerDelegatePid}}.
-
-%% handle_call(_Call, _Who, S) ->
-%%     {noreply, S}.
-
-%% terminate_children(_StatePid, _TrackerDelegatePid) ->
-%%     ok.
-
-%% terminate(shutdown, {_F, _Torrent, StatePid, TrackerDelegatePid}) ->
-%%     terminate_children(StatePid, TrackerDelegatePid),
-%%     ok.
-
-%% handle_cast(start, {F, Torrent, StatePid, TrackerDelegatePid}) ->
-%%     gen_server:cast(TrackerDelegatePid, start),
-%%     {noreply, {F, Torrent, StatePid, TrackerDelegatePid}};
-%% handle_cast(stop, {_F, _Torrent, StatePid, TrackerDelegatePid}) ->
-%%     gen_server:cast(StatePid, stop),
-%%     gen_server:cast(TrackerDelegatePid, stop);
-
-
-%% %% These are Error cases. We should just try again later (Default request timeout value)
-%% handle_cast({tracker_request_failed, Err}, State) ->
-%%     error_logger:error_msg("Tracker request failed ~s~n", [Err]),
-%%     {noreply, State};
-%% handle_cast({tracker_responded_not_bcode, Err}, State) ->
-%%     error_logger:error_msg("Tracker did not respond with a bcoded dict: ~s~n", [Err]),
-%%     {noreply, State}.

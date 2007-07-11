@@ -10,7 +10,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0, check_torrent/2]).
+-export([start_link/0, check_torrent/2, stop/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -31,6 +31,9 @@ start_link() ->
 check_torrent(Server, Path) ->
     ok = gen_server:cast(Server, {check_torrent_at, Path, self()}).
 
+stop(Pid) ->
+    gen_server:cast(Pid, stop).
+
 %%====================================================================
 %% gen_server callbacks
 %%====================================================================
@@ -42,8 +45,9 @@ check_torrent(Server, Path) ->
 %%                         {stop, Reason}
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
-init([Path]) ->
-    {ok, #state{path = Path}}.
+init([]) ->
+    {ok, Dir} = application:get_env(etorrent, dir),
+    {ok, #state{path = Dir}}.
 
 %%--------------------------------------------------------------------
 %% Function: %% handle_call(Request, From, State) -> {reply, Reply, State} |
@@ -67,8 +71,10 @@ handle_call(_Request, _From, State) ->
 handle_cast({check_torrent_at, Torrent, From}, S) ->
     Torrent = filename:join([S#state.path, Torrent]),
     DiskState = check_torrent:check_torrent(Torrent),
-    ok = gen_server:cast(From, {torrent_disk_state, DiskState}),
+    ok = torrent:torrent_checked(From, DiskState),
     {noreply, S};
+handle_cast(stop, S) ->
+    {stop, normal, S};
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
@@ -88,6 +94,8 @@ handle_info(_Info, State) ->
 %% cleaning up. When it returns, the gen_server terminates with Reason.
 %% The return value is ignored.
 %%--------------------------------------------------------------------
+terminate(normal, _S) ->
+    ok;
 terminate(_Reason, _State) ->
     ok.
 
