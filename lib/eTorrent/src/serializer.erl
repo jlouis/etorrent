@@ -16,6 +16,7 @@
 	 handle_sync_event/4, handle_info/3, terminate/3, code_change/4]).
 
 -record(state, { pids = none}).
+-define(SERVER, ?MODULE).
 
 %%====================================================================
 %% API
@@ -27,7 +28,7 @@
 %% does not return until Module:init/1 has returned.
 %%--------------------------------------------------------------------
 start_link() ->
-    gen_fsm:start_link({local, serializer}, ?MODULE, [], []).
+    gen_fsm:start_link({local, ?SERVER}, ?MODULE, [], []).
 
 request_token() ->
     gen_fsm:sync_send_event(serializer, request_token).
@@ -89,9 +90,9 @@ running(release_token, _From, S) ->
     case queue:out(S#state.pids) of
 	{{value, Pid}, Q2} ->
 	    ok = torrent:token(Pid),
-	    {next_state, running, S#state{ pids = Q2}};
+	    {reply, ok, running, S#state{ pids = Q2}};
 	{empty, Q2} ->
-	    {next_state, dormant, S#state{ pids = Q2}}
+	    {reply, ok, dormant, S#state{ pids = Q2}}
     end.
 
 %%--------------------------------------------------------------------

@@ -3,25 +3,24 @@
 
 -include("version.hrl").
 
--export([start_link/0]).
+-export([start_link/0, start_torrent/1, stop_torrent/1]).
 -export([handle_cast/2, handle_call/3, init/1, terminate/2]).
 -export([handle_info/2, code_change/3]).
--export([start_torrent/2, stop_torrent/1]).
 
+-define(SERVER, ?MODULE).
 
 %% API
 start_link() ->
     gen_server:start_link({local, torrent_manager}, torrent_manager, [], []).
 
-start_torrent(File, Torrent) ->
-    gen_server:cast(torrent_manager, {start_torrent, File, Torrent}).
+start_torrent(File) ->
+    gen_server:cast(torrent_manager, {start_torrent, File}).
 
 stop_torrent(File) ->
     gen_server:cast(torrent_manager, {stop_torrent, File}).
 
 %% Callbacks
 init(_Args) ->
-    io:format("Spawning torrent manager~n"),
     {ok, {ets:new(torrent_tracking_table, [named_table]), generate_peer_id()}}.
 
 code_change(_OldVsn, State, _Extra) ->
@@ -30,9 +29,9 @@ code_change(_OldVsn, State, _Extra) ->
 handle_info({'EXIT', Pid, Reason}, {TrackingMap, PeerId}) ->
     error_logger:error_report([{'Torrent EXIT', Reason},
 			       {'State', {TrackingMap, PeerId}}]),
-    [{File, Torrent}] = ets:match(TrackingMap, {Pid, '$1', '$2'}),
+    [{File}] = ets:match(TrackingMap, {Pid, '$1', '$2'}),
     ets:delete(TrackingMap, Pid),
-    spawn_new_torrent(File, Torrent, PeerId, TrackingMap),
+    spawn_new_torrent(File, PeerId, TrackingMap),
     {noreply, {TrackingMap, PeerId}};
 handle_info(Info, State) ->
     error_logger:info_report([{'INFO', Info}, {'State', State}]),
@@ -44,8 +43,8 @@ terminate(shutdown, _State) ->
 handle_call(_A, _B, S) ->
     {noreply, S}.
 
-handle_cast({start_torrent, F, Torrent}, {TrackingMap, PeerId}) ->
-    spawn_new_torrent(F, Torrent, PeerId, TrackingMap),
+handle_cast({start_torrent, F}, {TrackingMap, PeerId}) ->
+    spawn_new_torrent(F, PeerId, TrackingMap),
     {noreply, {TrackingMap, PeerId}};
 
 handle_cast({stop_torrent, F}, {TrackingMap, PeerId}) ->
@@ -55,10 +54,10 @@ handle_cast({stop_torrent, F}, {TrackingMap, PeerId}) ->
     {noreply, {TrackingMap, PeerId}}.
 
 %% Internal functions
-spawn_new_torrent(F, Torrent, PeerId, TrackingMap) ->
+spawn_new_torrent(F, PeerId, TrackingMap) ->
     {ok, TorrentPid} = torrent:start_link(),
-    ok = torrent:load_new_torrent(TorrentPid, F, Torrent, PeerId),
-    ets:insert(TrackingMap, {TorrentPid, F, Torrent}).
+    ok = torrent:load_new_torrent(TorrentPid, F, PeerId),
+    ets:insert(TrackingMap, {TorrentPid, F}).
 
 %% Utility
 generate_peer_id() ->

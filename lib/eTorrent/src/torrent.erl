@@ -10,10 +10,10 @@
 -behaviour(gen_fsm).
 
 %% API
--export([start_link/0, token/1, start/1, stop/1, load_new_torrent/4]).
+-export([start_link/0, token/1, start/1, stop/1, load_new_torrent/3]).
 
 %% gen_fsm callbacks
--export([init/1, handle_event/3, initializing/2, waiting_check/2, started/2,
+-export([init/1, handle_event/3, initializing/3, waiting_check/2, started/2,
 	 stopped/2, handle_sync_event/4, handle_info/3, terminate/3,
 	 code_change/4]).
 
@@ -42,8 +42,8 @@ stop(Pid) ->
 start(Pid) ->
     gen_fsm:send_event(Pid, start).
 
-load_new_torrent(Pid, File, Torrent, PeerId) ->
-    gen_fsm:sync_send_event(Pid, {load_new_torrent, File, Torrent, PeerId}).
+load_new_torrent(Pid, File, PeerId) ->
+    gen_fsm:sync_send_event(Pid, {load_new_torrent, File, PeerId}).
 
 %%====================================================================
 %% gen_fsm callbacks
@@ -58,7 +58,7 @@ load_new_torrent(Pid, File, Torrent, PeerId) ->
 %% initialize.
 %%--------------------------------------------------------------------
 init([]) ->
-    {ok, state_name, #state{}}.
+    {ok, initializing, #state{}}.
 
 %%--------------------------------------------------------------------
 %% Function:
@@ -72,21 +72,6 @@ init([]) ->
 %% the current state name StateName is called to handle the event. It is also
 %% called if a timeout occurs.
 %%--------------------------------------------------------------------
-
-% Load a torrent at Path with Torrent
-initializing({load_torrent, Path, Torrent, PeerId}, S) ->
-    NewState = S#state{path = Path,
-		       torrent = Torrent,
-		       peer_id = PeerId},
-    case serializer:request_token() of
-	ok ->
-	    ok = serializer:release_token(),
-	    {next_state, started, NewState};
-	wait ->
-	    {next_state, waiting_check, NewState}
-    end.
-
-
 waiting_check(token, S) ->
     ok = serializer:release_token(),
     {next_state, started, S};
@@ -121,8 +106,18 @@ stopped(token, S) ->
 %% gen_fsm:sync_send_event/2,3, the instance of this function with the same
 %% name as the current state name StateName is called to handle the event.
 %%--------------------------------------------------------------------
-
-
+% Load a torrent at Path with Torrent
+initializing({load_new_torrent, Path, PeerId}, _From, S) ->
+    NewState = S#state{path = Path,
+		       torrent = none,
+		       peer_id = PeerId},
+    case serializer:request_token() of
+	ok ->
+	    ok = serializer:release_token(),
+	    {reply, ok, started, NewState};
+	wait ->
+	    {reply, ok, waiting_check, NewState}
+    end.
 
 %%--------------------------------------------------------------------
 %% Function:

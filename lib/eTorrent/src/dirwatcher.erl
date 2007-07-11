@@ -12,7 +12,7 @@
 
 -vsn("1").
 %% API
--export([start_link/0, watch_dirs/0]).
+-export([start_link/0, watch_dirs/0, dir_watched/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -31,8 +31,14 @@
 %% Description: Starts the server
 %%--------------------------------------------------------------------
 start_link() ->
-    Dir = application:get_env(etorrent, dir),
+    {ok, Dir} = application:get_env(etorrent, dir),
     gen_server:start_link({local, ?SERVER}, ?MODULE, [Dir], []).
+
+watch_dirs() ->
+    gen_server:cast(dirwatcher, watch_directories).
+
+dir_watched() ->
+    gen_server:call(dirwatcher, dir_watched).
 
 %%====================================================================
 %% gen_server callbacks
@@ -43,15 +49,19 @@ init([Dir]) ->
 
 handle_call(report_on_files, _Who, S) ->
     {reply, sets:to_list(S#state.fileset), S};
+handle_call(dir_watched, _Who, S) ->
+    {reply, S#state.dir, S};
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
 
 handle_cast(watch_directories, S) ->
     {A, R, N} = scan_files_in_dir(S),
-    lists:foreach(fun(F) -> handle_new_torrent(F) end,
+    lists:foreach(fun(F) ->
+			  torrent_manager:start_torrent(F)
+		  end,
 		  sets:to_list(A)),
-        lists:foreach(fun(F) -> torrent_manager:stop_torrent(F) end,
+    lists:foreach(fun(F) -> torrent_manager:stop_torrent(F) end,
 		  sets:to_list(R)),
     {noreply, N}.
 
@@ -69,8 +79,6 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 
 %% Operations
-watch_dirs() ->
-    gen_server:cast(dirwatcher, watch_directories).
 
 empty_state() -> sets:new().
 
@@ -83,13 +91,3 @@ scan_files_in_dir(S) ->
     Removed = sets:subtract(S#state.fileset, FilesSet),
     NewState = S#state{fileset = FilesSet},
     {Added, Removed, NewState}.
-
-handle_new_torrent(F) ->
-    case metainfo:parse(F) of
-	{ok, Torrent} ->
-	    torrent_manager:start_torrent(F, Torrent);
-	{not_a_torrent, Reason} ->
-	    error_logger:warning_msg("~s is not a torrent: ~s~n", [F, Reason]);
-	{could_not_read_file, Reason} ->
-	    error_logger:warning_msg("~s could not be read: ~s~n", [F, Reason])
-    end.
