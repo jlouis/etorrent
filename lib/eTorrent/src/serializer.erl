@@ -84,14 +84,14 @@ dormant(request_token, _From, S) ->
 dormant(release_token, _From, S) ->
     {next_state, dormant, S}.
 
-running(request_token, From, S) ->
+running(request_token, {From, _Tag}, S) ->
     {reply, wait, running, S#state{pids = queue:in(From, S#state.pids)}};
 running(release_token, _From, S) ->
     case queue:out(S#state.pids) of
 	{{value, Pid}, Q2} ->
 	    %% TODO: Fix problems around here in the code. Something goes
 	    %%  Wrong and kills it because torrent:token(Pid) takes a badarg
-	    io:format("Sending token~n", []),
+	    io:format("Sending token ~p ~n", [Pid]),
 	    torrent:token(Pid),
 	    io:format("Replying~n", []),
 	    {reply, ok, running, S#state{ pids = Q2}};
