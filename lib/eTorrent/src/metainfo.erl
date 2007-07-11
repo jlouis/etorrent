@@ -36,12 +36,28 @@ get_pieces(Torrent) ->
 		      split_into_chunks(20, [], Ps))
     end.
 
+get_length(Torrent) ->
+    case find_target(get_info(Torrent), "length") of
+	{integer, L} ->
+	    L
+    end.
+
 %%--------------------------------------------------------------------
 %% Function: get_files/1
 %% Description: Get a file list from the torrent
 %%--------------------------------------------------------------------
 get_files(Torrent) ->
-    find_target(get_info(Torrent), "files").
+    case bcoding:search_dict("files", Torrent) of
+	{ok, X} ->
+	    X;
+	false ->
+	    % Single value torrent, fake entry
+	    N = get_name(Torrent),
+	    L = get_length(Torrent),
+	    {list,[{dict,[{{string,"path"},
+			   {list,[{string,N}]}},
+			  {{string,"length"},{integer,L}}]}]}
+    end.
 
 %%--------------------------------------------------------------------
 %% Function: get_files/1
@@ -56,9 +72,8 @@ get_name(Torrent) ->
 %% Description: Return the URL of a torrent
 %%--------------------------------------------------------------------
 get_url(Torrent) ->
-    case bcoding:search_dict({string, "announce"}, Torrent) of
-	{ok, {string, Url}} ->
-	    Url
+    case find_target(Torrent, "announce") of
+	{string, U} -> U
     end.
 
 %%--------------------------------------------------------------------
@@ -93,6 +108,8 @@ parse(File) ->
 %%====================================================================
 %% Internal functions
 %%====================================================================
+
+%% Find a target that can't fail
 find_target(D, Name) ->
     case bcoding:search_dict({string, Name}, D) of
 	{ok, X} ->

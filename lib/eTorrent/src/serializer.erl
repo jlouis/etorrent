@@ -89,10 +89,14 @@ running(request_token, From, S) ->
 running(release_token, _From, S) ->
     case queue:out(S#state.pids) of
 	{{value, Pid}, Q2} ->
-	    ok = torrent:token(Pid),
+	    %% TODO: Fix problems around here in the code. Something goes
+	    %%  Wrong and kills it because torrent:token(Pid) takes a badarg
+	    io:format("Sending token~n", []),
+	    torrent:token(Pid),
+	    io:format("Replying~n", []),
 	    {reply, ok, running, S#state{ pids = Q2}};
-	{empty, Q2} ->
-	    {reply, ok, dormant, S#state{ pids = Q2}}
+	{empty, Q} ->
+	    {reply, ok, dormant, S#state{ pids = Q}}
     end.
 
 %%--------------------------------------------------------------------
