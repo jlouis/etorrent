@@ -27,20 +27,20 @@ start_link() ->
 %% Supervisor callbacks
 %%====================================================================
 init([]) ->
-    RandomSource = {random_source,
-		    {random_source, start_link, []},
-		    permanent, brutal_kill, worker, [random_source]},
+    RandomSourceSup = {random_source_sup,
+		       {random_source_sup, start_link, []},
+		       permanent, infinity, supervisor, [random_source_sup]},
     Serializer = {serializer,
 		  {serializer, start_link, []},
 		  permanent, 2000, worker, [serializer]},
-    DirWatcher = {dirwatcher,
-		  {dirwatcher, start_link, []},
-		  permanent, 2000, worker, [dirwatcher]},
+    DirWatcherSup = {dirwatcher_sup,
+		  {dirwatcher_sup, start_link, []},
+		  permanent, infinity, supervisor, [dirwatcher]},
     TorrentMgr = {torrent_manager,
 		  {torrent_manager, start_link, []},
 		  permanent, 2000, worker, [torrent_manager]},
     {ok, {{one_for_all, 1, 60},
-	  [RandomSource, Serializer, DirWatcher, TorrentMgr]}}.
+	  [RandomSourceSup, Serializer, DirWatcherSup, TorrentMgr]}}.
 
 %%====================================================================
 %% Internal functions
