@@ -47,7 +47,7 @@ get_length(Torrent) ->
 %% Description: Get a file list from the torrent
 %%--------------------------------------------------------------------
 get_files(Torrent) ->
-    case bcoding:search_dict("files", Torrent) of
+    case bcoding:search_dict({string, "files"}, get_info(Torrent)) of
 	{ok, X} ->
 	    X;
 	false ->
