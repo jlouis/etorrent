@@ -7,9 +7,10 @@ DEBUG_FLAGS = -Ddebug +debug_info
 MODULES=bcoding dirwatcher etorrent_app etorrent peer_communication \
 	torrent serializer check_torrent file_process file_system \
 	utils metainfo torrent_manager random_source dirwatcher_sup \
-	random_source_sup
+	random_source_sup tracker_delegate checker_server \
+	torrent_state
 # 	torrent_peer torrent_piecemap \
-# 	tracker_delegate  pairing_heap \
+# 	pairing_heap \
 # 	torrent_peer_send fs_filepiecemap \
 #	connection_manager
 
