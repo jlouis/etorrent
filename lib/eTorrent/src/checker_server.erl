@@ -70,7 +70,7 @@ handle_call(_Request, _From, State) ->
 %%--------------------------------------------------------------------
 handle_cast({check_torrent_at, Torrent, From}, S) ->
     DiskState = check_torrent:check_torrent(S#state.path, Torrent),
-    ok = torrent:torrent_checked(From, DiskState),
+    ok = torrent_control:torrent_checked(From, DiskState),
     {noreply, S};
 handle_cast(stop, S) ->
     {stop, normal, S};

@@ -5,7 +5,7 @@
 %%%
 %%% Created :  9 Jul 2007 by Jesper Louis Andersen <jlouis@succubus.local.domain>
 %%%-------------------------------------------------------------------
--module(torrent).
+-module(torrent_control).
 
 -behaviour(gen_fsm).
 
