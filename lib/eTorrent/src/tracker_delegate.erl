@@ -1,11 +1,27 @@
+%%%-------------------------------------------------------------------
+%%% File    : tracker_delegate.erl
+%%% Author  : Jesper Louis Andersen <jlouis@succubus.local.domain>
+%%% Description : Controls the communication with a tracker.
+%%%
+%%% Created : 12 Jul 2007 by Jesper Louis Andersen <jlouis@succubus.local.domain>
+%%%-------------------------------------------------------------------
 -module(tracker_delegate).
--behaviour(gen_server).
 
--export([start_link/1, request_tracker_immediately/1]).
+-behaviour(gen_fsm).
 
--export([init/1, handle_cast/2, code_change/3, terminate/2, handle_info/2, handle_call/3]).
+%% API
+-export([start_link/5, contact_tracker_now/1]).
 
--author("jesper.louis.andersen@gmail.com").
+%% gen_fsm callbacks
+-export([init/1, ready_to_contact/2, waiting_to_contact/2, state_name/3, handle_event/3,
+	 handle_sync_event/4, handle_info/3, terminate/3, code_change/4]).
+
+-record(state, {should_contact_tracker = false,
+	        state_pid = none,
+	        url = none,
+	        infohash = none,
+	        peer_id = none,
+	        master_pid = none}).
 
 -record(tracker_request,{port = none,
 			 uploaded = 0,
@@ -15,41 +31,181 @@
 -define(SERVER, ?MODULE).
 -define(DEFAULT_REQUEST_TIMEOUT, 180).
 
+%%====================================================================
 %% API
-start_link({Master, StatePid, Url, InfoHash, PeerId}) ->
-    gen_server:start_link({local, ?SERVER}, ?MODULE, [{Master, StatePid, Url, InfoHash, PeerId}], []).
+%%====================================================================
+%%--------------------------------------------------------------------
+%% Function: start_link() -> ok,Pid} | ignore | {error,Error}
+%% Description:Creates a gen_fsm process which calls Module:init/1 to
+%% initialize. To ensure a synchronized start-up procedure, this function
+%% does not return until Module:init/1 has returned.
+%%--------------------------------------------------------------------
+start_link(MasterPid, StatePid, Url, InfoHash, PeerId) ->
+    gen_fsm:start_link({local, ?SERVER}, ?MODULE,
+		       [{MasterPid, StatePid, Url, InfoHash, PeerId}],
+		       []).
 
-request_tracker_immediately(Pid) ->
-    gen_server:cast(Pid, tracker_request_now).
+contact_tracker_now(Pid) ->
+    gen_fsm:send_event(Pid, contact_tracker_now).
 
-%% Callbacks
-init({Master, StatePid, Url, InfoHash, PeerId}) ->
-    {ok, {Master, StatePid, Url, InfoHash, PeerId}}.
+%%====================================================================
+%% gen_fsm callbacks
+%%====================================================================
+%%--------------------------------------------------------------------
+%% Function: init(Args) -> {ok, StateName, State} |
+%%                         {ok, StateName, State, Timeout} |
+%%                         ignore                              |
+%%                         {stop, StopReason}
+%% Description:Whenever a gen_fsm is started using gen_fsm:start/[3,4] or
+%% gen_fsm:start_link/3,4, this function is called by the new process to
+%% initialize.
+%%--------------------------------------------------------------------
+init([{MasterPid, StatePid, Url, InfoHash, PeerId}]) ->
+    {ok, ready_to_contact, #state{should_contact_tracker = false,
+				  master_pid = MasterPid,
+				  state_pid = StatePid,
+				  url = Url,
+				  infohash = InfoHash,
+				  peer_id = PeerId}}.
 
-code_change(_OldVsn, State, _Extra) ->
-    {ok, State}.
+%%--------------------------------------------------------------------
+%% Function:
+%% state_name(Event, State) -> {next_state, NextStateName, NextState}|
+%%                             {next_state, NextStateName,
+%%                                NextState, Timeout} |
+%%                             {stop, Reason, NewState}
+%% Description:There should be one instance of this function for each possible
+%% state name. Whenever a gen_fsm receives an event sent using
+%% gen_fsm:send_event/2, the instance of this function with the same name as
+%% the current state name StateName is called to handle the event. It is also
+%% called if a timeout occurs.
+%%--------------------------------------------------------------------
+ready_to_contact(contact_tracker_now, S) ->
+    NextContactTime = contact_tracker(S),
+    gen_fsm:start_timer(NextContactTime, may_contact),
+    {next_state, ready_to_contact, S};
+ready_to_contact(may_contact, S) ->
+    {next_state, ready_to_contact, S}.
 
-handle_info(_Foo, State) ->
-    {noreply, State}.
+waiting_to_contact(contact_tracker_now, S) ->
+    {next_state, waiting_to_contact, S#state{should_contact_tracker = true}};
+waiting_to_contact(may_contact, S) ->
+    case S#state.should_contact_tracker of
+	false ->
+	    {next_state, ready_to_contact, S};
+	true ->
+	    NextContactTime = contact_tracker(S),
+	    gen_fsm:start_timer(NextContactTime, may_contact),
+	    {next_state, waiting_to_contact,
+	     S#state{should_contact_tracker = false}}
+    end.
 
-terminate(shutdown, _State) ->
+
+%%--------------------------------------------------------------------
+%% Function:
+%% state_name(Event, From, State) -> {next_state, NextStateName, NextState} |
+%%                                   {next_state, NextStateName,
+%%                                     NextState, Timeout} |
+%%                                   {reply, Reply, NextStateName, NextState}|
+%%                                   {reply, Reply, NextStateName,
+%%                                    NextState, Timeout} |
+%%                                   {stop, Reason, NewState}|
+%%                                   {stop, Reason, Reply, NewState}
+%% Description: There should be one instance of this function for each
+%% possible state name. Whenever a gen_fsm receives an event sent using
+%% gen_fsm:sync_send_event/2,3, the instance of this function with the same
+%% name as the current state name StateName is called to handle the event.
+%%--------------------------------------------------------------------
+state_name(_Event, _From, State) ->
+    Reply = ok,
+    {reply, Reply, state_name, State}.
+
+%%--------------------------------------------------------------------
+%% Function:
+%% handle_event(Event, StateName, State) -> {next_state, NextStateName,
+%%						  NextState} |
+%%                                          {next_state, NextStateName,
+%%					          NextState, Timeout} |
+%%                                          {stop, Reason, NewState}
+%% Description: Whenever a gen_fsm receives an event sent using
+%% gen_fsm:send_all_state_event/2, this function is called to handle
+%% the event.
+%%--------------------------------------------------------------------
+handle_event(_Event, StateName, State) ->
+    {next_state, StateName, State}.
+
+%%--------------------------------------------------------------------
+%% Function:
+%% handle_sync_event(Event, From, StateName,
+%%                   State) -> {next_state, NextStateName, NextState} |
+%%                             {next_state, NextStateName, NextState,
+%%                              Timeout} |
+%%                             {reply, Reply, NextStateName, NextState}|
+%%                             {reply, Reply, NextStateName, NextState,
+%%                              Timeout} |
+%%                             {stop, Reason, NewState} |
+%%                             {stop, Reason, Reply, NewState}
+%% Description: Whenever a gen_fsm receives an event sent using
+%% gen_fsm:sync_send_all_state_event/2,3, this function is called to handle
+%% the event.
+%%--------------------------------------------------------------------
+handle_sync_event(_Event, _From, StateName, State) ->
+    Reply = ok,
+    {reply, Reply, StateName, State}.
+
+%%--------------------------------------------------------------------
+%% Function:
+%% handle_info(Info,StateName,State)-> {next_state, NextStateName, NextState}|
+%%                                     {next_state, NextStateName, NextState,
+%%                                       Timeout} |
+%%                                     {stop, Reason, NewState}
+%% Description: This function is called by a gen_fsm when it receives any
+%% other message than a synchronous or asynchronous event
+%% (or a system message).
+%%--------------------------------------------------------------------
+handle_info(_Info, StateName, State) ->
+    {next_state, StateName, State}.
+
+%%--------------------------------------------------------------------
+%% Function: terminate(Reason, StateName, State) -> void()
+%% Description:This function is called by a gen_fsm when it is about
+%% to terminate. It should be the opposite of Module:init/1 and do any
+%% necessary cleaning up. When it returns, the gen_fsm terminates with
+%% Reason. The return value is ignored.
+%%--------------------------------------------------------------------
+terminate(_Reason, _StateName, _State) ->
     ok.
 
-handle_call(_Call, _Who, S) ->
-    {noreply, S}.
+%%--------------------------------------------------------------------
+%% Function:
+%% code_change(OldVsn, StateName, State, Extra) -> {ok, StateName, NewState}
+%% Description: Convert process state when code is changed
+%%--------------------------------------------------------------------
+code_change(_OldVsn, StateName, State, _Extra) ->
+    {ok, StateName, State}.
 
+%%--------------------------------------------------------------------
+%%% Internal functions
+%%--------------------------------------------------------------------
+contact_tracker(S) ->
+    contact_tracker(S, none).
 
-handle_cast(tracker_request_now, State) ->
-    tracker_request(State, none);
-handle_cast(start, State) ->
-    tracker_request(State, "started");
-handle_cast(stop, State) ->
-    tracker_request(State, "stopped").
-
-%% Internal stuff
-tick_after(Secs) ->
-    timer:apply_after(Secs * 1000, self(),
-		      fun () -> request_tracker_immediately(self()) end, []).
+contact_tracker(S, Event) ->
+    RequestToSend = build_request_to_send(S#state.state_pid),
+    case perform_get_request(S#state.url,
+			     S#state.infohash,
+			     S#state.peer_id,
+			     RequestToSend,
+			     Event) of
+	{ok, ResponseBody} ->
+	    case bcoding:decode(ResponseBody) of
+		{ok, BC} ->
+		    {ok, RequestTime} =
+			handle_tracker_response(BC,
+						S#state.master_pid),
+		    RequestTime
+	    end
+    end.
 
 build_request_to_send(StatePid) ->
     {data_transfer_amounts, Uploaded, Downloaded, Left} =
@@ -59,6 +215,7 @@ build_request_to_send(StatePid) ->
 		     downloaded = Downloaded,
 		     left = Left}.
 
+% TODO: This doesn't really belong here. Consider moving to bcoding..
 find_in_bcoded(BCoded, Term, Default) ->
     case bcoding:search_dict(Term, BCoded) of
 	{ok, Val} ->
@@ -97,6 +254,7 @@ handle_tracker_response(BC, Master) ->
     ErrorMessage = fetch_error_message(BC),
     WarningMessage = fetch_warning_message(BC),
     if
+	%% Change these casts!
 	ErrorMessage /= none ->
 	    gen_server:cast(Master, {tracker_error_report, ErrorMessage});
 	WarningMessage /= none ->
@@ -107,41 +265,17 @@ handle_tracker_response(BC, Master) ->
 	    gen_server:cast(Master, {tracker_report, TrackerId, Complete, Incomplete}),
 	    gen_server:cast(Master, {new_ips, NewIPs})
     end,
-    tick_after(RequestTime).
-
-tracker_request({Master, StatePid, Url, InfoHash, PeerId}, Event) ->
-    RequestToSend = build_request_to_send(StatePid),
-    case perform_get_request(Url, InfoHash, PeerId, RequestToSend, Event) of
-	{ok, ResponseBody} ->
-	    case bcoding:decode(ResponseBody) of
-		{ok, BC} ->
-		    handle_tracker_response(BC, Master),
-		    {noreply, {Master, StatePid, Url, InfoHash, PeerId}};
-		{error, Err} ->
-		    gen_server:cast(Master, {tracker_responded_not_bcode, Err}),
-		    tick_after(180),
-		    {noreply, {Master, StatePid, Url, InfoHash, PeerId}}
-	    end;
-	{error, Err} ->
-	    gen_server:cast(Master, {tracker_request_failed, Err}),
-	    tick_after(180),
-	    {noreply, {Master, StatePid, Url, InfoHash, PeerId}}
-    end.
+    {ok, RequestTime}.
 
 perform_get_request(Url, InfoHash, PeerId, Status, Event) ->
     NewUrl = build_tracker_url(Url, Status, InfoHash, PeerId, Event),
     case http:request(NewUrl) of
 	{ok, {{_, 200, _}, _, Body}} ->
-	    {ok, Body};
-	_ ->
-	    %% TODO: We need to fix this. If we can't find anything, this is
-	    %% triggered. So we must handle it. Oh, we must fix this.
-	    %% We can take a look on some of the errors and report them back gracefully since it is much easier
-	    %% to read and understand then.
-	    {error, "Some error happened in the request get"}
+	    {ok, Body}
     end.
 
 build_tracker_url(BaseUrl, TrackerRequest, IHash, PrId, Evt) ->
+    %% TODO: Use io_lib:format for this!
     InfoHash = lists:concat(["info_hash=", IHash]),
     PeerId   = lists:concat(["peer_id=", PrId]),
     %% Ignore port for now
