@@ -1,6 +1,8 @@
 -module(tracker_delegate).
 -behaviour(gen_server).
 
+-export([start_link/1, request_tracker_immediately/1]).
+
 -export([init/1, handle_cast/2, code_change/3, terminate/2, handle_info/2, handle_call/3]).
 
 -author("jesper.louis.andersen@gmail.com").
@@ -10,8 +12,17 @@
 			 downloaded = 0,
 			 left = 0}).
 
+-define(SERVER, ?MODULE).
 -define(DEFAULT_REQUEST_TIMEOUT, 180).
 
+%% API
+start_link({Master, StatePid, Url, InfoHash, PeerId}) ->
+    gen_server:start_link({local, ?SERVER}, ?MODULE, [{Master, StatePid, Url, InfoHash, PeerId}], []).
+
+request_tracker_immediately(Pid) ->
+    gen_server:cast(Pid, tracker_request_now).
+
+%% Callbacks
 init({Master, StatePid, Url, InfoHash, PeerId}) ->
     {ok, {Master, StatePid, Url, InfoHash, PeerId}}.
 
@@ -27,9 +38,6 @@ terminate(shutdown, _State) ->
 handle_call(_Call, _Who, S) ->
     {noreply, S}.
 
-tick_after(Secs) ->
-    timer:apply_after(Secs * 1000, self(),
-		      fun () -> request_tracker_immediately(self()) end, []).
 
 handle_cast(tracker_request_now, State) ->
     tracker_request(State, none);
@@ -38,11 +46,11 @@ handle_cast(start, State) ->
 handle_cast(stop, State) ->
     tracker_request(State, "stopped").
 
-%% Operations
-request_tracker_immediately(Pid) ->
-    gen_server:cast(Pid, tracker_request_now).
+%% Internal stuff
+tick_after(Secs) ->
+    timer:apply_after(Secs * 1000, self(),
+		      fun () -> request_tracker_immediately(self()) end, []).
 
-%% Helpers
 build_request_to_send(StatePid) ->
     {data_transfer_amounts, Uploaded, Downloaded, Left} =
 	torrent_state:current_state(StatePid),
