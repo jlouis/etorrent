@@ -56,6 +56,8 @@ handle_cast({stop_torrent, F}, {TrackingMap, PeerId}) ->
 %% Internal functions
 spawn_new_torrent(F, PeerId, TrackingMap) ->
     {ok, TorrentPid} = torrent:start_link(),
+    sys:trace(TorrentPid, true),
+    sys:statistics(TorrentPid, true),
     ok = torrent:load_new_torrent(TorrentPid, F, PeerId),
     ets:insert(TrackingMap, {TorrentPid, F}).
 
