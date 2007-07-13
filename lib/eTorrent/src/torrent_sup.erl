@@ -15,8 +15,6 @@
 %% Supervisor callbacks
 -export([init/1]).
 
--define(SERVER, ?MODULE).
-
 %%====================================================================
 %% API functions
 %%====================================================================
@@ -25,7 +23,7 @@
 %% Description: Starts the supervisor
 %%--------------------------------------------------------------------
 start_link() ->
-    supervisor:start_link({local, ?SERVER}, ?MODULE, [self()]).
+    supervisor:start_link(?MODULE, []).
 
 %%====================================================================
 %% Supervisor callbacks
@@ -40,10 +38,7 @@ start_link() ->
 %% specifications.
 %%--------------------------------------------------------------------
 init([]) ->
-    Torrent = {torrent,
-	       {torrent, start_link, []},
-	       permanent, 2000, worker, [torrent]},
-    {ok, {{one_for_all, 1, 600}, [Torrent]}}.
+    {ok, {{one_for_all, 1, 600}, []}}.
 
 %%====================================================================
 %% Internal functions

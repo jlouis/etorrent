@@ -24,8 +24,6 @@
 	        checker_pid = none,
 	        torrent_pid = none}).
 
--define(SERVER, ?MODULE).
-
 %%====================================================================
 %% API
 %%====================================================================
@@ -36,7 +34,7 @@
 %% does not return until Module:init/1 has returned.
 %%--------------------------------------------------------------------
 start_link() ->
-    gen_fsm:start_link({local, ?SERVER}, ?MODULE, [], []).
+    gen_fsm:start_link(?MODULE, [], []).
 
 token(Pid) ->
     gen_fsm:send_event(Pid, token).
@@ -50,8 +48,8 @@ start(Pid) ->
 load_new_torrent(Pid, File, PeerId) ->
     gen_fsm:sync_send_event(Pid, {load_new_torrent, File, PeerId}).
 
-torrent_checked(Pid, _DiskState) ->
-    gen_fsm:send_event(Pid, torrent_checked).
+torrent_checked(Pid, DiskState) ->
+    gen_fsm:send_event(Pid, {torrent_checked, DiskState}).
 %%====================================================================
 %% gen_fsm callbacks
 %%====================================================================
@@ -86,10 +84,10 @@ waiting_check(token, S) ->
 waiting_check(stop, S) ->
     {next_state, stopped, S}.
 
-checking(torrent_checked, S) ->
+checking({torrent_checked, DiskState}, S) ->
     ok = serializer:release_token(),
     checker_server:stop(S#state.checker_pid),
-    {ok, TorrentPid} = torrent_sup:start_link(),
+    {ok, TorrentPid} = torrent_sup:start_link(DiskState),
     {next_state, started, S#state{checker_pid = none,
 				  torrent_pid = TorrentPid}}.
 
