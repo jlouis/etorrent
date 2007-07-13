@@ -89,7 +89,7 @@ waiting_check(stop, S) ->
 checking(torrent_checked, S) ->
     ok = serializer:release_token(),
     checker_server:stop(S#state.checker_pid),
-    {ok, TorrentPid} = torrent:start_link(),
+    {ok, TorrentPid} = torrent_sup:start_link(),
     {next_state, started, S#state{checker_pid = none,
 				  torrent_pid = TorrentPid}}.
 
@@ -104,7 +104,6 @@ stopped(start, S) ->
 stopped(token, S) ->
     ok = serializer:release_token(),
     {stop, argh, S}.
-
 
 %%--------------------------------------------------------------------
 %% Function:
