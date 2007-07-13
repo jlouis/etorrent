@@ -10,7 +10,7 @@
 -behaviour(supervisor).
 
 %% API
--export([start_link/0]).
+-export([start_link/0, add_control/1]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -18,12 +18,13 @@
 %%====================================================================
 %% API functions
 %%====================================================================
-%%--------------------------------------------------------------------
-%% Function: start_link() -> {ok,Pid} | ignore | {error,Error}
-%% Description: Starts the supervisor
-%%--------------------------------------------------------------------
 start_link() ->
     supervisor:start_link(?MODULE, []).
+
+add_control(Pid) ->
+    supervisor:start_child(Pid, {torrent_control,
+				 {torrent_control, start_link, []},
+				 permanent, 10000, worker, [torrent_control]}).
 
 %%====================================================================
 %% Supervisor callbacks
@@ -38,7 +39,7 @@ start_link() ->
 %% specifications.
 %%--------------------------------------------------------------------
 init([]) ->
-    {ok, {{one_for_all, 1, 600}, []}}.
+    {ok, {{one_for_all, 1, 60}, []}}.
 
 %%====================================================================
 %% Internal functions

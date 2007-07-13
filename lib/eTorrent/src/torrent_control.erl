@@ -84,12 +84,13 @@ waiting_check(token, S) ->
 waiting_check(stop, S) ->
     {next_state, stopped, S}.
 
-checking({torrent_checked, DiskState}, S) ->
+checking({torrent_checked, _DiskState}, S) ->
     ok = serializer:release_token(),
     checker_server:stop(S#state.checker_pid),
-    {ok, TorrentPid} = torrent_sup:start_link(DiskState),
+    io:format("Starting torrent pid~n", []),
+    % {ok, TorrentPid} = torrent_sup:start_link(DiskState),
     {next_state, started, S#state{checker_pid = none,
-				  torrent_pid = TorrentPid}}.
+				  torrent_pid = none}}.
 
 started(stop, S) ->
     {stop, argh, S};
