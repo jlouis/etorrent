@@ -29,22 +29,25 @@ start_link() ->
 init([]) ->
     RandomSourceSup = {random_source_sup,
 		       {random_source_sup, start_link, []},
-		       permanent, infinity, supervisor, [random_source_sup]},
+		       transient, infinity, supervisor, [random_source_sup]},
+    PortManager = {portmanager,
+		   {portmanager, start_link, []},
+		   permanent, 2000, worker, [portmanager]},
     Serializer = {serializer,
 		  {serializer, start_link, []},
 		  permanent, 2000, worker, [serializer]},
     DirWatcherSup = {dirwatcher_sup,
 		  {dirwatcher_sup, start_link, []},
-		  permanent, infinity, supervisor, [dirwatcher]},
+		  transient, infinity, supervisor, [dirwatcher]},
     TorrentMgr = {torrent_manager,
 		  {torrent_manager, start_link, []},
 		  permanent, 2000, worker, [torrent_manager]},
     TorrentPool = {torrent_pool_sup,
 		   {torrent_pool_sup, start_link, []},
-		   permanent, infinity, supervisor, [torrent_pool_sup]},
+		   transient, infinity, supervisor, [torrent_pool_sup]},
     {ok, {{one_for_all, 1, 60},
-	  [RandomSourceSup, Serializer, DirWatcherSup, TorrentMgr,
-	   TorrentPool]}}.
+	  [RandomSourceSup, PortManager, Serializer,
+	   DirWatcherSup, TorrentMgr, TorrentPool]}}.
 
 %%====================================================================
 %% Internal functions
