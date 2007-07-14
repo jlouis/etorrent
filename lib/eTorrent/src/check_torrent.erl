@@ -8,34 +8,42 @@
 -module(check_torrent).
 
 %% API
--export([check_torrent/2]).
+-export([load_torrent/2, ensure_file_sizes_correct/1,
+	build_dictionary_on_files/2, check_torrent_contents/2]).
 
 %%====================================================================
 %% API
 %%====================================================================
-check_torrent(WorkDir, Path) ->
-    P = filename:join([WorkDir, Path]),
+load_torrent(Workdir, Path) ->
+    P = filename:join([Workdir, Path]),
     {ok, Torrent} = metainfo:parse(P),
     {list, Files} = metainfo:get_files(Torrent),
     Name = metainfo:get_name(Torrent),
     FilesToCheck =
 	lists:map(fun (E) ->
 			  {Filename, Size} = report_files(E),
-			  io:format("Found ~s at length ~B~n",
-				    [Filename, Size]),
-			  {filename:join([WorkDir, Name, Filename]), Size}
+			  {filename:join([Workdir, Name, Filename]), Size}
 		  end,
 		  Files),
-    size_check_files(FilesToCheck),
-    {ok, FileDict} =
-	build_dictionary_on_files(Torrent, FilesToCheck),
-    {ok, Res} = check_torrent_contents(FileDict),
-    Res.
+    {ok, Torrent, FilesToCheck}.
 
-check_torrent_contents(FileDict) ->
-    {ok, FileChecker} = file_system:start_link(FileDict),
+ensure_file_sizes_correct(Files) ->
+    lists:map(fun ({Pth, ISz}) ->
+		      Sz = filelib:file_size(Pth),
+		      if
+			  (Sz /= ISz) ->
+			      Missing = ISz - Sz,
+			      fill_file_ensure_path(Pth, Missing);
+			  true ->
+			      ok
+		      end
+	      end,
+	      Files),
+    ok.
+
+check_torrent_contents(FS, FileDict) ->
     Res = dict:map(fun (PN, {Hash, Ops, none}) ->
- 		      {ok, Data} = file_system:read_piece(FileChecker, PN),
+ 		      {ok, Data} = file_system:read_piece(FS, PN),
 		      case Hash == crypto:sha(Data) of
 			  true ->
 			      {Hash, Ops, ok};
@@ -44,23 +52,69 @@ check_torrent_contents(FileDict) ->
 		      end
  	      end,
  	      FileDict),
-    file_system:stop(FileChecker),
     {ok, Res}.
 
-size_check_files(Entries) ->
-    lists:map(fun ({Pth, ISz}) ->
-		      Sz = filelib:file_size(Pth),
-		      case (Sz == ISz) of
-			  true ->
-			      io:format("Path ~s is ok~n", [Pth]);
-			  false ->
-			      io:format("Path ~s is to small, filling~n", [Pth]),
-			      Missing = ISz - Sz,
-			      fill_file_ensure_path(Pth, Missing)
-		      end
-	      end,
-	      Entries),
-    ok.
+build_dictionary_on_files(Torrent, Files) ->
+    Pieces = metainfo:get_pieces(Torrent),
+    PSize = metainfo:get_piece_length(Torrent),
+    LastPieceSize = torrent_size(Files) rem PSize,
+    construct_fpmap(Files,
+		    0,
+		    PSize,
+		    LastPieceSize,
+		    lists:zip(lists:seq(1, length(Pieces)), Pieces),
+		    []).
+
+
+
+%%====================================================================
+%% Internal functions
+%%====================================================================
+report_files(Entry) ->
+    {dict,[{{string,"path"},
+	    {list,[{string,Filename}]}},
+	   {{string,"length"},{integer,Size}}]} = Entry,
+    {Filename, Size}.
+
+torrent_size(Files) ->
+    lists:foldl(fun ({_F, S}, A) ->
+			S + A
+		end,
+		0,
+		Files).
+
+
+extract_piece(0, Fs, Offset, B) ->
+    {ok, Fs, Offset, B};
+extract_piece(Left, [], _O, _Building) ->
+    {error_need_files, Left};
+extract_piece(Left, [{Pth, Sz} | R], Offset, Building) ->
+    case (Sz - Offset) > Left of
+	true ->
+	    % There is enough bytes left in Pth
+	    {ok, [{Pth, Sz} | R], Offset+Left,
+	     [{Pth, Offset, Left} | Building]};
+	false ->
+	    % There is not enough space left in Pth
+	    BytesWeCanGet = Sz - Offset,
+	    extract_piece(Left - BytesWeCanGet, R, 0,
+			  [{Pth, Offset, BytesWeCanGet} | Building])
+    end.
+
+construct_fpmap([], _Offset, _PieceSize, _LPS, [], Done) ->
+    {ok, dict:from_list(Done)};
+construct_fpmap([], _O, _P, _LPS, _Pieces, _D) ->
+    error_more_pieces;
+construct_fpmap(FileList, Offset, PieceSize, LastPieceSize,
+		[{Num, Hash}], Done) -> % Last piece
+    {ok, FL, OS, Ops} = extract_piece(LastPieceSize, FileList, Offset, []),
+    construct_fpmap(FL, OS, PieceSize, LastPieceSize, [],
+		    [{Num, {Hash, lists:reverse(Ops), none}} | Done]);
+construct_fpmap(FileList, Offset, PieceSize, LastPieceSize,
+		[{Num, Hash} | Ps], Done) ->
+    {ok, FL, OS, Ops} = extract_piece(PieceSize, FileList, Offset, []),
+    construct_fpmap(FL, OS, PieceSize, LastPieceSize, Ps,
+		    [{Num, {Hash, lists:reverse(Ops), none}} | Done]).
 
 fill_file_ensure_path(Path, Missing) ->
     case file:open(Path, [read, write, delayed_write, binary, raw]) of
@@ -110,62 +164,3 @@ create_file(FD, M, N0, R) when M + 8 =< N0 ->
 create_file(FD, M, N0, R) ->
     N1 = N0-1,
     create_file(FD, M, N1, [<<N1:32/unsigned>> | R]).
-
-%%====================================================================
-%% Internal functions
-%%====================================================================
-report_files(Entry) ->
-    {dict,[{{string,"path"},
-	    {list,[{string,Filename}]}},
-	   {{string,"length"},{integer,Size}}]} = Entry,
-    {Filename, Size}.
-
-torrent_size(Files) ->
-    lists:foldl(fun ({_F, S}, A) ->
-			S + A
-		end,
-		0,
-		Files).
-
-build_dictionary_on_files(Torrent, Files) ->
-    Pieces = metainfo:get_pieces(Torrent),
-    PSize = metainfo:get_piece_length(Torrent),
-    LastPieceSize = torrent_size(Files) rem PSize,
-    construct_fpmap(Files,
-		    0,
-		    PSize,
-		    LastPieceSize,
-		    lists:zip(lists:seq(1, length(Pieces)), Pieces),
-		    []).
-
-extract_piece(0, Fs, Offset, B) ->
-    {ok, Fs, Offset, B};
-extract_piece(Left, [], _O, _Building) ->
-    {error_need_files, Left};
-extract_piece(Left, [{Pth, Sz} | R], Offset, Building) ->
-    case (Sz - Offset) > Left of
-	true ->
-	    % There is enough bytes left in Pth
-	    {ok, [{Pth, Sz} | R], Offset+Left,
-	     [{Pth, Offset, Left} | Building]};
-	false ->
-	    % There is not enough space left in Pth
-	    BytesWeCanGet = Sz - Offset,
-	    extract_piece(Left - BytesWeCanGet, R, 0,
-			  [{Pth, Offset, BytesWeCanGet} | Building])
-    end.
-
-construct_fpmap([], _Offset, _PieceSize, _LPS, [], Done) ->
-    {ok, dict:from_list(Done)};
-construct_fpmap([], _O, _P, _LPS, _Pieces, _D) ->
-    error_more_pieces;
-construct_fpmap(FileList, Offset, PieceSize, LastPieceSize,
-		[{Num, Hash}], Done) -> % Last piece
-    {ok, FL, OS, Ops} = extract_piece(LastPieceSize, FileList, Offset, []),
-    construct_fpmap(FL, OS, PieceSize, LastPieceSize, [],
-		    [{Num, {Hash, lists:reverse(Ops), none}} | Done]);
-construct_fpmap(FileList, Offset, PieceSize, LastPieceSize,
-		[{Num, Hash} | Ps], Done) ->
-    {ok, FL, OS, Ops} = extract_piece(PieceSize, FileList, Offset, []),
-    construct_fpmap(FL, OS, PieceSize, LastPieceSize, Ps,
-		    [{Num, {Hash, lists:reverse(Ops), none}} | Done]).

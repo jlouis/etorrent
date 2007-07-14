@@ -14,14 +14,17 @@
 	torrent_checked/2]).
 
 %% gen_fsm callbacks
--export([init/1, handle_event/3, initializing/3, waiting_check/2, started/2,
+-export([init/1, handle_event/3, initializing/2, waiting_check/2, started/2,
 	 stopped/2, handle_sync_event/4, handle_info/3, terminate/3,
-	 code_change/4, checking/2]).
+	 code_change/4]).
 
 -record(state, {path = none,
 		torrent = none,
 		peer_id = none,
+		work_dir = none,
 	        checker_pid = none,
+		file_system_pid = none,
+		disk_state = none,
 	        torrent_pid = none}).
 
 %%====================================================================
@@ -46,7 +49,7 @@ start(Pid) ->
     gen_fsm:send_event(Pid, start).
 
 load_new_torrent(Pid, File, PeerId) ->
-    gen_fsm:sync_send_event(Pid, {load_new_torrent, File, PeerId}).
+    gen_fsm:send_event(Pid, {load_new_torrent, File, PeerId}).
 
 torrent_checked(Pid, DiskState) ->
     gen_fsm:send_event(Pid, {torrent_checked, DiskState}).
@@ -63,7 +66,8 @@ torrent_checked(Pid, DiskState) ->
 %% initialize.
 %%--------------------------------------------------------------------
 init([]) ->
-    {ok, initializing, #state{}}.
+    {ok, WorkDir} = application:get_env(etorrent, dir),
+    {ok, initializing, #state{work_dir = WorkDir}}.
 
 %%--------------------------------------------------------------------
 %% Function:
@@ -77,20 +81,36 @@ init([]) ->
 %% the current state name StateName is called to handle the event. It is also
 %% called if a timeout occurs.
 %%--------------------------------------------------------------------
+% Load a torrent at Path with Torrent
+initializing({load_new_torrent, Path, PeerId}, S) ->
+    {ok, Torrent, Files} =
+	check_torrent:load_torrent(S#state.work_dir, Path),
+    ok = check_torrent:ensure_file_sizes_correct(Files),
+    {ok, FileDict} = check_torrent:build_dictionary_on_files(Torrent, Files),
+    {ok, FS, NewState} = add_filesystem(FileDict,
+					S#state{path = Path,
+						torrent = Torrent,
+						peer_id = PeerId}),
+    case serializer:request_token() of
+	ok ->
+	    {ok, DiskState} =
+		check_torrent:check_torrent_contents(FS, FileDict),
+	    ok = serializer:release_token(),
+	    {next_state, started, NewState#state{disk_state = DiskState,
+					        file_system_pid = FS}};
+	wait ->
+	    {next_state, waiting_check, NewState#state{disk_state = FileDict,
+						      file_system_pid = FS}}
+    end.
+
 waiting_check(token, S) ->
-    {ok, CheckerPid} = checker_server:start_link(),
-    checker_server:check_torrent(CheckerPid, S#state.path),
-    {next_state, checking, S#state{checker_pid = CheckerPid}};
+    {ok, DiskState} =
+	check_torrent:check_torrent_contents(S#state.file_system_pid,
+					     S#state.disk_state),
+    ok = serializer:release_token(),
+    {next_state, started, S#state{disk_state = DiskState}};
 waiting_check(stop, S) ->
     {next_state, stopped, S}.
-
-checking({torrent_checked, _DiskState}, S) ->
-    ok = serializer:release_token(),
-    checker_server:stop(S#state.checker_pid),
-    io:format("Starting torrent pid~n", []),
-    % {ok, TorrentPid} = torrent_sup:start_link(DiskState),
-    {next_state, started, S#state{checker_pid = none,
-				  torrent_pid = none}}.
 
 started(stop, S) ->
     {stop, argh, S};
@@ -119,19 +139,6 @@ stopped(token, S) ->
 %% gen_fsm:sync_send_event/2,3, the instance of this function with the same
 %% name as the current state name StateName is called to handle the event.
 %%--------------------------------------------------------------------
-% Load a torrent at Path with Torrent
-initializing({load_new_torrent, Path, PeerId}, _From, S) ->
-    NewState = S#state{path = Path,
-		       torrent = none,
-		       peer_id = PeerId},
-    case serializer:request_token() of
-	ok ->
-	    {ok, CheckerPid} = checker_server:start_link(),
-	    checker_server:check_torrent(CheckerPid, Path),
-	    {reply, ok, checking, NewState#state{checker_pid = CheckerPid}};
-	wait ->
-	    {reply, ok, waiting_check, NewState}
-    end.
 
 %%--------------------------------------------------------------------
 %% Function:
@@ -200,3 +207,8 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 %%--------------------------------------------------------------------
 %%% Internal functions
 %%--------------------------------------------------------------------
+add_filesystem(FileDict, S) ->
+    {ok, FS} = file_system:start_link(FileDict),
+    {ok, FS, S#state{file_system_pid = FS}}.
+
+
