@@ -23,6 +23,7 @@
 		peer_id = none,
 		work_dir = none,
 	        checker_pid = none,
+		state_pid = none,
 		file_system_pid = none,
 		disk_state = none,
 	        torrent_pid = none}).
@@ -93,22 +94,30 @@ initializing({load_new_torrent, Path, PeerId}, S) ->
 						peer_id = PeerId}),
     case serializer:request_token() of
 	ok ->
-	    {ok, DiskState} =
-		check_torrent:check_torrent_contents(FS, FileDict),
-	    ok = serializer:release_token(),
-	    {next_state, started, NewState#state{disk_state = DiskState,
-					        file_system_pid = FS}};
+	    NS = check_and_start_torrent(FS, FileDict, NewState),
+	    {next_state, started, NS};
 	wait ->
 	    {next_state, waiting_check, NewState#state{disk_state = FileDict,
 						      file_system_pid = FS}}
     end.
 
-waiting_check(token, S) ->
+check_and_start_torrent(FS, FileDict, S) ->
     {ok, DiskState} =
-	check_torrent:check_torrent_contents(S#state.file_system_pid,
-					     S#state.disk_state),
+	check_torrent:check_torrent_contents(FS, FileDict),
     ok = serializer:release_token(),
-    {next_state, started, S#state{disk_state = DiskState}};
+    {ok, Port} = portmanager:fetch_port(),
+    {ok, StatePid} = torrent_state:start_link(Port,
+					      calculate_amount_left(DiskState)),
+    S#state{disk_state = DiskState,
+	    file_system_pid = FS,
+	    state_pid = StatePid}.
+
+
+waiting_check(token, S) ->
+    NS = check_and_start_torrent(S#state.file_system_pid,
+				 S#state.disk_state,
+				 S),
+    {next_state, started, NS};
 waiting_check(stop, S) ->
     {next_state, stopped, S}.
 
@@ -210,5 +219,23 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 add_filesystem(FileDict, S) ->
     {ok, FS} = file_system:start_link(FileDict),
     {ok, FS, S#state{file_system_pid = FS}}.
+
+calculate_amount_left(DiskState) ->
+    dict:fold(fun (_K, {_Hash, Ops, Ok}, Total) ->
+		      case Ok of
+			  ok ->
+			      Total;
+			  not_ok ->
+			      Total + size_of_ops(Ops)
+		      end
+	      end,
+	      0,
+	      DiskState).
+
+size_of_ops(Ops) ->
+    lists:foldl(fun ({_Path, _Offset, Size}, Total) ->
+			Size + Total end,
+		0,
+		Ops).
 
 

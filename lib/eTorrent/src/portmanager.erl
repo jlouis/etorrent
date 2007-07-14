@@ -58,7 +58,7 @@ init([]) ->
 %%--------------------------------------------------------------------
 handle_call(fetch_port, _From, S) ->
     P = S#state.next_port,
-    {reply, P, S#state{next_port = P+1}}.
+    {reply, {ok, P}, S#state{next_port = P+1}}.
 
 %%--------------------------------------------------------------------
 %% Function: handle_cast(Msg, State) -> {noreply, State} |
