@@ -10,7 +10,7 @@
 -vsn("1").
 
 %% API
--export([encode/1, decode/1, search_dict/2]).
+-export([encode/1, decode/1, search_dict/2, search_dict_default/3]).
 
 %%====================================================================
 %% API
@@ -65,6 +65,13 @@ search_dict(Key, Dict) ->
 	    not_a_dict
     end.
 
+search_dict_default(Key, Dict, Default) ->
+    case bcoding:search_dict(Key, Dict) of
+	{ok, Val} ->
+	    Val;
+	_ ->
+	    Default
+    end.
 
 %%====================================================================
 %% Internal functions

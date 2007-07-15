@@ -10,7 +10,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/2, report_to_tracker/1]).
+-export([start_link/2, report_to_tracker/1, report_from_tracker/3]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -18,6 +18,8 @@
 
 -record(state, {uploaded = 0,
 		downloaded = 0,
+		seeders = 0,
+		leechers = 0,
 		left = 0,
 		port = none}).
 
@@ -31,17 +33,12 @@
 start_link(Port, TotalSizeLeft) ->
     gen_server:start_link(?MODULE, [Port, TotalSizeLeft], []).
 
-%% upload_data(Pid, Amount) ->
-%%     gen_server:cast(Pid, {uploaded_data, Amount}).
-
-%% download_data(Pid, Amount) ->
-%%     gen_server:cast(Pid, {downloaded_data, Amount}).
-
-%% got_piece(Pid, Amount) ->
-%%     gen_server:cast(Pid, {got_a_piece, Amount}).
-
 report_to_tracker(Pid) ->
     gen_server:call(Pid, report_to_tracker).
+
+report_from_tracker(Pid, Complete, Incomplete) ->
+    gen_server:call(Pid,
+		    {report_from_tracker, Complete, Incomplete}).
 
 %%====================================================================
 %% gen_server callbacks
@@ -78,7 +75,11 @@ handle_call(report_to_tracker, _From, S) ->
 	     S#state.uploaded,
 	     S#state.downloaded,
 	     S#state.left,
-	     S#state.port}, S}.
+	     S#state.port}, S};
+handle_call({report_from_tracker, Complete, Incomplete},
+	    _From, S) ->
+    {reply, ok, S#state { seeders = Complete, leechers = Incomplete }}.
+
 
 %%--------------------------------------------------------------------
 %% Function: handle_cast(Msg, State) -> {noreply, State} |

@@ -165,9 +165,10 @@ decode_byte(B, Add) ->
 				  end
 			  end, [{b1, 1}, {b2, 2}, {b3, 3}, {b4, 4},
 				{b5, 5}, {b6, 6}, {b7, 7}, {b8, 8}]),
-    lists:map(fun({_, N}) ->
+    Res = lists:map(fun({_, N}) ->
 		      N + Add
-	      end, Select).
+	      end, Select),
+    Res.
 
 decode_bytes(_SoFar, [], Numbers) ->
     Numbers;

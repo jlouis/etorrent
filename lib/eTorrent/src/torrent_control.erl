@@ -11,7 +11,8 @@
 
 %% API
 -export([start_link/0, token/1, start/1, stop/1, load_new_torrent/3,
-	torrent_checked/2]).
+	torrent_checked/2, new_peers/2, tracker_error_report/2,
+	tracker_warning_report/2]).
 
 %% gen_fsm callbacks
 -export([init/1, handle_event/3, initializing/2, waiting_check/2, started/2,
@@ -54,6 +55,17 @@ load_new_torrent(Pid, File, PeerId) ->
 
 torrent_checked(Pid, DiskState) ->
     gen_fsm:send_event(Pid, {torrent_checked, DiskState}).
+
+new_peers(Pid, NewIps) ->
+    gen_fsm:send_event(Pid, {new_ips, NewIps}).
+
+tracker_error_report(Pid, Report) ->
+    gen_fsm:send_event(Pid, {tracker_error_report, Report}).
+
+tracker_warning_report(Pid, Report) ->
+    gen_fsm:send_event(Pid, {tracker_warning_report, Report}).
+
+
 %%====================================================================
 %% gen_fsm callbacks
 %%====================================================================

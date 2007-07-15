@@ -7,6 +7,8 @@
 %%%-------------------------------------------------------------------
 -module(tracker_delegate).
 
+%%% TODO: Handle the TrackerId gracefully!
+
 -behaviour(gen_fsm).
 
 %% API
@@ -22,7 +24,8 @@
 	        url = none,
 	        info_hash = none,
 	        peer_id = none,
-	        master_pid = none}).
+		trackerid = none,
+	        control_pid = none}).
 
 -define(SERVER, ?MODULE).
 -define(DEFAULT_REQUEST_TIMEOUT, 180).
@@ -36,9 +39,9 @@
 %% initialize. To ensure a synchronized start-up procedure, this function
 %% does not return until Module:init/1 has returned.
 %%--------------------------------------------------------------------
-start_link(MasterPid, StatePid, Url, InfoHash, PeerId) ->
+start_link(ControlPid, StatePid, Url, InfoHash, PeerId) ->
     gen_fsm:start_link({local, ?SERVER}, ?MODULE,
-		       [{MasterPid, StatePid, Url, InfoHash, PeerId}],
+		       [{ControlPid, StatePid, Url, InfoHash, PeerId}],
 		       []).
 
 contact_tracker_now(Pid) ->
@@ -56,9 +59,9 @@ contact_tracker_now(Pid) ->
 %% gen_fsm:start_link/3,4, this function is called by the new process to
 %% initialize.
 %%--------------------------------------------------------------------
-init([{MasterPid, StatePid, Url, InfoHash, PeerId}]) ->
+init([{ControlPid, StatePid, Url, InfoHash, PeerId}]) ->
     {ok, ready_to_contact, #state{should_contact_tracker = false,
-				  master_pid = MasterPid,
+				  control_pid = ControlPid,
 				  state_pid = StatePid,
 				  url = Url,
 				  info_hash = InfoHash,
@@ -77,9 +80,9 @@ init([{MasterPid, StatePid, Url, InfoHash, PeerId}]) ->
 %% called if a timeout occurs.
 %%--------------------------------------------------------------------
 ready_to_contact(contact_tracker_now, S) ->
-    NextContactTime = contact_tracker(S),
+    {ok, NextContactTime, NS} = contact_tracker(S),
     gen_fsm:start_timer(NextContactTime, may_contact),
-    {next_state, ready_to_contact, S};
+    {next_state, ready_to_contact, NS};
 ready_to_contact(may_contact, S) ->
     {next_state, ready_to_contact, S}.
 
@@ -90,10 +93,10 @@ waiting_to_contact(may_contact, S) ->
 	false ->
 	    {next_state, ready_to_contact, S};
 	true ->
-	    NextContactTime = contact_tracker(S),
+	    {ok, NextContactTime, NS} = contact_tracker(S),
 	    gen_fsm:start_timer(NextContactTime, may_contact),
 	    {next_state, waiting_to_contact,
-	     S#state{should_contact_tracker = false}}
+	     NS#state{should_contact_tracker = false}}
     end.
 
 
@@ -187,49 +190,18 @@ contact_tracker(S) ->
     contact_tracker(S, none).
 
 contact_tracker(S, Event) ->
-    case perform_get_request(S,
-			     Event) of
-	{ok, ResponseBody} ->
-	    case bcoding:decode(ResponseBody) of
+    NewUrl = build_tracker_url(S, Event),
+    case http:request(NewUrl) of
+	{ok, {{_, 200, _}, _, Body}} ->
+	    case bcoding:decode(Body) of
 		{ok, BC} ->
-		    {ok, RequestTime} =
-			handle_tracker_response(BC,
-						S#state.master_pid),
-		    RequestTime
+			handle_tracker_response(BC, S)
 	    end
     end.
 
-% TODO: This doesn't really belong here. Consider moving to bcoding..
-find_in_bcoded(BCoded, Term, Default) ->
-    case bcoding:search_dict(Term, BCoded) of
-	{ok, Val} ->
-	    Val;
-	_ ->
-	    Default
-    end.
-
-find_next_request_time(BCoded) ->
-    find_in_bcoded(BCoded, "interval", ?DEFAULT_REQUEST_TIMEOUT).
-
-find_ips_in_tracker_response(BCoded) ->
-    find_in_bcoded(BCoded, "peers", []).
-
-find_tracker_id(BCoded) ->
-    find_in_bcoded(BCoded, "trackerid", tracker_id_not_given).
-
-find_completes(BCoded) ->
-    find_in_bcoded(BCoded, "complete", no_completes).
-
-find_incompletes(BCoded) ->
-    find_in_bcoded(BCoded, "incomplete", no_incompletes).
-
-fetch_error_message(BC) ->
-    find_in_bcoded(BC, "failure reason", none).
-
-fetch_warning_message(BC) ->
-    find_in_bcoded(BC, "warning message", none).
-
-handle_tracker_response(BC, Master) ->
+handle_tracker_response(BC, S) ->
+    ControlPid = S#state.control_pid,
+    StatePid = S#state.state_pid,
     RequestTime = find_next_request_time(BC),
     TrackerId = find_tracker_id(BC),
     Complete = find_completes(BC),
@@ -240,35 +212,48 @@ handle_tracker_response(BC, Master) ->
     if
 	%% Change these casts!
 	ErrorMessage /= none ->
-	    gen_server:cast(Master, {tracker_error_report, ErrorMessage});
+	    torrent_control:tracker_error_report(ControlPid, ErrorMessage);
 	WarningMessage /= none ->
-	    gen_server:cast(Master, {tracker_warning_report, WarningMessage}),
-	    gen_server:cast(Master, {tracker_report, TrackerId, Complete, Incomplete}),
-	    gen_server:cast(Master, {new_ips, NewIPs});
+	    torrent_control:tracker_warning_report(ControlPid, WarningMessage),
+	    torrent_control:new_peers(ControlPid, NewIPs),
+	    torrent_state:report_from_tracker(StatePid, Complete, Incomplete);
 	true ->
-	    gen_server:cast(Master, {tracker_report, TrackerId, Complete, Incomplete}),
-	    gen_server:cast(Master, {new_ips, NewIPs})
+	    torrent_control:new_peers(ControlPid, NewIPs),
+	    torrent_state:report_from_tracker(StatePid, Complete, Incomplete)
     end,
-    {ok, RequestTime}.
-
-perform_get_request(S, Event) ->
-    NewUrl = build_tracker_url(S, Event),
-    case http:request(NewUrl) of
-	{ok, {{_, 200, _}, _, Body}} ->
-	    {ok, Body}
-    end.
-
-url_format_event(Event) ->
-    case Event of
-	none ->
-	    "";
-	E -> lists:concat(["&event=", E])
-    end.
+    {ok, RequestTime, S#state{trackerid = TrackerId}}.
 
 build_tracker_url(S, Event) ->
+    E = case Event of
+	    none ->
+		"";
+	    X -> lists:concat(["&event=", X])
+	end,
     {ok, Downloaded, Uploaded, Left, Port} =
-	torrent_state:current_state(S#state.state_pid),
+	torrent_state:report_to_tracker(S#state.state_pid),
     io:lib(
       "%s?info_hash=%s&peer_id=%s&uploaded=%B&downloaded=%B&left=%B&port=%B%s",
       [S#state.url, S#state.info_hash, S#state.peer_id,
-       Uploaded, Downloaded, Left, Port, url_format_event(Event)]).
+       Uploaded, Downloaded, Left, Port, E]).
+
+%%% Tracker response lookup functions
+find_next_request_time(BCoded) ->
+    bcoding:search_dict_default(BCoded, "interval", ?DEFAULT_REQUEST_TIMEOUT).
+
+find_ips_in_tracker_response(BCoded) ->
+    bcoding:search_dict_default(BCoded, "peers", []).
+
+find_tracker_id(BCoded) ->
+    bcoding:search_dict_default(BCoded, "trackerid", tracker_id_not_given).
+
+find_completes(BCoded) ->
+    bcoding:search_dict_default(BCoded, "complete", no_completes).
+
+find_incompletes(BCoded) ->
+    bcoding:search_dict_default(BCoded, "incomplete", no_incompletes).
+
+fetch_error_message(BC) ->
+    bcoding:search_dict_default(BC, "failure reason", none).
+
+fetch_warning_message(BC) ->
+    bcoding:search_dict_default(BC, "warning message", none).
