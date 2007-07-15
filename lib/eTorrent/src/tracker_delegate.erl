@@ -12,10 +12,11 @@
 -behaviour(gen_fsm).
 
 %% API
--export([start_link/5, contact_tracker_now/1]).
+-export([start_link/5, contact_tracker_now/1, start_now/1, stop_now/1,
+	torrent_completed/1]).
 
 %% gen_fsm callbacks
--export([init/1, ready_to_contact/2, waiting_to_contact/2,
+-export([init/1, tracker_wait/2,
 	 state_name/3, handle_event/3, handle_sync_event/4,
 	 handle_info/3, terminate/3, code_change/4]).
 
@@ -25,6 +26,7 @@
 	        info_hash = none,
 	        peer_id = none,
 		trackerid = none,
+		timer = none,
 	        control_pid = none}).
 
 -define(SERVER, ?MODULE).
@@ -47,6 +49,15 @@ start_link(ControlPid, StatePid, Url, InfoHash, PeerId) ->
 contact_tracker_now(Pid) ->
     gen_fsm:send_event(Pid, contact_tracker_now).
 
+start_now(Pid) ->
+    gen_fsm:send_event(Pid, start_now).
+
+stop_now(Pid) ->
+    gen_fsm:send_event(Pid, stop_now).
+
+torrent_completed(Pid) ->
+    gen_fsm:send_event(Pid, torrent_completed).
+
 %%====================================================================
 %% gen_fsm callbacks
 %%====================================================================
@@ -60,12 +71,12 @@ contact_tracker_now(Pid) ->
 %% initialize.
 %%--------------------------------------------------------------------
 init([{ControlPid, StatePid, Url, InfoHash, PeerId}]) ->
-    {ok, ready_to_contact, #state{should_contact_tracker = false,
-				  control_pid = ControlPid,
-				  state_pid = StatePid,
-				  url = Url,
-				  info_hash = InfoHash,
-				  peer_id = PeerId}}.
+    {ok, tracker_wait, #state{should_contact_tracker = false,
+			      control_pid = ControlPid,
+			      state_pid = StatePid,
+			      url = Url,
+			      info_hash = InfoHash,
+			      peer_id = PeerId}}.
 
 %%--------------------------------------------------------------------
 %% Function:
@@ -79,26 +90,14 @@ init([{ControlPid, StatePid, Url, InfoHash, PeerId}]) ->
 %% the current state name StateName is called to handle the event. It is also
 %% called if a timeout occurs.
 %%--------------------------------------------------------------------
-ready_to_contact(contact_tracker_now, S) ->
-    {ok, NextContactTime, NS} = contact_tracker(S),
-    gen_fsm:start_timer(NextContactTime, may_contact),
-    {next_state, ready_to_contact, NS};
-ready_to_contact(may_contact, S) ->
-    {next_state, ready_to_contact, S}.
-
-waiting_to_contact(contact_tracker_now, S) ->
-    {next_state, waiting_to_contact, S#state{should_contact_tracker = true}};
-waiting_to_contact(may_contact, S) ->
-    case S#state.should_contact_tracker of
-	false ->
-	    {next_state, ready_to_contact, S};
-	true ->
-	    {ok, NextContactTime, NS} = contact_tracker(S),
-	    gen_fsm:start_timer(NextContactTime, may_contact),
-	    {next_state, waiting_to_contact,
-	     NS#state{should_contact_tracker = false}}
-    end.
-
+tracker_wait(start_now, S) ->
+    {next_state, waiting_to_contact, handle_nonregular(S, "started")};
+tracker_wait(stop_now, S) ->
+    {next_state, waiting_to_contact, handle_nonregular(S, "stopped")};
+tracker_wait(torrent_completed, S) ->
+    {next_state, waiting_to_contact, handle_nonregular(S, "completed")};
+tracker_wait(may_contact, S) ->
+    {next_state, waiting_to_contact, handle_tracker_contact(S, none)}.
 
 %%--------------------------------------------------------------------
 %% Function:
@@ -186,9 +185,6 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 %%--------------------------------------------------------------------
 %%% Internal functions
 %%--------------------------------------------------------------------
-contact_tracker(S) ->
-    contact_tracker(S, none).
-
 contact_tracker(S, Event) ->
     NewUrl = build_tracker_url(S, Event),
     case http:request(NewUrl) of
@@ -210,7 +206,6 @@ handle_tracker_response(BC, S) ->
     ErrorMessage = fetch_error_message(BC),
     WarningMessage = fetch_warning_message(BC),
     if
-	%% Change these casts!
 	ErrorMessage /= none ->
 	    torrent_control:tracker_error_report(ControlPid, ErrorMessage);
 	WarningMessage /= none ->
@@ -223,11 +218,12 @@ handle_tracker_response(BC, S) ->
     end,
     {ok, RequestTime, S#state{trackerid = TrackerId}}.
 
+%% TODO: Can be made better yet, I am sure!
 build_tracker_url(S, Event) ->
     E = case Event of
 	    none ->
 		"";
-	    X -> lists:concat(["&event=", X])
+	    X -> lists:concat(["&event=%s", X])
 	end,
     {ok, Downloaded, Uploaded, Left, Port} =
 	torrent_state:report_to_tracker(S#state.state_pid),
@@ -235,6 +231,21 @@ build_tracker_url(S, Event) ->
       "%s?info_hash=%s&peer_id=%s&uploaded=%B&downloaded=%B&left=%B&port=%B%s",
       [S#state.url, S#state.info_hash, S#state.peer_id,
        Uploaded, Downloaded, Left, Port, E]).
+
+handle_tracker_contact(S, Event) ->
+    {ok, NextContactTime, NS} = contact_tracker(S, Event),
+    TimerRef = gen_fsm:start_timer(NextContactTime, may_contact),
+    NS#state{timer = TimerRef}.
+
+
+handle_nonregular(S, Event) ->
+    NS = remove_timer(S),
+    handle_tracker_contact(NS, Event).
+
+remove_timer(S) ->
+    T = S#state.timer,
+    gen_fsm:cancel_timer(T),
+    S#state{timer = none}.
 
 %%% Tracker response lookup functions
 find_next_request_time(BCoded) ->
