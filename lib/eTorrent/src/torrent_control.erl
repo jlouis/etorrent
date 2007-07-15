@@ -25,6 +25,7 @@
 		work_dir = none,
 	        checker_pid = none,
 		state_pid = none,
+		tracker_pid = none,
 		file_system_pid = none,
 		disk_state = none,
 	        torrent_pid = none}).
@@ -120,8 +121,16 @@ check_and_start_torrent(FS, FileDict, S) ->
     {ok, Port} = portmanager:fetch_port(),
     {ok, StatePid} = torrent_state:start_link(Port,
 					      calculate_amount_left(DiskState)),
+    {ok, TrackerPid} =
+	tracker_delegate:start_link(self(),
+				    StatePid,
+				    metainfo:get_url(S#state.torrent),
+				    metainfo:get_infohash(S#state.torrent),
+				    S#state.peer_id),
+    tracker_delegate:start_now(TrackerPid),
     S#state{disk_state = DiskState,
 	    file_system_pid = FS,
+	    tracker_pid = TrackerPid,
 	    state_pid = StatePid}.
 
 
