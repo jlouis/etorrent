@@ -13,20 +13,16 @@
 -export([start_link/5, contact_tracker_now/1]).
 
 %% gen_fsm callbacks
--export([init/1, ready_to_contact/2, waiting_to_contact/2, state_name/3, handle_event/3,
-	 handle_sync_event/4, handle_info/3, terminate/3, code_change/4]).
+-export([init/1, ready_to_contact/2, waiting_to_contact/2,
+	 state_name/3, handle_event/3, handle_sync_event/4,
+	 handle_info/3, terminate/3, code_change/4]).
 
 -record(state, {should_contact_tracker = false,
 	        state_pid = none,
 	        url = none,
-	        infohash = none,
+	        info_hash = none,
 	        peer_id = none,
 	        master_pid = none}).
-
--record(tracker_request,{port = none,
-			 uploaded = 0,
-			 downloaded = 0,
-			 left = 0}).
 
 -define(SERVER, ?MODULE).
 -define(DEFAULT_REQUEST_TIMEOUT, 180).
@@ -65,7 +61,7 @@ init([{MasterPid, StatePid, Url, InfoHash, PeerId}]) ->
 				  master_pid = MasterPid,
 				  state_pid = StatePid,
 				  url = Url,
-				  infohash = InfoHash,
+				  info_hash = InfoHash,
 				  peer_id = PeerId}}.
 
 %%--------------------------------------------------------------------
@@ -191,11 +187,7 @@ contact_tracker(S) ->
     contact_tracker(S, none).
 
 contact_tracker(S, Event) ->
-    RequestToSend = build_request_to_send(S#state.state_pid),
-    case perform_get_request(S#state.url,
-			     S#state.infohash,
-			     S#state.peer_id,
-			     RequestToSend,
+    case perform_get_request(S,
 			     Event) of
 	{ok, ResponseBody} ->
 	    case bcoding:decode(ResponseBody) of
@@ -206,14 +198,6 @@ contact_tracker(S, Event) ->
 		    RequestTime
 	    end
     end.
-
-build_request_to_send(StatePid) ->
-    {data_transfer_amounts, Uploaded, Downloaded, Left} =
-	torrent_state:current_state(StatePid),
-    io:format("Building request to send~n"),
-    #tracker_request{uploaded = Uploaded,
-		     downloaded = Downloaded,
-		     left = Left}.
 
 % TODO: This doesn't really belong here. Consider moving to bcoding..
 find_in_bcoded(BCoded, Term, Default) ->
@@ -267,31 +251,24 @@ handle_tracker_response(BC, Master) ->
     end,
     {ok, RequestTime}.
 
-perform_get_request(Url, InfoHash, PeerId, Status, Event) ->
-    NewUrl = build_tracker_url(Url, Status, InfoHash, PeerId, Event),
+perform_get_request(S, Event) ->
+    NewUrl = build_tracker_url(S, Event),
     case http:request(NewUrl) of
 	{ok, {{_, 200, _}, _, Body}} ->
 	    {ok, Body}
     end.
 
-build_tracker_url(BaseUrl, TrackerRequest, IHash, PrId, Evt) ->
-    %% TODO: Use io_lib:format for this!
-    InfoHash = lists:concat(["info_hash=", IHash]),
-    PeerId   = lists:concat(["peer_id=", PrId]),
-    %% Ignore port for now
-    Uploaded = lists:concat(["uploaded=",
-			     TrackerRequest#tracker_request.uploaded]),
-    Downloaded = lists:concat(["downloaded=",
-			       TrackerRequest#tracker_request.downloaded]),
-    Left = lists:concat(["left=", TrackerRequest#tracker_request.left]),
-    Event = case Evt of
-		none -> "";
-		E -> lists:concat(["&event=", E])
-	    end,
-    lists:concat([BaseUrl, "?",
-		  InfoHash, "&",
-		  PeerId, "&",
-		  Uploaded, "&",
-		  Downloaded, "&",
-		  Left, %% The Event adds this itself.
-		  Event]).
+url_format_event(Event) ->
+    case Event of
+	none ->
+	    "";
+	E -> lists:concat(["&event=", E])
+    end.
+
+build_tracker_url(S, Event) ->
+    {ok, Downloaded, Uploaded, Left, Port} =
+	torrent_state:current_state(S#state.state_pid),
+    io:lib(
+      "%s?info_hash=%s&peer_id=%s&uploaded=%B&downloaded=%B&left=%B&port=%B%s",
+      [S#state.url, S#state.info_hash, S#state.peer_id,
+       Uploaded, Downloaded, Left, Port, url_format_event(Event)]).
