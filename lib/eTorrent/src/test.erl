@@ -5,7 +5,7 @@
 start() ->
     crypto:start(),
     inets:start(),
-    http:set_options([{verbose, debug}]),
+    %http:set_options([{verbose, debug}]),
     application:set_env(etorrent, dir, "/home/jlouis/etorrent_test"),
     error_logger:logfile({open, "err.log"}),
     etorrent:start_link().
