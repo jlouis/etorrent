@@ -27,7 +27,6 @@
 		timer = none,
 	        control_pid = none}).
 
--define(SERVER, ?MODULE).
 -define(DEFAULT_REQUEST_TIMEOUT, 180).
 
 %%====================================================================
@@ -40,7 +39,7 @@
 %% does not return until Module:init/1 has returned.
 %%--------------------------------------------------------------------
 start_link(ControlPid, StatePid, Url, InfoHash, PeerId) ->
-    gen_fsm:start_link({local, ?SERVER}, ?MODULE,
+    gen_fsm:start_link(?MODULE,
 		       [{ControlPid, StatePid, Url, InfoHash, PeerId}],
 		       []).
 
@@ -254,6 +253,7 @@ build_tracker_url(S, Event) ->
 
 handle_tracker_contact(S, Event) ->
     {ok, NextContactTime, NS} = contact_tracker(S, Event),
+    io:format("installing timer at ~B ms~n", [NextContactTime * 1000]),
     TimerRef = gen_fsm:start_timer(NextContactTime * 1000, may_contact),
     NS#state{timer = TimerRef}.
 
