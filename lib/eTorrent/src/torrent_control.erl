@@ -147,6 +147,9 @@ started(stop, S) ->
 started({new_ips, IPList}, S) ->
     io:format("Saw new ips: ~p~n", [IPList]),
     {next_state, started, S};
+started({tracker_error_report, Reason}, S) ->
+    io:format("Got tracker error: ~s~n", [Reason]),
+    {next_state, started, S};
 started(token, S) ->
     ok = serializer:release_token(),
     {next_state, started, S}.

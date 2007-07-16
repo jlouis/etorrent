@@ -199,6 +199,7 @@ decode_and_handle_body(Body, S) ->
     end.
 
 handle_tracker_response(BC, S) ->
+    io:format("~p~n", [BC]),
     ControlPid = S#state.control_pid,
     StatePid = S#state.state_pid,
     RequestTime = find_next_request_time(BC),
@@ -207,10 +208,12 @@ handle_tracker_response(BC, S) ->
     Incomplete = find_incompletes(BC),
     NewIPs = find_ips_in_tracker_response(BC),
     ErrorMessage = fetch_error_message(BC),
+    io:format("Error msg: ~p~n", [ErrorMessage]),
     WarningMessage = fetch_warning_message(BC),
     if
 	ErrorMessage /= none ->
-	    torrent_control:tracker_error_report(ControlPid, ErrorMessage);
+	    {string, E} = ErrorMessage,
+	    torrent_control:tracker_error_report(ControlPid, E);
 	WarningMessage /= none ->
 	    torrent_control:tracker_warning_report(ControlPid, WarningMessage),
 	    torrent_control:new_peers(ControlPid, NewIPs),
@@ -269,23 +272,30 @@ remove_timer(S) ->
     end.
 
 %%% Tracker response lookup functions
-find_next_request_time(BCoded) ->
-    bcoding:search_dict_default(BCoded, "interval", ?DEFAULT_REQUEST_TIMEOUT).
+find_next_request_time(BC) ->
+    {integer, R} = bcoding:search_dict_default({string, "interval"},
+					       BC,
+					       {integer,
+						?DEFAULT_REQUEST_TIMEOUT}),
+    R.
 
-find_ips_in_tracker_response(BCoded) ->
-    bcoding:search_dict_default(BCoded, "peers", []).
+find_ips_in_tracker_response(BC) ->
+    bcoding:search_dict_default({string, "peer"}, BC, []).
 
-find_tracker_id(BCoded) ->
-    bcoding:search_dict_default(BCoded, "trackerid", tracker_id_not_given).
+find_tracker_id(BC) ->
+    bcoding:search_dict_default({string, "trackerid"},
+				BC,
+				tracker_id_not_given).
 
-find_completes(BCoded) ->
-    bcoding:search_dict_default(BCoded, "complete", no_completes).
+find_completes(BC) ->
+    bcoding:search_dict_default({string, "complete"}, BC, no_completes).
 
-find_incompletes(BCoded) ->
-    bcoding:search_dict_default(BCoded, "incomplete", no_incompletes).
+find_incompletes(BC) ->
+    bcoding:search_dict_default({string, "incomplete"}, BC, no_incompletes).
 
 fetch_error_message(BC) ->
-    bcoding:search_dict_default(BC, "failure reason", none).
+    bcoding:search_dict_default({string, "failure reason"}, BC, none).
 
 fetch_warning_message(BC) ->
-    bcoding:search_dict_default(BC, "warning message", none).
+    bcoding:search_dict_default({string, "warning message"}, BC, none).
+
