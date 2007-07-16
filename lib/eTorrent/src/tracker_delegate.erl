@@ -7,8 +7,6 @@
 %%%-------------------------------------------------------------------
 -module(tracker_delegate).
 
-%%% TODO: Handle the TrackerId gracefully!
-
 -behaviour(gen_fsm).
 
 %% API
@@ -91,13 +89,14 @@ init([{ControlPid, StatePid, Url, InfoHash, PeerId}]) ->
 %% called if a timeout occurs.
 %%--------------------------------------------------------------------
 tracker_wait(start_now, S) ->
-    {next_state, waiting_to_contact, handle_nonregular(S, "started")};
+    {next_state, tracker_wait, handle_nonregular(S, "started")};
 tracker_wait(stop_now, S) ->
-    {next_state, waiting_to_contact, handle_nonregular(S, "stopped")};
+    {next_state, tracker_wait, handle_nonregular(S, "stopped")};
 tracker_wait(torrent_completed, S) ->
-    {next_state, waiting_to_contact, handle_nonregular(S, "completed")};
-tracker_wait(may_contact, S) ->
-    {next_state, waiting_to_contact, handle_tracker_contact(S, none)}.
+    {next_state, tracker_wait, handle_nonregular(S, "completed")};
+tracker_wait({timeout, R, may_contact}, S) ->
+    R = S#state.timer,
+    {next_state, tracker_wait, handle_tracker_contact(S, none)}.
 
 %%--------------------------------------------------------------------
 %% Function:
@@ -187,12 +186,16 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 %%--------------------------------------------------------------------
 contact_tracker(S, Event) ->
     NewUrl = build_tracker_url(S, Event),
+    io:format("~s~n", [NewUrl]),
     case http:request(NewUrl) of
 	{ok, {{_, 200, _}, _, Body}} ->
-	    case bcoding:decode(Body) of
-		{ok, BC} ->
-			handle_tracker_response(BC, S)
-	    end
+	    decode_and_handle_body(Body, S)
+    end.
+
+decode_and_handle_body(Body, S) ->
+    case bcoding:decode(Body) of
+	{ok, BC} ->
+	    handle_tracker_response(BC, S)
     end.
 
 handle_tracker_response(BC, S) ->
@@ -218,19 +221,33 @@ handle_tracker_response(BC, S) ->
     end,
     {ok, RequestTime, S#state{trackerid = TrackerId}}.
 
-%% TODO: Can be made better yet, I am sure!
+%% TODO: Can be made better yet, I am sure! Generalize into a proper code
+%%   construction.
+
+construct_headers([], HeaderLines) ->
+    lists:concat(lists:reverse(HeaderLines));
+construct_headers([{Key, Value}], HeaderLines) ->
+    Data = lists:concat([Key, "=", Value]),
+    construct_headers([], [Data | HeaderLines]);
+construct_headers([{Key, Value} | Rest], HeaderLines) ->
+    Data = lists:concat([Key, "=", Value, "&"]),
+    construct_headers(Rest, [Data | HeaderLines]).
+
 build_tracker_url(S, Event) ->
-    E = case Event of
-	    none ->
-		"";
-	    X -> lists:concat(["&event=%s", X])
-	end,
     {ok, Downloaded, Uploaded, Left, Port} =
 	torrent_state:report_to_tracker(S#state.state_pid),
-    io:lib(
-      "%s?info_hash=%s&peer_id=%s&uploaded=%B&downloaded=%B&left=%B&port=%B%s",
-      [S#state.url, S#state.info_hash, S#state.peer_id,
-       Uploaded, Downloaded, Left, Port, E]).
+    Request = [{"info_hash", S#state.info_hash},
+	       {"peer_id", S#state.peer_id},
+	       {"uploaded", Uploaded},
+	       {"downloaded", Downloaded},
+	       {"left", Left},
+	       {"port", Port}],
+    EReq = case Event of
+	       none ->
+		   Request;
+	       X -> [{"event", X} | Request]
+	   end,
+    lists:concat([S#state.url, "?", construct_headers(EReq, [])]).
 
 handle_tracker_contact(S, Event) ->
     {ok, NextContactTime, NS} = contact_tracker(S, Event),
@@ -244,8 +261,12 @@ handle_nonregular(S, Event) ->
 
 remove_timer(S) ->
     T = S#state.timer,
-    gen_fsm:cancel_timer(T),
-    S#state{timer = none}.
+    case T of
+	none -> S;
+	Ref ->
+	    gen_fsm:cancel_timer(Ref),
+	    S#state{timer = none}
+    end.
 
 %%% Tracker response lookup functions
 find_next_request_time(BCoded) ->

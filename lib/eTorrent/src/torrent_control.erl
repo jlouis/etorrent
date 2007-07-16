@@ -144,6 +144,9 @@ waiting_check(stop, S) ->
 
 started(stop, S) ->
     {stop, argh, S};
+started({new_ips, IPList}, S) ->
+    io:format("Saw new ips: ~p~n", [IPList]),
+    {next_state, started, S};
 started(token, S) ->
     ok = serializer:release_token(),
     {next_state, started, S}.
@@ -181,6 +184,8 @@ stopped(token, S) ->
 %% gen_fsm:send_all_state_event/2, this function is called to handle
 %% the event.
 %%--------------------------------------------------------------------
+handle_event({'EXIT', _Pid, _Reason}, _SN, S) ->
+    {stop, pid_terminated, S};
 handle_event(_Event, StateName, State) ->
     {next_state, StateName, State}.
 
