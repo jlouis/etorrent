@@ -251,7 +251,7 @@ build_tracker_url(S, Event) ->
 
 handle_tracker_contact(S, Event) ->
     {ok, NextContactTime, NS} = contact_tracker(S, Event),
-    TimerRef = gen_fsm:start_timer(NextContactTime, may_contact),
+    TimerRef = gen_fsm:start_timer(NextContactTime * 1000, may_contact),
     NS#state{timer = TimerRef}.
 
 
