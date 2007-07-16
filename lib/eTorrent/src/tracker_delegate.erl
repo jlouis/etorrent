@@ -24,6 +24,7 @@
 	        info_hash = none,
 	        peer_id = none,
 		trackerid = none,
+		time_left = 0,
 		timer = none,
 	        control_pid = none}).
 
@@ -93,6 +94,10 @@ tracker_wait(stop_now, S) ->
     {next_state, tracker_wait, handle_nonregular(S, "stopped")};
 tracker_wait(torrent_completed, S) ->
     {next_state, tracker_wait, handle_nonregular(S, "completed")};
+tracker_wait({timeout, R, reinstall_timer}, S) ->
+    R = S#state.timer,
+    NS = install_timer(S#state.time_left, S),
+    {next_state, tracker_wait, NS};
 tracker_wait({timeout, R, may_contact}, S) ->
     R = S#state.timer,
     {next_state, tracker_wait, handle_tracker_contact(S, none)}.
@@ -253,10 +258,23 @@ build_tracker_url(S, Event) ->
 
 handle_tracker_contact(S, Event) ->
     {ok, NextContactTime, NS} = contact_tracker(S, Event),
-    io:format("installing timer at ~B ms~n", [NextContactTime * 1000]),
-    TimerRef = gen_fsm:start_timer(NextContactTime * 1000, may_contact),
-    NS#state{timer = TimerRef}.
+    install_timer(NextContactTime, NS).
 
+install_timer(ContactTime, S) ->
+    if
+	ContactTime > 30 ->
+	    io:format("Setting 30 sec timer! (~B left)~n", [ContactTime]),
+	    TimerRef = gen_fsm:start_timer(timer:seconds(30),
+					   reinstall_timer),
+	    S#state{timer = TimerRef,
+		    time_left = ContactTime - 30};
+	true ->
+	    io:format("Setting timer of ~B seconds~n", [ContactTime]),
+	    TimerRef = gen_fsm:start_timer(timer:seconds(ContactTime),
+					   may_contact),
+	    S#state{timer = TimerRef,
+		    time_left = 0}
+    end.
 
 handle_nonregular(S, Event) ->
     NS = remove_timer(S),
@@ -267,8 +285,10 @@ remove_timer(S) ->
     case T of
 	none -> S;
 	Ref ->
-	    gen_fsm:cancel_timer(Ref),
-	    S#state{timer = none}
+	    X = gen_fsm:cancel_timer(Ref),
+	    io:format("Timer cancelled again: ~p~n", [X]),
+	    S#state{timer = none,
+		    time_left = none}
     end.
 
 %%% Tracker response lookup functions
