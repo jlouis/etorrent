@@ -1,18 +1,6 @@
-MANTRA: Processes are autonomous if they can be.
-
-MANTRA: ets tables have processes before them to manage them easily.
-
-UNDECIDED: Merge filesystem and piecemap into the same erlang process?
-It should only be done if piecemap is a single ets table and then it
-is not even clear it should be done.
-
-GROUPS OF EFFORT:
-
-* TESTS!
-
-* Supervisors
-It may be possible to use many more supervisor processes to keep track
-of other processes we do need.
+* Tracker code
+- Make tracker stop gracefully.
+  Will need us to make the torrent in question stop gracefully.
 
 * Connection management
 ** Implement seeding
