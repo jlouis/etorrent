@@ -15,7 +15,7 @@
 
 %% API
 -export([get_piece_length/1, get_pieces/1, get_url/1, get_infohash/1,
-	 parse/1, get_files/1, get_name/1]).
+	 parse/1, get_files/1, get_name/1, hexify/1]).
 
 %%====================================================================
 %% API
@@ -86,10 +86,12 @@ get_url(Torrent) ->
 %%--------------------------------------------------------------------
 get_infohash(Torrent) ->
     {ok, InfoDict} = bcoding:search_dict({string, "info"}, Torrent),
+    io:format("~w~n", [InfoDict]),
     {ok, InfoString} = bcoding:encode(InfoDict),
+    io:format("~s~n", [InfoString]),
     Digest = crypto:sha(list_to_binary(InfoString)),
     %% We almost positively need to change this thing.
-    hexify(Digest).
+    Digest.
 
 %%--------------------------------------------------------------------
 %% Function: parse/1
@@ -142,7 +144,6 @@ eat_lines(IODev, Accum) ->
     end.
 
 %% TODO: Implement the protocol for alternative URLs at some point.
-
 
 hexify(Digest) ->
     Characters = lists:map(fun(Item) ->
