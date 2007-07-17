@@ -1,47 +1,40 @@
-* Tracker code
-- Make tracker stop gracefully.
-  Will need us to make the torrent in question stop gracefully.
-
 * Connection management
-** Implement seeding
-We are not doing anything specific to take care of seeding right
-now. This must obviously be cared for.
-** Implement torrent_piecemap:pieces_downloaded/1
-The function asks to the piecemap what pieces we have downloaded. We
-must return a correct answer.
-** Implement code for putback when a connection dies.
-If a connection dies, all pieces on its request table should be
-remapped to be eligible for others to work on.
-** Set torrent_id in torrent_peer
-We have added torrent_id to the torrent peer code. But we have not
-given it any value yet.
-** Fix connection_manager
-We need to fix the state code for the connection manager. It has some
-state tables that obviously needs to be managed. But it has to be
-simplified a lot. And it really can. Mapping of pids to torrents and
-peerids should be handled by a separate process which only has this as
-the primary goal.
-** Check if a torrent is duplicate.
-We must check if a given torrent file which has just been added is a
-duplicate of a torrent we already manage. If this is the case, then we
-should just ignore it.
+- Implement seeding
+  We are not doing anything specific to take care of seeding right
+  now. This must obviously be cared for.
+- Implement torrent_piecemap:pieces_downloaded/1
+  The function asks to the piecemap what pieces we have downloaded. We
+  must return a correct answer.
+- Implement code for putback when a connection dies.
+  If a connection dies, all pieces on its request table should be
+  remapped to be eligible for others to work on.
+- Fix connection_manager
+  We need to fix the state code for the connection manager. It has some
+  state tables that obviously needs to be managed. But it has to be
+  simplified a lot. And it really can. Mapping of pids to torrents and
+  peerids should be handled by a separate process which only has this as
+  the primary goal.
+- Check if a torrent is duplicate.
+  We must check if a given torrent file which has just been added is a
+  duplicate of a torrent we already manage. If this is the case, then we
+  should just ignore it.
 
 * General stuff
-** Reduce the number of ets tables
-Fix and reduce the number of ets tables to a constant amount. This
-will allow us to scale into post-1000 concurrent torrents.
-** Add license facts
-** Add author facts
+- Reduce the number of ets tables
+  Fix and reduce the number of ets tables to a constant amount. This
+  will allow us to scale into post-1000 concurrent torrents.
+- Add license facts
+- Add author facts
 
 ------------------------------------------------------------
 VERSION 2.0
 ------------------------------------------------------------
-* Make torrent_piecemap request data in a rarest first scheme.
-Currently torrent_piecemap requests data in a scheme which is
-"pick-random-piece". It should use rarest first instead to drive
-up the download speed and make torrent health better.
+- Make torrent_piecemap request data in a rarest first scheme.
+  Currently torrent_piecemap requests data in a scheme which is
+  "pick-random-piece". It should use rarest first instead to drive
+  up the download speed and make torrent health better.
 
 ------------------------------------------------------------
 VERSION 3.0
 ------------------------------------------------------------
-* Implement the fast extension.
+- Implement the fast extension.
