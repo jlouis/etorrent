@@ -184,10 +184,17 @@ construct_headers([{Key, Value} | Rest], HeaderLines) ->
     Data = lists:concat([Key, "=", Value, "&"]),
     construct_headers(Rest, [Data | HeaderLines]).
 
+build_uri_encoded_form_rfc1738(Binary) ->
+    lists:concat(lists:map(fun (E) ->
+				   lists:concat(["%",
+						 io_lib:format("~.16B", [E])])
+			   end,
+			   binary_to_list(Binary))).
+
 build_tracker_url(S, Event) ->
     {ok, Downloaded, Uploaded, Left, Port} =
 	torrent_state:report_to_tracker(S#state.state_pid),
-    Request = [{"info_hash", S#state.info_hash},
+    Request = [{"info_hash", build_uri_encoded_form_rfc1738(S#state.info_hash)},
 	       {"peer_id", S#state.peer_id},
 	       {"uploaded", Uploaded},
 	       {"downloaded", Downloaded},
