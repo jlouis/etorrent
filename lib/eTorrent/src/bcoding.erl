@@ -147,7 +147,7 @@ decode_list_items(Items, Accum) ->
 
 decode_dict(String) ->
     {Items, Rest} = decode_dict_items(String, []),
-    {{dict, Items}, Rest}.
+    {{dict, lists:reverse(Items)}, Rest}.
 
 decode_dict_items([], Accum) ->
     {Accum, []};
