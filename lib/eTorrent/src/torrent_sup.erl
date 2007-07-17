@@ -21,6 +21,8 @@
 start_link() ->
     supervisor:start_link(?MODULE, []).
 
+%% TODO We can simplify torrent_control, by feeding it stuff here!
+%%   it removes a state inside torrent_control, so that is good.
 add_control(Pid) ->
     supervisor:start_child(Pid, {torrent_control,
 				 {torrent_control, start_link, []},
