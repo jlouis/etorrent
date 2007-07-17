@@ -26,7 +26,7 @@ start_link() ->
 add_control(Pid) ->
     supervisor:start_child(Pid, {torrent_control,
 				 {torrent_control, start_link, []},
-				 permanent, 10000, worker, [torrent_control]}).
+				 permanent, 60000, worker, [torrent_control]}).
 
 %%====================================================================
 %% Supervisor callbacks

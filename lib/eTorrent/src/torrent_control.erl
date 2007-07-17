@@ -80,7 +80,7 @@ tracker_warning_report(Pid, Report) ->
 %% initialize.
 %%--------------------------------------------------------------------
 init([]) ->
-    io:format("Spawning new control~n"),
+    process_flag(trap_exit, true),
     {ok, WorkDir} = application:get_env(etorrent, dir),
     {ok, initializing, #state{work_dir = WorkDir}}.
 
@@ -236,7 +236,8 @@ handle_info(_Info, StateName, State) ->
 %% necessary cleaning up. When it returns, the gen_fsm terminates with
 %% Reason. The return value is ignored.
 %%--------------------------------------------------------------------
-terminate(_Reason, _StateName, _State) ->
+terminate(_Reason, _StateName, State) ->
+    tracker_delegate:stop_now(State#state.tracker_pid),
     ok.
 
 %%--------------------------------------------------------------------

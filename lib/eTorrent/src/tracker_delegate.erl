@@ -48,7 +48,7 @@ start_now(Pid) ->
     gen_server:cast(Pid, start_now).
 
 stop_now(Pid) ->
-    gen_server:cast(Pid, stop_now).
+    gen_server:call(Pid, stop_now).
 
 torrent_completed(Pid) ->
     gen_server:cast(Pid, torrent_completed).
@@ -65,6 +65,7 @@ torrent_completed(Pid) ->
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
 init([{ControlPid, StatePid, Url, InfoHash, PeerId}]) ->
+    process_flag(trap_exit, true),
     {ok, #state{should_contact_tracker = false,
 		control_pid = ControlPid,
 		state_pid = StatePid,
@@ -81,6 +82,9 @@ init([{ControlPid, StatePid, Url, InfoHash, PeerId}]) ->
 %%                                      {stop, Reason, State}
 %% Description: Handling call messages
 %%--------------------------------------------------------------------
+handle_call(stop_now, _From, S) ->
+    contact_tracker(S, "stopped"),
+    {reply, ok, S};
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -92,13 +96,12 @@ handle_call(_Request, _From, State) ->
 %% Description: Handling cast messages
 %%--------------------------------------------------------------------
 handle_cast(start_now, S) ->
-    {ok, NextRequestTime, NS} = contact_tracker(S, "started"),
-    {noreply, NS, timer:seconds(NextRequestTime)};
-handle_cast(stop_now, S) ->
-    {ok, NextRequestTime, NS} = contact_tracker(S, "stopped"),
+    Body = contact_tracker(S, "started"),
+    {ok, NextRequestTime, NS} = decode_and_handle_body(Body, S),
     {noreply, NS, timer:seconds(NextRequestTime)};
 handle_cast(torrent_completed, S) ->
-    {ok, NextRequestTime, NS} = contact_tracker(S, "completed"),
+    Body = contact_tracker(S, "completed"),
+    {ok, NextRequestTime, NS} = decode_and_handle_body(Body, S),
     {noreply, NS, timer:seconds(NextRequestTime)}.
 
 %%--------------------------------------------------------------------
@@ -108,7 +111,8 @@ handle_cast(torrent_completed, S) ->
 %% Description: Handling all non call/cast messages
 %%--------------------------------------------------------------------
 handle_info(timeout, S) ->
-    {ok, NextRequestTime, NS} = contact_tracker(S, none),
+    Body = contact_tracker(S, none),
+    {ok, NextRequestTime, NS} = decode_and_handle_body(Body, S),
     {noreply, NS, timer:seconds(NextRequestTime)};
 handle_info(Info, State) ->
     io:format("got info: ~p~n", [Info]),
@@ -121,8 +125,7 @@ handle_info(Info, State) ->
 %% cleaning up. When it returns, the gen_server terminates with Reason.
 %% The return value is ignored.
 %%--------------------------------------------------------------------
-terminate(Reason, _State) ->
-    io:format("I am dying! ~p~n", [Reason]),
+terminate(_Reason, _S) ->
     ok.
 
 %%--------------------------------------------------------------------
@@ -140,7 +143,7 @@ contact_tracker(S, Event) ->
     io:format("~s~n", [NewUrl]),
     case http:request(NewUrl) of
 	{ok, {{_, 200, _}, _, Body}} ->
-	    decode_and_handle_body(Body, S)
+	    Body
     end.
 
 decode_and_handle_body(Body, S) ->
