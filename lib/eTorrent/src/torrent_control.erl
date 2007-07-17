@@ -80,6 +80,7 @@ tracker_warning_report(Pid, Report) ->
 %% initialize.
 %%--------------------------------------------------------------------
 init([]) ->
+    io:format("Spawning new control~n"),
     {ok, WorkDir} = application:get_env(etorrent, dir),
     {ok, initializing, #state{work_dir = WorkDir}}.
 
@@ -121,6 +122,7 @@ check_and_start_torrent(FS, FileDict, S) ->
     {ok, Port} = portmanager:fetch_port(),
     {ok, StatePid} = torrent_state:start_link(Port,
 					      calculate_amount_left(DiskState)),
+    sys:trace(StatePid, true),
     {ok, TrackerPid} =
 	tracker_delegate:start_link(self(),
 				    StatePid,
@@ -188,10 +190,9 @@ stopped(token, S) ->
 %% gen_fsm:send_all_state_event/2, this function is called to handle
 %% the event.
 %%--------------------------------------------------------------------
-handle_event({'EXIT', _Pid, _Reason}, _SN, S) ->
-    {stop, pid_terminated, S};
-handle_event(_Event, StateName, State) ->
-    {next_state, StateName, State}.
+handle_event(Msg, SN, S) ->
+    io:format("Problem: ~p~n", [Msg]),
+    {next_state, SN, S}.
 
 %%--------------------------------------------------------------------
 %% Function:
@@ -222,6 +223,9 @@ handle_sync_event(_Event, _From, StateName, State) ->
 %% other message than a synchronous or asynchronous event
 %% (or a system message).
 %%--------------------------------------------------------------------
+handle_info({'EXIT', Pid}, Sn, S) ->
+    io:format("Pid ~p exited~n", [Pid]),
+    {next_state, Sn, S};
 handle_info(_Info, StateName, State) ->
     {next_state, StateName, State}.
 

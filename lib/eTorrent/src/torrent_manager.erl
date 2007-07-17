@@ -56,6 +56,7 @@ handle_cast({stop_torrent, F}, {TrackingMap, PeerId}) ->
 %% Internal functions
 spawn_new_torrent(F, PeerId, TrackingMap) ->
     {ok, TorrentSupervisor} = torrent_pool_sup:spawn_new_torrent(),
+    sys:trace(TorrentSupervisor, true),
     {ok, TorrentControl} = torrent_sup:add_control(TorrentSupervisor),
     sys:trace(TorrentControl, true),
     ok = torrent_control:load_new_torrent(TorrentControl, F, PeerId),

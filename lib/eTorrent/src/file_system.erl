@@ -40,6 +40,7 @@ write_piece(Pid, Pn, Data) ->
 %%====================================================================
 
 init([FileDict]) ->
+    process_flag(trap_exit, true),
     {ok, #state{file_dict = FileDict,
 	        file_process_dict = dict:new() }}.
 
@@ -64,6 +65,7 @@ handle_cast(_Msg, State) ->
 %% Description: Handling all non call/cast messages
 %%--------------------------------------------------------------------
 handle_info({'EXIT', Pid}, S) ->
+    io:format("Stopping down ~p~n", [Pid]),
     Nd = remove_file_process(Pid, S#state.file_process_dict),
     {noreply, S#state { file_process_dict = Nd }};
 handle_info(_Info, State) ->
@@ -76,7 +78,8 @@ handle_info(_Info, State) ->
 %% cleaning up. When it returns, the gen_server terminates with Reason.
 %% The return value is ignored.
 %%--------------------------------------------------------------------
-terminate(_Reason, _State) ->
+terminate(Reason, _State) ->
+    io:format("I am stopping: ~p~n", [Reason]),
     ok.
 
 %%--------------------------------------------------------------------

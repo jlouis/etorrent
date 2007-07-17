@@ -93,7 +93,7 @@ handle_cast(_Msg, State) ->
     {noreply, State, ?REQUEST_TIMEOUT}.
 
 handle_info(timeout, State) ->
-    {stop, shutdown, State};
+    {stop, normal, State};
 handle_info(Info, State) ->
     io:format("Unknown: ~w", [Info]),
     {noreply, State}.
