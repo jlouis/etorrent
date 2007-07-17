@@ -215,8 +215,25 @@ find_next_request_time(BC) ->
 						?DEFAULT_REQUEST_TIMEOUT}),
     R.
 
+process_ips(D) ->
+    process_ips(D, []).
+
+process_ips([], Accum) ->
+    lists:reverse(Accum);
+process_ips([IPDict | Rest], Accum) ->
+    {ok, {string, IP}} = bcoding:search_dict({string, "ip"}, IPDict),
+    {ok, {string, PeerId}} = bcoding:search_dict({string, "peer id"}, IPDict),
+    {ok, {integer, Port}} = bcoding:search_dict({string, "port"},
+							IPDict),
+    process_ips(Rest, [{IP, Port, PeerId} | Accum]).
+
 find_ips_in_tracker_response(BC) ->
-    bcoding:search_dict_default({string, "peer"}, BC, []).
+    case bcoding:search_dict_default({string, "peers"}, BC, none) of
+	{list, Ips} ->
+	    process_ips(Ips);
+	none ->
+	    []
+    end.
 
 find_tracker_id(BC) ->
     bcoding:search_dict_default({string, "trackerid"},
