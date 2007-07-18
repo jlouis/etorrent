@@ -64,6 +64,7 @@ spawn_new_torrent(F, PeerId, TrackingMap) ->
 
 %% Utility
 generate_peer_id() ->
-    io_lib:format("-ET~B-~B", [?VERSION, random_source:random_peer_id()]).
+    Rand = io_lib:fwrite("~B----------", [random_source:random_peer_id()]),
+    io_lib:format("-ET~s-~12s", [?VERSION, Rand]).
 
 

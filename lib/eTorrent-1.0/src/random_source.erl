@@ -61,7 +61,7 @@ init([]) ->
 %% Description: Handling call messages
 %%--------------------------------------------------------------------
 handle_call(random_peer_id, _From, S) ->
-    Number = crypto:rand_uniform(0, 10000000),
+    Number = crypto:rand_uniform(0, 1000000000),
     {reply, Number, S};
 handle_call({pick_random_piece, Size}, _From, S) ->
     Number = crypto:rand_uniform(0, Size),
