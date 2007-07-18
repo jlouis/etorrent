@@ -91,14 +91,17 @@ fill_peers(N, S) ->
 		{ok, [_E]}  ->
 		    % Only a single error, will run it
 		    {ok, NS} = spawn_new_peer(IP, Port, PeerId, S),
-		    fill_peers(N-1, NS);
+		    fill_peers(N-1, NS#state{ available_peers = R});
 		{ok, _X} ->
 		    fill_peers(N, S#state{ available_peers = R});
 		error ->
 		    {ok, NS} = spawn_new_peer(IP, Port, PeerId, S),
-		    fill_peers(N-1, NS)
+		    fill_peers(N-1, NS#state{ available_peers = R})
 	    end
     end.
 
-spawn_new_peer(_IP, _Port, _PeerId, S) ->
-    {ok, S}.
+spawn_new_peer(IP, Port, PeerId, S) ->
+    {ok, Pid} = torrent_peer:start_link(IP, Port, PeerId),
+    torrent_peer:connect(Pid),
+    D = dict:store(Pid, {IP, Port, PeerId}, S#state.peer_process_dict),
+    {ok, S#state{ peer_process_dict = D}}.
