@@ -4,8 +4,7 @@
    bad-table. Thus, we get control over the crap.
 - Implement rounds
   Implement choking/unchoking rounds in the Peer Master.
-- Don't connect to a peer more than once!
-  Right now, we connect to a peer more than once. This is a bug.
+
 
 * Peer Process
 - Write Connection code. (Steal from old).
@@ -42,12 +41,15 @@
 ------------------------------------------------------------
 VERSION 2.0
 ------------------------------------------------------------
-- Make torrent_piecemap request data in a rarest first scheme.
+* Make torrent_piecemap request data in a rarest first scheme.
   Currently torrent_piecemap requests data in a scheme which is
   "pick-random-piece". It should use rarest first instead to drive
   up the download speed and make torrent health better.
 
+* Cleanups
+- Decide what to do if we connect multiply to the same IP
+
 ------------------------------------------------------------
 VERSION 3.0
 ------------------------------------------------------------
-- Implement the fast extension.
+* Implement the fast extension.
