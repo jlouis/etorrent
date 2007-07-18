@@ -13,6 +13,11 @@
    start cast. It will greatly speedup and simplify the dirwatcher
    code.
 
+* PeerId
+- PeerIds has to be 20 bytes in length.
+  Yet another ugly crap-thing of the protocol. Fix by making them the
+   correct length via random_source and the peer_id constructor.
+
 * Connection management
 - Implement seeding
   We are not doing anything specific to take care of seeding right
