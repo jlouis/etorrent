@@ -16,7 +16,11 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3]).
 
--record(state, {available_peers = []}).
+-record(state, {available_peers = [],
+	        bad_peers = none,
+	        peer_process_dict = none}).
+
+-define(MAX_PEER_PROCESSES, 40).
 
 %%====================================================================
 %% API
@@ -33,7 +37,8 @@ add_peers(Pid, IPList) ->
 
 init([]) ->
     process_flag(trap_exit, true), % Needed for torrent peers
-    {ok, #state{}}.
+    {ok, #state{ bad_peers = dict:new(),
+		 peer_process_dict = dict:new() }}.
 
 handle_call(_Request, _From, State) ->
     Reply = ok,
@@ -64,5 +69,36 @@ usort_peers(IPList, S) ->
     {ok, S#state{ available_peers = NewList}}.
 
 start_new_peers(S) ->
-    {ok, S}.
+    PeersMissing =
+	?MAX_PEER_PROCESSES - dict:size(S#state.peer_process_dict),
+    if
+	PeersMissing > 0 ->
+	    fill_peers(PeersMissing, S);
+	true ->
+	    {ok, S}
+    end.
 
+fill_peers(0, S) ->
+    {ok, S};
+fill_peers(N, S) ->
+    case S#state.available_peers of
+	[] ->
+	    % No peers available, just stop trying to fill peers
+	    {ok, S};
+	[{IP, Port, PeerId} | R] ->
+	    % P is a possible peer. Check it.
+	    case dict:find(PeerId, S#state.bad_peers) of
+		{ok, [_E]}  ->
+		    % Only a single error, will run it
+		    {ok, NS} = spawn_new_peer(IP, Port, PeerId, S),
+		    fill_peers(N-1, NS);
+		{ok, _X} ->
+		    fill_peers(N, S#state{ available_peers = R});
+		error ->
+		    {ok, NS} = spawn_new_peer(IP, Port, PeerId, S),
+		    fill_peers(N-1, NS)
+	    end
+    end.
+
+spawn_new_peer(_IP, _Port, _PeerId, S) ->
+    {ok, S}.
