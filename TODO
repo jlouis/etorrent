@@ -1,10 +1,6 @@
 * Peer Master
-- Handle peer exit gracefully
-  When a peer exits, we must capture the reason and store it into the
-   bad-table. Thus, we get control over the crap.
 - Implement rounds
   Implement choking/unchoking rounds in the Peer Master.
-
 
 * Peer Process
 - Write Connection code. (Steal from old).

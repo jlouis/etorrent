@@ -52,7 +52,25 @@ handle_cast({add_peers, IPList}, S) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_info(_Info, State) ->
+handle_info({'EXIT', Pid, Reason}, S) ->
+    % Pid has exited for some reason, handle it accordingly
+    D = dict:erase(Pid, S#state.peer_process_dict),
+    case Reason of
+	normal ->
+	    {ok, NS} = start_new_peers(S#state{peer_process_dict = D}),
+	    {noreply, NS};
+	shutdown ->
+	    {stop, shutdown, S};
+	R ->
+	    {ok, {_, _, PeerId}} = dict:fetch(Pid, S#state.peer_process_dict),
+	    Bad = dict:update(PeerId, fun(L) -> [R | L] end,
+			      [R], S#state.bad_peers),
+	    {ok, NS} = start_new_peers(S#state{peer_process_dict = D,
+					       bad_peers = Bad}),
+	    {noreply, NS}
+    end;
+handle_info(Info, State) ->
+    io:format("Unknown info: ~p~n", [Info]),
     {noreply, State}.
 
 terminate(_Reason, _State) ->
