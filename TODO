@@ -4,6 +4,8 @@
    bad-table. Thus, we get control over the crap.
 - Implement rounds
   Implement choking/unchoking rounds in the Peer Master.
+- Don't connect to a peer more than once!
+  Right now, we connect to a peer more than once. This is a bug.
 
 * Peer Process
 - Write Connection code. (Steal from old).
