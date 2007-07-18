@@ -20,7 +20,7 @@
 
 -record(state, {dir = none,
 	        fileset = none}).
--define(WATCH_WAIT_TIME, 1000).
+-define(WATCH_WAIT_TIME, 60000).
 -define(SERVER, ?MODULE).
 
 %%====================================================================
