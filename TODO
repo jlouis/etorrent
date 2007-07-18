@@ -6,6 +6,13 @@
 - Write Connection code. (Steal from old).
 - Write Handshaking code. (Steal from old).
 
+* Dirwatcher
+- There are some tricks to be played here so we get faster startup.
+  Rather than using a timer, base the code on a more direct approach
+   where timeouts are used internally together with a self-applied
+   start cast. It will greatly speedup and simplify the dirwatcher
+   code.
+
 * Connection management
 - Implement seeding
   We are not doing anything specific to take care of seeding right
