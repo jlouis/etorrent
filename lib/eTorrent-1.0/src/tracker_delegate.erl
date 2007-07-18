@@ -10,7 +10,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/5, contact_tracker_now/1, start_now/1, stop_now/1,
+-export([start_link/6, contact_tracker_now/1, start_now/1, stop_now/1,
 	torrent_completed/1]).
 
 %% gen_server callbacks
@@ -18,6 +18,7 @@
 	 terminate/2, code_change/3]).
 
 -record(state, {should_contact_tracker = false,
+		peer_master_pid = none,
 	        state_pid = none,
 	        url = none,
 	        info_hash = none,
@@ -36,9 +37,10 @@
 %% Function: start_link() -> {ok,Pid} | ignore | {error,Error}
 %% Description: Starts the server
 %%--------------------------------------------------------------------
-start_link(ControlPid, StatePid, Url, InfoHash, PeerId) ->
+start_link(ControlPid, StatePid, PeerMasterPid, Url, InfoHash, PeerId) ->
     gen_server:start_link(?MODULE,
-			  [{ControlPid, StatePid, Url, InfoHash, PeerId}],
+			  [{ControlPid, StatePid, PeerMasterPid,
+			    Url, InfoHash, PeerId}],
 			  []).
 
 contact_tracker_now(Pid) ->
@@ -64,9 +66,10 @@ torrent_completed(Pid) ->
 %%                         {stop, Reason}
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
-init([{ControlPid, StatePid, Url, InfoHash, PeerId}]) ->
+init([{ControlPid, StatePid, PeerMasterPid, Url, InfoHash, PeerId}]) ->
     process_flag(trap_exit, true),
     {ok, #state{should_contact_tracker = false,
+		peer_master_pid = PeerMasterPid,
 		control_pid = ControlPid,
 		state_pid = StatePid,
 		url = Url,
@@ -156,6 +159,7 @@ handle_tracker_response(BC, S) ->
     io:format("~p~n", [BC]),
     ControlPid = S#state.control_pid,
     StatePid = S#state.state_pid,
+    PeerMasterPid = S#state.peer_master_pid,
     RequestTime = find_next_request_time(BC),
     TrackerId = find_tracker_id(BC),
     Complete = find_completes(BC),
@@ -170,7 +174,7 @@ handle_tracker_response(BC, S) ->
 	    torrent_control:tracker_error_report(ControlPid, E);
 	WarningMessage /= none ->
 	    torrent_control:tracker_warning_report(ControlPid, WarningMessage),
-	    torrent_control:new_peers(ControlPid, NewIPs),
+	    torrent_peer_master:add_peers(PeerMasterPid, NewIPs),
 	    torrent_state:report_from_tracker(StatePid, Complete, Incomplete);
 	true ->
 	    torrent_control:new_peers(ControlPid, NewIPs),

@@ -27,6 +27,7 @@
 		state_pid = none,
 		tracker_pid = none,
 		file_system_pid = none,
+		peer_master_pid = none,
 		disk_state = none,
 		available_peers = [],
 	        torrent_pid = none}).
@@ -124,9 +125,11 @@ check_and_start_torrent(FS, FileDict, S) ->
     {ok, StatePid} = torrent_state:start_link(Port,
 					      calculate_amount_left(DiskState)),
     sys:trace(StatePid, true),
+    {ok, PeerMasterPid} = torrent_peer_master:start_link(),
     {ok, TrackerPid} =
 	tracker_delegate:start_link(self(),
 				    StatePid,
+				    PeerMasterPid,
 				    metainfo:get_url(S#state.torrent),
 				    metainfo:get_infohash(S#state.torrent),
 				    S#state.peer_id),
@@ -135,7 +138,8 @@ check_and_start_torrent(FS, FileDict, S) ->
     S#state{disk_state = DiskState,
 	    file_system_pid = FS,
 	    tracker_pid = TrackerPid,
-	    state_pid = StatePid}.
+	    state_pid = StatePid,
+	    peer_master_pid = PeerMasterPid}.
 
 
 waiting_check(token, S) ->
