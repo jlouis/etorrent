@@ -1,1 +1,1 @@
--define(VERSION, 0001).
+-define(VERSION, "0001").
