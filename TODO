@@ -1,22 +1,20 @@
 * Peer Master
 - Implement rounds
   Implement choking/unchoking rounds in the Peer Master.
+- Don't build a peer for ourselves.
+  Don't try to connect to a peer with the same peer_id as
+   ourselves. It would be bad bad zoe! (Spank her!)
 
 * Peer Process
 - Write Connection code. (Steal from old).
 - Write Handshaking code. (Steal from old).
+  The handshake code needs some coercion. Fix it.
 
 * Dirwatcher
 - There are some tricks to be played here so we get faster startup.
   Rather than using a timer, base the code on a more direct approach
-   where timeouts are used internally together with a self-applied
-   start cast. It will greatly speedup and simplify the dirwatcher
-   code.
-
-* PeerId
-- PeerIds has to be 20 bytes in length.
-  Yet another ugly crap-thing of the protocol. Fix by making them the
-   correct length via random_source and the peer_id constructor.
+   where timeouts are used internally. It will greatly speedup and
+   simplify the dirwatcher code.
 
 * Connection management
 - Implement seeding
@@ -34,10 +32,6 @@
   simplified a lot. And it really can. Mapping of pids to torrents and
   peerids should be handled by a separate process which only has this as
   the primary goal.
-- Check if a torrent is duplicate.
-  We must check if a given torrent file which has just been added is a
-  duplicate of a torrent we already manage. If this is the case, then we
-  should just ignore it.
 
 * General stuff
 - Reduce the number of ets tables
@@ -54,10 +48,23 @@ VERSION 2.0
   "pick-random-piece". It should use rarest first instead to drive
   up the download speed and make torrent health better.
 
+* TorrentManager
+- Check if a torrent is duplicate.
+  We must check if a given torrent file which has just been added is a
+  duplicate of a torrent we already manage. If this is the case, then we
+  should just ignore it.
+
 * Cleanups
 - Decide what to do if we connect multiply to the same IP
+
+* PeerIds
+- Is one billion peerids enough? Think about making the number higher
+  If the client becomes popular, this is important to change. We can
+   /easily/ increase the number to a more correct level.
 
 ------------------------------------------------------------
 VERSION 3.0
 ------------------------------------------------------------
 * Implement the fast extension.
+  This will require some thought as there may be a very changed
+   implementation in the peer clients.
