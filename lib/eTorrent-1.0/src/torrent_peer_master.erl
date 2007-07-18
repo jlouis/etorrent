@@ -78,6 +78,7 @@ start_new_peers(S) ->
 	    {ok, S}
     end.
 
+%%% NOTE: fill_peers/2 and spawn_new_peer/5 tail calls each other.
 fill_peers(0, S) ->
     {ok, S};
 fill_peers(N, S) ->
@@ -87,21 +88,47 @@ fill_peers(N, S) ->
 	    {ok, S};
 	[{IP, Port, PeerId} | R] ->
 	    % P is a possible peer. Check it.
-	    case dict:find(PeerId, S#state.bad_peers) of
-		{ok, [_E]}  ->
-		    % Only a single error, will run it
-		    {ok, NS} = spawn_new_peer(IP, Port, PeerId, S),
-		    fill_peers(N-1, NS#state{ available_peers = R});
-		{ok, _X} ->
-		    fill_peers(N, S#state{ available_peers = R});
-		error ->
-		    {ok, NS} = spawn_new_peer(IP, Port, PeerId, S),
-		    fill_peers(N-1, NS#state{ available_peers = R})
+	    case is_bad_peer(PeerId, S) of
+		true ->
+		    spawn_new_peer(IP, Port, PeerId,
+				   N,
+				   S#state{available_peers = R});
+		false ->
+		    fill_peers(N, S#state{ available_peers = R})
 	    end
     end.
 
-spawn_new_peer(IP, Port, PeerId, S) ->
-    {ok, Pid} = torrent_peer:start_link(IP, Port, PeerId),
-    torrent_peer:connect(Pid),
-    D = dict:store(Pid, {IP, Port, PeerId}, S#state.peer_process_dict),
-    {ok, S#state{ peer_process_dict = D}}.
+spawn_new_peer(IP, Port, PeerId, N, S) ->
+    case find_peer_id_in_process_list(PeerId, S) of
+	true ->
+	    fill_peers(N, S);
+	false ->
+	    {ok, Pid} = torrent_peer:start_link(IP, Port, PeerId),
+	    torrent_peer:connect(Pid),
+	    D = dict:store(Pid, {IP, Port, PeerId}, S#state.peer_process_dict),
+	    fill_peers(N-1, S#state{ peer_process_dict = D})
+    end.
+
+is_bad_peer(PeerId, S) ->
+    case dict:find(PeerId, S#state.bad_peers) of
+	{ok, [_E]} ->
+	    true;
+	{ok, _X} ->
+	    false;
+	error ->
+	    true
+    end.
+
+find_peer_id_in_process_list(PeerId, S) ->
+    dict:fold(fun(_K, {_IP, _Port, Needle}, AccIn) ->
+		      case Needle == PeerId of
+			  true ->
+			      true;
+			  false ->
+			      AccIn
+		      end
+	      end,
+	      false,
+	      S#state.peer_process_dict).
+
+
