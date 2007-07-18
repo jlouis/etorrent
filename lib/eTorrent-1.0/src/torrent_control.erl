@@ -28,6 +28,7 @@
 		tracker_pid = none,
 		file_system_pid = none,
 		disk_state = none,
+		available_peers = [],
 	        torrent_pid = none}).
 
 %%====================================================================
@@ -148,8 +149,10 @@ waiting_check(stop, S) ->
 started(stop, S) ->
     {stop, argh, S};
 started({new_ips, IPList}, S) ->
-    io:format("Saw new ips: ~p~n", [IPList]),
-    {next_state, started, S};
+    {ok, NS1} = add_peers(IPList, S),
+    io:format("Possible peers: ~p~n", [NS1#state.available_peers]),
+    {ok, NS2} = start_new_peers(NS1),
+    {next_state, started, NS2};
 started({tracker_error_report, Reason}, S) ->
     io:format("Got tracker error: ~s~n", [Reason]),
     {next_state, started, S};
@@ -251,6 +254,13 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 %%--------------------------------------------------------------------
 %%% Internal functions
 %%--------------------------------------------------------------------
+add_peers(IPList, S) ->
+    NewList = lists:usort(IPList ++ S#state.available_peers),
+    {ok, S#state{ available_peers = NewList}}.
+
+start_new_peers(S) ->
+    {ok, S}.
+
 add_filesystem(FileDict, S) ->
     {ok, FS} = file_system:start_link(FileDict),
     {ok, FS, S#state{file_system_pid = FS}}.
