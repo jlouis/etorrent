@@ -11,7 +11,7 @@
 
 %% API
 -export([start_link/0, token/1, start/1, stop/1, load_new_torrent/3,
-	torrent_checked/2, new_peers/2, tracker_error_report/2,
+	torrent_checked/2, tracker_error_report/2,
 	tracker_warning_report/2]).
 
 %% gen_fsm callbacks
@@ -58,9 +58,6 @@ load_new_torrent(Pid, File, PeerId) ->
 
 torrent_checked(Pid, DiskState) ->
     gen_fsm:send_event(Pid, {torrent_checked, DiskState}).
-
-new_peers(Pid, NewIps) ->
-    gen_fsm:send_event(Pid, {new_ips, NewIps}).
 
 tracker_error_report(Pid, Report) ->
     gen_fsm:send_event(Pid, {tracker_error_report, Report}).
@@ -152,11 +149,6 @@ waiting_check(stop, S) ->
 
 started(stop, S) ->
     {stop, argh, S};
-started({new_ips, IPList}, S) ->
-    {ok, NS1} = add_peers(IPList, S),
-    io:format("Possible peers: ~p~n", [NS1#state.available_peers]),
-    {ok, NS2} = start_new_peers(NS1),
-    {next_state, started, NS2};
 started({tracker_error_report, Reason}, S) ->
     io:format("Got tracker error: ~s~n", [Reason]),
     {next_state, started, S};
@@ -258,13 +250,6 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 %%--------------------------------------------------------------------
 %%% Internal functions
 %%--------------------------------------------------------------------
-add_peers(IPList, S) ->
-    NewList = lists:usort(IPList ++ S#state.available_peers),
-    {ok, S#state{ available_peers = NewList}}.
-
-start_new_peers(S) ->
-    {ok, S}.
-
 add_filesystem(FileDict, S) ->
     {ok, FS} = file_system:start_link(FileDict),
     {ok, FS, S#state{file_system_pid = FS}}.

@@ -16,7 +16,7 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3]).
 
--record(state, {}).
+-record(state, {available_peers = []}).
 
 %%====================================================================
 %% API
@@ -66,8 +66,10 @@ handle_call(_Request, _From, State) ->
 %% Description: Handling cast messages
 %%--------------------------------------------------------------------
 handle_cast({add_peers, IPList}, S) ->
-    io:format("Possible peers: ~p~n", [IPList]),
-    {noreply, S};
+    NS = usort_peers(IPList, S),
+    io:format("Possible peers: ~p~n", [NS#state.available_peers]),
+    NS2 = start_new_peers(NS),
+    {noreply, NS2};
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
@@ -100,3 +102,10 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 %%% Internal functions
 %%--------------------------------------------------------------------
+usort_peers(IPList, S) ->
+    NewList = lists:usort(IPList ++ S#state.available_peers),
+    {ok, S#state{ available_peers = NewList}}.
+
+start_new_peers(S) ->
+    {ok, S}.
+
