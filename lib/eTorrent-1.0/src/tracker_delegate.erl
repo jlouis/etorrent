@@ -177,7 +177,7 @@ handle_tracker_response(BC, S) ->
 	    torrent_peer_master:add_peers(PeerMasterPid, NewIPs),
 	    torrent_state:report_from_tracker(StatePid, Complete, Incomplete);
 	true ->
-	    torrent_control:new_peers(ControlPid, NewIPs),
+	    torrent_peer_master:add_peers(PeerMasterPid, NewIPs),
 	    torrent_state:report_from_tracker(StatePid, Complete, Incomplete)
     end,
     {ok, RequestTime, S#state{trackerid = TrackerId}}.
