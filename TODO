@@ -1,9 +1,6 @@
 * Peer Master
 - Implement rounds
   Implement choking/unchoking rounds in the Peer Master.
-- Don't build a peer for ourselves.
-  Don't try to connect to a peer with the same peer_id as
-   ourselves. It would be bad bad zoe! (Spank her!)
 
 * Peer Process
 - Write Connection code. (Steal from old).
