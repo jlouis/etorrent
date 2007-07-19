@@ -7,6 +7,11 @@
 - Write Handshaking code. (Steal from old).
   The handshake code needs some coercion. Fix it.
 
+* Peer Communication
+- Find a better way to decode bytes.
+  Currently we are using a way which is butt-ugly and doesn't really
+   do anything intelligent.
+
 * TorrentControl
 - Simplify state machine.
   The state machine can be simplified a great deal if you are smart
