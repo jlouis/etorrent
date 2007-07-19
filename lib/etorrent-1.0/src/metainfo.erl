@@ -86,12 +86,8 @@ get_url(Torrent) ->
 %%--------------------------------------------------------------------
 get_infohash(Torrent) ->
     {ok, InfoDict} = bcoding:search_dict({string, "info"}, Torrent),
-    io:format("~w~n", [InfoDict]),
     {ok, InfoString} = bcoding:encode(InfoDict),
-    io:format("~s~n", [InfoString]),
-    Digest = crypto:sha(list_to_binary(InfoString)),
-    %% We almost positively need to change this thing.
-    Digest.
+    crypto:sha(list_to_binary(InfoString)).
 
 %%--------------------------------------------------------------------
 %% Function: parse/1
