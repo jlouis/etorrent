@@ -10,7 +10,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/1, add_peers/2]).
+-export([start_link/2, add_peers/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -19,6 +19,7 @@
 -record(state, {available_peers = [],
 	        bad_peers = none,
 		our_peer_id = none,
+		info_hash = none,
 	        peer_process_dict = none}).
 
 -define(MAX_PEER_PROCESSES, 40).
@@ -26,8 +27,8 @@
 %%====================================================================
 %% API
 %%====================================================================
-start_link(OurPeerId) ->
-    gen_server:start_link(?MODULE, [OurPeerId], []).
+start_link(OurPeerId, InfoHash) ->
+    gen_server:start_link(?MODULE, [OurPeerId, InfoHash], []).
 
 add_peers(Pid, IPList) ->
     gen_server:cast(Pid, {add_peers, IPList}).
@@ -36,10 +37,11 @@ add_peers(Pid, IPList) ->
 %% gen_server callbacks
 %%====================================================================
 
-init([OurPeerId]) ->
+init([OurPeerId, InfoHash]) ->
     process_flag(trap_exit, true), % Needed for torrent peers
     {ok, #state{ our_peer_id = OurPeerId,
 		 bad_peers = dict:new(),
+		 info_hash = InfoHash,
 		 peer_process_dict = dict:new() }}.
 
 handle_call(_Request, _From, State) ->
@@ -64,7 +66,7 @@ handle_info({'EXIT', Pid, Reason}, S) ->
 	shutdown ->
 	    {stop, shutdown, S};
 	R ->
-	    {ok, {_, _, PeerId}} = dict:fetch(Pid, S#state.peer_process_dict),
+	    {_, _, PeerId} = dict:fetch(Pid, S#state.peer_process_dict),
 	    Bad = dict:update(PeerId, fun(L) -> [R | L] end,
 			      [R], S#state.bad_peers),
 	    {ok, NS} = start_new_peers(S#state{peer_process_dict = D,
@@ -123,8 +125,10 @@ spawn_new_peer(IP, Port, PeerId, N, S) ->
 	true ->
 	    fill_peers(N, S);
 	false ->
-	    {ok, Pid} = torrent_peer:start_link(IP, Port, PeerId),
-	    torrent_peer:connect(Pid),
+	    {ok, Pid} = torrent_peer:start_link(IP, Port,
+						PeerId, S#state.info_hash),
+	    sys:trace(Pid, true),
+	    torrent_peer:connect(Pid, S#state.our_peer_id),
 	    D = dict:store(Pid, {IP, Port, PeerId}, S#state.peer_process_dict),
 	    fill_peers(N-1, S#state{ peer_process_dict = D})
     end.
