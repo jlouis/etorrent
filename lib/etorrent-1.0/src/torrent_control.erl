@@ -111,7 +111,7 @@ initializing({load_new_torrent, Path, PeerId}, S) ->
 	    {next_state, started, NS};
 	wait ->
 	    {next_state, waiting_check, NewState#state{disk_state = FileDict,
-						      file_system_pid = FS}}
+						       file_system_pid = FS}}
     end.
 
 check_and_start_torrent(FS, FileDict, S) ->
@@ -122,7 +122,7 @@ check_and_start_torrent(FS, FileDict, S) ->
     {ok, StatePid} = torrent_state:start_link(Port,
 					      calculate_amount_left(DiskState)),
     sys:trace(StatePid, true),
-    {ok, PeerMasterPid} = torrent_peer_master:start_link(),
+    {ok, PeerMasterPid} = torrent_peer_master:start_link(S#state.peer_id),
     {ok, TrackerPid} =
 	tracker_delegate:start_link(self(),
 				    StatePid,

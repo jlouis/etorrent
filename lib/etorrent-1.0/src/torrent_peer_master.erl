@@ -10,7 +10,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0, add_peers/2]).
+-export([start_link/1, add_peers/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -18,6 +18,7 @@
 
 -record(state, {available_peers = [],
 	        bad_peers = none,
+		our_peer_id = none,
 	        peer_process_dict = none}).
 
 -define(MAX_PEER_PROCESSES, 40).
@@ -25,8 +26,8 @@
 %%====================================================================
 %% API
 %%====================================================================
-start_link() ->
-    gen_server:start_link(?MODULE, [], []).
+start_link(OurPeerId) ->
+    gen_server:start_link(?MODULE, [OurPeerId], []).
 
 add_peers(Pid, IPList) ->
     gen_server:cast(Pid, {add_peers, IPList}).
@@ -35,9 +36,10 @@ add_peers(Pid, IPList) ->
 %% gen_server callbacks
 %%====================================================================
 
-init([]) ->
+init([OurPeerId]) ->
     process_flag(trap_exit, true), % Needed for torrent peers
-    {ok, #state{ bad_peers = dict:new(),
+    {ok, #state{ our_peer_id = OurPeerId,
+		 bad_peers = dict:new(),
 		 peer_process_dict = dict:new() }}.
 
 handle_call(_Request, _From, State) ->
@@ -106,13 +108,13 @@ fill_peers(N, S) ->
 	    {ok, S};
 	[{IP, Port, PeerId} | R] ->
 	    % P is a possible peer. Check it.
-	    case is_bad_peer(PeerId, S) of
+	    case is_bad_peer_or_ourselves(PeerId, S) of
 		true ->
+		    fill_peers(N, S#state{available_peers = R});
+		false ->
 		    spawn_new_peer(IP, Port, PeerId,
 				   N,
-				   S#state{available_peers = R});
-		false ->
-		    fill_peers(N, S#state{ available_peers = R})
+				   S#state{available_peers = R})
 	    end
     end.
 
@@ -127,14 +129,19 @@ spawn_new_peer(IP, Port, PeerId, N, S) ->
 	    fill_peers(N-1, S#state{ peer_process_dict = D})
     end.
 
-is_bad_peer(PeerId, S) ->
-    case dict:find(PeerId, S#state.bad_peers) of
-	{ok, [_E]} ->
+is_bad_peer_or_ourselves(PeerId, S) ->
+    case string:equal(PeerId, S#state.our_peer_id) of
+	true ->
 	    true;
-	{ok, _X} ->
-	    false;
-	error ->
-	    true
+	false ->
+	    case dict:find(PeerId, S#state.bad_peers) of
+		{ok, [_E]} ->
+		    false;
+		{ok, _X} ->
+		    true;
+		error ->
+		    false
+	    end
     end.
 
 find_peer_id_in_process_list(PeerId, S) ->
