@@ -10,12 +10,6 @@
 - Write Handshaking code. (Steal from old).
   The handshake code needs some coercion. Fix it.
 
-* Dirwatcher
-- There are some tricks to be played here so we get faster startup.
-  Rather than using a timer, base the code on a more direct approach
-   where timeouts are used internally. It will greatly speedup and
-   simplify the dirwatcher code.
-
 * TorrentControl
 - Simplify state machine.
   The state machine can be simplified a great deal if you are smart
