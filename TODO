@@ -16,6 +16,11 @@
    where timeouts are used internally. It will greatly speedup and
    simplify the dirwatcher code.
 
+* TorrentControl
+- Simplify state machine.
+  The state machine can be simplified a great deal if you are smart
+   and inject most torrent information via the start_link message.
+
 * Connection management
 - Implement seeding
   We are not doing anything specific to take care of seeding right
