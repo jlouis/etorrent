@@ -1,3 +1,8 @@
+* DOCUMENTATION!
+- Pick functions at random, and document what they are doing.
+  It is /especially/ important to document library calls and
+   non-standard internal functions in OTP modules.
+
 * Peer Master
 - Implement rounds
   Implement choking/unchoking rounds in the Peer Master.
