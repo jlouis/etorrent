@@ -7,10 +7,15 @@
 - Write Handshaking code. (Steal from old).
   The handshake code needs some coercion. Fix it.
 
+* PortManagement
+- Kill
+  We can run with a single port and intelligent identification when
+   someone connects. Much better than it is now.
+
 * Peer Communication
 - Find a better way to decode bytes.
   Currently we are using a way which is butt-ugly and doesn't really
-   do anything intelligent.
+   do anything intelligent. Use band bor and bnot for it.
 
 * TorrentControl
 - Simplify state machine.
