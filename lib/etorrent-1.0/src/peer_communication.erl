@@ -9,13 +9,14 @@
 -module(peer_communication).
 
 %% API
--export([recv_handshake/3, initiate_handshake/3]).
+-export([initiate_handshake/4]).
 -export([send_message/2, recv_message/1,
 	 construct_bitfield/2, destruct_bitfield/2]).
 
 -define(DEFAULT_HANDSHAKE_TIMEOUT, 120000).
+-define(HANDSHAKE_SIZE, 68).
 -define(PROTOCOL_STRING, "BitTorrent protocol").
--define(RESERVED_BYTES, <<0:64>>).
+-define(RESERVED_BYTES, 0:64/big).
 
 %% Packet types
 -define(KEEP_ALIVE, 0:32/big).
@@ -103,54 +104,53 @@ send_message(Socket, Message) ->
 %%  This call is used if we are the initiator of a torrent handshake as
 %%  we then know the peer_id completely.
 %%--------------------------------------------------------------------
-initiate_handshake(Socket, PeerId, InfoHash) ->
-    HandShake = build_handshake(PeerId, InfoHash),
-    HandShakeSize = size(HandShake),
+initiate_handshake(Socket, PeerId, MyPeerId, InfoHash) ->
     PSSize = length(?PROTOCOL_STRING),
+    BinPeerId = list_to_binary(PeerId),
     % Since we are the initiator, send out this handshake
-    ok = gen_tcp:send(Socket, HandShake),
+    Header = <<PSSize:8, ?PROTOCOL_STRING, ?RESERVED_BYTES>>,
+    ok = gen_tcp:send(Socket, Header),
+    ok = gen_tcp:send(Socket, InfoHash),
+    ok = gen_tcp:send(Socket, MyPeerId),
     % Now, we wait for his handshake to arrive on the socket
     % Since we are the initiator, he is requested to fire off everything
     % to us.
-    case gen_tcp:recv(Socket, HandShakeSize, ?DEFAULT_HANDSHAKE_TIMEOUT) of
+    case gen_tcp:recv(Socket, ?HANDSHAKE_SIZE, ?DEFAULT_HANDSHAKE_TIMEOUT) of
 	{ok, Packet} ->
-	    <<PSL:8,
-	     ?PROTOCOL_STRING,
-	     _ReservedBytes:64/binary, IH:160/binary, PI:160/binary>> = Packet,
+	    <<PSL:8/integer, ?PROTOCOL_STRING, ReservedBytes:8/binary,
+	      IH:20/binary, PI:20/binary>> = Packet,
 	    if
 		PSL /= PSSize ->
 		    {error, packet_size_mismatch};
 		IH /= InfoHash ->
 		    {error, infohash_mismatch};
-		PI /= PeerId ->
+		PI /= BinPeerId ->
 		    {error, peer_id_mismatch};
 		true ->
-		    ok
+		    {ok, ReservedBytes}
 	    end;
-	{error, closed} ->
-	    {error, closed};
-	{error, timeout} ->
-	    {error, timeout}
+	{error, X} ->
+	    {error, X}
     end.
 
 %%--------------------------------------------------------------------
 %% Function: recv_handshake
 %% Description: Receive a handshake message
 %%--------------------------------------------------------------------
-recv_handshake(Socket, PeerId, InfoHash) ->
-    Size = size(build_handshake(PeerId, InfoHash)),
-    {ok, Packet} = gen_tcp:recv(Socket, Size),
-    <<PSL:8,
-     ?PROTOCOL_STRING,
-     _ReservedBytes:64/binary, IH:160/binary, PI:160/binary>> = Packet,
-    if
-	PSL /= Size ->
-	    {error, "Size mismatch"};
-	IH /= InfoHash ->
-	    {error, "Infohash mismatch"};
-	true ->
-	    {ok, PI}
-    end.
+%% recv_handshake(Socket, PeerId, InfoHash) ->
+%%     Size = size(build_handshake(PeerId, InfoHash)),
+%%     {ok, Packet} = gen_tcp:recv(Socket, Size),
+%%     <<PSL:8,
+%%      ?PROTOCOL_STRING,
+%%      _ReservedBytes:64/binary, IH:160/binary, PI:160/binary>> = Packet,
+%%     if
+%% 	PSL /= Size ->
+%% 	    {error, "Size mismatch"};
+%% 	IH /= InfoHash ->
+%% 	    {error, "Infohash mismatch"};
+%% 	true ->
+%% 	    {ok, PI}
+%%     end.
 
 %%--------------------------------------------------------------------
 %% Function: construct_bitfield
@@ -221,10 +221,4 @@ build_byte(N, BitsLeft, Byte, PieceMap, Accum) ->
 	       (X bsl (8 - BitsLeft)) + Byte,
 	       PieceMap,
 	       Accum).
-
-build_handshake(PeerId, InfoHash) when is_binary(PeerId),
-				       is_binary(InfoHash) ->
-    PStringLength = length(?PROTOCOL_STRING),
-    <<PStringLength:8, ?PROTOCOL_STRING, ?RESERVED_BYTES, InfoHash, PeerId>>.
-
 
