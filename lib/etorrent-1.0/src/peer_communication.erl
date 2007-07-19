@@ -9,10 +9,11 @@
 -module(peer_communication).
 
 %% API
--export([recv_handshake/3, send_handshake/3]).
+-export([recv_handshake/3, initiate_handshake/3]).
 -export([send_message/2, recv_message/1,
 	 construct_bitfield/2, destruct_bitfield/2]).
 
+-define(DEFAULT_HANDSHAKE_TIMEOUT, 120000).
 -define(PROTOCOL_STRING, "BitTorrent protocol").
 -define(RESERVED_BYTES, <<0:64>>).
 
@@ -97,11 +98,40 @@ send_message(Socket, Message) ->
     gen_tcp:send(Socket, Datagram).
 
 %%--------------------------------------------------------------------
-%% Function: send_handshake
-%% Description: Send a handshake message
+%% Function: initiate_handshake
+%% Description: Handshake with a peer where we have initiated with him.
+%%  This call is used if we are the initiator of a torrent handshake as
+%%  we then know the peer_id completely.
 %%--------------------------------------------------------------------
-send_handshake(Socket, PeerId, InfoHash) ->
-    ok = gen_tcp:send(Socket, build_handshake(PeerId, InfoHash)).
+initiate_handshake(Socket, PeerId, InfoHash) ->
+    HandShake = build_handshake(PeerId, InfoHash),
+    HandShakeSize = size(HandShake),
+    PSSize = length(?PROTOCOL_STRING),
+    % Since we are the initiator, send out this handshake
+    ok = gen_tcp:send(Socket, HandShake),
+    % Now, we wait for his handshake to arrive on the socket
+    % Since we are the initiator, he is requested to fire off everything
+    % to us.
+    case gen_tcp:recv(Socket, HandShakeSize, ?DEFAULT_HANDSHAKE_TIMEOUT) of
+	{ok, Packet} ->
+	    <<PSL:8,
+	     ?PROTOCOL_STRING,
+	     _ReservedBytes:64/binary, IH:160/binary, PI:160/binary>> = Packet,
+	    if
+		PSL /= PSSize ->
+		    {error, packet_size_mismatch};
+		IH /= InfoHash ->
+		    {error, infohash_mismatch};
+		PI /= PeerId ->
+		    {error, peer_id_mismatch};
+		true ->
+		    ok
+	    end;
+	{error, closed} ->
+	    {error, closed};
+	{error, timeout} ->
+	    {error, timeout}
+    end.
 
 %%--------------------------------------------------------------------
 %% Function: recv_handshake
@@ -155,7 +185,7 @@ max_element(Set) ->
 	      end, 0, Set).
 
 decode_byte(B, Add) ->
-    <<b1:1, b2:1, b3:1, b4:1, b5:1, b6:1, b7:1, b8:1>> = B,
+    <<B1:1, B2:1, B3:1, B4:1, B5:1, B6:1, B7:1, B8:1>> = <<B>>,
     Select = lists:filter(fun(X) ->
 				  case X of
 				      {1, _} ->
@@ -163,8 +193,8 @@ decode_byte(B, Add) ->
 				      _ ->
 					  false
 				  end
-			  end, [{b1, 1}, {b2, 2}, {b3, 3}, {b4, 4},
-				{b5, 5}, {b6, 6}, {b7, 7}, {b8, 8}]),
+			  end, [{B1, 1}, {B2, 2}, {B3, 3}, {B4, 4},
+				{B5, 5}, {B6, 6}, {B7, 7}, {B8, 8}]),
     Res = lists:map(fun({_, N}) ->
 		      N + Add
 	      end, Select),
@@ -192,7 +222,8 @@ build_byte(N, BitsLeft, Byte, PieceMap, Accum) ->
 	       PieceMap,
 	       Accum).
 
-build_handshake(PeerId, InfoHash) ->
+build_handshake(PeerId, InfoHash) when is_binary(PeerId),
+				       is_binary(InfoHash) ->
     PStringLength = length(?PROTOCOL_STRING),
     <<PStringLength:8, ?PROTOCOL_STRING, ?RESERVED_BYTES, InfoHash, PeerId>>.
 
