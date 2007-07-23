@@ -11,9 +11,8 @@
    counter and make the counter be used.
 
 * Peer Process
-- Write Connection code. (Steal from old).
-- Write Handshaking code. (Steal from old).
-  The handshake code needs some coercion. Fix it.
+- Make handshake code for when peers connect to us.
+
 
 * PortManagement
 - Kill
