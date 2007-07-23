@@ -122,7 +122,10 @@ check_and_start_torrent(FS, FileDict, S) ->
     {ok, StatePid} = torrent_state:start_link(Port,
 					      calculate_amount_left(DiskState)),
     sys:trace(StatePid, true),
-    {ok, PeerMasterPid} = torrent_peer_master:start_link(S#state.peer_id),
+    {ok, PeerMasterPid} =
+	torrent_peer_master:start_link(
+	  S#state.peer_id,
+	  metainfo:get_infohash(S#state.torrent)),
     {ok, TrackerPid} =
 	tracker_delegate:start_link(self(),
 				    StatePid,
