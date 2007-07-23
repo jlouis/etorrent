@@ -8,7 +8,7 @@
 -module(utils).
 
 %% API
--export([read_all_of_file/1]).
+-export([read_all_of_file/1, list_tabulate/2]).
 
 %%====================================================================
 %% API
@@ -25,9 +25,17 @@ read_all_of_file(File) ->
 	    {error, Reason}
     end.
 
+list_tabulate(N, F) ->
+    list_tabulate(0, N, F, []).
+
 %%====================================================================
 %% Internal functions
 %%====================================================================
+
+list_tabulate(N, K, _F, Acc) when N ==K ->
+    lists:reverse(Acc);
+list_tabulate(N, K, F, Acc) ->
+    list_tabulate(N+1, K, F, [F(N) | Acc]).
 
 read_data(IODev) ->
     eat_lines(IODev, []).
