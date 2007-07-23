@@ -152,13 +152,46 @@ initiate_handshake(Socket, PeerId, MyPeerId, InfoHash) ->
 %% 	    {ok, PI}
 %%     end.
 
+%%====================================================================
+%% Internal functions
+%%====================================================================
+
 %%--------------------------------------------------------------------
 %% Function: construct_bitfield
 %% Description: Construct a BitField for sending to the peer
 %%--------------------------------------------------------------------
 construct_bitfield(Size, PieceSet) ->
-    PadBits = Size rem 8,
-    build_byte(Size, 8 - PadBits, 0, PieceSet, []).
+    PadBits = 8 - (Size rem 8),
+    Bits = lists:append(
+	     [utils:list_tabulate(
+		Size,
+		fun(N) ->
+			case sets:is_element(N, PieceSet) of
+			    true ->
+				1;
+			    false ->
+				0
+			end
+		end),
+	      utils:list_tabulate(
+	       PadBits,
+	       fun(_N) -> 0 end)]),
+    0 = length(Bits) rem 8,
+    Size = sets:size(PieceSet) + PadBits,
+    build_bytes(Bits).
+
+build_bytes(BitField) ->
+    build_bytes(BitField, []).
+
+build_bytes([], Acc) ->
+    lists:reverse(Acc);
+build_bytes(L, Acc) ->
+    {Byte, Rest} = lists:split(8, L),
+    build_bytes(Rest, [bytify(Byte) | Acc]).
+
+bytify([B1, B2, B3, B4, B5, B6, B7, B8]) ->
+    <<B1:1/integer, B2:1/integer, B3:1/integer, B4:1/integer,
+      B5:1/integer, B6:1/integer, B7:1/integer, B8:1/integer>>.
 
 destruct_bitfield(Size, BinaryLump) ->
     ByteList = binary_to_list(BinaryLump),
@@ -171,9 +204,6 @@ destruct_bitfield(Size, BinaryLump) ->
 	    {error, bitfield_had_wrong_padding}
     end.
 
-%%====================================================================
-%% Internal functions
-%%====================================================================
 max_element(Set) ->
     sets:fold(fun(E, Max) ->
 		      case E > Max of
@@ -204,21 +234,4 @@ decode_bytes(_SoFar, [], Numbers) ->
     Numbers;
 decode_bytes(SoFar, [Byte | Rest], Numbers) ->
     decode_bytes(SoFar + 8, Rest, [decode_byte(Byte, SoFar) | Numbers]).
-
-build_byte(N, 0, Byte, PieceMap, Accum) ->
-    build_byte(N, 8, 0, PieceMap, [Byte | Accum]);
-build_byte(0, _, Byte, _PieceMap, Accum) ->
-    list_to_binary([Byte | Accum]);
-build_byte(N, BitsLeft, Byte, PieceMap, Accum) ->
-    X = case sets:is_element(N, PieceMap) of
-	true ->
-		1;
-	false ->
-		0
-	end,
-    build_byte(N,
-	       BitsLeft - 1,
-	       (X bsl (8 - BitsLeft)) + Byte,
-	       PieceMap,
-	       Accum).
 
