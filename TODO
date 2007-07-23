@@ -1,8 +1,3 @@
-* DOCUMENTATION!
-- Pick functions at random, and document what they are doing.
-  It is /especially/ important to document library calls and
-   non-standard internal functions in OTP modules.
-
 * Peer Master
 - Implement rounds
   Implement choking/unchoking rounds in the Peer Master.
@@ -11,8 +6,9 @@
    counter and make the counter be used.
 
 * Peer Process
-- Make handshake code for when peers connect to us.
-
+- Implement BitField lists
+  We should implement the bitfield lists there are to be sent and
+   retrieved when we first communicate.
 
 * PortManagement
 - Kill
@@ -50,8 +46,15 @@
 - Reduce the number of ets tables
   Fix and reduce the number of ets tables to a constant amount. This
   will allow us to scale into post-1000 concurrent torrents.
-- Add license facts
+- Add license facts,
+  I am not sure if it is going to be GPL or BSD-licensed.
+
 - Add author facts
+
+* DOCUMENTATION!
+- Pick functions at random, and document what they are doing.
+  It is /especially/ important to document library calls and
+   non-standard internal functions in OTP modules.
 
 ------------------------------------------------------------
 VERSION 2.0
