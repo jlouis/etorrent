@@ -143,7 +143,6 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 contact_tracker(S, Event) ->
     NewUrl = build_tracker_url(S, Event),
-    io:format("~s~n", [NewUrl]),
     case http:request(NewUrl) of
 	{ok, {{_, 200, _}, _, Body}} ->
 	    Body
@@ -156,7 +155,6 @@ decode_and_handle_body(Body, S) ->
     end.
 
 handle_tracker_response(BC, S) ->
-    io:format("~p~n", [BC]),
     ControlPid = S#state.control_pid,
     StatePid = S#state.state_pid,
     PeerMasterPid = S#state.peer_master_pid,
@@ -166,7 +164,6 @@ handle_tracker_response(BC, S) ->
     Incomplete = find_incompletes(BC),
     NewIPs = find_ips_in_tracker_response(BC),
     ErrorMessage = fetch_error_message(BC),
-    io:format("Error msg: ~p~n", [ErrorMessage]),
     WarningMessage = fetch_warning_message(BC),
     if
 	ErrorMessage /= none ->
