@@ -150,6 +150,12 @@ handle_message(choke, S) ->
     {ok, S#state { remote_choked = true }};
 handle_message(unchoke, S) ->
     {ok, S#state { remote_choked = false }};
+handle_message({request, Index, Offset, Len}, S) ->
+    torrent_peer_send:request(S#state.send_pid, Index, Offset, Len),
+    {ok, S};
+handle_message({cancel, Index, Offset, Len}, S) ->
+    torrent_peer_send:cancel(S#state.send_pid, Index, Offset, Len),
+    {ok, S};
 handle_message(Unknown, S) ->
     {stop, {unknown_message, Unknown}, S}.
 
