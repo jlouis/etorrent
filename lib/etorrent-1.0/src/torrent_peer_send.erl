@@ -7,17 +7,19 @@
 %%%-------------------------------------------------------------------
 -module(torrent_peer_send).
 
--behaviour(gen_server).
+-behaviour(gen_fsm).
 
 %% API
--export([start_link/2, send/2, request/4, cancel/4]).
+-export([start_link/2, send/2, request/4, cancel/4, choke/1, unchoke/1]).
 
 %% gen_server callbacks
--export([init/1, handle_call/3, handle_cast/2, handle_info/2,
-	 terminate/2, code_change/3]).
+-export([init/1, handle_info/3, terminate/3, code_change/4,
+	 running/2, keep_alive/2, handle_event/3, handle_sync_event/4]).
 
 -record(state, {socket = none,
 	        request_queue = none,
+
+		choke = true,
 
 	        piece_cache = none,
 	        file_system_pid = none}).
@@ -28,67 +30,89 @@
 %% API
 %%====================================================================
 start_link(Socket, FilesystemPid) ->
-    gen_server:start_link(?MODULE,
+    gen_fsm:start_link(?MODULE,
 			  [Socket, FilesystemPid], []).
 
 send(Pid, Msg) ->
-    gen_server:cast(Pid, {send, Msg}).
+    gen_fsm:send_event(Pid, {send, Msg}).
 
 request(Pid, Index, Offset, Len) ->
-    gen_server:cast(Pid, {request_piece, Index, Offset, Len}).
+    gen_fsm:send_event(Pid, {request_piece, Index, Offset, Len}).
 
 cancel(Pid, Index, Offset, Len) ->
-    gen_server:cast(Pid, {cancel_piece, Index, Offset, Len}).
+    gen_fsm:send_event(Pid, {cancel_piece, Index, Offset, Len}).
+
+choke(Pid) ->
+    gen_fsm:send_event(Pid, choke).
+
+unchoke(Pid) ->
+    gen_fsm:send_event(Pid, unchoke).
 
 %%====================================================================
 %% gen_server callbacks
 %%====================================================================
 init([Socket, FilesystemPid]) ->
     {ok,
+     keep_alive,
      #state{socket = Socket,
 	    request_queue = queue:new(),
 	    file_system_pid = FilesystemPid},
      ?DEFAULT_KEEP_ALIVE_INTERVAL}.
 
-handle_call(_Request, _From, State) ->
-    Reply = ok,
-    {reply, Reply, State, 0}.
+keep_alive(Msg, S) ->
+    handle_message(Msg, S).
 
-handle_cast({send, Message}, S) ->
-    ok = peer_communication:send_message(S#state.socket,
-					 Message),
-    {noreply, S, 0};
-handle_cast({request_piece, Index, Offset, Len}, S) ->
+running(Msg, S) ->
+    handle_message(Msg, S).
+
+handle_event(_Evt, St, S) ->
+    {next_state, St, S, 0}.
+
+handle_sync_event(_Evt, St, _From, S) ->
+    {next_state, St, S, 0}.
+
+handle_message({send, Message}, S) ->
+    send_message(Message, S),
+    {next_state, running, S, 0};
+handle_message(choke, S) ->
+    send_message(choke, S),
+    {next_state, running, S#state{choke = true}, 0};
+handle_message(unchoke, S) ->
+    send_message(unchoke, S),
+    {next_state, running, S#state{choke = false}, 0};
+handle_message({request_piece, Index, Offset, Len}, S) ->
     Requests = length(S#state.request_queue),
     if
 	Requests > ?MAX_REQUESTS ->
 	    {stop, max_queue_len_exceeded, S};
 	true ->
 	    NQ = queue:in({Index, Offset, Len}, S#state.request_queue),
-	    {noreply, S#state{request_queue = NQ}, 0}
+	    {next_state, running, S#state{request_queue = NQ}, 0}
     end;
-handle_cast({cancel_piece, Index, OffSet, Len}, S) ->
+handle_message({cancel_piece, Index, OffSet, Len}, S) ->
     NQ = utils:queue_remove({Index, OffSet, Len}, S#state.request_queue),
-    {noreply, S#state{request_queue = NQ}, 0}.
+    {next_state, running, S#state{request_queue = NQ}, 0}.
 
-handle_info(timeout, S) ->
+handle_info(timeout, keep_alive, S) ->
+    ok = peer_communication:send_message(S#state.socket, keep_alive),
+    {next_state, keep_alive, S, ?DEFAULT_KEEP_ALIVE_INTERVAL};
+handle_info(timeout, running, S) when S#state.choke == true ->
+    {next_state, keep_alive, S, ?DEFAULT_KEEP_ALIVE_INTERVAL};
+handle_info(timeout, running, S) when S#state.choke == false ->
     case queue:out(S#state.request_queue) of
 	{empty, Q} ->
-	    ok = peer_communication:send_message(S#state.socket, keep_alive),
-	    {noreply,
+	    {next_state, keep_alive,
 	     S#state{request_queue = Q},
 	     ?DEFAULT_KEEP_ALIVE_INTERVAL};
 	{{value, {Index, Offset, Len}}, NQ} ->
 	    NS = send_piece(Index, Offset, Len, S),
-	    {noreply,
-	     NS#state{request_queue = NQ},
-	     0}
+	    {next_state, running, NS#state{request_queue = NQ}, 0}
     end.
 
-terminate(_Reason, _State) ->
+terminate(_Reason, _St, _State) ->
     ok.
 
-code_change(_OldVsn, State, _Extra) ->
+code_change(_OldVsn, _State, State, _Extra) ->
     {ok, State}.
 
 %%--------------------------------------------------------------------
@@ -113,3 +137,8 @@ send_piece(Index, Offset, Len, S) ->
 load_piece(Index, S) ->
     {ok, Piece} = file_system:read_piece(S#state.file_system_pid, Index),
     S#state{piece_cache = {Index, Piece}}.
+
+send_message(Msg, S) ->
+    ok = peer_communication:send_message(S#state.socket,
+					 Msg),
+    ok.
