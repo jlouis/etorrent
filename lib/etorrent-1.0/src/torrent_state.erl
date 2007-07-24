@@ -11,7 +11,8 @@
 
 %% API
 -export([start_link/1, report_to_tracker/1, report_from_tracker/3,
-	 retrieve_bitfield/1]).
+	 retrieve_bitfield/1, remote_choked/1, remote_unchoked/1,
+	 remote_interested/1, remote_not_interested/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -46,6 +47,18 @@ report_from_tracker(Pid, Complete, Incomplete) ->
 retrieve_bitfield(Pid) ->
     gen_server:call(Pid,
 		    retrieve_bitfield, 10000).
+
+remote_choked(Pid) ->
+    gen_server:cast(Pid, {remote_choked, self()}).
+
+remote_unchoked(Pid) ->
+    gen_server:cast(Pid, {remote_unchoked, self()}).
+
+remote_interested(Pid) ->
+    gen_server:cast(Pid, {remote_interested, self()}).
+
+remote_not_interested(Pid) ->
+    gen_server:cast(Pid, {remote_not_interested, self()}).
 
 %%====================================================================
 %% gen_server callbacks
@@ -96,6 +109,7 @@ handle_call({report_from_tracker, Complete, Incomplete},
 %%                                      {stop, Reason, State}
 %% Description: Handling cast messages
 %%--------------------------------------------------------------------
+% TODO: torrent_state:handle_cast : Handle interested and choke globally!
 handle_cast(_Msg, State) ->
     {noreply, State}.
 

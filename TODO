@@ -22,9 +22,9 @@
    someone connects. Much better than it is now.
 
 * Peer Communication
-- Find a better way to decode bytes.
-  Currently we are using a way which is butt-ugly and doesn't really
-   do anything intelligent. Use band bor and bnot for it.
+- Rather than DiskState, use sets!
+  I thought passing around the diskstate was the way to do it. But,
+   alas, no. It should really be sets.
 
 * TorrentControl
 - Simplify state machine.
