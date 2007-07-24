@@ -196,8 +196,9 @@ build_uri_encoded_form_rfc1738(Binary) ->
 			   binary_to_list(Binary))).
 
 build_tracker_url(S, Event) ->
-    {ok, Downloaded, Uploaded, Left, Port} =
+    {ok, Downloaded, Uploaded, Left} =
 	torrent_state:report_to_tracker(S#state.state_pid),
+    {ok, Port} = application:get_env(etorrent, port),
     Request = [{"info_hash", build_uri_encoded_form_rfc1738(S#state.info_hash)},
 	       {"peer_id", S#state.peer_id},
 	       {"uploaded", Uploaded},

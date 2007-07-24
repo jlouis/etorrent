@@ -30,9 +30,6 @@ init([]) ->
     RandomSourceSup = {random_source_sup,
 		       {random_source_sup, start_link, []},
 		       transient, infinity, supervisor, [random_source_sup]},
-    PortManager = {portmanager,
-		   {portmanager, start_link, []},
-		   permanent, 2000, worker, [portmanager]},
     Serializer = {serializer,
 		  {serializer, start_link, []},
 		  permanent, 2000, worker, [serializer]},
@@ -46,7 +43,7 @@ init([]) ->
 		   {torrent_pool_sup, start_link, []},
 		   transient, infinity, supervisor, [torrent_pool_sup]},
     {ok, {{one_for_all, 1, 60},
-	  [RandomSourceSup, PortManager, Serializer,
+	  [RandomSourceSup, Serializer,
 	   DirWatcherSup, TorrentMgr, TorrentPool]}}.
 
 %%====================================================================
