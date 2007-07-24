@@ -118,14 +118,13 @@ check_and_start_torrent(FS, FileDict, S) ->
     {ok, DiskState} =
 	check_torrent:check_torrent_contents(FS, FileDict),
     ok = serializer:release_token(),
-    {ok, Port} = portmanager:fetch_port(),
-    {ok, StatePid} = torrent_state:start_link(Port,
-					      calculate_amount_left(DiskState)),
-    sys:trace(StatePid, true),
+    {ok, StatePid} = torrent_state:start_link(DiskState),
     {ok, PeerMasterPid} =
 	torrent_peer_master:start_link(
 	  S#state.peer_id,
-	  metainfo:get_infohash(S#state.torrent)),
+	  metainfo:get_infohash(S#state.torrent),
+	  StatePid),
+    sys:trace(PeerMasterPid, true),
     {ok, TrackerPid} =
 	tracker_delegate:start_link(self(),
 				    StatePid,
@@ -256,23 +255,4 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 add_filesystem(FileDict, S) ->
     {ok, FS} = file_system:start_link(FileDict),
     {ok, FS, S#state{file_system_pid = FS}}.
-
-calculate_amount_left(DiskState) ->
-    dict:fold(fun (_K, {_Hash, Ops, Ok}, Total) ->
-		      case Ok of
-			  ok ->
-			      Total;
-			  not_ok ->
-			      Total + size_of_ops(Ops)
-		      end
-	      end,
-	      0,
-	      DiskState).
-
-size_of_ops(Ops) ->
-    lists:foldl(fun ({_Path, _Offset, Size}, Total) ->
-			Size + Total end,
-		0,
-		Ops).
-
 

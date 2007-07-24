@@ -10,7 +10,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/2, add_peers/2]).
+-export([start_link/3, add_peers/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -20,15 +20,17 @@
 	        bad_peers = none,
 		our_peer_id = none,
 		info_hash = none,
-	        peer_process_dict = none}).
+	        peer_process_dict = none,
+
+	        state_pid = none}).
 
 -define(MAX_PEER_PROCESSES, 40).
 
 %%====================================================================
 %% API
 %%====================================================================
-start_link(OurPeerId, InfoHash) ->
-    gen_server:start_link(?MODULE, [OurPeerId, InfoHash], []).
+start_link(OurPeerId, InfoHash, StatePid) ->
+    gen_server:start_link(?MODULE, [OurPeerId, InfoHash, StatePid], []).
 
 add_peers(Pid, IPList) ->
     gen_server:cast(Pid, {add_peers, IPList}).
@@ -37,11 +39,12 @@ add_peers(Pid, IPList) ->
 %% gen_server callbacks
 %%====================================================================
 
-init([OurPeerId, InfoHash]) ->
+init([OurPeerId, InfoHash, StatePid]) ->
     process_flag(trap_exit, true), % Needed for torrent peers
     {ok, #state{ our_peer_id = OurPeerId,
 		 bad_peers = dict:new(),
 		 info_hash = InfoHash,
+		 state_pid = StatePid,
 		 peer_process_dict = dict:new() }}.
 
 handle_call(_Request, _From, State) ->
@@ -126,7 +129,9 @@ spawn_new_peer(IP, Port, PeerId, N, S) ->
 	    fill_peers(N, S);
 	false ->
 	    {ok, Pid} = torrent_peer:start_link(IP, Port,
-						PeerId, S#state.info_hash),
+						PeerId,
+						S#state.info_hash,
+					        S#state.state_pid),
 	    sys:trace(Pid, true),
 	    torrent_peer:connect(Pid, S#state.our_peer_id),
 	    D = dict:store(Pid, {IP, Port, PeerId}, S#state.peer_process_dict),

@@ -10,7 +10,8 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/4, connect/2]).
+-export([start_link/5, connect/2]).
+-export([send_message/2]). % TODO: Make this local
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -20,7 +21,16 @@
 		 port = none,
 		 peer_id = none,
 		 info_hash = none,
-		 tcp_socket = none}).
+
+		 tcp_socket = none,
+
+		 remote_choked = true,
+		 remote_interested = false,
+		 local_choked  = true,
+		 local_interested = false,
+
+		 send_pid = none,
+		 state_pid = none}).
 
 -define(DEFAULT_CONNECT_TIMEOUT, 120000).
 
@@ -32,8 +42,8 @@
 %% Function: start_link() -> {ok,Pid} | ignore | {error,Error}
 %% Description: Starts the server
 %%--------------------------------------------------------------------
-start_link(IP, Port, PeerId, InfoHash) ->
-    gen_server:start_link(?MODULE, [IP, Port, PeerId, InfoHash], []).
+start_link(IP, Port, PeerId, InfoHash, StatePid) ->
+    gen_server:start_link(?MODULE, [IP, Port, PeerId, InfoHash, StatePid], []).
 
 connect(Pid, MyPeerId) ->
     gen_server:cast(Pid, {connect, MyPeerId}).
@@ -49,11 +59,12 @@ connect(Pid, MyPeerId) ->
 %%                         {stop, Reason}
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
-init([IP, Port, PeerId, InfoHash]) ->
+init([IP, Port, PeerId, InfoHash, StatePid]) ->
     {ok, #state{ ip = IP,
 		 port = Port,
 		 peer_id = PeerId,
-		 info_hash = InfoHash}}.
+		 info_hash = InfoHash,
+		 state_pid = StatePid}}.
 
 %%--------------------------------------------------------------------
 %% Function: %% handle_call(Request, From, State) -> {reply, Reply, State} |
@@ -76,14 +87,17 @@ handle_call(_Request, _From, State) ->
 %%--------------------------------------------------------------------
 handle_cast({connect, MyPeerId}, S) ->
     Socket = int_connect(S#state.ip, S#state.port),
-    % TODO: use initiate_handshake/4
     case peer_communication:initiate_handshake(Socket,
 					       S#state.peer_id,
 					       MyPeerId,
 					       S#state.info_hash) of
 	{ok, _ReservedBytes} ->
 	    enable_socket_messages(Socket),
-	    {noreply, S#state{tcp_socket = Socket}};
+	    {ok, SendPid} = torrent_peer_send:start_link(Socket),
+	    BF = torrent_state:retrieve_bitfield(S#state.state_pid),
+	    torrent_peer_send:send(SendPid, {bitfield, BF}),
+	    {noreply, S#state{tcp_socket = Socket,
+			      send_pid = SendPid}};
 	{error, X} ->
 	    exit(X)
     end;
@@ -98,6 +112,14 @@ handle_cast(_Msg, State) ->
 %%--------------------------------------------------------------------
 handle_info({tcp_closed, _P}, S) ->
     {stop, normal, S};
+handle_info({tcp, _Socket, M}, S) ->
+    Msg = peer_communication:recv_message(M),
+    case handle_message(Msg, S) of
+	{ok, NS} ->
+	    {noreply, NS};
+	{stop, Err, NS} ->
+	    {stop, Err, NS}
+    end;
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -121,6 +143,18 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 %%% Internal functions
 %%--------------------------------------------------------------------
+
+handle_message(keep_alive, S) ->
+    {ok, S};
+handle_message(choke, S) ->
+    {ok, S#state { remote_choked = true }};
+handle_message(unchoke, S) ->
+    {ok, S#state { remote_choked = false }};
+handle_message(Unknown, S) ->
+    {stop, {unknown_message, Unknown}, S}.
+
+send_message(Msg, S) ->
+    torrent_peer_send:send(S#state.send_pid, Msg).
 
 % Specialize connects to our purpose
 int_connect(IP, Port) ->

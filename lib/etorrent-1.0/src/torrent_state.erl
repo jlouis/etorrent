@@ -10,7 +10,8 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/2, report_to_tracker/1, report_from_tracker/3]).
+-export([start_link/1, report_to_tracker/1, report_from_tracker/3,
+	 retrieve_bitfield/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -18,10 +19,12 @@
 
 -record(state, {uploaded = 0,
 		downloaded = 0,
+		left = 0,
+
 		seeders = 0,
 		leechers = 0,
-		left = 0,
-		port = none}).
+
+		disk_state = none}).
 
 %%====================================================================
 %% API
@@ -30,8 +33,8 @@
 %% Function: start_link() -> {ok,Pid} | ignore | {error,Error}
 %% Description: Starts the server
 %%--------------------------------------------------------------------
-start_link(Port, TotalSizeLeft) ->
-    gen_server:start_link(?MODULE, [Port, TotalSizeLeft], []).
+start_link(DiskState) ->
+    gen_server:start_link(?MODULE, [DiskState], []).
 
 report_to_tracker(Pid) ->
     gen_server:call(Pid, report_to_tracker).
@@ -39,6 +42,10 @@ report_to_tracker(Pid) ->
 report_from_tracker(Pid, Complete, Incomplete) ->
     gen_server:call(Pid,
 		    {report_from_tracker, Complete, Incomplete}).
+
+retrieve_bitfield(Pid) ->
+    gen_server:call(Pid,
+		    retrieve_bitfield, 10000).
 
 %%====================================================================
 %% gen_server callbacks
@@ -51,9 +58,9 @@ report_from_tracker(Pid, Complete, Incomplete) ->
 %%                         {stop, Reason}
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
-init([Port, TotalSizeLeft]) ->
-    {ok, #state{port = Port,
-	        left = TotalSizeLeft}}.
+init([DiskState]) ->
+    {ok, #state{disk_state = DiskState,
+	        left = calculate_amount_left(DiskState)}}.
 
 %%--------------------------------------------------------------------
 %% Function: %% handle_call(Request, From, State) -> {reply, Reply, State} |
@@ -74,8 +81,10 @@ handle_call(report_to_tracker, _From, S) ->
     {reply, {ok,
 	     S#state.uploaded,
 	     S#state.downloaded,
-	     S#state.left,
-	     S#state.port}, S};
+	     S#state.left}, S};
+handle_call(retrieve_bitfield, _From, S) ->
+    BF = peer_communication:construct_bitfield(S#state.disk_state),
+    {reply, BF, S};
 handle_call({report_from_tracker, Complete, Incomplete},
 	    _From, S) ->
     {reply, ok, S#state { seeders = Complete, leechers = Incomplete }}.
@@ -120,3 +129,20 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 %%% Internal functions
 %%--------------------------------------------------------------------
+calculate_amount_left(DiskState) ->
+    dict:fold(fun (_K, {_Hash, Ops, Ok}, Total) ->
+		      case Ok of
+			  ok ->
+			      Total;
+			  not_ok ->
+			      Total + size_of_ops(Ops)
+		      end
+	      end,
+	      0,
+	      DiskState).
+
+size_of_ops(Ops) ->
+    lists:foldl(fun ({_Path, _Offset, Size}, Total) ->
+			Size + Total end,
+		0,
+		Ops).

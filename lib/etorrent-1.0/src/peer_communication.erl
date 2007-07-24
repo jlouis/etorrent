@@ -11,7 +11,7 @@
 %% API
 -export([initiate_handshake/4]).
 -export([send_message/2, recv_message/1,
-	 construct_bitfield/2, destruct_bitfield/2]).
+	 construct_bitfield/1, destruct_bitfield/2]).
 
 -define(DEFAULT_HANDSHAKE_TIMEOUT, 120000).
 -define(HANDSHAKE_SIZE, 68).
@@ -19,7 +19,6 @@
 -define(RESERVED_BYTES, 0:64/big).
 
 %% Packet types
--define(KEEP_ALIVE, 0:32/big).
 -define(CHOKE, 0:8).
 -define(UNCHOKE, 1:8).
 -define(INTERESTED, 2:8).
@@ -40,6 +39,8 @@
 %%--------------------------------------------------------------------
 recv_message(Message) ->
     case Message of
+	<<>> ->
+	    keep_alive;
 	<<?CHOKE>> ->
 	    choke;
 	<<?UNCHOKE>> ->
@@ -69,7 +70,7 @@ recv_message(Message) ->
 send_message(Socket, Message) ->
     Datagram = case Message of
 	       keep_alive ->
-		   <<?KEEP_ALIVE>>;
+		   <<>>;
 	       choke ->
 		   <<1:32/big, ?CHOKE>>;
 	       unchoke ->
@@ -160,24 +161,22 @@ initiate_handshake(Socket, PeerId, MyPeerId, InfoHash) ->
 %% Function: construct_bitfield
 %% Description: Construct a BitField for sending to the peer
 %%--------------------------------------------------------------------
-construct_bitfield(Size, PieceSet) ->
+construct_bitfield(DiskState) ->
+    Size = dict:size(DiskState),
     PadBits = 8 - (Size rem 8),
     Bits = lists:append(
 	     [utils:list_tabulate(
 		Size,
 		fun(N) ->
-			case sets:is_element(N, PieceSet) of
-			    true ->
-				1;
-			    false ->
-				0
+			case dict:fetch(N, DiskState) of
+			    {_H, _O, ok} -> 1;
+			    {_H, _O, not_ok} -> 0
 			end
 		end),
 	      utils:list_tabulate(
 	       PadBits,
 	       fun(_N) -> 0 end)]),
     0 = length(Bits) rem 8,
-    Size = sets:size(PieceSet) + PadBits,
     build_bytes(Bits).
 
 build_bytes(BitField) ->
