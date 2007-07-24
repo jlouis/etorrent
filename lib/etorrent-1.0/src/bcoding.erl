@@ -43,8 +43,8 @@ decode(String) ->
     case decode_b(String) of
 	{Res, []} ->
 	    {ok, Res};
-	_ ->
-	    {error, "There was data after the bcoded structure"}
+	E ->
+	    {error, E}
     end.
 
 %%--------------------------------------------------------------------
@@ -99,7 +99,7 @@ encode_dict_items([{I1, I2} | Rest]) ->
     [I, J | encode_dict_items(Rest)].
 
 decode_b([]) ->
-    {empty_string, "Empty String"};
+    empty_string;
 decode_b([H | Rest]) ->
     case H of
 	$i ->
