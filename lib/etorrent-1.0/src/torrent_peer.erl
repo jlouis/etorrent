@@ -176,6 +176,16 @@ handle_message({have, PieceNum}, S) ->
     PieceSet = sets:add_element(PieceNum, S#state.piece_set),
     ok = torrent_state:remote_have_piece(S#state.state_pid, PieceNum),
     {ok, S#state{piece_set = PieceSet}};
+handle_message({bitfield, BitField}, S) ->
+    case sets:size(S#state.piece_set) of
+	0 ->
+	    Size = torrent_state:num_pieces(S#state.state_pid),
+	    PieceSet = peer_communication:destruct_bitfield(Size, BitField),
+	    torrent_state:remote_bitfield(S#state.state_pid, PieceSet),
+	    {ok, S#state{piece_set = PieceSet}};
+	_ ->
+	    {stop, got_out_of_band_bitfield, S}
+    end;
 handle_message(Unknown, S) ->
     {stop, {unknown_message, Unknown}, S}.
 
