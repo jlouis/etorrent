@@ -1,3 +1,7 @@
+----------------------------------------------------------------------
+-- This is a list of what To Do before a release is ready to be made.
+----------------------------------------------------------------------
+
 * Peer Master
 - Implement rounds
   Implement choking/unchoking rounds in the Peer Master.
@@ -5,26 +9,13 @@
   Rather than keep the kill-message (Which is always normal), keep a
    counter and make the counter be used.
 
-* Peer Process
+* Torrent_Peer
 - Implement BitField lists
   We should implement the bitfield lists there are to be sent and
    retrieved when we first communicate.
-
-* Torrent_Peer_Send
-- Implement FS code
-  We are not yet retrieving pieces from the FS code. Implement the
-   code: 1. Get the FS-pid down to the torrent_peer; 2. Retrieve and
-   cache a piece. 3. Use the cache for pieces.
-
-* PortManagement
-- Kill
-  We can run with a single port and intelligent identification when
-   someone connects. Much better than it is now.
-
-* Peer Communication
-- Rather than DiskState, use sets!
-  I thought passing around the diskstate was the way to do it. But,
-   alas, no. It should really be sets.
+- Handle retrieval of bitfield messages in the peer.
+- Handle retrieval of piece messages.
+- Implement our local request queue.
 
 * TorrentControl
 - Simplify state machine.
@@ -35,11 +26,14 @@
 - Handle remote_have_piece
   We currently do nothing, but we should act on this information
   (interested for starters).
+- Handle remote_bitfield
+- Implement request_new Piece
 
 * Connection management
 - Implement seeding
   We are not doing anything specific to take care of seeding right
-  now. This must obviously be cared for.
+  now. This must obviously be cared for. The way to do it is in the
+  torrent_state process.
 - Implement torrent_piecemap:pieces_downloaded/1
   The function asks to the piecemap what pieces we have downloaded. We
   must return a correct answer.
@@ -61,11 +55,16 @@
   I am not sure if it is going to be GPL or BSD-licensed.
 
 - Add author facts
+  They are there, but are incorrect in a lot of files. They must
+  be corrected.
 
 * DOCUMENTATION!
 - Pick functions at random, and document what they are doing.
   It is /especially/ important to document library calls and
    non-standard internal functions in OTP modules.
+- Make an INSTALL and README document for release.
+- Build a google-code page for the release.
+- Push release 1.0 into SVN at google.
 
 ------------------------------------------------------------
 VERSION 2.0

@@ -123,7 +123,8 @@ check_and_start_torrent(FS, FileDict, S) ->
 	torrent_peer_master:start_link(
 	  S#state.peer_id,
 	  metainfo:get_infohash(S#state.torrent),
-	  StatePid),
+	  StatePid,
+	  FS),
     sys:trace(PeerMasterPid, true),
     {ok, TrackerPid} =
 	tracker_delegate:start_link(self(),

@@ -10,7 +10,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/5, connect/2]).
+-export([start_link/6, connect/2]).
 -export([send_message/2]). % TODO: Make this local
 
 %% gen_server callbacks
@@ -30,6 +30,8 @@
 		 local_interested = false,
 
 		 piece_set = none,
+
+		 file_system_pid = none,
 		 send_pid = none,
 		 state_pid = none}).
 
@@ -43,8 +45,9 @@
 %% Function: start_link() -> {ok,Pid} | ignore | {error,Error}
 %% Description: Starts the server
 %%--------------------------------------------------------------------
-start_link(IP, Port, PeerId, InfoHash, StatePid) ->
-    gen_server:start_link(?MODULE, [IP, Port, PeerId, InfoHash, StatePid], []).
+start_link(IP, Port, PeerId, InfoHash, StatePid, FilesystemPid) ->
+    gen_server:start_link(?MODULE, [IP, Port, PeerId, InfoHash,
+				    StatePid, FilesystemPid], []).
 
 connect(Pid, MyPeerId) ->
     gen_server:cast(Pid, {connect, MyPeerId}).
@@ -60,13 +63,14 @@ connect(Pid, MyPeerId) ->
 %%                         {stop, Reason}
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
-init([IP, Port, PeerId, InfoHash, StatePid]) ->
+init([IP, Port, PeerId, InfoHash, StatePid, FilesystemPid]) ->
     {ok, #state{ ip = IP,
 		 port = Port,
 		 peer_id = PeerId,
 		 piece_set = sets:new(),
 		 info_hash = InfoHash,
-		 state_pid = StatePid}}.
+		 state_pid = StatePid,
+		 file_system_pid = FilesystemPid}}.
 
 %%--------------------------------------------------------------------
 %% Function: %% handle_call(Request, From, State) -> {reply, Reply, State} |
@@ -95,7 +99,9 @@ handle_cast({connect, MyPeerId}, S) ->
 					       S#state.info_hash) of
 	{ok, _ReservedBytes} ->
 	    enable_socket_messages(Socket),
-	    {ok, SendPid} = torrent_peer_send:start_link(Socket),
+	    {ok, SendPid} =
+		torrent_peer_send:start_link(Socket,
+					     S#state.file_system_pid),
 	    BF = torrent_state:retrieve_bitfield(S#state.state_pid),
 	    torrent_peer_send:send(SendPid, {bitfield, BF}),
 	    {noreply, S#state{tcp_socket = Socket,
