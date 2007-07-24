@@ -7,9 +7,9 @@ DEBUG_FLAGS = -Ddebug +debug_info
 MODULES=bcoding dirwatcher etorrent_app etorrent peer_communication \
 	torrent_control serializer check_torrent file_process file_system \
 	utils metainfo torrent_manager random_source dirwatcher_sup \
-	random_source_sup tracker_delegate portmanager \
+	random_source_sup tracker_delegate \
 	torrent_state torrent torrent_sup torrent_pool_sup \
-	torrent_peer_master
+	torrent_peer_master torrent_peer torrent_peer_send
 
 
 EBIN_FILES=$(MODULES:%=../ebin/%.$(EMULATOR)) ../ebin/etorrent.app
