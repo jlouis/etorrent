@@ -10,8 +10,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/6, connect/2, choke/1, unchoke/1]).
--export([send_message/2]). % TODO: Make this local
+-export([start_link/6, connect/2, choke/1, unchoke/1, interested/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -56,6 +55,10 @@ choke(Pid) ->
 
 unchoke(Pid) ->
     gen_server:cast(Pid, unchoke).
+
+interested(Pid) ->
+    gen_server:cast(Pid, interested).
+
 %%====================================================================
 %% gen_server callbacks
 %%====================================================================
@@ -119,6 +122,14 @@ handle_cast(choke, S) ->
 handle_cast(unchoke, S) ->
     torrent_peer_send:unchoke(S#state.send_pid),
     {noreply, S};
+handle_cast(interested, S) ->
+    case S#state.local_interested of
+	true ->
+	    {noreply, S};
+	false ->
+	    send_message(interested, S),
+	    {noreply, S#state{local_interested = true}}
+    end;
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
