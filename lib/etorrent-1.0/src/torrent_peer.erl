@@ -230,8 +230,34 @@ handle_message({piece, Index, Offset, Len, Data}, S) ->
 handle_message(Unknown, S) ->
     {stop, {unknown_message, Unknown}, S}.
 
-check_and_store_piece(_Index, _GBT, S) ->
-    {ok, S}.
+check_and_store_piece(Index, GBT, S) ->
+    PList = gb_trees:to_list(GBT),
+    ok = invariant_check(PList),
+    Piece = lists:map(
+	      fun({_Offset, {Len, Data}}) ->
+		      Len = size(Data), % Invariant, consider mov to inv. check.
+		      Data
+	      end,
+	      PList),
+    file_system:write_piece(S#state.file_system_pid,
+			    Index,
+			    Piece),
+    {ok, S#state{piece_request = none}}. % TODO: Fix this.
+
+invariant_check(PList) ->
+    V = lists:foldl(fun (_E, error) -> error;
+			({Offset, {Len, _}}, N) when Offset == N ->
+			    Offset + Len + 1;
+			({Offset, {_Len, _}}, N) when Offset /= N ->
+			    error
+		    end,
+		    PList),
+    case V of
+	error ->
+	    error;
+	N when is_integer(N) ->
+	    ok
+    end.
 
 send_message(Msg, S) ->
     torrent_peer_send:send(S#state.send_pid, Msg).

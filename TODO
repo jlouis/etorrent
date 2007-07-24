@@ -15,8 +15,12 @@
    retrieved when we first communicate.
 - Handle retrieval of bitfield messages in the peer.
 - Handle retrieval of piece messages.
+  We still need to handle the case that one piece is retrieved fully,
+  while we have requested something from another piece. We must then
+  construct the 2nd piece GBT so we can keep that coming in. It means
+  we may need to change part of this code.
+
 - Implement our local request queue.
-- Implement interested, not_interested.
 
 * TorrentControl
 - Simplify state machine.
