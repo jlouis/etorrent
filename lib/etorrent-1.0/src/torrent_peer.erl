@@ -28,6 +28,7 @@
 		 local_interested = false,
 
 		 piece_set = none,
+		 piece_request = none,
 
 		 file_system_pid = none,
 		 send_pid = none,
@@ -207,8 +208,30 @@ handle_message({bitfield, BitField}, S) ->
 	_ ->
 	    {stop, got_out_of_band_bitfield, S}
     end;
+handle_message({piece, Index, Offset, Len, Data}, S) ->
+    case S#state.piece_request of
+	none ->
+	    {stop, no_piece_requested, S};
+	{CurrentIndex, _GBT, _L} when CurrentIndex /= Index ->
+	    {stop, wrong_index_in_piece, S};
+	{_CurrentIndex, GBT, 0} ->
+	    check_and_store_piece(Index, GBT, S);
+	{CurrentIndex, GBT, N} ->
+	    case gb_trees:get(Offset, GBT) of
+		{PLen, none} when PLen == Len ->
+		    PR = {CurrentIndex,
+			  gb_trees:update(Offset, {Len, Data}, GBT),
+			  N-1},
+		    {ok, S#state{piece_request = PR}}
+	    end;
+	_ ->
+	    {stop, error_handle_message_piece, S}
+    end;
 handle_message(Unknown, S) ->
     {stop, {unknown_message, Unknown}, S}.
+
+check_and_store_piece(_Index, _GBT, S) ->
+    {ok, S}.
 
 send_message(Msg, S) ->
     torrent_peer_send:send(S#state.send_pid, Msg).
