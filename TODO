@@ -16,13 +16,14 @@
 - Handle retrieval of bitfield messages in the peer.
 - Handle retrieval of piece messages.
 - Implement our local request queue.
+- Implement interested, not_interested.
 
 * TorrentControl
 - Simplify state machine.
   The state machine can be simplified a great deal if you are smart
    and inject most torrent information via the start_link message.
 
-* Torrent_State
+* Torrent_State (Maybe Torrent_peer_manager)
 - Handle remote_have_piece
   We currently do nothing, but we should act on this information
   (interested for starters).
