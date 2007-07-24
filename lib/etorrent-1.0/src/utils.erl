@@ -34,7 +34,7 @@ list_tabulate(N, F) ->
 
 queue_remove(Item, Q) ->
     QList = queue:to_list(Q),
-    List = lists:remove(Item, QList),
+    List = lists:delete(Item, QList),
     queue:from_list(List).
 
 list_tabulate(N, K, _F, Acc) when N ==K ->
