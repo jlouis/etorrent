@@ -167,7 +167,7 @@ construct_bitfield(Size, PieceSet) ->
 	     [utils:list_tabulate(
 		Size,
 		fun(N) ->
-			case set:is_element(N, PieceSet) of
+			case sets:is_element(N, PieceSet) of
 			    true -> 1;
 			    false -> 0
 			end
