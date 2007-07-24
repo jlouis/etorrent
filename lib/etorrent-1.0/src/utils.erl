@@ -8,7 +8,7 @@
 -module(utils).
 
 %% API
--export([read_all_of_file/1, list_tabulate/2]).
+-export([read_all_of_file/1, list_tabulate/2, queue_remove/2]).
 
 %%====================================================================
 %% API
@@ -31,6 +31,11 @@ list_tabulate(N, F) ->
 %%====================================================================
 %% Internal functions
 %%====================================================================
+
+queue_remove(Item, Q) ->
+    QList = queue:to_list(Q),
+    List = lists:remove(Item, QList),
+    queue:from_list(List).
 
 list_tabulate(N, K, _F, Acc) when N ==K ->
     lists:reverse(Acc);
