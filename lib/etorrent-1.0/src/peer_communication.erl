@@ -11,7 +11,7 @@
 %% API
 -export([initiate_handshake/4]).
 -export([send_message/2, recv_message/1,
-	 construct_bitfield/1, destruct_bitfield/2]).
+	 construct_bitfield/2, destruct_bitfield/2]).
 
 -define(DEFAULT_HANDSHAKE_TIMEOUT, 120000).
 -define(HANDSHAKE_SIZE, 68).
@@ -161,16 +161,15 @@ initiate_handshake(Socket, PeerId, MyPeerId, InfoHash) ->
 %% Function: construct_bitfield
 %% Description: Construct a BitField for sending to the peer
 %%--------------------------------------------------------------------
-construct_bitfield(DiskState) ->
-    Size = dict:size(DiskState),
+construct_bitfield(Size, PieceSet) ->
     PadBits = 8 - (Size rem 8),
     Bits = lists:append(
 	     [utils:list_tabulate(
 		Size,
 		fun(N) ->
-			case dict:fetch(N, DiskState) of
-			    {_H, _O, ok} -> 1;
-			    {_H, _O, not_ok} -> 0
+			case set:is_element(N, PieceSet) of
+			    true -> 1;
+			    false -> 0
 			end
 		end),
 	      utils:list_tabulate(

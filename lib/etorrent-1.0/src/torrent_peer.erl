@@ -29,6 +29,7 @@
 		 local_choked  = true,
 		 local_interested = false,
 
+		 piece_set = none,
 		 send_pid = none,
 		 state_pid = none}).
 
@@ -63,6 +64,7 @@ init([IP, Port, PeerId, InfoHash, StatePid]) ->
     {ok, #state{ ip = IP,
 		 port = Port,
 		 peer_id = PeerId,
+		 piece_set = sets:new(),
 		 info_hash = InfoHash,
 		 state_pid = StatePid}}.
 

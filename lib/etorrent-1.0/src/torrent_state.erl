@@ -25,7 +25,8 @@
 		seeders = 0,
 		leechers = 0,
 
-		disk_state = none}).
+		piece_set = none,
+	        num_pieces = 0}).
 
 %%====================================================================
 %% API
@@ -72,7 +73,9 @@ remote_not_interested(Pid) ->
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
 init([DiskState]) ->
-    {ok, #state{disk_state = DiskState,
+    {PieceSet, Size} = convert_diskstate_to_set(DiskState),
+    {ok, #state{piece_set = PieceSet,
+		num_pieces = Size,
 	        left = calculate_amount_left(DiskState)}}.
 
 %%--------------------------------------------------------------------
@@ -96,7 +99,8 @@ handle_call(report_to_tracker, _From, S) ->
 	     S#state.downloaded,
 	     S#state.left}, S};
 handle_call(retrieve_bitfield, _From, S) ->
-    BF = peer_communication:construct_bitfield(S#state.disk_state),
+    BF = peer_communication:construct_bitfield(S#state.num_pieces,
+					       S#state.piece_set),
     {reply, BF, S};
 handle_call({report_from_tracker, Complete, Incomplete},
 	    _From, S) ->
@@ -160,3 +164,17 @@ size_of_ops(Ops) ->
 			Size + Total end,
 		0,
 		Ops).
+
+convert_diskstate_to_set(DiskState) ->
+    Set = dict:fold(fun (K, {_H, _O, Got}, Acc) ->
+			    case Got of
+				ok ->
+				    sets:add_element(K, Acc);
+				not_ok ->
+				    Acc
+			    end
+		    end,
+		    DiskState,
+		    sets:new()),
+    Size = dict:size(DiskState),
+    {Set, Size}.
