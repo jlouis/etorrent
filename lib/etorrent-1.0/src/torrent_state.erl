@@ -174,7 +174,7 @@ convert_diskstate_to_set(DiskState) ->
 				    Acc
 			    end
 		    end,
-		    DiskState,
-		    sets:new()),
+		    sets:new(),
+		    DiskState),
     Size = dict:size(DiskState),
     {Set, Size}.
