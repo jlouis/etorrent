@@ -12,7 +12,8 @@
 %% API
 -export([start_link/1, report_to_tracker/1, report_from_tracker/3,
 	 retrieve_bitfield/1, remote_choked/1, remote_unchoked/1,
-	 remote_interested/1, remote_not_interested/1]).
+	 remote_interested/1, remote_not_interested/1,
+	 remote_have_piece/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -61,6 +62,9 @@ remote_interested(Pid) ->
 remote_not_interested(Pid) ->
     gen_server:cast(Pid, {remote_not_interested, self()}).
 
+remote_have_piece(Pid, PieceNum) ->
+    gen_server:call(Pid, {remote_have_piece, PieceNum}).
+
 %%====================================================================
 %% gen_server callbacks
 %%====================================================================
@@ -102,6 +106,15 @@ handle_call(retrieve_bitfield, _From, S) ->
     BF = peer_communication:construct_bitfield(S#state.num_pieces,
 					       S#state.piece_set),
     {reply, BF, S};
+handle_call({remote_have_piece, PieceNum}, _From, S) ->
+    Reply = case piece_valid(PieceNum, S) of
+		true ->
+		    % TODO: Handle that we got a piece.
+		    ok;
+		false ->
+		    invalid_piece
+	    end,
+    {reply, Reply, S};
 handle_call({report_from_tracker, Complete, Incomplete},
 	    _From, S) ->
     {reply, ok, S#state { seeders = Complete, leechers = Incomplete }}.
@@ -178,3 +191,11 @@ convert_diskstate_to_set(DiskState) ->
 		    DiskState),
     Size = dict:size(DiskState),
     {Set, Size}.
+
+piece_valid(PieceNum, S) ->
+    if
+	PieceNum =< S#state.num_pieces ->
+	    true;
+	true ->
+	    false
+    end.

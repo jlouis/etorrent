@@ -166,6 +166,10 @@ handle_message({request, Index, Offset, Len}, S) ->
 handle_message({cancel, Index, Offset, Len}, S) ->
     torrent_peer_send:cancel(S#state.send_pid, Index, Offset, Len),
     {ok, S};
+handle_message({have, PieceNum}, S) ->
+    PieceSet = sets:add_element(PieceNum, S#state.piece_set),
+    ok = torrent_state:remote_have_piece(S#state.state_pid, PieceNum),
+    {ok, S#state{piece_set = PieceSet}};
 handle_message(Unknown, S) ->
     {stop, {unknown_message, Unknown}, S}.
 

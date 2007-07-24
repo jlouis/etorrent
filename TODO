@@ -31,6 +31,11 @@
   The state machine can be simplified a great deal if you are smart
    and inject most torrent information via the start_link message.
 
+* Torrent_State
+- Handle remote_have_piece
+  We currently do nothing, but we should act on this information
+  (interested for starters).
+
 * Connection management
 - Implement seeding
   We are not doing anything specific to take care of seeding right
