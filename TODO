@@ -10,6 +10,12 @@
   We should implement the bitfield lists there are to be sent and
    retrieved when we first communicate.
 
+* Torrent_Peer_Send
+- Implement FS code
+  We are not yet retrieving pieces from the FS code. Implement the
+   code: 1. Get the FS-pid down to the torrent_peer; 2. Retrieve and
+   cache a piece. 3. Use the cache for pieces.
+
 * PortManagement
 - Kill
   We can run with a single port and intelligent identification when
