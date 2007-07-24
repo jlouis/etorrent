@@ -8,5 +8,6 @@
  {registered, [torrent_manager, dirwatcher]},
  {applications, [kernel, stdlib, inets, crypto]},
  {mod, {etorrent_app,[]},
- {env, [{dir, "./test"}]}}
+ {env, [{dir, "./test"}
+        {port, 1729}]}}
 ]}.
