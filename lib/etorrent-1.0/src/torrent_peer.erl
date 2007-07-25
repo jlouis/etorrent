@@ -209,47 +209,44 @@ handle_message({bitfield, BitField}, S) ->
 	    {stop, got_out_of_band_bitfield, S}
     end;
 handle_message({piece, Index, Offset, Len, Data}, S) ->
-    case S#state.piece_request of
-	none ->
-	    {stop, no_piece_requested, S};
-	{CurrentIndex, _GBT, _L} when CurrentIndex /= Index ->
-	    {stop, wrong_index_in_piece, S};
-	{_CurrentIndex, GBT, 0} ->
-	    check_and_store_piece(Index, GBT, S);
-	{CurrentIndex, GBT, N} ->
-	    case gb_trees:get(Offset, GBT) of
-		{PLen, none} when PLen == Len ->
-		    PR = {CurrentIndex,
-			  gb_trees:update(Offset, {Len, Data}, GBT),
-			  N-1},
-		    {ok, S#state{piece_request = PR}}
-	    end;
-	_ ->
-	    {stop, error_handle_message_piece, S}
+    case lists:keysearch(Index, 1, S#state.piece_request) of
+	false ->
+	    {stop, no_piece_request_map, S};
+	{value, {_CurrentIndex, GBT, 1}} ->
+	    NS = update_with_new_piece(Index, Offset, Len, Data, GBT, 1, S),
+	    ok = check_and_store_piece(Index, NS),
+	    PR = lists:keydelete(Index, 1, NS#state.piece_request),
+	    {ok, NS#state{piece_request = PR}};
+	{value, {_CurrentIndex, GBT, N}} ->
+	    {ok, update_with_new_piece(Index, Offset, Len, Data, GBT, N, S)}
     end;
 handle_message(Unknown, S) ->
     {stop, {unknown_message, Unknown}, S}.
 
-check_and_store_piece(Index, GBT, S) ->
-    PList = gb_trees:to_list(GBT),
-    ok = invariant_check(PList),
-    Piece = lists:map(
-	      fun({_Offset, {Len, Data}}) ->
-		      Len = size(Data), % Invariant, consider mov to inv. check.
-		      Data
-	      end,
-	      PList),
-    file_system:write_piece(S#state.file_system_pid,
-			    Index,
-			    Piece),
-    {ok, S#state{piece_request = none}}. % TODO: Fix this.
+check_and_store_piece(Index, S) ->
+    case lists:keysearch(Index, 1, S#state.piece_request) of
+	{value, {_CurrentIndex, GBT, 0}} ->
+	    PList = gb_trees:to_list(GBT),
+	    ok = invariant_check(PList),
+	    Piece = lists:map(
+		      fun({_Offset, {_Len, Data}}) ->
+			      Data
+		      end,
+		      PList),
+	    file_system:write_piece(S#state.file_system_pid,
+				    Index,
+				    Piece),
+	    ok
+    end.
 
 invariant_check(PList) ->
     V = lists:foldl(fun (_E, error) -> error;
+			({Offset, _T}, N) when Offset /= N ->
+			    error;
+		        ({_Offset, {Len, Data}}, _N) when Len /= size(Data) ->
+			    error;
 			({Offset, {Len, _}}, N) when Offset == N ->
-			    Offset + Len + 1;
-			({Offset, {_Len, _}}, N) when Offset /= N ->
-			    error
+			    Offset + Len + 1
 		    end,
 		    PList),
     case V of
@@ -270,6 +267,17 @@ int_connect(IP, Port) ->
 	    Socket;
 	{error, _Reason} ->
 	    exit(normal)
+    end.
+
+update_with_new_piece(Index, Offset, Len, Data, GBT, N, S) ->
+    case gb_trees:get(Offset, GBT) of
+	{PLen, none} when PLen == Len ->
+	    PR = lists:keyreplace(
+		   Index, 1, S#state.piece_request,
+		   {Index,
+		    gb_trees:update(Offset, {Len, Data}, GBT),
+		    N-1}),
+	    S#state{piece_request = PR}
     end.
 
 enable_socket_messages(Socket) ->
