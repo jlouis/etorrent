@@ -8,6 +8,7 @@
 -export([handle_info/2, code_change/3]).
 
 -define(SERVER, ?MODULE).
+-define(RANDOM_MAX_SIZE, 1000000000).
 
 %% API
 start_link() ->
@@ -64,7 +65,8 @@ spawn_new_torrent(F, PeerId, TrackingMap) ->
 
 %% Utility
 generate_peer_id() ->
-    Rand = io_lib:fwrite("~B----------", [random_source:random_peer_id()]),
+    Number = crypto:rand_uniform(0, ?RANDOM_MAX_SIZE),
+    Rand = io_lib:fwrite("~B----------", [Number]),
     lists:flatten(io_lib:format("-ET~s-~12s", [?VERSION, Rand])).
 
 
