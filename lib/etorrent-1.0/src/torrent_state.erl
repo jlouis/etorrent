@@ -228,6 +228,15 @@ handle_cast(_Msg, State) ->
 %%                                       {stop, Reason, State}
 %% Description: Handling all non call/cast messages
 %%--------------------------------------------------------------------
+handle_info({'DOWN', _Ref, process, Pid, _Reason}, S) ->
+    Missing = lists:fold(fun(Pn, Missing) ->
+				 sets:add_element(Pn, Missing)
+			 end,
+			 S#state.piece_set_missing,
+			 dict:fetch(Pid, S#state.piece_assignment)),
+    Assignments = dict:erase(Pid, S#state.piece_assignment),
+    {noreply, S#state{piece_set_missing = Missing,
+		      piece_assignment  = Assignments}};
 handle_info(_Info, State) ->
     {noreply, State}.
 
