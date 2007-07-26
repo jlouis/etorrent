@@ -139,27 +139,27 @@ iterate_rarest_piece({_Key, Val, Iter2}, EligibleSet) ->
 %% Internal functions
 %%====================================================================
 delete_if_empty(Key, Histogram) ->
-    case gb_tree:lookup(Key, Histogram) of
+    case gb_trees:lookup(Key, Histogram) of
 	{value, Set} ->
 	    case sets:is_empty(Set) of
 		true ->
-		    gb_tree:delete(Key);
+		    gb_trees:delete(Key, Histogram);
 		false ->
 		    Histogram
 	    end
     end.
 
 gb_tree_update_with(Key, Fun, GBTree) ->
-    case gb_tree:lookup(Key, GBTree) of
+    case gb_trees:lookup(Key, GBTree) of
 	% Invariant, there is a key!
 	{value, Set} ->
-	    gb_tree:update(Key, Fun(Set), GBTree)
+	    gb_trees:update(Key, Fun(Set), GBTree)
     end.
 
 gb_tree_update_with_default(Key, Fun, Default, GBTree) ->
-    case gb_tree:lookup(Key, GBTree) of
+    case gb_trees:lookup(Key, GBTree) of
 	none ->
-	    gb_tree:enter(Key, Default, GBTree);
+	    gb_trees:enter(Key, Default, GBTree);
 	{value, Set} ->
-	    gb_tree:update(Key, Fun(Set), GBTree)
+	    gb_trees:update(Key, Fun(Set), GBTree)
     end.
