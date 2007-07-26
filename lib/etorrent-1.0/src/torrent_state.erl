@@ -14,7 +14,8 @@
 	 retrieve_bitfield/1, remote_choked/1, remote_unchoked/1,
 	 remote_interested/1, remote_not_interested/1,
 	 remote_have_piece/2, num_pieces/1, remote_bitfield/2,
-	 remove_bitfield/2, request_new_piece/2]).
+	 remove_bitfield/2, request_new_piece/2,
+	 downloaded_data/2, uploaded_data/2, got_piece_from_peer/3]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -82,6 +83,15 @@ num_pieces(Pid) ->
 request_new_piece(Pid, PeerPieces) ->
     gen_server:call(Pid, {request_new_piece, PeerPieces}).
 
+downloaded_data(Pid, Amount) ->
+    gen_server:call(Pid, {downloaded_data, Amount}).
+
+uploaded_data(Pid, Amount) ->
+    gen_server:call(Pid, {uploaded_data, Amount}).
+
+got_piece_from_peer(Pid, Pn, DataSize) ->
+    gen_server:call(Pid, {got_piece_from_peer, Pn, DataSize}).
+
 %%====================================================================
 %% gen_server callbacks
 %%====================================================================
@@ -111,8 +121,11 @@ init([DiskState]) ->
 %%                                      {stop, Reason, State}
 %% Description: Handling call messages
 %%--------------------------------------------------------------------
-handle_call({got_piece, Amount}, _From, S) ->
-    {reply, ok, S#state { left = S#state.left - Amount }};
+handle_call({got_piece_from_peer, Pn, DataSize}, {Pid, _Tag}, S) ->
+    Assignments = dict:update(Pid, fun(L) -> lists:delete(Pn, L) end,
+			      [], S#state.piece_assignment),
+    Left = S#state.left - DataSize,
+    {reply, ok, S#state { left = Left, piece_assignment = Assignments}};
 handle_call({downloaded_data, Amount}, _From, S) ->
     {reply, ok, S#state { downloaded = S#state.downloaded + Amount }};
 handle_call({uploaded_data, Amount}, _From, S) ->

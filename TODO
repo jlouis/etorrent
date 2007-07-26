@@ -21,19 +21,17 @@
 - Tell torrent_state when we have a piece downloaded correctly.
   This can both update "amount left" state and remove the piece from
    the list the pid has running.
-
+- Uploaded/Downloaded amounts
+  When we have uploaded or downloaded a part of a piece, call
+  torrent_state and tell what we have up/downloaded.
+- Tell torrent_state about full pieces
+  When we have downloaded the whole piece, we should tell torrent_state.
 - Implement our local request queue.
 
 * TorrentControl
 - Simplify state machine.
   The state machine can be simplified a great deal if you are smart
    and inject most torrent information via the start_link message.
-
-* Torrent_State (Maybe Torrent_peer_manager)
-- Handle when a peer goes down.
-- Write code for handling a completed piece
-  When a piece is completed, it should be removed from
-   S#state.piece_assignments.
 
 * Connection management
 - Implement seeding
