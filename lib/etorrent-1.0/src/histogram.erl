@@ -8,7 +8,8 @@
 -module(histogram).
 
 %% API
--export([new/0, increase_piece/2, decrease_piece/2]).
+-export([new/0, increase_piece/2, decrease_piece/2,
+	find_rarest_piece/2]).
 
 -record(histogram, { piece_map = none,
 		     histogram = none }).
@@ -109,6 +110,26 @@ decrease_piece(PieceNum, H) ->
 			  histogram = Histogram2 }
     end.
 
+%%--------------------------------------------------------------------
+%% Function: find_rarest_piece(set(), histogram()) -> integer()
+%% Description: Find the rarest piece among a set of eligible pieces
+%%--------------------------------------------------------------------
+find_rarest_piece(EligibleSet, Histogram) ->
+    Iterator = gb_trees:iterator(Histogram),
+    iterate_rarest_piece(gb_trees:next(Iterator), EligibleSet).
+
+iterate_rarest_piece(none, _EligibleSet) ->
+    none;
+iterate_rarest_piece({_Key, Val, Iter2}, EligibleSet) ->
+    Intersection = sets:intersection(Val, EligibleSet),
+    case sets:is_empty(Intersection) of
+	true ->
+	    iterate_rarest_piece(gb_trees:next(Iter2), EligibleSet);
+	false ->
+	    Sz = sets:size(Intersection),
+	    Random = crypto:rand_uniform(1, Sz+1),
+	    lists:nth(Random, sets:to_list(Intersection))
+    end.
 %%--------------------------------------------------------------------
 %% Function:
 %% Description:
