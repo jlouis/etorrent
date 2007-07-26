@@ -13,7 +13,8 @@
 -export([start_link/1, report_to_tracker/1, report_from_tracker/3,
 	 retrieve_bitfield/1, remote_choked/1, remote_unchoked/1,
 	 remote_interested/1, remote_not_interested/1,
-	 remote_have_piece/2, num_pieces/1, remote_bitfield/2]).
+	 remote_have_piece/2, num_pieces/1, remote_bitfield/2,
+	 remove_bitfield/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
