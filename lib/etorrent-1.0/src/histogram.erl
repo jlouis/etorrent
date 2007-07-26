@@ -75,7 +75,7 @@ increase_piece(PieceNum, H) ->
 %% Description: Decrease the availability of a piece.
 %%--------------------------------------------------------------------
 decrease_piece(PieceNum, H) ->
-    case dict:find(PieceNum, H) of
+    case dict:find(PieceNum, H#histogram.piece_map) of
 	{ok, 1} ->
 	    PM = dict:erase(PieceNum, H#histogram.piece_map),
 	    Histogram =
