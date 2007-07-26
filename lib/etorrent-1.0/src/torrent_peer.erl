@@ -160,7 +160,8 @@ handle_info(_Info, State) ->
 %% cleaning up. When it returns, the gen_server terminates with Reason.
 %% The return value is ignored.
 %%--------------------------------------------------------------------
-terminate(_Reason, _State) ->
+terminate(_Reason, S) ->
+    ok = torrent_state:remove_bitfield(S#state.state_pid, S#state.piece_set),
     ok.
 
 %%--------------------------------------------------------------------

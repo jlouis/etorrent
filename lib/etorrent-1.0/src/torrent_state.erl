@@ -27,7 +27,9 @@
 		leechers = 0,
 
 		piece_set = none,
-	        num_pieces = 0}).
+	        num_pieces = 0,
+
+	        histogram = none}).
 
 %%====================================================================
 %% API
@@ -66,6 +68,9 @@ remote_have_piece(Pid, PieceNum) ->
     gen_server:call(Pid, {remote_have_piece, PieceNum}).
 
 remote_bitfield(Pid, PieceSet) ->
+    gen_server:call(Pid, {remote_bitfield, PieceSet}).
+
+remove_bitfield(Pid, PieceSet) ->
     gen_server:call(Pid, {remove_bitfield, PieceSet}).
 
 num_pieces(Pid) ->
@@ -86,6 +91,7 @@ init([DiskState]) ->
     {PieceSet, Size} = convert_diskstate_to_set(DiskState),
     {ok, #state{piece_set = PieceSet,
 		num_pieces = Size,
+		histogram = histogram:new(),
 	        left = calculate_amount_left(DiskState)}}.
 
 %%--------------------------------------------------------------------
@@ -115,17 +121,38 @@ handle_call(retrieve_bitfield, _From, S) ->
 					       S#state.piece_set),
     {reply, BF, S};
 handle_call({remote_have_piece, PieceNum}, _From, S) ->
-    Reply = case piece_valid(PieceNum, S) of
-		true ->
-		    % TODO: Handle that we got a piece.
-		    ok;
-		false ->
-		    invalid_piece
-	    end,
-    {reply, Reply, S};
-handle_call({remove_bitfield, _PieceSet}, _From, S) ->
-    %TODO: Handle this
-    {reply, ok, S};
+    case piece_valid(PieceNum, S) of
+	true ->
+	    NS = S#state { histogram = histogram:increase_piece(
+					 PieceNum, S#state.histogram) },
+	    {reply, ok, NS};
+	false ->
+	    {reply, invalid_piece, S}
+    end;
+handle_call({remote_bitfield, PieceSet}, _From, S) ->
+    NewH = sets:fold(fun(E, H) ->
+			     case piece_valid(E, S) of
+				 true ->
+				     histogram:increase_piece(E, H);
+				 false ->
+				     H
+			     end
+		     end,
+		     S#state.histogram,
+		     PieceSet),
+    {reply, ok, S#state{histogram = NewH}};
+handle_call({remove_bitfield, PieceSet}, _From, S) ->
+    NewH = sets:fold(fun(E, H) ->
+			     case piece_valid(E, S) of
+				 true ->
+				     histogram:decrease_piece(E, H);
+				 false ->
+				     H
+			     end
+		     end,
+		     S#state.histogram,
+		     PieceSet),
+    {reply, ok, S#state{histogram = NewH}};
 handle_call({report_from_tracker, Complete, Incomplete},
 	    _From, S) ->
     {reply, ok, S#state { seeders = Complete, leechers = Incomplete }}.
