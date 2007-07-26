@@ -1,10 +1,6 @@
 ----------------------------------------------------------------------
 -- This is a list of what To Do before a release is ready to be made.
 ----------------------------------------------------------------------
-* Kill Random_Source
-- Replace all calls where they are needed with crypto:* calls.
-- Eradicate The RandomSource.
-
 * Peer Master
 - Implement rounds
   Implement choking/unchoking rounds in the Peer Master.
@@ -31,12 +27,8 @@
    and inject most torrent information via the start_link message.
 
 * Torrent_State (Maybe Torrent_peer_manager)
-- Build and maintain a piece histogram
-  Easy to search for a rare piece then.
-- Handle remote_have_piece
-  We currently do nothing, but we should act on this information
-  (interested for starters).
-- Handle remote_bitfield
+- Handle remote_bitfield.
+  Handle interested.
 - Implement request_new Piece
 
 * Connection management
