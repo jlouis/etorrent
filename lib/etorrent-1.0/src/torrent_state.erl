@@ -14,7 +14,7 @@
 	 retrieve_bitfield/1, remote_choked/1, remote_unchoked/1,
 	 remote_interested/1, remote_not_interested/1,
 	 remote_have_piece/2, num_pieces/1, remote_bitfield/2,
-	 remove_bitfield/2]).
+	 remove_bitfield/2, request_new_piece/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -28,9 +28,10 @@
 		leechers = 0,
 
 		piece_set = none,
+		piece_set_missing = none,
+		piece_assignment = none,
 	        num_pieces = 0,
 
-		pieces_missing = none, % What pieces we are missing.
 	        histogram = none}).
 
 %%====================================================================
@@ -78,6 +79,9 @@ remove_bitfield(Pid, PieceSet) ->
 num_pieces(Pid) ->
     gen_server:call(Pid, num_pieces).
 
+request_new_piece(Pid, PeerPieces) ->
+    gen_server:call(Pid, {request_new_piece, PeerPieces}).
+
 %%====================================================================
 %% gen_server callbacks
 %%====================================================================
@@ -90,8 +94,10 @@ num_pieces(Pid) ->
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
 init([DiskState]) ->
-    {PieceSet, Size} = convert_diskstate_to_set(DiskState),
+    {PieceSet, Missing, Size} = convert_diskstate_to_set(DiskState),
     {ok, #state{piece_set = PieceSet,
+		piece_set_missing = Missing,
+		piece_assignment = dict:new(),
 		num_pieces = Size,
 		histogram = histogram:new(),
 	        left = calculate_amount_left(DiskState)}}.
@@ -141,6 +147,8 @@ handle_call({remote_bitfield, PieceSet}, _From, S) ->
     {NewH, Reply} = sets:fold(
 		      fun(E, {H, Interest}) ->
 			      case piece_valid(E, S) of
+				  true when Interest == not_valid ->
+				      {H, not_valid};
 				  true when Interest == interested ->
 				      {histogram:increase_piece(E, H),
 				       interested};
@@ -154,12 +162,17 @@ handle_call({remote_bitfield, PieceSet}, _From, S) ->
 					       interested
 				       end};
 				  false ->
-				      not_valid
+				      {H, not_valid}
 			      end
 		      end,
 		      S#state.histogram,
 		      PieceSet),
-    {reply, Reply, S#state{histogram = NewH}};
+    case Reply of
+	not_valid ->
+	    {reply, not_valid, S};
+	R ->
+	    {reply, R, S#state{histogram = NewH}}
+    end;
 handle_call({remove_bitfield, PieceSet}, _From, S) ->
     NewH = sets:fold(fun(E, H) ->
 			     case piece_valid(E, S) of
@@ -172,6 +185,28 @@ handle_call({remove_bitfield, PieceSet}, _From, S) ->
 		     S#state.histogram,
 		     PieceSet),
     {reply, ok, S#state{histogram = NewH}};
+handle_call({request_new_piece, PeerPieces}, {From, _Tag}, S) ->
+    EligiblePieces = sets:intersection(PeerPieces, S#state.piece_set_missing),
+    case sets:is_empty(EligiblePieces) of
+	true ->
+	    {reply, not_interested, S};
+	false ->
+	    case histogram:find_rarest_piece(EligiblePieces,
+					     S#state.histogram) of
+		none ->
+		    {reply, no_pieces, S};
+		PieceNum ->
+		    Missing = sets:del_element(PieceNum,
+					       S#state.piece_set_missing),
+		    erlang:monitor(process, From),
+		    Assignments =
+			dict:update(From, fun(L) -> [PieceNum | L] end,
+				    [PieceNum], S#state.piece_assignment),
+		    {reply, {ok, PieceNum},
+		     S#state{piece_set_missing = Missing,
+			     piece_assignment = Assignments}}
+	    end
+    end;
 handle_call({report_from_tracker, Complete, Incomplete},
 	    _From, S) ->
     {reply, ok, S#state { seeders = Complete, leechers = Incomplete }}.
@@ -236,18 +271,21 @@ size_of_ops(Ops) ->
 		Ops).
 
 convert_diskstate_to_set(DiskState) ->
-    Set = dict:fold(fun (K, {_H, _O, Got}, Acc) ->
-			    case Got of
-				ok ->
-				    sets:add_element(K, Acc);
-				not_ok ->
-				    Acc
-			    end
-		    end,
-		    sets:new(),
-		    DiskState),
+    {Set, MissingSet} =
+	dict:fold(fun (K, {_H, _O, Got}, {Set, MissingSet}) ->
+			  case Got of
+			      ok ->
+				  {sets:add_element(K, Set),
+				   MissingSet};
+			      not_ok ->
+				  {Set,
+				   sets:add_element(K, MissingSet)}
+			  end
+		  end,
+		  {sets:new(), sets:new()},
+		  DiskState),
     Size = dict:size(DiskState),
-    {Set, Size}.
+    {Set, MissingSet, Size}.
 
 piece_valid(PieceNum, S) ->
     if

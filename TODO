@@ -18,6 +18,9 @@
   while we have requested something from another piece. We must then
   construct the 2nd piece GBT so we can keep that coming in. It means
   we may need to change part of this code.
+- Tell torrent_state when we have a piece downloaded correctly.
+  This can both update "amount left" state and remove the piece from
+   the list the pid has running.
 
 - Implement our local request queue.
 
@@ -27,9 +30,10 @@
    and inject most torrent information via the start_link message.
 
 * Torrent_State (Maybe Torrent_peer_manager)
-- Handle remote_bitfield.
-  Handle interested.
-- Implement request_new Piece
+- Handle when a peer goes down.
+- Write code for handling a completed piece
+  When a piece is completed, it should be removed from
+   S#state.piece_assignments.
 
 * Connection management
 - Implement seeding
