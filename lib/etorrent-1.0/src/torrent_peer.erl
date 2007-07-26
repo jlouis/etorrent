@@ -197,8 +197,16 @@ handle_message({cancel, Index, Offset, Len}, S) ->
     {ok, S};
 handle_message({have, PieceNum}, S) ->
     PieceSet = sets:add_element(PieceNum, S#state.piece_set),
-    ok = torrent_state:remote_have_piece(S#state.state_pid, PieceNum),
-    {ok, S#state{piece_set = PieceSet}};
+    case torrent_state:remote_have_piece(S#state.state_pid, PieceNum) of
+	interested when S#state.local_interested == true ->
+	    {ok, S#state{piece_set = PieceSet}};
+	interested when S#state.local_interested == false ->
+	    send_message(interested, S),
+	    {ok, S#state{local_interested = true,
+			 piece_set = PieceSet}};
+	not_intersted ->
+	    {ok, S#state{piece_set = PieceSet}}
+    end;
 handle_message({bitfield, BitField}, S) ->
     case sets:size(S#state.piece_set) of
 	0 ->

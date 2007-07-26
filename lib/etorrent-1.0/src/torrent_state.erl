@@ -30,6 +30,7 @@
 		piece_set = none,
 	        num_pieces = 0,
 
+		pieces_missing = none, % What pieces we are missing.
 	        histogram = none}).
 
 %%====================================================================
@@ -126,7 +127,13 @@ handle_call({remote_have_piece, PieceNum}, _From, S) ->
 	true ->
 	    NS = S#state { histogram = histogram:increase_piece(
 					 PieceNum, S#state.histogram) },
-	    {reply, ok, NS};
+	    Reply = case sets:is_element(PieceNum, NS#state.piece_set) of
+			true ->
+			    not_interested;
+			false ->
+			    interested
+		    end,
+	    {reply, Reply, NS};
 	false ->
 	    {reply, invalid_piece, S}
     end;
