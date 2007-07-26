@@ -138,17 +138,28 @@ handle_call({remote_have_piece, PieceNum}, _From, S) ->
 	    {reply, invalid_piece, S}
     end;
 handle_call({remote_bitfield, PieceSet}, _From, S) ->
-    NewH = sets:fold(fun(E, H) ->
-			     case piece_valid(E, S) of
-				 true ->
-				     histogram:increase_piece(E, H);
-				 false ->
-				     H
-			     end
-		     end,
-		     S#state.histogram,
-		     PieceSet),
-    {reply, ok, S#state{histogram = NewH}};
+    {NewH, Reply} = sets:fold(
+		      fun(E, {H, Interest}) ->
+			      case piece_valid(E, S) of
+				  true when Interest == interested ->
+				      {histogram:increase_piece(E, H),
+				       interested};
+				  true when Interest == not_interested ->
+				      {histogram:increase_piece(E, H),
+				       case sets:is_element(
+					      E, S#state.piece_set) of
+					   true ->
+					       not_interested;
+					   false ->
+					       interested
+				       end};
+				  false ->
+				      not_valid
+			      end
+		      end,
+		      S#state.histogram,
+		      PieceSet),
+    {reply, Reply, S#state{histogram = NewH}};
 handle_call({remove_bitfield, PieceSet}, _From, S) ->
     NewH = sets:fold(fun(E, H) ->
 			     case piece_valid(E, S) of

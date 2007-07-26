@@ -212,8 +212,16 @@ handle_message({bitfield, BitField}, S) ->
 	0 ->
 	    Size = torrent_state:num_pieces(S#state.state_pid),
 	    PieceSet = peer_communication:destruct_bitfield(Size, BitField),
-	    torrent_state:remote_bitfield(S#state.state_pid, PieceSet),
-	    {ok, S#state{piece_set = PieceSet}};
+	    case torrent_state:remote_bitfield(S#state.state_pid, PieceSet) of
+		interested ->
+		    send_message(interested, S),
+		    {ok, S#state{piece_set = PieceSet,
+				 local_interested = true}};
+		not_interested ->
+		    {ok, S#state{piece_set = PieceSet}};
+		not_valid ->
+		    {stop, invalid_pieces, S}
+	    end;
 	_ ->
 	    {stop, got_out_of_band_bitfield, S}
     end;
