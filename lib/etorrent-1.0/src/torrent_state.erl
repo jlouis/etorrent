@@ -200,7 +200,7 @@ handle_call({remove_bitfield, PieceSet}, _From, S) ->
     {reply, ok, S#state{histogram = NewH}};
 handle_call({request_new_piece, PeerPieces}, {From, _Tag}, S) ->
     EligiblePieces = sets:intersection(PeerPieces, S#state.piece_set_missing),
-    case sets:is_empty(EligiblePieces) of
+    case utils:sets_is_empty(EligiblePieces) of
 	true ->
 	    {reply, not_interested, S};
 	false ->
@@ -242,11 +242,11 @@ handle_cast(_Msg, State) ->
 %% Description: Handling all non call/cast messages
 %%--------------------------------------------------------------------
 handle_info({'DOWN', _Ref, process, Pid, _Reason}, S) ->
-    Missing = lists:fold(fun(Pn, Missing) ->
-				 sets:add_element(Pn, Missing)
-			 end,
-			 S#state.piece_set_missing,
-			 dict:fetch(Pid, S#state.piece_assignment)),
+    Missing = lists:foldl(fun(Pn, Missing) ->
+				  sets:add_element(Pn, Missing)
+			  end,
+			  S#state.piece_set_missing,
+			  dict:fetch(Pid, S#state.piece_assignment)),
     Assignments = dict:erase(Pid, S#state.piece_assignment),
     {noreply, S#state{piece_set_missing = Missing,
 		      piece_assignment  = Assignments}};

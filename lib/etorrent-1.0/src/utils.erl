@@ -8,7 +8,8 @@
 -module(utils).
 
 %% API
--export([read_all_of_file/1, list_tabulate/2, queue_remove/2]).
+-export([read_all_of_file/1, list_tabulate/2, queue_remove/2,
+	sets_is_empty/1]).
 
 %%====================================================================
 %% API
@@ -31,6 +32,13 @@ list_tabulate(N, F) ->
 %%====================================================================
 %% Internal functions
 %%====================================================================
+sets_is_empty(Set) ->
+    case sets:size(Set) of
+	0 ->
+	    true;
+	_ ->
+	    false
+    end.
 
 queue_remove(Item, Q) ->
     QList = queue:to_list(Q),

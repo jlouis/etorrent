@@ -265,6 +265,7 @@ invariant_check(PList) ->
 			({Offset, {Len, _}}, N) when Offset == N ->
 			    Offset + Len + 1
 		    end,
+		    0,
 		    PList),
     case V of
 	error ->
