@@ -26,7 +26,7 @@
 	        file_system_pid = none}).
 
 -define(DEFAULT_KEEP_ALIVE_INTERVAL, 120*1000). % From proto. spec.
--define(MAX_REQUESTS, 64). % Maximal number of requests a peer may make.
+-define(MAX_REQUESTS, 1024). % Maximal number of requests a peer may make.
 %%====================================================================
 %% API
 %%====================================================================
@@ -99,7 +99,7 @@ handle_message(unchoke, S) ->
     send_message(unchoke, S),
     {next_state, running, S#state{choke = false}, 0};
 handle_message({request_piece, Index, Offset, Len}, S) ->
-    Requests = length(S#state.request_queue),
+    Requests = queue:len(S#state.request_queue),
     if
 	Requests > ?MAX_REQUESTS ->
 	    {stop, max_queue_len_exceeded, S};
@@ -125,17 +125,21 @@ code_change(_OldVsn, _State, State, _Extra) ->
 %%% Internal functions
 %%--------------------------------------------------------------------
 send_piece(Index, Offset, Len, S) ->
+    io:format("Sending piece: ~p ~p ~p~n", [Index, Offset, Len]),
     case S#state.piece_cache of
 	{I, Binary} when I == Index ->
+	    io:format("Indexing matching, fetch~n", []),
 	    <<_Skip:Offset/binary, Data:Len/binary, _R/binary>> = Binary,
-	    Msg = {piece, Index, Offset, Len, Data},
+	    Msg = {piece, Index, Offset, Data},
 	    ok = peer_communication:send_message(S#state.socket,
 						 Msg),
 	    S;
 	{I, _Binary} when I /= Index ->
+	    io:format("Index doesn't match, load new piece~n"),
 	    NS = load_piece(Index, S),
 	    send_piece(Index, Offset, Len, NS);
 	none ->
+	    io:format("Loading piece~n", []),
 	    NS = load_piece(Index, S),
 	    send_piece(Index, Offset, Len, NS)
     end.

@@ -111,6 +111,7 @@ handle_cast({connect, MyPeerId}, S) ->
 		torrent_peer_send:start_link(Socket,
 					     S#state.file_system_pid,
 					     S#state.state_pid),
+	    sys:trace(SendPid, true),
 	    BF = torrent_state:retrieve_bitfield(S#state.state_pid),
 	    torrent_peer_send:send(SendPid, {bitfield, BF}),
 	    {noreply, S#state{tcp_socket = Socket,
@@ -227,7 +228,8 @@ handle_message({bitfield, BitField}, S) ->
 	_ ->
 	    {stop, got_out_of_band_bitfield, S}
     end;
-handle_message({piece, Index, Offset, Len, Data}, S) ->
+handle_message({piece, Index, Offset, Data}, S) ->
+    Len = size(Data),
     torrent_state:downloaded_data(S#state.state_pid, Len),
     case lists:keysearch(Index, 1, S#state.piece_request) of
 	false ->

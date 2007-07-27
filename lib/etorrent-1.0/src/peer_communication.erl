@@ -55,8 +55,8 @@ recv_message(Message) ->
 	    {bitfield, BitField};
 	<<?REQUEST, Index:32/big, Begin:32/big, Len:32/big>> ->
 	    {request, Index, Begin, Len};
-	<<?PIECE, Index:32/big, Begin:32/big, Len:32/big, Data/binary>> ->
-	    {piece, Index, Begin, Len, Data};
+	<<?PIECE, Index:32/big, Begin:32/big, Data/binary>> ->
+	    {piece, Index, Begin, Data};
 	<<?CANCEL, Index:32/big, Begin:32/big, Len:32/big>> ->
 	    {cancel, Index, Begin, Len};
 	<<?PORT, Port:16/big>> ->
@@ -86,9 +86,9 @@ send_message(Socket, Message) ->
 		<<?BITFIELD, BitField/binary>>;
 	    {request, Index, Begin, Len} ->
 		<<?REQUEST, Index:32/big, Begin:32/big, Len:32/big>>;
-	    {piece, Index, Begin, Len, Data} ->
+	    {piece, Index, Begin, Data} ->
 		<<?PIECE,
-		 Index:32/big, Begin:32/big, Len:32/big, Data/binary>>;
+		 Index:32/big, Begin:32/big, Data/binary>>;
 	    {cancel, Index, Begin, Len} ->
 		<<?CANCEL, Index:32/big, Begin:32/big, Len:32/big>>;
 	    {port, PortNum} ->
@@ -130,25 +130,6 @@ initiate_handshake(Socket, PeerId, MyPeerId, InfoHash) ->
 	{error, X} ->
 	    {error, X}
     end.
-
-%%--------------------------------------------------------------------
-%% Function: recv_handshake
-%% Description: Receive a handshake message
-%%--------------------------------------------------------------------
-%% recv_handshake(Socket, PeerId, InfoHash) ->
-%%     Size = size(build_handshake(PeerId, InfoHash)),
-%%     {ok, Packet} = gen_tcp:recv(Socket, Size),
-%%     <<PSL:8,
-%%      ?PROTOCOL_STRING,
-%%      _ReservedBytes:64/binary, IH:160/binary, PI:160/binary>> = Packet,
-%%     if
-%% 	PSL /= Size ->
-%% 	    {error, "Size mismatch"};
-%% 	IH /= InfoHash ->
-%% 	    {error, "Infohash mismatch"};
-%% 	true ->
-%% 	    {ok, PI}
-%%     end.
 
 %%====================================================================
 %% Internal functions
