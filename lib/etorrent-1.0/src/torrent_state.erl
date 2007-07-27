@@ -183,7 +183,7 @@ handle_call({remote_bitfield, PieceSet}, _From, S) ->
 				      {H, not_valid}
 			      end
 		      end,
-		      S#state.histogram,
+		      {S#state.histogram, not_interested},
 		      PieceSet),
     case Reply of
 	not_valid ->
