@@ -125,21 +125,17 @@ code_change(_OldVsn, _State, State, _Extra) ->
 %%% Internal functions
 %%--------------------------------------------------------------------
 send_piece(Index, Offset, Len, S) ->
-    io:format("Sending piece: ~p ~p ~p~n", [Index, Offset, Len]),
     case S#state.piece_cache of
 	{I, Binary} when I == Index ->
-	    io:format("Indexing matching, fetch~n", []),
 	    <<_Skip:Offset/binary, Data:Len/binary, _R/binary>> = Binary,
 	    Msg = {piece, Index, Offset, Data},
 	    ok = peer_communication:send_message(S#state.socket,
 						 Msg),
 	    S;
 	{I, _Binary} when I /= Index ->
-	    io:format("Index doesn't match, load new piece~n"),
 	    NS = load_piece(Index, S),
 	    send_piece(Index, Offset, Len, NS);
 	none ->
-	    io:format("Loading piece~n", []),
 	    NS = load_piece(Index, S),
 	    send_piece(Index, Offset, Len, NS)
     end.

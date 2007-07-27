@@ -111,7 +111,7 @@ handle_cast({connect, MyPeerId}, S) ->
 		torrent_peer_send:start_link(Socket,
 					     S#state.file_system_pid,
 					     S#state.state_pid),
-	    sys:trace(SendPid, true),
+	    %sys:trace(SendPid, true),
 	    BF = torrent_state:retrieve_bitfield(S#state.state_pid),
 	    torrent_peer_send:send(SendPid, {bitfield, BF}),
 	    {noreply, S#state{tcp_socket = Socket,
@@ -206,7 +206,7 @@ handle_message({have, PieceNum}, S) ->
 	    send_message(interested, S),
 	    {ok, S#state{local_interested = true,
 			 piece_set = PieceSet}};
-	not_intersted ->
+	not_interested ->
 	    {ok, S#state{piece_set = PieceSet}}
     end;
 handle_message({bitfield, BitField}, S) ->
