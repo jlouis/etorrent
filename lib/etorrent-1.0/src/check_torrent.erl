@@ -62,7 +62,7 @@ build_dictionary_on_files(Torrent, Files) ->
 		    0,
 		    PSize,
 		    LastPieceSize,
-		    lists:zip(lists:seq(1, length(Pieces)), Pieces),
+		    lists:zip(lists:seq(0, length(Pieces)-1), Pieces),
 		    []).
 
 
