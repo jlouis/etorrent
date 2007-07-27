@@ -35,7 +35,7 @@ increase_piece(PieceNum, H) ->
 	error ->
 	    % No key there, so we should let it have rarity 1 and
 	    % add it.
-	    PM = dict:append(PieceNum, 1, H#histogram.piece_map),
+	    PM = dict:store(PieceNum, 1, H#histogram.piece_map),
 	    Histogram =
 		gb_tree_update_with_default(
 		  1,
