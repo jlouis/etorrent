@@ -49,6 +49,7 @@ handle_call({read_piece, PieceNum}, _From, S) ->
     {ok, Data, NS} = read_pieces_and_assemble(FilesToRead, [], S),
     {reply, {ok, Data}, NS};
 handle_call({write_piece, PieceNum, Data}, _From, S) ->
+    % TODO: Hash check!
     {_Hash, FilesToWrite, _X} = dict:fetch(PieceNum, S#state.file_dict),
     {ok, NS} = write_piece_data(Data, FilesToWrite, S),
     {reply, ok, NS}.
