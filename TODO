@@ -2,12 +2,6 @@
 -- This is a list of what To Do before a release is ready to be made.
 ----------------------------------------------------------------------
 
-* Torrent_State
-- Send Piece Size to torrent state
-- Return piece sizes when requesting new files.
-- Keep track of piece _Sizes_ as well.
-  ** Easy, depends on the last piece, total size and piece_size
-
 * Torrent_Peer
 - Write queue filling code:
   ** Fill queue from request queue
