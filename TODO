@@ -9,24 +9,9 @@
    counter and make the counter be used.
 
 * Torrent_Peer
-- Implement BitField lists
-  We should implement the bitfield lists there are to be sent and
-   retrieved when we first communicate.
-- Handle retrieval of bitfield messages in the peer.
-- Handle retrieval of piece messages.
-  We still need to handle the case that one piece is retrieved fully,
-  while we have requested something from another piece. We must then
-  construct the 2nd piece GBT so we can keep that coming in. It means
-  we may need to change part of this code.
-- Tell torrent_state when we have a piece downloaded correctly.
-  This can both update "amount left" state and remove the piece from
-   the list the pid has running.
-- Uploaded/Downloaded amounts
-  When we have uploaded or downloaded a part of a piece, call
-  torrent_state and tell what we have up/downloaded.
-- Tell torrent_state about full pieces
-  When we have downloaded the whole piece, we should tell torrent_state.
 - Implement our local request queue.
+- Handle when a piece has errors
+  When a piece has errors, we must handle it gracefully.
 
 * TorrentControl
 - Simplify state machine.
@@ -34,33 +19,22 @@
    and inject most torrent information via the start_link message.
 
 * Connection management
+
+* General stuff
 - Implement seeding
   We are not doing anything specific to take care of seeding right
   now. This must obviously be cared for. The way to do it is in the
   torrent_state process.
-- Implement torrent_piecemap:pieces_downloaded/1
-  The function asks to the piecemap what pieces we have downloaded. We
-  must return a correct answer.
-- Implement code for putback when a connection dies.
-  If a connection dies, all pieces on its request table should be
-  remapped to be eligible for others to work on.
-- Fix connection_manager
-  We need to fix the state code for the connection manager. It has some
-  state tables that obviously needs to be managed. But it has to be
-  simplified a lot. And it really can. Mapping of pids to torrents and
-  peerids should be handled by a separate process which only has this as
-  the primary goal.
+- Implement support for listening connections
+  This will make the system not behave as if it were always behind a
+  NAT.
 
-* General stuff
-- Reduce the number of ets tables
-  Fix and reduce the number of ets tables to a constant amount. This
-  will allow us to scale into post-1000 concurrent torrents.
 - Add license facts,
   I am not sure if it is going to be GPL or BSD-licensed.
-
 - Add author facts
   They are there, but are incorrect in a lot of files. They must
   be corrected.
+
 
 * DOCUMENTATION!
 - Pick functions at random, and document what they are doing.

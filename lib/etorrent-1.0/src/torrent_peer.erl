@@ -109,7 +109,8 @@ handle_cast({connect, MyPeerId}, S) ->
 	    enable_socket_messages(Socket),
 	    {ok, SendPid} =
 		torrent_peer_send:start_link(Socket,
-					     S#state.file_system_pid),
+					     S#state.file_system_pid,
+					     S#state.state_pid),
 	    BF = torrent_state:retrieve_bitfield(S#state.state_pid),
 	    torrent_peer_send:send(SendPid, {bitfield, BF}),
 	    {noreply, S#state{tcp_socket = Socket,
@@ -226,6 +227,7 @@ handle_message({bitfield, BitField}, S) ->
 	    {stop, got_out_of_band_bitfield, S}
     end;
 handle_message({piece, Index, Offset, Len, Data}, S) ->
+    torrent_state:downloaded_data(S#state.state_pid, Len),
     case lists:keysearch(Index, 1, S#state.piece_request) of
 	false ->
 	    {stop, no_piece_request_map, S};
@@ -250,11 +252,26 @@ check_and_store_piece(Index, S) ->
 			      Data
 		      end,
 		      PList),
-	    file_system:write_piece(S#state.file_system_pid,
+	    case file_system:write_piece(S#state.file_system_pid,
 				    Index,
-				    Piece),
-	    ok
+				    Piece) of
+		ok ->
+		    ok = torrent_state:got_piece_from_peer(
+			   S#state.state_pid,
+			   Index,
+			   piece_size(Piece)),
+		    ok;
+		fail ->
+		    piece_error
+	    end
     end.
+
+piece_size(Data) ->
+    lists:foldl(fun(D, Acc) ->
+			Acc + size(D)
+		end,
+		0,
+		Data).
 
 invariant_check(PList) ->
     V = lists:foldl(fun (_E, error) -> error;

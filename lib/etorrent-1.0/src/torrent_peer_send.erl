@@ -10,7 +10,7 @@
 -behaviour(gen_fsm).
 
 %% API
--export([start_link/2, send/2, request/4, cancel/4, choke/1, unchoke/1]).
+-export([start_link/3, send/2, request/4, cancel/4, choke/1, unchoke/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_info/3, terminate/3, code_change/4,
@@ -22,6 +22,7 @@
 		choke = true,
 
 	        piece_cache = none,
+		state_pid = none,
 	        file_system_pid = none}).
 
 -define(DEFAULT_KEEP_ALIVE_INTERVAL, 120*1000). % From proto. spec.
@@ -29,9 +30,9 @@
 %%====================================================================
 %% API
 %%====================================================================
-start_link(Socket, FilesystemPid) ->
+start_link(Socket, FilesystemPid, StatePid) ->
     gen_fsm:start_link(?MODULE,
-			  [Socket, FilesystemPid], []).
+			  [Socket, FilesystemPid, StatePid], []).
 
 send(Pid, Msg) ->
     gen_fsm:send_event(Pid, {send, Msg}).
@@ -51,11 +52,12 @@ unchoke(Pid) ->
 %%====================================================================
 %% gen_server callbacks
 %%====================================================================
-init([Socket, FilesystemPid]) ->
+init([Socket, FilesystemPid, StatePid]) ->
     {ok,
      keep_alive,
      #state{socket = Socket,
 	    request_queue = queue:new(),
+	    state_pid = StatePid,
 	    file_system_pid = FilesystemPid},
      ?DEFAULT_KEEP_ALIVE_INTERVAL}.
 
@@ -106,6 +108,7 @@ handle_info(timeout, running, S) when S#state.choke == false ->
 	     ?DEFAULT_KEEP_ALIVE_INTERVAL};
 	{{value, {Index, Offset, Len}}, NQ} ->
 	    NS = send_piece(Index, Offset, Len, S),
+	    torrent_state:uploaded_data(S#state.state_pid, Len),
 	    {next_state, running, NS#state{request_queue = NQ}, 0}
     end.
 
