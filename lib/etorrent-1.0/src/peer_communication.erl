@@ -68,35 +68,32 @@ recv_message(Message) ->
 %% Description: Send a message on a socket
 %%--------------------------------------------------------------------
 send_message(Socket, Message) ->
-    Datagram = case Message of
-	       keep_alive ->
-		   <<>>;
-	       choke ->
-		   <<1:32/big, ?CHOKE>>;
-	       unchoke ->
-		   <<1:32/big, ?UNCHOKE>>;
-	       interested ->
-		   <<1:32/big, ?INTERESTED>>;
-	       not_interested ->
-		   <<1:32/big, ?NOT_INTERESTED>>;
-	       {have, PieceNum} ->
-		   <<5:32/big, ?HAVE, PieceNum:32/big>>;
-	       {bitfield, BitField} ->
-		   Size = size(BitField)+1,
-		   <<Size:32/big, ?BITFIELD, BitField/binary>>;
-	       {request, Index, Begin, Len} ->
-		   <<13:32/big, ?REQUEST,
-		     Index:32/big, Begin:32/big, Len:32/big>>;
-	       {piece, Index, Begin, Len, Data} ->
-		   Size = size(Data)+9,
-		   <<Size, ?PIECE, Index:32/big, Begin:32/big, Len:32/big,
-		     Data/binary>>;
-	       {cancel, Index, Begin, Len} ->
-		   <<13:32/big, ?CANCEL,
-		     Index:32/big, Begin:32/big, Len:32/big>>;
-	       {port, PortNum} ->
-		   <<3:32/big, ?PORT, PortNum:16/big>>
-	  end,
+    Datagram =
+	case Message of
+	    keep_alive ->
+		<<>>;
+	    choke ->
+		<<?CHOKE>>;
+	    unchoke ->
+		<<?UNCHOKE>>;
+	    interested ->
+		<<?INTERESTED>>;
+	    not_interested ->
+		<<?NOT_INTERESTED>>;
+	    {have, PieceNum} ->
+		<<?HAVE, PieceNum:32/big>>;
+	    {bitfield, BitField} ->
+		<<?BITFIELD, BitField/binary>>;
+	    {request, Index, Begin, Len} ->
+		<<?REQUEST, Index:32/big, Begin:32/big, Len:32/big>>;
+	    {piece, Index, Begin, Len, Data} ->
+		<<?PIECE,
+		 Index:32/big, Begin:32/big, Len:32/big, Data/binary>>;
+	    {cancel, Index, Begin, Len} ->
+		<<?CANCEL, Index:32/big, Begin:32/big, Len:32/big>>;
+	    {port, PortNum} ->
+		<<?PORT, PortNum:16/big>>
+        end,
     gen_tcp:send(Socket, Datagram).
 
 %%--------------------------------------------------------------------
@@ -176,7 +173,7 @@ construct_bitfield(Size, PieceSet) ->
 	       PadBits,
 	       fun(_N) -> 0 end)]),
     0 = length(Bits) rem 8,
-    build_bytes(Bits).
+    list_to_binary(build_bytes(Bits)).
 
 build_bytes(BitField) ->
     build_bytes(BitField, []).
