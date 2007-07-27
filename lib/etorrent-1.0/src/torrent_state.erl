@@ -33,6 +33,7 @@
 		piece_assignment = none,
 		piece_size = 0,
 	        num_pieces = 0,
+		torrent_size = 0,
 
 	        histogram = none}).
 
@@ -106,13 +107,15 @@ got_piece_from_peer(Pid, Pn, DataSize) ->
 %%--------------------------------------------------------------------
 init([DiskState, PieceSize]) ->
     {PieceSet, Missing, Size} = convert_diskstate_to_set(DiskState),
+    AmountLeft = calculate_amount_left(DiskState),
     {ok, #state{piece_set = PieceSet,
 		piece_set_missing = Missing,
 		piece_assignment = dict:new(),
 		num_pieces = Size,
 		piece_size = PieceSize,
 		histogram = histogram:new(),
-	        left = calculate_amount_left(DiskState)}}.
+		torrent_size = AmountLeft,
+	        left = AmountLeft}}.
 
 %%--------------------------------------------------------------------
 %% Function: %% handle_call(Request, From, State) -> {reply, Reply, State} |
@@ -211,13 +214,14 @@ handle_call({request_new_piece, PeerPieces}, {From, _Tag}, S) ->
 		none ->
 		    {reply, no_pieces, S};
 		PieceNum ->
+		    PieceSize = find_piece_size(PieceNum, S),
 		    Missing = sets:del_element(PieceNum,
 					       S#state.piece_set_missing),
 		    erlang:monitor(process, From),
 		    Assignments =
 			dict:update(From, fun(L) -> [PieceNum | L] end,
 				    [PieceNum], S#state.piece_assignment),
-		    {reply, {ok, PieceNum},
+		    {reply, {ok, PieceNum, PieceSize},
 		     S#state{piece_set_missing = Missing,
 			     piece_assignment = Assignments}}
 	    end
@@ -318,3 +322,9 @@ piece_valid(PieceNum, S) ->
 	true ->
 	    false
     end.
+
+find_piece_size(PieceNum, S) when PieceNum == S#state.num_pieces ->
+    S#state.torrent_size rem S#state.piece_size;
+find_piece_size(PieceNum, S) when PieceNum =< S#state.num_pieces ->
+    S#state.piece_size.
+
