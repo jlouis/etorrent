@@ -136,8 +136,10 @@ spawn_new_peer(IP, Port, PeerId, N, S) ->
 						S#state.info_hash,
 					        S#state.state_pid,
 					        S#state.file_system_pid),
-	    sys:trace(Pid, true),
+	    %sys:trace(Pid, true),
 	    torrent_peer:connect(Pid, S#state.our_peer_id),
+	    % TODO: Remove this hack:
+	    torrent_peer:unchoke(Pid),
 	    D = dict:store(Pid, {IP, Port, PeerId}, S#state.peer_process_dict),
 	    fill_peers(N-1, S#state{ peer_process_dict = D})
     end.
