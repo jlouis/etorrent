@@ -61,9 +61,25 @@ init([Socket, FilesystemPid, StatePid]) ->
 	    file_system_pid = FilesystemPid},
      ?DEFAULT_KEEP_ALIVE_INTERVAL}.
 
+keep_alive(timeout, S) ->
+    ok = peer_communication:send_message(S#state.socket, keep_alive),
+    {next_state, keep_alive, S, ?DEFAULT_KEEP_ALIVE_INTERVAL};
 keep_alive(Msg, S) ->
     handle_message(Msg, S).
 
+running(timeout, S) when S#state.choke == true ->
+    {next_state, keep_alive, S, ?DEFAULT_KEEP_ALIVE_INTERVAL};
+running(timeout, S) when S#state.choke == false ->
+    case queue:out(S#state.request_queue) of
+	{empty, Q} ->
+	    {next_state, keep_alive,
+	     S#state{request_queue = Q},
+	     ?DEFAULT_KEEP_ALIVE_INTERVAL};
+	{{value, {Index, Offset, Len}}, NQ} ->
+	    NS = send_piece(Index, Offset, Len, S),
+	    torrent_state:uploaded_data(S#state.state_pid, Len),
+	    {next_state, running, NS#state{request_queue = NQ}, 0}
+    end;
 running(Msg, S) ->
     handle_message(Msg, S).
 
@@ -95,22 +111,9 @@ handle_message({cancel_piece, Index, OffSet, Len}, S) ->
     NQ = utils:queue_remove({Index, OffSet, Len}, S#state.request_queue),
     {next_state, running, S#state{request_queue = NQ}, 0}.
 
-handle_info(timeout, keep_alive, S) ->
-    ok = peer_communication:send_message(S#state.socket, keep_alive),
-    {next_state, keep_alive, S, ?DEFAULT_KEEP_ALIVE_INTERVAL};
-handle_info(timeout, running, S) when S#state.choke == true ->
-    {next_state, keep_alive, S, ?DEFAULT_KEEP_ALIVE_INTERVAL};
-handle_info(timeout, running, S) when S#state.choke == false ->
-    case queue:out(S#state.request_queue) of
-	{empty, Q} ->
-	    {next_state, keep_alive,
-	     S#state{request_queue = Q},
-	     ?DEFAULT_KEEP_ALIVE_INTERVAL};
-	{{value, {Index, Offset, Len}}, NQ} ->
-	    NS = send_piece(Index, Offset, Len, S),
-	    torrent_state:uploaded_data(S#state.state_pid, Len),
-	    {next_state, running, NS#state{request_queue = NQ}, 0}
-    end.
+
+handle_info(_Msg, StateName, S) ->
+    {next_state, StateName, S}.
 
 terminate(_Reason, _St, _State) ->
     ok.
