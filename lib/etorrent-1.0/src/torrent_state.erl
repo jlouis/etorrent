@@ -10,7 +10,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/1, report_to_tracker/1, report_from_tracker/3,
+-export([start_link/2, report_to_tracker/1, report_from_tracker/3,
 	 retrieve_bitfield/1, remote_choked/1, remote_unchoked/1,
 	 remote_interested/1, remote_not_interested/1,
 	 remote_have_piece/2, num_pieces/1, remote_bitfield/2,
@@ -31,6 +31,7 @@
 		piece_set = none,
 		piece_set_missing = none,
 		piece_assignment = none,
+		piece_size = 0,
 	        num_pieces = 0,
 
 	        histogram = none}).
@@ -42,8 +43,8 @@
 %% Function: start_link() -> {ok,Pid} | ignore | {error,Error}
 %% Description: Starts the server
 %%--------------------------------------------------------------------
-start_link(DiskState) ->
-    gen_server:start_link(?MODULE, [DiskState], []).
+start_link(DiskState, PieceSize) ->
+    gen_server:start_link(?MODULE, [DiskState, PieceSize], []).
 
 report_to_tracker(Pid) ->
     gen_server:call(Pid, report_to_tracker).
@@ -103,12 +104,13 @@ got_piece_from_peer(Pid, Pn, DataSize) ->
 %%                         {stop, Reason}
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
-init([DiskState]) ->
+init([DiskState, PieceSize]) ->
     {PieceSet, Missing, Size} = convert_diskstate_to_set(DiskState),
     {ok, #state{piece_set = PieceSet,
 		piece_set_missing = Missing,
 		piece_assignment = dict:new(),
 		num_pieces = Size,
+		piece_size = PieceSize,
 		histogram = histogram:new(),
 	        left = calculate_amount_left(DiskState)}}.
 

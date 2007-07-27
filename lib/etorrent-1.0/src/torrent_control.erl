@@ -118,7 +118,9 @@ check_and_start_torrent(FS, FileDict, S) ->
     {ok, DiskState} =
 	check_torrent:check_torrent_contents(FS, FileDict),
     ok = serializer:release_token(),
-    {ok, StatePid} = torrent_state:start_link(DiskState),
+    {ok, StatePid} = torrent_state:start_link(
+		       DiskState,
+		       metainfo:get_piece_length(S#state.torrent)),
     {ok, PeerMasterPid} =
 	torrent_peer_master:start_link(
 	  S#state.peer_id,
