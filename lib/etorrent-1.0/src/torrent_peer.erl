@@ -212,7 +212,8 @@ handle_message({bitfield, BitField}, S) ->
     case sets:size(S#state.piece_set) of
 	0 ->
 	    Size = torrent_state:num_pieces(S#state.state_pid),
-	    PieceSet = peer_communication:destruct_bitfield(Size, BitField),
+	    {ok, PieceSet} =
+		peer_communication:destruct_bitfield(Size, BitField),
 	    case torrent_state:remote_bitfield(S#state.state_pid, PieceSet) of
 		interested ->
 		    send_message(interested, S),
