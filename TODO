@@ -48,6 +48,7 @@
   ** Bittornado
   ** rtorrent
   ** ctorrent
+- Ensure that uploaded/downloaded/left reports to tracker is correct!
 
 * DOCUMENTATION!
 - Pick functions at random, and document what they are doing.
@@ -58,7 +59,7 @@
 - Push release 1.0 into SVN at google.
 
 ------------------------------------------------------------
-VERSION 2.0
+VERSION ++ (Not decided yet)
 ------------------------------------------------------------
 * TorrentManager
 - Check if a torrent is duplicate.
@@ -79,15 +80,9 @@ VERSION 2.0
   Go through all processes, and think about what happens if it
    dies. Ensure that the system is robust.
 
-------------------------------------------------------------
-VERSION 3.0
-------------------------------------------------------------
 * Fast resume
   Use a dets table to get fast resume support.
 
-------------------------------------------------------------
-VERSION 4.0
-------------------------------------------------------------
 * Implement the fast extension.
   This will require some thought as there may be a very changed
    implementation in the peer clients.
