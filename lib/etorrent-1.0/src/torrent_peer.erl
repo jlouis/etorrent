@@ -13,7 +13,7 @@
 -export([start_link/6, connect/2, choke/1, unchoke/1, interested/1]).
 
 %% Temp API
--export([queue_up_requests/2]).
+-export([chunkify/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -429,13 +429,12 @@ chunkify(PieceNum, PieceSize) ->
 chunkify(_ChunkSize, _Offset, _PieceNum, 0, Acc) ->
     {ok, lists:reverse(Acc), length(Acc)};
 chunkify(ChunkSize, Offset, PieceNum, Left, Acc)
- when ChunkSize > Left ->
-    chunkify(ChunkSize, Offset+Left, PieceNum, 0,
-	     [{PieceNum, Offset, Left} | Acc]);
+ when ChunkSize =< Left ->
+    chunkify(ChunkSize, Offset+ChunkSize, PieceNum, Left-ChunkSize,
+	     [{PieceNum, Offset, ChunkSize} | Acc]);
 chunkify(ChunkSize, Offset, PieceNum, Left, Acc) ->
-    chunkify(ChunkSize, Offset+ChunkSize,
-	     PieceNum, Left-ChunkSize,
-	     [{PieceNum, Offset, ChunkSize} | Acc]).
+    chunkify(ChunkSize, Offset+Left, PieceNum, 0,
+	     [{PieceNum, Offset, Left} | Acc]).
 
 %%--------------------------------------------------------------------
 %% Function: build_chunk_dict(list_of_chunks()) -> gb_tree()
