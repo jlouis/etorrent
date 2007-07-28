@@ -12,6 +12,9 @@
 %% API
 -export([start_link/6, connect/2, choke/1, unchoke/1, interested/1]).
 
+%% Temp API
+-export([queue_up_requests/2]).
+
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3]).
@@ -25,7 +28,11 @@
 
 		 remote_choked = true,
 		 remote_interested = false,
+
 		 local_interested = false,
+
+		 request_queue = none,
+		 remote_request_set = none,
 
 		 piece_set = none,
 		 piece_request = none,
@@ -76,6 +83,8 @@ init([IP, Port, PeerId, InfoHash, StatePid, FilesystemPid]) ->
 		 port = Port,
 		 peer_id = PeerId,
 		 piece_set = sets:new(),
+		 request_queue = queue:new(),
+		 remote_request_set = sets:new(),
 		 info_hash = InfoHash,
 		 state_pid = StatePid,
 		 file_system_pid = FilesystemPid}}.
@@ -192,7 +201,7 @@ handle_message(not_interested, S) ->
     torrent_state:remote_not_interested(S#state.state_pid),
     {ok, S#state { remote_interested = false}};
 handle_message({request, Index, Offset, Len}, S) ->
-    torrent_peer_send:request(S#state.send_pid, Index, Offset, Len),
+    torrent_peer_send:remote_request(S#state.send_pid, Index, Offset, Len),
     {ok, S};
 handle_message({cancel, Index, Offset, Len}, S) ->
     torrent_peer_send:cancel(S#state.send_pid, Index, Offset, Len),
@@ -320,3 +329,23 @@ update_with_new_piece(Index, Offset, Len, Data, GBT, N, S) ->
 
 enable_socket_messages(Socket) ->
     inet:setopts(Socket, [binary, {active, true}, {packet, 4}]).
+
+queue_up_requests(S, 0) ->
+    {ok, S};
+queue_up_requests(S, N) ->
+    case queue:out(S#state.request_queue) of
+	{empty, Q} ->
+	    select_piece_for_queueing(S#state{request_queue = Q});
+	{{value, {Index, Offset, Len}}, Q} ->
+	    torrent_peer_send:local_request(S#state.send_pid,
+					    Index, Offset, Len),
+	    RS = sets:add_element({Index, Offset, Len},
+				  S#state.remote_request_set),
+	    queue_up_requests(S#state{request_queue = Q,
+				      remote_request_set = RS}, N-1)
+    end.
+
+
+select_piece_for_queueing(S) ->
+    {ok, S}.
+

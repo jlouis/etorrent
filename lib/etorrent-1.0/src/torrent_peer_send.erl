@@ -10,7 +10,8 @@
 -behaviour(gen_fsm).
 
 %% API
--export([start_link/3, send/2, request/4, cancel/4, choke/1, unchoke/1]).
+-export([start_link/3, send/2, remote_request/4, cancel/4, choke/1, unchoke/1,
+	 local_request/4]).
 
 %% gen_server callbacks
 -export([init/1, handle_info/3, terminate/3, code_change/4,
@@ -37,8 +38,11 @@ start_link(Socket, FilesystemPid, StatePid) ->
 send(Pid, Msg) ->
     gen_fsm:send_event(Pid, {send, Msg}).
 
-request(Pid, Index, Offset, Len) ->
-    gen_fsm:send_event(Pid, {request_piece, Index, Offset, Len}).
+remote_request(Pid, Index, Offset, Len) ->
+    gen_fsm:send_event(Pid, {remote_request_piece, Index, Offset, Len}).
+
+local_request(Pid, Index, Offset, Len) ->
+    gen_fsm:send_event(Pid, {local_request_piece, Index, Offset, Len}).
 
 cancel(Pid, Index, Offset, Len) ->
     gen_fsm:send_event(Pid, {cancel_piece, Index, Offset, Len}).
@@ -98,7 +102,10 @@ handle_message(choke, S) ->
 handle_message(unchoke, S) ->
     send_message(unchoke, S),
     {next_state, running, S#state{choke = false}, 0};
-handle_message({request_piece, Index, Offset, Len}, S) ->
+handle_message({local_request_piece, Index, Offset, Len}, S) ->
+    send_message({request, Index, Offset, Len}, S),
+    {next_state, running, S, 0};
+handle_message({remote_request_piece, Index, Offset, Len}, S) ->
     Requests = queue:len(S#state.request_queue),
     if
 	Requests > ?MAX_REQUESTS ->
