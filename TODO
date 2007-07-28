@@ -70,11 +70,6 @@
 ------------------------------------------------------------
 VERSION 2.0
 ------------------------------------------------------------
-* Make torrent_piecemap request data in a rarest first scheme.
-  Currently torrent_piecemap requests data in a scheme which is
-  "pick-random-piece". It should use rarest first instead to drive
-  up the download speed and make torrent health better.
-
 * TorrentManager
 - Check if a torrent is duplicate.
   We must check if a given torrent file which has just been added is a
@@ -89,8 +84,19 @@ VERSION 2.0
   If the client becomes popular, this is important to change. We can
    /easily/ increase the number to a more correct level.
 
+* ROBUSTNESS
+- What happens if process X dies
+  Go through all processes, and think about what happens if it
+   dies. Ensure that the system is robust.
+
 ------------------------------------------------------------
 VERSION 3.0
+------------------------------------------------------------
+* Fast resume
+  Use a dets table to get fast resume support.
+
+------------------------------------------------------------
+VERSION 4.0
 ------------------------------------------------------------
 * Implement the fast extension.
   This will require some thought as there may be a very changed
