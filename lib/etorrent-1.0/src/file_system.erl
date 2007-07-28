@@ -50,9 +50,14 @@ handle_call({read_piece, PieceNum}, _From, S) ->
     {reply, {ok, Data}, NS};
 handle_call({write_piece, PieceNum, Data}, _From, S) ->
     % TODO: Hash check!
-    {_Hash, FilesToWrite, _X} = dict:fetch(PieceNum, S#state.file_dict),
-    {ok, NS} = write_piece_data(Data, FilesToWrite, S),
-    {reply, ok, NS}.
+    {Hash, FilesToWrite, _X} = dict:fetch(PieceNum, S#state.file_dict),
+    case Hash == crypto:sha(Data) of
+	true ->
+	    {ok, NS} = write_piece_data(Data, FilesToWrite, S),
+	    {reply, ok, NS};
+	false ->
+	    {reply, wrong_hash, S}
+    end.
 
 handle_cast(stop, S) ->
     {stop, normal, S};
