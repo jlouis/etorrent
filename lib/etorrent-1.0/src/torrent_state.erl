@@ -321,8 +321,8 @@ piece_valid(PieceNum, S) ->
 	    false
     end.
 
-find_piece_size(PieceNum, S) when PieceNum == S#state.num_pieces ->
+find_piece_size(PieceNum, S) when PieceNum == (S#state.num_pieces-1) ->
     S#state.torrent_size rem S#state.piece_size;
-find_piece_size(PieceNum, S) when PieceNum =< S#state.num_pieces ->
+find_piece_size(PieceNum, S) when PieceNum < (S#state.num_pieces-1) ->
     S#state.piece_size.
 
