@@ -279,7 +279,7 @@ check_and_store_piece(Index, S) ->
 		      PList),
 	    case file_system:write_piece(S#state.file_system_pid,
 				    Index,
-				    Piece) of
+				    list_to_binary(Piece)) of
 		ok ->
 		    ok = torrent_state:got_piece_from_peer(
 			   S#state.state_pid,
