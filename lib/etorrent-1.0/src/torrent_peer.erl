@@ -192,7 +192,7 @@ handle_message(choke, S) ->
     {ok, S#state { remote_choked = true }};
 handle_message(unchoke, S) ->
     torrent_state:remote_unchoked(S#state.state_pid),
-    {ok, try_to_queue_up_pieces(S#state{remote_choked = false})};
+    try_to_queue_up_pieces(S#state{remote_choked = false});
 handle_message(interested, S) ->
     torrent_state:remote_interested(S#state.state_pid),
     {ok, S#state { remote_interested = true}};
