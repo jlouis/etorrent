@@ -114,8 +114,8 @@ decrease_piece(PieceNum, H) ->
 %% Function: find_rarest_piece(set(), histogram()) -> integer()
 %% Description: Find the rarest piece among a set of eligible pieces
 %%--------------------------------------------------------------------
-find_rarest_piece(EligibleSet, Histogram) ->
-    Iterator = gb_trees:iterator(Histogram),
+find_rarest_piece(EligibleSet, H) ->
+    Iterator = gb_trees:iterator(H#histogram.histogram),
     iterate_rarest_piece(gb_trees:next(Iterator), EligibleSet).
 
 iterate_rarest_piece(none, _EligibleSet) ->
