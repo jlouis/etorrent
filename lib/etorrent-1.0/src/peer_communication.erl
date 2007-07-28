@@ -173,7 +173,7 @@ destruct_bitfield(Size, BinaryLump) ->
     ByteList = binary_to_list(BinaryLump),
     Numbers = decode_bytes(0, ByteList, []),
     PieceSet = sets:from_list(lists:flatten(Numbers)),
-    case max_element(PieceSet) =< Size of
+    case max_element(PieceSet) < Size of
 	true ->
 	    {ok, PieceSet};
 	false ->
@@ -191,16 +191,12 @@ max_element(Set) ->
 	      end, 0, Set).
 
 decode_byte(B, Add) ->
-    <<B1:1, B2:1, B3:1, B4:1, B5:1, B6:1, B7:1, B8:1>> = <<B>>,
-    Select = lists:filter(fun(X) ->
-				  case X of
-				      {1, _} ->
-					  true;
-				      _ ->
-					  false
-				  end
-			  end, [{B1, 1}, {B2, 2}, {B3, 3}, {B4, 4},
-				{B5, 5}, {B6, 6}, {B7, 7}, {B8, 8}]),
+    <<B1:1/integer, B2:1/integer, B3:1/integer, B4:1/integer,
+      B5:1/integer, B6:1/integer, B7:1/integer, B8:1/integer>> = <<B>>,
+    Select = lists:filter(fun({1, _}) -> true;
+			     (_)      -> false
+			  end, [{B1, 0}, {B2, 1}, {B3, 2}, {B4, 3},
+				{B5, 4}, {B6, 5}, {B7, 6}, {B8, 7}]),
     Res = lists:map(fun({_, N}) ->
 		      N + Add
 	      end, Select),
