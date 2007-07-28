@@ -107,6 +107,7 @@ got_piece_from_peer(Pid, Pn, DataSize) ->
 %%--------------------------------------------------------------------
 init([DiskState, PieceSize]) ->
     {PieceSet, Missing, Size} = convert_diskstate_to_set(DiskState),
+    error_logger:info_report(["Diskstate thinks:", Size]),
     AmountLeft = calculate_amount_left(DiskState),
     {ok, #state{piece_set = PieceSet,
 		piece_set_missing = Missing,
@@ -147,6 +148,7 @@ handle_call(retrieve_bitfield, _From, S) ->
 					       S#state.piece_set),
     {reply, BF, S};
 handle_call({remote_have_piece, PieceNum}, _From, S) ->
+    error_logger:info_report([remote_have_piece, PieceNum]),
     case piece_valid(PieceNum, S) of
 	true ->
 	    NS = S#state { histogram = histogram:increase_piece(
