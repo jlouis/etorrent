@@ -43,7 +43,7 @@
 
 -define(DEFAULT_CONNECT_TIMEOUT, 120000).
 -define(DEFAULT_CHUNK_SIZE, 16384).
-
+-define(BASE_QUEUE_LEVEL, 10).
 %%====================================================================
 %% API
 %%====================================================================
@@ -193,7 +193,20 @@ handle_message(choke, S) ->
     {ok, S#state { remote_choked = true }};
 handle_message(unchoke, S) ->
     torrent_state:remote_unchoked(S#state.state_pid),
-    {ok, S#state { remote_choked = false }};
+    % Queue up requests
+    PiecesToQueue = ?BASE_QUEUE_LEVEL - sets:size(S#state.remote_request_set),
+    case queue_up_requests(S#state{remote_choked = false}, PiecesToQueue) of
+	{ok, NS} ->
+	    {ok, NS};
+	{partially_queued, NS, Left, not_interested}
+  	  when Left == ?BASE_QUEUE_LEVEL ->
+	    % We are out of pieces he can give us
+	    torrent_peer_send:not_interested(S#state.send_pid),
+	    {ok, NS#state{local_interested = false}};
+	{partially_queued, NS, _Left, not_interested} ->
+	    % We still have some pieces in the queue
+	    {ok, NS}
+    end;
 handle_message(interested, S) ->
     torrent_state:remote_interested(S#state.state_pid),
     {ok, S#state { remote_interested = true}};

@@ -11,7 +11,7 @@
 
 %% API
 -export([start_link/3, send/2, remote_request/4, cancel/4, choke/1, unchoke/1,
-	 local_request/4]).
+	 local_request/4, not_interested/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_info/3, terminate/3, code_change/4,
@@ -52,6 +52,9 @@ choke(Pid) ->
 
 unchoke(Pid) ->
     gen_fsm:send_event(Pid, unchoke).
+
+not_interested(Pid) ->
+    gen_fsm:send_event(Pid, not_interested).
 
 %%====================================================================
 %% gen_server callbacks
@@ -102,6 +105,9 @@ handle_message(choke, S) ->
 handle_message(unchoke, S) ->
     send_message(unchoke, S),
     {next_state, running, S#state{choke = false}, 0};
+handle_message(not_interested, S) ->
+    send_message(not_interested, S),
+    {next_state, running, S};
 handle_message({local_request_piece, Index, Offset, Len}, S) ->
     send_message({request, Index, Offset, Len}, S),
     {next_state, running, S, 0};

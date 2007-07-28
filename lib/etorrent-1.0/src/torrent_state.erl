@@ -211,8 +211,6 @@ handle_call({request_new_piece, PeerPieces}, {From, _Tag}, S) ->
 	false ->
 	    case histogram:find_rarest_piece(EligiblePieces,
 					     S#state.histogram) of
-		none ->
-		    {reply, no_pieces, S};
 		PieceNum ->
 		    PieceSize = find_piece_size(PieceNum, S),
 		    Missing = sets:del_element(PieceNum,
