@@ -234,7 +234,7 @@ handle_message({bitfield, BitField}, S) ->
 		not_valid ->
 		    {stop, invalid_pieces, S}
 	    end;
-	_ ->
+	N when is_integer(N) ->
 	    {stop, got_out_of_band_bitfield, S}
     end;
 handle_message({piece, Index, Offset, Data}, S) ->
@@ -327,15 +327,28 @@ update_with_new_piece(Index, Offset, Len, Data, GBT, N, S) ->
 	    S#state{piece_request = PR}
     end.
 
+%%--------------------------------------------------------------------
+%% Function: enable_socket_messages(socket() -> ok
+%% Description: Make the socket active and configure it to bittorrent
+%%   specifications.
+%%--------------------------------------------------------------------
 enable_socket_messages(Socket) ->
     inet:setopts(Socket, [binary, {active, true}, {packet, 4}]).
 
+%%--------------------------------------------------------------------
+%% Function: queue_up_requests(state(), N) -> {ok, state()} | ...
+%% Description: Try to queue up N requests at the other end.
+%%   If no pieces are ready in the queue, attempt to select a piece
+%%   for queueing.
+%%   Either succeds with {ok, state()} or fails because no piece is
+%%   eligible.
+%%--------------------------------------------------------------------
 queue_up_requests(S, 0) ->
     {ok, S};
 queue_up_requests(S, N) ->
     case queue:out(S#state.request_queue) of
 	{empty, Q} ->
-	    select_piece_for_queueing(S#state{request_queue = Q});
+	    select_piece_for_queueing(S#state{request_queue = Q}, N);
 	{{value, {Index, Offset, Len}}, Q} ->
 	    torrent_peer_send:local_request(S#state.send_pid,
 					    Index, Offset, Len),
@@ -345,7 +358,12 @@ queue_up_requests(S, N) ->
 				      remote_request_set = RS}, N-1)
     end.
 
-
-select_piece_for_queueing(S) ->
+%%--------------------------------------------------------------------
+%% Function: select_piece_for_queueing(state(), N) -> ...
+%% Description: Select a piece and chunk it up for queueing. Then make
+%%  a tail-call into queue_up_requests continuing the queue, or fail
+%%  if no piece is eligible.
+%%--------------------------------------------------------------------
+select_piece_for_queueing(S, _N) ->
     {ok, S}.
 
