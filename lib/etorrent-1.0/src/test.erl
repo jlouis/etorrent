@@ -11,3 +11,9 @@ start() ->
     application:set_env(etorrent, port, 1729),
     error_logger:logfile({open, "err.log"}),
     etorrent:start_link().
+
+
+run() ->
+    error_logger:logfile(close),
+    error_logger:logfile({open, "err.log"}),
+    etorrent:start_link().
