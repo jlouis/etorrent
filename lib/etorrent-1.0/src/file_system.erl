@@ -115,9 +115,8 @@ write_piece_data(Data, [], S) ->
     0 = size(Data),
     {ok, S};
 write_piece_data(Data, [{Path, Offset, Size} | Rest], S) ->
-    Bytes = Size * 8,
-    <<Chunk:Bytes, Remaining>> = Data,
-    case dict:fetch(Path, S#state.file_process_dict) of
+    <<Chunk:Size/binary, Remaining/binary>> = Data,
+    case dict:find(Path, S#state.file_process_dict) of
 	{ok, Pid} ->
 	    ok = file_process:put_data(Pid, Chunk, Offset, Size),
 	    write_piece_data(Remaining, Rest, S);
