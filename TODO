@@ -3,16 +3,6 @@
 ----------------------------------------------------------------------
 
 * Torrent_Peer
-- Write queue filling code:
-  ** Fill queue from request queue
-  ** If request queue becomes empty, try to refill it by asking
-     torrent_state.
-- Implement our local request queue.
-  When we get a PieceNumber and a _Size_ from the torrent_state:
-    ** Cut up that piece in chunks of 16k.
-    ** Push these pieces onto the request queue.
-    ** Fill the remotes queue from the request queue.
-
 - Handle when a piece has errors
   When a piece has errors, we must handle it gracefully.
 

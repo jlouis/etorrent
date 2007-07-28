@@ -185,7 +185,6 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 %%% Internal functions
 %%--------------------------------------------------------------------
-
 handle_message(keep_alive, S) ->
     {ok, S};
 handle_message(choke, S) ->
@@ -193,20 +192,7 @@ handle_message(choke, S) ->
     {ok, S#state { remote_choked = true }};
 handle_message(unchoke, S) ->
     torrent_state:remote_unchoked(S#state.state_pid),
-    % Queue up requests
-    PiecesToQueue = ?BASE_QUEUE_LEVEL - sets:size(S#state.remote_request_set),
-    case queue_up_requests(S#state{remote_choked = false}, PiecesToQueue) of
-	{ok, NS} ->
-	    {ok, NS};
-	{partially_queued, NS, Left, not_interested}
-  	  when Left == ?BASE_QUEUE_LEVEL ->
-	    % We are out of pieces he can give us
-	    torrent_peer_send:not_interested(S#state.send_pid),
-	    {ok, NS#state{local_interested = false}};
-	{partially_queued, NS, _Left, not_interested} ->
-	    % We still have some pieces in the queue
-	    {ok, NS}
-    end;
+    {ok, try_to_queue_up_pieces(S#state{remote_choked = false})};
 handle_message(interested, S) ->
     torrent_state:remote_interested(S#state.state_pid),
     {ok, S#state { remote_interested = true}};
@@ -253,19 +239,33 @@ handle_message({bitfield, BitField}, S) ->
 handle_message({piece, Index, Offset, Data}, S) ->
     Len = size(Data),
     torrent_state:downloaded_data(S#state.state_pid, Len),
+    case handle_got_chunk(Index, Offset, Data, Len, S) of
+	fail ->
+	    {stop, error_in_got_chunk, S};
+	{ok, NS} ->
+	    try_to_queue_up_pieces(NS)
+    end;
+handle_message(Unknown, S) ->
+    {stop, {unknown_message, Unknown}, S}.
+
+handle_got_chunk(Index, Offset, Data, Len, S) ->
+    true = sets:is_element({Index, Offset, Len}, S#state.remote_request_set),
+    RemoteRSet = sets:del_element({Index, Offset, Len},
+				  S#state.remote_request_set),
     case lists:keysearch(Index, 1, S#state.piece_request) of
 	false ->
-	    {stop, no_piece_request_map, S};
+	    fail;
 	{value, {_CurrentIndex, GBT, 1}} ->
 	    NS = update_with_new_piece(Index, Offset, Len, Data, GBT, 1, S),
 	    ok = check_and_store_piece(Index, NS),
 	    PR = lists:keydelete(Index, 1, NS#state.piece_request),
-	    {ok, NS#state{piece_request = PR}};
+	    {ok, NS#state{piece_request = PR,
+			  remote_request_set = RemoteRSet}};
 	{value, {_CurrentIndex, GBT, N}} ->
-	    {ok, update_with_new_piece(Index, Offset, Len, Data, GBT, N, S)}
-    end;
-handle_message(Unknown, S) ->
-    {stop, {unknown_message, Unknown}, S}.
+	    {ok, update_with_new_piece(
+		   Index, Offset, Len, Data, GBT, N,
+		   S#state{remote_request_set = RemoteRSet})}
+    end.
 
 check_and_store_piece(Index, S) ->
     case lists:keysearch(Index, 1, S#state.piece_request) of
@@ -347,6 +347,30 @@ update_with_new_piece(Index, Offset, Len, Data, GBT, N, S) ->
 %%--------------------------------------------------------------------
 enable_socket_messages(Socket) ->
     inet:setopts(Socket, [binary, {active, true}, {packet, 4}]).
+
+%%--------------------------------------------------------------------
+%% Function: try_toqueue_up_requests(state()) -> {ok, state()}
+%% Description: Try to queue up requests at the other end. This function
+%%  differs from queue_up_requests in the sense it also handles interest
+%%  and choking.
+%%--------------------------------------------------------------------
+try_to_queue_up_pieces(S) when S#state.remote_choked == true ->
+    {ok, S};
+try_to_queue_up_pieces(S) ->
+    PiecesToQueue = ?BASE_QUEUE_LEVEL - sets:size(S#state.remote_request_set),
+    case queue_up_requests(S, PiecesToQueue) of
+	{ok, NS} ->
+	    {ok, NS};
+	{partially_queued, NS, Left, not_interested}
+	  when Left == ?BASE_QUEUE_LEVEL ->
+	    % Out of pieces to give him
+	    torrent_peer_send:not_interested(S#state.send_pid),
+	    {ok, NS#state{local_interested = false}};
+	{partially_queued, NS, _Left, not_interested} ->
+	    % We still have some pieces in the queue
+	    {ok, NS}
+    end.
+
 
 %%--------------------------------------------------------------------
 %% Function: queue_up_requests(state(), N) -> {ok, state()} | ...
