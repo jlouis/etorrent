@@ -315,7 +315,7 @@ convert_diskstate_to_set(DiskState) ->
 
 piece_valid(PieceNum, S) ->
     if
-	PieceNum =< S#state.num_pieces ->
+	(PieceNum < S#state.num_pieces) and (PieceNum >= 0) ->
 	    true;
 	true ->
 	    false
