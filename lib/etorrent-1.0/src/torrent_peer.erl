@@ -371,7 +371,6 @@ try_to_queue_up_pieces(S) ->
 	    {ok, NS}
     end.
 
-
 %%--------------------------------------------------------------------
 %% Function: queue_up_requests(state(), N) -> {ok, state()} | ...
 %% Description: Try to queue up N requests at the other end.
@@ -410,8 +409,7 @@ select_piece_for_queueing(S, N) ->
 	    queue_up_requests(S#state{piece_request =
 				        [{PieceNum, ChunkDict, NumChunks} |
 					 S#state.piece_request],
-				      request_queue =
-				      queue:from_list(Chunks)},
+				      request_queue = queue:from_list(Chunks)},
 			      N);
 	E when is_atom(E) ->
 	    {partially_queued, S, N, E}
