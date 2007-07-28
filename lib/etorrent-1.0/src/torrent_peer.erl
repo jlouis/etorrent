@@ -42,7 +42,7 @@
 		 state_pid = none}).
 
 -define(DEFAULT_CONNECT_TIMEOUT, 120000).
-
+-define(DEFAULT_CHUNK_SIZE, 16384).
 
 %%====================================================================
 %% API
@@ -364,6 +364,51 @@ queue_up_requests(S, N) ->
 %%  a tail-call into queue_up_requests continuing the queue, or fail
 %%  if no piece is eligible.
 %%--------------------------------------------------------------------
-select_piece_for_queueing(S, _N) ->
-    {ok, S}.
+select_piece_for_queueing(S, N) ->
+    case torrent_state:request_new_piece(S#state.state_pid,
+					 S#state.piece_set) of
+	{ok, PieceNum, PieceSize} ->
+	    {ok, Chunks, NumChunks} = chunkify(PieceNum, PieceSize),
+	    {ok, ChunkDict} = build_chunk_dict(Chunks),
+	    queue_up_requests(S#state{piece_request =
+				        [{PieceNum, ChunkDict, NumChunks} |
+					 S#state.piece_request],
+				      request_queue =
+				      queue:from_list(Chunks)},
+			      N);
+	E when is_atom(E) ->
+	    {partially_queued, S, N, E}
+    end.
 
+%%--------------------------------------------------------------------
+%% Function: chunkify(integer(), integer()) ->
+%%  {ok, list_of_chunk(), integer()}
+%% Description: From a Piece number and its total size this function
+%%  builds the chunks the piece consist of.
+%%--------------------------------------------------------------------
+chunkify(PieceNum, PieceSize) ->
+    chunkify(?DEFAULT_CHUNK_SIZE, 0, PieceNum, PieceSize, []).
+
+chunkify(_ChunkSize, _Offset, _PieceNum, 0, Acc) ->
+    {ok, lists:reverse(Acc), length(Acc)};
+chunkify(ChunkSize, Offset, PieceNum, Left, Acc)
+ when ChunkSize > Left ->
+    chunkify(ChunkSize, Offset+Left, PieceNum, 0,
+	     [{PieceNum, Offset, Left} | Acc]);
+chunkify(ChunkSize, Offset, PieceNum, Left, Acc) ->
+    chunkify(ChunkSize, Offset+ChunkSize,
+	     PieceNum, Left-ChunkSize,
+	     [{PieceNum, Offset, ChunkSize} | Acc]).
+
+%%--------------------------------------------------------------------
+%% Function: build_chunk_dict(list_of_chunks()) -> gb_tree()
+%% Description: Build a gb_tree from the chunks suitable for filling
+%%  up when the requested pieces come in from the peer.
+%%--------------------------------------------------------------------
+build_chunk_dict(Chunklist) ->
+    Tree = lists:foldl(fun({_Index, Begin, Len}, GBT) ->
+			      gb_trees:enter(Begin, {Len, none}, GBT)
+		      end,
+		      gb_trees:empty(),
+		      Chunklist),
+    {ok, gb_trees:balance(Tree)}.
