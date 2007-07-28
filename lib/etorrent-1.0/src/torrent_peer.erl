@@ -305,7 +305,7 @@ invariant_check(PList) ->
 		        ({_Offset, {Len, Data}}, _N) when Len /= size(Data) ->
 			    error;
 			({Offset, {Len, _}}, N) when Offset == N ->
-			    Offset + Len + 1
+			    Offset + Len
 		    end,
 		    0,
 		    PList),
