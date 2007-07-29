@@ -2,17 +2,21 @@
 -- This is a list of what To Do before a release is ready to be made.
 ----------------------------------------------------------------------
 
-* Torrent_Peer
-- Handle when a piece has errors
-  When a piece has errors, we must handle it gracefully.
 
 * Peer Master
+- Think about rounds:
+  It seems to be straightforward:
+   1. Implement the rounds counters.
+   2. Implement the basic downloader strategy.
+   3. Implement optimistic unchoking on thop of that.
+
 - Implement rounds
   Implement choking/unchoking rounds in the Peer Master.
 - Implement a simpler bad map
   Rather than keep the kill-message (Which is always normal), keep a
    counter and make the counter be used.
 - Handle Endgame
+- Handle Snubbing
 
 * TorrentControl
 - Consider: Simplifying state machine.
@@ -41,6 +45,11 @@
 - Add author facts
   They are there, but are incorrect in a lot of files. They must
   be corrected.
+
+* Torrent_Peer
+- Handle when a piece has errors
+  When a piece has errors, we must handle it gracefully.
+- Is the Remote choking working correctly?
 
 * TESTS!
 - Seeder-test
