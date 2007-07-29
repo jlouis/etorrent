@@ -33,7 +33,7 @@
 
 		    ip = none,
 		    port = 0,
-		    peer_id}).
+		    peer_id = none}).
 
 -define(MAX_PEER_PROCESSES, 40).
 
@@ -72,14 +72,37 @@ init([OurPeerId, InfoHash, StatePid, FileSystemPid]) ->
 		 file_system_pid = FileSystemPid,
 		 peer_process_dict = dict:new() }}.
 
-handle_call({uploaded_data, _Amount}, _From, S) ->
-    {reply, ok, S};
-handle_call({downloaded_data, _Amount}, _From, S) ->
-    {reply, ok, S};
-handle_call(interested, _From, S) ->
-    {reply, ok, S};
-handle_call(not_interested, _From, S) ->
-    {reply, ok, S};
+
+handle_call({uploaded_data, Amount}, {Pid, _Tag}, S) ->
+    {reply, ok, peer_dict_update(
+		  Pid,
+		  fun(PI) ->
+			  PI#peer_info{
+			    uploaded = PI#peer_info.uploaded + Amount}
+		  end,
+		  S)};
+handle_call({downloaded_data, Amount}, {Pid, _Tag}, S) ->
+    {reply, ok, peer_dict_update(
+		  Pid,
+		  fun(PI) ->
+			  PI#peer_info{
+			    downloaded = PI#peer_info.downloaded + Amount}
+		  end,
+		  S)};
+handle_call(interested, {Pid, _Tag}, S) ->
+    {reply, ok, peer_dict_update(
+		  Pid,
+		  fun(PI) ->
+			  PI#peer_info{interested = true}
+		  end,
+		  S)};
+handle_call(not_interested, {Pid, _Tag}, S) ->
+    {reply, ok, peer_dict_update(
+		  Pid,
+		  fun(PI) ->
+			  PI#peer_info{interested = false}
+		  end,
+		  S)};
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -123,6 +146,17 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 %%% Internal functions
 %%--------------------------------------------------------------------
+
+%%--------------------------------------------------------------------
+%% Function: peer_dict_update(pid, fun(), state()) -> state()
+%% Description: Run fun as an updater on the pid entry in the peer
+%%   process dict.
+%%--------------------------------------------------------------------
+peer_dict_update(Pid, F, S) ->
+    D = dict:update(Pid, F, S#state.peer_process_dict),
+    S#state{peer_process_dict = D}.
+
+
 usort_peers(IPList, S) ->
     NewList = lists:usort(IPList ++ S#state.available_peers),
     {ok, S#state{ available_peers = NewList}}.
