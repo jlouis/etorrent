@@ -23,6 +23,8 @@
 		info_hash = none,
 	        peer_process_dict = none,
 
+		timer_ref = none,
+
 	        state_pid = none,
 	        file_system_pid = none}).
 
@@ -36,6 +38,7 @@
 		    peer_id = none}).
 
 -define(MAX_PEER_PROCESSES, 40).
+-define(ROUND_TIME, 10000).
 
 %%====================================================================
 %% API
@@ -65,10 +68,12 @@ peer_not_interested(Pid) ->
 
 init([OurPeerId, InfoHash, StatePid, FileSystemPid]) ->
     process_flag(trap_exit, true), % Needed for torrent peers
+    {ok, Tref} = timer:send_interval(?ROUND_TIME, self(), round_tick),
     {ok, #state{ our_peer_id = OurPeerId,
 		 bad_peers = dict:new(),
 		 info_hash = InfoHash,
 		 state_pid = StatePid,
+		 timer_ref = Tref,
 		 file_system_pid = FileSystemPid,
 		 peer_process_dict = dict:new() }}.
 
@@ -115,6 +120,9 @@ handle_cast({add_peers, IPList}, S) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
+handle_info(round_tick, S) ->
+    error_logger:info_report([timer_ticked]),
+    {noreply, reset_round(S)};
 handle_info({'EXIT', Pid, Reason}, S) ->
     % Pid has exited for some reason, handle it accordingly
     case Reason of
@@ -237,3 +245,15 @@ find_peer_id_in_process_list(PeerId, S) ->
 	      end,
 	      false,
 	      S#state.peer_process_dict).
+
+%%--------------------------------------------------------------------
+%% Function: reset_round(state()) -> state()
+%% Description: Reset the amount of data uploaded and downloaded.
+%%--------------------------------------------------------------------
+reset_round(S) ->
+    D = dict:map(fun(_Pid, PI) ->
+			 PI#peer_info{uploaded = 0,
+				      downloaded = 0}
+		 end,
+		 S#state.peer_process_dict),
+    S#state{peer_process_dict = D}.
