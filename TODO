@@ -4,18 +4,16 @@
 
 
 * Peer Master
-- Think about rounds:
-  It seems to be straightforward:
-   \. 1. Implement the rounds counters.
-   2. Implement the basic downloader strategy.
-   3. Implement optimistic unchoking on thop of that.
-
-- Implement rounds
-  Implement choking/unchoking rounds in the Peer Master.
 - Implement a simpler bad map
   Rather than keep the kill-message (Which is always normal), keep a
    counter and make the counter be used.
 - Handle Endgame
+  Endgame requires global control of all peers. It should be
+   implemented, but first when the rest of the system begins to work.
+- Implement seeding
+  We are not doing anything specific to take care of seeding right
+  now. This must obviously be cared for. The way to do it is in the
+  torrent_state process.
 - Handle Snubbing
 
 * TorrentControl
@@ -23,25 +21,14 @@
   The state machine can be simplified a great deal if you are smart
    and inject most torrent information via the start_link message.
 
-* Connection management
-
 * General stuff
-- Implement Endgame
-  Endgame requires global control of all peers. It should be
-   implemented, but first when the rest of the system begins to work.
-
-- Implement seeding
-  We are not doing anything specific to take care of seeding right
-  now. This must obviously be cared for. The way to do it is in the
-  torrent_state process.
-
 - Implement support for listening connections
   This will make the system not behave as if it were always behind a
-  NAT.
-
+  NAT. The funny part is that we will need to have it understand the
+  badmap as well. So it seems it should communicate with the peer.
+- Implement the Autocrap tool support for installation.
 - Add license facts,
   BSD-license. We need a spread of Erlang code!
-
 - Add author facts
   They are there, but are incorrect in a lot of files. They must
   be corrected.
@@ -65,8 +52,7 @@
   It is /especially/ important to document library calls and
    non-standard internal functions in OTP modules.
 - Make an INSTALL and README document for release.
-- Build a google-code page for the release.
-- Push release 1.0 into SVN at google.
+- Push release 1.0 into google.
 
 ------------------------------------------------------------
 VERSION ++ (Not decided yet)
@@ -76,6 +62,15 @@ VERSION ++ (Not decided yet)
   We must check if a given torrent file which has just been added is a
   duplicate of a torrent we already manage. If this is the case, then we
   should just ignore it.
+
+* TorrentPeerMaster
+- Figure out a better choking/unchoking algorithm.
+  The current algorithm is the original one. We should look for a
+   better algorithm and implement that. Suggestions for digging:
+     ** Azureus
+     ** Mainline
+     ** Bittornado
+     ** rtorrent
 
 * Cleanups
 - Decide what to do if we connect multiply to the same IP
