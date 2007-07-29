@@ -41,6 +41,7 @@
 
 -define(MAX_PEER_PROCESSES, 40).
 -define(ROUND_TIME, 10000).
+-define(DEFAULT_NUM_DOWNLOADERS, 4).
 
 %%====================================================================
 %% API
@@ -148,9 +149,11 @@ handle_info(round_tick, S) ->
     case S#state.round of
 	0 ->
 	    error_logger:info_report([optimistic_unchoke_change]),
-	    {noreply, reset_round(S#state{round = 2})};
+	    NS = perform_choking_unchoking(S),
+	    {noreply, reset_round(NS#state{round = 2})};
 	N when is_integer(N) ->
-	    {noreply, reset_round(S#state{round = S#state.round - 1})}
+	    NS = perform_choking_unchoking(S),
+	    {noreply, reset_round(NS#state{round = NS#state.round - 1})}
     end;
 handle_info({'EXIT', Pid, Reason}, S) ->
     % Pid has exited for some reason, handle it accordingly
@@ -183,6 +186,49 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 %%% Internal functions
 %%--------------------------------------------------------------------
+
+%%--------------------------------------------------------------------
+%% Function: perform_choking_unchoking(state()) -> state()
+%% Description: Peform choking and unchoking of peers according to the
+%%   specification.
+%%--------------------------------------------------------------------
+perform_choking_unchoking(S) ->
+    NotInterested = find_not_interested_peers(S#state.peer_process_dict),
+    Interested    = find_interested_peers(S#state.peer_process_dict),
+
+    % N fastest interesteds should be kept
+    {FastestInterested, Rest} =
+	find_fastest_peers(?DEFAULT_NUM_DOWNLOADERS,
+			   Interested),
+    unchoke_peers(dict:fetch_keys(FastestInterested)),
+
+    % All peers not interested should be unchoked
+    unchoke_peers(dict:fetch_keys(NotInterested)),
+
+    % Choke everyone else
+    choke_peers(Rest),
+
+    S.
+
+find_fastest_peers(_N, Interested) ->
+    {Interested, []}.
+
+unchoke_peers(Pids) ->
+    lists:foreach(fun(P) -> torrent_peer:unchoke(P) end, Pids),
+    ok.
+
+choke_peers(Pids) ->
+    lists:foreach(fun(P) -> torrent_peer:choke(P) end, Pids),
+    ok.
+
+find_interested_peers(Dict) ->
+    dict:filter(fun(_K, PI) -> PI#peer_info.interested end,
+		Dict).
+
+find_not_interested_peers(Dict) ->
+    dict:filter(fun(_K, PI) -> not(PI#peer_info.interested) end,
+		Dict).
+
 
 %%--------------------------------------------------------------------
 %% Function: peer_dict_update(pid, fun(), state()) -> state()
