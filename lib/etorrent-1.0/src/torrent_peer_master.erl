@@ -11,7 +11,8 @@
 
 %% API
 -export([start_link/4, add_peers/2, uploaded_data/2, downloaded_data/2,
-	peer_interested/1, peer_not_interested/1]).
+	peer_interested/1, peer_not_interested/1, peer_choked/1,
+	peer_unchoked/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -62,6 +63,12 @@ peer_interested(Pid) ->
 peer_not_interested(Pid) ->
     gen_server:call(Pid, not_interested).
 
+peer_choked(Pid) ->
+    gen_server:call(Pid, choked).
+
+peer_unchoked(Pid) ->
+    gen_server:call(Pid, unchoked).
+
 %%====================================================================
 %% gen_server callbacks
 %%====================================================================
@@ -77,7 +84,22 @@ init([OurPeerId, InfoHash, StatePid, FileSystemPid]) ->
 		 file_system_pid = FileSystemPid,
 		 peer_process_dict = dict:new() }}.
 
-
+handle_call(choked, {Pid, _Tag}, S) ->
+    {reply, ok, peer_dict_update(
+		  Pid,
+		  fun(PI) ->
+			  PI#peer_info{
+			    choking = true}
+		  end,
+		  S)};
+handle_call(unchoked, {Pid, _Tag}, S) ->
+    {reply, ok, peer_dict_update(
+		  Pid,
+		  fun(PI) ->
+			  PI#peer_info{
+			    choking = false}
+		  end,
+		  S)};
 handle_call({uploaded_data, Amount}, {Pid, _Tag}, S) ->
     {reply, ok, peer_dict_update(
 		  Pid,
