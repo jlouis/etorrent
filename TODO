@@ -7,8 +7,6 @@
   When a piece has errors, we must handle it gracefully.
 
 * Peer Master
-- Gather upload and download
-- Gather interest.
 - Implement rounds
   Implement choking/unchoking rounds in the Peer Master.
 - Implement a simpler bad map
