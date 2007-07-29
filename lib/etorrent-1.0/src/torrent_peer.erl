@@ -191,16 +191,16 @@ code_change(_OldVsn, State, _Extra) ->
 handle_message(keep_alive, S) ->
     {ok, S};
 handle_message(choke, S) ->
-    torrent_state:remote_choked(S#state.state_pid),
+    torrent_peer_master:peer_choked(S#state.master_pid),
     {ok, S#state { remote_choked = true }};
 handle_message(unchoke, S) ->
-    torrent_state:remote_unchoked(S#state.state_pid),
+    torrent_peer_master:peer_unchoked(S#state.master_pid),
     try_to_queue_up_pieces(S#state{remote_choked = false});
 handle_message(interested, S) ->
-    torrent_peer_master:peer_interested(S#state.state_pid),
+    torrent_peer_master:peer_interested(S#state.master_pid),
     {ok, S#state { remote_interested = true}};
 handle_message(not_interested, S) ->
-    torrent_peer_master:peer_not_interested(S#state.state_pid),
+    torrent_peer_master:peer_not_interested(S#state.master_pid),
     {ok, S#state { remote_interested = false}};
 handle_message({request, Index, Offset, Len}, S) ->
     torrent_peer_send:remote_request(S#state.send_pid, Index, Offset, Len),
