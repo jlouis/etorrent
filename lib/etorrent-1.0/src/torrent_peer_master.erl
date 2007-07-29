@@ -33,8 +33,9 @@
 -record(peer_info, {uploaded = 0,
 		    downloaded = 0,
 		    interested = false,
-		    choking = true,
+		    remote_choking = true,
 
+		    optimistic_unchoke = false,
 		    ip = none,
 		    port = 0,
 		    peer_id = none}).
@@ -91,7 +92,7 @@ handle_call(choked, {Pid, _Tag}, S) ->
 		  Pid,
 		  fun(PI) ->
 			  PI#peer_info{
-			    choking = true}
+			    remote_choking = true}
 		  end,
 		  S)};
 handle_call(unchoked, {Pid, _Tag}, S) ->
@@ -99,7 +100,7 @@ handle_call(unchoked, {Pid, _Tag}, S) ->
 		  Pid,
 		  fun(PI) ->
 			  PI#peer_info{
-			    choking = false}
+			    remote_choking = false}
 		  end,
 		  S)};
 handle_call({uploaded_data, Amount}, {Pid, _Tag}, S) ->
@@ -149,10 +150,12 @@ handle_info(round_tick, S) ->
     case S#state.round of
 	0 ->
 	    error_logger:info_report([optimistic_unchoke_change]),
-	    NS = perform_choking_unchoking(S),
-	    {noreply, reset_round(NS#state{round = 2})};
+	    {NS, DoNotTouchPids} = perform_choking_unchoking(
+				     remove_optimistic_unchoking(S)),
+	    NNS = select_optimistic_unchoker(DoNotTouchPids, NS),
+	    {noreply, reset_round(NNS#state{round = 2})};
 	N when is_integer(N) ->
-	    NS = perform_choking_unchoking(S),
+	    {NS, _DoNotTouchPids} = perform_choking_unchoking(S),
 	    {noreply, reset_round(NS#state{round = NS#state.round - 1})}
     end;
 handle_info({'EXIT', Pid, Reason}, S) ->
@@ -187,6 +190,36 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%--------------------------------------------------------------------
 
+select_optimistic_unchoker(DoNotTouchPids, S) ->
+    Size = dict:size(S#state.peer_process_dict),
+    List = dict:to_list(S#state.peer_process_dict),
+    % Guard such that we don't enter an infinite loop.
+    %   There are multiple optimizations possible here...
+    case sets:size(DoNotTouchPids) >= Size of
+	true ->
+	    S;
+	false ->
+	    select_optimistic_unchoker(Size, List, DoNotTouchPids, S)
+    end.
+
+select_optimistic_unchoker(Size, List, DoNotTouchPids, S) ->
+    N = crypto:rand_uniform(1, Size+1),
+    {Pid, _PI} = lists:nth(N, List),
+    case sets:is_element(Pid, DoNotTouchPids) of
+	true ->
+	    select_optimistic_unchoker(Size, List, DoNotTouchPids, S);
+	false ->
+	    NS = peer_dict_update(Pid,
+				  fun(_K, PI) ->
+					  PI#peer_info{optimistic_unchoke =
+						       true}
+				  end,
+				  S),
+	    torrent_peer:unchoke(Pid),
+	    NS
+    end.
+
+
 %%--------------------------------------------------------------------
 %% Function: perform_choking_unchoking(state()) -> state()
 %% Description: Peform choking and unchoking of peers according to the
@@ -197,10 +230,10 @@ perform_choking_unchoking(S) ->
     Interested    = find_interested_peers(S#state.peer_process_dict),
 
     % N fastest interesteds should be kept
-    {FastestInterested, Rest} =
-	find_fastest_peers(?DEFAULT_NUM_DOWNLOADERS,
+    {Downloaders, Rest} =
+	find_fastest_downloaders(?DEFAULT_NUM_DOWNLOADERS,
 			   Interested),
-    unchoke_peers(dict:fetch_keys(FastestInterested)),
+    unchoke_peers(Downloaders),
 
     % All peers not interested should be unchoked
     unchoke_peers(dict:fetch_keys(NotInterested)),
@@ -208,10 +241,26 @@ perform_choking_unchoking(S) ->
     % Choke everyone else
     choke_peers(Rest),
 
-    S.
+    DoNotTouchPids = sets:from_list(lists:map(fun({K, _V}) -> K end,
+					     Downloaders)),
+    {S, DoNotTouchPids}.
 
-find_fastest_peers(_N, Interested) ->
-    {Interested, []}.
+remove_optimistic_unchoking(S) ->
+    peer_dict_map(fun(_K, PI) ->
+			  PI#peer_info{optimistic_unchoke = false}
+		  end,
+		  S).
+
+find_fastest_downloaders(N, Interested) ->
+    List = lists:sort(
+	     fun ({_K1, PI1}, {_K2, PI2}) ->
+		     PI1#peer_info.downloaded > PI2#peer_info.downloaded
+	     end,
+	     dict:to_list(Interested)),
+    PidList = lists:map(fun({K, _V}) -> K end, List),
+    SplitPoint = lists:min([length(PidList), N]),
+    {Downloaders, Rest} = lists:split(SplitPoint, PidList),
+    {Downloaders, Rest}.
 
 unchoke_peers(Pids) ->
     lists:foreach(fun(P) -> torrent_peer:unchoke(P) end, Pids),
@@ -239,6 +288,9 @@ peer_dict_update(Pid, F, S) ->
     D = dict:update(Pid, F, S#state.peer_process_dict),
     S#state{peer_process_dict = D}.
 
+peer_dict_map(F, S) ->
+    D = dict:map(F, S#state.peer_process_dict),
+    S#state{peer_process_dict = D}.
 
 usort_peers(IPList, S) ->
     NewList = lists:usort(IPList ++ S#state.available_peers),
