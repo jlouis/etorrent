@@ -26,6 +26,15 @@
 	        state_pid = none,
 	        file_system_pid = none}).
 
+-record(peer_info, {uploaded = 0,
+		    downloaded = 0,
+		    interested = false,
+		    choking = true,
+
+		    ip = none,
+		    port = 0,
+		    peer_id}).
+
 -define(MAX_PEER_PROCESSES, 40).
 
 %%====================================================================
@@ -85,16 +94,17 @@ handle_cast(_Msg, State) ->
 
 handle_info({'EXIT', Pid, Reason}, S) ->
     % Pid has exited for some reason, handle it accordingly
-    D = dict:erase(Pid, S#state.peer_process_dict),
     case Reason of
 	normal ->
+	    D = dict:erase(Pid, S#state.peer_process_dict),
 	    {ok, NS} = start_new_peers(S#state{peer_process_dict = D}),
 	    {noreply, NS};
 	shutdown ->
 	    {stop, shutdown, S};
 	R ->
-	    {_, _, PeerId} = dict:fetch(Pid, S#state.peer_process_dict),
-	    Bad = dict:update(PeerId, fun(L) -> [R | L] end,
+	    PI = dict:fetch(Pid, S#state.peer_process_dict),
+	    D  = dict:erase(Pid, S#state.peer_process_dict),
+	    Bad = dict:update(PI#peer_info.peer_id, fun(L) -> [R | L] end,
 			      [R], S#state.bad_peers),
 	    {ok, NS} = start_new_peers(S#state{peer_process_dict = D,
 					       bad_peers = Bad}),
@@ -162,7 +172,8 @@ spawn_new_peer(IP, Port, PeerId, N, S) ->
 	    torrent_peer:connect(Pid, S#state.our_peer_id),
 	    % TODO: Remove this hack:
 	    torrent_peer:unchoke(Pid),
-	    D = dict:store(Pid, {IP, Port, PeerId}, S#state.peer_process_dict),
+	    PI = #peer_info{ip = IP, port = Port, peer_id = PeerId},
+	    D = dict:store(Pid, PI, S#state.peer_process_dict),
 	    fill_peers(N-1, S#state{ peer_process_dict = D})
     end.
 
@@ -192,5 +203,3 @@ find_peer_id_in_process_list(PeerId, S) ->
 	      end,
 	      false,
 	      S#state.peer_process_dict).
-
-
