@@ -25,6 +25,7 @@
 	        peer_process_dict = none,
 
 		timer_ref = none,
+		round = 0,
 
 	        state_pid = none,
 	        file_system_pid = none}).
@@ -144,7 +145,13 @@ handle_cast(_Msg, State) ->
 
 handle_info(round_tick, S) ->
     error_logger:info_report([timer_ticked]),
-    {noreply, reset_round(S)};
+    case S#state.round of
+	0 ->
+	    error_logger:info_report([optimistic_unchoke_change]),
+	    {noreply, reset_round(S#state{round = 2})};
+	N when is_integer(N) ->
+	    {noreply, reset_round(S#state{round = S#state.round - 1})}
+    end;
 handle_info({'EXIT', Pid, Reason}, S) ->
     % Pid has exited for some reason, handle it accordingly
     case Reason of

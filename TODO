@@ -6,7 +6,7 @@
 * Peer Master
 - Think about rounds:
   It seems to be straightforward:
-   1. Implement the rounds counters.
+   \. 1. Implement the rounds counters.
    2. Implement the basic downloader strategy.
    3. Implement optimistic unchoking on thop of that.
 
