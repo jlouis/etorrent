@@ -3,15 +3,19 @@
 ----------------------------------------------------------------------
 
 * Torrent_Peer
+- Send interest-messages to the peer_master.
 - Handle when a piece has errors
   When a piece has errors, we must handle it gracefully.
 
 * Peer Master
+- Gather upload and download
+- Gather interest.
 - Implement rounds
   Implement choking/unchoking rounds in the Peer Master.
 - Implement a simpler bad map
   Rather than keep the kill-message (Which is always normal), keep a
    counter and make the counter be used.
+- Handle Endgame
 
 * TorrentControl
 - Consider: Simplifying state machine.

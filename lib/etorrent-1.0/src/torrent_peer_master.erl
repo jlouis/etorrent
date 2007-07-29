@@ -10,7 +10,8 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/4, add_peers/2]).
+-export([start_link/4, add_peers/2, uploaded_data/2, downloaded_data/2,
+	peer_interested/1, peer_not_interested/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -37,6 +38,18 @@ start_link(OurPeerId, InfoHash, StatePid, FileSystemPid) ->
 add_peers(Pid, IPList) ->
     gen_server:cast(Pid, {add_peers, IPList}).
 
+uploaded_data(Pid, Amount) ->
+    gen_server:call(Pid, {uploaded_data, Amount}).
+
+downloaded_data(Pid, Amount) ->
+    gen_server:call(Pid, {downloaded_data, Amount}).
+
+peer_interested(Pid) ->
+    gen_server:call(Pid, interested).
+
+peer_not_interested(Pid) ->
+    gen_server:call(Pid, not_interested).
+
 %%====================================================================
 %% gen_server callbacks
 %%====================================================================
@@ -50,6 +63,14 @@ init([OurPeerId, InfoHash, StatePid, FileSystemPid]) ->
 		 file_system_pid = FileSystemPid,
 		 peer_process_dict = dict:new() }}.
 
+handle_call({uploaded_data, _Amount}, _From, S) ->
+    {reply, ok, S};
+handle_call({downloaded_data, _Amount}, _From, S) ->
+    {reply, ok, S};
+handle_call(interested, _From, S) ->
+    {reply, ok, S};
+handle_call(not_interested, _From, S) ->
+    {reply, ok, S};
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -135,7 +156,8 @@ spawn_new_peer(IP, Port, PeerId, N, S) ->
 						PeerId,
 						S#state.info_hash,
 					        S#state.state_pid,
-					        S#state.file_system_pid),
+					        S#state.file_system_pid,
+					        self()),
 	    %sys:trace(Pid, true),
 	    torrent_peer:connect(Pid, S#state.our_peer_id),
 	    % TODO: Remove this hack:

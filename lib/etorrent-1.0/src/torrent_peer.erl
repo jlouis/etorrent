@@ -10,7 +10,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/6, connect/2, choke/1, unchoke/1, interested/1]).
+-export([start_link/7, connect/2, choke/1, unchoke/1, interested/1]).
 
 %% Temp API
 -export([chunkify/2]).
@@ -38,6 +38,7 @@
 		 piece_request = none,
 
 		 file_system_pid = none,
+		 master_pid = none,
 		 send_pid = none,
 		 state_pid = none}).
 
@@ -51,9 +52,9 @@
 %% Function: start_link() -> {ok,Pid} | ignore | {error,Error}
 %% Description: Starts the server
 %%--------------------------------------------------------------------
-start_link(IP, Port, PeerId, InfoHash, StatePid, FilesystemPid) ->
+start_link(IP, Port, PeerId, InfoHash, StatePid, FilesystemPid, MasterPid) ->
     gen_server:start_link(?MODULE, [IP, Port, PeerId, InfoHash,
-				    StatePid, FilesystemPid], []).
+				    StatePid, FilesystemPid, MasterPid], []).
 
 connect(Pid, MyPeerId) ->
     gen_server:cast(Pid, {connect, MyPeerId}).
@@ -78,7 +79,7 @@ interested(Pid) ->
 %%                         {stop, Reason}
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
-init([IP, Port, PeerId, InfoHash, StatePid, FilesystemPid]) ->
+init([IP, Port, PeerId, InfoHash, StatePid, FilesystemPid, MasterPid]) ->
     {ok, #state{ ip = IP,
 		 port = Port,
 		 peer_id = PeerId,
@@ -87,6 +88,7 @@ init([IP, Port, PeerId, InfoHash, StatePid, FilesystemPid]) ->
 		 remote_request_set = sets:new(),
 		 info_hash = InfoHash,
 		 state_pid = StatePid,
+		 master_pid = MasterPid,
 		 file_system_pid = FilesystemPid}}.
 
 %%--------------------------------------------------------------------
@@ -119,7 +121,8 @@ handle_cast({connect, MyPeerId}, S) ->
 	    {ok, SendPid} =
 		torrent_peer_send:start_link(Socket,
 					     S#state.file_system_pid,
-					     S#state.state_pid),
+					     S#state.state_pid,
+					     S#state.master_pid),
 	    %sys:trace(SendPid, true),
 	    BF = torrent_state:retrieve_bitfield(S#state.state_pid),
 	    torrent_peer_send:send(SendPid, {bitfield, BF}),
@@ -239,6 +242,7 @@ handle_message({bitfield, BitField}, S) ->
 handle_message({piece, Index, Offset, Data}, S) ->
     Len = size(Data),
     torrent_state:downloaded_data(S#state.state_pid, Len),
+    torrent_peer_master:downloaded_data(S#state.master_pid, Len),
     case handle_got_chunk(Index, Offset, Data, Len, S) of
 	fail ->
 	    {stop, error_in_got_chunk, S};
