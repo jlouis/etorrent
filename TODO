@@ -3,7 +3,6 @@
 ----------------------------------------------------------------------
 
 * Torrent_Peer
-- Send interest-messages to the peer_master.
 - Handle when a piece has errors
   When a piece has errors, we must handle it gracefully.
 

@@ -11,10 +11,8 @@
 
 %% API
 -export([start_link/2, report_to_tracker/1, report_from_tracker/3,
-	 retrieve_bitfield/1, remote_choked/1, remote_unchoked/1,
-	 remote_interested/1, remote_not_interested/1,
-	 remote_have_piece/2, num_pieces/1, remote_bitfield/2,
-	 remove_bitfield/2, request_new_piece/2,
+	 retrieve_bitfield/1, remote_have_piece/2, num_pieces/1,
+	 remote_bitfield/2, remove_bitfield/2, request_new_piece/2,
 	 downloaded_data/2, uploaded_data/2, got_piece_from_peer/3]).
 
 %% gen_server callbacks
@@ -57,18 +55,6 @@ report_from_tracker(Pid, Complete, Incomplete) ->
 retrieve_bitfield(Pid) ->
     gen_server:call(Pid,
 		    retrieve_bitfield, 10000).
-
-remote_choked(Pid) ->
-    gen_server:cast(Pid, {remote_choked, self()}).
-
-remote_unchoked(Pid) ->
-    gen_server:cast(Pid, {remote_unchoked, self()}).
-
-remote_interested(Pid) ->
-    gen_server:cast(Pid, {remote_interested, self()}).
-
-remote_not_interested(Pid) ->
-    gen_server:cast(Pid, {remote_not_interested, self()}).
 
 remote_have_piece(Pid, PieceNum) ->
     gen_server:call(Pid, {remote_have_piece, PieceNum}).
