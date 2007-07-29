@@ -102,10 +102,14 @@ handle_sync_event(_Evt, St, _From, S) ->
 handle_message({send, Message}, S) ->
     send_message(Message, S),
     {next_state, running, S, 0};
-handle_message(choke, S) ->
+handle_message(choke, S) when S#state.choke == true ->
+    {next_state, running, S};
+handle_message(choke, S) when S#state.choke == false ->
     send_message(choke, S),
     {next_state, running, S#state{choke = true}, 0};
-handle_message(unchoke, S) ->
+handle_message(unchoke, S) when S#state.choke == false ->
+    {next_state, running, S};
+handle_message(unchoke, S) when S#state.choke == true ->
     send_message(unchoke, S),
     {next_state, running, S#state{choke = false}, 0};
 handle_message(not_interested, S) ->
