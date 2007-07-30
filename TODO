@@ -28,13 +28,19 @@
 
 * Torrent_Peer
 - Handle when a piece has errors
-  When a piece has errors, we must handle it gracefully.
-- Is the Remote choking working correctly?
+  When a piece has errors, we must handle it gracefully. If the piece
+   has an error, we mark the peer as "dirty". If we get another error
+   from the peer, we simply disconnect him, because there must be
+   something seriously wrong at his connection. Consider a timer to
+   fire an eventual fallback.
 
 * TrackerDelegate
 - Graceful handle: etimedout
   If we can't connect to the tracker, it will time out. This must be
-   handled gracefully.
+   handled gracefully. The way is to track the last event we wanted to
+   send and ensure that it is recieved as a cast. Then, when we
+   timeout, we check for a last event and attempt to send that event
+   out.
 
 * TESTS!
 - Seeder-test
