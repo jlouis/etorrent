@@ -1,0 +1,6 @@
+default: all
+
+all:
+	aclocal
+	automake
+	autoconf
