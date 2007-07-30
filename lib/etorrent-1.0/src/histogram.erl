@@ -1,6 +1,7 @@
 %%%-------------------------------------------------------------------
 %%% File    : histogram.erl
 %%% Author  : Jesper Louis Andersen <>
+%%% License : See COPYING
 %%% Description : Piece histograms.
 %%%
 %%% Created : 26 Jul 2007 by Jesper Louis Andersen <>

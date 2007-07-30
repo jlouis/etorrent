@@ -1,6 +1,7 @@
 %%%-------------------------------------------------------------------
 %%% File    : dirwatcher.erl
 %%% Author  : Jesper Louis Andersen <jlouis@succubus>
+%%% License : See COPYING
 %%% Description : Watch a directory for the presence of torrent files.
 %%%               Send commands when files are added and removed.
 %%%

@@ -1,6 +1,7 @@
 %%%-------------------------------------------------------------------
 %%% File    : etorrent.erl
 %%% Author  : User Jlouis <jlouis@succubus.localdomain>
+%%% License : See COPYING
 %%% Description : Start up etorrent and supervise it.
 %%%
 %%% Created : 30 Jan 2007 by User Jlouis <jlouis@succubus.localdomain>

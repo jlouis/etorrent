@@ -1,6 +1,7 @@
 %%%-------------------------------------------------------------------
 %%% File    : tracker_delegate.erl
 %%% Author  : Jesper Louis Andersen <>
+%%% License : See COPYING
 %%% Description : Handles communication
 %%%
 %%% Created : 17 Jul 2007 by Jesper Louis Andersen <>

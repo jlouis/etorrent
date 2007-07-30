@@ -1,6 +1,7 @@
 %%%-------------------------------------------------------------------
 %%% File    : torrent_pool_sup.erl
 %%% Author  : Jesper Louis Andersen <>
+%%% License : See COPYING
 %%% Description : Supervisor for the pool of torrents
 %%%
 %%% Created : 13 Jul 2007 by Jesper Louis Andersen <>

@@ -1,6 +1,7 @@
 %%%-------------------------------------------------------------------
 %%% File    : torrent_state.erl
 %%% Author  : Jesper Louis Andersen <>
+%%% License : See COPYING
 %%% Description : Track the state of a torrent.
 %%%
 %%% Created : 14 Jul 2007 by Jesper Louis Andersen <>

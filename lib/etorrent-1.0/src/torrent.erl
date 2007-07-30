@@ -1,6 +1,7 @@
 %%%-------------------------------------------------------------------
 %%% File    : torrent.erl
 %%% Author  : Jesper Louis Andersen <jlouis@succubus.local.domain>
+%%% License : See COPYING
 %%% Description : Representation of a Torrent in eTorrent.
 %%%
 %%% Created : 12 Jul 2007 by Jesper Louis Andersen <jlouis@succubus.local.domain>

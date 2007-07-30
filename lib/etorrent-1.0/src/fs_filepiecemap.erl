@@ -1,6 +1,7 @@
 %%%-------------------------------------------------------------------
 %%% File    : fs_filepiecemap.erl
 %%% Author  : User Jlouis <jlouis@succubus.localdomain>
+%%% License : See COPYING
 %%% Description : Map pieces to files from torrents
 %%%
 %%% Created :  4 Feb 2007 by User Jlouis <jlouis@succubus.localdomain>

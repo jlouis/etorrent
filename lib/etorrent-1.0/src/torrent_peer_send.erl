@@ -1,6 +1,7 @@
 %%%-------------------------------------------------------------------
 %%% File    : torrent_peer_send.erl
 %%% Author  : Jesper Louis Andersen <jlouis@succubus>
+%%% License : See COPYING
 %%% Description : Send out events to a foreign socket.
 %%%
 %%% Created : 27 Jan 2007 by Jesper Louis Andersen <jlouis@succubus>

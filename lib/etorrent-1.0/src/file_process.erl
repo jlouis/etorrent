@@ -1,6 +1,7 @@
 %%%-------------------------------------------------------------------
 %%% File    : file_process.erl
 %%% Author  : User Jlouis <jlouis@succubus.localdomain>
+%%% License : See COPYING
 %%% Description : The file process implements an interface to a given
 %%%  file. It is possible to carry out the wished operations on the file
 %%%  in question for operating in a Torrent Client. The implementation has

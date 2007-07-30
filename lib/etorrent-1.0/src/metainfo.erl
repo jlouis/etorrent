@@ -1,6 +1,7 @@
 %%%-------------------------------------------------------------------
 %%% File    : metainfo.erl
 %%% Author  : Jesper Louis Andersen <jlouis@succubus>
+%%% License : See COPYING
 %%% Description : Code for manipulating the metainfo file
 %%%
 %%% Created : 24 Jan 2007 by Jesper Louis Andersen <jlouis@succubus>

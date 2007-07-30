@@ -1,6 +1,7 @@
 %%%-------------------------------------------------------------------
 %%% File    : bcoding.erl
 %%% Author  : Jesper Louis Andersen <jlouis@succubus>
+%%% License : See COPYING
 %%% Description : Functions for handling bcoded values
 %%%
 %%% Created : 24 Jan 2007 by Jesper Louis Andersen <jlouis@succubus>

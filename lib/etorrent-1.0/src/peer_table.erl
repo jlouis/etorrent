@@ -1,6 +1,7 @@
 %%%-------------------------------------------------------------------
 %%% File    : peer_table.erl
 %%% Author  : Jesper Louis Andersen <jlouis@succubus>
+%%% License : See COPYING
 %%% Description : Manage a table of the Pids, Peers, Torrents and stuff.
 %%%
 %%% Created : 25 Jan 2007 by Jesper Louis Andersen <jlouis@succubus>

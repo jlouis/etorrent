@@ -1,6 +1,7 @@
 %%%-------------------------------------------------------------------
 %%% File    : file_system.erl
 %%% Author  : User Jlouis <jlouis@succubus.localdomain>
+%%% License : See COPYING
 %%% Description : Implements access to the file system through
 %%%               file_process processes.
 %%%

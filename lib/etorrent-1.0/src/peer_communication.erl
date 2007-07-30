@@ -1,6 +1,7 @@
 %%%-------------------------------------------------------------------
 %%% File    : peer_communication.erl
 %%% Author  : Jesper Louis Andersen <jlouis@succubus>
+%%% License : See COPYING
 %%% Description : Various pieces of the peer protocol that takes a bit to
 %%%   handle.
 %%%

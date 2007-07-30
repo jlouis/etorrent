@@ -1,5 +1,6 @@
 %%% File    : serializer.erl
 %%% Author  : Jesper Louis Andersen <jlouis@succubus.local.domain>
+%%% License : See COPYING
 %%% Description : Serialization of operations. Used for checking torrents.
 %%%
 %%% Created :  9 Jul 2007 by Jesper Louis Andersen <jlouis@succubus.local.domain>

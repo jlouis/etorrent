@@ -1,6 +1,7 @@
 %%%-------------------------------------------------------------------
 %%% File    : torrent_sup.erl
 %%% Author  : Jesper Louis Andersen <jlouis@succubus.local.domain>
+%%% License : See COPYING
 %%% Description : Supervision of torrent modules.
 %%%
 %%% Created : 13 Jul 2007 by Jesper Louis Andersen <jlouis@succubus.local.domain>

@@ -1,6 +1,7 @@
 %%%-------------------------------------------------------------------
 %%% File    : random_source_sup.erl
 %%% Author  : Jesper Louis Andersen <jlouis@succubus.local.domain>
+%%% License : See COPYING
 %%% Description : Supervisor for the random source
 %%%
 %%% Created : 11 Jul 2007 by Jesper Louis Andersen <jlouis@succubus.local.domain>

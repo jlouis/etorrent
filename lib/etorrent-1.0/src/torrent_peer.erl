@@ -1,6 +1,7 @@
 %%%-------------------------------------------------------------------
 %%% File    : torrent_peer.erl
 %%% Author  : Jesper Louis Andersen <>
+%%% License : See COPYING
 %%% Description : Represents a peer
 %%%
 %%% Created : 19 Jul 2007 by Jesper Louis Andersen <>

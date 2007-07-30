@@ -1,6 +1,7 @@
 %%%-------------------------------------------------------------------
 %%% File    : check_torrent.erl
 %%% Author  : Jesper Louis Andersen <jlouis@succubus.local.domain>
+%%% License : See COPYING
 %%% Description : Code for checking the correctness of a torrent file map
 %%%
 %%% Created :  6 Jul 2007 by Jesper Louis Andersen <jlouis@succubus.local.domain>
