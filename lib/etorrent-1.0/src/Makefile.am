@@ -5,7 +5,7 @@ erlsrc_DATA = bcoding.erl check_torrent.erl dirwatcher.erl dirwatcher_sup.erl \
 	torrent_control.erl torrent_manager.erl torrent_peer.erl \
 	torrent_peer_master.erl torrent_peer_send.erl torrent_pool_sup.erl \
 	torrent_state.erl torrent_sup.erl tracker_delegate.erl utils.erl \
-	listener.erl
+	listener.erl acceptor.erl
 
 erlbeamdir = $(ERLANG_INSTALL_LIB_DIR_etorrent)/ebin
 erlbeam_DATA = $(erlsrc_DATA:.erl=.beam)
