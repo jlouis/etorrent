@@ -12,7 +12,7 @@
 
 %% API
 -export([start_link/4, send/2, remote_request/4, cancel/4, choke/1, unchoke/1,
-	 local_request/4, not_interested/1]).
+	 local_request/4, not_interested/1, send_have_piece/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_info/3, terminate/3, code_change/4,
@@ -57,6 +57,9 @@ unchoke(Pid) ->
 
 not_interested(Pid) ->
     gen_fsm:send_event(Pid, not_interested).
+
+send_have_piece(Pid, PieceNumber) ->
+    gen_fsm:send_event(Pid, {have, PieceNumber}).
 
 %%====================================================================
 %% gen_server callbacks
@@ -115,6 +118,9 @@ handle_message(unchoke, S) when S#state.choke == true ->
     {next_state, running, S#state{choke = false}, 0};
 handle_message(not_interested, S) ->
     send_message(not_interested, S),
+    {next_state, running, S};
+handle_message({have, Pn}, S) ->
+    send_message({have, Pn}, S),
     {next_state, running, S};
 handle_message({local_request_piece, Index, Offset, Len}, S) ->
     send_message({request, Index, Offset, Len}, S),

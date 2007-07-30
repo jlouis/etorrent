@@ -13,7 +13,7 @@
 %% API
 -export([start_link/4, add_peers/2, uploaded_data/2, downloaded_data/2,
 	peer_interested/1, peer_not_interested/1, peer_choked/1,
-	peer_unchoked/1]).
+	peer_unchoked/1, peer_got_piece/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -72,6 +72,9 @@ peer_choked(Pid) ->
 
 peer_unchoked(Pid) ->
     gen_server:call(Pid, unchoked).
+
+peer_got_piece(Pid, Index) ->
+    gen_server:cast(Pid, {peer_got_piece, Index}).
 
 %%====================================================================
 %% gen_server callbacks
@@ -143,6 +146,9 @@ handle_cast({add_peers, IPList}, S) ->
     io:format("Possible peers: ~p~n", [NS#state.available_peers]),
     {ok, NS2} = start_new_peers(NS),
     {noreply, NS2};
+handle_cast({peer_got_piece, Index}, S) ->
+    broadcast_have_message(Index, S),
+    {noreply, S};
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
@@ -190,6 +196,14 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 %%% Internal functions
 %%--------------------------------------------------------------------
+
+broadcast_have_message(Index, S) ->
+    Pids = dict:fetch_keys(S#state.peer_process_dict),
+    lists:foreach(fun(Pid) ->
+			  torrent_peer:send_have_piece(Pid, Index)
+		  end,
+		  Pids),
+    ok.
 
 select_optimistic_unchoker(DoNotTouchPids, S) ->
     Size = dict:size(S#state.peer_process_dict),

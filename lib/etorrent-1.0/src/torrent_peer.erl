@@ -11,7 +11,8 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/7, connect/2, choke/1, unchoke/1, interested/1]).
+-export([start_link/7, connect/2, choke/1, unchoke/1, interested/1,
+	 send_have_piece/2]).
 
 %% Temp API
 -export([chunkify/2]).
@@ -68,6 +69,9 @@ unchoke(Pid) ->
 
 interested(Pid) ->
     gen_server:cast(Pid, interested).
+
+send_have_piece(Pid, PieceNumber) ->
+    gen_server:cast(Pid, {send_have_piece, PieceNumber}).
 
 %%====================================================================
 %% gen_server callbacks
@@ -145,6 +149,16 @@ handle_cast(interested, S) ->
 	false ->
 	    send_message(interested, S),
 	    {noreply, S#state{local_interested = true}}
+    end;
+handle_cast({send_have_piece, PieceNumber}, S) ->
+    case sets:is_element(PieceNumber, S#state.piece_set) of
+	true ->
+	    % Peer has the piece, so ignore sending the HAVE message
+	    {noreply, S};
+	false ->
+	    % Peer is missing the piece, so send it.
+	    torrent_peer_send:send_have_piece(S#state.send_pid, PieceNumber),
+	    {noreply, S}
     end;
 handle_cast(_Msg, State) ->
     {noreply, State}.
@@ -290,6 +304,9 @@ check_and_store_piece(Index, S) ->
 			   S#state.state_pid,
 			   Index,
 			   piece_size(Piece)),
+		    ok = torrent_peer_master:got_piece_from_peer(
+			   S#state.master_pid,
+			   Index),
 		    ok;
 		fail ->
 		    piece_error

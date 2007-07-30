@@ -30,7 +30,6 @@
 - Handle when a piece has errors
   When a piece has errors, we must handle it gracefully.
 - Is the Remote choking working correctly?
-- When we get a piece, send out HAVE messages!
 
 * TrackerDelegate
 - Graceful handle: etimedout
