@@ -25,11 +25,6 @@
   This will make the system not behave as if it were always behind a
   NAT. The funny part is that we will need to have it understand the
   badmap as well. So it seems it should communicate with the peer.
-- Add license facts,
-  BSD-license. We need a spread of Erlang code!
-- Add author facts
-  They are there, but are incorrect in a lot of files. They must
-  be corrected.
 
 * Torrent_Peer
 - Handle when a piece has errors
