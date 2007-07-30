@@ -29,6 +29,7 @@
 	        control_pid = none}).
 
 -define(DEFAULT_REQUEST_TIMEOUT, 180).
+-define(DEFAULT_CONNECTION_TIMEOUT_INTERVAL, 1800000).
 
 %%====================================================================
 %% API
@@ -99,11 +100,11 @@ handle_call(_Request, _From, State) ->
 %% Description: Handling cast messages
 %%--------------------------------------------------------------------
 handle_cast(start_now, S) ->
-    Body = contact_tracker(S, "started"),
+    {ok, Body} = contact_tracker(S, "started"),
     {ok, NextRequestTime, NS} = decode_and_handle_body(Body, S),
     {noreply, NS, timer:seconds(NextRequestTime)};
 handle_cast(torrent_completed, S) ->
-    Body = contact_tracker(S, "completed"),
+    {ok, Body} = contact_tracker(S, "completed"),
     {ok, NextRequestTime, NS} = decode_and_handle_body(Body, S),
     {noreply, NS, timer:seconds(NextRequestTime)}.
 
@@ -114,9 +115,13 @@ handle_cast(torrent_completed, S) ->
 %% Description: Handling all non call/cast messages
 %%--------------------------------------------------------------------
 handle_info(timeout, S) ->
-    Body = contact_tracker(S, none),
-    {ok, NextRequestTime, NS} = decode_and_handle_body(Body, S),
-    {noreply, NS, timer:seconds(NextRequestTime)};
+    case contact_tracker(S, none) of
+	{ok, Body} ->
+	    {ok, NextRequestTime, NS} = decode_and_handle_body(Body, S),
+	    {noreply, NS, timer:seconds(NextRequestTime)};
+	{error, timedout} ->
+	    {noreply, S, timer:seconds(?DEFAULT_CONNECTION_TIMEOUT_INTERVAL)}
+    end;
 handle_info(Info, State) ->
     io:format("got info: ~p~n", [Info]),
     {noreply, State}.
@@ -145,7 +150,9 @@ contact_tracker(S, Event) ->
     NewUrl = build_tracker_url(S, Event),
     case http:request(NewUrl) of
 	{ok, {{_, 200, _}, _, Body}} ->
-	    Body
+	    {ok, Body};
+	{error, E} ->
+	    {error, E}
     end.
 
 decode_and_handle_body(Body, S) ->
