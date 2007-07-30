@@ -2,7 +2,6 @@
 -- This is a list of what To Do before a release is ready to be made.
 ----------------------------------------------------------------------
 
-
 * Peer Master
 - Implement a simpler bad map
   Rather than keep the kill-message (Which is always normal), keep a
@@ -26,7 +25,6 @@
   This will make the system not behave as if it were always behind a
   NAT. The funny part is that we will need to have it understand the
   badmap as well. So it seems it should communicate with the peer.
-- Implement the Autocrap tool support for installation.
 - Add license facts,
   BSD-license. We need a spread of Erlang code!
 - Add author facts
@@ -37,6 +35,12 @@
 - Handle when a piece has errors
   When a piece has errors, we must handle it gracefully.
 - Is the Remote choking working correctly?
+- When we get a piece, send out HAVE messages!
+
+* TrackerDelegate
+- Graceful handle: etimedout
+  If we can't connect to the tracker, it will time out. This must be
+   handled gracefully.
 
 * TESTS!
 - Seeder-test
@@ -91,3 +95,6 @@ VERSION ++ (Not decided yet)
 * Implement the fast extension.
   This will require some thought as there may be a very changed
    implementation in the peer clients.
+
+* Bandwidth limitation
+  Implement bandwidth limitation.
