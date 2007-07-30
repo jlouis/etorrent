@@ -28,6 +28,9 @@ start_link() ->
 %% Supervisor callbacks
 %%====================================================================
 init([]) ->
+    Listener = {listener,
+		{listener, start_link, []},
+		permanent, 2000, worker, [listener]},
     Serializer = {serializer,
 		  {serializer, start_link, []},
 		  permanent, 2000, worker, [serializer]},
@@ -41,7 +44,7 @@ init([]) ->
 		   {torrent_pool_sup, start_link, []},
 		   transient, infinity, supervisor, [torrent_pool_sup]},
     {ok, {{one_for_all, 1, 60},
-	  [Serializer, DirWatcherSup, TorrentMgr, TorrentPool]}}.
+	  [Listener, Serializer, DirWatcherSup, TorrentMgr, TorrentPool]}}.
 
 %%====================================================================
 %% Internal functions
