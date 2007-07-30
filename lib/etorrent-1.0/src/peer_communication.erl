@@ -98,7 +98,10 @@ send_message(Socket, Message) ->
     gen_tcp:send(Socket, Datagram).
 
 %%--------------------------------------------------------------------
-%% Function: initiate_handshake
+%% Function: initiate_handshake(socket(), peer_id(), peer_id(),
+%%                              info_hash()) ->
+%%                                         {ok, protocol_version()} |
+%%                                              {error, Reason}
 %% Description: Handshake with a peer where we have initiated with him.
 %%  This call is used if we are the initiator of a torrent handshake as
 %%  we then know the peer_id completely.

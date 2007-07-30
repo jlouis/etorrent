@@ -1,25 +1,22 @@
 %%%-------------------------------------------------------------------
-%%% File    : listener.erl
+%%% File    : acceptor.erl
 %%% Author  : Jesper Louis Andersen <>
-%%% License : See COPYING
-%%% Description : Listen for incoming connections
+%%% Description : Accept new connections from the network.
 %%%
 %%% Created : 30 Jul 2007 by Jesper Louis Andersen <>
 %%%-------------------------------------------------------------------
--module(listener).
+-module(acceptor).
 
 -behaviour(gen_server).
 
 %% API
--export([start_link/0]).
+-export([start_link/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3]).
 
--record(state, { listen_socket = none }).
-
--define(SERVER, ?MODULE).
+-record(state, { listen_socket = none}).
 
 %%====================================================================
 %% API
@@ -28,8 +25,8 @@
 %% Function: start_link() -> {ok,Pid} | ignore | {error,Error}
 %% Description: Starts the server
 %%--------------------------------------------------------------------
-start_link() ->
-    gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
+start_link(ListenSocket) ->
+    gen_server:start_link(?MODULE, [ListenSocket], []).
 
 %%====================================================================
 %% gen_server callbacks
@@ -42,9 +39,7 @@ start_link() ->
 %%                         {stop, Reason}
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
-init([]) ->
-    {ok, Port} = application:get_env(etorrent, port),
-    {ok, ListenSocket} = gen_tcp:listen(Port, [binary, inet]),
+init([ListenSocket]) ->
     {ok, #state{ listen_socket = ListenSocket}, 0}.
 
 %%--------------------------------------------------------------------
@@ -76,9 +71,15 @@ handle_cast(_Msg, State) ->
 %% Description: Handling all non call/cast messages
 %%--------------------------------------------------------------------
 handle_info(timeout, S) ->
-    {noreply, spawn_acceptors(S)};
-handle_info(_Info, State) ->
-    {noreply, State}.
+    case gen_tcp:accept(S#state.listen_socket) of
+	{ok, Socket} ->
+	    NS = handshake(Socket, S),
+	    {noreply, NS, 0};
+	{error, closed} ->
+	    {stop, normal};
+	{error, E} ->
+	    {stop, E}
+    end.
 
 %%--------------------------------------------------------------------
 %% Function: terminate(Reason, State) -> void()
@@ -101,5 +102,6 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%--------------------------------------------------------------------
 
-spawn_acceptors(S) ->
+handshake(_Socket, S) ->
+    error_logger:info_report(write_acceptor_handshake),
     S.
