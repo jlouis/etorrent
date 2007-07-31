@@ -188,7 +188,8 @@ handle_info(Info, State) ->
     io:format("Unknown info: ~p~n", [Info]),
     {noreply, State}.
 
-terminate(_Reason, _State) ->
+terminate(_Reason, S) ->
+    info_hash_map:remove_hash(S#state.info_hash),
     ok.
 
 code_change(_OldVsn, State, _Extra) ->
