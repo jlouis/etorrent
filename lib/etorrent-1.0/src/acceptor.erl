@@ -73,10 +73,10 @@ handle_cast(_Msg, State) ->
 handle_info(timeout, S) ->
     case gen_tcp:accept(S#state.listen_socket) of
 	{ok, Socket} ->
-	    NS = handshake(Socket, S),
-	    {noreply, NS, 0};
+	    handshake(Socket),
+	    {noreply, S, 0};
 	{error, closed} ->
-	    {stop, normal};
+	    {noreply, S, 0};
 	{error, E} ->
 	    {stop, E}
     end.
@@ -102,6 +102,35 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%--------------------------------------------------------------------
 
-handshake(_Socket, S) ->
-    error_logger:info_report(write_acceptor_handshake),
-    S.
+handshake(Socket) ->
+    case peer_communication:recieve_handshake(Socket) of
+	{ok, ReservedBytes, InfoHash, PeerId} ->
+	    lookup_infohash(Socket, ReservedBytes, InfoHash, PeerId);
+	{error, Reason} ->
+	    error_logger:info_report([acceptor_handshake, Reason]),
+	    gen_tcp:close(Socket),
+	    ok
+    end.
+
+lookup_infohash(Socket, ReservedBytes, InfoHash, PeerId) ->
+    case info_hash_map:lookup(InfoHash) of
+	{ok, Pid} ->
+	    inform_peer_master(Socket, Pid, ReservedBytes, PeerId);
+	not_found ->
+	    error_logger:info_report([connection_on_unknown_infohash,
+				      InfoHash]),
+	    gen_tcp:close(Socket),
+	    ok
+    end.
+
+inform_peer_master(Socket, Pid, ReservedBytes, PeerId) ->
+    case torrent_peer_master:new_incoming_peer(Pid, ReservedBytes, PeerId) of
+	{ok, PeerProcessPid} ->
+	    ok = gen_tcp:controlling_process(Socket, PeerProcessPid),
+	    torrent_peer:complete_handshake(PeerProcessPid),
+	    ok;
+	bad_peer ->
+	    error_logger:info_report([peer_id_is_bad, PeerId]),
+	    gen_tcp:close(Socket),
+	    ok
+    end.
