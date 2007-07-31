@@ -46,7 +46,7 @@ start_link() ->
 %%--------------------------------------------------------------------
 init([]) ->
     {ok, Port} = application:get_env(etorrent, port),
-    {ok, ListenSocket} = gen_tcp:listen(Port, [binary, inet]),
+    {ok, ListenSocket} = gen_tcp:listen(Port, [binary, inet, {active, false}]),
     {ok, #state{ listen_socket = ListenSocket}, 0}.
 
 %%--------------------------------------------------------------------
