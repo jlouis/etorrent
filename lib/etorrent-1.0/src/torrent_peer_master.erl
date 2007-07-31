@@ -13,7 +13,7 @@
 %% API
 -export([start_link/4, add_peers/2, uploaded_data/2, downloaded_data/2,
 	peer_interested/1, peer_not_interested/1, peer_choked/1,
-	peer_unchoked/1, got_piece_from_peer/2, new_incoming_peer]).
+	peer_unchoked/1, got_piece_from_peer/2, new_incoming_peer/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -76,8 +76,8 @@ peer_unchoked(Pid) ->
 got_piece_from_peer(Pid, Index) ->
     gen_server:cast(Pid, {got_piece_from_peer, Index}).
 
-new_incoming_peer(Pid, ReservedBytes, PeerId) ->
-    gen_server:call(Pid, {new_incoming_peer, ReservedBytes, PeerId}).
+new_incoming_peer(Pid, PeerId) ->
+    gen_server:call(Pid, {new_incoming_peer, PeerId}).
 
 %%====================================================================
 %% gen_server callbacks
@@ -141,14 +141,14 @@ handle_call(not_interested, {Pid, _Tag}, S) ->
 			  PI#peer_info{interested = false}
 		  end,
 		  S)};
-handle_call({new_incoming_peer, ReservedBytes, PeerId}, _From, S) ->
-    case is_bad_peer(PeerId, S) of
-	true ->
-	    {reply, bad_peer, S};
-	false ->
-	    % TODO: Rewrite this to return a Pid from the started server!
-	    {reply, bad_peer, S}
-    end;
+handle_call({new_incoming_peer, PeerId}, _From, S) ->
+    {Reply, NS} = case is_bad_peer(PeerId, S) of
+		      true ->
+			  {bad_peer, S};
+		      false ->
+			  start_new_incoming_peer(PeerId, S)
+		  end,
+    {reply, Reply, NS};
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -209,6 +209,23 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 %%% Internal functions
 %%--------------------------------------------------------------------
+
+start_new_incoming_peer(PeerId, S) ->
+    PeersMissing =
+	?MAX_PEER_PROCESSES - dict:size(S#state.peer_process_dict),
+    if
+	PeersMissing > 0 ->
+	    {ok, Pid} = torrent_peer:start_link(PeerId,
+						S#state.info_hash,
+						S#state.state_pid,
+						S#state.file_system_pid,
+						self()),
+	    PI = #peer_info{ip = unknown, port = unknown, peer_id = PeerId},
+	    D = dict:store(Pid, PI, S#state.peer_process_dict),
+	    {ok, S#state{peer_process_dict = D}};
+	true ->
+	    already_enough_connections
+    end.
 
 broadcast_have_message(Index, S) ->
     Pids = dict:fetch_keys(S#state.peer_process_dict),
@@ -359,14 +376,13 @@ spawn_new_peer(IP, Port, PeerId, N, S) ->
 	true ->
 	    fill_peers(N, S);
 	false ->
-	    {ok, Pid} = torrent_peer:start_link(IP, Port,
-						PeerId,
+	    {ok, Pid} = torrent_peer:start_link(PeerId,
 						S#state.info_hash,
 					        S#state.state_pid,
 					        S#state.file_system_pid,
 					        self()),
 	    %sys:trace(Pid, true),
-	    torrent_peer:connect(Pid, S#state.our_peer_id),
+	    torrent_peer:connect(Pid, IP, Port, S#state.our_peer_id),
 	    % TODO: Remove this hack:
 	    torrent_peer:unchoke(Pid),
 	    PI = #peer_info{ip = IP, port = Port, peer_id = PeerId},
