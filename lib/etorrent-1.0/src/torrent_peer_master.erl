@@ -146,7 +146,7 @@ handle_cast({add_peers, IPList}, S) ->
     io:format("Possible peers: ~p~n", [NS#state.available_peers]),
     {ok, NS2} = start_new_peers(NS),
     {noreply, NS2};
-handle_cast({got_piece_from_pere, Index}, S) ->
+handle_cast({got_piece_from_peer, Index}, S) ->
     broadcast_have_message(Index, S),
     {noreply, S};
 handle_cast(_Msg, State) ->
