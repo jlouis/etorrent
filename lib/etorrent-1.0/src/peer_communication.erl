@@ -10,7 +10,8 @@
 -module(peer_communication).
 
 %% API
--export([initiate_handshake/4]).
+-export([initiate_handshake/4, recieve_handshake/1,
+	 complete_handshake_header/3]).
 -export([send_message/2, recv_message/1,
 	 construct_bitfield/2, destruct_bitfield/2]).
 
@@ -35,7 +36,8 @@
 %% API
 %%====================================================================
 %%--------------------------------------------------------------------
-%% Function: recv_message(Message)
+%% Function: recv_message(Message) -> keep_alive | choke | unchoke |
+%%   interested | not_interested | {have, integer()} | ...
 %% Description: Receive a message from a peer and decode it
 %%--------------------------------------------------------------------
 recv_message(Message) ->
@@ -98,6 +100,31 @@ send_message(Socket, Message) ->
     gen_tcp:send(Socket, Datagram).
 
 %%--------------------------------------------------------------------
+%% Function: recieve_handshake(Socket) -> {ok, protocol_version,
+%%                                             info_hash(),
+%%                                             remote_peer_id()} |
+%%                                        {error, Reason}
+%% Description: Recieve a handshake from another peer. In the recieve,
+%%  we don't send the info_hash, but expect the initiator to send what
+%%  he thinks is the correct hash. For the return value, see the
+%%  function recieve_header()
+%%--------------------------------------------------------------------
+recieve_handshake(Socket) ->
+    Header = build_peer_protocol_header(),
+    ok = gen_tcp:send(Socket, Header),
+    recieve_header(Socket).
+
+%%--------------------------------------------------------------------
+%% Function: complete_handshake_header(socket(),
+%%   info_hash(), peer_id()) -> ok
+%% Description: Complete the handshake with the peer in the other end.
+%%--------------------------------------------------------------------
+complete_handshake_header(Socket, InfoHash, LocalPeerId) ->
+    ok = gen_tcp:send(Socket, InfoHash),
+    ok = gen_tcp:send(Socket, LocalPeerId),
+    ok.
+
+%%--------------------------------------------------------------------
 %% Function: initiate_handshake(socket(), peer_id(), peer_id(),
 %%                              info_hash()) ->
 %%                                         {ok, protocol_version()} |
@@ -106,24 +133,18 @@ send_message(Socket, Message) ->
 %%  This call is used if we are the initiator of a torrent handshake as
 %%  we then know the peer_id completely.
 %%--------------------------------------------------------------------
-initiate_handshake(Socket, PeerId, MyPeerId, InfoHash) ->
-    PSSize = length(?PROTOCOL_STRING),
-    BinPeerId = list_to_binary(PeerId),
+initiate_handshake(Socket, RemotePeerId, LocalPeerId, InfoHash) ->
+    BinPeerId = list_to_binary(RemotePeerId),
     % Since we are the initiator, send out this handshake
-    Header = <<PSSize:8, ?PROTOCOL_STRING, ?RESERVED_BYTES>>,
+    Header = build_peer_protocol_header(),
     ok = gen_tcp:send(Socket, Header),
-    ok = gen_tcp:send(Socket, InfoHash),
-    ok = gen_tcp:send(Socket, MyPeerId),
+    complete_handshake_header(Socket, InfoHash, LocalPeerId),
     % Now, we wait for his handshake to arrive on the socket
     % Since we are the initiator, he is requested to fire off everything
     % to us.
-    case gen_tcp:recv(Socket, ?HANDSHAKE_SIZE, ?DEFAULT_HANDSHAKE_TIMEOUT) of
-	{ok, Packet} ->
-	    <<PSL:8/integer, ?PROTOCOL_STRING, ReservedBytes:8/binary,
-	      IH:20/binary, PI:20/binary>> = Packet,
+    case recieve_header(Socket) of
+	{ok, ReservedBytes, IH, PI} ->
 	    if
-		PSL /= PSSize ->
-		    {error, packet_size_mismatch};
 		IH /= InfoHash ->
 		    {error, infohash_mismatch};
 		PI /= BinPeerId ->
@@ -138,6 +159,39 @@ initiate_handshake(Socket, PeerId, MyPeerId, InfoHash) ->
 %%====================================================================
 %% Internal functions
 %%====================================================================
+
+%%--------------------------------------------------------------------
+%% Function: build_peer_protocol_header() -> binary()
+%% Description: Returns the Peer Protocol header.
+%%--------------------------------------------------------------------
+build_peer_protocol_header() ->
+    PSSize = length(?PROTOCOL_STRING),
+    <<PSSize:8, ?PROTOCOL_STRING, ?RESERVED_BYTES>>.
+
+%%--------------------------------------------------------------------
+%% Function: recieve_header(socket()) -> {ok, proto_version(),
+%%                                            info_hash(),
+%%                                            remote_peer_id()} |
+%%                                       {error, Reason}
+%% Description: Recieve the full header from a peer. The function
+%% returns either with an error or successfully with a
+%% protocol_version string, the infohash the remote sent us and his
+%% peer_id.
+%% --------------------------------------------------------------------
+recieve_header(Socket) ->
+    case gen_tcp:recv(Socket, ?HANDSHAKE_SIZE, ?DEFAULT_HANDSHAKE_TIMEOUT) of
+	{ok, Packet} ->
+	    <<PSL:8/integer, ?PROTOCOL_STRING, ReservedBytes:8/binary,
+	     IH:20/binary, PI:20/binary>> = Packet,
+	    if
+		PSL /= length(?PROTOCOL_STRING) ->
+		    {error, packet_size_mismatch};
+		true ->
+		    {ok, ReservedBytes, IH, PI}
+	    end;
+	{error, X} ->
+	    {error, X}
+    end.
 
 %%--------------------------------------------------------------------
 %% Function: construct_bitfield
