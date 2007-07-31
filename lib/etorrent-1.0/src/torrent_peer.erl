@@ -21,9 +21,7 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3]).
 
--record(state, { ip = none,
-		 port = none,
-		 peer_id = none,
+-record(state, { peer_id = none,
 		 info_hash = none,
 
 		 tcp_socket = none,
@@ -84,10 +82,8 @@ send_have_piece(Pid, PieceNumber) ->
 %%                         {stop, Reason}
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
-init([IP, Port, PeerId, InfoHash, StatePid, FilesystemPid, MasterPid]) ->
-    {ok, #state{ ip = IP,
-		 port = Port,
-		 peer_id = PeerId,
+init([PeerId, InfoHash, StatePid, FilesystemPid, MasterPid]) ->
+    {ok, #state{ peer_id = PeerId,
 		 piece_set = sets:new(),
 		 request_queue = queue:new(),
 		 remote_request_set = sets:new(),
@@ -115,11 +111,11 @@ handle_call(_Request, _From, State) ->
 %%                                      {stop, Reason, State}
 %% Description: Handling cast messages
 %%--------------------------------------------------------------------
-handle_cast({connect, MyPeerId}, S) ->
-    Socket = int_connect(S#state.ip, S#state.port),
+handle_cast({connect, IP, Port, LocalPeerId}, S) ->
+    Socket = int_connect(IP, Port),
     case peer_communication:initiate_handshake(Socket,
 					       S#state.peer_id,
-					       MyPeerId,
+					       LocalPeerId,
 					       S#state.info_hash) of
 	{ok, _ReservedBytes} ->
 	    enable_socket_messages(Socket),
