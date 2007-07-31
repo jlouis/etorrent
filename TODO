@@ -27,8 +27,16 @@
   badmap as well. So it seems it should communicate with the peer.
 
   ** (DONE) Handshake code.
-  ** Make the acceptor handshake.
-  ** Think about how to get the Information to the right peer_master
+  ** (DONE) Make the acceptor handshake.
+  ** (DONE) Think about how to get the Information to the right
+   peer_master
+  ** Rewrite the torrent_peer startup code so the connect() call takes
+   the IP address and Port as input parameters.
+
+  ** Write peer_master handshake code. (dialyzer tells what to implement)
+  ** Write torrent_peer handshake code. (dialyzer tells what to
+   implement)
+
 
 * Torrent_Peer
 - Handle when a piece has errors
@@ -45,6 +53,8 @@
    send and ensure that it is recieved as a cast. Then, when we
    timeout, we check for a last event and attempt to send that event
    out.
+
+* TODO removal sweep!
 
 * TESTS!
 - Seeder-test
@@ -65,6 +75,9 @@
 ------------------------------------------------------------
 VERSION ++ (Not decided yet)
 ------------------------------------------------------------
+* Use Edoc
+- This takes time, so pick a single module at a time and correct it
+
 * TorrentManager
 - Check if a torrent is duplicate.
   We must check if a given torrent file which has just been added is a
