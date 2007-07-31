@@ -13,7 +13,7 @@
 %% API
 -export([start_link/4, add_peers/2, uploaded_data/2, downloaded_data/2,
 	peer_interested/1, peer_not_interested/1, peer_choked/1,
-	peer_unchoked/1, peer_got_piece/2]).
+	peer_unchoked/1, got_piece_from_peer/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -73,8 +73,8 @@ peer_choked(Pid) ->
 peer_unchoked(Pid) ->
     gen_server:call(Pid, unchoked).
 
-peer_got_piece(Pid, Index) ->
-    gen_server:cast(Pid, {peer_got_piece, Index}).
+got_piece_from_peer(Pid, Index) ->
+    gen_server:cast(Pid, {got_piece_from_peer, Index}).
 
 %%====================================================================
 %% gen_server callbacks
@@ -146,7 +146,7 @@ handle_cast({add_peers, IPList}, S) ->
     io:format("Possible peers: ~p~n", [NS#state.available_peers]),
     {ok, NS2} = start_new_peers(NS),
     {noreply, NS2};
-handle_cast({peer_got_piece, Index}, S) ->
+handle_cast({got_piece_from_pere, Index}, S) ->
     broadcast_have_message(Index, S),
     {noreply, S};
 handle_cast(_Msg, State) ->
