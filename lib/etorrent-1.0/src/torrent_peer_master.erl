@@ -83,6 +83,7 @@ got_piece_from_peer(Pid, Index) ->
 init([OurPeerId, InfoHash, StatePid, FileSystemPid]) ->
     process_flag(trap_exit, true), % Needed for torrent peers
     {ok, Tref} = timer:send_interval(?ROUND_TIME, self(), round_tick),
+    ok = info_hash_map:store_hash(InfoHash),
     {ok, #state{ our_peer_id = OurPeerId,
 		 bad_peers = dict:new(),
 		 info_hash = InfoHash,
