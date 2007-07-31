@@ -28,6 +28,9 @@ start_link() ->
 %% Supervisor callbacks
 %%====================================================================
 init([]) ->
+    InfoHashMap = {info_hash_map,
+		   {info_hash_map, start_link, []},
+		    permanent, 2000, worker, [info_hash_map]},
     Listener = {listener,
 		{listener, start_link, []},
 		permanent, 2000, worker, [listener]},
@@ -44,7 +47,8 @@ init([]) ->
 		   {torrent_pool_sup, start_link, []},
 		   transient, infinity, supervisor, [torrent_pool_sup]},
     {ok, {{one_for_all, 1, 60},
-	  [Listener, Serializer, DirWatcherSup, TorrentMgr, TorrentPool]}}.
+	  [InfoHashMap, Listener, Serializer,
+	   DirWatcherSup, TorrentMgr, TorrentPool]}}.
 
 %%====================================================================
 %% Internal functions
