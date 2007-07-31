@@ -26,6 +26,10 @@
   NAT. The funny part is that we will need to have it understand the
   badmap as well. So it seems it should communicate with the peer.
 
+  ** (DONE) Handshake code.
+  ** Make the acceptor handshake.
+  ** Think about how to get the Information to the right peer_master
+
 * Torrent_Peer
 - Handle when a piece has errors
   When a piece has errors, we must handle it gracefully. If the piece
