@@ -20,24 +20,6 @@
   The state machine can be simplified a great deal if you are smart
    and inject most torrent information via the start_link message.
 
-* General stuff
-- Implement support for listening connections
-  This will make the system not behave as if it were always behind a
-  NAT. The funny part is that we will need to have it understand the
-  badmap as well. So it seems it should communicate with the peer.
-
-  ** (DONE) Handshake code.
-  ** (DONE) Make the acceptor handshake.
-  ** (DONE) Think about how to get the Information to the right
-   peer_master
-  ** Rewrite the torrent_peer startup code so the connect() call takes
-   the IP address and Port as input parameters.
-
-  ** Write peer_master handshake code. (dialyzer tells what to implement)
-  ** Write torrent_peer handshake code. (dialyzer tells what to
-   implement)
-
-
 * Torrent_Peer
 - Handle when a piece has errors
   When a piece has errors, we must handle it gracefully. If the piece
