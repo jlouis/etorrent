@@ -13,7 +13,7 @@
 %% API
 -export([start_link/4, add_peers/2, uploaded_data/2, downloaded_data/2,
 	peer_interested/1, peer_not_interested/1, peer_choked/1,
-	peer_unchoked/1, got_piece_from_peer/2]).
+	peer_unchoked/1, got_piece_from_peer/2, new_incoming_peer]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -75,6 +75,9 @@ peer_unchoked(Pid) ->
 
 got_piece_from_peer(Pid, Index) ->
     gen_server:cast(Pid, {got_piece_from_peer, Index}).
+
+new_incoming_peer(Pid, ReservedBytes, PeerId) ->
+    gen_server:call(Pid, {new_incoming_peer, ReservedBytes, PeerId}).
 
 %%====================================================================
 %% gen_server callbacks
@@ -138,6 +141,14 @@ handle_call(not_interested, {Pid, _Tag}, S) ->
 			  PI#peer_info{interested = false}
 		  end,
 		  S)};
+handle_call({new_incoming_peer, ReservedBytes, PeerId}, _From, S) ->
+    case is_bad_peer(PeerId, S) of
+	true ->
+	    {reply, bad_peer, S};
+	false ->
+	    % TODO: Rewrite this to return a Pid from the started server!
+	    {reply, bad_peer, S}
+    end;
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -364,18 +375,19 @@ spawn_new_peer(IP, Port, PeerId, N, S) ->
     end.
 
 is_bad_peer_or_ourselves(PeerId, S) ->
-    case string:equal(PeerId, S#state.our_peer_id) of
-	true ->
+    is_ourselves(PeerId, S) or is_bad_peer(PeerId, S).
+
+is_ourselves(PeerId, S) ->
+    string:equal(PeerId, S#state.our_peer_id).
+
+is_bad_peer(PeerId, S) ->
+    case dict:find(PeerId, S#state.bad_peers) of
+	{ok, [_E]} ->
+	    false;
+	{ok, _X} ->
 	    true;
-	false ->
-	    case dict:find(PeerId, S#state.bad_peers) of
-		{ok, [_E]} ->
-		    false;
-		{ok, _X} ->
-		    true;
-		error ->
-		    false
-	    end
+	error ->
+	    false
     end.
 
 find_peer_id_in_process_list(PeerId, S) ->
