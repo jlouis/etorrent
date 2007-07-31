@@ -124,8 +124,7 @@ lookup_infohash(Socket, ReservedBytes, InfoHash, PeerId) ->
     end.
 
 inform_peer_master(Socket, Pid, ReservedBytes, PeerId) ->
-    case torrent_peer_master:new_incoming_peer(Pid, ReservedBytes,
-					       PeerId, Socket) of
+    case torrent_peer_master:new_incoming_peer(Pid, PeerId) of
 	{ok, PeerProcessPid} ->
 	    ok = gen_tcp:controlling_process(Socket, PeerProcessPid),
 	    torrent_peer:complete_handshake(PeerProcessPid,
