@@ -11,8 +11,8 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/7, connect/2, choke/1, unchoke/1, interested/1,
-	 send_have_piece/2]).
+-export([start_link/6, connect/3, choke/1, unchoke/1, interested/1,
+	 send_have_piece/2, complete_handshake/3]).
 
 %% Temp API
 -export([chunkify/2]).
@@ -21,7 +21,8 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3]).
 
--record(state, { peer_id = none,
+-record(state, { peer_id = none, % TODO: Rename to remote_peer_id
+		 local_peer_id = none,
 		 info_hash = none,
 
 		 tcp_socket = none,
@@ -52,12 +53,12 @@
 %% Function: start_link() -> {ok,Pid} | ignore | {error,Error}
 %% Description: Starts the server
 %%--------------------------------------------------------------------
-start_link(IP, Port, PeerId, InfoHash, StatePid, FilesystemPid, MasterPid) ->
-    gen_server:start_link(?MODULE, [IP, Port, PeerId, InfoHash,
+start_link(PeerId, LocalPeerId, InfoHash, StatePid, FilesystemPid, MasterPid) ->
+    gen_server:start_link(?MODULE, [PeerId, LocalPeerId, InfoHash,
 				    StatePid, FilesystemPid, MasterPid], []).
 
-connect(Pid, MyPeerId) ->
-    gen_server:cast(Pid, {connect, MyPeerId}).
+connect(Pid, IP, Port) ->
+    gen_server:cast(Pid, {connect, IP, Port}).
 
 choke(Pid) ->
     gen_server:cast(Pid, choke).
@@ -71,6 +72,9 @@ interested(Pid) ->
 send_have_piece(Pid, PieceNumber) ->
     gen_server:cast(Pid, {send_have_piece, PieceNumber}).
 
+complete_handshake(Pid, ReservedBytes, Socket) ->
+    gen_server:cast(Pid, {complete_handshake, ReservedBytes, Socket}).
+
 %%====================================================================
 %% gen_server callbacks
 %%====================================================================
@@ -82,8 +86,9 @@ send_have_piece(Pid, PieceNumber) ->
 %%                         {stop, Reason}
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
-init([PeerId, InfoHash, StatePid, FilesystemPid, MasterPid]) ->
+init([PeerId, LocalPeerId, InfoHash, StatePid, FilesystemPid, MasterPid]) ->
     {ok, #state{ peer_id = PeerId,
+		 local_peer_id = LocalPeerId,
 		 piece_set = sets:new(),
 		 request_queue = queue:new(),
 		 remote_request_set = sets:new(),
@@ -111,11 +116,11 @@ handle_call(_Request, _From, State) ->
 %%                                      {stop, Reason, State}
 %% Description: Handling cast messages
 %%--------------------------------------------------------------------
-handle_cast({connect, IP, Port, LocalPeerId}, S) ->
+handle_cast({connect, IP, Port}, S) ->
     Socket = int_connect(IP, Port),
     case peer_communication:initiate_handshake(Socket,
 					       S#state.peer_id,
-					       LocalPeerId,
+					       S#state.local_peer_id,
 					       S#state.info_hash) of
 	{ok, _ReservedBytes} ->
 	    enable_socket_messages(Socket),
@@ -132,6 +137,20 @@ handle_cast({connect, IP, Port, LocalPeerId}, S) ->
 	{error, X} ->
 	    exit(X)
     end;
+handle_cast({complete_handshake, _ReservedBytes, Socket}, S) ->
+    peer_communication:complete_handshake_header(Socket,
+						 S#state.info_hash,
+						 S#state.local_peer_id),
+    enable_socket_messages(Socket),
+    {ok, SendPid} =
+	torrent_peer_send:start_link(Socket,
+				     S#state.file_system_pid,
+				     S#state.state_pid,
+				     S#state.master_pid),
+    BF = torrent_state:retrieve_bitfield(S#state.state_pid),
+    torrent_peer_send:send(SendPid, {bitfield, BF}),
+    {noreply, S#state{tcp_socket = Socket,
+		      send_pid = SendPid}};
 handle_cast(choke, S) ->
     torrent_peer_send:choke(S#state.send_pid),
     {noreply, S};
