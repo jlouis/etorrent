@@ -103,9 +103,12 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%--------------------------------------------------------------------
 
+%%--------------------------------------------------------------------
+%% Func: spawn_acceptors(N, state()) -> state()
+%% Description: Spawn N acceptors.
+%%--------------------------------------------------------------------
 spawn_acceptors(0, S) ->
     S;
 spawn_acceptors(N, S) ->
     {ok, Pid} = acceptor:start_link(S#state.listen_socket),
     spawn_acceptors(N-1, S#state{acceptors = [Pid | S#state.acceptors]}).
-
