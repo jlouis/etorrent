@@ -37,8 +37,6 @@
 		    remote_choking = true,
 
 		    optimistic_unchoke = false,
-		    ip = none,
-		    port = 0,
 		    peer_id = none}).
 
 -define(MAX_PEER_PROCESSES, 40).
@@ -220,7 +218,7 @@ start_new_incoming_peer(PeerId, S) ->
 						S#state.state_pid,
 						S#state.file_system_pid,
 						self()),
-	    PI = #peer_info{ip = unknown, port = unknown, peer_id = PeerId},
+	    PI = #peer_info{peer_id = PeerId},
 	    D = dict:store(Pid, PI, S#state.peer_process_dict),
 	    {ok, S#state{peer_process_dict = D}};
 	true ->
@@ -385,7 +383,7 @@ spawn_new_peer(IP, Port, PeerId, N, S) ->
 	    torrent_peer:connect(Pid, IP, Port, S#state.our_peer_id),
 	    % TODO: Remove this hack:
 	    torrent_peer:unchoke(Pid),
-	    PI = #peer_info{ip = IP, port = Port, peer_id = PeerId},
+	    PI = #peer_info{peer_id = PeerId},
 	    D = dict:store(Pid, PI, S#state.peer_process_dict),
 	    fill_peers(N-1, S#state{ peer_process_dict = D})
     end.
