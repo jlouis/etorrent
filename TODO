@@ -9,16 +9,14 @@
 - Handle Endgame
   Endgame requires global control of all peers. It should be
    implemented, but first when the rest of the system begins to work.
-- Implement seeding
-  We are not doing anything specific to take care of seeding right
-  now. This must obviously be cared for. The way to do it is in the
-  torrent_state process.
 - Handle Snubbing
 
 * TorrentControl
 - Consider: Simplifying state machine.
   The state machine can be simplified a great deal if you are smart
    and inject most torrent information via the start_link message.
+- Make the state machine have states leeching/seeding
+  This will implement the possibility of starting up as a seeder.
 
 * Torrent_Peer
 - Handle when a piece has errors
@@ -37,9 +35,6 @@
    out.
 
 * TODO removal sweep!
-
-* Think about a global Pid mapper rather than having a local one.
-- This solution may make the individual processes much easier to make.
 
 * TESTS!
 - Seeder-test
