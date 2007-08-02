@@ -13,7 +13,8 @@
 %% API
 -export([start_link/4, add_peers/2, uploaded_data/2, downloaded_data/2,
 	peer_interested/1, peer_not_interested/1, peer_choked/1,
-	peer_unchoked/1, got_piece_from_peer/2, new_incoming_peer/2]).
+	peer_unchoked/1, got_piece_from_peer/2, new_incoming_peer/2,
+	seed/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -29,7 +30,9 @@
 		round = 0,
 
 	        state_pid = none,
-	        file_system_pid = none}).
+	        file_system_pid = none,
+
+	        mode = leeching}).
 
 -record(peer_info, {uploaded = 0,
 		    downloaded = 0,
@@ -76,6 +79,9 @@ got_piece_from_peer(Pid, Index) ->
 
 new_incoming_peer(Pid, PeerId) ->
     gen_server:call(Pid, {new_incoming_peer, PeerId}).
+
+seed(Pid) ->
+    gen_server:cast(Pid, seed).
 
 %%====================================================================
 %% gen_server callbacks
@@ -159,6 +165,8 @@ handle_cast({add_peers, IPList}, S) ->
 handle_cast({got_piece_from_peer, Index}, S) ->
     broadcast_have_message(Index, S),
     {noreply, S};
+handle_cast(seed, S) ->
+    {noreply, S#state{mode = seeding}};
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
@@ -275,8 +283,8 @@ perform_choking_unchoking(S) ->
 
     % N fastest interesteds should be kept
     {Downloaders, Rest} =
-	find_fastest_downloaders(?DEFAULT_NUM_DOWNLOADERS,
-			   Interested),
+	find_fastest_peers(?DEFAULT_NUM_DOWNLOADERS,
+			   Interested, S),
     unchoke_peers(Downloaders),
 
     % All peers not interested should be unchoked
@@ -295,16 +303,31 @@ remove_optimistic_unchoking(S) ->
 		  end,
 		  S).
 
-find_fastest_downloaders(N, Interested) ->
-    List = lists:sort(
-	     fun ({_K1, PI1}, {_K2, PI2}) ->
-		     PI1#peer_info.downloaded > PI2#peer_info.downloaded
-	     end,
-	     dict:to_list(Interested)),
+sort_fastest_downloaders(Peers) ->
+    lists:sort(
+      fun ({_K1, PI1}, {_K2, PI2}) ->
+	      PI1#peer_info.downloaded > PI2#peer_info.downloaded
+      end,
+      dict:to_list(Peers)).
+
+sort_fastest_uploaders(Peers) ->
+    lists:sort(
+      fun ({_K1, PI1}, {_K2, PI2}) ->
+	      PI1#peer_info.uploaded > PI2#peer_info.uploaded
+      end,
+      dict:to_list(Peers)).
+
+find_fastest(N, Interested, F) ->
+    List = F(Interested),
     PidList = lists:map(fun({K, _V}) -> K end, List),
     SplitPoint = lists:min([length(PidList), N]),
     {Downloaders, Rest} = lists:split(SplitPoint, PidList),
     {Downloaders, Rest}.
+
+find_fastest_peers(N, Interested, S) when S#state.mode == leeching ->
+    find_fastest(N, Interested, fun sort_fastest_downloaders/1);
+find_fastest_peers(N, Interested, S) when S#state.mode == seeding ->
+    find_fastest(N, Interested, fun sort_fastest_uploaders/1).
 
 unchoke_peers(Pids) ->
     lists:foreach(fun(P) -> torrent_peer:unchoke(P) end, Pids),
