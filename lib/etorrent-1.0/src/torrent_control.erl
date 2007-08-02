@@ -12,7 +12,7 @@
 
 %% API
 -export([start_link/0, token/1, start/1, stop/1, load_new_torrent/3,
-	torrent_checked/2, tracker_error_report/2,
+	torrent_checked/2, tracker_error_report/2, seed/1,
 	tracker_warning_report/2]).
 
 %% gen_fsm callbacks
@@ -66,6 +66,8 @@ tracker_error_report(Pid, Report) ->
 tracker_warning_report(Pid, Report) ->
     gen_fsm:send_event(Pid, {tracker_warning_report, Report}).
 
+seed(Pid) ->
+    gen_fsm:send_event(Pid, seed).
 
 %%====================================================================
 %% gen_fsm callbacks
@@ -121,7 +123,8 @@ check_and_start_torrent(FS, FileDict, S) ->
     ok = serializer:release_token(),
     {ok, StatePid} = torrent_state:start_link(
 		       DiskState,
-		       metainfo:get_piece_length(S#state.torrent)),
+		       metainfo:get_piece_length(S#state.torrent),
+		       self()),
     {ok, PeerMasterPid} =
 	torrent_peer_master:start_link(
 	  S#state.peer_id,
@@ -157,6 +160,9 @@ started(stop, S) ->
     {stop, argh, S};
 started({tracker_error_report, Reason}, S) ->
     io:format("Got tracker error: ~s~n", [Reason]),
+    {next_state, started, S};
+started(seed, S) ->
+    torrent_peer_master:seed(S#state.peer_master_pid),
     {next_state, started, S};
 started(token, S) ->
     ok = serializer:release_token(),

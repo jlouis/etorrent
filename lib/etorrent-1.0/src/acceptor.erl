@@ -127,6 +127,7 @@ inform_peer_master(Socket, Pid, ReservedBytes, PeerId) ->
     case torrent_peer_master:new_incoming_peer(Pid, PeerId) of
 	{ok, PeerProcessPid} ->
 	    ok = gen_tcp:controlling_process(Socket, PeerProcessPid),
+	    % TODO: Pass PeerId here?
 	    torrent_peer:complete_handshake(PeerProcessPid,
 						 ReservedBytes,
 						 Socket),

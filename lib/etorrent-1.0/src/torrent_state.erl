@@ -11,7 +11,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/2, report_to_tracker/1, report_from_tracker/3,
+-export([start_link/3, report_to_tracker/1, report_from_tracker/3,
 	 retrieve_bitfield/1, remote_have_piece/2, num_pieces/1,
 	 remote_bitfield/2, remove_bitfield/2, request_new_piece/2,
 	 downloaded_data/2, uploaded_data/2, got_piece_from_peer/3]).
@@ -34,6 +34,8 @@
 	        num_pieces = 0,
 		torrent_size = 0,
 
+		control_pid = none,
+
 	        histogram = none}).
 
 %%====================================================================
@@ -43,8 +45,8 @@
 %% Function: start_link() -> {ok,Pid} | ignore | {error,Error}
 %% Description: Starts the server
 %%--------------------------------------------------------------------
-start_link(DiskState, PieceSize) ->
-    gen_server:start_link(?MODULE, [DiskState, PieceSize], []).
+start_link(DiskState, PieceSize, ControlPid) ->
+    gen_server:start_link(?MODULE, [DiskState, PieceSize, ControlPid], []).
 
 report_to_tracker(Pid) ->
     gen_server:call(Pid, report_to_tracker).
@@ -92,7 +94,7 @@ got_piece_from_peer(Pid, Pn, DataSize) ->
 %%                         {stop, Reason}
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
-init([DiskState, PieceSize]) ->
+init([DiskState, PieceSize, ControlPid]) ->
     {PieceSet, Missing, Size} = convert_diskstate_to_set(DiskState),
     error_logger:info_report(["Diskstate thinks:", Size]),
     AmountLeft = calculate_amount_left(DiskState),
@@ -103,7 +105,8 @@ init([DiskState, PieceSize]) ->
 		piece_size = PieceSize,
 		histogram = histogram:new(),
 		torrent_size = AmountLeft,
-	        left = AmountLeft}}.
+	        left = AmountLeft,
+	        control_pid = ControlPid}}.
 
 %%--------------------------------------------------------------------
 %% Function: %% handle_call(Request, From, State) -> {reply, Reply, State} |
@@ -118,6 +121,10 @@ handle_call({got_piece_from_peer, Pn, DataSize}, {Pid, _Tag}, S) ->
     Assignments = dict:update(Pid, fun(L) -> lists:delete(Pn, L) end,
 			      [], S#state.piece_assignment),
     Left = S#state.left - DataSize,
+    if
+	Left == 0 ->
+	    torrent_control:seed(S#state.control_pid)
+    end,
     {reply, ok, S#state { left = Left, piece_assignment = Assignments}};
 handle_call({downloaded_data, Amount}, _From, S) ->
     {reply, ok, S#state { downloaded = S#state.downloaded + Amount }};

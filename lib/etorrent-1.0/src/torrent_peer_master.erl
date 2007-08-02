@@ -221,8 +221,7 @@ start_new_incoming_peer(PeerId, S) ->
 	?MAX_PEER_PROCESSES - dict:size(S#state.peer_process_dict),
     if
 	PeersMissing > 0 ->
-	    {ok, Pid} = torrent_peer:start_link(PeerId,
-						S#state.our_peer_id,
+	    {ok, Pid} = torrent_peer:start_link(S#state.our_peer_id,
 						S#state.info_hash,
 						S#state.state_pid,
 						S#state.file_system_pid,
@@ -398,14 +397,13 @@ spawn_new_peer(IP, Port, PeerId, N, S) ->
 	true ->
 	    fill_peers(N, S);
 	false ->
-	    {ok, Pid} = torrent_peer:start_link(PeerId,
-						S#state.our_peer_id,
+	    {ok, Pid} = torrent_peer:start_link(S#state.our_peer_id,
 						S#state.info_hash,
 					        S#state.state_pid,
 					        S#state.file_system_pid,
 					        self()),
 	    %sys:trace(Pid, true),
-	    torrent_peer:connect(Pid, IP, Port),
+	    torrent_peer:connect(Pid, IP, Port, PeerId),
 	    PI = #peer_info{peer_id = PeerId},
 	    D = dict:store(Pid, PI, S#state.peer_process_dict),
 	    fill_peers(N-1, S#state{ peer_process_dict = D})

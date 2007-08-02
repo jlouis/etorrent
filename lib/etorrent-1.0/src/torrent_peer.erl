@@ -11,7 +11,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/6, connect/3, choke/1, unchoke/1, interested/1,
+-export([start_link/5, connect/4, choke/1, unchoke/1, interested/1,
 	 send_have_piece/2, complete_handshake/3]).
 
 %% Temp API
@@ -53,12 +53,12 @@
 %% Function: start_link() -> {ok,Pid} | ignore | {error,Error}
 %% Description: Starts the server
 %%--------------------------------------------------------------------
-start_link(PeerId, LocalPeerId, InfoHash, StatePid, FilesystemPid, MasterPid) ->
-    gen_server:start_link(?MODULE, [PeerId, LocalPeerId, InfoHash,
+start_link(LocalPeerId, InfoHash, StatePid, FilesystemPid, MasterPid) ->
+    gen_server:start_link(?MODULE, [LocalPeerId, InfoHash,
 				    StatePid, FilesystemPid, MasterPid], []).
 
-connect(Pid, IP, Port) ->
-    gen_server:cast(Pid, {connect, IP, Port}).
+connect(Pid, IP, Port, PeerId) ->
+    gen_server:cast(Pid, {connect, IP, Port, PeerId}).
 
 choke(Pid) ->
     gen_server:cast(Pid, choke).
@@ -86,9 +86,8 @@ complete_handshake(Pid, ReservedBytes, Socket) ->
 %%                         {stop, Reason}
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
-init([PeerId, LocalPeerId, InfoHash, StatePid, FilesystemPid, MasterPid]) ->
-    {ok, #state{ peer_id = PeerId,
-		 local_peer_id = LocalPeerId,
+init([LocalPeerId, InfoHash, StatePid, FilesystemPid, MasterPid]) ->
+    {ok, #state{ local_peer_id = LocalPeerId,
 		 piece_set = sets:new(),
 		 request_queue = queue:new(),
 		 remote_request_set = sets:new(),
@@ -116,10 +115,10 @@ handle_call(_Request, _From, State) ->
 %%                                      {stop, Reason, State}
 %% Description: Handling cast messages
 %%--------------------------------------------------------------------
-handle_cast({connect, IP, Port}, S) ->
+handle_cast({connect, IP, Port, PeerId}, S) ->
     Socket = int_connect(IP, Port),
     case peer_communication:initiate_handshake(Socket,
-					       S#state.peer_id,
+					       PeerId,
 					       S#state.local_peer_id,
 					       S#state.info_hash) of
 	{ok, _ReservedBytes} ->
