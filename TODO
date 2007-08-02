@@ -38,6 +38,9 @@
 
 * TODO removal sweep!
 
+* Think about a global Pid mapper rather than having a local one.
+- This solution may make the individual processes much easier to make.
+
 * TESTS!
 - Seeder-test
   ** Azureus
