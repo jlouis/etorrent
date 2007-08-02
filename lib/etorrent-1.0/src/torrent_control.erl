@@ -163,6 +163,7 @@ started({tracker_error_report, Reason}, S) ->
     {next_state, started, S};
 started(seed, S) ->
     torrent_peer_master:seed(S#state.peer_master_pid),
+    tracker_delegate:torrent_completed(S#state.tracker_pid),
     {next_state, started, S};
 started(token, S) ->
     ok = serializer:release_token(),
