@@ -10,8 +10,11 @@ erlsrc_DATA = bcoding.erl check_torrent.erl dirwatcher.erl dirwatcher_sup.erl \
 erlbeamdir = $(ERLANG_INSTALL_LIB_DIR_etorrent)/ebin
 erlbeam_DATA = $(erlsrc_DATA:.erl=.beam)
 
+INCLUDES = ../include
+
 #erlappdir = $(erlbeamdir)
 #erlapp_DATA = etorrent.app
+
 
 EXTRA_DIST = $(erlsrc_DATA) $(erlapp_DATA)
 CLEANFILES = $(erlbeam_DATA)
@@ -22,4 +25,4 @@ dialyzer: $(erlbeam_DATA)
 
 SUFFIXES: .erl .beam
 .erl.beam:
-	$(ERLC) $(ERLCFLAGS) -b beam $<
+	$(ERLC) $(ERLCFLAGS) -I $(INCLUDES) -b beam $<
