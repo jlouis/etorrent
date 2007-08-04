@@ -8,7 +8,7 @@
 %%%-------------------------------------------------------------------
 -module(bcoding).
 -author("Jesper Louis Andersen <jesper.louis.andersen@gmail.com>").
--vsn("1").
+-vsn("1.0").
 
 %% API
 -export([encode/1, decode/1, search_dict/2, search_dict_default/3]).
