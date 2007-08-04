@@ -15,7 +15,6 @@ INCLUDES = ../include
 #erlappdir = $(erlbeamdir)
 #erlapp_DATA = etorrent.app
 
-
 EXTRA_DIST = $(erlsrc_DATA) $(erlapp_DATA)
 CLEANFILES = $(erlbeam_DATA)
 
