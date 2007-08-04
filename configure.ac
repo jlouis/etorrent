@@ -20,5 +20,5 @@ AC_SUBST([ERLCFLAGS], [$erlcflags])
 
 AC_ERLANG_SUBST_INSTALL_LIB_SUBDIR(etorrent, 1.0)
 
-AC_OUTPUT(Makefile lib/Makefile lib/etorrent-1.0/Makefile lib/etorrent-1.0/src/Makefile)
+AC_OUTPUT(Makefile lib/Makefile lib/etorrent-1.0/Makefile lib/etorrent-1.0/src/Makefile releases/Makefile releases/1.0/Makefile)
 
