@@ -10,7 +10,8 @@
 -record(process_locations,
 	{ state_pid,        % Pid of the state process
 	  master_pid,       % Pid of the Torrent_peer_master
-	  control_pid       % Pid of the torrent controller
+	  control_pid,      % Pid of the torrent controller
+	  file_system_pid   % Pid of the file system
         }).
 
 
