@@ -7,6 +7,8 @@
 # to maintain.
 
 ### ETORRENT_SPECIFIC_STUFF
+RELEASEDIR = releases/1.0
+
 ETORRENT_1.0_MODULES = acceptor bcoding check_torrent \
 	dirwatcher dirwatcher_sup etorrent_app etorrent \
 	file_process file_system file_system_sup \
@@ -25,6 +27,11 @@ ETORRENT_1.0_SOURCES = $(ETORRENT_1.0_MODULES:%=$(ETORRENT_1.0_SRCDIR)/%.erl)
 
 ETORRENT_1.0_BEAMS = $(ETORRENT_1.0_MODULES:%=$(ETORRENT_1.0_EBINDIR)/%.beam)
 
+ETORRENT_PROG_NAME = etorrent
+RELEASE_FILE       = $(ETORRENT_PROG_NAME:%=$(RELEASEDIR)/%.rel)
+BOOT_FILE          = $(ETORRENT_PROG_NAME:%=$(RELEASEDIR)/%.boot)
+SCRIPT_FILE        = $(ETORRENT_PROG_NAME:%=$(RELEASEDIR)/%.script)
+
 ### IMPLICIT RULES
 
 # Kill all suffixes, sans those we define.
@@ -33,7 +40,15 @@ ETORRENT_1.0_BEAMS = $(ETORRENT_1.0_MODULES:%=$(ETORRENT_1.0_EBINDIR)/%.beam)
 
 $(ETORRENT_1.0_EBINDIR)/%.beam: $(ETORRENT_1.0_SRCDIR)/%.erl
 	$(ERLC) $(ERLCFLAGS) -I$(ETORRENT_1.0_INCLUDEDIR) \
-		-o$(ETORRENT_1.0_EBINDIR) $<
+		-o$(ETORRENT_1.0_EBINDIR) -b beam $<
+
+$(RELEASEDIR)/%.boot : $(RELEASEDIR)/%.rel
+	$(ERLC) $(ERLCFLAGS) -I$(ETORRENT_1.0_EBINDIR) \
+		-o$(RELEASEDIR) -b boot $<
+
+$(RELEASEDIR)/%.script : $(RELEASEDIR)/%.rel
+	$(ERLC) $(ERLCFLAGS) -I$(ETORRENT_1.0_EBINDIR) \
+		-o$(RELEASEDIR) -b script $<
 
 ### GENERIC AUTOCONF STUFF
 SHELL = /bin/sh
@@ -42,8 +57,6 @@ prefix = @prefix@
 exec_prefix = @exec_prefix@
 
 BINDIR = $(INSTALL_PREFIX)@bindir@
-
-MAKE = @MAKE_PROG@
 
 TARGET = @TARGET@
 
@@ -68,6 +81,9 @@ beams: etorrent-1.0-beams
 .PHONY: bootscript
 bootscript: release-1.0
 
+.PHONY: release-1.0
+release-1.0: etorrent-1.0-beams $(BOOT_FILE) $(SCRIPT_FILE)
+
 .PHONY: etorrent-1.0-beams
 etorrent-1.0-beams: $(ETORRENT_1.0_BEAMS)
 
@@ -77,5 +93,8 @@ dialyzer: beams
 
 .PHONY: clean
 clean:
-	rm -f $(ETORRENT_1.0_BEAMS)
+	rm -f $(ETORRENT_1.0_BEAMS) $(BOOT_FILE) $(SCRIPT_FILE)
+	cd doc && $(MAKE) clean
+
+
 
