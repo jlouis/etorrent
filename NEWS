@@ -1,0 +1,11 @@
+Version 0.1 ALPHA:
+
+  This is the ALPHA-version of eTorrent. As of now, almost nothing
+  works. It is more to be seen as an early adopters piece of software
+  which you can read code and comment. If you want a working
+  bittorrent client that doesn't need gentle coercion from the user,
+  wait until the release of the 1.0 Version.
+
+  In between this Alpha and the 1.0 will be a series of BETAs. When
+  the BETAs hit the fan, I would like to get Issues through the
+  code.google.com bug tracker.

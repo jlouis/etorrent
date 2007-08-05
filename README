@@ -1,0 +1,19 @@
+-- ETORRENT --
+
+ETORRENT is a bittorrent client written in Erlang. The focus is on
+robustness and scalability in number of torrents rather than in pure
+speed. ETORRENT is mostly meant for unattended operation, where one
+just specifies what files to download and gets a notification when
+they are.
+
+ETORRENT was mostly conceived as an experiment in how easy it would be
+to write a bittorrent client in Erlang. The hypothesis is that the
+code will be cleaner and smaller than comparative bittorrent clients.
+
+-- REPORTING BUGS --
+
+Google has an issue tracker at:
+
+  http://code.google.com/p/etorrent/issues/list
+
+Use that for bug reports. I'll get to them as soon as I can.
