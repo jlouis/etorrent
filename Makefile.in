@@ -50,6 +50,12 @@ $(RELEASEDIR)/%.script : $(RELEASEDIR)/%.rel
 	$(ERLC) $(ERLCFLAGS) -I$(ETORRENT_1.0_EBINDIR) \
 		-o$(RELEASEDIR) -b script $<
 
+### Conditional stuff
+
+ifdef debug
+  ERLCFLAGS+=+debug_info
+endif
+
 ### GENERIC AUTOCONF STUFF
 SHELL = /bin/sh
 
