@@ -1,0 +1,81 @@
+# See COPYING for license
+# Copyright 2007 Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
+
+# This file is currently a bit hackish. There is quite some infrastructure
+# to develop before it looks neat. Basicly, you steal from the otp-src releases
+# until you have something neater. If done right, the source becomes a bliss
+# to maintain.
+
+### ETORRENT_SPECIFIC_STUFF
+ETORRENT_1.0_MODULES = acceptor bcoding check_torrent \
+	dirwatcher dirwatcher_sup etorrent_app etorrent \
+	file_process file_system file_system_sup \
+	histogram info_hash_map listener \
+	metainfo peer_communication peer_table \
+	random_source_sup serializer torrent_control torrent \
+	torrent_manager torrent_peer torrent_peer_master \
+	torrent_peer_send torrent_pool_sup torrent_state \
+	torrent_sup tracker_delegate utils
+
+ETORRENT_1.0_SRCDIR = lib/etorrent-1.0/src
+ETORRENT_1.0_EBINDIR = lib/etorrent-1.0/ebin
+ETORRENT_1.0_INCLUDEDIR = lib/etorrent-1.0/include
+
+ETORRENT_1.0_SOURCES = $(ETORRENT_1.0_MODULES:%=$(ETORRENT_1.0_SRCDIR)/%.erl)
+
+ETORRENT_1.0_BEAMS = $(ETORRENT_1.0_MODULES:%=$(ETORRENT_1.0_EBINDIR)/%.beam)
+
+### IMPLICIT RULES
+
+# Kill all suffixes, sans those we define.
+.SUFFIXES :
+.SUFFIXES : .erl .beam .rel .boot .script
+
+$(ETORRENT_1.0_EBINDIR)/%.beam: $(ETORRENT_1.0_SRCDIR)/%.erl
+	$(ERLC) $(ERLCFLAGS) -I$(ETORRENT_1.0_INCLUDEDIR) \
+		-o$(ETORRENT_1.0_EBINDIR) $<
+
+### GENERIC AUTOCONF STUFF
+SHELL = /bin/sh
+
+prefix = @prefix@
+exec_prefix = @exec_prefix@
+
+BINDIR = $(INSTALL_PREFIX)@bindir@
+
+MAKE = @MAKE_PROG@
+
+TARGET = @TARGET@
+
+INSTALL = @INSTALL@
+INSTALL_PROGRAM = @INSTALL_PROGRAM@
+INSTALL_DATA = @INSTALL_DATA@
+MKSUBDIRS = ${INSTALL} -d
+
+LN_S = @LN_S@
+
+ERLC = @ERLC@
+ERLCFLAGS = @ERLCFLAGS@
+
+### TARGETS
+
+.PHONY: all
+all: beams
+
+.PHONY: beams
+beams: etorrent-1.0-beams
+
+.PHONY: bootscript
+bootscript: release-1.0
+
+.PHONY: etorrent-1.0-beams
+etorrent-1.0-beams: $(ETORRENT_1.0_BEAMS)
+
+.PHONY: dialyzer
+dialyzer: beams
+	dialyzer -c $(ETORRENT_1.0_EBINDIR)
+
+.PHONY: clean
+clean:
+	rm -f $(ETORRENT_1.0_BEAMS)
+
