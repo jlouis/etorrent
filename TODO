@@ -4,69 +4,18 @@
 
 * MOVE THIS FILE INTO THE ISSUES SECTION OF THE CODE.GOOGLE.COM page.
 
-* Peer Master
-- Implement a simpler bad map
-  Rather than keep the kill-message (Which is always normal), keep a
-   counter and make the counter be used.
-- Handle Snubbing
-
-* TorrentControl
-- Consider: Simplifying state machine.
-  The state machine can be simplified a great deal if you are smart
-   and inject most torrent information via the start_link message.
-- Make the state machine have states leeching/seeding
-  This will implement the possibility of starting up as a seeder.
-
-* Torrent_Peer
-- Handle when a piece has errors
-  When a piece has errors, we must handle it gracefully. If the piece
-   has an error, we mark the peer as "dirty". If we get another error
-   from the peer, we simply disconnect him, because there must be
-   something seriously wrong at his connection. Consider a timer to
-   fire an eventual fallback.
-
-* TrackerDelegate
-- Graceful handle: etimedout
-  If we can't connect to the tracker, it will time out. This must be
-   handled gracefully. The way is to track the last event we wanted to
-   send and ensure that it is recieved as a cast. Then, when we
-   timeout, we check for a last event and attempt to send that event
-   out.
-
 * TODO removal sweep!
-
-* TESTS!
-- Seeder-test
-  ** Azureus
-  ** Original Bittorrent
-  ** Bittornado
-  ** rtorrent
-  ** ctorrent
-- Ensure that uploaded/downloaded/left reports to tracker is correct!
 
 * DOCUMENTATION!
 - Pick functions at random, and document what they are doing.
   It is /especially/ important to document library calls and
    non-standard internal functions in OTP modules.
-- Make an INSTALL and README document for release.
-- Push release 1.0 into google.
 
 ------------------------------------------------------------
 VERSION ++ (Not decided yet)
 ------------------------------------------------------------
 * Use Edoc
 - This takes time, so pick a single module at a time and correct it
-
-* Endgame Support
-- Handle Endgame support
-  Endgame requires global control of all peers. It should be
-   implemented, but first when the rest of the system begins to work.
-
-* TorrentManager
-- Check if a torrent is duplicate.
-  We must check if a given torrent file which has just been added is a
-  duplicate of a torrent we already manage. If this is the case, then we
-  should just ignore it.
 
 * TorrentPeerMaster
 - Figure out a better choking/unchoking algorithm.
@@ -89,13 +38,3 @@ VERSION ++ (Not decided yet)
 - What happens if process X dies
   Go through all processes, and think about what happens if it
    dies. Ensure that the system is robust.
-
-* Fast resume
-  Use a dets table to get fast resume support.
-
-* Implement the fast extension.
-  This will require some thought as there may be a very changed
-   implementation in the peer clients.
-
-* Bandwidth limitation
-  Implement bandwidth limitation.
