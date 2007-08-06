@@ -8,6 +8,10 @@
 
 ### ETORRENT_SPECIFIC_STUFF
 RELEASEDIR = releases/1.0
+CONFIGURATION_DIR = etc
+ETORRENT_1.0_SRCDIR = lib/etorrent-1.0/src
+ETORRENT_1.0_EBINDIR = lib/etorrent-1.0/ebin
+ETORRENT_1.0_INCLUDEDIR = lib/etorrent-1.0/include
 
 ETORRENT_1.0_MODULES = acceptor bcoding check_torrent \
 	dirwatcher dirwatcher_sup etorrent_app etorrent \
@@ -19,9 +23,6 @@ ETORRENT_1.0_MODULES = acceptor bcoding check_torrent \
 	torrent_peer_send torrent_pool_sup torrent_state \
 	torrent_sup tracker_delegate utils
 
-ETORRENT_1.0_SRCDIR = lib/etorrent-1.0/src
-ETORRENT_1.0_EBINDIR = lib/etorrent-1.0/ebin
-ETORRENT_1.0_INCLUDEDIR = lib/etorrent-1.0/include
 
 ETORRENT_1.0_SOURCES = $(ETORRENT_1.0_MODULES:%=$(ETORRENT_1.0_SRCDIR)/%.erl)
 
@@ -30,6 +31,8 @@ ETORRENT_1.0_BEAMS = $(ETORRENT_1.0_MODULES:%=$(ETORRENT_1.0_EBINDIR)/%.beam)
 ETORRENT_1.0_APP = $(ETORRENT_1.0_EBINDIR)/etorrent.app
 
 ETORRENT_PROG_NAME = etorrent
+CONFIGURATION_FILE = $(ETORRENT_PROG_NAME:%=$(CONFIGURATION_DIR)/%.config)
+
 RELEASE_FILE       = $(ETORRENT_PROG_NAME:%=$(RELEASEDIR)/%.rel)
 BOOT_FILE          = $(ETORRENT_PROG_NAME:%=$(RELEASEDIR)/%.boot)
 SCRIPT_FILE        = $(ETORRENT_PROG_NAME:%=$(RELEASEDIR)/%.script)
@@ -64,7 +67,9 @@ SHELL = /bin/sh
 prefix = @prefix@
 exec_prefix = @exec_prefix@
 
-INSTALL = install
+INSTALL = @INSTALL@
+MKDIR_P = @MKDIR_P@
+LN_S    = @LN_S@
 
 ERLC = @ERLC@
 ERL = @ERL@
@@ -79,6 +84,10 @@ etorrent_EBIN = $(ERLANG_INSTALL_LIB_DIR_etorrent)/ebin
 
 DESTDIR =
 BINDIR = @bindir@
+DOCDIR = @docdir@
+SYSCONFDIR = @sysconfdir@
+DATAROOTDIR = @datarootdir@
+
 INST_BEAMDIR = $(prefix)$(etorrent_EBIN)
 #INST_RELEASEDIR = $(ERLANG_ROOT_DIR)/
 #INST_RELEASEDIR = $(ETORRENTDIR)/releases
@@ -112,9 +121,12 @@ clean:
 
 .PHONY: install
 install: all bootscript
-	$(INSTALL) -d $(INST_BEAMDIR)
+	$(MKDIR_P) $(INST_BEAMDIR)
 	$(INSTALL) -m 644 $(ETORRENT_1.0_BEAMS) $(INST_BEAMDIR)
 	$(INSTALL) -m 644 $(ETORRENT_1.0_APP)   $(INST_BEAMDIR)
+	$(MKDIR_P) $(SYSCONFDIR)
+	$(INSTALL) -m 644 $(CONFIGURATION_FILE) $(SYSCONFDIR)
+
 #	$(INSTALL) -d $(INST_RELEASEDIR)
 #	$(INSTALL) -m 644 $(BOOT_FILE) $(INST_RELEASEDIR)
 #	$(INSTALL) -m 644 $(SCRIPT_FILE) $(INST_RELEASEDIR)
