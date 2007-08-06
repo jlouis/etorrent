@@ -2,13 +2,12 @@
 -- This is a list of what To Do before a release is ready to be made.
 ----------------------------------------------------------------------
 
+* MOVE THIS FILE INTO THE ISSUES SECTION OF THE CODE.GOOGLE.COM page.
+
 * Peer Master
 - Implement a simpler bad map
   Rather than keep the kill-message (Which is always normal), keep a
    counter and make the counter be used.
-- Handle Endgame
-  Endgame requires global control of all peers. It should be
-   implemented, but first when the rest of the system begins to work.
 - Handle Snubbing
 
 * TorrentControl
@@ -57,6 +56,11 @@ VERSION ++ (Not decided yet)
 ------------------------------------------------------------
 * Use Edoc
 - This takes time, so pick a single module at a time and correct it
+
+* Endgame Support
+- Handle Endgame support
+  Endgame requires global control of all peers. It should be
+   implemented, but first when the rest of the system begins to work.
 
 * TorrentManager
 - Check if a torrent is duplicate.
