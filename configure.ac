@@ -17,5 +17,5 @@ AC_PROG_INSTALL
 AC_PROG_MKDIR_P
 AC_PROG_LN_S
 
-AC_OUTPUT(Makefile doc/Makefile)
+AC_OUTPUT(Makefile doc/Makefile bin/etorrentctl)
 

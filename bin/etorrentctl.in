@@ -1,0 +1,19 @@
+#!/bin/sh
+
+NODE=etorrent
+HOST=localhost
+
+ROOTDIR=@prefix@
+BEAMDIR=@prefix@@ERLANG_INSTALL_LIB_DIR_etorrent@/ebin
+CONFIGFILE=@sysconfdir@/etorrent.config
+
+start () {
+    erl -noinput -detached -sname ${NODE}@${HOST} -pa ${BEAMDIR} \
+	-s etorrent -config ${CONFIGFILE}
+}
+
+
+case $1 in
+    start) start;;
+    *) echo "Usage: $0 start";;
+esac
