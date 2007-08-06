@@ -1,10 +1,10 @@
 %%%-------------------------------------------------------------------
 %%% File    : histogram.erl
-%%% Author  : Jesper Louis Andersen <>
+%%% Author  : Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
 %%% License : See COPYING
 %%% Description : Piece histograms.
 %%%
-%%% Created : 26 Jul 2007 by Jesper Louis Andersen <>
+%%% Created : 26 Jul 2007 by Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
 %%%-------------------------------------------------------------------
 -module(histogram).
 

@@ -1,9 +1,9 @@
 %%%-------------------------------------------------------------------
 %%% File    : info_hash_map.erl
-%%% Author  : Jesper Louis Andersen <>
+%%% Author  : Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
 %%% Description : Global mapping of infohashes to Peer Masters
 %%%
-%%% Created : 31 Jul 2007 by Jesper Louis Andersen <>
+%%% Created : 31 Jul 2007 by Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
 %%%-------------------------------------------------------------------
 -module(info_hash_map).
 

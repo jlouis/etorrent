@@ -1,10 +1,10 @@
 %%%-------------------------------------------------------------------
 %%% File    : torrent_peer_master.erl
-%%% Author  : Jesper Louis Andersen <>
+%%% Author  : Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
 %%% License : See COPYING
 %%% Description : Master process for a number of peers.
 %%%
-%%% Created : 18 Jul 2007 by Jesper Louis Andersen <>
+%%% Created : 18 Jul 2007 by Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
 %%%-------------------------------------------------------------------
 -module(torrent_peer_master).
 

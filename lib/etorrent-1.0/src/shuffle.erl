@@ -1,10 +1,10 @@
 %%%-------------------------------------------------------------------
 %%% File    : shuffle.erl
-%%% Author  : User Jlouis <jlouis@succubus.localdomain>
+%%% Author  : User Jlouis <jesper.louis.andersen@gmail.com>
 %%% License : See COPYING
 %%% Description : Shuffle a list of items via a merge shuffle
 %%%
-%%% Created : 31 Jan 2007 by User Jlouis <jlouis@succubus.localdomain>
+%%% Created : 31 Jan 2007 by User Jlouis <jesper.louis.andersen@gmail.com>
 %%%-------------------------------------------------------------------
 -module(shuffle).
 

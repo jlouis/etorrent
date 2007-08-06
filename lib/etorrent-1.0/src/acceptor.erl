@@ -1,9 +1,9 @@
 %%%-------------------------------------------------------------------
 %%% File    : acceptor.erl
-%%% Author  : Jesper Louis Andersen <>
+%%% Author  : Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
 %%% Description : Accept new connections from the network.
 %%%
-%%% Created : 30 Jul 2007 by Jesper Louis Andersen <>
+%%% Created : 30 Jul 2007 by Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
 %%%-------------------------------------------------------------------
 -module(acceptor).
 

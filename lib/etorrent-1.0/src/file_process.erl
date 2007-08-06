@@ -1,6 +1,6 @@
 %%%-------------------------------------------------------------------
 %%% File    : file_process.erl
-%%% Author  : User Jlouis <jlouis@succubus.localdomain>
+%%% Author  : User Jlouis <jesper.louis.andersen@gmail.com>
 %%% License : See COPYING
 %%% Description : The file process implements an interface to a given
 %%%  file. It is possible to carry out the wished operations on the file
@@ -8,7 +8,7 @@
 %%%  an automatic handler for file descriptors: If no request has been
 %%%  recieved in a given timeout, then the file is closed.
 %%%
-%%% Created : 18 Jun 2007 by User Jlouis <jlouis@succubus.localdomain>
+%%% Created : 18 Jun 2007 by User Jlouis <jesper.louis.andersen@gmail.com>
 %%%-------------------------------------------------------------------
 -module(file_process).
 

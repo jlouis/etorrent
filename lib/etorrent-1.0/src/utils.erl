@@ -1,10 +1,10 @@
 %%%-------------------------------------------------------------------
 %%% File    : utils.erl
-%%% Author  : User Jlouis <jlouis@succubus.localdomain>
+%%% Author  : User Jlouis <jesper.louis.andersen@gmail.com>
 %%% License : See COPYING
 %%% Description : A selection of utilities used throughout the code
 %%%
-%%% Created : 17 Apr 2007 by User Jlouis <jlouis@succubus.localdomain>
+%%% Created : 17 Apr 2007 by User Jlouis <jesper.louis.andersen@gmail.com>
 %%%-------------------------------------------------------------------
 -module(utils).
 

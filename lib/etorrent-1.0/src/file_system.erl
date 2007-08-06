@@ -1,11 +1,11 @@
 %%%-------------------------------------------------------------------
 %%% File    : file_system.erl
-%%% Author  : User Jlouis <jlouis@succubus.localdomain>
+%%% Author  : User Jlouis <jesper.louis.andersen@gmail.com>
 %%% License : See COPYING
 %%% Description : Implements access to the file system through
 %%%               file_process processes.
 %%%
-%%% Created : 19 Jun 2007 by User Jlouis <jlouis@succubus.localdomain>
+%%% Created : 19 Jun 2007 by User Jlouis <jesper.louis.andersen@gmail.com>
 %%%-------------------------------------------------------------------
 -module(file_system).
 

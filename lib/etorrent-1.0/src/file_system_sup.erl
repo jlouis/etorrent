@@ -1,10 +1,10 @@
 %%%-------------------------------------------------------------------
 %%% File    : file_system_sup.erl
-%%% Author  : Jesper Louis Andersen <>
+%%% Author  : Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
 %%% License : See COPYING
 %%% Description : Supervise a file system process.
 %%%
-%%% Created : 13 Jul 2007 by Jesper Louis Andersen <>
+%%% Created : 13 Jul 2007 by Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
 %%%-------------------------------------------------------------------
 -module(file_system_sup).
 

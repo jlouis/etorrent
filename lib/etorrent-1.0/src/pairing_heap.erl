@@ -1,10 +1,10 @@
 %%%-------------------------------------------------------------------
 %%% File    : pairing_heap.erl
-%%% Author  : User Jlouis <jlouis@succubus.localdomain>
+%%% Author  : User Jlouis <jesper.louis.andersen@gmail.com>
 %%% License : See COPYING
 %%% Description : A Pairing Heap implementation.
 %%%
-%%% Created :  3 Feb 2007 by User Jlouis <jlouis@succubus.localdomain>
+%%% Created :  3 Feb 2007 by User Jlouis <jesper.louis.andersen@gmail.com>
 %%%-------------------------------------------------------------------
 -module(pairing_heap).
 
