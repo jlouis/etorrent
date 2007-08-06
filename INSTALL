@@ -1,1 +1,17 @@
-/usr/share/automake-1.10/INSTALL
+** INSTALLATION INSTRUCTIONS **
+
+Rather than a long GNU-version, here is the summary:
+
+./configure; make; make install
+
+** RUNNING **
+
+Edit the configuration file to suit your setup.
+
+run the bin/etorrent shell-script:
+
+${PREFIX}/bin/etorrentctl start
+
+** STOPPING **
+
+${PREFIX}/bin/etorrentctl stop
