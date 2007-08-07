@@ -10,7 +10,7 @@
 
 %% API
 -export([read_all_of_file/1, list_tabulate/2, queue_remove/2,
-	sets_is_empty/1]).
+	sets_is_empty/1, build_info_hash_encoded_form_rfc1738/1]).
 
 %%====================================================================
 %% API
@@ -61,3 +61,28 @@ eat_lines(IODev, Accum) ->
 	String ->
 	    eat_lines(IODev, [String | Accum])
     end.
+
+
+rfc_3986_unreserved_characters() ->
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.".
+
+rfc_3986_unreserved_characters_set() ->
+    sets:from_list(rfc_3986_unreserved_characters()).
+
+build_info_hash_encoded_form_rfc1738(Binary) ->
+    Unreserved = rfc_3986_unreserved_characters_set(),
+    lists:flatten(lists:map(
+		    fun (E) ->
+			    case sets:is_element(E, Unreserved) of
+				true ->
+				    E;
+				false ->
+				    lists:concat(
+				      ["%", io_lib:format("~2.16.0B", [E])])
+			    end
+		    end,
+		    binary_to_list(Binary))).
+
+
+
+
