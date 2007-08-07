@@ -153,8 +153,9 @@ code_change(_OldVsn, State, _Extra) ->
 contact_tracker(S, Event) ->
     NewUrl = build_tracker_url(S, Event),
     error_logger:info_report([contact_url, lists:flatten(NewUrl)]),
-    case http:request(NewUrl) of
+    case http_gzip:request(NewUrl) of
 	{ok, {{_, 200, _}, _, Body}} ->
+	    error_logger:info_report([body_size, length(Body)]),
 	    {ok, Body};
 	{error, E} ->
 	    {error, E}
