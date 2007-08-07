@@ -10,7 +10,8 @@
 
 %% API
 -export([read_all_of_file/1, list_tabulate/2, queue_remove/2,
-	sets_is_empty/1, build_info_hash_encoded_form_rfc1738/1]).
+	sets_is_empty/1, build_info_hash_encoded_form_rfc1738/1,
+	build_uri_encoded_form_rfc1738/1]).
 
 %%====================================================================
 %% API
@@ -64,12 +65,14 @@ eat_lines(IODev, Accum) ->
 
 
 rfc_3986_unreserved_characters() ->
+    % jlouis: I deliberately killed ~ from the list as it seems the Mainline
+    %  client doesn't announce this.
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.".
 
 rfc_3986_unreserved_characters_set() ->
     sets:from_list(rfc_3986_unreserved_characters()).
 
-build_info_hash_encoded_form_rfc1738(Binary) ->
+build_uri_encoded_form_rfc1738(List) ->
     Unreserved = rfc_3986_unreserved_characters_set(),
     lists:flatten(lists:map(
 		    fun (E) ->
@@ -81,7 +84,11 @@ build_info_hash_encoded_form_rfc1738(Binary) ->
 				      ["%", io_lib:format("~2.16.0B", [E])])
 			    end
 		    end,
-		    binary_to_list(Binary))).
+		    List)).
+
+build_info_hash_encoded_form_rfc1738(Binary) ->
+    build_uri_encoded_form_rfc1738(binary_to_list(Binary)).
+
 
 
 
