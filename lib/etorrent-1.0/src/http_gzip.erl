@@ -19,7 +19,8 @@
 %%   handles gzip.
 %%--------------------------------------------------------------------
 request(URL) ->
-    case http:request(get, {URL, [{"Accept-Encoding", "gzip"}]}, [], []) of
+    case http:request(get, {URL, [{"Accept-Encoding", "gzip identity"}]},
+		      [], []) of
 	{ok, {{Version, StatusCode, ReasonPhrase}, Headers, Body}} ->
 	    case decode_content_encoding(Headers) of
 		identity ->
