@@ -96,7 +96,6 @@ got_piece_from_peer(Pid, Pn, DataSize) ->
 %%--------------------------------------------------------------------
 init([DiskState, PieceSize, ControlPid]) ->
     {PieceSet, Missing, Size} = convert_diskstate_to_set(DiskState),
-    error_logger:info_report(["Diskstate thinks:", Size]),
     AmountLeft = calculate_amount_left(DiskState),
     {ok, #state{piece_set = PieceSet,
 		piece_set_missing = Missing,

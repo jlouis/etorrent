@@ -134,6 +134,9 @@ handle_info(Info, State) ->
 %% cleaning up. When it returns, the gen_server terminates with Reason.
 %% The return value is ignored.
 %%--------------------------------------------------------------------
+terminate(normal, S) ->
+    contact_tracker(S, "stopped"),
+    ok;
 terminate(_Reason, _S) ->
     ok.
 
@@ -149,6 +152,7 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 contact_tracker(S, Event) ->
     NewUrl = build_tracker_url(S, Event),
+    error_logger:info_report([contact_url, lists:flatten(NewUrl)]),
     case http:request(NewUrl) of
 	{ok, {{_, 200, _}, _, Body}} ->
 	    {ok, Body};

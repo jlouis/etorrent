@@ -131,7 +131,6 @@ check_and_start_torrent(FS, FileDict, S) ->
 	  metainfo:get_infohash(S#state.torrent),
 	  StatePid,
 	  FS),
-    sys:trace(PeerMasterPid, true),
     {ok, TrackerPid} =
 	tracker_delegate:start_link(self(),
 				    StatePid,
@@ -139,7 +138,6 @@ check_and_start_torrent(FS, FileDict, S) ->
 				    metainfo:get_url(S#state.torrent),
 				    metainfo:get_infohash(S#state.torrent),
 				    S#state.peer_id),
-    sys:trace(TrackerPid, true),
     tracker_delegate:start_now(TrackerPid),
     S#state{disk_state = DiskState,
 	    file_system_pid = FS,
@@ -249,7 +247,6 @@ handle_info(_Info, StateName, State) ->
 %% Reason. The return value is ignored.
 %%--------------------------------------------------------------------
 terminate(_Reason, _StateName, State) ->
-    tracker_delegate:stop_now(State#state.tracker_pid),
     ok.
 
 %%--------------------------------------------------------------------

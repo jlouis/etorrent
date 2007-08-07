@@ -171,10 +171,8 @@ handle_cast(_Msg, State) ->
     {noreply, State}.
 
 handle_info(round_tick, S) ->
-    error_logger:info_report([timer_ticked]),
     case S#state.round of
 	0 ->
-	    error_logger:info_report([optimistic_unchoke_change]),
 	    {NS, DoNotTouchPids} = perform_choking_unchoking(
 				     remove_optimistic_unchoking(S)),
 	    NNS = select_optimistic_unchoker(DoNotTouchPids, NS),
@@ -402,7 +400,6 @@ spawn_new_peer(IP, Port, PeerId, N, S) ->
 					        S#state.state_pid,
 					        S#state.file_system_pid,
 					        self()),
-	    %sys:trace(Pid, true),
 	    torrent_peer:connect(Pid, IP, Port, PeerId),
 	    PI = #peer_info{peer_id = PeerId},
 	    D = dict:store(Pid, PI, S#state.peer_process_dict),

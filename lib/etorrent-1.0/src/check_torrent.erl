@@ -57,7 +57,6 @@ check_torrent_contents(FS, FileDict) ->
 
 build_dictionary_on_files(Torrent, Files) ->
     Pieces = metainfo:get_pieces(Torrent),
-    error_logger:info_report(["Number of pieces:", length(Pieces)]),
     PSize = metainfo:get_piece_length(Torrent),
     LastPieceSize = torrent_size(Files) rem PSize,
     construct_fpmap(Files,
