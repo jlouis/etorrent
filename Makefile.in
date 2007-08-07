@@ -23,7 +23,7 @@ ETORRENT_1.0_MODULES = acceptor bcoding check_torrent \
 	random_source_sup serializer torrent_control torrent \
 	torrent_manager torrent_peer torrent_peer_master \
 	torrent_peer_send torrent_pool_sup torrent_state \
-	torrent_sup tracker_delegate utils
+	torrent_sup tracker_delegate utils http_gzip
 
 
 ETORRENT_1.0_SOURCES = $(ETORRENT_1.0_MODULES:%=$(ETORRENT_1.0_SRCDIR)/%.erl)
