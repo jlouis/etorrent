@@ -13,7 +13,6 @@ BINARY_DIR = bin
 
 ETORRENT_1.0_SRCDIR = lib/etorrent-1.0/src
 ETORRENT_1.0_EBINDIR = lib/etorrent-1.0/ebin
-ETORRENT_1.0_INCLUDEDIR = lib/etorrent-1.0/include
 
 ETORRENT_1.0_MODULES = acceptor bcoding check_torrent \
 	dirwatcher dirwatcher_sup etorrent_app etorrent \
@@ -46,16 +45,13 @@ SCRIPT_FILE        = $(ETORRENT_PROG_NAME:%=$(RELEASEDIR)/%.script)
 .SUFFIXES : .erl .beam .rel .boot .script
 
 $(ETORRENT_1.0_EBINDIR)/%.beam: $(ETORRENT_1.0_SRCDIR)/%.erl
-	$(ERLC) $(ERLCFLAGS) -I$(ETORRENT_1.0_INCLUDEDIR) \
-		-o$(ETORRENT_1.0_EBINDIR) -b beam $<
+	$(ERLC) $(ERLCFLAGS) -o$(ETORRENT_1.0_EBINDIR) -b beam $<
 
 $(RELEASEDIR)/%.boot : $(RELEASEDIR)/%.rel
-	$(ERLC) $(ERLCFLAGS) -I$(ETORRENT_1.0_EBINDIR) \
-		-o$(RELEASEDIR) -b boot $<
+	$(ERLC) $(ERLCFLAGS) -o$(RELEASEDIR) -b boot $<
 
 $(RELEASEDIR)/%.script : $(RELEASEDIR)/%.rel
-	$(ERLC) $(ERLCFLAGS) -I$(ETORRENT_1.0_EBINDIR) \
-		-o$(RELEASEDIR) -b script $<
+	$(ERLC) $(ERLCFLAGS) -o$(RELEASEDIR) -b script $<
 
 ### Conditional stuff
 
