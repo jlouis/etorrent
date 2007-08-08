@@ -4,8 +4,6 @@
 
 * MOVE THIS FILE INTO THE ISSUES SECTION OF THE CODE.GOOGLE.COM page.
 
-* TODO removal sweep!
-
 * DOCUMENTATION!
 - Pick functions at random, and document what they are doing.
   It is /especially/ important to document library calls and
@@ -28,11 +26,6 @@ VERSION ++ (Not decided yet)
 
 * Cleanups
 - Decide what to do if we connect multiply to the same IP
-
-* PeerIds
-- Is one billion peerids enough? Think about making the number higher
-  If the client becomes popular, this is important to change. We can
-   /easily/ increase the number to a more correct level.
 
 * ROBUSTNESS
 - What happens if process X dies
