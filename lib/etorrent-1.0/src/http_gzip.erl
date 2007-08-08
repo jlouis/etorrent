@@ -24,10 +24,8 @@ request(URL) ->
 	{ok, {{Version, StatusCode, ReasonPhrase}, Headers, Body}} ->
 	    case decode_content_encoding(Headers) of
 		identity ->
-		    error_logger:info_report([identity]),
 		    {ok, {{Version, StatusCode, ReasonPhrase}, Headers, Body}};
 		gzip ->
-		    error_logger:info_report([gzip]),
 		    DecompressedBody = binary_to_list(zlib:gunzip(Body)),
 		    {ok, {{Version, StatusCode, ReasonPhrase}, Headers,
 		     DecompressedBody}}
