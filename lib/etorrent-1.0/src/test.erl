@@ -3,17 +3,22 @@
 -compile(export_all).
 
 start() ->
-    crypto:start(),
-    inets:start(),
-    timer:start(),
+    start_sasl(),
+    application:start(crypto),
+    application:start(inets),
+    application:start(timer),
     %http:set_options([{verbose, debug}]),
     application:set_env(etorrent, dir, "/home/jlouis/etorrent_test"),
     application:set_env(etorrent, port, 1729),
-    error_logger:logfile({open, "err.log"}),
     etorrent:start_link().
 
+start_sasl() ->
+    application:set_env(sasl, sasl_error_logger, tty),
+    application:set_env(sasl, errlog_type, all),
+    application:set_env(sasl, error_logger_mf_dir, "error_logs"),
+    application:set_env(sasl, error_logger_mf_maxbytes, 1024*1024*5),
+    application:set_env(sasl, error_logger_mf_maxfiles, 255),
+    application:start(sasl).
 
 run() ->
-    error_logger:logfile(close),
-    error_logger:logfile({open, "err.log"}),
     etorrent:start_link().
