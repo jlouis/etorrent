@@ -423,8 +423,8 @@ is_bad_peer(PeerId, S) ->
     end.
 
 find_peer_id_in_process_list(PeerId, S) ->
-    dict:fold(fun(_K, {_IP, _Port, Needle}, AccIn) ->
-		      case Needle == PeerId of
+    dict:fold(fun(_K, PeerInfo, AccIn) ->
+		      case PeerInfo#peer_info.peer_id == PeerId of
 			  true ->
 			      true;
 			  false ->
