@@ -7,13 +7,11 @@ start() ->
     application:start(crypto),
     application:start(inets),
     application:start(timer),
-    %http:set_options([{verbose, debug}]),
     application:set_env(etorrent, dir, "/home/jlouis/etorrent_test"),
     application:set_env(etorrent, port, 1729),
     etorrent:start_link().
 
 start_sasl() ->
-    application:set_env(sasl, sasl_error_logger, tty),
     application:set_env(sasl, errlog_type, all),
     application:set_env(sasl, error_logger_mf_dir, "error_logs"),
     application:set_env(sasl, error_logger_mf_maxbytes, 1024*1024*5),
