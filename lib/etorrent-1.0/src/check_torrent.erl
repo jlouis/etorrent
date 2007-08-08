@@ -72,9 +72,14 @@ build_dictionary_on_files(Torrent, Files) ->
 %% Internal functions
 %%====================================================================
 report_files(Entry) ->
-    {dict,[{{string,"path"},
-	    {list,[{string,Filename}]}},
-	   {{string,"length"},{integer,Size}}]} = Entry,
+    {dict, Dict} = Entry,
+    %TODO: Consider a metainfo:fetch_key function for this
+    {value, {{string, "path"},
+	     {list, [{string, Filename}]}}} =
+	lists:keysearch({string, "path"}, 1, Dict),
+    {value, {{string, "length"},
+	     {integer, Size}}} =
+	lists:keysearch({string, "length"}, 1, Dict),
     {Filename, Size}.
 
 torrent_size(Files) ->
