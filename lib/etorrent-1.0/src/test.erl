@@ -18,5 +18,9 @@ start_sasl() ->
     application:set_env(sasl, error_logger_mf_maxfiles, 255),
     application:start(sasl).
 
+start_rb() ->
+    application:start(sasl),
+    rb:start([{report_dir, "error_logs"}]).
+
 run() ->
     etorrent:start_link().
