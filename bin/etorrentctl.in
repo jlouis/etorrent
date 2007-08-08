@@ -5,13 +5,15 @@
 NODE=etorrent
 HOST=localhost
 
-ROOTDIR=@prefix@
+prefix=@prefix@
+exec_prefix=@exec_prefix@
+libdir=@libdir@
 SYSCONFDIR=@sysconfdir@
 
 ERLANG_INSTALL_LIB_DIR=@ERLANG_INSTALL_LIB_DIR@
 ERLANG_INSTALL_LIB_DIR_etorrent=@ERLANG_INSTALL_LIB_DIR_etorrent@
 
-BEAMDIR=${ROOTDIR}${ERLANG_INSTALL_LIB_DIR_etorrent}/ebin
+BEAMDIR=${prefix}${ERLANG_INSTALL_LIB_DIR_etorrent}/ebin
 CONFIGFILE=${SYSCONFDIR}/etorrent.config
 
 start () {
