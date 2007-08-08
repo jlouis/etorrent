@@ -62,15 +62,24 @@ init([]) ->
 %% Description: Handling call messages
 %%--------------------------------------------------------------------
 handle_call({store_hash, InfoHash}, {Pid, _Tag}, S) ->
-    erlang:monitor(process, Pid),
-    ets:insert(S#state.info_hash_map, {InfoHash, Pid}),
+    Ref = erlang:monitor(process, Pid),
+    ets:insert(S#state.info_hash_map, {InfoHash, Pid, Ref}),
     {reply, ok, S};
 handle_call({remove_hash, InfoHash}, {Pid, _Tag}, S) ->
-    erlang:demonitor(process, Pid),
-    ets:delete(S#state.info_hash_map, {InfoHash, Pid}),
-    {reply, ok, S};
+    case ets:match(S#state.info_hash_map, {InfoHash, Pid, '$1'}) of
+	[[Ref]] ->
+	    erlang:demonitor(Ref),
+	    ets:delete(S#state.info_hash_map, {InfoHash, Pid, Ref}),
+	    {reply, ok, S};
+	_ ->
+	    error_logger:warning_report([info_hash_map,
+					 handle_call,
+					 remove_hash,
+					 no_pid_in_ets]),
+	    {reply, ok, S}
+    end;
 handle_call({lookup, InfoHash}, _From, S) ->
-    case ets:match(S#state.info_hash_map, {InfoHash, '$1'}) of
+    case ets:match(S#state.info_hash_map, {InfoHash, '$1', '_'}) of
 	[[Pid]] ->
 	    {reply, {ok, Pid}, S};
 	[] ->
