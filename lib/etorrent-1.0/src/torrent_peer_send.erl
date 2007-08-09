@@ -75,8 +75,12 @@ init([Socket, FilesystemPid, StatePid, MasterPid]) ->
      ?DEFAULT_KEEP_ALIVE_INTERVAL}.
 
 keep_alive(timeout, S) ->
-    ok = peer_communication:send_message(S#state.socket, keep_alive),
-    {next_state, keep_alive, S, ?DEFAULT_KEEP_ALIVE_INTERVAL};
+    case peer_communication:send_message(S#state.socket, keep_alive) of
+	ok ->
+	    {next_state, keep_alive, S, ?DEFAULT_KEEP_ALIVE_INTERVAL};
+	{error, closed} ->
+	    {stop, shutdown, S}
+    end;
 keep_alive(Msg, S) ->
     handle_message(Msg, S).
 
@@ -104,27 +108,23 @@ handle_sync_event(_Evt, St, _From, S) ->
     {next_state, St, S, 0}.
 
 handle_message({send, Message}, S) ->
-    send_message(Message, S),
-    {next_state, running, S, 0};
+    send_message(Message, S, running, 0);
+
 handle_message(choke, S) when S#state.choke == true ->
     {next_state, running, S};
 handle_message(choke, S) when S#state.choke == false ->
-    send_message(choke, S),
-    {next_state, running, S#state{choke = true}, 0};
+    send_message(choke, S#state{choke = true}, running, 0);
+
 handle_message(unchoke, S) when S#state.choke == false ->
     {next_state, running, S};
 handle_message(unchoke, S) when S#state.choke == true ->
-    send_message(unchoke, S),
-    {next_state, running, S#state{choke = false}, 0};
+    send_message(unchoke, S#state{choke = false}, running, 0);
 handle_message(not_interested, S) ->
-    send_message(not_interested, S),
-    {next_state, running, S};
+    send_message(not_interested, S, running, 0);
 handle_message({have, Pn}, S) ->
-    send_message({have, Pn}, S),
-    {next_state, running, S};
+    send_message({have, Pn}, S, running, 0);
 handle_message({local_request_piece, Index, Offset, Len}, S) ->
-    send_message({request, Index, Offset, Len}, S),
-    {next_state, running, S, 0};
+    send_message({request, Index, Offset, Len}, S, running, 0);
 handle_message({remote_request_piece, Index, Offset, Len}, S) ->
     Requests = queue:len(S#state.request_queue),
     if
@@ -156,6 +156,7 @@ send_piece(Index, Offset, Len, S) ->
 	{I, Binary} when I == Index ->
 	    <<_Skip:Offset/binary, Data:Len/binary, _R/binary>> = Binary,
 	    Msg = {piece, Index, Offset, Data},
+	    % TODO: This call may fail.
 	    ok = peer_communication:send_message(S#state.socket,
 						 Msg),
 	    S;
@@ -171,7 +172,11 @@ load_piece(Index, S) ->
     {ok, Piece} = file_system:read_piece(S#state.file_system_pid, Index),
     S#state{piece_cache = {Index, Piece}}.
 
-send_message(Msg, S) ->
-    ok = peer_communication:send_message(S#state.socket,
-					 Msg),
-    ok.
+send_message(Msg, S, NewState, Timeout) ->
+    case peer_communication:send_message(S#state.socket, Msg) of
+	ok ->
+	    {next_state, NewState, S, Timeout};
+	{error, closed} ->
+	    {stop, shutdown, S}
+    end.
+
