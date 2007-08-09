@@ -12,11 +12,12 @@ start() ->
     etorrent:start_link().
 
 start_sasl() ->
+    application:set_env(sasl, sasl_error_logger, {file, "err.log"}),
     application:set_env(sasl, errlog_type, all),
     application:set_env(sasl, error_logger_mf_dir, "error_logs"),
-    application:set_env(sasl, error_logger_mf_maxbytes, 1024*1024*5),
+    application:set_env(sasl, error_logger_mf_maxbytes, 5000000),
     application:set_env(sasl, error_logger_mf_maxfiles, 10),
-    application:start(sasl).
+    sasl:start(normal, []).
 
 start_rb() ->
     application:start(sasl),
