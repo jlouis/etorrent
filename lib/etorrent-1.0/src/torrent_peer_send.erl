@@ -131,10 +131,10 @@ handle_message({remote_request_piece, _Index, _Offset, _Len}, S)
 handle_message({remote_request_piece, Index, Offset, Len}, S)
   when S#state.choke ->
     Requests = queue:len(S#state.request_queue),
-    if
-	Requests > ?MAX_REQUESTS ->
-	    {stop, max_queue_len_exceeded, S};
+    case Requests > ?MAX_REQUESTS of
 	true ->
+	    {stop, max_queue_len_exceeded, S};
+	false ->
 	    NQ = queue:in({Index, Offset, Len}, S#state.request_queue),
 	    {next_state, running, S#state{request_queue = NQ}, 0}
     end;
