@@ -241,14 +241,19 @@ handle_cast(_Msg, State) ->
 %% Description: Handling all non call/cast messages
 %%--------------------------------------------------------------------
 handle_info({'DOWN', _Ref, process, Pid, _Reason}, S) ->
-    Missing = lists:foldl(fun(Pn, Missing) ->
-				  sets:add_element(Pn, Missing)
-			  end,
-			  S#state.piece_set_missing,
-			  dict:fetch(Pid, S#state.piece_assignment)),
-    Assignments = dict:erase(Pid, S#state.piece_assignment),
-    {noreply, S#state{piece_set_missing = Missing,
-		      piece_assignment  = Assignments}};
+    case dict:find(Pid, S#state.piece_assignment) of
+	{ok, Assignment} ->
+	    Missing = lists:foldl(fun(Pn, Missing) ->
+					  sets:add_element(Pn, Missing)
+				  end,
+				  S#state.piece_set_missing,
+				  Assignment),
+	    Assignments = dict:erase(Pid, S#state.piece_assignment),
+	    {noreply, S#state{piece_set_missing = Missing,
+			      piece_assignment  = Assignments}};
+	error ->
+	    {noreply, S}
+    end;
 handle_info(_Info, State) ->
     {noreply, State}.
 
