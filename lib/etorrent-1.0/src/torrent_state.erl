@@ -56,8 +56,7 @@ report_from_tracker(Pid, Complete, Incomplete) ->
 		    {report_from_tracker, Complete, Incomplete}).
 
 retrieve_bitfield(Pid) ->
-    gen_server:call(Pid,
-		    retrieve_bitfield, 10000).
+    gen_server:call(Pid,  retrieve_bitfield, 10000).
 
 remote_have_piece(Pid, PieceNum) ->
     gen_server:call(Pid, {remote_have_piece, PieceNum}).
@@ -120,9 +119,11 @@ handle_call({got_piece_from_peer, Pn, DataSize}, {Pid, _Tag}, S) ->
     Assignments = dict:update(Pid, fun(L) -> lists:delete(Pn, L) end,
 			      [], S#state.piece_assignment),
     Left = S#state.left - DataSize,
-    if
-	Left == 0 ->
-	    torrent_control:seed(S#state.control_pid)
+    case Left == 0 of
+	true ->
+	    torrent_control:seed(S#state.control_pid);
+	false ->
+	    ok
     end,
     {reply, ok, S#state { left = Left, piece_assignment = Assignments}};
 handle_call({downloaded_data, Amount}, _From, S) ->
@@ -308,12 +309,7 @@ convert_diskstate_to_set(DiskState) ->
     {Set, MissingSet, Size}.
 
 piece_valid(PieceNum, S) ->
-    if
-	(PieceNum < S#state.num_pieces) and (PieceNum >= 0) ->
-	    true;
-	true ->
-	    false
-    end.
+     (PieceNum < S#state.num_pieces) and (PieceNum >= 0).
 
 find_piece_size(PieceNum, S) when PieceNum == (S#state.num_pieces-1) ->
     S#state.torrent_size rem S#state.piece_size;
