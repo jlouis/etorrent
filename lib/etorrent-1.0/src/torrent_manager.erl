@@ -28,14 +28,12 @@ code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 handle_info({'EXIT', Pid, Reason}, {TrackingMap, PeerId}) ->
-    error_logger:error_report([{'Torrent EXIT', Reason},
-			       {'State', {TrackingMap, PeerId}}]),
+    error_logger:info_msg("Pid: ~p exited with reason ~p~n", [Pid, Reason]),
     [{File}] = ets:match(TrackingMap, {Pid, '$1', '$2'}),
     ets:delete(TrackingMap, Pid),
     spawn_new_torrent(File, PeerId, TrackingMap),
     {noreply, {TrackingMap, PeerId}};
-handle_info(Info, State) ->
-    error_logger:info_report([{'INFO', Info}, {'State', State}]),
+handle_info(_Info, State) ->
     {noreply, State}.
 
 terminate(shutdown, _State) ->

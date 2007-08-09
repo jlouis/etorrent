@@ -117,13 +117,13 @@ handle_call(_Request, _From, State) ->
 %%--------------------------------------------------------------------
 handle_cast({connect, IP, Port, PeerId}, S) ->
     Socket = int_connect(IP, Port),
-    error_logger:info_report(got_connect),
+    error_logger:info_msg("Got Connect~n"),
     case peer_communication:initiate_handshake(Socket,
 					       PeerId,
 					       S#state.local_peer_id,
 					       S#state.info_hash) of
 	{ok, _ReservedBytes} ->
-	    error_logger:info_report(ok_handshake),
+	    error_logger:info_msg("Handshake OK!~n"),
 	    enable_socket_messages(Socket),
 	    {ok, SendPid} =
 		torrent_peer_send:start_link(Socket,
@@ -136,7 +136,7 @@ handle_cast({connect, IP, Port, PeerId}, S) ->
 	    {noreply, S#state{tcp_socket = Socket,
 			      send_pid = SendPid}};
 	{error, X} ->
-	    error_logger:info_report([couldnt_get_handshake, X]),
+	    error_logger:info_msg("Could not connect: ~p~n", [X]),
 	    exit(shutdown)
     end;
 handle_cast({complete_handshake, _ReservedBytes, Socket}, S) ->

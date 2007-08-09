@@ -159,7 +159,8 @@ handle_call(_Request, _From, State) ->
 
 handle_cast({add_peers, IPList}, S) ->
     {ok, NS} = usort_peers(IPList, S),
-    io:format("Possible peers: ~p~n", [NS#state.available_peers]),
+    error_logger:info_msg("Possible peers: ~p~n",
+			  [NS#state.available_peers]),
     {ok, NS2} = start_new_peers(NS),
     {noreply, NS2};
 handle_cast({got_piece_from_peer, Index}, S) ->
@@ -189,7 +190,9 @@ handle_info({'EXIT', Pid, Reason}, S) ->
 	    {ok, NS} = start_new_peers(S#state{peer_process_dict = D}),
 	    {noreply, NS};
 	shutdown ->
-	    {stop, shutdown, S};
+	    D = dict:erase(Pid, S#state.peer_process_dict),
+	    {ok, NS} = start_new_peers(S#state{peer_process_dict = D}),
+	    {noreply, NS};
 	R ->
 	    PI = dict:fetch(Pid, S#state.peer_process_dict),
 	    D  = dict:erase(Pid, S#state.peer_process_dict),
