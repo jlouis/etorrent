@@ -115,9 +115,10 @@ handle_message(choke, S) when S#state.choke == true ->
 handle_message(choke, S) when S#state.choke == false ->
     send_message(choke, S#state{choke = true}, running, 0);
 handle_message(unchoke, S) when S#state.choke == false ->
-    {next_state, running, S#state{request_queue = queue:new()}};
+    {next_state, running, S};
 handle_message(unchoke, S) when S#state.choke == true ->
-    send_message(unchoke, S#state{choke = false}, running, 0);
+    send_message(unchoke, S#state{choke = false,
+				  request_queue = queue:new()}, running, 0);
 handle_message(not_interested, S) ->
     send_message(not_interested, S, running, 0);
 handle_message({have, Pn}, S) ->
