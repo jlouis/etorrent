@@ -15,7 +15,7 @@ start_sasl() ->
     application:set_env(sasl, errlog_type, all),
     application:set_env(sasl, error_logger_mf_dir, "error_logs"),
     application:set_env(sasl, error_logger_mf_maxbytes, 1024*1024*5),
-    application:set_env(sasl, error_logger_mf_maxfiles, 255),
+    application:set_env(sasl, error_logger_mf_maxfiles, 10),
     application:start(sasl).
 
 start_rb() ->
