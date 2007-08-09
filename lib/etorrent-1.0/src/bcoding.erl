@@ -27,7 +27,10 @@ encode(BString) ->
 	{integer, Integer} ->
 	    {ok, encode_integer(Integer)};
 	{list, Items} ->
-	    EncodedItems = lists:map(fun (I) -> encode(I) end, Items),
+	    EncodedItems = lists:map(fun (I) ->
+					     {ok, Item} = encode(I),
+					     Item
+				     end, Items),
 	    {ok, encode_list(EncodedItems)};
 	{dict, Items} ->
 	    EncodedItems = encode_dict_items(Items),
@@ -87,6 +90,7 @@ encode_integer(Int) ->
     lists:concat(['i', Int, 'e']).
 
 encode_list(Items) ->
+    error_logger:error_msg("Items ~p~n", [Items]),
     lists:concat(["l", lists:concat(Items), "e"]).
 
 encode_dict(Items) ->
