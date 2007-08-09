@@ -72,10 +72,8 @@ handle_call({remove_hash, InfoHash}, {Pid, _Tag}, S) ->
 	    ets:delete(S#state.info_hash_map, {InfoHash, Pid, Ref}),
 	    {reply, ok, S};
 	_ ->
-	    error_logger:warning_report([info_hash_map,
-					 handle_call,
-					 remove_hash,
-					 no_pid_in_ets]),
+	    error_logger:error_msg("Pid ~p is not in info_hash_map~n",
+				   [Pid]),
 	    {reply, ok, S}
     end;
 handle_call({lookup, InfoHash}, _From, S) ->
