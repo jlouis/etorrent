@@ -141,7 +141,6 @@ handle_call(retrieve_bitfield, _From, S) ->
 					       S#state.piece_set),
     {reply, BF, S};
 handle_call({remote_have_piece, PieceNum}, _From, S) ->
-    error_logger:info_report([remote_have_piece, PieceNum]),
     case piece_valid(PieceNum, S) of
 	true ->
 	    NS = S#state { histogram = histogram:increase_piece(
