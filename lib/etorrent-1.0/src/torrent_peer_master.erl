@@ -159,8 +159,6 @@ handle_call(_Request, _From, State) ->
 
 handle_cast({add_peers, IPList}, S) ->
     {ok, NS} = usort_peers(IPList, S),
-    error_logger:info_msg("Possible peers: ~p~n",
-			  [NS#state.available_peers]),
     {ok, NS2} = start_new_peers(NS),
     {noreply, NS2};
 handle_cast({got_piece_from_peer, Index}, S) ->
@@ -280,7 +278,6 @@ select_optimistic_unchoker(Size, List, DoNotTouchPids, S) ->
 perform_choking_unchoking(S) ->
     NotInterested = find_not_interested_peers(S#state.peer_process_dict),
     Interested    = find_interested_peers(S#state.peer_process_dict),
-
     % N fastest interesteds should be kept
     {Downloaders, Rest} =
 	find_fastest_peers(?DEFAULT_NUM_DOWNLOADERS,
@@ -330,11 +327,15 @@ find_fastest_peers(N, Interested, S) when S#state.mode == seeding ->
     find_fastest(N, Interested, fun sort_fastest_uploaders/1).
 
 unchoke_peers(Pids) ->
-    lists:foreach(fun(P) -> torrent_peer:unchoke(P) end, Pids),
+    lists:foreach(fun(P) ->
+			  torrent_peer:unchoke(P)
+		  end, Pids),
     ok.
 
 choke_peers(Pids) ->
-    lists:foreach(fun(P) -> torrent_peer:choke(P) end, Pids),
+    lists:foreach(fun(P) ->
+			  torrent_peer:choke(P)
+		  end, Pids),
     ok.
 
 find_interested_peers(Dict) ->
