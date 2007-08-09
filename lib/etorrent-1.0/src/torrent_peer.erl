@@ -224,7 +224,8 @@ handle_message(keep_alive, S) ->
     {ok, S};
 handle_message(choke, S) ->
     torrent_peer_master:peer_choked(S#state.master_pid),
-    {ok, S#state { remote_choked = true }};
+    NS = unqueue_all_pieces(S),
+    {ok, NS#state { remote_choked = true }};
 handle_message(unchoke, S) ->
     torrent_peer_master:peer_unchoked(S#state.master_pid),
     try_to_queue_up_pieces(S#state{remote_choked = false});
@@ -388,7 +389,19 @@ enable_socket_messages(Socket) ->
     inet:setopts(Socket, [binary, {active, true}, {packet, 4}]).
 
 %%--------------------------------------------------------------------
-%% Function: try_toqueue_up_requests(state()) -> {ok, state()}
+%% Function: unqueue_all_pieces/1
+%% Description: Unqueue all queued pieces at the other end
+%%--------------------------------------------------------------------
+unqueue_all_pieces(S) ->
+    Requests = sets:to_list(S#state.remote_request_set),
+    Q = S#state.request_queue,
+    NQ = queue:join(queue:from_list(Requests),
+		    Q),
+    S#state{remote_request_set = sets:new(),
+	     request_queue = NQ}.
+
+%%--------------------------------------------------------------------
+%% Function: try_to_queue_up_requests(state()) -> {ok, state()}
 %% Description: Try to queue up requests at the other end. This function
 %%  differs from queue_up_requests in the sense it also handles interest
 %%  and choking.

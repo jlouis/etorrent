@@ -114,9 +114,8 @@ handle_message(choke, S) when S#state.choke == true ->
     {next_state, running, S};
 handle_message(choke, S) when S#state.choke == false ->
     send_message(choke, S#state{choke = true}, running, 0);
-
 handle_message(unchoke, S) when S#state.choke == false ->
-    {next_state, running, S};
+    {next_state, running, S#state{request_queue = queue:new()}};
 handle_message(unchoke, S) when S#state.choke == true ->
     send_message(unchoke, S#state{choke = false}, running, 0);
 handle_message(not_interested, S) ->
@@ -125,7 +124,11 @@ handle_message({have, Pn}, S) ->
     send_message({have, Pn}, S, running, 0);
 handle_message({local_request_piece, Index, Offset, Len}, S) ->
     send_message({request, Index, Offset, Len}, S, running, 0);
-handle_message({remote_request_piece, Index, Offset, Len}, S) ->
+handle_message({remote_request_piece, _Index, _Offset, _Len}, S)
+  when S#state.choke == true ->
+    {next_state, running, S, 0};
+handle_message({remote_request_piece, Index, Offset, Len}, S)
+  when S#state.choke ->
     Requests = queue:len(S#state.request_queue),
     if
 	Requests > ?MAX_REQUESTS ->
