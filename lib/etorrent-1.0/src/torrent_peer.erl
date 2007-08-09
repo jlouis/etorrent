@@ -117,13 +117,11 @@ handle_call(_Request, _From, State) ->
 %%--------------------------------------------------------------------
 handle_cast({connect, IP, Port, PeerId}, S) ->
     Socket = int_connect(IP, Port),
-    error_logger:info_msg("Got Connect~n"),
     case peer_communication:initiate_handshake(Socket,
 					       PeerId,
 					       S#state.local_peer_id,
 					       S#state.info_hash) of
 	{ok, _ReservedBytes} ->
-	    error_logger:info_msg("Handshake OK!~n"),
 	    enable_socket_messages(Socket),
 	    {ok, SendPid} =
 		torrent_peer_send:start_link(Socket,
@@ -135,8 +133,7 @@ handle_cast({connect, IP, Port, PeerId}, S) ->
 	    torrent_peer_send:send(SendPid, {bitfield, BF}),
 	    {noreply, S#state{tcp_socket = Socket,
 			      send_pid = SendPid}};
-	{error, X} ->
-	    error_logger:info_msg("Could not connect: ~p~n", [X]),
+	{error, _X} ->
 	    exit(shutdown)
     end;
 handle_cast({complete_handshake, _ReservedBytes, Socket}, S) ->
@@ -223,12 +220,10 @@ code_change(_OldVsn, State, _Extra) ->
 handle_message(keep_alive, S) ->
     {ok, S};
 handle_message(choke, S) ->
-    error_logger:info_msg("Choked!"),
     torrent_peer_master:peer_choked(S#state.master_pid),
     NS = unqueue_all_pieces(S),
     {ok, NS#state { remote_choked = true }};
 handle_message(unchoke, S) ->
-    error_logger:info_msg("Unchoked!"),
     torrent_peer_master:peer_unchoked(S#state.master_pid),
     try_to_queue_up_pieces(S#state{remote_choked = false});
 handle_message(interested, S) ->
@@ -256,7 +251,6 @@ handle_message({have, PieceNum}, S) ->
 	    {ok, S#state{piece_set = PieceSet}}
     end;
 handle_message({bitfield, BitField}, S) ->
-    error_logger:info_msg("Got Bitfield~n"),
     case sets:size(S#state.piece_set) of
 	0 ->
 	    Size = torrent_state:num_pieces(S#state.state_pid),
@@ -277,7 +271,6 @@ handle_message({bitfield, BitField}, S) ->
     end;
 handle_message({piece, Index, Offset, Data}, S) ->
     Len = size(Data),
-    error_logger:info_msg("Got Chunk: ~p ~p ~p~n", [Index, Offset, Len]),
     torrent_state:downloaded_data(S#state.state_pid, Len),
     torrent_peer_master:downloaded_data(S#state.master_pid, Len),
     case handle_got_chunk(Index, Offset, Data, Len, S) of
@@ -414,19 +407,15 @@ try_to_queue_up_pieces(S) when S#state.remote_choked == true ->
     {ok, S};
 try_to_queue_up_pieces(S) ->
     PiecesToQueue = ?BASE_QUEUE_LEVEL - sets:size(S#state.remote_request_set),
-    error_logger:info_msg("Pieces to queue: ~p~n", [PiecesToQueue]),
     case queue_up_requests(S, PiecesToQueue) of
 	{ok, NS} ->
-	    error_logger:info_msg("Fully queued~n"),
 	    {ok, NS};
 	{partially_queued, NS, Left, not_interested}
 	  when Left == ?BASE_QUEUE_LEVEL ->
-	    error_logger:info_msg("Partially queued, not interested~n"),
 	    % Out of pieces to give him
 	    torrent_peer_send:not_interested(S#state.send_pid),
 	    {ok, NS#state{local_interested = false}};
 	{partially_queued, NS, _Left, not_interested} ->
-	    error_logger:info_msg("Partially queued~n"),
 	    % We still have some pieces in the queue
 	    {ok, NS}
     end.
