@@ -259,7 +259,7 @@ select_optimistic_unchoker(Size, List, DoNotTouchPids, S) ->
 	    select_optimistic_unchoker(Size, List, DoNotTouchPids, S);
 	false ->
 	    NS = peer_dict_update(Pid,
-				  fun(_K, PI) ->
+				  fun(PI) ->
 					  PI#peer_info{optimistic_unchoke =
 						       true}
 				  end,
