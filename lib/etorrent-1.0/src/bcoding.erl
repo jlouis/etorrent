@@ -90,7 +90,6 @@ encode_integer(Int) ->
     lists:concat(['i', Int, 'e']).
 
 encode_list(Items) ->
-    error_logger:error_msg("Items ~p~n", [Items]),
     lists:concat(["l", lists:concat(Items), "e"]).
 
 encode_dict(Items) ->
