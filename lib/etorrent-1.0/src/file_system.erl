@@ -142,7 +142,7 @@ read_pieces_and_assemble([{Path, Offset, Size} | Rest], Done, S) ->
 	    case catch({Ref, file_process:get_data(Pid, Offset, Size)}) of
 		{Ref, {ok, Data}} ->
 		    read_pieces_and_assemble(Rest, [Data | Done], S);
-		{noproc, _} ->
+		{'EXIT', {noproc, _}} ->
 		    D = remove_file_process(Pid, S#state.file_process_dict),
 		    read_pieces_and_assemble([{Path, Offset, Size} | Rest],
 					     Done,
