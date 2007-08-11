@@ -274,8 +274,8 @@ handle_message({piece, Index, Offset, Data}, S) ->
     torrent_state:downloaded_data(S#state.state_pid, Len),
     torrent_peer_master:downloaded_data(S#state.master_pid, Len),
     case handle_got_chunk(Index, Offset, Data, Len, S) of
-	fail ->
-	    {stop, error_in_got_chunk, S};
+	stop ->
+	    {stop, normal, S};
 	{ok, NS} ->
 	    try_to_queue_up_pieces(NS)
     end;
@@ -287,14 +287,16 @@ handle_got_chunk(Index, Offset, Data, Len, S) ->
     RemoteRSet = sets:del_element({Index, Offset, Len},
 				  S#state.remote_request_set),
     case lists:keysearch(Index, 1, S#state.piece_request) of
-	false ->
-	    fail;
 	{value, {_CurrentIndex, GBT, 1}} ->
 	    NS = update_with_new_piece(Index, Offset, Len, Data, GBT, 1, S),
-	    ok = check_and_store_piece(Index, NS),
-	    PR = lists:keydelete(Index, 1, NS#state.piece_request),
-	    {ok, NS#state{piece_request = PR,
-			  remote_request_set = RemoteRSet}};
+	    case check_and_store_piece(Index, NS) of
+		ok ->
+		    PR = lists:keydelete(Index, 1, NS#state.piece_request),
+		    {ok, NS#state{piece_request = PR,
+				  remote_request_set = RemoteRSet}};
+		wrong_hash ->
+		    stop
+	    end;
 	{value, {_CurrentIndex, GBT, N}} ->
 	    {ok, update_with_new_piece(
 		   Index, Offset, Len, Data, GBT, N,
@@ -323,8 +325,8 @@ check_and_store_piece(Index, S) ->
 			   S#state.master_pid,
 			   Index),
 		    ok;
-		fail ->
-		    piece_error
+		wrong_hash ->
+		    wrong_hash
 	    end
     end.
 
