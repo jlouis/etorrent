@@ -121,7 +121,7 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 install_map_in_tracking_table(FileDict, Pid, S) ->
     erlang:monitor(process, Pid),
-    dict:fold(fun(PieceNumber, Operations) ->
+    dict:map(fun(PieceNumber, Operations) ->
 		      ets:insert(S#state.file_access_map,
 				 {{Pid, PieceNumber}, Operations})
 	      end,
