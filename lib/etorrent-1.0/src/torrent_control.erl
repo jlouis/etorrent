@@ -261,6 +261,7 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 %%% Internal functions
 %%--------------------------------------------------------------------
 add_filesystem(FileDict, S) ->
-    {ok, FS} = file_system:start_link(FileDict),
+    {ok, FS} = file_system:start_link(),
+    file_system:load_file_information(FS, FileDict),
     {ok, FS, S#state{file_system_pid = FS}}.
 
