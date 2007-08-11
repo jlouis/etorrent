@@ -71,7 +71,7 @@ handle_cast(_Msg, State) ->
 %% Description: Handling all non call/cast messages
 %%--------------------------------------------------------------------
 handle_info({'EXIT', Pid}, S) ->
-    io:format("Stopping down ~p~n", [Pid]),
+    error_logger:info_msg("Stopping down ~p~n", [Pid]),
     Nd = remove_file_process(Pid, S#state.file_process_dict),
     {noreply, S#state { file_process_dict = Nd }};
 handle_info(_Info, State) ->
@@ -85,7 +85,6 @@ handle_info(_Info, State) ->
 %% The return value is ignored.
 %%--------------------------------------------------------------------
 terminate(Reason, _State) ->
-    io:format("I am stopping: ~p~n", [Reason]),
     ok.
 
 %%--------------------------------------------------------------------
