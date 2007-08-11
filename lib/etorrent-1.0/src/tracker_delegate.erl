@@ -123,8 +123,7 @@ handle_info(timeout, S) ->
 	{error, timedout} ->
 	    {noreply, S, timer:seconds(?DEFAULT_CONNECTION_TIMEOUT_INTERVAL)}
     end;
-handle_info(Info, State) ->
-    io:format("got info: ~p~n", [Info]),
+handle_info(_Info, State) ->
     {noreply, State}.
 
 %%--------------------------------------------------------------------
