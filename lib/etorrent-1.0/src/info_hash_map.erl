@@ -50,7 +50,7 @@ lookup(InfoHash) ->
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
 init([]) ->
-    {ok, #state{ info_hash_map = ets:new(infohash_map, [named_table])}}.
+    {ok, #state{info_hash_map = ets:new(infohash_map, [named_table])}}.
 
 %%--------------------------------------------------------------------
 %% Function: %% handle_call(Request, From, State) -> {reply, Reply, State} |
