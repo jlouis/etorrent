@@ -12,45 +12,76 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/1, stop/1, read_piece/2, write_piece/3]).
+-export([start_link/0, load_file_information/2,
+	 stop/1, read_piece/2, write_piece/3]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3]).
 
--record(state, { file_dict = none,
+-record(state, { file_mapping_table = none,
 		 file_process_dict = none }).
 
 %%====================================================================
 %% API
 %%====================================================================
-start_link(FileDict) ->
-    gen_server:start_link(?MODULE, [FileDict], []).
 
+%%--------------------------------------------------------------------
+%% Function: start_link/0
+%% Description: Spawn and link a new file_system process
+%%--------------------------------------------------------------------
+start_link() ->
+    gen_server:start_link(?MODULE, [], []).
+
+%%--------------------------------------------------------------------
+%% Function: stop(Pid) -> ok
+%% Description: Stop the file_system process identified by Pid
+%%--------------------------------------------------------------------
 stop(Pid) ->
     gen_server:cast(Pid, stop).
 
+%%--------------------------------------------------------------------
+%% Function: load_file_information(Pid, FileDict) -> ok
+%% Description: Load the FileDict into the process and ask it to
+%%   process requests from this filedict.
+%%--------------------------------------------------------------------
+load_file_information(Pid, FileDict) ->
+    gen_server:call(Pid, {load_filedict, FileDict}).
+
+%%--------------------------------------------------------------------
+%% Function: read_piece(Pid, N) -> {ok, Binary}
+%% Description: Ask file_system process Pid to retrieve Piece N
+%%--------------------------------------------------------------------
 read_piece(Pid, Pn) ->
     gen_server:call(Pid, {read_piece, Pn}).
 
+%%--------------------------------------------------------------------
+%% Function: write_piece(Pid, N, Binary) -> ok | wrong_hash
+%% Description: file_system process Pid is asked to write Binary into
+%%   piece slot N. Returns either ok, or wrong_hash if the hash fails.
+%%--------------------------------------------------------------------
 write_piece(Pid, Pn, Data) ->
     gen_server:call(Pid, {write_piece, Pn, Data}).
 
 %%====================================================================
 %% gen_server callbacks
 %%====================================================================
-
-init([FileDict]) ->
+init([]) ->
     process_flag(trap_exit, true),
-    {ok, #state{file_dict = FileDict,
-	        file_process_dict = dict:new() }}.
+    {ok, #state{file_process_dict = dict:new() }}.
 
+handle_call({load_filedict, FileDict}, _From, S) ->
+    ok = file_access_mapper:install_map(FileDict),
+    ETS = file_access_mapper:fetch_map(),
+    {reply, ok, S#state{file_mapping_table = ETS}};
 handle_call({read_piece, PieceNum}, _From, S) ->
-    {_Hash, FilesToRead, _X} = dict:fetch(PieceNum, S#state.file_dict),
+    [[FilesToRead]] = ets:match(S#state.file_mapping_table,
+				{{self(), PieceNum}, {'_', '$1', '_'}}),
     {ok, Data, NS} = read_pieces_and_assemble(FilesToRead, [], S),
     {reply, {ok, Data}, NS};
 handle_call({write_piece, PieceNum, Data}, _From, S) ->
-    {Hash, FilesToWrite, _X} = dict:fetch(PieceNum, S#state.file_dict),
+    [[Hash, FilesToWrite]] = ets:match(S#state.file_mapping_table,
+				      {{self(), PieceNum}, {'$1', '$2', '_'}}),
     case Hash == crypto:sha(Data) of
 	true ->
 	    {ok, NS} = write_piece_data(Data, FilesToWrite, S),
@@ -84,7 +115,7 @@ handle_info(_Info, State) ->
 %% cleaning up. When it returns, the gen_server terminates with Reason.
 %% The return value is ignored.
 %%--------------------------------------------------------------------
-terminate(Reason, _State) ->
+terminate(_Reason, _State) ->
     ok.
 
 %%--------------------------------------------------------------------
@@ -107,8 +138,16 @@ read_pieces_and_assemble([], FileData, S) ->
 read_pieces_and_assemble([{Path, Offset, Size} | Rest], Done, S) ->
     case dict:find(Path, S#state.file_process_dict) of
 	{ok, Pid} ->
-	    {ok, Data} = file_process:get_data(Pid, Offset, Size),
-	    read_pieces_and_assemble(Rest, [Data | Done], S);
+	    Ref = make_ref(),
+	    case catch({Ref, file_process:get_data(Pid, Offset, Size)}) of
+		{Ref, {ok, Data}} ->
+		    read_pieces_and_assemble(Rest, [Data | Done], S);
+		{noproc, _} ->
+		    D = remove_file_process(Pid, S#state.file_process_dict),
+		    read_pieces_and_assemble([{Path, Offset, Size} | Rest],
+					     Done,
+					     S#state{file_process_dict = D})
+	    end;
 	error ->
 	    {ok, Pid, NS} = create_file_process(Path, S),
 	    {ok, Data} = file_process:get_data(Pid, Offset, Size),
@@ -122,8 +161,16 @@ write_piece_data(Data, [{Path, Offset, Size} | Rest], S) ->
     <<Chunk:Size/binary, Remaining/binary>> = Data,
     case dict:find(Path, S#state.file_process_dict) of
 	{ok, Pid} ->
-	    ok = file_process:put_data(Pid, Chunk, Offset, Size),
-	    write_piece_data(Remaining, Rest, S);
+	    Ref = make_ref(),
+	    case catch({Ref,
+			file_process:put_data(Pid, Chunk, Offset, Size)}) of
+		{Ref, ok} ->
+		    write_piece_data(Remaining, Rest, S);
+		{noproc, _} ->
+		    D = remove_file_process(Pid, S#state.file_process_dict),
+		    write_piece_data(Data, [{Path, Offset, Size} | Rest],
+				     S#state{file_process_dict = D})
+	    end;
 	error ->
 	    {ok, Pid, NS} = create_file_process(Path, S),
 	    ok = file_process:put_data(Pid, Chunk, Offset, Size),
