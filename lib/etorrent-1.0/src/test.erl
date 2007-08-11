@@ -2,13 +2,16 @@
 
 -compile(export_all).
 
-start() ->
+start_apps() ->
     start_sasl(),
     application:start(crypto),
     application:start(inets),
     application:start(timer),
     application:set_env(etorrent, dir, "/home/jlouis/etorrent_test"),
-    application:set_env(etorrent, port, 1729),
+    application:set_env(etorrent, port, 1729).
+
+start() ->
+    start_apps(),
     etorrent:start_link().
 
 start_sasl() ->
