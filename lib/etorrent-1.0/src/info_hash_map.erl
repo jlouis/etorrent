@@ -103,8 +103,7 @@ handle_cast(_Msg, State) ->
 %% Description: Handling all non call/cast messages
 %%--------------------------------------------------------------------
 handle_info({'DOWN', _R, process, Pid, _Reason}, S) ->
-    [[InfoHash]] = ets:match(S#state.info_hash_map, {'$1', Pid}),
-    ets:delete(S#state.info_hash_map, {InfoHash, Pid}),
+    ets:match_delete(S#state.info_hash_map, {'_', Pid}),
     {noreply, S};
 handle_info(_Info, State) ->
     {noreply, State}.
