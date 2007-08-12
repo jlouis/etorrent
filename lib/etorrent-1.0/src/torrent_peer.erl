@@ -129,8 +129,7 @@ handle_cast({connect, IP, Port, PeerId}, S) ->
 	    {ok, SendPid} =
 		torrent_peer_send:start_link(Socket,
 					     S#state.file_system_pid,
-					     S#state.state_pid,
-					     self()),
+					     S#state.state_pid),
 	    %sys:trace(SendPid, true),
 	    BF = torrent_state:retrieve_bitfield(S#state.state_pid),
 	    torrent_peer_send:send(SendPid, {bitfield, BF}),
