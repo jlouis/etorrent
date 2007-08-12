@@ -103,16 +103,14 @@ handle_call(choked, {Pid, _Tag}, S) ->
     {reply, ok, peer_dict_update(
 		  Pid,
 		  fun(PI) ->
-			  PI#peer_info{
-			    remote_choking = true}
+			  PI#peer_info{remote_choking = true}
 		  end,
 		  S)};
 handle_call(unchoked, {Pid, _Tag}, S) ->
     {reply, ok, peer_dict_update(
 		  Pid,
 		  fun(PI) ->
-			  PI#peer_info{
-			    remote_choking = false}
+			  PI#peer_info{ remote_choking = false}
 		  end,
 		  S)};
 handle_call({uploaded_data, Amount}, {Pid, _Tag}, S) ->
@@ -158,7 +156,7 @@ handle_call(_Request, _From, State) ->
     {reply, Reply, State}.
 
 handle_cast({add_peers, IPList}, S) ->
-    {ok, NS} = usort_peers(IPList, S),
+    {ok, NS} = update_available_peers(IPList, S),
     {ok, NS2} = start_new_peers(NS),
     {noreply, NS2};
 handle_cast({got_piece_from_peer, Index}, S) ->
@@ -290,8 +288,7 @@ perform_choking_unchoking(S) ->
     % Choke everyone else
     choke_peers(Rest),
 
-    DoNotTouchPids = sets:from_list(lists:map(fun({K, _V}) -> K end,
-					     Downloaders)),
+    DoNotTouchPids = sets:from_list(Downloaders),
     {S, DoNotTouchPids}.
 
 remove_optimistic_unchoking(S) ->
@@ -360,17 +357,16 @@ peer_dict_map(F, S) ->
     D = dict:map(F, S#state.peer_process_dict),
     S#state{peer_process_dict = D}.
 
-usort_peers(IPList, S) ->
+update_available_peers(IPList, S) ->
     NewList = lists:usort(IPList ++ S#state.available_peers),
     {ok, S#state{ available_peers = NewList}}.
 
 start_new_peers(S) ->
-    PeersMissing =
-	?MAX_PEER_PROCESSES - dict:size(S#state.peer_process_dict),
-    if
-	PeersMissing > 0 ->
-	    fill_peers(PeersMissing, S);
+    PeersMissing = ?MAX_PEER_PROCESSES - dict:size(S#state.peer_process_dict),
+    case PeersMissing > 0 of
 	true ->
+	    fill_peers(PeersMissing, S);
+	false ->
 	    {ok, S}
     end.
 
@@ -383,7 +379,7 @@ fill_peers(N, S) ->
 	    % No peers available, just stop trying to fill peers
 	    {ok, S};
 	[{IP, Port, PeerId} | R] ->
-	    % P is a possible peer. Check it.
+	    % Possible peer. Check it.
 	    case is_bad_peer_or_ourselves(PeerId, S) of
 		true ->
 		    fill_peers(N, S#state{available_peers = R});

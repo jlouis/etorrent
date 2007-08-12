@@ -12,7 +12,7 @@
 
 %% API
 -export([start_link/5, connect/4, choke/1, unchoke/1, interested/1,
-	 send_have_piece/2, complete_handshake/3]).
+	 send_have_piece/2, complete_handshake/3, uploaded_data/2]).
 
 %% Temp API
 -export([chunkify/2]).
@@ -75,6 +75,9 @@ send_have_piece(Pid, PieceNumber) ->
 complete_handshake(Pid, ReservedBytes, Socket) ->
     gen_server:cast(Pid, {complete_handshake, ReservedBytes, Socket}).
 
+uploaded_data(Pid, Amount) ->
+    gen_server:cast(Pid, {uploaded_data, Amount}).
+
 %%====================================================================
 %% gen_server callbacks
 %%====================================================================
@@ -136,6 +139,9 @@ handle_cast({connect, IP, Port, PeerId}, S) ->
 	{error, _X} ->
 	    exit(shutdown)
     end;
+handle_cast({uploaded_data, Amount}, S) ->
+    torrent_peer_master:uploaded_data(S#state.master_pid, Amount),
+    {noreply, S};
 handle_cast({complete_handshake, _ReservedBytes, Socket}, S) ->
     peer_communication:complete_handshake_header(Socket,
 						 S#state.info_hash,

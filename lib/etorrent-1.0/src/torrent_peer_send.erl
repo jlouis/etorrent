@@ -11,7 +11,7 @@
 -behaviour(gen_fsm).
 
 %% API
--export([start_link/4, send/2, remote_request/4, cancel/4, choke/1, unchoke/1,
+-export([start_link/3, send/2, remote_request/4, cancel/4, choke/1, unchoke/1,
 	 local_request/4, not_interested/1, send_have_piece/2]).
 
 %% gen_server callbacks
@@ -23,8 +23,8 @@
 
 		choke = true,
 
+		parent = none,
 	        piece_cache = none,
-		master_pid = none,
 		state_pid = none,
 	        file_system_pid = none}).
 
@@ -33,9 +33,9 @@
 %%====================================================================
 %% API
 %%====================================================================
-start_link(Socket, FilesystemPid, StatePid, MasterPid) ->
+start_link(Socket, FilesystemPid, StatePid) ->
     gen_fsm:start_link(?MODULE,
-			  [Socket, FilesystemPid, StatePid, MasterPid], []).
+			  [Socket, FilesystemPid, StatePid, self()], []).
 
 send(Pid, Msg) ->
     gen_fsm:send_event(Pid, {send, Msg}).
@@ -64,13 +64,13 @@ send_have_piece(Pid, PieceNumber) ->
 %%====================================================================
 %% gen_server callbacks
 %%====================================================================
-init([Socket, FilesystemPid, StatePid, MasterPid]) ->
+init([Socket, FilesystemPid, StatePid, Parent]) ->
     {ok,
      keep_alive,
      #state{socket = Socket,
 	    request_queue = queue:new(),
+	    parent = Parent,
 	    state_pid = StatePid,
-	    master_pid = MasterPid,
 	    file_system_pid = FilesystemPid},
      ?DEFAULT_KEEP_ALIVE_INTERVAL}.
 
@@ -95,7 +95,7 @@ running(timeout, S) when S#state.choke == false ->
 	{{value, {Index, Offset, Len}}, NQ} ->
 	    NS = send_piece(Index, Offset, Len, S),
 	    torrent_state:uploaded_data(S#state.state_pid, Len),
-	    torrent_peer_master:uploaded_data(S#state.master_pid, Len),
+	    torrent_peer:uploaded_data(S#state.parent, Len),
 	    {next_state, running, NS#state{request_queue = NQ}, 0}
     end;
 running(Msg, S) ->
@@ -129,7 +129,7 @@ handle_message({remote_request_piece, _Index, _Offset, _Len}, S)
   when S#state.choke == true ->
     {next_state, running, S, 0};
 handle_message({remote_request_piece, Index, Offset, Len}, S)
-  when S#state.choke ->
+  when S#state.choke == false ->
     Requests = queue:len(S#state.request_queue),
     case Requests > ?MAX_REQUESTS of
 	true ->
