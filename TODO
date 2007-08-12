@@ -2,6 +2,9 @@
 -- This is a list of what To Do before a release is ready to be made.
 ----------------------------------------------------------------------
 
+* Remove Modules we don't use anyway.
+- There are quite some unused modules. Consider killing them.
+
 * DOCUMENTATION!
 - Pick functions at random, and document what they are doing.
   It is /especially/ important to document library calls and
