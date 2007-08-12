@@ -346,7 +346,6 @@ handle_got_chunk(Index, Offset, Data, Len, S) ->
 						Data, GBT, 1, NS),
 		    case check_and_store_piece(Index, NS2) of
 			ok ->
-			    error_logger:info_msg("Storing ~p~n", [Index]),
 			    PR = lists:keydelete(Index, 1,
 						 NS2#state.piece_request),
 			    {ok, NS2#state{piece_request = PR}};
