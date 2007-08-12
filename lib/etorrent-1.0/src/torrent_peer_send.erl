@@ -93,10 +93,14 @@ running(timeout, S) when S#state.choke == false ->
 	     S#state{request_queue = Q},
 	     ?DEFAULT_KEEP_ALIVE_INTERVAL};
 	{{value, {Index, Offset, Len}}, NQ} ->
-	    NS = send_piece(Index, Offset, Len, S),
-	    torrent_state:uploaded_data(S#state.state_pid, Len),
-	    torrent_peer:uploaded_data(S#state.parent, Len),
-	    {next_state, running, NS#state{request_queue = NQ}, 0}
+	    case send_piece(Index, Offset, Len, S) of
+		{ok, NS} ->
+		    torrent_state:uploaded_data(S#state.state_pid, Len),
+		    torrent_peer:uploaded_data(S#state.parent, Len),
+		    {next_state, running, NS#state{request_queue = NQ}, 0};
+		conn_closed ->
+		    {stop, normal, S}
+	    end
     end;
 running(Msg, S) ->
     handle_message(Msg, S).
@@ -155,15 +159,26 @@ code_change(_OldVsn, _State, State, _Extra) ->
 %%--------------------------------------------------------------------
 %%% Internal functions
 %%--------------------------------------------------------------------
+
+%%--------------------------------------------------------------------
+%% Function: send_piece_message/2
+%% Description: Send the message Msg and handle an eventual connection
+%%   close gracefully.
+%%--------------------------------------------------------------------
+send_piece_message(Msg, S) ->
+    case peer_communication:send_message(S#state.socket, Msg) of
+	ok ->
+	    {ok, S};
+	{error, closed} ->
+	    conn_closed
+    end.
+
 send_piece(Index, Offset, Len, S) ->
     case S#state.piece_cache of
 	{I, Binary} when I == Index ->
 	    <<_Skip:Offset/binary, Data:Len/binary, _R/binary>> = Binary,
 	    Msg = {piece, Index, Offset, Data},
-	    % TODO: This call may fail.
-	    ok = peer_communication:send_message(S#state.socket,
-						 Msg),
-	    S;
+	    send_piece_message(Msg, S);
 	{I, _Binary} when I /= Index ->
 	    NS = load_piece(Index, S),
 	    send_piece(Index, Offset, Len, NS);

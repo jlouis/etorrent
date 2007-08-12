@@ -10,8 +10,9 @@
 
 %% API
 -export([read_all_of_file/1, list_tabulate/2, queue_remove/2,
-	sets_is_empty/1, build_info_hash_encoded_form_rfc1738/1,
-	build_uri_encoded_form_rfc1738/1]).
+	 queue_remove_with_check/2, sets_is_empty/1,
+	 build_info_hash_encoded_form_rfc1738/1,
+	 build_uri_encoded_form_rfc1738/1]).
 
 %%====================================================================
 %% API
@@ -28,12 +29,14 @@ read_all_of_file(File) ->
 	    {error, Reason}
     end.
 
+
 list_tabulate(N, F) ->
     list_tabulate(0, N, F, []).
 
-%%====================================================================
-%% Internal functions
-%%====================================================================
+%%--------------------------------------------------------------------
+%% Function: sets_is_empty(set()) -> bool()
+%% Description: True if set() is empty, false otherwise
+%%--------------------------------------------------------------------
 sets_is_empty(Set) ->
     case sets:size(Set) of
 	0 ->
@@ -42,10 +45,66 @@ sets_is_empty(Set) ->
 	    false
     end.
 
+%%--------------------------------------------------------------------
+%% Function: queue_remove_with_check(Item, Q1) -> {ok, Q2} | false
+%% Description: If Item is present in queue(), remove the first
+%%   occurence and return it as {ok, Q2}. If the item can not be found
+%%   return false.
+%%   Note: Inefficient implementation. Converts to/from lists.
+%%--------------------------------------------------------------------
+queue_remove_with_check(Item, Q) ->
+    QList = queue:to_list(Q),
+    case lists:member(Item, QList) of
+	true ->
+	    List = lists:delete(Item, QList),
+	    {ok, queue:from_list(List)};
+	false ->
+	    false
+    end.
+
+%%--------------------------------------------------------------------
+%% Function: queue_remove(Item, queue()) -> queue()
+%% Description: Remove first occurence of Item in queue() if present.
+%%   Note: This function assumes the representation of queue is opaque
+%%     and thus the function is quite ineffective. We can build a much
+%%     much faster version if we create our own queues.
+%%--------------------------------------------------------------------
 queue_remove(Item, Q) ->
     QList = queue:to_list(Q),
     List = lists:delete(Item, QList),
     queue:from_list(List).
+
+%%--------------------------------------------------------------------
+%% Function: build_uri_encoded_form_rfc1738(List) -> String
+%% Description: Convert the list into RFC1738 encoding (URL-encoding).
+%%--------------------------------------------------------------------
+build_uri_encoded_form_rfc1738(List) ->
+    Unreserved = rfc_3986_unreserved_characters_set(),
+    lists:flatten(lists:map(
+		    fun (E) ->
+			    case sets:is_element(E, Unreserved) of
+				true ->
+				    E;
+				false ->
+				    lists:concat(
+				      ["%", io_lib:format("~2.16.0B", [E])])
+			    end
+		    end,
+		    List)).
+
+%%--------------------------------------------------------------------
+%% Function: build_info_hash_encoded_form_rfc1738(List) -> String
+%% Description: Convenience function -- could probably be changed into
+%%   a variant of build_uri_encoded_form_rfc1738 checking types.
+%%--------------------------------------------------------------------
+%% TODO: Put this into build_uri_encoded_form_rfc1738 and rename both
+%%   functions.
+build_info_hash_encoded_form_rfc1738(Binary) ->
+    build_uri_encoded_form_rfc1738(binary_to_list(Binary)).
+
+%%====================================================================
+%% Internal functions
+%%====================================================================
 
 list_tabulate(N, K, _F, Acc) when N ==K ->
     lists:reverse(Acc);
@@ -63,7 +122,6 @@ eat_lines(IODev, Accum) ->
 	    eat_lines(IODev, [String | Accum])
     end.
 
-
 rfc_3986_unreserved_characters() ->
     % jlouis: I deliberately killed ~ from the list as it seems the Mainline
     %  client doesn't announce this.
@@ -72,22 +130,6 @@ rfc_3986_unreserved_characters() ->
 rfc_3986_unreserved_characters_set() ->
     sets:from_list(rfc_3986_unreserved_characters()).
 
-build_uri_encoded_form_rfc1738(List) ->
-    Unreserved = rfc_3986_unreserved_characters_set(),
-    lists:flatten(lists:map(
-		    fun (E) ->
-			    case sets:is_element(E, Unreserved) of
-				true ->
-				    E;
-				false ->
-				    lists:concat(
-				      ["%", io_lib:format("~2.16.0B", [E])])
-			    end
-		    end,
-		    List)).
-
-build_info_hash_encoded_form_rfc1738(Binary) ->
-    build_uri_encoded_form_rfc1738(binary_to_list(Binary)).
 
 
 
