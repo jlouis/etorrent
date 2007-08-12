@@ -177,7 +177,6 @@ write_piece_data(Data, [{Path, Offset, Size} | Rest], S) ->
 	    write_piece_data(Remaining, Rest, NS)
     end.
 
-
 remove_file_process(Pid, Dict) ->
     erase_value(Pid, Dict).
 
