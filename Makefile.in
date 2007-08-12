@@ -16,10 +16,10 @@ ETORRENT_1.0_EBINDIR = lib/etorrent-1.0/ebin
 
 ETORRENT_1.0_MODULES = acceptor bcoding check_torrent \
 	dirwatcher dirwatcher_sup etorrent_app etorrent \
-	file_process file_system file_system_sup \
+	file_process file_system \
 	histogram info_hash_map listener \
-	metainfo peer_communication peer_table \
-	random_source_sup serializer torrent_control torrent \
+	metainfo peer_communication \
+	serializer torrent_control \
 	torrent_manager torrent_peer torrent_peer_master \
 	torrent_peer_send torrent_pool_sup torrent_state \
 	torrent_sup tracker_delegate utils http_gzip \
