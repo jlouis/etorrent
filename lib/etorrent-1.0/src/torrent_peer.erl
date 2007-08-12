@@ -36,7 +36,7 @@
 		 remote_request_set = none,
 
 		 piece_set = none,
-		 piece_request = none,
+		 piece_request = [],
 
 		 file_system_pid = none,
 		 master_pid = none,
@@ -134,6 +134,7 @@ handle_cast({connect, IP, Port, PeerId}, S) ->
 	    BF = torrent_state:retrieve_bitfield(S#state.state_pid),
 	    torrent_peer_send:send(SendPid, {bitfield, BF}),
 	    {noreply, S#state{tcp_socket = Socket,
+			      peer_id = PeerId,
 			      send_pid = SendPid}};
 	{error, _X} ->
 	    exit(shutdown)
@@ -287,26 +288,77 @@ handle_message({piece, Index, Offset, Data}, S) ->
 handle_message(Unknown, S) ->
     {stop, {unknown_message, Unknown}, S}.
 
-handle_got_chunk(Index, Offset, Data, Len, S) ->
-    true = sets:is_element({Index, Offset, Len}, S#state.remote_request_set),
-    RemoteRSet = sets:del_element({Index, Offset, Len},
-				  S#state.remote_request_set),
-    case lists:keysearch(Index, 1, S#state.piece_request) of
-	{value, {_CurrentIndex, GBT, 1}} ->
-	    NS = update_with_new_piece(Index, Offset, Len, Data, GBT, 1, S),
-	    case check_and_store_piece(Index, NS) of
-		ok ->
-		    PR = lists:keydelete(Index, 1, NS#state.piece_request),
-		    {ok, NS#state{piece_request = PR,
-				  remote_request_set = RemoteRSet}};
-		wrong_hash ->
+
+delete_piece_from_request_sets(Index, Offset, Len, S) ->
+    case sets:is_element({Index, Offset, Len}, S#state.remote_request_set) of
+	true ->
+	    RemoteRSet = sets:del_element({Index, Offset, Len},
+					  S#state.remote_request_set),
+	    {ok, S#state{remote_request_set = RemoteRSet}};
+	false ->
+	    % If the piece is not in the remote request set, the peer has
+	    %   sent us a message "out of band". We don't care at all and
+	    %   attempt to find it in the request queue instead
+	    case utils:queue_remove_with_check({Index, Offset, Len},
+					       S#state.request_queue) of
+		{ok, NQ} ->
+		    {ok, S#state{request_queue = NQ}};
+		false ->
+		    % Bastard sent us something out of band, kill!
+		    error_logger:error_msg("Out of band request!~n"),
 		    stop
-	    end;
-	{value, {_CurrentIndex, GBT, N}} ->
-	    {ok, update_with_new_piece(
-		   Index, Offset, Len, Data, GBT, N,
-		   S#state{remote_request_set = RemoteRSet})}
+	    end
     end.
+
+get_requests(S) ->
+    lists:flatten(lists:map(fun({Index, _, _}) ->
+					  io_lib:format("|~B|", [Index])
+				  end,
+				  S#state.piece_request)).
+
+get_queues(S) ->
+    lists:flatten(lists:map(
+		    fun({Index, Offset, Len}) ->
+			    io_lib:format("|~p|", [{Index, Offset, Len}])
+		    end,
+		    lists:concat([queue:to_list(S#state.request_queue),
+				  sets:to_list(S#state.remote_request_set)]))).
+
+report_errornous_piece(Index, Offset, Len, S) ->
+    error_logger:warning_msg(
+      "Peer ~s sent us chunk ~p have no piece_request on~nRequests: ~p~n~p~n",
+      [S#state.peer_id, {Index, Offset, Len}, get_requests(S), get_queues(S)]).
+
+handle_got_chunk(Index, Offset, Data, Len, S) ->
+    case delete_piece_from_request_sets(Index, Offset, Len, S) of
+	stop ->
+	    error_logger:warning_msg(
+	      "Peer ~s sent a piece never requested ~p",
+	      [S#state.peer_id, {Index, Offset, Len}]),
+	    stop;
+	{ok, NS} ->
+	    case lists:keysearch(Index, 1, NS#state.piece_request) of
+		false ->
+		    report_errornous_piece(Index, Offset, Len, S),
+		    stop;
+		{value, {_CurrentIndex, GBT, 1}} ->
+		    NS2 = update_with_new_piece(Index, Offset, Len,
+						Data, GBT, 1, NS),
+		    case check_and_store_piece(Index, NS2) of
+			ok ->
+			    error_logger:info_msg("Storing ~p~n", [Index]),
+			    PR = lists:keydelete(Index, 1,
+						 NS2#state.piece_request),
+			    {ok, NS2#state{piece_request = PR}};
+			wrong_hash ->
+			    stop
+		    end;
+		{value, {_CurrentIndex, GBT, N}} ->
+		    {ok, update_with_new_piece(
+			   Index, Offset, Len, Data, GBT, N, NS)}
+	    end
+    end.
+
 
 check_and_store_piece(Index, S) ->
     case lists:keysearch(Index, 1, S#state.piece_request) of
@@ -457,6 +509,7 @@ queue_up_requests(S, N) ->
 %%  if no piece is eligible.
 %%--------------------------------------------------------------------
 select_piece_for_queueing(S, N) ->
+    true = queue:is_empty(S#state.request_queue),
     case torrent_state:request_new_piece(S#state.state_pid,
 					 S#state.piece_set) of
 	{ok, PieceNum, PieceSize} ->
