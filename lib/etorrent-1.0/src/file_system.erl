@@ -166,7 +166,7 @@ write_piece_data(Data, [{Path, Offset, Size} | Rest], S) ->
 			file_process:put_data(Pid, Chunk, Offset, Size)}) of
 		{Ref, ok} ->
 		    write_piece_data(Remaining, Rest, S);
-		{noproc, _} ->
+		{'EXIT', {noproc, _}} ->
 		    D = remove_file_process(Pid, S#state.file_process_dict),
 		    write_piece_data(Data, [{Path, Offset, Size} | Rest],
 				     S#state{file_process_dict = D})
