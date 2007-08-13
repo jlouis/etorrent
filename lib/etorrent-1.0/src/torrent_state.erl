@@ -101,7 +101,7 @@ init([DiskState, PieceSize, ControlPid]) ->
 		piece_assignment = dict:new(),
 		num_pieces = Size,
 		piece_size = PieceSize,
-		histogram = histogram:new(),
+		histogram = et_histogram:new(),
 		torrent_size = AmountLeft,
 	        left = AmountLeft,
 	        control_pid = ControlPid}}.
@@ -144,7 +144,7 @@ handle_call(retrieve_bitfield, _From, S) ->
 handle_call({remote_have_piece, PieceNum}, _From, S) ->
     case piece_valid(PieceNum, S) of
 	true ->
-	    NS = S#state { histogram = histogram:increase_piece(
+	    NS = S#state { histogram = et_histogram:increase_piece(
 					 PieceNum, S#state.histogram) },
 	    Reply = case sets:is_element(PieceNum, NS#state.piece_set) of
 			true ->
@@ -163,10 +163,10 @@ handle_call({remote_bitfield, PieceSet}, _From, S) ->
 				  true when Interest == not_valid ->
 				      {H, not_valid};
 				  true when Interest == interested ->
-				      {histogram:increase_piece(E, H),
+				      {et_histogram:increase_piece(E, H),
 				       interested};
 				  true when Interest == not_interested ->
-				      {histogram:increase_piece(E, H),
+				      {et_histogram:increase_piece(E, H),
 				       case sets:is_element(
 					      E, S#state.piece_set) of
 					   true ->
@@ -190,7 +190,7 @@ handle_call({remove_bitfield, PieceSet}, _From, S) ->
     NewH = sets:fold(fun(E, H) ->
 			     case piece_valid(E, S) of
 				 true ->
-				     histogram:decrease_piece(E, H);
+				     et_histogram:decrease_piece(E, H);
 				 false ->
 				     H
 			     end
@@ -204,8 +204,8 @@ handle_call({request_new_piece, PeerPieces}, {From, _Tag}, S) ->
 	true ->
 	    {reply, not_interested, S};
 	false ->
-	    case histogram:find_rarest_piece(EligiblePieces,
-					     S#state.histogram) of
+	    case et_histogram:find_rarest_piece(EligiblePieces,
+						S#state.histogram) of
 		PieceNum ->
 		    PieceSize = find_piece_size(PieceNum, S),
 		    Missing = sets:del_element(PieceNum,

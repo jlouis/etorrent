@@ -6,7 +6,7 @@
 %%%
 %%% Created : 26 Jul 2007 by Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
 %%%-------------------------------------------------------------------
--module(histogram).
+-module(et_histogram).
 
 %% API
 -export([new/0, increase_piece/2, decrease_piece/2,
