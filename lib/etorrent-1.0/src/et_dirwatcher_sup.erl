@@ -6,7 +6,7 @@
 %%%
 %%% Created : 11 Jul 2007 by Jesper Louis Andersen <jlouis@succubus.local.domain>
 %%%-------------------------------------------------------------------
--module(dirwatcher_sup).
+-module(et_dirwatcher_sup).
 
 -behaviour(supervisor).
 

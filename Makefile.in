@@ -15,7 +15,7 @@ ETORRENT_1.0_SRCDIR = lib/etorrent-1.0/src
 ETORRENT_1.0_EBINDIR = lib/etorrent-1.0/ebin
 
 ETORRENT_1.0_MODULES = et_acceptor et_bcoding et_fs_checker \
-	et_dirwatcher dirwatcher_sup etorrent_app etorrent \
+	et_dirwatcher et_dirwatcher_sup etorrent_app etorrent \
 	file_process file_system \
 	histogram info_hash_map listener \
 	metainfo peer_communication \
