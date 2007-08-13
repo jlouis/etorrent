@@ -1,23 +1,27 @@
 %%%-------------------------------------------------------------------
-%%% File    : info_hash_map.erl
+%%% File    : listener.erl
 %%% Author  : Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
-%%% Description : Global mapping of infohashes to Peer Masters
+%%% License : See COPYING
+%%% Description : Listen for incoming connections
 %%%
-%%% Created : 31 Jul 2007 by Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
+%%% Created : 30 Jul 2007 by Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
 %%%-------------------------------------------------------------------
--module(info_hash_map).
+-module(et_listener).
 
 -behaviour(gen_server).
 
 %% API
--export([start_link/0, store_hash/1, remove_hash/1, lookup/1]).
+-export([start_link/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3]).
 
--record(state, { info_hash_map = none}).
+-record(state, { listen_socket = none,
+		 acceptors = []}).
+
 -define(SERVER, ?MODULE).
+-define(DEFAULT_AMOUNT_OF_ACCEPTORS, 5).
 
 %%====================================================================
 %% API
@@ -28,15 +32,6 @@
 %%--------------------------------------------------------------------
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
-
-store_hash(InfoHash) ->
-    gen_server:call(?SERVER, {store_hash, InfoHash}).
-
-remove_hash(InfoHash) ->
-    gen_server:call(?SERVER, {remove_hash, InfoHash}).
-
-lookup(InfoHash) ->
-    gen_server:call(?SERVER, {lookup, InfoHash}).
 
 %%====================================================================
 %% gen_server callbacks
@@ -50,7 +45,9 @@ lookup(InfoHash) ->
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
 init([]) ->
-    {ok, #state{info_hash_map = ets:new(infohash_map, [named_table])}}.
+    {ok, Port} = application:get_env(etorrent, port),
+    {ok, ListenSocket} = gen_tcp:listen(Port, [binary, inet, {active, false}]),
+    {ok, #state{ listen_socket = ListenSocket}, 0}.
 
 %%--------------------------------------------------------------------
 %% Function: %% handle_call(Request, From, State) -> {reply, Reply, State} |
@@ -61,28 +58,6 @@ init([]) ->
 %%                                      {stop, Reason, State}
 %% Description: Handling call messages
 %%--------------------------------------------------------------------
-handle_call({store_hash, InfoHash}, {Pid, _Tag}, S) ->
-    Ref = erlang:monitor(process, Pid),
-    ets:insert(S#state.info_hash_map, {InfoHash, Pid, Ref}),
-    {reply, ok, S};
-handle_call({remove_hash, InfoHash}, {Pid, _Tag}, S) ->
-    case ets:match(S#state.info_hash_map, {InfoHash, Pid, '$1'}) of
-	[[Ref]] ->
-	    erlang:demonitor(Ref),
-	    ets:delete(S#state.info_hash_map, {InfoHash, Pid, Ref}),
-	    {reply, ok, S};
-	_ ->
-	    error_logger:error_msg("Pid ~p is not in info_hash_map~n",
-				   [Pid]),
-	    {reply, ok, S}
-    end;
-handle_call({lookup, InfoHash}, _From, S) ->
-    case ets:match(S#state.info_hash_map, {InfoHash, '$1', '_'}) of
-	[[Pid]] ->
-	    {reply, {ok, Pid}, S};
-	[] ->
-	    {reply, not_found, S}
-    end;
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -102,9 +77,8 @@ handle_cast(_Msg, State) ->
 %%                                       {stop, Reason, State}
 %% Description: Handling all non call/cast messages
 %%--------------------------------------------------------------------
-handle_info({'DOWN', _R, process, Pid, _Reason}, S) ->
-    ets:match_delete(S#state.info_hash_map, {'_', Pid}),
-    {noreply, S};
+handle_info(timeout, S) ->
+    {noreply, spawn_acceptors(?DEFAULT_AMOUNT_OF_ACCEPTORS, S)};
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -128,3 +102,13 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 %%% Internal functions
 %%--------------------------------------------------------------------
+
+%%--------------------------------------------------------------------
+%% Func: spawn_acceptors(N, state()) -> state()
+%% Description: Spawn N acceptors.
+%%--------------------------------------------------------------------
+spawn_acceptors(0, S) ->
+    S;
+spawn_acceptors(N, S) ->
+    {ok, Pid} = et_acceptor:start_link(S#state.listen_socket),
+    spawn_acceptors(N-1, S#state{acceptors = [Pid | S#state.acceptors]}).

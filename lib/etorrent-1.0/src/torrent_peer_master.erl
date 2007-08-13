@@ -90,7 +90,7 @@ seed(Pid) ->
 init([OurPeerId, InfoHash, StatePid, FileSystemPid]) ->
     process_flag(trap_exit, true), % Needed for torrent peers
     {ok, Tref} = timer:send_interval(?ROUND_TIME, self(), round_tick),
-    ok = info_hash_map:store_hash(InfoHash),
+    ok = et_t_mapper:store_hash(InfoHash),
     {ok, #state{ our_peer_id = OurPeerId,
 		 bad_peers = dict:new(),
 		 info_hash = InfoHash,
@@ -203,7 +203,7 @@ handle_info(Info, State) ->
     {noreply, State}.
 
 terminate(_Reason, S) ->
-    info_hash_map:remove_hash(S#state.info_hash),
+    et_t_mapper:remove_hash(S#state.info_hash),
     ok.
 
 code_change(_OldVsn, State, _Extra) ->

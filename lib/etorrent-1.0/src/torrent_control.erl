@@ -123,20 +123,20 @@ check_and_start_torrent(FS, FileDict, S) ->
     ok = serializer:release_token(),
     {ok, StatePid} = torrent_state:start_link(
 		       DiskState,
-		       metainfo:get_piece_length(S#state.torrent),
+		       et_metainfo:get_piece_length(S#state.torrent),
 		       self()),
     {ok, PeerMasterPid} =
 	torrent_peer_master:start_link(
 	  S#state.peer_id,
-	  metainfo:get_infohash(S#state.torrent),
+	  et_metainfo:get_infohash(S#state.torrent),
 	  StatePid,
 	  FS),
     {ok, TrackerPid} =
 	tracker_delegate:start_link(self(),
 				    StatePid,
 				    PeerMasterPid,
-				    metainfo:get_url(S#state.torrent),
-				    metainfo:get_infohash(S#state.torrent),
+				    et_metainfo:get_url(S#state.torrent),
+				    et_metainfo:get_infohash(S#state.torrent),
 				    S#state.peer_id),
     tracker_delegate:start_now(TrackerPid),
     S#state{disk_state = DiskState,

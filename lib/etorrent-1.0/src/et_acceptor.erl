@@ -113,7 +113,7 @@ handshake(Socket) ->
     end.
 
 lookup_infohash(Socket, ReservedBytes, InfoHash, PeerId) ->
-    case info_hash_map:lookup(InfoHash) of
+    case et_t_mapper:lookup(InfoHash) of
 	{ok, Pid} ->
 	    inform_peer_master(Socket, Pid, ReservedBytes, PeerId);
 	not_found ->

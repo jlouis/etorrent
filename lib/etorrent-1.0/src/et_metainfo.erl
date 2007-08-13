@@ -10,7 +10,7 @@
 %% TODO: A couple of functions in metainfo doesn't belong here. They
 %%   they should be moved into bcoding.
 
--module(metainfo).
+-module(et_metainfo).
 -author("Jesper Louis Andersen <jesper.louis.andersen@gmail.com>").
 -vsn(1).
 
