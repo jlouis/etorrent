@@ -5,7 +5,7 @@
 %%%
 %%% Created : 31 Jul 2007 by Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
 %%%-------------------------------------------------------------------
--module(et_t_mapper).
+-module(etorrent_t_mapper).
 
 -behaviour(gen_server).
 

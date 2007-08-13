@@ -6,7 +6,7 @@
 %%%
 %%% Created :  9 Jul 2007 by Jesper Louis Andersen <jlouis@succubus.local.domain>
 %%%-------------------------------------------------------------------
--module(et_t_control).
+-module(etorrent_t_control).
 
 -behaviour(gen_fsm).
 
@@ -101,14 +101,14 @@ init([]) ->
 % Load a torrent at Path with Torrent
 initializing({load_new_torrent, Path, PeerId}, S) ->
     {ok, Torrent, Files} =
-	et_fs_checker:load_torrent(S#state.work_dir, Path),
-    ok = et_fs_checker:ensure_file_sizes_correct(Files),
-    {ok, FileDict} = et_fs_checker:build_dictionary_on_files(Torrent, Files),
+	etorrent_fs_checker:load_torrent(S#state.work_dir, Path),
+    ok = etorrent_fs_checker:ensure_file_sizes_correct(Files),
+    {ok, FileDict} = etorrent_fs_checker:build_dictionary_on_files(Torrent, Files),
     {ok, FS, NewState} = add_filesystem(FileDict,
 					S#state{path = Path,
 						torrent = Torrent,
 						peer_id = PeerId}),
-    case et_fs_serializer:request_token() of
+    case etorrent_fs_serializer:request_token() of
 	ok ->
 	    NS = check_and_start_torrent(FS, FileDict, NewState),
 	    {next_state, started, NS};
@@ -119,26 +119,26 @@ initializing({load_new_torrent, Path, PeerId}, S) ->
 
 check_and_start_torrent(FS, FileDict, S) ->
     {ok, DiskState} =
-	et_fs_checker:check_torrent_contents(FS, FileDict),
-    ok = et_fs_serializer:release_token(),
-    {ok, StatePid} = et_t_state:start_link(
+	etorrent_fs_checker:check_torrent_contents(FS, FileDict),
+    ok = etorrent_fs_serializer:release_token(),
+    {ok, StatePid} = etorrent_t_state:start_link(
 		       DiskState,
-		       et_metainfo:get_piece_length(S#state.torrent),
+		       etorrent_metainfo:getorrent_piece_length(S#state.torrent),
 		       self()),
     {ok, PeerMasterPid} =
-	et_t_peer_group:start_link(
+	etorrent_t_peer_group:start_link(
 	  S#state.peer_id,
-	  et_metainfo:get_infohash(S#state.torrent),
+	  etorrent_metainfo:getorrent_infohash(S#state.torrent),
 	  StatePid,
 	  FS),
     {ok, TrackerPid} =
-	et_tracker_communication:start_link(self(),
+	etorrent_tracker_communication:start_link(self(),
 				    StatePid,
 				    PeerMasterPid,
-				    et_metainfo:get_url(S#state.torrent),
-				    et_metainfo:get_infohash(S#state.torrent),
+				    etorrent_metainfo:getorrent_url(S#state.torrent),
+				    etorrent_metainfo:getorrent_infohash(S#state.torrent),
 				    S#state.peer_id),
-    et_tracker_communication:start_now(TrackerPid),
+    etorrent_tracker_communication:start_now(TrackerPid),
     S#state{disk_state = DiskState,
 	    file_system_pid = FS,
 	    tracker_pid = TrackerPid,
@@ -160,17 +160,17 @@ started({tracker_error_report, Reason}, S) ->
     io:format("Got tracker error: ~s~n", [Reason]),
     {next_state, started, S};
 started(seed, S) ->
-    et_t_peer_group:seed(S#state.peer_master_pid),
-    et_tracker_communication:torrent_completed(S#state.tracker_pid),
+    etorrent_t_peer_group:seed(S#state.peer_master_pid),
+    etorrent_tracker_communication:torrent_completed(S#state.tracker_pid),
     {next_state, started, S};
 started(token, S) ->
-    ok = et_fs_serializer:release_token(),
+    ok = etorrent_fs_serializer:release_token(),
     {next_state, started, S}.
 
 stopped(start, S) ->
     {stop, argh, S};
 stopped(token, S) ->
-    ok = et_fs_serializer:release_token(),
+    ok = etorrent_fs_serializer:release_token(),
     {stop, argh, S}.
 
 %%--------------------------------------------------------------------
@@ -261,7 +261,7 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 %%% Internal functions
 %%--------------------------------------------------------------------
 add_filesystem(FileDict, S) ->
-    {ok, FS} = et_fs:start_link(),
-    et_fs:load_file_information(FS, FileDict),
+    {ok, FS} = etorrent_fs:start_link(),
+    etorrent_fs:load_file_information(FS, FileDict),
     {ok, FS, S#state{file_system_pid = FS}}.
 

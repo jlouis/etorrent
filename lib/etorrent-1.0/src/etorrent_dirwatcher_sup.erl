@@ -6,7 +6,7 @@
 %%%
 %%% Created : 11 Jul 2007 by Jesper Louis Andersen <jlouis@succubus.local.domain>
 %%%-------------------------------------------------------------------
--module(et_dirwatcher_sup).
+-module(etorrent_dirwatcher_sup).
 
 -behaviour(supervisor).
 
@@ -29,9 +29,9 @@ start_link() ->
     supervisor:start_link({local, ?SERVER}, ?MODULE, []).
 
 init([]) ->
-    DirWatcher = {et_dirwatcher,
-		  {et_dirwatcher, start_link, []},
-		  permanent, 2000, worker, [et_dirwatcher]},
+    DirWatcher = {etorrent_dirwatcher,
+		  {etorrent_dirwatcher, start_link, []},
+		  permanent, 2000, worker, [etorrent_dirwatcher]},
     {ok,{{one_for_one,1,60}, [DirWatcher]}}.
 
 %%====================================================================

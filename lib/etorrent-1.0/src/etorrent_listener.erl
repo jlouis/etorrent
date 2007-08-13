@@ -6,7 +6,7 @@
 %%%
 %%% Created : 30 Jul 2007 by Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
 %%%-------------------------------------------------------------------
--module(et_listener).
+-module(etorrent_listener).
 
 -behaviour(gen_server).
 
@@ -110,5 +110,5 @@ code_change(_OldVsn, State, _Extra) ->
 spawn_acceptors(0, S) ->
     S;
 spawn_acceptors(N, S) ->
-    {ok, Pid} = et_acceptor:start_link(S#state.listen_socket),
+    {ok, Pid} = etorrent_acceptor:start_link(S#state.listen_socket),
     spawn_acceptors(N-1, S#state{acceptors = [Pid | S#state.acceptors]}).

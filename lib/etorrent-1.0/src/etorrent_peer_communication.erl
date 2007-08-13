@@ -7,7 +7,7 @@
 %%%
 %%% Created : 26 Jan 2007 by Jesper Louis Andersen <jlouis@succubus>
 %%%-------------------------------------------------------------------
--module(et_peer_communication).
+-module(etorrent_peer_communication).
 
 %% API
 -export([initiate_handshake/4, recieve_handshake/1,
@@ -185,7 +185,7 @@ recieve_header(Socket) ->
 	     IH:20/binary, PI:20/binary>> = Packet,
 	    if
 		PSL /= length(?PROTOCOL_STRING) ->
-		    {error, packet_size_mismatch};
+		    {error, packetorrent_size_mismatch};
 		true ->
 		    {ok, ReservedBytes, IH, PI}
 	    end;
@@ -200,7 +200,7 @@ recieve_header(Socket) ->
 construct_bitfield(Size, PieceSet) ->
     PadBits = 8 - (Size rem 8),
     Bits = lists:append(
-	     [et_utils:list_tabulate(
+	     [etorrent_utils:list_tabulate(
 		Size,
 		fun(N) ->
 			case sets:is_element(N, PieceSet) of
@@ -208,7 +208,7 @@ construct_bitfield(Size, PieceSet) ->
 			    false -> 0
 			end
 		end),
-	      et_utils:list_tabulate(
+	      etorrent_utils:list_tabulate(
 	       PadBits,
 	       fun(_N) -> 0 end)]),
     0 = length(Bits) rem 8,

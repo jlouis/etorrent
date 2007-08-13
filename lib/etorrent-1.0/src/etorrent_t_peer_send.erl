@@ -1,5 +1,5 @@
 %%%-------------------------------------------------------------------
-%%% File    : et_t_peer_send.erl
+%%% File    : etorrent_t_peer_send.erl
 %%% Author  : Jesper Louis Andersen
 %%% License : See COPYING
 %%% Description : Send out events to a foreign socket.
@@ -7,7 +7,7 @@
 %%% Created : 27 Jan 2007 by
 %%%   Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
 %%%-------------------------------------------------------------------
--module(et_t_peer_send).
+-module(etorrent_t_peer_send).
 
 -behaviour(gen_fsm).
 
@@ -76,7 +76,7 @@ init([Socket, FilesystemPid, StatePid, Parent]) ->
      ?DEFAULT_KEEP_ALIVE_INTERVAL}.
 
 keep_alive(timeout, S) ->
-    case et_peer_communication:send_message(S#state.socket, keep_alive) of
+    case etorrent_peer_communication:send_message(S#state.socket, keep_alive) of
 	ok ->
 	    {next_state, keep_alive, S, ?DEFAULT_KEEP_ALIVE_INTERVAL};
 	{error, closed} ->
@@ -96,8 +96,8 @@ running(timeout, S) when S#state.choke == false ->
 	{{value, {Index, Offset, Len}}, NQ} ->
 	    case send_piece(Index, Offset, Len, S) of
 		{ok, NS} ->
-		    et_t_state:uploaded_data(S#state.state_pid, Len),
-		    et_t_peer_recv:uploaded_data(S#state.parent, Len),
+		    etorrent_t_state:uploaded_data(S#state.state_pid, Len),
+		    etorrent_t_peer_recv:uploaded_data(S#state.parent, Len),
 		    {next_state, running, NS#state{request_queue = NQ}, 0};
 		conn_closed ->
 		    {stop, normal, S}
@@ -144,7 +144,7 @@ handle_message({remote_request_piece, Index, Offset, Len}, S)
 	    {next_state, running, S#state{request_queue = NQ}, 0}
     end;
 handle_message({cancel_piece, Index, OffSet, Len}, S) ->
-    NQ = et_utils:queue_remove({Index, OffSet, Len}, S#state.request_queue),
+    NQ = etorrent_utils:queue_remove({Index, OffSet, Len}, S#state.request_queue),
     {next_state, running, S#state{request_queue = NQ}, 0}.
 
 
@@ -167,7 +167,7 @@ code_change(_OldVsn, _State, State, _Extra) ->
 %%   close gracefully.
 %%--------------------------------------------------------------------
 send_piece_message(Msg, S) ->
-    case et_peer_communication:send_message(S#state.socket, Msg) of
+    case etorrent_peer_communication:send_message(S#state.socket, Msg) of
 	ok ->
 	    {ok, S};
 	{error, closed} ->
@@ -189,11 +189,11 @@ send_piece(Index, Offset, Len, S) ->
     end.
 
 load_piece(Index, S) ->
-    {ok, Piece} = et_fs:read_piece(S#state.file_system_pid, Index),
+    {ok, Piece} = etorrent_fs:read_piece(S#state.file_system_pid, Index),
     S#state{piece_cache = {Index, Piece}}.
 
 send_message(Msg, S, NewState, Timeout) ->
-    case et_peer_communication:send_message(S#state.socket, Msg) of
+    case etorrent_peer_communication:send_message(S#state.socket, Msg) of
 	ok ->
 	    {next_state, NewState, S, Timeout};
 	{error, closed} ->

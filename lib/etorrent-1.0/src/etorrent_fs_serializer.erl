@@ -5,7 +5,7 @@
 %%%
 %%% Created :  9 Jul 2007 by Jesper Louis Andersen <jlouis@succubus.local.domain>
 %%%-------------------------------------------------------------------
--module(et_fs_serializer).
+-module(etorrent_fs_serializer).
 
 -behaviour(gen_fsm).
 
@@ -90,7 +90,7 @@ running(request_token, {From, _Tag}, S) ->
 running(release_token, _From, S) ->
     case queue:out(S#state.pids) of
 	{{value, Pid}, Q2} ->
-	    et_t_control:token(Pid),
+	    etorrent_t_control:token(Pid),
 	    {reply, ok, running, S#state{ pids = Q2}};
 	{empty, Q} ->
 	    {reply, ok, dormant, S#state{ pids = Q}}

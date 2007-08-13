@@ -10,84 +10,84 @@
 %% TODO: A couple of functions in metainfo doesn't belong here. They
 %%   they should be moved into bcoding.
 
--module(et_metainfo).
+-module(etorrent_metainfo).
 -author("Jesper Louis Andersen <jesper.louis.andersen@gmail.com>").
 -vsn(1).
 
 %% API
--export([get_piece_length/1, get_pieces/1, get_url/1, get_infohash/1,
-	 parse/1, get_files/1, get_name/1, hexify/1]).
+-export([getorrent_piece_length/1, getorrent_pieces/1, getorrent_url/1, getorrent_infohash/1,
+	 parse/1, getorrent_files/1, getorrent_name/1, hexify/1]).
 
 %%====================================================================
 %% API
 %%====================================================================
 
 %%--------------------------------------------------------------------
-%% Function: get_piece_length/1
+%% Function: getorrent_piece_length/1
 %% Description: Search a torrent file, return the piece length
 %%--------------------------------------------------------------------
-get_piece_length(Torrent) ->
-    {integer, Size} = find_target(get_info(Torrent), "piece length"),
+getorrent_piece_length(Torrent) ->
+    {integer, Size} = find_target(getorrent_info(Torrent), "piece length"),
     Size.
 
 %%--------------------------------------------------------------------
-%% Function: get_pieces/1
+%% Function: getorrent_pieces/1
 %% Description: Search a torrent, return pieces as a list
 %%--------------------------------------------------------------------
-get_pieces(Torrent) ->
-    case find_target(get_info(Torrent), "pieces") of
+getorrent_pieces(Torrent) ->
+    case find_target(getorrent_info(Torrent), "pieces") of
 	{string, Ps} ->
 	    lists:map(fun(Str) -> list_to_binary(Str) end,
 		      split_into_chunks(20, [], Ps))
     end.
 
-get_length(Torrent) ->
-    case find_target(get_info(Torrent), "length") of
+getorrent_length(Torrent) ->
+    case find_target(getorrent_info(Torrent), "length") of
 	{integer, L} ->
 	    L
     end.
 
 %%--------------------------------------------------------------------
-%% Function: get_files/1
+%% Function: getorrent_files/1
 %% Description: Get a file list from the torrent
 %%--------------------------------------------------------------------
-get_files(Torrent) ->
-    case et_bcoding:search_dict({string, "files"}, get_info(Torrent)) of
+getorrent_files(Torrent) ->
+    case etorrent_bcoding:search_dict({string, "files"}, getorrent_info(Torrent)) of
 	{ok, X} ->
 	    X;
 	false ->
 	    % Single value torrent, fake entry
-	    N = get_name(Torrent),
-	    L = get_length(Torrent),
+	    N = getorrent_name(Torrent),
+	    L = getorrent_length(Torrent),
 	    {list,[{dict,[{{string,"path"},
 			   {list,[{string,N}]}},
 			  {{string,"length"},{integer,L}}]}]}
     end.
 
 %%--------------------------------------------------------------------
-%% Function: get_files/1
+%% Function: getorrent_files/1
 %% Description: Get the name of a torrent
 %%--------------------------------------------------------------------
-get_name(Torrent) ->
-    {string, N} = find_target(get_info(Torrent), "name"),
+getorrent_name(Torrent) ->
+    {string, N} = find_target(getorrent_info(Torrent), "name"),
     N.
 
 %%--------------------------------------------------------------------
-%% Function: get_url/1
+%% Function: getorrent_url/1
 %% Description: Return the URL of a torrent
 %%--------------------------------------------------------------------
-get_url(Torrent) ->
+getorrent_url(Torrent) ->
     case find_target(Torrent, "announce") of
 	{string, U} -> U
     end.
 
 %%--------------------------------------------------------------------
-%% Function: get_infohash/1
+%% Function: getorrent_infohash/1
 %% Description: Return the infohash for a torrent
 %%--------------------------------------------------------------------
-get_infohash(Torrent) ->
-    {ok, InfoDict} = et_bcoding:search_dict({string, "info"}, Torrent),
-    {ok, InfoString} = et_bcoding:encode(InfoDict),
+getorrent_infohash(Torrent) ->
+    {ok, InfoDict} = etorrent_bcoding:search_dict({string, "info"}, Torrent),
+    {ok, InfoString} = etorrent_bcoding:encode(InfoDict),
     crypto:sha(list_to_binary(InfoString)).
 
 %%--------------------------------------------------------------------
@@ -99,7 +99,7 @@ parse(File) ->
 	{ok, IODev} ->
 	    Data = read_data(IODev),
 	    ok = file:close(IODev),
-	    case et_bcoding:decode(Data) of
+	    case etorrent_bcoding:decode(Data) of
 		{ok, Torrent} ->
 		    {ok, Torrent};
 		{error, Reason} ->
@@ -114,12 +114,12 @@ parse(File) ->
 
 %% Find a target that can't fail
 find_target(D, Name) ->
-    case et_bcoding:search_dict({string, Name}, D) of
+    case etorrent_bcoding:search_dict({string, Name}, D) of
 	{ok, X} ->
 	    X
     end.
 
-get_info(Torrent) ->
+getorrent_info(Torrent) ->
     find_target(Torrent, "info").
 
 

@@ -1,5 +1,5 @@
 %%%-------------------------------------------------------------------
-%%% File    : et_t_peer_recv.erl
+%%% File    : etorrent_t_peer_recv.erl
 %%% Author  : Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
 %%% License : See COPYING
 %%% Description : Represents a peers receiving of data
@@ -7,7 +7,7 @@
 %%% Created : 19 Jul 2007 by
 %%%    Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
 %%%-------------------------------------------------------------------
--module(et_t_peer_recv).
+-module(etorrent_t_peer_recv).
 
 -behaviour(gen_server).
 
@@ -121,19 +121,19 @@ handle_call(_Request, _From, State) ->
 %%--------------------------------------------------------------------
 handle_cast({connect, IP, Port, PeerId}, S) ->
     Socket = int_connect(IP, Port),
-    case et_peer_communication:initiate_handshake(Socket,
+    case etorrent_peer_communication:initiate_handshake(Socket,
 					       PeerId,
 					       S#state.local_peer_id,
 					       S#state.info_hash) of
 	{ok, _ReservedBytes} ->
-	    enable_socket_messages(Socket),
+	    enable_socketorrent_messages(Socket),
 	    {ok, SendPid} =
-		et_t_peer_send:start_link(Socket,
+		etorrent_t_peer_send:start_link(Socket,
 					     S#state.file_system_pid,
 					     S#state.state_pid),
 	    %sys:trace(SendPid, true),
-	    BF = et_t_state:retrieve_bitfield(S#state.state_pid),
-	    et_t_peer_send:send(SendPid, {bitfield, BF}),
+	    BF = etorrent_t_state:retrieve_bitfield(S#state.state_pid),
+	    etorrent_t_peer_send:send(SendPid, {bitfield, BF}),
 	    {noreply, S#state{tcp_socket = Socket,
 			      peer_id = PeerId,
 			      send_pid = SendPid}};
@@ -141,26 +141,26 @@ handle_cast({connect, IP, Port, PeerId}, S) ->
 	    exit(shutdown)
     end;
 handle_cast({uploaded_data, Amount}, S) ->
-    et_t_peer_group:uploaded_data(S#state.master_pid, Amount),
+    etorrent_t_peer_group:uploaded_data(S#state.master_pid, Amount),
     {noreply, S};
 handle_cast({complete_handshake, _ReservedBytes, Socket}, S) ->
-    et_peer_communication:complete_handshake_header(Socket,
+    etorrent_peer_communication:complete_handshake_header(Socket,
 						 S#state.info_hash,
 						 S#state.local_peer_id),
-    enable_socket_messages(Socket),
+    enable_socketorrent_messages(Socket),
     {ok, SendPid} =
-	et_t_peer_send:start_link(Socket,
+	etorrent_t_peer_send:start_link(Socket,
 				     S#state.file_system_pid,
 				     S#state.state_pid),
-    BF = et_t_state:retrieve_bitfield(S#state.state_pid),
-    et_t_peer_send:send(SendPid, {bitfield, BF}),
+    BF = etorrent_t_state:retrieve_bitfield(S#state.state_pid),
+    etorrent_t_peer_send:send(SendPid, {bitfield, BF}),
     {noreply, S#state{tcp_socket = Socket,
 		      send_pid = SendPid}};
 handle_cast(choke, S) ->
-    et_t_peer_send:choke(S#state.send_pid),
+    etorrent_t_peer_send:choke(S#state.send_pid),
     {noreply, S};
 handle_cast(unchoke, S) ->
-    et_t_peer_send:unchoke(S#state.send_pid),
+    etorrent_t_peer_send:unchoke(S#state.send_pid),
     {noreply, S};
 handle_cast(interested, S) ->
     case S#state.local_interested of
@@ -177,7 +177,7 @@ handle_cast({send_have_piece, PieceNumber}, S) ->
 	    {noreply, S};
 	false ->
 	    % Peer is missing the piece, so send it.
-	    et_t_peer_send:send_have_piece(S#state.send_pid, PieceNumber),
+	    etorrent_t_peer_send:send_have_piece(S#state.send_pid, PieceNumber),
 	    {noreply, S}
     end;
 handle_cast(_Msg, State) ->
@@ -192,7 +192,7 @@ handle_cast(_Msg, State) ->
 handle_info({tcp_closed, _P}, S) ->
     {stop, normal, S};
 handle_info({tcp, _Socket, M}, S) ->
-    Msg = et_peer_communication:recv_message(M),
+    Msg = etorrent_peer_communication:recv_message(M),
     case handle_message(Msg, S) of
 	{ok, NS} ->
 	    {noreply, NS};
@@ -210,7 +210,7 @@ handle_info(_Info, State) ->
 %% The return value is ignored.
 %%--------------------------------------------------------------------
 terminate(_Reason, S) ->
-    ok = et_t_state:remove_bitfield(S#state.state_pid, S#state.piece_set),
+    ok = etorrent_t_state:remove_bitfield(S#state.state_pid, S#state.piece_set),
     ok.
 
 %%--------------------------------------------------------------------
@@ -226,27 +226,27 @@ code_change(_OldVsn, State, _Extra) ->
 handle_message(keep_alive, S) ->
     {ok, S};
 handle_message(choke, S) ->
-    et_t_peer_group:peer_choked(S#state.master_pid),
+    etorrent_t_peer_group:peer_choked(S#state.master_pid),
     NS = unqueue_all_pieces(S),
     {ok, NS#state { remote_choked = true }};
 handle_message(unchoke, S) ->
-    et_t_peer_group:peer_unchoked(S#state.master_pid),
+    etorrent_t_peer_group:peer_unchoked(S#state.master_pid),
     try_to_queue_up_pieces(S#state{remote_choked = false});
 handle_message(interested, S) ->
-    et_t_peer_group:peer_interested(S#state.master_pid),
+    etorrent_t_peer_group:peer_interested(S#state.master_pid),
     {ok, S#state { remote_interested = true}};
 handle_message(not_interested, S) ->
-    et_t_peer_group:peer_not_interested(S#state.master_pid),
+    etorrent_t_peer_group:peer_not_interested(S#state.master_pid),
     {ok, S#state { remote_interested = false}};
 handle_message({request, Index, Offset, Len}, S) ->
-    et_t_peer_send:remote_request(S#state.send_pid, Index, Offset, Len),
+    etorrent_t_peer_send:remote_request(S#state.send_pid, Index, Offset, Len),
     {ok, S};
 handle_message({cancel, Index, Offset, Len}, S) ->
-    et_t_peer_send:cancel(S#state.send_pid, Index, Offset, Len),
+    etorrent_t_peer_send:cancel(S#state.send_pid, Index, Offset, Len),
     {ok, S};
 handle_message({have, PieceNum}, S) ->
     PieceSet = sets:add_element(PieceNum, S#state.piece_set),
-    case et_t_state:remote_have_piece(S#state.state_pid, PieceNum) of
+    case etorrent_t_state:remote_have_piece(S#state.state_pid, PieceNum) of
 	interested when S#state.local_interested == true ->
 	    {ok, S#state{piece_set = PieceSet}};
 	interested when S#state.local_interested == false ->
@@ -259,10 +259,10 @@ handle_message({have, PieceNum}, S) ->
 handle_message({bitfield, BitField}, S) ->
     case sets:size(S#state.piece_set) of
 	0 ->
-	    Size = et_t_state:num_pieces(S#state.state_pid),
+	    Size = etorrent_t_state:num_pieces(S#state.state_pid),
 	    {ok, PieceSet} =
-		et_peer_communication:destruct_bitfield(Size, BitField),
-	    case et_t_state:remote_bitfield(S#state.state_pid, PieceSet) of
+		etorrent_peer_communication:destruct_bitfield(Size, BitField),
+	    case etorrent_t_state:remote_bitfield(S#state.state_pid, PieceSet) of
 		interested ->
 		    send_message(interested, S),
 		    {ok, S#state{piece_set = PieceSet,
@@ -277,8 +277,8 @@ handle_message({bitfield, BitField}, S) ->
     end;
 handle_message({piece, Index, Offset, Data}, S) ->
     Len = size(Data),
-    et_t_state:downloaded_data(S#state.state_pid, Len),
-    et_t_peer_group:downloaded_data(S#state.master_pid, Len),
+    etorrent_t_state:downloaded_data(S#state.state_pid, Len),
+    etorrent_t_peer_group:downloaded_data(S#state.master_pid, Len),
     case handle_got_chunk(Index, Offset, Data, Len, S) of
 	stop ->
 	    {stop, normal, S};
@@ -299,7 +299,7 @@ delete_piece_from_request_sets(Index, Offset, Len, S) ->
 	    % If the piece is not in the remote request set, the peer has
 	    %   sent us a message "out of band". We don't care at all and
 	    %   attempt to find it in the request queue instead
-	    case et_utils:queue_remove_with_check({Index, Offset, Len},
+	    case etorrent_utils:queue_remove_with_check({Index, Offset, Len},
 					       S#state.request_queue) of
 		{ok, NQ} ->
 		    {ok, S#state{request_queue = NQ}};
@@ -310,13 +310,13 @@ delete_piece_from_request_sets(Index, Offset, Len, S) ->
 	    end
     end.
 
-get_requests(S) ->
+getorrent_requests(S) ->
     lists:flatten(lists:map(fun({Index, _, _}) ->
 					  io_lib:format("|~B|", [Index])
 				  end,
 				  S#state.piece_request)).
 
-get_queues(S) ->
+getorrent_queues(S) ->
     lists:flatten(lists:map(
 		    fun({Index, Offset, Len}) ->
 			    io_lib:format("|~p|", [{Index, Offset, Len}])
@@ -327,7 +327,7 @@ get_queues(S) ->
 report_errornous_piece(Index, Offset, Len, S) ->
     error_logger:warning_msg(
       "Peer ~s sent us chunk ~p have no piece_request on~nRequests: ~p~n~p~n",
-      [S#state.peer_id, {Index, Offset, Len}, get_requests(S), get_queues(S)]).
+      [S#state.peer_id, {Index, Offset, Len}, getorrent_requests(S), getorrent_queues(S)]).
 
 handle_got_chunk(Index, Offset, Data, Len, S) ->
     case delete_piece_from_request_sets(Index, Offset, Len, S) of
@@ -369,15 +369,15 @@ check_and_store_piece(Index, S) ->
 			      Data
 		      end,
 		      PList),
-	    case et_fs:write_piece(S#state.file_system_pid,
+	    case etorrent_fs:write_piece(S#state.file_system_pid,
 				    Index,
 				    list_to_binary(Piece)) of
 		ok ->
-		    ok = et_t_state:got_piece_from_peer(
+		    ok = etorrent_t_state:got_piece_from_peer(
 			   S#state.state_pid,
 			   Index,
 			   piece_size(Piece)),
-		    ok = et_t_peer_group:got_piece_from_peer(
+		    ok = etorrent_t_peer_group:got_piece_from_peer(
 			   S#state.master_pid,
 			   Index),
 		    ok;
@@ -412,7 +412,7 @@ invariant_check(PList) ->
     end.
 
 send_message(Msg, S) ->
-    et_t_peer_send:send(S#state.send_pid, Msg).
+    etorrent_t_peer_send:send(S#state.send_pid, Msg).
 
 % Specialize connects to our purpose
 int_connect(IP, Port) ->
@@ -436,11 +436,11 @@ update_with_new_piece(Index, Offset, Len, Data, GBT, N, S) ->
     end.
 
 %%--------------------------------------------------------------------
-%% Function: enable_socket_messages(socket() -> ok
+%% Function: enable_socketorrent_messages(socket() -> ok
 %% Description: Make the socket active and configure it to bittorrent
 %%   specifications.
 %%--------------------------------------------------------------------
-enable_socket_messages(Socket) ->
+enable_socketorrent_messages(Socket) ->
     inet:setopts(Socket, [binary, {active, true}, {packet, 4}]).
 
 %%--------------------------------------------------------------------
@@ -471,7 +471,7 @@ try_to_queue_up_pieces(S) ->
 	{partially_queued, NS, Left, not_interested}
 	  when Left == ?BASE_QUEUE_LEVEL ->
 	    % Out of pieces to give him
-	    et_t_peer_send:not_interested(S#state.send_pid),
+	    etorrent_t_peer_send:not_interested(S#state.send_pid),
 	    {ok, NS#state{local_interested = false}};
 	{partially_queued, NS, _Left, not_interested} ->
 	    % We still have some pieces in the queue
@@ -493,7 +493,7 @@ queue_up_requests(S, N) ->
 	{empty, Q} ->
 	    select_piece_for_queueing(S#state{request_queue = Q}, N);
 	{{value, {Index, Offset, Len}}, Q} ->
-	    et_t_peer_send:local_request(S#state.send_pid,
+	    etorrent_t_peer_send:local_request(S#state.send_pid,
 					    Index, Offset, Len),
 	    RS = sets:add_element({Index, Offset, Len},
 				  S#state.remote_request_set),
@@ -509,7 +509,7 @@ queue_up_requests(S, N) ->
 %%--------------------------------------------------------------------
 select_piece_for_queueing(S, N) ->
     true = queue:is_empty(S#state.request_queue),
-    case et_t_state:request_new_piece(S#state.state_pid,
+    case etorrent_t_state:request_new_piece(S#state.state_pid,
 					 S#state.piece_set) of
 	{ok, PieceNum, PieceSize} ->
 	    {ok, Chunks, NumChunks} = chunkify(PieceNum, PieceSize),

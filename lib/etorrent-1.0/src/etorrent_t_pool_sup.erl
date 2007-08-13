@@ -1,5 +1,5 @@
 %%%-------------------------------------------------------------------
-%%% File    : et_t_pool_sup.erl
+%%% File    : etorrent_t_pool_sup.erl
 %%% Author  : Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
 %%% License : See COPYING
 %%% Description : Supervisor for the pool of torrents
@@ -7,7 +7,7 @@
 %%% Created : 13 Jul 2007 by
 %%%     Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
 %%%-------------------------------------------------------------------
--module(et_t_pool_sup).
+-module(etorrent_t_pool_sup).
 
 -behaviour(supervisor).
 
@@ -33,9 +33,9 @@ spawn_new_torrent() ->
 %% Supervisor callbacks
 %%====================================================================
 init([]) ->
-    Ts = {et_t_sup,
-	  {et_t_sup, start_link, []},
-	  temporary, infinity, supervisor, [et_t_sup]},
+    Ts = {etorrent_t_sup,
+	  {etorrent_t_sup, start_link, []},
+	  temporary, infinity, supervisor, [etorrent_t_sup]},
     {ok,{{simple_one_for_one,5, 60}, [Ts]}}.
 
 %%====================================================================

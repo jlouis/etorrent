@@ -1,12 +1,12 @@
 %%%-------------------------------------------------------------------
-%%% File    : et_utils.erl
+%%% File    : etorrent_utils.erl
 %%% Author  : User Jlouis <jesper.louis.andersen@gmail.com>
 %%% License : See COPYING
 %%% Description : A selection of utilities used throughout the code
 %%%
 %%% Created : 17 Apr 2007 by User Jlouis <jesper.louis.andersen@gmail.com>
 %%%-------------------------------------------------------------------
--module(et_utils).
+-module(etorrent_utils).
 
 %% API
 -export([read_all_of_file/1, list_tabulate/2, queue_remove/2,

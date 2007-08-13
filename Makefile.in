@@ -15,13 +15,13 @@ ETORRENT_1.0_SRCDIR = lib/etorrent-1.0/src
 ETORRENT_1.0_EBINDIR = lib/etorrent-1.0/ebin
 
 
-ETORRENT_1.0_MODULES = et_listener et_t_pool_sup et_acceptor et_metainfo \
-	et_tracker_communication et_bcoding etorrent_app et_t_state \
-	et_dirwatcher etorrent et_t_sup et_dirwatcher_sup \
-	et_peer_communication et_utils et_fs_checker et_t_control \
-	et_fs et_t_manager http_gzip et_fs_mapper et_t_mapper et_fs_process \
-	et_t_peer_group et_fs_serializer et_t_peer_recv et_histogram \
-	et_t_peer_send
+ETORRENT_1.0_MODULES = etorrent_listener etorrent_t_pool_sup etorrent_acceptor etorrent_metainfo \
+	etorrent_tracker_communication etorrent_bcoding etorrent_app etorrent_t_state \
+	etorrent_dirwatcher etorrent etorrent_t_sup etorrent_dirwatcher_sup \
+	etorrent_peer_communication etorrent_utils etorrent_fs_checker etorrent_t_control \
+	etorrent_fs etorrent_t_manager http_gzip etorrent_fs_mapper etorrent_t_mapper etorrent_fs_process \
+	etorrent_t_peer_group etorrent_fs_serializer etorrent_t_peer_recv etorrent_histogram \
+	etorrent_t_peer_send
 
 ETORRENT_1.0_SOURCES = $(ETORRENT_1.0_MODULES:%=$(ETORRENT_1.0_SRCDIR)/%.erl)
 

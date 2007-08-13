@@ -6,7 +6,7 @@
 %%%
 %%% Created : 24 Jan 2007 by Jesper Louis Andersen <jlouis@succubus>
 %%%-------------------------------------------------------------------
--module(et_bcoding).
+-module(etorrent_bcoding).
 -author("Jesper Louis Andersen <jesper.louis.andersen@gmail.com>").
 -vsn("1.0").
 

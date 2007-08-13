@@ -7,7 +7,7 @@
 %%%
 %%% Created : 24 Jan 2007 by Jesper Louis Andersen <jlouis@succubus>
 %%%-------------------------------------------------------------------
--module(et_dirwatcher).
+-module(etorrent_dirwatcher).
 -author("Jesper Louis Andersen <jesper.louis.andersen@gmail.com>").
 -behaviour(gen_server).
 
@@ -76,10 +76,10 @@ code_change(_OldVsn, State, _Extra) ->
 watch_directories(S) ->
     {ok, A, R, N} = scan_files_in_dir(S),
     lists:foreach(fun(F) ->
-			  et_t_manager:start_torrent(F)
+			  etorrent_t_manager:start_torrent(F)
 		  end,
 		  sets:to_list(A)),
-    lists:foreach(fun(F) -> et_t_manager:stop_torrent(F) end,
+    lists:foreach(fun(F) -> etorrent_t_manager:stop_torrent(F) end,
 		  sets:to_list(R)),
     N.
 

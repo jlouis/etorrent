@@ -1,5 +1,5 @@
 %%%-------------------------------------------------------------------
-%%% File    : et_t_state.erl
+%%% File    : etorrent_t_state.erl
 %%% Author  : Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
 %%% License : See COPYING
 %%% Description : Track the state of a torrent.
@@ -7,7 +7,7 @@
 %%% Created : 14 Jul 2007 by
 %%%     Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
 %%%-------------------------------------------------------------------
--module(et_t_state).
+-module(etorrent_t_state).
 
 -behaviour(gen_server).
 
@@ -29,7 +29,7 @@
 		leechers = 0,
 
 		piece_set = none,
-		piece_set_missing = none,
+		piece_setorrent_missing = none,
 		piece_assignment = none,
 		piece_size = 0,
 	        num_pieces = 0,
@@ -98,11 +98,11 @@ init([DiskState, PieceSize, ControlPid]) ->
     {PieceSet, Missing, Size} = convert_diskstate_to_set(DiskState),
     AmountLeft = calculate_amount_left(DiskState),
     {ok, #state{piece_set = PieceSet,
-		piece_set_missing = Missing,
+		piece_setorrent_missing = Missing,
 		piece_assignment = dict:new(),
 		num_pieces = Size,
 		piece_size = PieceSize,
-		histogram = et_histogram:new(),
+		histogram = etorrent_histogram:new(),
 		torrent_size = AmountLeft,
 	        left = AmountLeft,
 	        control_pid = ControlPid}}.
@@ -122,7 +122,7 @@ handle_call({got_piece_from_peer, Pn, DataSize}, {Pid, _Tag}, S) ->
     Left = S#state.left - DataSize,
     case Left == 0 of
 	true ->
-	    et_t_control:seed(S#state.control_pid);
+	    etorrent_t_control:seed(S#state.control_pid);
 	false ->
 	    ok
     end,
@@ -139,13 +139,13 @@ handle_call(report_to_tracker, _From, S) ->
 	     S#state.downloaded,
 	     S#state.left}, S};
 handle_call(retrieve_bitfield, _From, S) ->
-    BF = et_peer_communication:construct_bitfield(S#state.num_pieces,
+    BF = etorrent_peer_communication:construct_bitfield(S#state.num_pieces,
 					       S#state.piece_set),
     {reply, BF, S};
 handle_call({remote_have_piece, PieceNum}, _From, S) ->
     case piece_valid(PieceNum, S) of
 	true ->
-	    NS = S#state { histogram = et_histogram:increase_piece(
+	    NS = S#state { histogram = etorrent_histogram:increase_piece(
 					 PieceNum, S#state.histogram) },
 	    Reply = case sets:is_element(PieceNum, NS#state.piece_set) of
 			true ->
@@ -164,10 +164,10 @@ handle_call({remote_bitfield, PieceSet}, _From, S) ->
 				  true when Interest == not_valid ->
 				      {H, not_valid};
 				  true when Interest == interested ->
-				      {et_histogram:increase_piece(E, H),
+				      {etorrent_histogram:increase_piece(E, H),
 				       interested};
 				  true when Interest == not_interested ->
-				      {et_histogram:increase_piece(E, H),
+				      {etorrent_histogram:increase_piece(E, H),
 				       case sets:is_element(
 					      E, S#state.piece_set) of
 					   true ->
@@ -191,7 +191,7 @@ handle_call({remove_bitfield, PieceSet}, _From, S) ->
     NewH = sets:fold(fun(E, H) ->
 			     case piece_valid(E, S) of
 				 true ->
-				     et_histogram:decrease_piece(E, H);
+				     etorrent_histogram:decrease_piece(E, H);
 				 false ->
 				     H
 			     end
@@ -200,23 +200,23 @@ handle_call({remove_bitfield, PieceSet}, _From, S) ->
 		     PieceSet),
     {reply, ok, S#state{histogram = NewH}};
 handle_call({request_new_piece, PeerPieces}, {From, _Tag}, S) ->
-    EligiblePieces = sets:intersection(PeerPieces, S#state.piece_set_missing),
-    case et_utils:sets_is_empty(EligiblePieces) of
+    EligiblePieces = sets:intersection(PeerPieces, S#state.piece_setorrent_missing),
+    case etorrent_utils:sets_is_empty(EligiblePieces) of
 	true ->
 	    {reply, not_interested, S};
 	false ->
-	    case et_histogram:find_rarest_piece(EligiblePieces,
+	    case etorrent_histogram:find_rarest_piece(EligiblePieces,
 						S#state.histogram) of
 		PieceNum ->
 		    PieceSize = find_piece_size(PieceNum, S),
 		    Missing = sets:del_element(PieceNum,
-					       S#state.piece_set_missing),
+					       S#state.piece_setorrent_missing),
 		    erlang:monitor(process, From),
 		    Assignments =
 			dict:update(From, fun(L) -> [PieceNum | L] end,
 				    [PieceNum], S#state.piece_assignment),
 		    {reply, {ok, PieceNum, PieceSize},
-		     S#state{piece_set_missing = Missing,
+		     S#state{piece_setorrent_missing = Missing,
 			     piece_assignment = Assignments}}
 	    end
     end;
@@ -231,7 +231,7 @@ handle_call({report_from_tracker, Complete, Incomplete},
 %%                                      {stop, Reason, State}
 %% Description: Handling cast messages
 %%--------------------------------------------------------------------
-% TODO: et_t_state:handle_cast : Handle interested and choke globally!
+% TODO: etorrent_t_state:handle_cast : Handle interested and choke globally!
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
@@ -247,10 +247,10 @@ handle_info({'DOWN', _Ref, process, Pid, _Reason}, S) ->
 	    Missing = lists:foldl(fun(Pn, Missing) ->
 					  sets:add_element(Pn, Missing)
 				  end,
-				  S#state.piece_set_missing,
+				  S#state.piece_setorrent_missing,
 				  Assignment),
 	    Assignments = dict:erase(Pid, S#state.piece_assignment),
-	    {noreply, S#state{piece_set_missing = Missing,
+	    {noreply, S#state{piece_setorrent_missing = Missing,
 			      piece_assignment  = Assignments}};
 	error ->
 	    {noreply, S}

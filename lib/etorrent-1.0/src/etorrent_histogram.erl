@@ -6,7 +6,7 @@
 %%%
 %%% Created : 26 Jul 2007 by Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
 %%%-------------------------------------------------------------------
--module(et_histogram).
+-module(etorrent_histogram).
 
 %% API
 -export([new/0, increase_piece/2, decrease_piece/2,
@@ -123,7 +123,7 @@ iterate_rarest_piece(none, _EligibleSet) ->
     none;
 iterate_rarest_piece({_Key, Val, Iter2}, EligibleSet) ->
     Intersection = sets:intersection(Val, EligibleSet),
-    case et_utils:sets_is_empty(Intersection) of
+    case etorrent_utils:sets_is_empty(Intersection) of
 	true ->
 	    iterate_rarest_piece(gb_trees:next(Iter2), EligibleSet);
 	false ->
@@ -142,7 +142,7 @@ iterate_rarest_piece({_Key, Val, Iter2}, EligibleSet) ->
 delete_if_empty(Key, Histogram) ->
     case gb_trees:lookup(Key, Histogram) of
 	{value, Set} ->
-	    case et_utils:sets_is_empty(Set) of
+	    case etorrent_utils:sets_is_empty(Set) of
 		true ->
 		    gb_trees:delete(Key, Histogram);
 		false ->

@@ -6,7 +6,7 @@
 %%%
 %%% Created : 17 Jul 2007 by Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
 %%%-------------------------------------------------------------------
--module(et_tracker_communication).
+-module(etorrent_tracker_communication).
 
 -behaviour(gen_server).
 
@@ -159,7 +159,7 @@ contact_tracker(S, Event) ->
     end.
 
 decode_and_handle_body(Body, S) ->
-    case et_bcoding:decode(Body) of
+    case etorrent_bcoding:decode(Body) of
 	{ok, BC} ->
 	    handle_tracker_response(BC, S)
     end.
@@ -178,14 +178,14 @@ handle_tracker_response(BC, S) ->
     if
 	ErrorMessage /= none ->
 	    {string, E} = ErrorMessage,
-	    et_t_control:tracker_error_report(ControlPid, E);
+	    etorrent_t_control:tracker_error_report(ControlPid, E);
 	WarningMessage /= none ->
-	    et_t_control:tracker_warning_report(ControlPid, WarningMessage),
-	    et_t_peer_group:add_peers(PeerMasterPid, NewIPs),
-	    et_t_state:report_from_tracker(StatePid, Complete, Incomplete);
+	    etorrent_t_control:tracker_warning_report(ControlPid, WarningMessage),
+	    etorrent_t_peer_group:add_peers(PeerMasterPid, NewIPs),
+	    etorrent_t_state:report_from_tracker(StatePid, Complete, Incomplete);
 	true ->
-	    et_t_peer_group:add_peers(PeerMasterPid, NewIPs),
-	    et_t_state:report_from_tracker(StatePid, Complete, Incomplete)
+	    etorrent_t_peer_group:add_peers(PeerMasterPid, NewIPs),
+	    etorrent_t_state:report_from_tracker(StatePid, Complete, Incomplete)
     end,
     {ok, RequestTime, S#state{trackerid = TrackerId}}.
 
@@ -200,12 +200,12 @@ construct_headers([{Key, Value} | Rest], HeaderLines) ->
 
 build_tracker_url(S, Event) ->
     {ok, Downloaded, Uploaded, Left} =
-	et_t_state:report_to_tracker(S#state.state_pid),
+	etorrent_t_state:report_to_tracker(S#state.state_pid),
     {ok, Port} = application:get_env(etorrent, port),
     Request = [{"info_hash",
-		et_utils:build_info_hash_encoded_form_rfc1738(S#state.info_hash)},
+		etorrent_utils:build_info_hash_encoded_form_rfc1738(S#state.info_hash)},
 	       {"peer_id",
-		et_utils:build_uri_encoded_form_rfc1738(S#state.peer_id)},
+		etorrent_utils:build_uri_encoded_form_rfc1738(S#state.peer_id)},
 	       {"uploaded", Uploaded},
 	       {"downloaded", Downloaded},
 	       {"left", Left},
@@ -219,7 +219,7 @@ build_tracker_url(S, Event) ->
 
 %%% Tracker response lookup functions
 find_next_request_time(BC) ->
-    {integer, R} = et_bcoding:search_dict_default({string, "interval"},
+    {integer, R} = etorrent_bcoding:search_dict_default({string, "interval"},
 						  BC,
 						  {integer,
 						   ?DEFAULT_REQUEST_TIMEOUT}),
@@ -231,15 +231,15 @@ process_ips(D) ->
 process_ips([], Accum) ->
     lists:reverse(Accum);
 process_ips([IPDict | Rest], Accum) ->
-    {ok, {string, IP}} = et_bcoding:search_dict({string, "ip"}, IPDict),
-    {ok, {string, PeerId}} = et_bcoding:search_dict({string, "peer id"},
+    {ok, {string, IP}} = etorrent_bcoding:search_dict({string, "ip"}, IPDict),
+    {ok, {string, PeerId}} = etorrent_bcoding:search_dict({string, "peer id"},
 						    IPDict),
-    {ok, {integer, Port}} = et_bcoding:search_dict({string, "port"},
+    {ok, {integer, Port}} = etorrent_bcoding:search_dict({string, "port"},
 						   IPDict),
     process_ips(Rest, [{IP, Port, PeerId} | Accum]).
 
 find_ips_in_tracker_response(BC) ->
-    case et_bcoding:search_dict_default({string, "peers"}, BC, none) of
+    case etorrent_bcoding:search_dict_default({string, "peers"}, BC, none) of
 	{list, Ips} ->
 	    process_ips(Ips);
 	none ->
@@ -247,19 +247,19 @@ find_ips_in_tracker_response(BC) ->
     end.
 
 find_tracker_id(BC) ->
-    et_bcoding:search_dict_default({string, "trackerid"},
+    etorrent_bcoding:search_dict_default({string, "trackerid"},
 				BC,
 				tracker_id_not_given).
 
 find_completes(BC) ->
-    et_bcoding:search_dict_default({string, "complete"}, BC, no_completes).
+    etorrent_bcoding:search_dict_default({string, "complete"}, BC, no_completes).
 
 find_incompletes(BC) ->
-    et_bcoding:search_dict_default({string, "incomplete"}, BC, no_incompletes).
+    etorrent_bcoding:search_dict_default({string, "incomplete"}, BC, no_incompletes).
 
 fetch_error_message(BC) ->
-    et_bcoding:search_dict_default({string, "failure reason"}, BC, none).
+    etorrent_bcoding:search_dict_default({string, "failure reason"}, BC, none).
 
 fetch_warning_message(BC) ->
-    et_bcoding:search_dict_default({string, "warning message"}, BC, none).
+    etorrent_bcoding:search_dict_default({string, "warning message"}, BC, none).
 

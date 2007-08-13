@@ -1,22 +1,24 @@
 %%%-------------------------------------------------------------------
-%%% File    : acceptor.erl
-%%% Author  : Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
-%%% Description : Accept new connections from the network.
+%%% File    : file_access_mapper.erl
+%%% Author  : Jesper Louis Andersen <>
+%%% Description : Manages where different torrent files store their data
 %%%
-%%% Created : 30 Jul 2007 by Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
+%%% Created : 11 Aug 2007 by Jesper Louis Andersen <>
 %%%-------------------------------------------------------------------
--module(et_acceptor).
+-module(etorrent_fs_mapper).
 
 -behaviour(gen_server).
 
 %% API
--export([start_link/1]).
+-export([start_link/0, install_map/1, fetch_map/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3]).
 
--record(state, { listen_socket = none}).
+-record(state, {file_access_map = none}).
+
+-define(SERVER, ?MODULE).
 
 %%====================================================================
 %% API
@@ -25,8 +27,22 @@
 %% Function: start_link() -> {ok,Pid} | ignore | {error,Error}
 %% Description: Starts the server
 %%--------------------------------------------------------------------
-start_link(ListenSocket) ->
-    gen_server:start_link(?MODULE, [ListenSocket], []).
+start_link() ->
+    gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
+
+%%--------------------------------------------------------------------
+%% Function: install_map/1
+%% Description: Install the FileDict for the sending Pid
+%%--------------------------------------------------------------------
+install_map(FileDict) ->
+    gen_server:call(?MODULE, {install_map, FileDict}).
+
+%%--------------------------------------------------------------------
+%% Function: fetch_map/0
+%% Description: Return the (read-only) ETS table.
+%%--------------------------------------------------------------------
+fetch_map() ->
+    gen_server:call(?MODULE, fetch_map).
 
 %%====================================================================
 %% gen_server callbacks
@@ -39,8 +55,9 @@ start_link(ListenSocket) ->
 %%                         {stop, Reason}
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
-init([ListenSocket]) ->
-    {ok, #state{ listen_socket = ListenSocket}, 0}.
+init([]) ->
+    {ok, #state{ file_access_map =
+		   ets:new(file_access_map, [named_table])}}.
 
 %%--------------------------------------------------------------------
 %% Function: %% handle_call(Request, From, State) -> {reply, Reply, State} |
@@ -51,6 +68,11 @@ init([ListenSocket]) ->
 %%                                      {stop, Reason, State}
 %% Description: Handling call messages
 %%--------------------------------------------------------------------
+handle_call({install_map, FileDict}, {From, _Tag}, S) ->
+    install_map_in_tracking_table(FileDict, From, S),
+    {reply, ok, S};
+handle_call(fetch_map, _From, S) ->
+    {reply, S#state.file_access_map, S};
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -70,16 +92,12 @@ handle_cast(_Msg, State) ->
 %%                                       {stop, Reason, State}
 %% Description: Handling all non call/cast messages
 %%--------------------------------------------------------------------
-handle_info(timeout, S) ->
-    case gen_tcp:accept(S#state.listen_socket) of
-	{ok, Socket} ->
-	    handshake(Socket),
-	    {noreply, S, 0};
-	{error, closed} ->
-	    {noreply, S, 0};
-	{error, E} ->
-	    {stop, E}
-    end.
+handle_info({'DOWN', _R, process, Pid, _Reason}, S) ->
+    ets:match_delete(S#state.file_access_map,
+		     {{Pid, '_'}, '_'}),
+    {noreply, S};
+handle_info(_Info, State) ->
+    {noreply, State}.
 
 %%--------------------------------------------------------------------
 %% Function: terminate(Reason, State) -> void()
@@ -101,39 +119,11 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 %%% Internal functions
 %%--------------------------------------------------------------------
-
-handshake(Socket) ->
-    case et_peer_communication:recieve_handshake(Socket) of
-	{ok, ReservedBytes, InfoHash, PeerId} ->
-	    lookup_infohash(Socket, ReservedBytes, InfoHash, PeerId);
-	{error, Reason} ->
-	    error_logger:info_report([acceptor_handshake, Reason]),
-	    gen_tcp:close(Socket),
-	    ok
-    end.
-
-lookup_infohash(Socket, ReservedBytes, InfoHash, PeerId) ->
-    case et_t_mapper:lookup(InfoHash) of
-	{ok, Pid} ->
-	    inform_peer_master(Socket, Pid, ReservedBytes, PeerId);
-	not_found ->
-	    error_logger:info_report([connection_on_unknown_infohash,
-				      InfoHash]),
-	    gen_tcp:close(Socket),
-	    ok
-    end.
-
-inform_peer_master(Socket, Pid, ReservedBytes, PeerId) ->
-    case et_t_peer_group:new_incoming_peer(Pid, PeerId) of
-	{ok, PeerProcessPid} ->
-	    ok = gen_tcp:controlling_process(Socket, PeerProcessPid),
-	    % TODO: Pass PeerId here?
-	    et_t_peer_recv:complete_handshake(PeerProcessPid,
-						 ReservedBytes,
-						 Socket),
-	    ok;
-	bad_peer ->
-	    error_logger:info_report([peer_id_is_bad, PeerId]),
-	    gen_tcp:close(Socket),
-	    ok
-    end.
+install_map_in_tracking_table(FileDict, Pid, S) ->
+    erlang:monitor(process, Pid),
+    dict:map(fun(PieceNumber, Operations) ->
+		      ets:insert(S#state.file_access_map,
+				 {{Pid, PieceNumber}, Operations})
+	      end,
+	      FileDict),
+    ok.

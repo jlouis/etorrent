@@ -6,7 +6,7 @@
 %%%
 %%% Created :  6 Jul 2007 by Jesper Louis Andersen <jlouis@succubus.local.domain>
 %%%-------------------------------------------------------------------
--module(et_fs_checker).
+-module(etorrent_fs_checker).
 
 %% API
 -export([load_torrent/2, ensure_file_sizes_correct/1,
@@ -17,9 +17,9 @@
 %%====================================================================
 load_torrent(Workdir, Path) ->
     P = filename:join([Workdir, Path]),
-    {ok, Torrent} = et_metainfo:parse(P),
-    {list, Files} = et_metainfo:get_files(Torrent),
-    Name = et_metainfo:get_name(Torrent),
+    {ok, Torrent} = etorrent_metainfo:parse(P),
+    {list, Files} = etorrent_metainfo:getorrent_files(Torrent),
+    Name = etorrent_metainfo:getorrent_name(Torrent),
     FilesToCheck =
 	lists:map(fun (E) ->
 			  {Filename, Size} = report_files(E),
@@ -44,7 +44,7 @@ ensure_file_sizes_correct(Files) ->
 
 check_torrent_contents(FS, FileDict) ->
     Res = dict:map(fun (PN, {Hash, Ops, none}) ->
- 		      {ok, Data} = et_fs:read_piece(FS, PN),
+ 		      {ok, Data} = etorrent_fs:read_piece(FS, PN),
 		      case Hash == crypto:sha(Data) of
 			  true ->
 			      {Hash, Ops, ok};
@@ -56,8 +56,8 @@ check_torrent_contents(FS, FileDict) ->
     {ok, Res}.
 
 build_dictionary_on_files(Torrent, Files) ->
-    Pieces = et_metainfo:get_pieces(Torrent),
-    PSize = et_metainfo:get_piece_length(Torrent),
+    Pieces = etorrent_metainfo:getorrent_pieces(Torrent),
+    PSize = etorrent_metainfo:getorrent_piece_length(Torrent),
     LastPieceSize = torrent_size(Files) rem PSize,
     construct_fpmap(Files,
 		    0,
@@ -73,7 +73,7 @@ build_dictionary_on_files(Torrent, Files) ->
 %%====================================================================
 report_files(Entry) ->
     {dict, Dict} = Entry,
-    %TODO: Consider a et_metainfo:fetch_key function for this
+    %TODO: Consider a etorrent_metainfo:fetch_key function for this
     {value, {{string, "path"},
 	     {list, [{string, Filename}]}}} =
 	lists:keysearch({string, "path"}, 1, Dict),

@@ -7,7 +7,7 @@
 %%%
 %%% Created : 19 Jun 2007 by User Jlouis <jesper.louis.andersen@gmail.com>
 %%%-------------------------------------------------------------------
--module(et_fs).
+-module(etorrent_fs).
 
 -behaviour(gen_server).
 
@@ -71,8 +71,8 @@ init([]) ->
     {ok, #state{file_process_dict = dict:new() }}.
 
 handle_call({load_filedict, FileDict}, _From, S) ->
-    ok = et_fs_mapper:install_map(FileDict),
-    ETS = et_fs_mapper:fetch_map(),
+    ok = etorrent_fs_mapper:install_map(FileDict),
+    ETS = etorrent_fs_mapper:fetch_map(),
     {reply, ok, S#state{file_mapping_table = ETS}};
 handle_call({read_piece, PieceNum}, _From, S) ->
     [[FilesToRead]] = ets:match(S#state.file_mapping_table,
@@ -129,7 +129,7 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%--------------------------------------------------------------------
 create_file_process(Path, S) ->
-    {ok, Pid} = et_fs_process:start_link(Path),
+    {ok, Pid} = etorrent_fs_process:start_link(Path),
     NewDict = dict:store(Path, Pid, S#state.file_process_dict),
     {ok, Pid, S#state{ file_process_dict = NewDict }}.
 
@@ -139,7 +139,7 @@ read_pieces_and_assemble([{Path, Offset, Size} | Rest], Done, S) ->
     case dict:find(Path, S#state.file_process_dict) of
 	{ok, Pid} ->
 	    Ref = make_ref(),
-	    case catch({Ref, et_fs_process:get_data(Pid, Offset, Size)}) of
+	    case catch({Ref, etorrent_fs_process:getorrent_data(Pid, Offset, Size)}) of
 		{Ref, {ok, Data}} ->
 		    read_pieces_and_assemble(Rest, [Data | Done], S);
 		{'EXIT', {noproc, _}} ->
@@ -150,7 +150,7 @@ read_pieces_and_assemble([{Path, Offset, Size} | Rest], Done, S) ->
 	    end;
 	error ->
 	    {ok, Pid, NS} = create_file_process(Path, S),
-	    {ok, Data} = et_fs_process:get_data(Pid, Offset, Size),
+	    {ok, Data} = etorrent_fs_process:getorrent_data(Pid, Offset, Size),
 	    read_pieces_and_assemble(Rest, [Data | Done], NS)
     end.
 
@@ -163,7 +163,7 @@ write_piece_data(Data, [{Path, Offset, Size} | Rest], S) ->
 	{ok, Pid} ->
 	    Ref = make_ref(),
 	    case catch({Ref,
-			et_fs_process:put_data(Pid, Chunk, Offset, Size)}) of
+			etorrent_fs_process:put_data(Pid, Chunk, Offset, Size)}) of
 		{Ref, ok} ->
 		    write_piece_data(Remaining, Rest, S);
 		{'EXIT', {noproc, _}} ->
@@ -173,7 +173,7 @@ write_piece_data(Data, [{Path, Offset, Size} | Rest], S) ->
 	    end;
 	error ->
 	    {ok, Pid, NS} = create_file_process(Path, S),
-	    ok = et_fs_process:put_data(Pid, Chunk, Offset, Size),
+	    ok = etorrent_fs_process:put_data(Pid, Chunk, Offset, Size),
 	    write_piece_data(Remaining, Rest, NS)
     end.
 

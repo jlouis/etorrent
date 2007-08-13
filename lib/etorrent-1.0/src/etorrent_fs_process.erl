@@ -10,12 +10,12 @@
 %%%
 %%% Created : 18 Jun 2007 by User Jlouis <jesper.louis.andersen@gmail.com>
 %%%-------------------------------------------------------------------
--module(et_fs_process).
+-module(etorrent_fs_process).
 
 -behaviour(gen_server).
 
 %% API
--export([start_link/1, get_data/3, put_data/4]).
+-export([start_link/1, getorrent_data/3, put_data/4]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -37,7 +37,7 @@
 start_link(Path) ->
     gen_server:start_link(?MODULE, [Path], []).
 
-get_data(Pid, OffSet, Size) ->
+getorrent_data(Pid, OffSet, Size) ->
     gen_server:call(Pid, {read_request, OffSet, Size}).
 
 put_data(Pid, Chunk, Offset, _Size) ->
