@@ -1,12 +1,13 @@
 %%%-------------------------------------------------------------------
-%%% File    : torrent_peer.erl
+%%% File    : et_t_peer_recv.erl
 %%% Author  : Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
 %%% License : See COPYING
-%%% Description : Represents a peer
+%%% Description : Represents a peers receiving of data
 %%%
-%%% Created : 19 Jul 2007 by Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
+%%% Created : 19 Jul 2007 by
+%%%    Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
 %%%-------------------------------------------------------------------
--module(torrent_peer).
+-module(et_t_peer_recv).
 
 -behaviour(gen_server).
 
@@ -120,19 +121,19 @@ handle_call(_Request, _From, State) ->
 %%--------------------------------------------------------------------
 handle_cast({connect, IP, Port, PeerId}, S) ->
     Socket = int_connect(IP, Port),
-    case peer_communication:initiate_handshake(Socket,
+    case et_peer_communication:initiate_handshake(Socket,
 					       PeerId,
 					       S#state.local_peer_id,
 					       S#state.info_hash) of
 	{ok, _ReservedBytes} ->
 	    enable_socket_messages(Socket),
 	    {ok, SendPid} =
-		torrent_peer_send:start_link(Socket,
+		et_t_peer_send:start_link(Socket,
 					     S#state.file_system_pid,
 					     S#state.state_pid),
 	    %sys:trace(SendPid, true),
-	    BF = torrent_state:retrieve_bitfield(S#state.state_pid),
-	    torrent_peer_send:send(SendPid, {bitfield, BF}),
+	    BF = et_t_state:retrieve_bitfield(S#state.state_pid),
+	    et_t_peer_send:send(SendPid, {bitfield, BF}),
 	    {noreply, S#state{tcp_socket = Socket,
 			      peer_id = PeerId,
 			      send_pid = SendPid}};
@@ -140,26 +141,26 @@ handle_cast({connect, IP, Port, PeerId}, S) ->
 	    exit(shutdown)
     end;
 handle_cast({uploaded_data, Amount}, S) ->
-    torrent_peer_master:uploaded_data(S#state.master_pid, Amount),
+    et_t_peer_group:uploaded_data(S#state.master_pid, Amount),
     {noreply, S};
 handle_cast({complete_handshake, _ReservedBytes, Socket}, S) ->
-    peer_communication:complete_handshake_header(Socket,
+    et_peer_communication:complete_handshake_header(Socket,
 						 S#state.info_hash,
 						 S#state.local_peer_id),
     enable_socket_messages(Socket),
     {ok, SendPid} =
-	torrent_peer_send:start_link(Socket,
+	et_t_peer_send:start_link(Socket,
 				     S#state.file_system_pid,
 				     S#state.state_pid),
-    BF = torrent_state:retrieve_bitfield(S#state.state_pid),
-    torrent_peer_send:send(SendPid, {bitfield, BF}),
+    BF = et_t_state:retrieve_bitfield(S#state.state_pid),
+    et_t_peer_send:send(SendPid, {bitfield, BF}),
     {noreply, S#state{tcp_socket = Socket,
 		      send_pid = SendPid}};
 handle_cast(choke, S) ->
-    torrent_peer_send:choke(S#state.send_pid),
+    et_t_peer_send:choke(S#state.send_pid),
     {noreply, S};
 handle_cast(unchoke, S) ->
-    torrent_peer_send:unchoke(S#state.send_pid),
+    et_t_peer_send:unchoke(S#state.send_pid),
     {noreply, S};
 handle_cast(interested, S) ->
     case S#state.local_interested of
@@ -176,7 +177,7 @@ handle_cast({send_have_piece, PieceNumber}, S) ->
 	    {noreply, S};
 	false ->
 	    % Peer is missing the piece, so send it.
-	    torrent_peer_send:send_have_piece(S#state.send_pid, PieceNumber),
+	    et_t_peer_send:send_have_piece(S#state.send_pid, PieceNumber),
 	    {noreply, S}
     end;
 handle_cast(_Msg, State) ->
@@ -191,7 +192,7 @@ handle_cast(_Msg, State) ->
 handle_info({tcp_closed, _P}, S) ->
     {stop, normal, S};
 handle_info({tcp, _Socket, M}, S) ->
-    Msg = peer_communication:recv_message(M),
+    Msg = et_peer_communication:recv_message(M),
     case handle_message(Msg, S) of
 	{ok, NS} ->
 	    {noreply, NS};
@@ -209,7 +210,7 @@ handle_info(_Info, State) ->
 %% The return value is ignored.
 %%--------------------------------------------------------------------
 terminate(_Reason, S) ->
-    ok = torrent_state:remove_bitfield(S#state.state_pid, S#state.piece_set),
+    ok = et_t_state:remove_bitfield(S#state.state_pid, S#state.piece_set),
     ok.
 
 %%--------------------------------------------------------------------
@@ -225,27 +226,27 @@ code_change(_OldVsn, State, _Extra) ->
 handle_message(keep_alive, S) ->
     {ok, S};
 handle_message(choke, S) ->
-    torrent_peer_master:peer_choked(S#state.master_pid),
+    et_t_peer_group:peer_choked(S#state.master_pid),
     NS = unqueue_all_pieces(S),
     {ok, NS#state { remote_choked = true }};
 handle_message(unchoke, S) ->
-    torrent_peer_master:peer_unchoked(S#state.master_pid),
+    et_t_peer_group:peer_unchoked(S#state.master_pid),
     try_to_queue_up_pieces(S#state{remote_choked = false});
 handle_message(interested, S) ->
-    torrent_peer_master:peer_interested(S#state.master_pid),
+    et_t_peer_group:peer_interested(S#state.master_pid),
     {ok, S#state { remote_interested = true}};
 handle_message(not_interested, S) ->
-    torrent_peer_master:peer_not_interested(S#state.master_pid),
+    et_t_peer_group:peer_not_interested(S#state.master_pid),
     {ok, S#state { remote_interested = false}};
 handle_message({request, Index, Offset, Len}, S) ->
-    torrent_peer_send:remote_request(S#state.send_pid, Index, Offset, Len),
+    et_t_peer_send:remote_request(S#state.send_pid, Index, Offset, Len),
     {ok, S};
 handle_message({cancel, Index, Offset, Len}, S) ->
-    torrent_peer_send:cancel(S#state.send_pid, Index, Offset, Len),
+    et_t_peer_send:cancel(S#state.send_pid, Index, Offset, Len),
     {ok, S};
 handle_message({have, PieceNum}, S) ->
     PieceSet = sets:add_element(PieceNum, S#state.piece_set),
-    case torrent_state:remote_have_piece(S#state.state_pid, PieceNum) of
+    case et_t_state:remote_have_piece(S#state.state_pid, PieceNum) of
 	interested when S#state.local_interested == true ->
 	    {ok, S#state{piece_set = PieceSet}};
 	interested when S#state.local_interested == false ->
@@ -258,10 +259,10 @@ handle_message({have, PieceNum}, S) ->
 handle_message({bitfield, BitField}, S) ->
     case sets:size(S#state.piece_set) of
 	0 ->
-	    Size = torrent_state:num_pieces(S#state.state_pid),
+	    Size = et_t_state:num_pieces(S#state.state_pid),
 	    {ok, PieceSet} =
-		peer_communication:destruct_bitfield(Size, BitField),
-	    case torrent_state:remote_bitfield(S#state.state_pid, PieceSet) of
+		et_peer_communication:destruct_bitfield(Size, BitField),
+	    case et_t_state:remote_bitfield(S#state.state_pid, PieceSet) of
 		interested ->
 		    send_message(interested, S),
 		    {ok, S#state{piece_set = PieceSet,
@@ -276,8 +277,8 @@ handle_message({bitfield, BitField}, S) ->
     end;
 handle_message({piece, Index, Offset, Data}, S) ->
     Len = size(Data),
-    torrent_state:downloaded_data(S#state.state_pid, Len),
-    torrent_peer_master:downloaded_data(S#state.master_pid, Len),
+    et_t_state:downloaded_data(S#state.state_pid, Len),
+    et_t_peer_group:downloaded_data(S#state.master_pid, Len),
     case handle_got_chunk(Index, Offset, Data, Len, S) of
 	stop ->
 	    {stop, normal, S};
@@ -298,7 +299,7 @@ delete_piece_from_request_sets(Index, Offset, Len, S) ->
 	    % If the piece is not in the remote request set, the peer has
 	    %   sent us a message "out of band". We don't care at all and
 	    %   attempt to find it in the request queue instead
-	    case utils:queue_remove_with_check({Index, Offset, Len},
+	    case et_utils:queue_remove_with_check({Index, Offset, Len},
 					       S#state.request_queue) of
 		{ok, NQ} ->
 		    {ok, S#state{request_queue = NQ}};
@@ -372,11 +373,11 @@ check_and_store_piece(Index, S) ->
 				    Index,
 				    list_to_binary(Piece)) of
 		ok ->
-		    ok = torrent_state:got_piece_from_peer(
+		    ok = et_t_state:got_piece_from_peer(
 			   S#state.state_pid,
 			   Index,
 			   piece_size(Piece)),
-		    ok = torrent_peer_master:got_piece_from_peer(
+		    ok = et_t_peer_group:got_piece_from_peer(
 			   S#state.master_pid,
 			   Index),
 		    ok;
@@ -411,7 +412,7 @@ invariant_check(PList) ->
     end.
 
 send_message(Msg, S) ->
-    torrent_peer_send:send(S#state.send_pid, Msg).
+    et_t_peer_send:send(S#state.send_pid, Msg).
 
 % Specialize connects to our purpose
 int_connect(IP, Port) ->
@@ -470,7 +471,7 @@ try_to_queue_up_pieces(S) ->
 	{partially_queued, NS, Left, not_interested}
 	  when Left == ?BASE_QUEUE_LEVEL ->
 	    % Out of pieces to give him
-	    torrent_peer_send:not_interested(S#state.send_pid),
+	    et_t_peer_send:not_interested(S#state.send_pid),
 	    {ok, NS#state{local_interested = false}};
 	{partially_queued, NS, _Left, not_interested} ->
 	    % We still have some pieces in the queue
@@ -492,7 +493,7 @@ queue_up_requests(S, N) ->
 	{empty, Q} ->
 	    select_piece_for_queueing(S#state{request_queue = Q}, N);
 	{{value, {Index, Offset, Len}}, Q} ->
-	    torrent_peer_send:local_request(S#state.send_pid,
+	    et_t_peer_send:local_request(S#state.send_pid,
 					    Index, Offset, Len),
 	    RS = sets:add_element({Index, Offset, Len},
 				  S#state.remote_request_set),
@@ -508,7 +509,7 @@ queue_up_requests(S, N) ->
 %%--------------------------------------------------------------------
 select_piece_for_queueing(S, N) ->
     true = queue:is_empty(S#state.request_queue),
-    case torrent_state:request_new_piece(S#state.state_pid,
+    case et_t_state:request_new_piece(S#state.state_pid,
 					 S#state.piece_set) of
 	{ok, PieceNum, PieceSize} ->
 	    {ok, Chunks, NumChunks} = chunkify(PieceNum, PieceSize),

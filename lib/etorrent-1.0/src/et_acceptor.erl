@@ -103,7 +103,7 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 
 handshake(Socket) ->
-    case peer_communication:recieve_handshake(Socket) of
+    case et_peer_communication:recieve_handshake(Socket) of
 	{ok, ReservedBytes, InfoHash, PeerId} ->
 	    lookup_infohash(Socket, ReservedBytes, InfoHash, PeerId);
 	{error, Reason} ->
@@ -124,11 +124,11 @@ lookup_infohash(Socket, ReservedBytes, InfoHash, PeerId) ->
     end.
 
 inform_peer_master(Socket, Pid, ReservedBytes, PeerId) ->
-    case torrent_peer_master:new_incoming_peer(Pid, PeerId) of
+    case et_t_peer_group:new_incoming_peer(Pid, PeerId) of
 	{ok, PeerProcessPid} ->
 	    ok = gen_tcp:controlling_process(Socket, PeerProcessPid),
 	    % TODO: Pass PeerId here?
-	    torrent_peer:complete_handshake(PeerProcessPid,
+	    et_t_peer_recv:complete_handshake(PeerProcessPid,
 						 ReservedBytes,
 						 Socket),
 	    ok;

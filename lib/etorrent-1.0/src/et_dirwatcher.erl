@@ -76,10 +76,10 @@ code_change(_OldVsn, State, _Extra) ->
 watch_directories(S) ->
     {ok, A, R, N} = scan_files_in_dir(S),
     lists:foreach(fun(F) ->
-			  torrent_manager:start_torrent(F)
+			  et_t_manager:start_torrent(F)
 		  end,
 		  sets:to_list(A)),
-    lists:foreach(fun(F) -> torrent_manager:stop_torrent(F) end,
+    lists:foreach(fun(F) -> et_t_manager:stop_torrent(F) end,
 		  sets:to_list(R)),
     N.
 

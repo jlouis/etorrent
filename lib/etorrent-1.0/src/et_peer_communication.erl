@@ -7,7 +7,7 @@
 %%%
 %%% Created : 26 Jan 2007 by Jesper Louis Andersen <jlouis@succubus>
 %%%-------------------------------------------------------------------
--module(peer_communication).
+-module(et_peer_communication).
 
 %% API
 -export([initiate_handshake/4, recieve_handshake/1,
@@ -200,7 +200,7 @@ recieve_header(Socket) ->
 construct_bitfield(Size, PieceSet) ->
     PadBits = 8 - (Size rem 8),
     Bits = lists:append(
-	     [utils:list_tabulate(
+	     [et_utils:list_tabulate(
 		Size,
 		fun(N) ->
 			case sets:is_element(N, PieceSet) of
@@ -208,7 +208,7 @@ construct_bitfield(Size, PieceSet) ->
 			    false -> 0
 			end
 		end),
-	      utils:list_tabulate(
+	      et_utils:list_tabulate(
 	       PadBits,
 	       fun(_N) -> 0 end)]),
     0 = length(Bits) rem 8,

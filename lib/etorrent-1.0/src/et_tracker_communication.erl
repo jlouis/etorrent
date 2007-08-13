@@ -6,7 +6,7 @@
 %%%
 %%% Created : 17 Jul 2007 by Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
 %%%-------------------------------------------------------------------
--module(tracker_delegate).
+-module(et_tracker_communication).
 
 -behaviour(gen_server).
 
@@ -178,14 +178,14 @@ handle_tracker_response(BC, S) ->
     if
 	ErrorMessage /= none ->
 	    {string, E} = ErrorMessage,
-	    torrent_control:tracker_error_report(ControlPid, E);
+	    et_t_control:tracker_error_report(ControlPid, E);
 	WarningMessage /= none ->
-	    torrent_control:tracker_warning_report(ControlPid, WarningMessage),
-	    torrent_peer_master:add_peers(PeerMasterPid, NewIPs),
-	    torrent_state:report_from_tracker(StatePid, Complete, Incomplete);
+	    et_t_control:tracker_warning_report(ControlPid, WarningMessage),
+	    et_t_peer_group:add_peers(PeerMasterPid, NewIPs),
+	    et_t_state:report_from_tracker(StatePid, Complete, Incomplete);
 	true ->
-	    torrent_peer_master:add_peers(PeerMasterPid, NewIPs),
-	    torrent_state:report_from_tracker(StatePid, Complete, Incomplete)
+	    et_t_peer_group:add_peers(PeerMasterPid, NewIPs),
+	    et_t_state:report_from_tracker(StatePid, Complete, Incomplete)
     end,
     {ok, RequestTime, S#state{trackerid = TrackerId}}.
 
@@ -200,12 +200,12 @@ construct_headers([{Key, Value} | Rest], HeaderLines) ->
 
 build_tracker_url(S, Event) ->
     {ok, Downloaded, Uploaded, Left} =
-	torrent_state:report_to_tracker(S#state.state_pid),
+	et_t_state:report_to_tracker(S#state.state_pid),
     {ok, Port} = application:get_env(etorrent, port),
     Request = [{"info_hash",
-		utils:build_info_hash_encoded_form_rfc1738(S#state.info_hash)},
+		et_utils:build_info_hash_encoded_form_rfc1738(S#state.info_hash)},
 	       {"peer_id",
-		utils:build_uri_encoded_form_rfc1738(S#state.peer_id)},
+		et_utils:build_uri_encoded_form_rfc1738(S#state.peer_id)},
 	       {"uploaded", Uploaded},
 	       {"downloaded", Downloaded},
 	       {"left", Left},

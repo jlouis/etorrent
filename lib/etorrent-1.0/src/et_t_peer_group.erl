@@ -1,12 +1,13 @@
 %%%-------------------------------------------------------------------
-%%% File    : torrent_peer_master.erl
+%%% File    : et_t_peer_group.erl
 %%% Author  : Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
 %%% License : See COPYING
 %%% Description : Master process for a number of peers.
 %%%
-%%% Created : 18 Jul 2007 by Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
+%%% Created : 18 Jul 2007 by
+%%%      Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
 %%%-------------------------------------------------------------------
--module(torrent_peer_master).
+-module(et_t_peer_group).
 
 -behaviour(gen_server).
 
@@ -218,7 +219,7 @@ start_new_incoming_peer(PeerId, S) ->
 	?MAX_PEER_PROCESSES - dict:size(S#state.peer_process_dict),
     if
 	PeersMissing > 0 ->
-	    {ok, Pid} = torrent_peer:start_link(S#state.our_peer_id,
+	    {ok, Pid} = et_t_peer_recv:start_link(S#state.our_peer_id,
 						S#state.info_hash,
 						S#state.state_pid,
 						S#state.file_system_pid,
@@ -233,7 +234,7 @@ start_new_incoming_peer(PeerId, S) ->
 broadcast_have_message(Index, S) ->
     Pids = dict:fetch_keys(S#state.peer_process_dict),
     lists:foreach(fun(Pid) ->
-			  torrent_peer:send_have_piece(Pid, Index)
+			  et_t_peer_recv:send_have_piece(Pid, Index)
 		  end,
 		  Pids),
     ok.
@@ -263,7 +264,7 @@ select_optimistic_unchoker(Size, List, DoNotTouchPids, S) ->
 						       true}
 				  end,
 				  S),
-	    torrent_peer:unchoke(Pid),
+	    et_t_peer_recv:unchoke(Pid),
 	    NS
     end.
 
@@ -325,13 +326,13 @@ find_fastest_peers(N, Interested, S) when S#state.mode == seeding ->
 
 unchoke_peers(Pids) ->
     lists:foreach(fun(P) ->
-			  torrent_peer:unchoke(P)
+			  et_t_peer_recv:unchoke(P)
 		  end, Pids),
     ok.
 
 choke_peers(Pids) ->
     lists:foreach(fun(P) ->
-			  torrent_peer:choke(P)
+			  et_t_peer_recv:choke(P)
 		  end, Pids),
     ok.
 
@@ -395,12 +396,12 @@ spawn_new_peer(IP, Port, PeerId, N, S) ->
 	true ->
 	    fill_peers(N, S);
 	false ->
-	    {ok, Pid} = torrent_peer:start_link(S#state.our_peer_id,
+	    {ok, Pid} = et_t_peer_recv:start_link(S#state.our_peer_id,
 						S#state.info_hash,
 					        S#state.state_pid,
 					        S#state.file_system_pid,
 					        self()),
-	    torrent_peer:connect(Pid, IP, Port, PeerId),
+	    et_t_peer_recv:connect(Pid, IP, Port, PeerId),
 	    PI = #peer_info{peer_id = PeerId},
 	    D = dict:store(Pid, PI, S#state.peer_process_dict),
 	    fill_peers(N-1, S#state{ peer_process_dict = D})

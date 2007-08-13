@@ -1,12 +1,13 @@
 %%%-------------------------------------------------------------------
-%%% File    : torrent_state.erl
+%%% File    : et_t_state.erl
 %%% Author  : Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
 %%% License : See COPYING
 %%% Description : Track the state of a torrent.
 %%%
-%%% Created : 14 Jul 2007 by Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
+%%% Created : 14 Jul 2007 by
+%%%     Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
 %%%-------------------------------------------------------------------
--module(torrent_state).
+-module(et_t_state).
 
 -behaviour(gen_server).
 
@@ -121,7 +122,7 @@ handle_call({got_piece_from_peer, Pn, DataSize}, {Pid, _Tag}, S) ->
     Left = S#state.left - DataSize,
     case Left == 0 of
 	true ->
-	    torrent_control:seed(S#state.control_pid);
+	    et_t_control:seed(S#state.control_pid);
 	false ->
 	    ok
     end,
@@ -138,7 +139,7 @@ handle_call(report_to_tracker, _From, S) ->
 	     S#state.downloaded,
 	     S#state.left}, S};
 handle_call(retrieve_bitfield, _From, S) ->
-    BF = peer_communication:construct_bitfield(S#state.num_pieces,
+    BF = et_peer_communication:construct_bitfield(S#state.num_pieces,
 					       S#state.piece_set),
     {reply, BF, S};
 handle_call({remote_have_piece, PieceNum}, _From, S) ->
@@ -200,7 +201,7 @@ handle_call({remove_bitfield, PieceSet}, _From, S) ->
     {reply, ok, S#state{histogram = NewH}};
 handle_call({request_new_piece, PeerPieces}, {From, _Tag}, S) ->
     EligiblePieces = sets:intersection(PeerPieces, S#state.piece_set_missing),
-    case utils:sets_is_empty(EligiblePieces) of
+    case et_utils:sets_is_empty(EligiblePieces) of
 	true ->
 	    {reply, not_interested, S};
 	false ->
@@ -230,7 +231,7 @@ handle_call({report_from_tracker, Complete, Incomplete},
 %%                                      {stop, Reason, State}
 %% Description: Handling cast messages
 %%--------------------------------------------------------------------
-% TODO: torrent_state:handle_cast : Handle interested and choke globally!
+% TODO: et_t_state:handle_cast : Handle interested and choke globally!
 handle_cast(_Msg, State) ->
     {noreply, State}.
 

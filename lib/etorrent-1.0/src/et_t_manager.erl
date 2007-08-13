@@ -1,4 +1,4 @@
--module(torrent_manager).
+-module(et_t_manager).
 -behaviour(gen_server).
 
 -include("et_version.hrl").
@@ -48,17 +48,17 @@ handle_cast({start_torrent, F}, {TrackingMap, PeerId}) ->
 
 handle_cast({stop_torrent, F}, {TrackingMap, PeerId}) ->
     TorrentPid = ets:lookup(TrackingMap, F),
-    torrent_control:stop(TorrentPid),
+    et_t_control:stop(TorrentPid),
     ets:delete(TrackingMap, F),
     {noreply, {TrackingMap, PeerId}}.
 
 %% Internal functions
 spawn_new_torrent(F, PeerId, TrackingMap) ->
-    {ok, TorrentSupervisor} = torrent_pool_sup:spawn_new_torrent(),
+    {ok, TorrentSupervisor} = et_t_pool_sup:spawn_new_torrent(),
     sys:trace(TorrentSupervisor, true),
-    {ok, TorrentControl} = torrent_sup:add_control(TorrentSupervisor),
+    {ok, TorrentControl} = et_t_sup:add_control(TorrentSupervisor),
     sys:trace(TorrentControl, true),
-    ok = torrent_control:load_new_torrent(TorrentControl, F, PeerId),
+    ok = et_t_control:load_new_torrent(TorrentControl, F, PeerId),
     ets:insert(TrackingMap, {TorrentSupervisor, TorrentControl, F}).
 
 %% Utility
