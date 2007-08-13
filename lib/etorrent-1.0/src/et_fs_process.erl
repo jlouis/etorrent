@@ -10,7 +10,7 @@
 %%%
 %%% Created : 18 Jun 2007 by User Jlouis <jesper.louis.andersen@gmail.com>
 %%%-------------------------------------------------------------------
--module(file_process).
+-module(et_fs_process).
 
 -behaviour(gen_server).
 

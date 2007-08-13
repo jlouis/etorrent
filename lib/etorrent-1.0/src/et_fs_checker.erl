@@ -44,7 +44,7 @@ ensure_file_sizes_correct(Files) ->
 
 check_torrent_contents(FS, FileDict) ->
     Res = dict:map(fun (PN, {Hash, Ops, none}) ->
- 		      {ok, Data} = file_system:read_piece(FS, PN),
+ 		      {ok, Data} = et_fs:read_piece(FS, PN),
 		      case Hash == crypto:sha(Data) of
 			  true ->
 			      {Hash, Ops, ok};

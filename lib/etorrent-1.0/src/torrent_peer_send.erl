@@ -188,7 +188,7 @@ send_piece(Index, Offset, Len, S) ->
     end.
 
 load_piece(Index, S) ->
-    {ok, Piece} = file_system:read_piece(S#state.file_system_pid, Index),
+    {ok, Piece} = et_fs:read_piece(S#state.file_system_pid, Index),
     S#state{piece_cache = {Index, Piece}}.
 
 send_message(Msg, S, NewState, Timeout) ->

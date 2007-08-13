@@ -16,14 +16,13 @@ ETORRENT_1.0_EBINDIR = lib/etorrent-1.0/ebin
 
 ETORRENT_1.0_MODULES = et_acceptor et_bcoding et_fs_checker \
 	et_dirwatcher et_dirwatcher_sup etorrent_app etorrent \
-	file_process file_system \
+	et_fs_process et_fs et_fs_mapper \
 	et_histogram info_hash_map listener \
 	metainfo peer_communication \
 	serializer torrent_control \
 	torrent_manager torrent_peer torrent_peer_master \
 	torrent_peer_send torrent_pool_sup torrent_state \
-	torrent_sup tracker_delegate utils http_gzip \
-	et_file_access_mapper
+	torrent_sup tracker_delegate utils http_gzip 
 
 ETORRENT_1.0_SOURCES = $(ETORRENT_1.0_MODULES:%=$(ETORRENT_1.0_SRCDIR)/%.erl)
 

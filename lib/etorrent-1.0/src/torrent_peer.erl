@@ -368,7 +368,7 @@ check_and_store_piece(Index, S) ->
 			      Data
 		      end,
 		      PList),
-	    case file_system:write_piece(S#state.file_system_pid,
+	    case et_fs:write_piece(S#state.file_system_pid,
 				    Index,
 				    list_to_binary(Piece)) of
 		ok ->

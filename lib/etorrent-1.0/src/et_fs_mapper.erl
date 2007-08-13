@@ -5,7 +5,7 @@
 %%%
 %%% Created : 11 Aug 2007 by Jesper Louis Andersen <>
 %%%-------------------------------------------------------------------
--module(et_file_access_mapper).
+-module(et_fs_mapper).
 
 -behaviour(gen_server).
 
