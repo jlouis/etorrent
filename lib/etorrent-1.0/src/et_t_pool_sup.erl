@@ -33,9 +33,9 @@ spawn_new_torrent() ->
 %% Supervisor callbacks
 %%====================================================================
 init([]) ->
-    Ts = {torrent_sup,
-	  {torrent_sup, start_link, []},
-	  temporary, infinity, supervisor, [torrent_sup]},
+    Ts = {et_t_sup,
+	  {et_t_sup, start_link, []},
+	  temporary, infinity, supervisor, [et_t_sup]},
     {ok,{{simple_one_for_one,5, 60}, [Ts]}}.
 
 %%====================================================================
