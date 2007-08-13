@@ -101,9 +101,9 @@ init([]) ->
 % Load a torrent at Path with Torrent
 initializing({load_new_torrent, Path, PeerId}, S) ->
     {ok, Torrent, Files} =
-	check_torrent:load_torrent(S#state.work_dir, Path),
-    ok = check_torrent:ensure_file_sizes_correct(Files),
-    {ok, FileDict} = check_torrent:build_dictionary_on_files(Torrent, Files),
+	et_fs_checker:load_torrent(S#state.work_dir, Path),
+    ok = et_fs_checker:ensure_file_sizes_correct(Files),
+    {ok, FileDict} = et_fs_checker:build_dictionary_on_files(Torrent, Files),
     {ok, FS, NewState} = add_filesystem(FileDict,
 					S#state{path = Path,
 						torrent = Torrent,
@@ -119,7 +119,7 @@ initializing({load_new_torrent, Path, PeerId}, S) ->
 
 check_and_start_torrent(FS, FileDict, S) ->
     {ok, DiskState} =
-	check_torrent:check_torrent_contents(FS, FileDict),
+	et_fs_checker:check_torrent_contents(FS, FileDict),
     ok = serializer:release_token(),
     {ok, StatePid} = torrent_state:start_link(
 		       DiskState,

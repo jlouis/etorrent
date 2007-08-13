@@ -6,7 +6,7 @@
 %%%
 %%% Created :  6 Jul 2007 by Jesper Louis Andersen <jlouis@succubus.local.domain>
 %%%-------------------------------------------------------------------
--module(check_torrent).
+-module(et_fs_checker).
 
 %% API
 -export([load_torrent/2, ensure_file_sizes_correct/1,

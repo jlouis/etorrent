@@ -29,9 +29,9 @@ start_link() ->
     supervisor:start_link({local, ?SERVER}, ?MODULE, []).
 
 init([]) ->
-    DirWatcher = {dirwatcher,
-		  {dirwatcher, start_link, []},
-		  permanent, 2000, worker, [dirwatcher]},
+    DirWatcher = {et_dirwatcher,
+		  {et_dirwatcher, start_link, []},
+		  permanent, 2000, worker, [et_dirwatcher]},
     {ok,{{one_for_one,1,60}, [DirWatcher]}}.
 
 %%====================================================================
