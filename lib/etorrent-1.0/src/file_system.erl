@@ -71,8 +71,8 @@ init([]) ->
     {ok, #state{file_process_dict = dict:new() }}.
 
 handle_call({load_filedict, FileDict}, _From, S) ->
-    ok = file_access_mapper:install_map(FileDict),
-    ETS = file_access_mapper:fetch_map(),
+    ok = et_file_access_mapper:install_map(FileDict),
+    ETS = et_file_access_mapper:fetch_map(),
     {reply, ok, S#state{file_mapping_table = ETS}};
 handle_call({read_piece, PieceNum}, _From, S) ->
     [[FilesToRead]] = ets:match(S#state.file_mapping_table,
