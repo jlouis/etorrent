@@ -52,7 +52,7 @@ get_length(Torrent) ->
 %% Description: Get a file list from the torrent
 %%--------------------------------------------------------------------
 get_files(Torrent) ->
-    case bcoding:search_dict({string, "files"}, get_info(Torrent)) of
+    case et_bcoding:search_dict({string, "files"}, get_info(Torrent)) of
 	{ok, X} ->
 	    X;
 	false ->
@@ -86,8 +86,8 @@ get_url(Torrent) ->
 %% Description: Return the infohash for a torrent
 %%--------------------------------------------------------------------
 get_infohash(Torrent) ->
-    {ok, InfoDict} = bcoding:search_dict({string, "info"}, Torrent),
-    {ok, InfoString} = bcoding:encode(InfoDict),
+    {ok, InfoDict} = et_bcoding:search_dict({string, "info"}, Torrent),
+    {ok, InfoString} = et_bcoding:encode(InfoDict),
     crypto:sha(list_to_binary(InfoString)).
 
 %%--------------------------------------------------------------------
@@ -99,7 +99,7 @@ parse(File) ->
 	{ok, IODev} ->
 	    Data = read_data(IODev),
 	    ok = file:close(IODev),
-	    case bcoding:decode(Data) of
+	    case et_bcoding:decode(Data) of
 		{ok, Torrent} ->
 		    {ok, Torrent};
 		{error, Reason} ->
@@ -114,7 +114,7 @@ parse(File) ->
 
 %% Find a target that can't fail
 find_target(D, Name) ->
-    case bcoding:search_dict({string, Name}, D) of
+    case et_bcoding:search_dict({string, Name}, D) of
 	{ok, X} ->
 	    X
     end.

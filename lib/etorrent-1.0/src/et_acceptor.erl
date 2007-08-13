@@ -1,27 +1,22 @@
 %%%-------------------------------------------------------------------
-%%% File    : listener.erl
+%%% File    : acceptor.erl
 %%% Author  : Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
-%%% License : See COPYING
-%%% Description : Listen for incoming connections
+%%% Description : Accept new connections from the network.
 %%%
 %%% Created : 30 Jul 2007 by Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
 %%%-------------------------------------------------------------------
--module(listener).
+-module(et_acceptor).
 
 -behaviour(gen_server).
 
 %% API
--export([start_link/0]).
+-export([start_link/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3]).
 
--record(state, { listen_socket = none,
-		 acceptors = []}).
-
--define(SERVER, ?MODULE).
--define(DEFAULT_AMOUNT_OF_ACCEPTORS, 5).
+-record(state, { listen_socket = none}).
 
 %%====================================================================
 %% API
@@ -30,8 +25,8 @@
 %% Function: start_link() -> {ok,Pid} | ignore | {error,Error}
 %% Description: Starts the server
 %%--------------------------------------------------------------------
-start_link() ->
-    gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
+start_link(ListenSocket) ->
+    gen_server:start_link(?MODULE, [ListenSocket], []).
 
 %%====================================================================
 %% gen_server callbacks
@@ -44,9 +39,7 @@ start_link() ->
 %%                         {stop, Reason}
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
-init([]) ->
-    {ok, Port} = application:get_env(etorrent, port),
-    {ok, ListenSocket} = gen_tcp:listen(Port, [binary, inet, {active, false}]),
+init([ListenSocket]) ->
     {ok, #state{ listen_socket = ListenSocket}, 0}.
 
 %%--------------------------------------------------------------------
@@ -78,9 +71,15 @@ handle_cast(_Msg, State) ->
 %% Description: Handling all non call/cast messages
 %%--------------------------------------------------------------------
 handle_info(timeout, S) ->
-    {noreply, spawn_acceptors(?DEFAULT_AMOUNT_OF_ACCEPTORS, S)};
-handle_info(_Info, State) ->
-    {noreply, State}.
+    case gen_tcp:accept(S#state.listen_socket) of
+	{ok, Socket} ->
+	    handshake(Socket),
+	    {noreply, S, 0};
+	{error, closed} ->
+	    {noreply, S, 0};
+	{error, E} ->
+	    {stop, E}
+    end.
 
 %%--------------------------------------------------------------------
 %% Function: terminate(Reason, State) -> void()
@@ -103,12 +102,38 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%--------------------------------------------------------------------
 
-%%--------------------------------------------------------------------
-%% Func: spawn_acceptors(N, state()) -> state()
-%% Description: Spawn N acceptors.
-%%--------------------------------------------------------------------
-spawn_acceptors(0, S) ->
-    S;
-spawn_acceptors(N, S) ->
-    {ok, Pid} = et_acceptor:start_link(S#state.listen_socket),
-    spawn_acceptors(N-1, S#state{acceptors = [Pid | S#state.acceptors]}).
+handshake(Socket) ->
+    case peer_communication:recieve_handshake(Socket) of
+	{ok, ReservedBytes, InfoHash, PeerId} ->
+	    lookup_infohash(Socket, ReservedBytes, InfoHash, PeerId);
+	{error, Reason} ->
+	    error_logger:info_report([acceptor_handshake, Reason]),
+	    gen_tcp:close(Socket),
+	    ok
+    end.
+
+lookup_infohash(Socket, ReservedBytes, InfoHash, PeerId) ->
+    case info_hash_map:lookup(InfoHash) of
+	{ok, Pid} ->
+	    inform_peer_master(Socket, Pid, ReservedBytes, PeerId);
+	not_found ->
+	    error_logger:info_report([connection_on_unknown_infohash,
+				      InfoHash]),
+	    gen_tcp:close(Socket),
+	    ok
+    end.
+
+inform_peer_master(Socket, Pid, ReservedBytes, PeerId) ->
+    case torrent_peer_master:new_incoming_peer(Pid, PeerId) of
+	{ok, PeerProcessPid} ->
+	    ok = gen_tcp:controlling_process(Socket, PeerProcessPid),
+	    % TODO: Pass PeerId here?
+	    torrent_peer:complete_handshake(PeerProcessPid,
+						 ReservedBytes,
+						 Socket),
+	    ok;
+	bad_peer ->
+	    error_logger:info_report([peer_id_is_bad, PeerId]),
+	    gen_tcp:close(Socket),
+	    ok
+    end.

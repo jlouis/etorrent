@@ -159,7 +159,7 @@ contact_tracker(S, Event) ->
     end.
 
 decode_and_handle_body(Body, S) ->
-    case bcoding:decode(Body) of
+    case et_bcoding:decode(Body) of
 	{ok, BC} ->
 	    handle_tracker_response(BC, S)
     end.
@@ -219,10 +219,10 @@ build_tracker_url(S, Event) ->
 
 %%% Tracker response lookup functions
 find_next_request_time(BC) ->
-    {integer, R} = bcoding:search_dict_default({string, "interval"},
-					       BC,
-					       {integer,
-						?DEFAULT_REQUEST_TIMEOUT}),
+    {integer, R} = et_bcoding:search_dict_default({string, "interval"},
+						  BC,
+						  {integer,
+						   ?DEFAULT_REQUEST_TIMEOUT}),
     R.
 
 process_ips(D) ->
@@ -231,14 +231,15 @@ process_ips(D) ->
 process_ips([], Accum) ->
     lists:reverse(Accum);
 process_ips([IPDict | Rest], Accum) ->
-    {ok, {string, IP}} = bcoding:search_dict({string, "ip"}, IPDict),
-    {ok, {string, PeerId}} = bcoding:search_dict({string, "peer id"}, IPDict),
-    {ok, {integer, Port}} = bcoding:search_dict({string, "port"},
-							IPDict),
+    {ok, {string, IP}} = et_bcoding:search_dict({string, "ip"}, IPDict),
+    {ok, {string, PeerId}} = et_bcoding:search_dict({string, "peer id"},
+						    IPDict),
+    {ok, {integer, Port}} = et_bcoding:search_dict({string, "port"},
+						   IPDict),
     process_ips(Rest, [{IP, Port, PeerId} | Accum]).
 
 find_ips_in_tracker_response(BC) ->
-    case bcoding:search_dict_default({string, "peers"}, BC, none) of
+    case et_bcoding:search_dict_default({string, "peers"}, BC, none) of
 	{list, Ips} ->
 	    process_ips(Ips);
 	none ->
@@ -246,19 +247,19 @@ find_ips_in_tracker_response(BC) ->
     end.
 
 find_tracker_id(BC) ->
-    bcoding:search_dict_default({string, "trackerid"},
+    et_bcoding:search_dict_default({string, "trackerid"},
 				BC,
 				tracker_id_not_given).
 
 find_completes(BC) ->
-    bcoding:search_dict_default({string, "complete"}, BC, no_completes).
+    et_bcoding:search_dict_default({string, "complete"}, BC, no_completes).
 
 find_incompletes(BC) ->
-    bcoding:search_dict_default({string, "incomplete"}, BC, no_incompletes).
+    et_bcoding:search_dict_default({string, "incomplete"}, BC, no_incompletes).
 
 fetch_error_message(BC) ->
-    bcoding:search_dict_default({string, "failure reason"}, BC, none).
+    et_bcoding:search_dict_default({string, "failure reason"}, BC, none).
 
 fetch_warning_message(BC) ->
-    bcoding:search_dict_default({string, "warning message"}, BC, none).
+    et_bcoding:search_dict_default({string, "warning message"}, BC, none).
 

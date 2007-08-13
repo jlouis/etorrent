@@ -150,8 +150,7 @@ handle_cast({complete_handshake, _ReservedBytes, Socket}, S) ->
     {ok, SendPid} =
 	torrent_peer_send:start_link(Socket,
 				     S#state.file_system_pid,
-				     S#state.state_pid,
-				     S#state.master_pid),
+				     S#state.state_pid),
     BF = torrent_state:retrieve_bitfield(S#state.state_pid),
     torrent_peer_send:send(SendPid, {bitfield, BF}),
     {noreply, S#state{tcp_socket = Socket,
