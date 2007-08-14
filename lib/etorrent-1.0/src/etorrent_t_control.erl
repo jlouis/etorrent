@@ -45,7 +45,6 @@
 start_link_load(File, Local_PeerId) ->
     {ok, Pid} = start_link(self()),
     load_new_torrent(Pid, File, Local_PeerId),
-    sys:trace(Pid, true),
     {ok, Pid}.
 
 start_link(Parent) ->

@@ -23,7 +23,9 @@
 %% API functions
 %%====================================================================
 start_link() ->
-    supervisor:start_link({local, ?SERVER}, ?MODULE, []).
+    {ok, Pid} = supervisor:start_link({local, ?SERVER}, ?MODULE, []),
+    sys:trace(Pid, true),
+    {ok, Pid}.
 
 spawn_new_torrent(File, Local_PeerId) ->
     supervisor:start_child(?SERVER, [File, Local_PeerId]).
@@ -32,7 +34,7 @@ spawn_new_torrent(File, Local_PeerId) ->
 %% Supervisor callbacks
 %%====================================================================
 init([]) ->
-    Ts = {etorrent_t_sup,
+    Ts = {torrent,
 	  {etorrent_t_sup, start_link, []},
 	  temporary, infinity, supervisor, [etorrent_t_sup]},
     {ok,{{simple_one_for_one, 1, 60}, [Ts]}}.

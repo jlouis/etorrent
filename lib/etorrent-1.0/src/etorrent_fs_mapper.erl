@@ -57,7 +57,7 @@ fetch_map() ->
 %%--------------------------------------------------------------------
 init([]) ->
     {ok, #state{ file_access_map =
-		   ets:new(file_access_map, [named_table])}}.
+		   ets:new(file_access_map, [named_table, bag])}}.
 
 %%--------------------------------------------------------------------
 %% Function: %% handle_call(Request, From, State) -> {reply, Reply, State} |
@@ -94,7 +94,7 @@ handle_cast(_Msg, State) ->
 %%--------------------------------------------------------------------
 handle_info({'DOWN', _R, process, Pid, _Reason}, S) ->
     ets:match_delete(S#state.file_access_map,
-		     {{Pid, '_'}, '_'}),
+		     {Pid, '_', '_', '_'}),
     {noreply, S};
 handle_info(_Info, State) ->
     {noreply, State}.
@@ -121,9 +121,9 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 install_map_in_tracking_table(FileDict, Pid, S) ->
     erlang:monitor(process, Pid),
-    dict:map(fun(PieceNumber, Operations) ->
+    dict:map(fun(PieceNumber, {Hash, Files, _}) ->
 		      ets:insert(S#state.file_access_map,
-				 {{Pid, PieceNumber}, Operations})
+				 {Pid, PieceNumber, Hash, Files})
 	      end,
 	      FileDict),
     ok.
