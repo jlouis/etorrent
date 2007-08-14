@@ -54,12 +54,10 @@ handle_cast({stop_torrent, F}, {TrackingMap, PeerId}) ->
 
 %% Internal functions
 spawn_new_torrent(F, PeerId, TrackingMap) ->
-    {ok, TorrentSupervisor} = etorrent_t_pool_sup:spawn_new_torrent(),
-    sys:trace(TorrentSupervisor, true),
-    {ok, TorrentControl} = etorrent_t_sup:add_control(TorrentSupervisor),
-    sys:trace(TorrentControl, true),
-    ok = etorrent_t_control:load_new_torrent(TorrentControl, F, PeerId),
-    ets:insert(TrackingMap, {TorrentSupervisor, TorrentControl, F}).
+    {ok, TorrentSup} = etorrent_t_pool_sup:spawn_new_torrent(F, PeerId),
+    sys:trace(TorrentSup, true),
+    ets:insert(TrackingMap, {TorrentSup, F}),
+    erlang:monitor(process, TorrentSup).
 
 %% Utility
 generate_peer_id() ->

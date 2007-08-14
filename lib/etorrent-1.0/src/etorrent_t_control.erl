@@ -11,7 +11,7 @@
 -behaviour(gen_fsm).
 
 %% API
--export([start_link/0, token/1, start/1, stop/1, load_new_torrent/3,
+-export([start_link_load/2, token/1, start/1, stop/1, load_new_torrent/3,
 	torrent_checked/2, tracker_error_report/2, seed/1,
 	tracker_warning_report/2]).
 
@@ -42,8 +42,14 @@
 %% initialize. To ensure a synchronized start-up procedure, this function
 %% does not return until Module:init/1 has returned.
 %%--------------------------------------------------------------------
-start_link() ->
-    gen_fsm:start_link(?MODULE, [], []).
+start_link_load(File, Local_PeerId) ->
+    {ok, Pid} = start_link(self()),
+    load_new_torrent(Pid, File, Local_PeerId),
+    sys:trace(Pid, true),
+    {ok, Pid}.
+
+start_link(Parent) ->
+    gen_fsm:start_link(?MODULE, [Parent], []).
 
 token(Pid) ->
     gen_fsm:send_event(Pid, token).
@@ -81,7 +87,8 @@ seed(Pid) ->
 %% gen_fsm:start_link/3,4, this function is called by the new process to
 %% initialize.
 %%--------------------------------------------------------------------
-init([]) ->
+% TODO: Utilize parent
+init([_Parent]) ->
     process_flag(trap_exit, true),
     {ok, WorkDir} = application:get_env(etorrent, dir),
     {ok, initializing, #state{work_dir = WorkDir}}.
@@ -104,6 +111,7 @@ initializing({load_new_torrent, Path, PeerId}, S) ->
 	etorrent_fs_checker:load_torrent(S#state.work_dir, Path),
     ok = etorrent_fs_checker:ensure_file_sizes_correct(Files),
     {ok, FileDict} = etorrent_fs_checker:build_dictionary_on_files(Torrent, Files),
+    % TODO: Parent this
     {ok, FS, NewState} = add_filesystem(FileDict,
 					S#state{path = Path,
 						torrent = Torrent,
@@ -121,10 +129,11 @@ check_and_start_torrent(FS, FileDict, S) ->
     {ok, DiskState} =
 	etorrent_fs_checker:check_torrent_contents(FS, FileDict),
     ok = etorrent_fs_serializer:release_token(),
-    {ok, StatePid} = etorrent_t_state:start_link(
-		       DiskState,
-		       etorrent_metainfo:getorrent_piece_length(S#state.torrent),
-		       self()),
+    {ok, StatePid} =
+	etorrent_t_state:start_link(
+	  DiskState,
+	  etorrent_metainfo:getorrent_piece_length(S#state.torrent),
+	  self()),
     {ok, PeerMasterPid} =
 	etorrent_t_peer_group:start_link(
 	  S#state.peer_id,
@@ -144,7 +153,6 @@ check_and_start_torrent(FS, FileDict, S) ->
 	    tracker_pid = TrackerPid,
 	    state_pid = StatePid,
 	    peer_master_pid = PeerMasterPid}.
-
 
 waiting_check(token, S) ->
     NS = check_and_start_torrent(S#state.file_system_pid,

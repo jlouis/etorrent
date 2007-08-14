@@ -12,7 +12,7 @@
 -behaviour(supervisor).
 
 %% API
--export([start_link/0, spawn_new_torrent/0]).
+-export([start_link/0, spawn_new_torrent/2]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -25,9 +25,8 @@
 start_link() ->
     supervisor:start_link({local, ?SERVER}, ?MODULE, []).
 
-%% TODO: Code for adding torrents here!
-spawn_new_torrent() ->
-    supervisor:start_child(?SERVER, []).
+spawn_new_torrent(File, Local_PeerId) ->
+    supervisor:start_child(?SERVER, [File, Local_PeerId]).
 
 %%====================================================================
 %% Supervisor callbacks
@@ -36,7 +35,7 @@ init([]) ->
     Ts = {etorrent_t_sup,
 	  {etorrent_t_sup, start_link, []},
 	  temporary, infinity, supervisor, [etorrent_t_sup]},
-    {ok,{{simple_one_for_one,5, 60}, [Ts]}}.
+    {ok,{{simple_one_for_one, 1, 60}, [Ts]}}.
 
 %%====================================================================
 %% Internal functions

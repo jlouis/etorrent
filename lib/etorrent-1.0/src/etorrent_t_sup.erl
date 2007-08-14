@@ -12,7 +12,7 @@
 -behaviour(supervisor).
 
 %% API
--export([start_link/0, add_control/1]).
+-export([start_link/2]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -20,15 +20,9 @@
 %%====================================================================
 %% API functions
 %%====================================================================
-start_link() ->
-    supervisor:start_link(?MODULE, []).
+start_link(File, Local_PeerId) ->
+    supervisor:start_link(?MODULE, [File, Local_PeerId]).
 
-%% TODO We can simplify torrent_control, by feeding it stuff here!
-%%   it removes a state inside torrent_control, so that is good.
-add_control(Pid) ->
-    supervisor:start_child(Pid, {torrent_control,
-				 {torrent_control, start_link, []},
-				 permanent, 60000, worker, [torrent_control]}).
 
 %%====================================================================
 %% Supervisor callbacks
@@ -42,8 +36,12 @@ add_control(Pid) ->
 %% to find out about restart strategy, maximum restart frequency and child
 %% specifications.
 %%--------------------------------------------------------------------
-init([]) ->
-    {ok, {{one_for_all, 1, 60}, []}}.
+init([File, Local_PeerId]) ->
+    Control =
+	{control,
+	 {etorrent_t_control, start_link_load, [File, Local_PeerId]},
+	 permanent, 60000, worker, [etorrent_t_control]}),
+    {ok, {{one_for_all, 1, 60}, [Control]}}.
 
 %%====================================================================
 %% Internal functions
