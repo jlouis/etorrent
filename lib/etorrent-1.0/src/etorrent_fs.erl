@@ -75,13 +75,13 @@ handle_call({load_filedict, FileDict}, _From, S) ->
     ETS = etorrent_fs_mapper:fetch_map(),
     {reply, ok, S#state{file_mapping_table = ETS}};
 handle_call({read_piece, PieceNum}, _From, S) ->
-    [[FilesToRead]] = ets:match(S#state.file_mapping_table,
-				{{self(), PieceNum}, {'_', '$1', '_'}}),
+     [[FilesToRead]] = ets:match(S#state.file_mapping_table,
+ 				{self(), PieceNum, '_', '$1'}),
     {ok, Data, NS} = read_pieces_and_assemble(FilesToRead, [], S),
     {reply, {ok, Data}, NS};
 handle_call({write_piece, PieceNum, Data}, _From, S) ->
     [[Hash, FilesToWrite]] = ets:match(S#state.file_mapping_table,
-				      {{self(), PieceNum}, {'$1', '$2', '_'}}),
+				      {self(), PieceNum, '$1', '$2'}),
     case Hash == crypto:sha(Data) of
 	true ->
 	    {ok, NS} = write_piece_data(Data, FilesToWrite, S),

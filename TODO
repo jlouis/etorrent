@@ -2,8 +2,9 @@
 -- This is a list of what To Do before a release is ready to be made.
 ----------------------------------------------------------------------
 
-* Remove Modules we don't use anyway.
-- There are quite some unused modules. Consider killing them.
+* Rename etorrent to etorrent_sup
+
+* Revamp etorrent_t_manager.
 
 * DOCUMENTATION!
 - Pick functions at random, and document what they are doing.

@@ -30,30 +30,31 @@ start_link() ->
 %% Supervisor callbacks
 %%====================================================================
 init([]) ->
-    InfoHashMap = {etorrent_t_mapper,
+    InfoHashMap = {torrent_mapper,
 		   {etorrent_t_mapper, start_link, []},
 		    permanent, 2000, worker, [etorrent_t_mapper]},
-    FileAccessMap = {etorrent_fs_mapper,
+    FileAccessMap = {fs_mapper,
 		     {etorrent_fs_mapper, start_link, []},
 		     permanent, 2000, worker, [etorrent_fs_mapper]},
-    Listener = {etorrent_listener,
+    Listener = {listener,
 		{etorrent_listener, start_link, []},
 		permanent, 2000, worker, [etorrent_listener]},
-    Serializer = {etorrent_fs_serializer,
+    Serializer = {fs_serializer,
 		  {etorrent_fs_serializer, start_link, []},
 		  permanent, 2000, worker, [etorrent_fs_serializer]},
-    DirWatcherSup = {etorrent_dirwatcher_sup,
+    DirWatcherSup = {dirwatcher_sup,
 		  {etorrent_dirwatcher_sup, start_link, []},
 		  transient, infinity, supervisor, [etorrent_dirwatcher_sup]},
-    TorrentMgr = {etorrent_t_manager,
+    TorrentMgr = {manager,
 		  {etorrent_t_manager, start_link, []},
 		  permanent, 2000, worker, [etorrent_t_manager]},
-    TorrentPool = {etorrent_t_pool_sup,
+    TorrentPool = {torrent_pool_sup,
 		   {etorrent_t_pool_sup, start_link, []},
 		   transient, infinity, supervisor, [etorrent_t_pool_sup]},
     {ok, {{one_for_all, 1, 60},
 	  [InfoHashMap, FileAccessMap, Listener, Serializer, DirWatcherSup,
-	   TorrentMgr, TorrentPool]}}.
+	  TorrentMgr, TorrentPool]}}.
+
 
 
 %%====================================================================

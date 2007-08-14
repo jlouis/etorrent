@@ -10,56 +10,54 @@
 -define(SERVER, ?MODULE).
 -define(RANDOM_MAX_SIZE, 1000000000).
 
+-record(state, { tracking_map,
+		 local_peer_id }).
+
 %% API
 start_link() ->
-    gen_server:start_link({local, torrent_manager}, torrent_manager, [], []).
+    gen_server:start_link({local, ?SERVER}, etorrent_t_manager, [], []).
 
 start_torrent(File) ->
-    gen_server:cast(torrent_manager, {start_torrent, File}).
+    gen_server:cast(?SERVER, {start_torrent, File}).
 
 stop_torrent(File) ->
-    gen_server:cast(torrent_manager, {stop_torrent, File}).
+    gen_server:cast(?SERVER, {stop_torrent, File}).
 
 %% Callbacks
 init(_Args) ->
-    {ok, {ets:new(torrent_tracking_table, [named_table]), generate_peer_id()}}.
+    {ok, #state { tracking_map = ets:new(torrent_tracking_table,
+					 [named_table]),
+		  local_peer_id = generate_peer_id()}}.
 
-code_change(_OldVsn, State, _Extra) ->
-    {ok, State}.
-
-handle_info({'EXIT', Pid, Reason}, {TrackingMap, PeerId}) ->
-    error_logger:info_msg("Pid: ~p exited with reason ~p~n", [Pid, Reason]),
-    [{File}] = ets:match(TrackingMap, {Pid, '$1', '$2'}),
-    ets:delete(TrackingMap, Pid),
-    spawn_new_torrent(File, PeerId, TrackingMap),
-    {noreply, {TrackingMap, PeerId}};
-handle_info(_Info, State) ->
-    {noreply, State}.
-
-terminate(shutdown, _State) ->
-    ok.
+handle_cast({start_torrent, F}, S) ->
+    spawn_new_torrent(F, S),
+    {noreply, S};
+handle_cast({stop_torrent, F}, S) ->
+    [{F, TorrentSup}] = ets:lookup(S#state.tracking_map, F),
+    ets:delete(S#state.tracking_map, {F, TorrentSup}),
+    {noreply, S}.
 
 handle_call(_A, _B, S) ->
     {noreply, S}.
 
-handle_cast({start_torrent, F}, {TrackingMap, PeerId}) ->
-    spawn_new_torrent(F, PeerId, TrackingMap),
-    {noreply, {TrackingMap, PeerId}};
 
-handle_cast({stop_torrent, F}, {TrackingMap, PeerId}) ->
-    TorrentPid = ets:lookup(TrackingMap, F),
-    etorrent_t_control:stop(TorrentPid),
-    ets:delete(TrackingMap, F),
-    {noreply, {TrackingMap, PeerId}}.
+% TODO: Handle 'DOWN'
+handle_info(_Info, State) ->
+    {noreply, State}.
+
+terminate(_Foo, _State) ->
+    ok.
+
+code_change(_OldVsn, State, _Extra) ->
+    {ok, State}.
 
 %% Internal functions
-spawn_new_torrent(F, PeerId, TrackingMap) ->
-    {ok, TorrentSupervisor} = etorrent_t_pool_sup:spawn_new_torrent(),
-    sys:trace(TorrentSupervisor, true),
-    {ok, TorrentControl} = etorrent_t_sup:add_control(TorrentSupervisor),
-    sys:trace(TorrentControl, true),
-    ok = etorrent_t_control:load_new_torrent(TorrentControl, F, PeerId),
-    ets:insert(TrackingMap, {TorrentSupervisor, TorrentControl, F}).
+spawn_new_torrent(F, S) ->
+    {ok, TorrentSup} =
+	etorrent_t_pool_sup:spawn_new_torrent(F, S#state.local_peer_id),
+    sys:trace(TorrentSup, true),
+    ets:insert(S#state.tracking_map, {F, TorrentSup}),
+    erlang:monitor(process, TorrentSup).
 
 %% Utility
 generate_peer_id() ->
