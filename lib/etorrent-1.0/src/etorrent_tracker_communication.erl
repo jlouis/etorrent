@@ -199,7 +199,9 @@ construct_headers([{Key, Value} | Rest], HeaderLines) ->
     construct_headers(Rest, [Data | HeaderLines]).
 
 build_tracker_url(S, Event) ->
-    {ok, Downloaded, Uploaded, Left} =
+    {{uploaded, Uploaded},
+     {downloaded, Downloaded},
+     {left, Left}} =
 	etorrent_t_state:report_to_tracker(S#state.state_pid),
     {ok, Port} = application:get_env(etorrent, port),
     Request = [{"info_hash",

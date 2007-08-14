@@ -134,10 +134,9 @@ handle_call({uploaded_data, Amount}, _From, S) ->
 handle_call(num_pieces, _From, S) ->
     {reply, S#state.num_pieces, S};
 handle_call(report_to_tracker, _From, S) ->
-    {reply, {ok,
-	     S#state.uploaded,
-	     S#state.downloaded,
-	     S#state.left}, S};
+    {reply, {{uploaded, S#state.uploaded},
+	     {downloaded, S#state.downloaded},
+	     {left, S#state.left}}, S};
 handle_call(retrieve_bitfield, _From, S) ->
     BF = etorrent_peer_communication:construct_bitfield(S#state.num_pieces,
 					       S#state.piece_set),
