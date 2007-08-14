@@ -32,10 +32,10 @@ start_link() ->
     gen_fsm:start_link({local, ?SERVER}, ?MODULE, [], []).
 
 request_token() ->
-    gen_fsm:sync_send_event(serializer, request_token).
+    gen_fsm:sync_send_event(?SERVER, request_token).
 
 release_token() ->
-    gen_fsm:sync_send_event(serializer, release_token).
+    gen_fsm:sync_send_event(?SERVER, release_token).
 
 %%====================================================================
 %% gen_fsm callbacks
