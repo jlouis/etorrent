@@ -126,7 +126,7 @@ handle_cast({connect, IP, Port, PeerId}, S) ->
 					       S#state.local_peer_id,
 					       S#state.info_hash) of
 	{ok, _ReservedBytes} ->
-	    enable_socketorrent_messages(Socket),
+	    enable_socket_messages(Socket),
 	    {ok, SendPid} =
 		etorrent_t_peer_send:start_link(Socket,
 					     S#state.file_system_pid,
@@ -147,7 +147,7 @@ handle_cast({complete_handshake, _ReservedBytes, Socket}, S) ->
     etorrent_peer_communication:complete_handshake_header(Socket,
 						 S#state.info_hash,
 						 S#state.local_peer_id),
-    enable_socketorrent_messages(Socket),
+    enable_socket_messages(Socket),
     {ok, SendPid} =
 	etorrent_t_peer_send:start_link(Socket,
 				     S#state.file_system_pid,
@@ -304,19 +304,19 @@ delete_piece_from_request_sets(Index, Offset, Len, S) ->
 		{ok, NQ} ->
 		    {ok, S#state{request_queue = NQ}};
 		false ->
-		    % Bastard sent us something out of band, kill!
-		    error_logger:error_msg("Out of band request!~n"),
-		    stop
+		    % Bastard sent us something out of band. This *can*
+		    % happen in fast choking/unchoking runs!
+		    out_of_band
 	    end
     end.
 
-getorrent_requests(S) ->
+get_requests(S) ->
     lists:flatten(lists:map(fun({Index, _, _}) ->
 					  io_lib:format("|~B|", [Index])
 				  end,
 				  S#state.piece_request)).
 
-getorrent_queues(S) ->
+get_queues(S) ->
     lists:flatten(lists:map(
 		    fun({Index, Offset, Len}) ->
 			    io_lib:format("|~p|", [{Index, Offset, Len}])
@@ -327,37 +327,42 @@ getorrent_queues(S) ->
 report_errornous_piece(Index, Offset, Len, S) ->
     error_logger:warning_msg(
       "Peer ~s sent us chunk ~p have no piece_request on~nRequests: ~p~n~p~n",
-      [S#state.peer_id, {Index, Offset, Len}, getorrent_requests(S), getorrent_queues(S)]).
+      [S#state.peer_id, {Index, Offset, Len}, get_requests(S), get_queues(S)]).
 
-handle_got_chunk(Index, Offset, Data, Len, S) ->
+delete_piece(Index, Offset, Len, S) ->
     case delete_piece_from_request_sets(Index, Offset, Len, S) of
-	stop ->
-	    error_logger:warning_msg(
-	      "Peer ~s sent a piece never requested ~p",
-	      [S#state.peer_id, {Index, Offset, Len}]),
-	    stop;
 	{ok, NS} ->
-	    case lists:keysearch(Index, 1, NS#state.piece_request) of
-		false ->
-		    report_errornous_piece(Index, Offset, Len, S),
-		    stop;
-		{value, {_CurrentIndex, GBT, 1}} ->
-		    NS2 = update_with_new_piece(Index, Offset, Len,
-						Data, GBT, 1, NS),
-		    case check_and_store_piece(Index, NS2) of
-			ok ->
-			    PR = lists:keydelete(Index, 1,
-						 NS2#state.piece_request),
-			    {ok, NS2#state{piece_request = PR}};
-			wrong_hash ->
-			    stop
-		    end;
-		{value, {_CurrentIndex, GBT, N}} ->
-		    {ok, update_with_new_piece(
-			   Index, Offset, Len, Data, GBT, N, NS)}
-	    end
+	    NS;
+	out_of_band ->
+	    S
     end.
 
+handle_store_piece(Index, S) ->
+    case check_and_store_piece(Index, S) of
+	ok ->
+	    PR = lists:keydelete(Index, 1, S#state.piece_request),
+	    {ok, S#state{piece_request = PR}};
+	wrong_hash ->
+	    stop
+    end.
+
+handle_update_piece(Index, Offset, Len, Data, GBT, N, S) ->
+    case update_with_new_piece(Index, Offset, Len, Data, GBT, N, S) of
+	{done, NS} ->
+	    handle_store_piece(Index, NS);
+	{not_done, NS} ->
+	    {ok, NS}
+    end.
+
+handle_got_chunk(Index, Offset, Data, Len, S) ->
+    NS = delete_piece(Index, Offset, Len, S),
+    case lists:keysearch(Index, 1, NS#state.piece_request) of
+	false ->
+	    report_errornous_piece(Index, Offset, Len, NS),
+	    stop;
+	{value, {_CurrentIndex, GBT, N}} ->
+	    handle_update_piece(Index, Offset, Len, Data, GBT, N, NS)
+    end.
 
 check_and_store_piece(Index, S) ->
     case lists:keysearch(Index, 1, S#state.piece_request) of
@@ -424,15 +429,25 @@ int_connect(IP, Port) ->
 	    exit(shutdown)
     end.
 
+update_piece_count(X, N) when X == none ->
+    N-1;
+update_piece_count(_X, N) ->
+    N.
+
 update_with_new_piece(Index, Offset, Len, Data, GBT, N, S) ->
-    case gb_trees:get(Offset, GBT) of
-	{PLen, none} when PLen == Len ->
-	    PR = lists:keyreplace(
-		   Index, 1, S#state.piece_request,
-		   {Index,
-		    gb_trees:update(Offset, {Len, Data}, GBT),
-		    N-1}),
-	    S#state{piece_request = PR}
+    {PLen, Slot} = gb_trees:get(Offset, GBT),
+    PLen = Len,
+    PiecesLeft = update_piece_count(Slot, N),
+    PR = lists:keyreplace(
+	   Index, 1, S#state.piece_request,
+	   {Index,
+	    gb_trees:update(Offset, {Len, Data}, GBT),
+	    PiecesLeft}),
+    case PiecesLeft of
+	0 ->
+	    {done, S#state{piece_request = PR}};
+	K when integer(K) ->
+	    {not_done, S#state{piece_request = PR}}
     end.
 
 %%--------------------------------------------------------------------
@@ -440,18 +455,19 @@ update_with_new_piece(Index, Offset, Len, Data, GBT, N, S) ->
 %% Description: Make the socket active and configure it to bittorrent
 %%   specifications.
 %%--------------------------------------------------------------------
-enable_socketorrent_messages(Socket) ->
+enable_socket_messages(Socket) ->
     inet:setopts(Socket, [binary, {active, true}, {packet, 4}]).
 
 %%--------------------------------------------------------------------
 %% Function: unqueue_all_pieces/1
-%% Description: Unqueue all queued pieces at the other end
+%% Description: Unqueue all queued pieces at the other end. We place
+%%   the earlier queued items at the end to compensate for quick
+%%   choke/unchoke problems and live data.
 %%--------------------------------------------------------------------
 unqueue_all_pieces(S) ->
     Requests = sets:to_list(S#state.remote_request_set),
     Q = S#state.request_queue,
-    NQ = queue:join(queue:from_list(Requests),
-		    Q),
+    NQ = queue:join(Q, queue:from_list(Requests)),
     S#state{remote_request_set = sets:new(),
 	     request_queue = NQ}.
 
@@ -510,7 +526,7 @@ queue_up_requests(S, N) ->
 select_piece_for_queueing(S, N) ->
     true = queue:is_empty(S#state.request_queue),
     case etorrent_t_state:request_new_piece(S#state.state_pid,
-					 S#state.piece_set) of
+					    S#state.piece_set) of
 	{ok, PieceNum, PieceSize} ->
 	    {ok, Chunks, NumChunks} = chunkify(PieceNum, PieceSize),
 	    {ok, ChunkDict} = build_chunk_dict(Chunks),
