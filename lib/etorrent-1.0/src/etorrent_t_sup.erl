@@ -40,7 +40,7 @@ init([File, Local_PeerId]) ->
     Control =
 	{control,
 	 {etorrent_t_control, start_link_load, [File, Local_PeerId]},
-	 permanent, 60000, worker, [etorrent_t_control]}),
+	 permanent, 60000, worker, [etorrent_t_control]},
     {ok, {{one_for_all, 1, 60}, [Control]}}.
 
 %%====================================================================
