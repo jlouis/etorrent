@@ -103,10 +103,14 @@ handle_call(_Request, _From, State) ->
 handle_cast(start_now, S) ->
     {ok, Body} = contact_tracker(S, "started"),
     {ok, NextRequestTime, NS} = decode_and_handle_body(Body, S),
+    error_logger:info_msg("Will contact again in ~B seconds~n",
+			  [NextRequestTime]),
     {noreply, NS, timer:seconds(NextRequestTime)};
 handle_cast(torrent_completed, S) ->
     {ok, Body} = contact_tracker(S, "completed"),
     {ok, NextRequestTime, NS} = decode_and_handle_body(Body, S),
+    error_logger:info_msg("Will contact again in ~B seconds~n",
+			  [NextRequestTime]),
     {noreply, NS, timer:seconds(NextRequestTime)}.
 
 %%--------------------------------------------------------------------
@@ -203,6 +207,8 @@ build_tracker_url(S, Event) ->
      {downloaded, Downloaded},
      {left, Left}} =
 	etorrent_t_state:report_to_tracker(S#state.state_pid),
+    error_logger:info_msg("Reporting to tracker: ~p~n", [{Uploaded, Downloaded,
+							  Left}]),
     {ok, Port} = application:get_env(etorrent, port),
     Request = [{"info_hash",
 		etorrent_utils:build_info_hash_encoded_form_rfc1738(S#state.info_hash)},
