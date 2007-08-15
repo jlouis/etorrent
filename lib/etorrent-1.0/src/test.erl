@@ -12,7 +12,7 @@ start_apps() ->
 
 start() ->
     start_apps(),
-    etorrent:start_link().
+    etorrent_sup:start_link().
 
 start_sasl() ->
     application:set_env(sasl, sasl_error_logger, {file, "err.log"}),
