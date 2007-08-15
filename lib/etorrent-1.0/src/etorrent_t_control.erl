@@ -24,14 +24,15 @@
 		torrent = none,
 		peer_id = none,
 		work_dir = none,
-	        checker_pid = none,
+
+		parent_pid = none,
 		state_pid = none,
 		tracker_pid = none,
 		file_system_pid = none,
 		peer_master_pid = none,
+
 		disk_state = none,
-		available_peers = [],
-	        torrent_pid = none}).
+		available_peers = []}).
 
 %%====================================================================
 %% API
@@ -87,10 +88,11 @@ seed(Pid) ->
 %% initialize.
 %%--------------------------------------------------------------------
 % TODO: Utilize parent
-init([_Parent]) ->
+init([Parent]) ->
     process_flag(trap_exit, true),
     {ok, WorkDir} = application:get_env(etorrent, dir),
-    {ok, initializing, #state{work_dir = WorkDir}}.
+    {ok, initializing, #state{work_dir = WorkDir,
+			      parent_pid = Parent}}.
 
 %%--------------------------------------------------------------------
 %% Function:
@@ -109,19 +111,17 @@ initializing({load_new_torrent, Path, PeerId}, S) ->
     {ok, Torrent, Files} =
 	etorrent_fs_checker:load_torrent(S#state.work_dir, Path),
     ok = etorrent_fs_checker:ensure_file_sizes_correct(Files),
-    {ok, FileDict} = etorrent_fs_checker:build_dictionary_on_files(Torrent, Files),
-    % TODO: Parent this
-    {ok, FS, NewState} = add_filesystem(FileDict,
-					S#state{path = Path,
-						torrent = Torrent,
-						peer_id = PeerId}),
+    {ok, FileDict} =
+	etorrent_fs_checker:build_dictionary_on_files(Torrent, Files),
+    {ok, FS} = add_filesystem(FileDict, S),
+
+    NS = S#state{path = Path, torrent = Torrent, peer_id = PeerId,
+		 file_system_pid = FS},
     case etorrent_fs_serializer:request_token() of
 	ok ->
-	    NS = check_and_start_torrent(FS, FileDict, NewState),
-	    {next_state, started, NS};
+	    {next_state, started, check_and_start_torrent(FS, FileDict, NS)};
 	wait ->
-	    {next_state, waiting_check, NewState#state{disk_state = FileDict,
-						       file_system_pid = FS}}
+	    {next_state, waiting_check, NS#state{disk_state = FileDict}}
     end.
 
 check_and_start_torrent(FS, FileDict, S) ->
@@ -268,7 +268,5 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 %%% Internal functions
 %%--------------------------------------------------------------------
 add_filesystem(FileDict, S) ->
-    {ok, FS} = etorrent_fs:start_link(),
-    etorrent_fs:load_file_information(FS, FileDict),
-    {ok, FS, S#state{file_system_pid = FS}}.
-
+    ok = etorrent_fs_mapper:install_map(FileDict),
+    etorrent_t_sup:add_filesystem(S#state.parent_pid, self()).

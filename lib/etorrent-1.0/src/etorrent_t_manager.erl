@@ -55,7 +55,6 @@ code_change(_OldVsn, State, _Extra) ->
 spawn_new_torrent(F, S) ->
     {ok, TorrentSup} =
 	etorrent_t_pool_sup:spawn_new_torrent(F, S#state.local_peer_id),
-    sys:trace(TorrentSup, true),
     ets:insert(S#state.tracking_map, {F, TorrentSup}),
     erlang:monitor(process, TorrentSup).
 

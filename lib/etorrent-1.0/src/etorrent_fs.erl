@@ -12,7 +12,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0, load_file_information/2,
+-export([start_link/1, load_file_information/2,
 	 stop/1, read_piece/2, write_piece/3]).
 
 %% gen_server callbacks
@@ -20,7 +20,9 @@
 	 terminate/2, code_change/3]).
 
 -record(state, { file_mapping_table = none,
-		 file_process_dict = none }).
+		 file_mapping_handle = none,
+
+		 file_process_dict = none}).
 
 %%====================================================================
 %% API
@@ -30,8 +32,8 @@
 %% Function: start_link/0
 %% Description: Spawn and link a new file_system process
 %%--------------------------------------------------------------------
-start_link() ->
-    gen_server:start_link(?MODULE, [], []).
+start_link(IDHandle) ->
+    gen_server:start_link(?MODULE, [IDHandle], []).
 
 %%--------------------------------------------------------------------
 %% Function: stop(Pid) -> ok
@@ -46,7 +48,7 @@ stop(Pid) ->
 %%   process requests from this filedict.
 %%--------------------------------------------------------------------
 load_file_information(Pid, FileDict) ->
-    gen_server:call(Pid, {load_filedict, FileDict}).
+    gen_server:cast(Pid, {load_filedict, FileDict}).
 
 %%--------------------------------------------------------------------
 %% Function: read_piece(Pid, N) -> {ok, Binary}
@@ -66,22 +68,23 @@ write_piece(Pid, Pn, Data) ->
 %%====================================================================
 %% gen_server callbacks
 %%====================================================================
-init([]) ->
+init([IDHandle]) ->
     process_flag(trap_exit, true),
-    {ok, #state{file_process_dict = dict:new() }}.
-
-handle_call({load_filedict, FileDict}, _From, S) ->
-    ok = etorrent_fs_mapper:install_map(FileDict),
     ETS = etorrent_fs_mapper:fetch_map(),
-    {reply, ok, S#state{file_mapping_table = ETS}};
+    {ok, #state{file_process_dict = dict:new(),
+	        file_mapping_table = ETS,
+	        file_mapping_handle = IDHandle}}.
+
 handle_call({read_piece, PieceNum}, _From, S) ->
-     [[FilesToRead]] = ets:match(S#state.file_mapping_table,
- 				{self(), PieceNum, '_', '$1'}),
+     [[FilesToRead]] =
+	ets:match(S#state.file_mapping_table,
+		  {S#state.file_mapping_handle, PieceNum, '_', '$1'}),
     {ok, Data, NS} = read_pieces_and_assemble(FilesToRead, [], S),
     {reply, {ok, Data}, NS};
 handle_call({write_piece, PieceNum, Data}, _From, S) ->
-    [[Hash, FilesToWrite]] = ets:match(S#state.file_mapping_table,
-				      {self(), PieceNum, '$1', '$2'}),
+    [[Hash, FilesToWrite]] =
+	ets:match(S#state.file_mapping_table,
+		  {S#state.file_mapping_handle, PieceNum, '$1', '$2'}),
     case Hash == crypto:sha(Data) of
 	true ->
 	    {ok, NS} = write_piece_data(Data, FilesToWrite, S),
@@ -89,6 +92,7 @@ handle_call({write_piece, PieceNum, Data}, _From, S) ->
 	false ->
 	    {reply, wrong_hash, S}
     end.
+
 
 handle_cast(stop, S) ->
     {stop, normal, S};

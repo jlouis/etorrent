@@ -12,7 +12,7 @@
 -behaviour(supervisor).
 
 %% API
--export([start_link/2]).
+-export([start_link/2, add_filesystem/2]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -23,6 +23,16 @@
 start_link(File, Local_PeerId) ->
     supervisor:start_link(?MODULE, [File, Local_PeerId]).
 
+%%--------------------------------------------------------------------
+%% Func: add_filesystem/1
+%% Description: Add a filesystem process to the torrent.
+%%--------------------------------------------------------------------
+add_filesystem(Pid, IDHandle) ->
+    FS = {fs,
+	  {etorrent_fs, start_link, [IDHandle]},
+	  temporary, 2000, worker, [etorrent_fs]},
+    % TODO: Handle some cases here if already added.
+    supervisor:start_child(Pid, FS).
 
 %%====================================================================
 %% Supervisor callbacks
