@@ -12,7 +12,8 @@
 -behaviour(supervisor).
 
 %% API
--export([start_link/2, add_filesystem/2, add_peer_master/5]).
+-export([start_link/2, add_filesystem/2, add_peer_master/5,
+	 add_tracker/6]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -35,11 +36,18 @@ add_filesystem(Pid, IDHandle) ->
     supervisor:start_child(Pid, FS).
 
 add_peer_master(Pid, Local_Peer_Id, InfoHash, StatePid, FileSystemPid) ->
-    PeerMaster = {peer_master,
+    PeerGroup = {peer_group,
 		  {etorrent_t_peer_group, start_link,
 		   [Local_Peer_Id, InfoHash, StatePid, FileSystemPid]},
 		  temporary, 60000, worker, [etorrent_t_peer_group]},
-    supervisor:start_child(Pid, PeerMaster).
+    supervisor:start_child(Pid, PeerGroup).
+
+add_tracker(Pid, StatePid, PeerGroupPid, URL, InfoHash, Local_Peer_Id) ->
+    Tracker = {tracker_communication,
+	       {etorrent_tracker_communication, start_link,
+		[self(), StatePid, PeerGroupPid, URL, InfoHash, Local_Peer_Id]},
+	       temporary, 60000, worker, [etorrent_tracker_communication]},
+    supervisor:start_child(Pid, Tracker).
 
 %%====================================================================
 %% Supervisor callbacks
