@@ -16,7 +16,8 @@
 -export([init/1, dormant/3, running/3, handle_event/3,
 	 handle_sync_event/4, handle_info/3, terminate/3, code_change/4]).
 
--record(state, { pids = none}).
+-record(state, { pids = none,
+		 monitored = none}).
 -define(SERVER, ?MODULE).
 
 %%====================================================================
@@ -88,13 +89,8 @@ dormant(release_token, _From, S) ->
 running(request_token, {From, _Tag}, S) ->
     {reply, wait, running, S#state{pids = queue:in(From, S#state.pids)}};
 running(release_token, _From, S) ->
-    case queue:out(S#state.pids) of
-	{{value, Pid}, Q2} ->
-	    etorrent_t_control:token(Pid),
-	    {reply, ok, running, S#state{ pids = Q2}};
-	{empty, Q} ->
-	    {reply, ok, dormant, S#state{ pids = Q}}
-    end.
+    pass_token(S).
+
 
 %%--------------------------------------------------------------------
 %% Function:
@@ -139,6 +135,8 @@ handle_sync_event(_Event, _From, StateName, State) ->
 %% other message than a synchronous or asynchronous event
 %% (or a system message).
 %%--------------------------------------------------------------------
+handle_info({'DOWN', _Ref, process, _Pid, _Reason}, running, S) ->
+    pass_token(S);
 handle_info(_Info, StateName, State) ->
     {next_state, StateName, State}.
 
@@ -163,3 +161,21 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 %%--------------------------------------------------------------------
 %%% Internal functions
 %%--------------------------------------------------------------------
+pass_token(S) ->
+    demonitor_process(S),
+    case queue:out(S#state.pids) of
+	{{value, Pid}, Q2} ->
+	    etorrent_t_control:token(Pid),
+	    Ref = erlang:monitor(process, Pid),
+	    {reply, ok, running, S#state{ pids = Q2,
+					  monitored = Ref}};
+	{empty, Q} ->
+	    {reply, ok, dormant, S#state{ pids = Q,
+					  monitored = none}}
+    end.
+
+demonitor_process(S) when S#state.monitored == none ->
+    ok;
+demonitor_process(S) ->
+    true = erlang:demonitor(S#state.monitored),
+    ok.
