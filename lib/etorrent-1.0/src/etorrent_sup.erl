@@ -6,9 +6,7 @@
 %%%
 %%% Created : 30 Jan 2007 by User Jlouis <jesper.louis.andersen@gmail.com>
 %%%-------------------------------------------------------------------
-
-% TODO: This should be renamed to etorrent_sup
--module(etorrent).
+-module(etorrent_sup).
 
 -behaviour(supervisor).
 
