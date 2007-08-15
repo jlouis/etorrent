@@ -134,7 +134,8 @@ check_and_start_torrent(FS, FileDict, S) ->
 	  etorrent_metainfo:getorrent_piece_length(S#state.torrent),
 	  self()),
     {ok, PeerMasterPid} =
-	etorrent_t_peer_group:start_link(
+	etorrent_t_sup:add_peer_master(
+	  S#state.parent_pid,
 	  S#state.peer_id,
 	  etorrent_metainfo:getorrent_infohash(S#state.torrent),
 	  StatePid,
