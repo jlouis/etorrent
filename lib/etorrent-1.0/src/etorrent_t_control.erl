@@ -128,7 +128,8 @@ check_and_start_torrent(FS, S) ->
     ok = etorrent_fs_checker:check_torrent_contents(FS, self()),
     ok = etorrent_fs_serializer:release_token(),
     {ok, StatePid} =
-	etorrent_t_state:start_link(
+	etorrent_t_sup:add_state(
+	  S#state.parent_pid,
 	  etorrent_metainfo:get_piece_length(S#state.torrent),
 	  self()),
     {ok, PeerMasterPid} =

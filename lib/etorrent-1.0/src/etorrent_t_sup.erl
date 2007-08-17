@@ -13,7 +13,7 @@
 
 %% API
 -export([start_link/2, add_filesystem/2, add_peer_master/5,
-	 add_tracker/6]).
+	 add_tracker/6, add_state/3]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -48,6 +48,13 @@ add_tracker(Pid, StatePid, PeerGroupPid, URL, InfoHash, Local_Peer_Id) ->
 		[self(), StatePid, PeerGroupPid, URL, InfoHash, Local_Peer_Id]},
 	       temporary, 60000, worker, [etorrent_tracker_communication]},
     supervisor:start_child(Pid, Tracker).
+
+add_state(Pid, PieceLength, ControlPid) ->
+    State = {state,
+	     {etorrent_t_state, start_link,
+	      [PieceLength, ControlPid]},
+	     temporary, 5000, worker, [etorrent_t_state]},
+    supervisor:start_child(Pid, State).
 
 %%====================================================================
 %% Supervisor callbacks
