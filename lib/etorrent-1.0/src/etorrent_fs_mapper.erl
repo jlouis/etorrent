@@ -5,6 +5,7 @@
 %%%
 %%% Created : 11 Aug 2007 by Jesper Louis Andersen <>
 %%%-------------------------------------------------------------------
+% TODO: Make all the ets:* calls on the file_access_map local to this file!
 -module(etorrent_fs_mapper).
 
 -behaviour(gen_server).
@@ -94,7 +95,7 @@ handle_cast(_Msg, State) ->
 %%--------------------------------------------------------------------
 handle_info({'DOWN', _R, process, Pid, _Reason}, S) ->
     ets:match_delete(S#state.file_access_map,
-		     {Pid, '_', '_', '_'}),
+		     {Pid, '_', '_', '_', '_'}),
     {noreply, S};
 handle_info(_Info, State) ->
     {noreply, State}.
@@ -121,9 +122,17 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 install_map_in_tracking_table(FileDict, Pid, S) ->
     erlang:monitor(process, Pid),
-    dict:map(fun(PieceNumber, {Hash, Files, _}) ->
-		      ets:insert(S#state.file_access_map,
-				 {Pid, PieceNumber, Hash, Files})
+    dict:map(fun(PieceNumber, {Hash, Files, Done}) ->
+		     case Done of
+			 ok ->
+			     ets:insert(
+			       S#state.file_access_map,
+			       {Pid, PieceNumber, Hash, Files, fetched});
+			 not_ok ->
+			     ets:insert(
+			       S#state.file_access_map,
+			       {Pid, PieceNumber, Hash, Files, not_fetch})
+		     end
 	      end,
 	      FileDict),
     ok.

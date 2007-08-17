@@ -78,13 +78,13 @@ init([IDHandle]) ->
 handle_call({read_piece, PieceNum}, _From, S) ->
      [[FilesToRead]] =
 	ets:match(S#state.file_mapping_table,
-		  {S#state.file_mapping_handle, PieceNum, '_', '$1'}),
+		  {S#state.file_mapping_handle, PieceNum, '_', '$1', '_'}),
     {ok, Data, NS} = read_pieces_and_assemble(FilesToRead, [], S),
     {reply, {ok, Data}, NS};
 handle_call({write_piece, PieceNum, Data}, _From, S) ->
     [[Hash, FilesToWrite]] =
 	ets:match(S#state.file_mapping_table,
-		  {S#state.file_mapping_handle, PieceNum, '$1', '$2'}),
+		  {S#state.file_mapping_handle, PieceNum, '$1', '$2', '_'}),
     case Hash == crypto:sha(Data) of
 	true ->
 	    {ok, NS} = write_piece_data(Data, FilesToWrite, S),
