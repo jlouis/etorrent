@@ -42,18 +42,22 @@ ensure_file_sizes_correct(Files) ->
 	      Files),
     ok.
 
-check_torrent_contents(FS, FileDict) ->
-    Res = dict:map(fun (PN, {Hash, Ops, none}) ->
- 		      {ok, Data} = etorrent_fs:read_piece(FS, PN),
-		      case Hash == crypto:sha(Data) of
-			  true ->
-			      {Hash, Ops, ok};
-			  false ->
-			      {Hash, Ops, not_ok}
-		      end
- 	      end,
- 	      FileDict),
-    {ok, Res}.
+check_torrent_contents(FS, Handle) ->
+    T = etorrent_fs_mapper:fetch_map(),
+    Pieces = etorrent_fs_mapper:get_pieces(Handle),
+    lists:foreach(fun([PieceNum, Hash, Ops, Done]) ->
+			  {ok, Data} = etorrent_fs:read_piece(FS, PieceNum),
+			  case Hash =:= crypto:sha(Data) of
+			      true ->
+				  etorrent_fs_mapper:fetched(
+				    Handle, PieceNum, Hash, Ops, Done);
+			      false ->
+				  etorrent_fs_mapper:not_fetched(
+				    Handle, PieceNum, Hash, Ops, Done)
+			  end
+		  end,
+		  Pieces),
+    ok.
 
 build_dictionary_on_files(Torrent, Files) ->
     Pieces = etorrent_metainfo:get_pieces(Torrent),

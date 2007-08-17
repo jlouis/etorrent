@@ -125,12 +125,10 @@ initializing({load_new_torrent, Path, PeerId}, S) ->
     end.
 
 check_and_start_torrent(FS, FileDict, S) ->
-    {ok, DiskState} =
-	etorrent_fs_checker:check_torrent_contents(FS, FileDict),
+    ok = etorrent_fs_checker:check_torrent_contents(FS, self()),
     ok = etorrent_fs_serializer:release_token(),
     {ok, StatePid} =
 	etorrent_t_state:start_link(
-	  DiskState,
 	  etorrent_metainfo:get_piece_length(S#state.torrent),
 	  self()),
     {ok, PeerMasterPid} =
