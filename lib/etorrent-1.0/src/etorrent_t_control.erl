@@ -4,7 +4,8 @@
 %%% License : See COPYING
 %%% Description : Representation of a torrent for downloading
 %%%
-%%% Created :  9 Jul 2007 by Jesper Louis Andersen <jlouis@succubus.local.domain>
+%%% Created :  9 Jul 2007 by Jesper Louis Andersen
+%%%   <jlouis@succubus.local.domain>
 %%%-------------------------------------------------------------------
 -module(etorrent_t_control).
 
@@ -132,9 +133,11 @@ check_and_start_torrent(FS, S) ->
 	  S#state.parent_pid,
 	  etorrent_metainfo:get_piece_length(S#state.torrent),
 	  self()),
+    {ok, GroupPid} = etorrent_t_sup:add_peer_pool(S#state.parent_pid),
     {ok, PeerMasterPid} =
 	etorrent_t_sup:add_peer_master(
 	  S#state.parent_pid,
+	  GroupPid,
 	  S#state.peer_id,
 	  etorrent_metainfo:get_infohash(S#state.torrent),
 	  StatePid,

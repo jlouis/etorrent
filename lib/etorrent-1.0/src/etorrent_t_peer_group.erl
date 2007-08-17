@@ -12,7 +12,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/4, add_peers/2, uploaded_data/2, downloaded_data/2,
+-export([start_link/5, add_peers/2, uploaded_data/2, downloaded_data/2,
 	peer_interested/1, peer_not_interested/1, peer_choked/1,
 	peer_unchoked/1, got_piece_from_peer/2, new_incoming_peer/2,
 	seed/1]).
@@ -32,6 +32,7 @@
 
 	        state_pid = none,
 	        file_system_pid = none,
+		peer_group_sup = none,
 
 	        mode = leeching}).
 
@@ -40,6 +41,7 @@
 		    interested = false,
 		    remote_choking = true,
 
+		    ref = none,
 		    optimistic_unchoke = false,
 		    peer_id = none}).
 
@@ -50,8 +52,8 @@
 %%====================================================================
 %% API
 %%====================================================================
-start_link(OurPeerId, InfoHash, StatePid, FileSystemPid) ->
-    gen_server:start_link(?MODULE, [OurPeerId, InfoHash,
+start_link(OurPeerId, PeerGroup, InfoHash, StatePid, FileSystemPid) ->
+    gen_server:start_link(?MODULE, [OurPeerId, PeerGroup, InfoHash,
 				    StatePid, FileSystemPid], []).
 
 add_peers(Pid, IPList) ->
@@ -88,11 +90,12 @@ seed(Pid) ->
 %% gen_server callbacks
 %%====================================================================
 
-init([OurPeerId, InfoHash, StatePid, FileSystemPid]) ->
+init([OurPeerId, PeerGroup, InfoHash, StatePid, FileSystemPid]) ->
     process_flag(trap_exit, true), % Needed for torrent peers
     {ok, Tref} = timer:send_interval(?ROUND_TIME, self(), round_tick),
     ok = etorrent_t_mapper:store_hash(InfoHash),
     {ok, #state{ our_peer_id = OurPeerId,
+		 peer_group_sup = PeerGroup,
 		 bad_peers = dict:new(),
 		 info_hash = InfoHash,
 		 state_pid = StatePid,
@@ -174,12 +177,12 @@ handle_info(round_tick, S) ->
 	    {NS, DoNotTouchPids} = perform_choking_unchoking(
 				     remove_optimistic_unchoking(S)),
 	    NNS = select_optimistic_unchoker(DoNotTouchPids, NS),
-	    {noreply, resetorrent_round(NNS#state{round = 2})};
+	    {noreply, reset_round(NNS#state{round = 2})};
 	N when is_integer(N) ->
 	    {NS, _DoNotTouchPids} = perform_choking_unchoking(S),
-	    {noreply, resetorrent_round(NS#state{round = NS#state.round - 1})}
+	    {noreply, reset_round(NS#state{round = NS#state.round - 1})}
     end;
-handle_info({'EXIT', Pid, Reason}, S) ->
+handle_info({'DOWN', _R, process, Pid, Reason}, S) ->
     % Pid has exited for some reason, handle it accordingly
     case Reason of
 	normal ->
@@ -219,12 +222,16 @@ start_new_incoming_peer(PeerId, S) ->
 	?MAX_PEER_PROCESSES - dict:size(S#state.peer_process_dict),
     if
 	PeersMissing > 0 ->
-	    {ok, Pid} = etorrent_t_peer_recv:start_link(S#state.our_peer_id,
-						S#state.info_hash,
-						S#state.state_pid,
-						S#state.file_system_pid,
-						self()),
-	    PI = #peer_info{peer_id = PeerId},
+	    {ok, Pid} = etorrent_t_peer_pool_sup:add_peer(
+			  S#state.peer_group_sup,
+			  S#state.our_peer_id,
+			  S#state.info_hash,
+			  S#state.state_pid,
+			  S#state.file_system_pid,
+			  self()),
+
+	    Ref = erlang:monitor(process, Pid),
+	    PI = #peer_info{peer_id = PeerId, ref = Ref},
 	    D = dict:store(Pid, PI, S#state.peer_process_dict),
 	    {ok, S#state{peer_process_dict = D}};
 	true ->
@@ -396,13 +403,16 @@ spawn_new_peer(IP, Port, PeerId, N, S) ->
 	true ->
 	    fill_peers(N, S);
 	false ->
-	    {ok, Pid} = etorrent_t_peer_recv:start_link(S#state.our_peer_id,
-						S#state.info_hash,
-					        S#state.state_pid,
-					        S#state.file_system_pid,
-					        self()),
+	    {ok, Pid} = etorrent_t_peer_pool_sup:add_peer(
+			  S#state.peer_group_sup,
+			  S#state.our_peer_id,
+			  S#state.info_hash,
+			  S#state.state_pid,
+			  S#state.file_system_pid,
+			  self()),
 	    etorrent_t_peer_recv:connect(Pid, IP, Port, PeerId),
-	    PI = #peer_info{peer_id = PeerId},
+	    Ref = erlang:monitor(process, Pid),
+	    PI = #peer_info{peer_id = PeerId, ref = Ref},
 	    D = dict:store(Pid, PI, S#state.peer_process_dict),
 	    fill_peers(N-1, S#state{ peer_process_dict = D})
     end.
@@ -439,7 +449,7 @@ find_peer_id_in_process_list(PeerId, S) ->
 %% Function: resetorrent_round(state()) -> state()
 %% Description: Reset the amount of data uploaded and downloaded.
 %%--------------------------------------------------------------------
-resetorrent_round(S) ->
+reset_round(S) ->
     D = dict:map(fun(_Pid, PI) ->
 			 PI#peer_info{uploaded = 0,
 				      downloaded = 0}

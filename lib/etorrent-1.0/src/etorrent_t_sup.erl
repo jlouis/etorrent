@@ -12,7 +12,7 @@
 -behaviour(supervisor).
 
 %% API
--export([start_link/2, add_filesystem/2, add_peer_master/5,
+-export([start_link/2, add_filesystem/2, add_peer_master/6,
 	 add_tracker/6, add_state/3, add_peer_pool/1]).
 
 %% Supervisor callbacks
@@ -35,10 +35,12 @@ add_filesystem(Pid, IDHandle) ->
     % TODO: Handle some cases here if already added.
     supervisor:start_child(Pid, FS).
 
-add_peer_master(Pid, Local_Peer_Id, InfoHash, StatePid, FileSystemPid) ->
+add_peer_master(Pid, GroupPid, Local_Peer_Id,
+		InfoHash, StatePid, FileSystemPid) ->
     PeerGroup = {peer_group,
 		  {etorrent_t_peer_group, start_link,
-		   [Local_Peer_Id, InfoHash, StatePid, FileSystemPid]},
+		   [Local_Peer_Id, GroupPid,
+		    InfoHash, StatePid, FileSystemPid]},
 		  temporary, 60000, worker, [etorrent_t_peer_group]},
     supervisor:start_child(Pid, PeerGroup).
 
