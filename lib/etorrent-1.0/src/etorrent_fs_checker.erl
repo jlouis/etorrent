@@ -44,7 +44,7 @@ ensure_file_sizes_correct(Files) ->
 
 check_torrent_contents(FS, Handle) ->
     T = etorrent_fs_mapper:fetch_map(),
-    Pieces = etorrent_fs_mapper:get_pieces(Handle),
+    Pieces = etorrent_fs_mapper:get_pieces(T, Handle),
     lists:foreach(fun([PieceNum, Hash, Ops, Done]) ->
 			  {ok, Data} = etorrent_fs:read_piece(FS, PieceNum),
 			  case Hash =:= crypto:sha(Data) of

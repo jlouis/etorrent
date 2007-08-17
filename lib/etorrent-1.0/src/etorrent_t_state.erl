@@ -12,7 +12,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/3, report_to_tracker/1, report_from_tracker/3,
+-export([start_link/2, report_to_tracker/1, report_from_tracker/3,
 	 retrieve_bitfield/1, remote_have_piece/2, num_pieces/1,
 	 remote_bitfield/2, remove_bitfield/2, request_new_piece/2,
 	 downloaded_data/2, uploaded_data/2, got_piece_from_peer/3]).
@@ -46,8 +46,8 @@
 %% Function: start_link() -> {ok,Pid} | ignore | {error,Error}
 %% Description: Starts the server
 %%--------------------------------------------------------------------
-start_link(DiskState, PieceSize, ControlPid) ->
-    gen_server:start_link(?MODULE, [DiskState, PieceSize, ControlPid], []).
+start_link(PieceSize, ControlPid) ->
+    gen_server:start_link(?MODULE, [PieceSize, ControlPid], []).
 
 report_to_tracker(Pid) ->
     gen_server:call(Pid, report_to_tracker).
@@ -94,9 +94,10 @@ got_piece_from_peer(Pid, Pn, DataSize) ->
 %%                         {stop, Reason}
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
-init([DiskState, PieceSize, ControlPid]) ->
-    {PieceSet, Missing, Size} = convert_diskstate_to_set(DiskState),
-    AmountLeft = calculate_amount_left(DiskState),
+init([PieceSize, ControlPid]) ->
+    {PieceSet, Missing, Size} =
+	etorrent_fs_mapper:convert_diskstate_to_set(ControlPid),
+    AmountLeft = etorrent_fs_mapper:calculate_amount_left(ControlPid),
     {ok, #state{piece_set = PieceSet,
 		piece_setorrent_missing = Missing,
 		piece_assignment = dict:new(),
@@ -278,41 +279,6 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 %%% Internal functions
 %%--------------------------------------------------------------------
-calculate_amount_left(DiskState) ->
-    dict:fold(fun (_K, {_Hash, Ops, Ok}, Total) ->
-		      case Ok of
-			  ok ->
-			      Total;
-			  not_ok ->
-			      Total + size_of_ops(Ops)
-		      end
-	      end,
-	      0,
-	      DiskState).
-
-size_of_ops(Ops) ->
-    lists:foldl(fun ({_Path, _Offset, Size}, Total) ->
-			Size + Total end,
-		0,
-		Ops).
-
-convert_diskstate_to_set(DiskState) ->
-    {Set, MissingSet} =
-	dict:fold(fun (K, {_H, _O, Got}, {Set, MissingSet}) ->
-			  case Got of
-			      ok ->
-				  {sets:add_element(K, Set),
-				   MissingSet};
-			      not_ok ->
-				  {Set,
-				   sets:add_element(K, MissingSet)}
-			  end
-		  end,
-		  {sets:new(), sets:new()},
-		  DiskState),
-    Size = dict:size(DiskState),
-    {Set, MissingSet, Size}.
-
 piece_valid(PieceNum, S) ->
      (PieceNum < S#state.num_pieces) and (PieceNum >= 0).
 

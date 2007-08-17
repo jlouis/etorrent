@@ -119,12 +119,12 @@ initializing({load_new_torrent, Path, PeerId}, S) ->
 		 file_system_pid = FS},
     case etorrent_fs_serializer:request_token() of
 	ok ->
-	    {next_state, started, check_and_start_torrent(FS, FileDict, NS)};
+	    {next_state, started, check_and_start_torrent(FS, NS)};
 	wait ->
 	    {next_state, waiting_check, NS#state{disk_state = FileDict}}
     end.
 
-check_and_start_torrent(FS, FileDict, S) ->
+check_and_start_torrent(FS, S) ->
     ok = etorrent_fs_checker:check_torrent_contents(FS, self()),
     ok = etorrent_fs_serializer:release_token(),
     {ok, StatePid} =
@@ -147,16 +147,13 @@ check_and_start_torrent(FS, FileDict, S) ->
 	  etorrent_metainfo:get_infohash(S#state.torrent),
 	  S#state.peer_id),
     etorrent_tracker_communication:start_now(TrackerPid),
-    S#state{disk_state = DiskState,
-	    file_system_pid = FS,
+    S#state{file_system_pid = FS,
 	    tracker_pid = TrackerPid,
 	    state_pid = StatePid,
 	    peer_master_pid = PeerMasterPid}.
 
 waiting_check(token, S) ->
-    NS = check_and_start_torrent(S#state.file_system_pid,
-				 S#state.disk_state,
-				 S),
+    NS = check_and_start_torrent(S#state.file_system_pid, S),
     {next_state, started, NS};
 waiting_check(stop, S) ->
     {next_state, stopped, S}.

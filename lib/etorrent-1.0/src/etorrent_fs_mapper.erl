@@ -12,7 +12,7 @@
 %% API
 -export([start_link/0, install_map/1, fetch_map/0,
 	 get_files/3, get_files_hash/3, get_pieces/2, fetched/5,
-	 not_fetched/5]).
+	 not_fetched/5, calculate_amount_left/1, convert_diskstate_to_set/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -61,6 +61,12 @@ fetched(Handle, PieceNum, Hash, Ops, Done) ->
 not_fetched(Handle, PieceNum, Hash, Ops, Done) ->
     gen_server:call(?SERVER, {not_fetched, Handle, PieceNum, Hash, Ops, Done}).
 
+calculate_amount_left(Handle) ->
+    gen_server:call(?SERVER, {calculate_amount_left, Handle}).
+
+convert_diskstate_to_set(Handle) ->
+    gen_server:call(?SERVER, {convert_diskstate_to_set, Handle}).
+
 %%====================================================================
 %% gen_server callbacks
 %%====================================================================
@@ -96,6 +102,12 @@ handle_call({fetched, Handle, Pn, H, O, D}, _From, S) ->
 handle_call({not_fetched, Handle, Pn, H, O, D}, _From, S) ->
     set_not_fetched(Handle, Pn, H, O, D, S),
     {reply, ok, S};
+handle_call({convert_diskstate_to_set, Handle}, _From, S) ->
+    Reply = convert_diskstate_to_set(Handle, S),
+    {reply, Reply, S};
+handle_call({calculate_amount_left, Handle}, _From, S) ->
+    Reply = calculate_amount_left(Handle, S),
+    {reply, Reply, S};
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -175,3 +187,44 @@ set_fetched(Handle, P, H, O, D, S) ->
 set_not_fetched(Handle, P, H, O, D, S) ->
     set_state(Handle, P, H, O, D, not_fetched, S).
 
+size_of_ops(Ops) ->
+    lists:foldl(fun ({_Path, _Offset, Size}, Total) ->
+			Size + Total end,
+		0,
+		Ops).
+
+get_all_pieces_of_torrent(Handle, S) ->
+    ets:match(S#state.file_access_map,
+			{Handle, '$1', '_', '$2', '$3'}).
+
+calculate_amount_left(Handle, S) ->
+    Objects = get_all_pieces_of_torrent(Handle, S),
+    Sum = lists:foldl(fun([_Pn, Ops, Done], Sum) ->
+			      case Done of
+				  fetched ->
+				      Sum + size_of_ops(Ops);
+				  not_fetched ->
+				      Sum
+			      end
+		      end,
+		      0,
+		      Objects),
+    Sum.
+
+convert_diskstate_to_set(Handle, S) ->
+    Objects = get_all_pieces_of_torrent(Handle, S),
+    {Set, MissingSet} =
+	lists:foldl(fun([Pn, _Ops, Done], {Set, MissingSet}) ->
+			    case Done of
+				fetched ->
+				    {sets:add_element(Pn, Set),
+				     MissingSet};
+				not_fetched ->
+				    {Set,
+				     sets:add_element(Pn, MissingSet)}
+			    end
+		    end,
+		    {sets:new(), sets:new()},
+		    Objects),
+    Size = length(Objects),
+    {Set, MissingSet, Size}.
