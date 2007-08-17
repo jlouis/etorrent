@@ -77,14 +77,16 @@ init([IDHandle]) ->
 
 handle_call({read_piece, PieceNum}, _From, S) ->
      [[FilesToRead]] =
-	ets:match(S#state.file_mapping_table,
-		  {S#state.file_mapping_handle, PieceNum, '_', '$1', '_'}),
+	etorrent_fs_mapper:get_files(S#state.file_mapping_table,
+				     S#state.file_mapping_handle,
+				     PieceNum),
     {ok, Data, NS} = read_pieces_and_assemble(FilesToRead, [], S),
     {reply, {ok, Data}, NS};
 handle_call({write_piece, PieceNum, Data}, _From, S) ->
     [[Hash, FilesToWrite]] =
-	ets:match(S#state.file_mapping_table,
-		  {S#state.file_mapping_handle, PieceNum, '$1', '$2', '_'}),
+	etorrent_fs_mapper:get_files_hash(S#state.file_mapping_table,
+					  S#state.file_mapping_handle,
+					  PieceNum),
     case Hash == crypto:sha(Data) of
 	true ->
 	    {ok, NS} = write_piece_data(Data, FilesToWrite, S),

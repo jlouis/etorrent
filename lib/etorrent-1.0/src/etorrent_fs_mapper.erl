@@ -5,13 +5,13 @@
 %%%
 %%% Created : 11 Aug 2007 by Jesper Louis Andersen <>
 %%%-------------------------------------------------------------------
-% TODO: Make all the ets:* calls on the file_access_map local to this file!
 -module(etorrent_fs_mapper).
 
 -behaviour(gen_server).
 
 %% API
--export([start_link/0, install_map/1, fetch_map/0]).
+-export([start_link/0, install_map/1, fetch_map/0,
+	 get_files/3, get_files_hash/3]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -44,6 +44,12 @@ install_map(FileDict) ->
 %%--------------------------------------------------------------------
 fetch_map() ->
     gen_server:call(?MODULE, fetch_map).
+
+get_files(ETS, Handle, Pn) ->
+    ets:match(ETS, {Handle, Pn, '_', '$1', '_'}).
+
+get_files_hash(ETS, Handle, Pn) ->
+    ets:match(ETS, {Handle, Pn, '$1', '$2', '_'}).
 
 %%====================================================================
 %% gen_server callbacks
@@ -136,3 +142,4 @@ install_map_in_tracking_table(FileDict, Pid, S) ->
 	      end,
 	      FileDict),
     ok.
+
