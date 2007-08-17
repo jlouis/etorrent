@@ -15,77 +15,77 @@
 -vsn(1).
 
 %% API
--export([getorrent_piece_length/1, getorrent_pieces/1, getorrent_url/1, getorrent_infohash/1,
-	 parse/1, getorrent_files/1, getorrent_name/1, hexify/1]).
+-export([get_piece_length/1, get_pieces/1, get_url/1, get_infohash/1,
+	 parse/1, get_files/1, get_name/1, hexify/1]).
 
 %%====================================================================
 %% API
 %%====================================================================
 
 %%--------------------------------------------------------------------
-%% Function: getorrent_piece_length/1
+%% Function: get_piece_length/1
 %% Description: Search a torrent file, return the piece length
 %%--------------------------------------------------------------------
-getorrent_piece_length(Torrent) ->
-    {integer, Size} = find_target(getorrent_info(Torrent), "piece length"),
+get_piece_length(Torrent) ->
+    {integer, Size} = find_target(get_info(Torrent), "piece length"),
     Size.
 
 %%--------------------------------------------------------------------
-%% Function: getorrent_pieces/1
+%% Function: get_pieces/1
 %% Description: Search a torrent, return pieces as a list
 %%--------------------------------------------------------------------
-getorrent_pieces(Torrent) ->
-    case find_target(getorrent_info(Torrent), "pieces") of
+get_pieces(Torrent) ->
+    case find_target(get_info(Torrent), "pieces") of
 	{string, Ps} ->
 	    lists:map(fun(Str) -> list_to_binary(Str) end,
 		      split_into_chunks(20, [], Ps))
     end.
 
-getorrent_length(Torrent) ->
-    case find_target(getorrent_info(Torrent), "length") of
+get_length(Torrent) ->
+    case find_target(get_info(Torrent), "length") of
 	{integer, L} ->
 	    L
     end.
 
 %%--------------------------------------------------------------------
-%% Function: getorrent_files/1
+%% Function: get_files/1
 %% Description: Get a file list from the torrent
 %%--------------------------------------------------------------------
-getorrent_files(Torrent) ->
-    case etorrent_bcoding:search_dict({string, "files"}, getorrent_info(Torrent)) of
+get_files(Torrent) ->
+    case etorrent_bcoding:search_dict({string, "files"}, get_info(Torrent)) of
 	{ok, X} ->
 	    X;
 	false ->
 	    % Single value torrent, fake entry
-	    N = getorrent_name(Torrent),
-	    L = getorrent_length(Torrent),
+	    N = get_name(Torrent),
+	    L = get_length(Torrent),
 	    {list,[{dict,[{{string,"path"},
 			   {list,[{string,N}]}},
 			  {{string,"length"},{integer,L}}]}]}
     end.
 
 %%--------------------------------------------------------------------
-%% Function: getorrent_files/1
+%% Function: get_name/1
 %% Description: Get the name of a torrent
 %%--------------------------------------------------------------------
-getorrent_name(Torrent) ->
-    {string, N} = find_target(getorrent_info(Torrent), "name"),
+get_name(Torrent) ->
+    {string, N} = find_target(get_info(Torrent), "name"),
     N.
 
 %%--------------------------------------------------------------------
-%% Function: getorrent_url/1
+%% Function: get_url/1
 %% Description: Return the URL of a torrent
 %%--------------------------------------------------------------------
-getorrent_url(Torrent) ->
+get_url(Torrent) ->
     case find_target(Torrent, "announce") of
 	{string, U} -> U
     end.
 
 %%--------------------------------------------------------------------
-%% Function: getorrent_infohash/1
+%% Function: get_infohash/1
 %% Description: Return the infohash for a torrent
 %%--------------------------------------------------------------------
-getorrent_infohash(Torrent) ->
+get_infohash(Torrent) ->
     {ok, InfoDict} = etorrent_bcoding:search_dict({string, "info"}, Torrent),
     {ok, InfoString} = etorrent_bcoding:encode(InfoDict),
     crypto:sha(list_to_binary(InfoString)).
@@ -119,7 +119,7 @@ find_target(D, Name) ->
 	    X
     end.
 
-getorrent_info(Torrent) ->
+get_info(Torrent) ->
     find_target(Torrent, "info").
 
 

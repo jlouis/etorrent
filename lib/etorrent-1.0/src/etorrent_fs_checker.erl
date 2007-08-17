@@ -18,8 +18,8 @@
 load_torrent(Workdir, Path) ->
     P = filename:join([Workdir, Path]),
     {ok, Torrent} = etorrent_metainfo:parse(P),
-    {list, Files} = etorrent_metainfo:getorrent_files(Torrent),
-    Name = etorrent_metainfo:getorrent_name(Torrent),
+    {list, Files} = etorrent_metainfo:get_files(Torrent),
+    Name = etorrent_metainfo:get_name(Torrent),
     FilesToCheck =
 	lists:map(fun (E) ->
 			  {Filename, Size} = report_files(E),
@@ -56,8 +56,8 @@ check_torrent_contents(FS, FileDict) ->
     {ok, Res}.
 
 build_dictionary_on_files(Torrent, Files) ->
-    Pieces = etorrent_metainfo:getorrent_pieces(Torrent),
-    PSize = etorrent_metainfo:getorrent_piece_length(Torrent),
+    Pieces = etorrent_metainfo:get_pieces(Torrent),
+    PSize = etorrent_metainfo:get_piece_length(Torrent),
     LastPieceSize = torrent_size(Files) rem PSize,
     construct_fpmap(Files,
 		    0,

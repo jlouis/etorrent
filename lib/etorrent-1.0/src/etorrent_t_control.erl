@@ -131,13 +131,13 @@ check_and_start_torrent(FS, FileDict, S) ->
     {ok, StatePid} =
 	etorrent_t_state:start_link(
 	  DiskState,
-	  etorrent_metainfo:getorrent_piece_length(S#state.torrent),
+	  etorrent_metainfo:get_piece_length(S#state.torrent),
 	  self()),
     {ok, PeerMasterPid} =
 	etorrent_t_sup:add_peer_master(
 	  S#state.parent_pid,
 	  S#state.peer_id,
-	  etorrent_metainfo:getorrent_infohash(S#state.torrent),
+	  etorrent_metainfo:get_infohash(S#state.torrent),
 	  StatePid,
 	  FS),
     {ok, TrackerPid} =
@@ -145,8 +145,8 @@ check_and_start_torrent(FS, FileDict, S) ->
 	  S#state.parent_pid,
 	  StatePid,
 	  PeerMasterPid,
-	  etorrent_metainfo:getorrent_url(S#state.torrent),
-	  etorrent_metainfo:getorrent_infohash(S#state.torrent),
+	  etorrent_metainfo:get_url(S#state.torrent),
+	  etorrent_metainfo:get_infohash(S#state.torrent),
 	  S#state.peer_id),
     etorrent_tracker_communication:start_now(TrackerPid),
     S#state{disk_state = DiskState,
