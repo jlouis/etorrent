@@ -78,12 +78,14 @@ build_dictionary_on_files(Torrent, Files) ->
 report_files(Entry) ->
     {dict, Dict} = Entry,
     %TODO: Consider a etorrent_metainfo:fetch_key function for this
+    %TODO: This code digs around inside metainfo so move to metainfo!
     {value, {{string, "path"},
-	     {list, [{string, Filename}]}}} =
+	     {list, Path}}} =
 	lists:keysearch({string, "path"}, 1, Dict),
     {value, {{string, "length"},
 	     {integer, Size}}} =
 	lists:keysearch({string, "length"}, 1, Dict),
+    Filename = filename:join(lists:map(fun({string, X}) -> X end, Path)),
     {Filename, Size}.
 
 torrent_size(Files) ->
