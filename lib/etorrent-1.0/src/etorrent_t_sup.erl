@@ -59,9 +59,9 @@ add_state(Pid, PieceLength, ControlPid) ->
     supervisor:start_child(Pid, State).
 
 add_peer_pool(Pid) ->
-    Group = {peer_pool,
+    Group = {peer_pool_sup,
 	     {etorrent_t_peer_pool_sup, start_link, []},
-	     transient, infinity, supervisor, [etorrent_t_peer_group]},
+	     transient, infinity, supervisor, [etorrent_t_peer_pool_sup]},
     supervisor:start_child(Pid, Group).
 
 %%====================================================================
