@@ -19,6 +19,7 @@
 	 terminate/2, code_change/3]).
 
 -record(state, {should_contact_tracker = false,
+		queued_message = none,
 		peer_master_pid = none,
 	        state_pid = none,
 	        url = none,
@@ -30,7 +31,7 @@
 	        control_pid = none}).
 
 -define(DEFAULT_REQUEST_TIMEOUT, 180).
--define(DEFAULT_CONNECTION_TIMEOUT_INTERVAL, 1800000).
+-define(DEFAULT_CONNECTION_TIMEOUT_INTERVAL, 1800).
 
 %%====================================================================
 %% API
@@ -101,17 +102,29 @@ handle_call(_Request, _From, State) ->
 %% Description: Handling cast messages
 %%--------------------------------------------------------------------
 handle_cast(start_now, S) ->
-    {ok, Body} = contact_tracker(S, "started"),
-    {ok, NextRequestTime, NS} = decode_and_handle_body(Body, S),
-    error_logger:info_msg("Will contact again in ~B seconds~n",
-			  [NextRequestTime]),
-    {noreply, NS, timer:seconds(NextRequestTime)};
+    case contact_tracker(S, "started") of
+	{ok, Body} ->
+	    {ok, NextRequestTime, NS} = decode_and_handle_body(Body, S),
+	    error_logger:info_msg("Will contact again in ~B seconds~n",
+				  [NextRequestTime]),
+	    {noreply, NS, timer:seconds(NextRequestTime)};
+	{error, etimedout} ->
+	    {noreply,
+	     S#state{queued_message = "started"},
+	     timer:seconds(?DEFAULT_CONNECTION_TIMEOUT_INTERVAL)}
+    end;
 handle_cast(torrent_completed, S) ->
-    {ok, Body} = contact_tracker(S, "completed"),
-    {ok, NextRequestTime, NS} = decode_and_handle_body(Body, S),
-    error_logger:info_msg("Will contact again in ~B seconds~n",
-			  [NextRequestTime]),
-    {noreply, NS, timer:seconds(NextRequestTime)}.
+    case contact_tracker(S, "completed") of
+	{ok, Body} ->
+	    {ok, NextRequestTime, NS} = decode_and_handle_body(Body, S),
+	    error_logger:info_msg("Will contact again in ~B seconds~n",
+				  [NextRequestTime]),
+	    {noreply, NS, timer:seconds(NextRequestTime)};
+	{error, etimedout} ->
+	    {noreply,
+	     S#state{queued_message = "completed"},
+	     timer:seconds(?DEFAULT_CONNECTION_TIMEOUT_INTERVAL)}
+    end.
 
 %%--------------------------------------------------------------------
 %% Function: handle_info(Info, State) -> {noreply, State} |
@@ -120,10 +133,12 @@ handle_cast(torrent_completed, S) ->
 %% Description: Handling all non call/cast messages
 %%--------------------------------------------------------------------
 handle_info(timeout, S) ->
-    case contact_tracker(S, none) of
+    case contact_tracker(S, S#state.queued_message) of
 	{ok, Body} ->
 	    {ok, NextRequestTime, NS} = decode_and_handle_body(Body, S),
-	    {noreply, NS, timer:seconds(NextRequestTime)};
+	    {noreply,
+	     NS#state{queued_message=none},
+	     timer:seconds(NextRequestTime)};
 	{error, timedout} ->
 	    {noreply, S, timer:seconds(?DEFAULT_CONNECTION_TIMEOUT_INTERVAL)}
     end;
