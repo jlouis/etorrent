@@ -222,7 +222,7 @@ handle_info(_Info, State) ->
 %%--------------------------------------------------------------------
 terminate(_Reason, S) ->
     ok = etorrent_t_state:remove_bitfield(S#state.state_pid, S#state.piece_set),
-    catch(etorrent_t_send:stop(S#state.send_pid)),
+    catch(etorrent_t_peer_send:stop(S#state.send_pid)),
     ok.
 
 %%--------------------------------------------------------------------
