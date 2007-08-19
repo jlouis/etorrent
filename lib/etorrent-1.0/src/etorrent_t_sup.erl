@@ -49,7 +49,7 @@ add_tracker(Pid, StatePid, PeerGroupPid, URL, InfoHash, Local_Peer_Id) ->
     Tracker = {tracker_communication,
 	       {etorrent_tracker_communication, start_link,
 		[self(), StatePid, PeerGroupPid, URL, InfoHash, Local_Peer_Id]},
-	       temporary, 60000, worker, [etorrent_tracker_communication]},
+	       temporary, 90000, worker, [etorrent_tracker_communication]},
     supervisor:start_child(Pid, Tracker).
 
 add_state(Pid, PieceLength, ControlPid) ->

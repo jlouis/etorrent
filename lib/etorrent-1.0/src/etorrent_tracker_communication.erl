@@ -155,6 +155,9 @@ handle_info(_Info, State) ->
 terminate(normal, S) ->
     contact_tracker(S, "stopped"),
     ok;
+terminate(shutdown, S) ->
+    contact_tracker(S, "stopped"),
+    ok;
 terminate(_Reason, _S) ->
     ok.
 
