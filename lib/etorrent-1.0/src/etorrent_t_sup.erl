@@ -13,7 +13,7 @@
 
 %% API
 -export([start_link/2, add_filesystem/2, add_peer_master/6,
-	 add_tracker/6, add_state/3, add_peer_pool/1, shutdown/1]).
+	 add_tracker/6, add_state/3, add_peer_pool/1]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -63,9 +63,6 @@ add_peer_pool(Pid) ->
 	     {etorrent_t_peer_pool_sup, start_link, []},
 	     transient, infinity, supervisor, [etorrent_t_peer_pool_sup]},
     supervisor:start_child(Pid, Group).
-
-shutdown(TorrentPid) ->
-    exit(TorrentPid, shutdown).
 
 %%====================================================================
 %% Supervisor callbacks

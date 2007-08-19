@@ -33,18 +33,21 @@ handle_cast({start_torrent, F}, S) ->
     spawn_new_torrent(F, S),
     {noreply, S};
 handle_cast({stop_torrent, F}, S) ->
-    [{F, TorrentSup}] = ets:lookup(S#state.tracking_map, F),
-    etorrent_t_sup:shutdown(TorrentSup),
+    error_logger:info_msg("Stopping ~p~n", [F]),
+    [{F, _TorrentSup}] = ets:lookup(S#state.tracking_map, F),
+    etorrent_t_pool_sup:stop_torrent(F),
     {noreply, S}.
 
 handle_call(_A, _B, S) ->
     {noreply, S}.
 
 handle_info({'DOWN', _R, process, Pid, _Reason}, S) ->
-    [{F, TorrentSup}] = ets:match(S#state.tracking_map, {'$1', Pid}),
-    ets:delete_object({F, TorrentSup}),
+    error_logger:info_msg("Got Down Msg ~p~n", [Pid]),
+    [[F]] = ets:match(S#state.tracking_map, {'$1', Pid}),
+    ets:delete(S#state.tracking_map, F),
     {noreply, S};
-handle_info(_Info, State) ->
+handle_info(Info, State) ->
+    error_logger:info_msg("Unknown message: ~p~n", [Info]),
     {noreply, State}.
 
 terminate(_Foo, _State) ->
@@ -56,7 +59,7 @@ code_change(_OldVsn, State, _Extra) ->
 %% Internal functions
 spawn_new_torrent(F, S) ->
     {ok, TorrentSup} =
-	etorrent_t_pool_sup:spawn_new_torrent(F, S#state.local_peer_id),
+	etorrent_t_pool_sup:add_torrent(F, S#state.local_peer_id),
     ets:insert(S#state.tracking_map, {F, TorrentSup}),
     erlang:monitor(process, TorrentSup).
 

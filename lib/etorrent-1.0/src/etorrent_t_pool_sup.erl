@@ -12,7 +12,7 @@
 -behaviour(supervisor).
 
 %% API
--export([start_link/0, spawn_new_torrent/2]).
+-export([start_link/0, add_torrent/2, stop_torrent/1]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -25,17 +25,21 @@
 start_link() ->
     supervisor:start_link({local, ?SERVER}, ?MODULE, []).
 
-spawn_new_torrent(File, Local_PeerId) ->
-    supervisor:start_child(?SERVER, [File, Local_PeerId]).
+add_torrent(File, Local_PeerId) ->
+    Torrent = {File,
+	       {etorrent_t_sup, start_link, [File, Local_PeerId]},
+	       transient, infinity, supervisor, [etorrent_t_sup]},
+    supervisor:start_child(?SERVER, Torrent).
+
+stop_torrent(File) ->
+    supervisor:terminate_child(?SERVER, File),
+    supervisor:delete_child(?SERVER, File).
 
 %%====================================================================
 %% Supervisor callbacks
 %%====================================================================
 init([]) ->
-    Ts = {torrent,
-	  {etorrent_t_sup, start_link, []},
-	  transient, infinity, supervisor, [etorrent_t_sup]},
-    {ok,{{simple_one_for_one, 1, 60}, [Ts]}}.
+    {ok,{{one_for_one, 1, 60}, []}}.
 
 %%====================================================================
 %% Internal functions
