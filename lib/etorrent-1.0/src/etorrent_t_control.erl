@@ -90,7 +90,6 @@ seed(Pid) ->
 %%--------------------------------------------------------------------
 % TODO: Utilize parent
 init([Parent]) ->
-    process_flag(trap_exit, true),
     {ok, WorkDir} = application:get_env(etorrent, dir),
     {ok, initializing, #state{work_dir = WorkDir,
 			      parent_pid = Parent}}.

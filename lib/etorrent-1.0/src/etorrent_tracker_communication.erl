@@ -70,7 +70,6 @@ torrent_completed(Pid) ->
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
 init([{ControlPid, StatePid, PeerMasterPid, Url, InfoHash, PeerId}]) ->
-    process_flag(trap_exit, true),
     {ok, #state{should_contact_tracker = false,
 		peer_master_pid = PeerMasterPid,
 		control_pid = ControlPid,

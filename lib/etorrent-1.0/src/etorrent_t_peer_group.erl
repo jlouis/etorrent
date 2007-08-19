@@ -91,7 +91,6 @@ seed(Pid) ->
 %%====================================================================
 
 init([OurPeerId, PeerGroup, InfoHash, StatePid, FileSystemPid]) ->
-    process_flag(trap_exit, true), % Needed for torrent peers
     {ok, Tref} = timer:send_interval(?ROUND_TIME, self(), round_tick),
     ok = etorrent_t_mapper:store_hash(InfoHash),
     {ok, #state{ our_peer_id = OurPeerId,
