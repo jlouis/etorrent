@@ -254,6 +254,11 @@ handle_info(_Info, StateName, State) ->
 %% necessary cleaning up. When it returns, the gen_fsm terminates with
 %% Reason. The return value is ignored.
 %%--------------------------------------------------------------------
+terminate(shutdown, StateName, S) ->
+    % Termination from the supervisor. Gracefully shut down torrent.
+    etorrent_t_sup:close_down_from_control(S#state.parent_pid),
+    etorrent_t_sup:delete_specs(S#state.parent_pid),
+    ok;
 terminate(_Reason, _StateName, _State) ->
     ok.
 

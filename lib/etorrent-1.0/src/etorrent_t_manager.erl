@@ -34,14 +34,13 @@ handle_cast({start_torrent, F}, S) ->
     {noreply, S};
 handle_cast({stop_torrent, F}, S) ->
     [{F, TorrentSup}] = ets:lookup(S#state.tracking_map, F),
-    ets:delete(S#state.tracking_map, {F, TorrentSup}),
+    etorrent_t_sup:stop_torrent(TorrentSup),
     {noreply, S}.
 
 handle_call(_A, _B, S) ->
     {noreply, S}.
 
-
-% TODO: Handle 'DOWN'
+% TODO: Handle 'DOWN'. Remove entry from ets: table as well.
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -63,5 +62,3 @@ generate_peer_id() ->
     Number = crypto:rand_uniform(0, ?RANDOM_MAX_SIZE),
     Rand = io_lib:fwrite("~B----------", [Number]),
     lists:flatten(io_lib:format("-ET~s-~12s", [?VERSION, Rand])).
-
-

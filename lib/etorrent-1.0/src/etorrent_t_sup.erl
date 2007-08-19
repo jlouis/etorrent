@@ -13,7 +13,8 @@
 
 %% API
 -export([start_link/2, add_filesystem/2, add_peer_master/6,
-	 add_tracker/6, add_state/3, add_peer_pool/1]).
+	 add_tracker/6, add_state/3, add_peer_pool/1, stop_torrent/1,
+	 close_down_from_control/1, delete_specs/1, delete_control_spec/1]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -64,6 +65,30 @@ add_peer_pool(Pid) ->
 	     transient, infinity, supervisor, [etorrent_t_peer_pool_sup]},
     supervisor:start_child(Pid, Group).
 
+%%--------------------------------------------------------------------
+%% Func: stop_torrent/1
+%% Description: Stop the torrent the supervisor identified by Pid
+%%  controls.
+%%--------------------------------------------------------------------
+stop_torrent(Pid) ->
+    supervisor:terminate_child(Pid, control).
+
+close_down_from_control(Pid) ->
+    supervisor:terminate_child(Pid, peer_pool_sup),
+    supervisor:terminate_child(Pid, peer_group),
+    supervisor:terminate_child(Pid, tracker),
+    supervisor:terminate_child(Pid, fs),
+    supervisor:terminate_child(Pid, state).
+
+delete_specs(Pid) ->
+    lists:foreach(fun(Name) ->
+			  supervisor:delete_child(Pid, Name)
+		  end,
+		  [state, fs, tracker, peer_group, peer_pool_sup]).
+
+delete_control_spec(Pid) ->
+    supervisor:delete_child(Pid, control).
+
 %%====================================================================
 %% Supervisor callbacks
 %%====================================================================
@@ -80,7 +105,7 @@ init([File, Local_PeerId]) ->
     Control =
 	{control,
 	 {etorrent_t_control, start_link_load, [File, Local_PeerId]},
-	 permanent, 60000, worker, [etorrent_t_control]},
+	 permanent, 120000, worker, [etorrent_t_control]},
     {ok, {{one_for_all, 1, 60}, [Control]}}.
 
 %%====================================================================
