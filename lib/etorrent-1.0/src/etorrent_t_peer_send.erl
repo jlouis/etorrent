@@ -13,7 +13,7 @@
 
 %% API
 -export([start_link/3, send/2, remote_request/4, cancel/4, choke/1, unchoke/1,
-	 local_request/4, not_interested/1, send_have_piece/2]).
+	 local_request/4, not_interested/1, send_have_piece/2, stop/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_info/3, terminate/3, code_change/4,
@@ -62,6 +62,9 @@ not_interested(Pid) ->
 send_have_piece(Pid, PieceNumber) ->
     gen_fsm:send_event(Pid, {have, PieceNumber}).
 
+stop(Pid) ->
+    gen_fsm:send_event(Pid, stop).
+
 %%====================================================================
 %% gen_server callbacks
 %%====================================================================
@@ -80,7 +83,7 @@ keep_alive(timeout, S) ->
 	ok ->
 	    {next_state, keep_alive, S, ?DEFAULT_KEEP_ALIVE_INTERVAL};
 	{error, closed} ->
-	    {stop, shutdown, S}
+	    {stop, normal, S}
     end;
 keep_alive(Msg, S) ->
     handle_message(Msg, S).
@@ -133,6 +136,8 @@ handle_message({local_request_piece, Index, Offset, Len}, S) ->
 handle_message({remote_request_piece, _Index, _Offset, _Len}, S)
   when S#state.choke == true ->
     {next_state, running, S, 0};
+handle_message(stop, S) ->
+    {stop, normal, S};
 handle_message({remote_request_piece, Index, Offset, Len}, S)
   when S#state.choke == false ->
     Requests = queue:len(S#state.request_queue),
@@ -151,6 +156,10 @@ handle_message({cancel_piece, Index, OffSet, Len}, S) ->
 handle_info(_Msg, StateName, S) ->
     {next_state, StateName, S}.
 
+%% Terminating normally means we should inform our recv pair
+terminate(normal, _St, S) ->
+    etorrent_t_peer_recv:stop(S#state.parent),
+    ok;
 terminate(_Reason, _St, _State) ->
     ok.
 
@@ -197,6 +206,6 @@ send_message(Msg, S, NewState, Timeout) ->
 	ok ->
 	    {next_state, NewState, S, Timeout};
 	{error, closed} ->
-	    {stop, shutdown, S}
+	    {stop, normal, S}
     end.
 

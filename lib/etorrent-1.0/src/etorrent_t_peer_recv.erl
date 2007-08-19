@@ -13,7 +13,8 @@
 
 %% API
 -export([start_link/5, connect/4, choke/1, unchoke/1, interested/1,
-	 send_have_piece/2, complete_handshake/3, uploaded_data/2]).
+	 send_have_piece/2, complete_handshake/3, uploaded_data/2,
+	stop/1]).
 
 %% Temp API
 -export([chunkify/2]).
@@ -79,6 +80,9 @@ complete_handshake(Pid, ReservedBytes, Socket) ->
 uploaded_data(Pid, Amount) ->
     gen_server:cast(Pid, {uploaded_data, Amount}).
 
+stop(Pid) ->
+    gen_server:cast(Pid, stop).
+
 %%====================================================================
 %% gen_server callbacks
 %%====================================================================
@@ -119,26 +123,33 @@ handle_call(_Request, _From, State) ->
 %%                                      {stop, Reason, State}
 %% Description: Handling cast messages
 %%--------------------------------------------------------------------
+handle_cast(stop, S) ->
+    {stop, normal, S};
 handle_cast({connect, IP, Port, PeerId}, S) ->
-    Socket = int_connect(IP, Port),
-    case etorrent_peer_communication:initiate_handshake(Socket,
-					       PeerId,
-					       S#state.local_peer_id,
-					       S#state.info_hash) of
-	{ok, _ReservedBytes} ->
-	    enable_socket_messages(Socket),
-	    {ok, SendPid} =
-		etorrent_t_peer_send:start_link(Socket,
-					     S#state.file_system_pid,
-					     S#state.state_pid),
-	    %sys:trace(SendPid, true),
-	    BF = etorrent_t_state:retrieve_bitfield(S#state.state_pid),
-	    etorrent_t_peer_send:send(SendPid, {bitfield, BF}),
-	    {noreply, S#state{tcp_socket = Socket,
-			      peer_id = PeerId,
-			      send_pid = SendPid}};
-	{error, _X} ->
-	    exit(shutdown)
+    case gen_tcp:connect(IP, Port, [binary, {active, false}],
+			 ?DEFAULT_CONNECT_TIMEOUT) of
+	{ok, Socket} ->
+	    case etorrent_peer_communication:initiate_handshake(
+		   Socket,
+		   PeerId,
+		   S#state.local_peer_id,
+		   S#state.info_hash) of
+		{ok, _ReservedBytes} ->
+		    enable_socket_messages(Socket),
+		    {ok, SendPid} =
+			etorrent_t_peer_send:start_link(Socket,
+							S#state.file_system_pid,
+							S#state.state_pid),
+		    BF = etorrent_t_state:retrieve_bitfield(S#state.state_pid),
+		    etorrent_t_peer_send:send(SendPid, {bitfield, BF}),
+		    {noreply, S#state{tcp_socket = Socket,
+				      peer_id = PeerId,
+				      send_pid = SendPid}};
+		{error, _X} ->
+		    {stop, normal, S}
+	    end;
+	{error, _Reason} ->
+	    {stop, normal, S}
     end;
 handle_cast({uploaded_data, Amount}, S) ->
     etorrent_t_peer_group:uploaded_data(S#state.master_pid, Amount),
@@ -211,6 +222,7 @@ handle_info(_Info, State) ->
 %%--------------------------------------------------------------------
 terminate(_Reason, S) ->
     ok = etorrent_t_state:remove_bitfield(S#state.state_pid, S#state.piece_set),
+    catch(etorrent_t_send:stop(S#state.send_pid)),
     ok.
 
 %%--------------------------------------------------------------------
@@ -418,16 +430,6 @@ invariant_check(PList) ->
 
 send_message(Msg, S) ->
     etorrent_t_peer_send:send(S#state.send_pid, Msg).
-
-% Specialize connects to our purpose
-int_connect(IP, Port) ->
-    case gen_tcp:connect(IP, Port, [binary, {active, false}],
-			 ?DEFAULT_CONNECT_TIMEOUT) of
-	{ok, Socket} ->
-	    Socket;
-	{error, _Reason} ->
-	    exit(shutdown)
-    end.
 
 update_piece_count(X, N) when X == none ->
     N-1;
