@@ -22,7 +22,7 @@
 %% API functions
 %%====================================================================
 start_link() ->
-    supervisor:start_link(etorrent, []).
+    supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
 %%====================================================================
 %% Supervisor callbacks
