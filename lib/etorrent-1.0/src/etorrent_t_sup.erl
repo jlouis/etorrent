@@ -42,7 +42,7 @@ add_peer_master(Pid, GroupPid, Local_Peer_Id,
 		  {etorrent_t_peer_group, start_link,
 		   [Local_Peer_Id, GroupPid,
 		    InfoHash, StatePid, FileSystemPid]},
-		  temporary, 60000, worker, [etorrent_t_peer_group]},
+		  temporary, 120000, worker, [etorrent_t_peer_group]},
     supervisor:start_child(Pid, PeerGroup).
 
 add_tracker(Pid, StatePid, PeerGroupPid, URL, InfoHash, Local_Peer_Id) ->
