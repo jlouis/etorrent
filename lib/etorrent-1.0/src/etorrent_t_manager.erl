@@ -34,13 +34,16 @@ handle_cast({start_torrent, F}, S) ->
     {noreply, S};
 handle_cast({stop_torrent, F}, S) ->
     [{F, TorrentSup}] = ets:lookup(S#state.tracking_map, F),
-    etorrent_t_sup:stop_torrent(TorrentSup),
+    etorrent_t_sup:shutdown(TorrentSup),
     {noreply, S}.
 
 handle_call(_A, _B, S) ->
     {noreply, S}.
 
-% TODO: Handle 'DOWN'. Remove entry from ets: table as well.
+handle_info({'DOWN', _R, process, Pid, _Reason}, S) ->
+    [{F, TorrentSup}] = ets:match(S#state.tracking_map, {'$1', Pid}),
+    ets:delete_object({F, TorrentSup}),
+    {noreply, S};
 handle_info(_Info, State) ->
     {noreply, State}.
 

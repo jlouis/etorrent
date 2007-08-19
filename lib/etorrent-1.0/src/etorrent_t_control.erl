@@ -241,10 +241,8 @@ handle_sync_event(_Event, _From, StateName, State) ->
 %% other message than a synchronous or asynchronous event
 %% (or a system message).
 %%--------------------------------------------------------------------
-handle_info({'EXIT', Pid}, Sn, S) ->
-    io:format("Pid ~p exited~n", [Pid]),
-    {next_state, Sn, S};
-handle_info(_Info, StateName, State) ->
+handle_info(Info, StateName, State) ->
+    error_logger:info_report([unknown_info, Info, StateName]),
     {next_state, StateName, State}.
 
 %%--------------------------------------------------------------------
@@ -254,11 +252,6 @@ handle_info(_Info, StateName, State) ->
 %% necessary cleaning up. When it returns, the gen_fsm terminates with
 %% Reason. The return value is ignored.
 %%--------------------------------------------------------------------
-terminate(shutdown, StateName, S) ->
-    % Termination from the supervisor. Gracefully shut down torrent.
-    etorrent_t_sup:close_down_from_control(S#state.parent_pid),
-    etorrent_t_sup:delete_specs(S#state.parent_pid),
-    ok;
 terminate(_Reason, _StateName, _State) ->
     ok.
 
