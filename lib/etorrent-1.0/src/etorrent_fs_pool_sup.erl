@@ -25,7 +25,7 @@
 %% Description: Starts the supervisor
 %%--------------------------------------------------------------------
 start_link() ->
-    supervisor:start_link({local, ?SERVER}, ?MODULE, []).
+    supervisor:start_link(?MODULE, []).
 
 %%--------------------------------------------------------------------
 %% Function: add_file_process/2
