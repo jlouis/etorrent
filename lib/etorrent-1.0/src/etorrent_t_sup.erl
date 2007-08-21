@@ -12,7 +12,7 @@
 -behaviour(supervisor).
 
 %% API
--export([start_link/2, add_file_system/2, add_peer_master/6,
+-export([start_link/2, add_file_system/3, add_peer_master/6,
 	 add_tracker/6, add_state/3, add_peer_pool/1,
 	 add_file_system_pool/1]).
 
