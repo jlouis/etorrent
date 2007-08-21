@@ -21,6 +21,7 @@
 
 -record(state, { file_mapping_table = none,
 		 file_mapping_handle = none,
+		 file_pool = none,
 
 		 file_process_dict = none}).
 
@@ -68,11 +69,11 @@ write_piece(Pid, Pn, Data) ->
 %%====================================================================
 %% gen_server callbacks
 %%====================================================================
-init([IDHandle, _FSPool]) ->
-    process_flag(trap_exit, true),
+init([IDHandle, FSPool]) ->
     ETS = etorrent_fs_mapper:fetch_map(),
     {ok, #state{file_process_dict = dict:new(),
 	        file_mapping_table = ETS,
+		file_pool = FSPool,
 	        file_mapping_handle = IDHandle}}.
 
 handle_call({read_piece, PieceNum}, _From, S) ->
@@ -107,7 +108,7 @@ handle_cast(_Msg, State) ->
 %%                                       {stop, Reason, State}
 %% Description: Handling all non call/cast messages
 %%--------------------------------------------------------------------
-handle_info({'EXIT', Pid}, S) ->
+handle_info({'DOWN', _R, process, Pid, _Reason}, S) ->
     error_logger:info_msg("Stopping down ~p~n", [Pid]),
     Nd = remove_file_process(Pid, S#state.file_process_dict),
     {noreply, S#state { file_process_dict = Nd }};
@@ -135,7 +136,8 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%--------------------------------------------------------------------
 create_file_process(Path, S) ->
-    {ok, Pid} = etorrent_fs_process:start_link(Path),
+    {ok, Pid} = etorrent_fs_pool_sup:add_file_process(S#state.file_pool, Path),
+    erlang:monitor(process, Pid),
     NewDict = dict:store(Path, Pid, S#state.file_process_dict),
     {ok, Pid, S#state{ file_process_dict = NewDict }}.
 
@@ -145,7 +147,8 @@ read_pieces_and_assemble([{Path, Offset, Size} | Rest], Done, S) ->
     case dict:find(Path, S#state.file_process_dict) of
 	{ok, Pid} ->
 	    Ref = make_ref(),
-	    case catch({Ref, etorrent_fs_process:getorrent_data(Pid, Offset, Size)}) of
+	    case catch({Ref,
+			etorrent_fs_process:get_data(Pid, Offset, Size)}) of
 		{Ref, {ok, Data}} ->
 		    read_pieces_and_assemble(Rest, [Data | Done], S);
 		{'EXIT', {noproc, _}} ->
@@ -156,7 +159,7 @@ read_pieces_and_assemble([{Path, Offset, Size} | Rest], Done, S) ->
 	    end;
 	error ->
 	    {ok, Pid, NS} = create_file_process(Path, S),
-	    {ok, Data} = etorrent_fs_process:getorrent_data(Pid, Offset, Size),
+	    {ok, Data} = etorrent_fs_process:get_data(Pid, Offset, Size),
 	    read_pieces_and_assemble(Rest, [Data | Done], NS)
     end.
 
@@ -169,7 +172,8 @@ write_piece_data(Data, [{Path, Offset, Size} | Rest], S) ->
 	{ok, Pid} ->
 	    Ref = make_ref(),
 	    case catch({Ref,
-			etorrent_fs_process:put_data(Pid, Chunk, Offset, Size)}) of
+			etorrent_fs_process:put_data(Pid, Chunk,
+						     Offset, Size)}) of
 		{Ref, ok} ->
 		    write_piece_data(Remaining, Rest, S);
 		{'EXIT', {noproc, _}} ->
