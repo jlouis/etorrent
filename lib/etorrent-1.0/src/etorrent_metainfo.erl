@@ -52,25 +52,24 @@ get_length(Torrent) ->
 %% Description: Get a file list from the torrent
 %%--------------------------------------------------------------------
 get_files(Torrent) ->
-    case etorrent_bcoding:search_dict({string, "files"}, get_info(Torrent)) of
-	{ok, X} ->
-	    X;
-	false ->
-	    % Single value torrent, fake entry
-	    N = get_name(Torrent),
-	    L = get_length(Torrent),
-	    {list,[{dict,[{{string,"path"},
-			   {list,[{string,N}]}},
-			  {{string,"length"},{integer,L}}]}]}
-    end.
+    {list, FilesEntries} = get_files_section(Torrent),
+    process_paths(FilesEntries, []).
+
 
 %%--------------------------------------------------------------------
 %% Function: get_name/1
-%% Description: Get the name of a torrent
+%% Description: Get the name of a torrent. Returns either {ok, N} for
+%%   for a valid name or {error, security_violation, N} for something
+%%   that violates the security limitations.
 %%--------------------------------------------------------------------
 get_name(Torrent) ->
     {string, N} = find_target(get_info(Torrent), "name"),
-    N.
+    case valid_path(N) of
+	true ->
+	    {ok, N};
+	false ->
+	    {error, security_violation, N}
+    end.
 
 %%--------------------------------------------------------------------
 %% Function: get_url/1
@@ -149,7 +148,52 @@ hexify(Digest) ->
 			   binary_to_list(Digest)),
     lists:concat(Characters).
 
+valid_path(Path) ->
+    RE = "^[^/\\.~][^\\/]*$",
+    case regexp:match(Path, RE) of
+	{match, _S, _E} ->
+	    true;
+	nomatch ->
+	    false
+    end.
 
+process_file_entry(Entry) ->
+    {dict, Dict} = Entry,
+    {value, {{string, "path"},
+	     {list, Path}}} =
+	lists:keysearch({string, "path"}, 1, Dict),
+    {value, {{string, "length"},
+	     {integer, Size}}} =
+	lists:keysearch({string, "length"}, 1, Dict),
+    case lists:any(fun({string, P}) -> valid_path(P) end, Path) of
+	true ->
+	    Filename =
+		filename:join(lists:map(fun({string, X}) -> X end, Path)),
+	    {ok, {Filename, Size}};
+	false ->
+	    {error, security_violation, Path}
+    end.
 
+process_paths([], Accum) ->
+    {ok, lists:reverse(Accum)};
+process_paths([E | Rest], Accum) ->
+    case process_file_entry(E) of
+	{ok, NameSize} ->
+	    process_paths(Rest, [NameSize | Accum]);
+	{error, security_violation, Path} ->
+	    % Escape
+	    {error, security_violation, Path}
+    end.
 
-
+get_files_section(Torrent) ->
+    case etorrent_bcoding:search_dict({string, "files"}, get_info(Torrent)) of
+	{ok, X} ->
+	    X;
+	false ->
+	    % Single value torrent, fake entry
+	    N = get_name(Torrent),
+	    L = get_length(Torrent),
+	    {list,[{dict,[{{string,"path"},
+			   {list,[{string,N}]}},
+			  {{string,"length"},{integer,L}}]}]}
+    end.

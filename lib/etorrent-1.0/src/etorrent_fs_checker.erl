@@ -18,11 +18,10 @@
 load_torrent(Workdir, Path) ->
     P = filename:join([Workdir, Path]),
     {ok, Torrent} = etorrent_metainfo:parse(P),
-    {list, Files} = etorrent_metainfo:get_files(Torrent),
-    Name = etorrent_metainfo:get_name(Torrent),
+    {ok, Files} = etorrent_metainfo:get_files(Torrent),
+    {ok, Name} = etorrent_metainfo:get_name(Torrent),
     FilesToCheck =
-	lists:map(fun (E) ->
-			  {Filename, Size} = report_files(E),
+	lists:map(fun ({Filename, Size}) ->
 			  {filename:join([Workdir, Name, Filename]), Size}
 		  end,
 		  Files),
@@ -75,18 +74,6 @@ build_dictionary_on_files(Torrent, Files) ->
 %%====================================================================
 %% Internal functions
 %%====================================================================
-report_files(Entry) ->
-    {dict, Dict} = Entry,
-    %TODO: Consider a etorrent_metainfo:fetch_key function for this
-    %TODO: This code digs around inside metainfo so move to metainfo!
-    {value, {{string, "path"},
-	     {list, Path}}} =
-	lists:keysearch({string, "path"}, 1, Dict),
-    {value, {{string, "length"},
-	     {integer, Size}}} =
-	lists:keysearch({string, "length"}, 1, Dict),
-    Filename = filename:join(lists:map(fun({string, X}) -> X end, Path)),
-    {Filename, Size}.
 
 torrent_size(Files) ->
     lists:foldl(fun ({_F, S}, A) ->
