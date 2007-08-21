@@ -12,8 +12,9 @@
 -behaviour(supervisor).
 
 %% API
--export([start_link/2, add_filesystem/2, add_peer_master/6,
-	 add_tracker/6, add_state/3, add_peer_pool/1]).
+-export([start_link/2, add_file_system/2, add_peer_master/6,
+	 add_tracker/6, add_state/3, add_peer_pool/1,
+	 add_file_system_pool/1]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -25,15 +26,25 @@ start_link(File, Local_PeerId) ->
     supervisor:start_link(?MODULE, [File, Local_PeerId]).
 
 %%--------------------------------------------------------------------
-%% Func: add_filesystem/1
+%% Func: add_filesystem/3
 %% Description: Add a filesystem process to the torrent.
 %%--------------------------------------------------------------------
-add_filesystem(Pid, IDHandle) ->
+add_file_system(Pid, FSPool, IDHandle) ->
     FS = {fs,
-	  {etorrent_fs, start_link, [IDHandle]},
+	  {etorrent_fs, start_link, [IDHandle, FSPool]},
 	  temporary, 2000, worker, [etorrent_fs]},
     % TODO: Handle some cases here if already added.
     supervisor:start_child(Pid, FS).
+
+%%--------------------------------------------------------------------
+%% Func: add_file_system_pool/1
+%% Description: Add a filesystem process to the torrent.
+%%--------------------------------------------------------------------
+add_file_system_pool(Pid) ->
+    FSPool = {fs_pool,
+	      {etorrent_fs_pool_sup, start_link, []},
+	      transient, infinity, supervisor, [etorrent_fs_pool_sup]},
+    supervisor:start_child(Pid, FSPool).
 
 add_peer_master(Pid, GroupPid, Local_Peer_Id,
 		InfoHash, StatePid, FileSystemPid) ->
@@ -41,7 +52,7 @@ add_peer_master(Pid, GroupPid, Local_Peer_Id,
 		  {etorrent_t_peer_group, start_link,
 		   [Local_Peer_Id, GroupPid,
 		    InfoHash, StatePid, FileSystemPid]},
-		  temporary, 120000, worker, [etorrent_t_peer_group]},
+		  temporary, 2000, worker, [etorrent_t_peer_group]},
     supervisor:start_child(Pid, PeerGroup).
 
 add_tracker(Pid, StatePid, PeerGroupPid, URL, InfoHash, Local_Peer_Id) ->
@@ -80,7 +91,7 @@ init([File, Local_PeerId]) ->
     Control =
 	{control,
 	 {etorrent_t_control, start_link_load, [File, Local_PeerId]},
-	 permanent, 120000, worker, [etorrent_t_control]},
+	 transient, 2000, worker, [etorrent_t_control]},
     {ok, {{one_for_all, 1, 60}, [Control]}}.
 
 %%====================================================================

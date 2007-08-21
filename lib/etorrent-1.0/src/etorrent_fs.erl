@@ -12,7 +12,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/1, load_file_information/2,
+-export([start_link/2, load_file_information/2,
 	 stop/1, read_piece/2, write_piece/3]).
 
 %% gen_server callbacks
@@ -32,8 +32,8 @@
 %% Function: start_link/0
 %% Description: Spawn and link a new file_system process
 %%--------------------------------------------------------------------
-start_link(IDHandle) ->
-    gen_server:start_link(?MODULE, [IDHandle], []).
+start_link(IDHandle, FSPool) ->
+    gen_server:start_link(?MODULE, [IDHandle, FSPool], []).
 
 %%--------------------------------------------------------------------
 %% Function: stop(Pid) -> ok
@@ -68,7 +68,7 @@ write_piece(Pid, Pn, Data) ->
 %%====================================================================
 %% gen_server callbacks
 %%====================================================================
-init([IDHandle]) ->
+init([IDHandle, _FSPool]) ->
     process_flag(trap_exit, true),
     ETS = etorrent_fs_mapper:fetch_map(),
     {ok, #state{file_process_dict = dict:new(),

@@ -267,4 +267,5 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 %%--------------------------------------------------------------------
 add_filesystem(FileDict, S) ->
     ok = etorrent_fs_mapper:install_map(FileDict),
-    etorrent_t_sup:add_filesystem(S#state.parent_pid, self()).
+    {ok, FSPool} = etorrent_t_sup:add_file_system_pool(S#state.parent_pid),
+    etorrent_t_sup:add_file_system(S#state.parent_pid, FSPool, self()).
