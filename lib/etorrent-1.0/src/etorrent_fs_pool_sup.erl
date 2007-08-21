@@ -40,7 +40,7 @@ add_file_process(Pid, Path) ->
 init([]) ->
     FSProcesses = {'FSPROCESS',
 		   {etorrent_fs_process, start_link, []},
-		   transients, 2000, worker, [etorrent_fs_process]},
+		   transient, 2000, worker, [etorrent_fs_process]},
     {ok, {{simple_one_for_one, 1, 60}, [FSProcesses]}}.
 
 %%====================================================================
