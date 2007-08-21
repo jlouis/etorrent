@@ -76,12 +76,10 @@ code_change(_OldVsn, State, _Extra) ->
 watch_directories(S) ->
     {ok, A, R, N} = scan_files_in_dir(S),
     lists:foreach(fun(F) ->
-			  error_logger:info_msg("Adding: ~p~n", [F]),
 			  etorrent_t_manager:start_torrent(F)
 		  end,
 		  sets:to_list(A)),
     lists:foreach(fun(F) ->
-			  error_logger:info_msg("Removing: ~p~n", [F]),
 			  etorrent_t_manager:stop_torrent(F) end,
 		  sets:to_list(R)),
     N.
@@ -89,7 +87,6 @@ watch_directories(S) ->
 empty_state() -> sets:new().
 
 scan_files_in_dir(S) ->
-    error_logger:info_msg("Watching dir...~n", []),
     Files = filelib:fold_files(S#state.dir, ".*\.torrent", false,
 			       fun(F, Accum) ->
 				       [F | Accum] end, []),
