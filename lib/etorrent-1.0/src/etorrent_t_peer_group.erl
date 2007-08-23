@@ -43,7 +43,8 @@
 
 		    ref = none,
 		    optimistic_unchoke = false,
-		    peer_id = none}).
+		    ip = none,
+		    port = none}).
 
 -define(MAX_PEER_PROCESSES, 40).
 -define(ROUND_TIME, 10000).
@@ -146,12 +147,12 @@ handle_call(not_interested, {Pid, _Tag}, S) ->
 			  PI#peer_info{interested = false}
 		  end,
 		  S)};
-handle_call({new_incoming_peer, PeerId}, _From, S) ->
-    {Reply, NS} = case is_bad_peer(PeerId, S) of
+handle_call({new_incoming_peer, IP, Port}, _From, S) ->
+    {Reply, NS} = case is_bad_peer(IP, Port, S) of
 		      true ->
 			  {bad_peer, S};
 		      false ->
-			  start_new_incoming_peer(PeerId, S)
+			  start_new_incoming_peer(IP, Port, S)
 		  end,
     {reply, Reply, NS};
 handle_call(_Request, _From, State) ->
@@ -195,7 +196,8 @@ handle_info({'DOWN', _R, process, Pid, Reason}, S) ->
 	R ->
 	    PI = dict:fetch(Pid, S#state.peer_process_dict),
 	    D  = dict:erase(Pid, S#state.peer_process_dict),
-	    Bad = dict:update(PI#peer_info.peer_id, fun(L) -> [R | L] end,
+	    % TODO: Make this better than it is.
+	    Bad = dict:update(PI#peer_info.ip, fun(L) -> [R | L] end,
 			      [R], S#state.bad_peers),
 	    {ok, NS} = start_new_peers(S#state{peer_process_dict = D,
 					       bad_peers = Bad}),
@@ -216,7 +218,7 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%--------------------------------------------------------------------
 
-start_new_incoming_peer(PeerId, S) ->
+start_new_incoming_peer(IP, Port, S) ->
     PeersMissing =
 	?MAX_PEER_PROCESSES - dict:size(S#state.peer_process_dict),
     if
@@ -230,7 +232,7 @@ start_new_incoming_peer(PeerId, S) ->
 			  self()),
 
 	    Ref = erlang:monitor(process, Pid),
-	    PI = #peer_info{peer_id = PeerId, ref = Ref},
+	    PI = #peer_info{port = Port, ip = IP, ref = Ref},
 	    D = dict:store(Pid, PI, S#state.peer_process_dict),
 	    {ok, S#state{peer_process_dict = D}};
 	true ->
@@ -385,20 +387,18 @@ fill_peers(N, S) ->
 	[] ->
 	    % No peers available, just stop trying to fill peers
 	    {ok, S};
-	[{IP, Port, PeerId} | R] ->
+	[{IP, Port} | R] ->
 	    % Possible peer. Check it.
-	    case is_bad_peer_or_ourselves(PeerId, S) of
+	    case is_bad_peer_or_ourselves(IP, Port, S) of
 		true ->
 		    fill_peers(N, S#state{available_peers = R});
 		false ->
-		    spawn_new_peer(IP, Port, PeerId,
-				   N,
-				   S#state{available_peers = R})
+		    spawn_new_peer(IP, Port, N, S#state{available_peers = R})
 	    end
     end.
 
-spawn_new_peer(IP, Port, PeerId, N, S) ->
-    case find_peer_id_in_process_list(PeerId, S) of
+spawn_new_peer(IP, Port, N, S) ->
+    case find_peer_in_process_list(IP, Port, S) of
 	true ->
 	    fill_peers(N, S);
 	false ->
@@ -409,21 +409,22 @@ spawn_new_peer(IP, Port, PeerId, N, S) ->
 			  S#state.state_pid,
 			  S#state.file_system_pid,
 			  self()),
-	    etorrent_t_peer_recv:connect(Pid, IP, Port, PeerId),
+	    etorrent_t_peer_recv:connect(Pid, IP, Port),
 	    Ref = erlang:monitor(process, Pid),
-	    PI = #peer_info{peer_id = PeerId, ref = Ref},
+	    PI = #peer_info{ip = IP, port = Port, ref = Ref},
 	    D = dict:store(Pid, PI, S#state.peer_process_dict),
 	    fill_peers(N-1, S#state{ peer_process_dict = D})
     end.
 
-is_bad_peer_or_ourselves(PeerId, S) ->
-    is_ourselves(PeerId, S) or is_bad_peer(PeerId, S).
+is_bad_peer_or_ourselves(IP, Port, S) ->
+    is_ourselves(IP, Port, S) or is_bad_peer(IP, Port, S).
 
-is_ourselves(PeerId, S) ->
-    string:equal(PeerId, S#state.our_peer_id).
+is_ourselves(_IP, _Port, _S) ->
+    false. % TODO: Fix this. It is not correct...
 
-is_bad_peer(PeerId, S) ->
-    case dict:find(PeerId, S#state.bad_peers) of
+is_bad_peer(IP, _Port, S) ->
+    % TODO: Rewrite this crap a bit. It can be done in an ETS table.
+    case dict:find(IP, S#state.bad_peers) of
 	{ok, [_E]} ->
 	    false;
 	{ok, _X} ->
@@ -432,17 +433,14 @@ is_bad_peer(PeerId, S) ->
 	    false
     end.
 
-find_peer_id_in_process_list(PeerId, S) ->
-    dict:fold(fun(_K, PeerInfo, AccIn) ->
-		      case PeerInfo#peer_info.peer_id == PeerId of
-			  true ->
-			      true;
-			  false ->
-			      AccIn
-		      end
-	      end,
-	      false,
-	      S#state.peer_process_dict).
+find_peer_in_process_list(IP, _Port, S) ->
+    % Rewrite this as well. Bad bad bad! Use ETS.
+    case dict:find(IP, S#state.peer_process_dict) of
+	{ok, _V} ->
+	    true;
+	error ->
+	    false
+    end.
 
 %%--------------------------------------------------------------------
 %% Function: resetorrent_round(state()) -> state()

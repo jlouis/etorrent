@@ -125,7 +125,7 @@ eat_lines(IODev, Accum) ->
 rfc_3986_unreserved_characters() ->
     % jlouis: I deliberately killed ~ from the list as it seems the Mainline
     %  client doesn't announce this.
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.".
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_./".
 
 rfc_3986_unreserved_characters_set() ->
     sets:from_list(rfc_3986_unreserved_characters()).

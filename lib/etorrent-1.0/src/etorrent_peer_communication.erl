@@ -10,7 +10,7 @@
 -module(etorrent_peer_communication).
 
 %% API
--export([initiate_handshake/4, recieve_handshake/1,
+-export([initiate_handshake/3, recieve_handshake/1,
 	 complete_handshake_header/3]).
 -export([send_message/2, recv_message/1,
 	 construct_bitfield/2, destruct_bitfield/2]).
@@ -125,16 +125,14 @@ complete_handshake_header(Socket, InfoHash, LocalPeerId) ->
     ok.
 
 %%--------------------------------------------------------------------
-%% Function: initiate_handshake(socket(), peer_id(), peer_id(),
-%%                              info_hash()) ->
+%% Function: initiate_handshake(socket(), peer_id(), info_hash()) ->
 %%                                         {ok, protocol_version()} |
 %%                                              {error, Reason}
 %% Description: Handshake with a peer where we have initiated with him.
 %%  This call is used if we are the initiator of a torrent handshake as
 %%  we then know the peer_id completely.
 %%--------------------------------------------------------------------
-initiate_handshake(Socket, RemotePeerId, LocalPeerId, InfoHash) ->
-    BinPeerId = list_to_binary(RemotePeerId),
+initiate_handshake(Socket, LocalPeerId, InfoHash) ->
     % Since we are the initiator, send out this handshake
     Header = build_peer_protocol_header(),
     ok = gen_tcp:send(Socket, Header),
@@ -147,10 +145,8 @@ initiate_handshake(Socket, RemotePeerId, LocalPeerId, InfoHash) ->
 	    if
 		IH /= InfoHash ->
 		    {error, infohash_mismatch};
-		PI /= BinPeerId ->
-		    {error, peer_id_mismatch};
 		true ->
-		    {ok, ReservedBytes}
+		    {ok, ReservedBytes, PI}
 	    end;
 	{error, X} ->
 	    {error, X}

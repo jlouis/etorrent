@@ -257,11 +257,9 @@ process_ips([], Accum) ->
     lists:reverse(Accum);
 process_ips([IPDict | Rest], Accum) ->
     {ok, {string, IP}} = etorrent_bcoding:search_dict({string, "ip"}, IPDict),
-    {ok, {string, PeerId}} = etorrent_bcoding:search_dict({string, "peer id"},
-						    IPDict),
     {ok, {integer, Port}} = etorrent_bcoding:search_dict({string, "port"},
 						   IPDict),
-    process_ips(Rest, [{IP, Port, PeerId} | Accum]).
+    process_ips(Rest, [{IP, Port} | Accum]).
 
 find_ips_in_tracker_response(BC) ->
     case etorrent_bcoding:search_dict_default({string, "peers"}, BC, none) of

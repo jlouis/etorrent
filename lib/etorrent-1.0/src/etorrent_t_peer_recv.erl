@@ -12,7 +12,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/5, connect/4, choke/1, unchoke/1, interested/1,
+-export([start_link/5, connect/3, choke/1, unchoke/1, interested/1,
 	 send_have_piece/2, complete_handshake/3, uploaded_data/2,
 	stop/1]).
 
@@ -59,8 +59,8 @@ start_link(LocalPeerId, InfoHash, StatePid, FilesystemPid, MasterPid) ->
     gen_server:start_link(?MODULE, [LocalPeerId, InfoHash,
 				    StatePid, FilesystemPid, MasterPid], []).
 
-connect(Pid, IP, Port, PeerId) ->
-    gen_server:cast(Pid, {connect, IP, Port, PeerId}).
+connect(Pid, IP, Port) ->
+    gen_server:cast(Pid, {connect, IP, Port}).
 
 choke(Pid) ->
     gen_server:cast(Pid, choke).
@@ -125,16 +125,15 @@ handle_call(_Request, _From, State) ->
 %%--------------------------------------------------------------------
 handle_cast(stop, S) ->
     {stop, normal, S};
-handle_cast({connect, IP, Port, PeerId}, S) ->
+handle_cast({connect, IP, Port}, S) ->
     case gen_tcp:connect(IP, Port, [binary, {active, false}],
 			 ?DEFAULT_CONNECT_TIMEOUT) of
 	{ok, Socket} ->
 	    case etorrent_peer_communication:initiate_handshake(
 		   Socket,
-		   PeerId,
 		   S#state.local_peer_id,
 		   S#state.info_hash) of
-		{ok, _ReservedBytes} ->
+		{ok, _ReservedBytes, PeerId} ->
 		    enable_socket_messages(Socket),
 		    {ok, SendPid} =
 			etorrent_t_peer_send:start_link(Socket,
