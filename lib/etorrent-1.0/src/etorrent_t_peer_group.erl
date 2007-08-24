@@ -223,7 +223,7 @@ sort_fastest_uploaders(Peers) ->
 
 find_fastest(N, Interested, F) ->
     List = F(Interested),
-    PidList = lists:map(fun({K, _V}) -> K end, List),
+    PidList = lists:map(fun({K, _DL, _UL}) -> K end, List),
     SplitPoint = lists:min([length(PidList), N]),
     {Downloaders, Rest} = lists:split(SplitPoint, PidList),
     {Downloaders, Rest}.
