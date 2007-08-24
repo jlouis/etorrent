@@ -88,7 +88,6 @@ seed(Pid) ->
 %% gen_fsm:start_link/3,4, this function is called by the new process to
 %% initialize.
 %%--------------------------------------------------------------------
-% TODO: Utilize parent
 init([Parent]) ->
     {ok, WorkDir} = application:get_env(etorrent, dir),
     {ok, initializing, #state{work_dir = WorkDir,
