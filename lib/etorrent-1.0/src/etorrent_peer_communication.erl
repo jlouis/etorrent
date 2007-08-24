@@ -112,7 +112,7 @@ send_message(Socket, Message) ->
 recieve_handshake(Socket) ->
     Header = build_peer_protocol_header(),
     ok = gen_tcp:send(Socket, Header),
-    recieve_header(Socket).
+    receive_header(Socket).
 
 %%--------------------------------------------------------------------
 %% Function: complete_handshake_header(socket(),
@@ -140,7 +140,7 @@ initiate_handshake(Socket, LocalPeerId, InfoHash) ->
     % Now, we wait for his handshake to arrive on the socket
     % Since we are the initiator, he is requested to fire off everything
     % to us.
-    case recieve_header(Socket) of
+    case receive_header(Socket) of
 	{ok, ReservedBytes, IH, PI} ->
 	    if
 		IH /= InfoHash ->
@@ -174,7 +174,7 @@ build_peer_protocol_header() ->
 %% protocol_version string, the infohash the remote sent us and his
 %% peer_id.
 %% --------------------------------------------------------------------
-recieve_header(Socket) ->
+receive_header(Socket) ->
     case gen_tcp:recv(Socket, ?HANDSHAKE_SIZE, ?DEFAULT_HANDSHAKE_TIMEOUT) of
 	{ok, Packet} ->
 	    <<PSL:8/integer, ?PROTOCOL_STRING, ReservedBytes:8/binary,
