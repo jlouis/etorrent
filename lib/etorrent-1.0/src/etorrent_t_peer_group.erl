@@ -274,14 +274,14 @@ perform_choking_unchoking(S) ->
 
 sort_fastest_downloaders(Peers) ->
     lists:sort(
-      fun ({_K1, {DL1, _UL1}}, {_K2, {DL2, _UL2}}) ->
+      fun ({_K1, DL1, _UL1}, {_K2, DL2, _UL2}) ->
 	      DL1 > DL2
       end,
       Peers).
 
 sort_fastest_uploaders(Peers) ->
     lists:sort(
-      fun ({_K1, {_DL1, UL1}}, {_K2, {_DL2, UL2}}) ->
+      fun ({_K1, _DL1, UL1}, {_K2, _DL2, UL2}) ->
 	      UL1 > UL2
       end,
       Peers).
@@ -299,14 +299,14 @@ find_fastest_peers(N, Interested, S) when S#state.mode == seeding ->
     find_fastest(N, Interested, fun sort_fastest_uploaders/1).
 
 unchoke_peers(Pids) ->
-    lists:foreach(fun(P) ->
-			  etorrent_t_peer_recv:unchoke(P)
+    lists:foreach(fun({Pid, _DL, _UL}) ->
+			  etorrent_t_peer_recv:unchoke(Pid)
 		  end, Pids),
     ok.
 
 choke_peers(Pids) ->
-    lists:foreach(fun(P) ->
-			  etorrent_t_peer_recv:choke(P)
+    lists:foreach(fun({Pid, _DL, _UL}) ->
+			  etorrent_t_peer_recv:choke(Pid)
 		  end, Pids),
     ok.
 

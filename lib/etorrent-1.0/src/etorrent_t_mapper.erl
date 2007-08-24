@@ -276,7 +276,7 @@ find_interested_peers(S, InfoHash, Val) ->
 %% Function: reset_round(state(), InfoHash) -> ()
 %% Description: Reset the amount of uploaded and downloaded data
 %%--------------------------------------------------------------------
-reset_round(S, InfoHash) ->
+reset_round(InfoHash, S) ->
     Matches = ets:match(S#state.peer_map, {'$1', '$2', InfoHash, '$3'}),
     lists:foreach(fun([Pid, IPPort, PI]) ->
 			  ets:insert(S#state.peer_map,

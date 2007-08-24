@@ -181,7 +181,7 @@ recieve_header(Socket) ->
 	     IH:20/binary, PI:20/binary>> = Packet,
 	    if
 		PSL /= length(?PROTOCOL_STRING) ->
-		    {error, packetorrent_size_mismatch};
+		    {error, packet_size_mismatch};
 		true ->
 		    {ok, ReservedBytes, IH, PI}
 	    end;
