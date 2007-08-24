@@ -264,7 +264,7 @@ perform_choking_unchoking(S) ->
     unchoke_peers(Downloaders),
 
     % All peers not interested should be unchoked
-    unchoke_peers(dict:fetch_keys(NotInterested)),
+    unchoke_peers(NotInterested),
 
     % Choke everyone else
     choke_peers(Rest),
