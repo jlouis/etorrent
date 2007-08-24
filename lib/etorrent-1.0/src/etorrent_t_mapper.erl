@@ -6,13 +6,19 @@
 %%%
 %%% Created : 31 Jul 2007 by Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
 %%%-------------------------------------------------------------------
+
+%% TODO: When a peer dies, we need an automatic way to pull it out of
+%%   the peer_map ETS. Either we grab the peer_group process and take it with
+%%   the monitor, or we need seperate monitors on Peers. I am most keen on the
+%%   first solution.
 -module(etorrent_t_mapper).
 
 -behaviour(gen_server).
 
 %% API
 -export([start_link/0, store_hash/1, remove_hash/1, lookup/1,
-	 store_peer/3, remove_peer/3, is_connected_peer/3]).
+	 store_peer/4, remove_peer/1, is_connected_peer/3,
+	is_connected_peer_bad/3]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -38,13 +44,17 @@ store_hash(InfoHash) ->
 remove_hash(InfoHash) ->
     gen_server:call(?SERVER, {remove_hash, InfoHash}).
 
-store_peer(IP, Port, InfoHash) ->
-    gen_server:call(?SERVER, {store_peer, IP, Port, InfoHash}).
+store_peer(IP, Port, InfoHash, Ref) ->
+    gen_server:call(?SERVER, {store_peer, IP, Port, InfoHash, Ref}).
 
-remove_peer(IP, Port, InfoHash) ->
-    gen_server:call(?SERVER, {remove_peer, IP, Port, InfoHash}).
+remove_peer(Ref) ->
+    gen_server:call(?SERVER, {remove_peer, Ref}).
 
 is_connected_peer(IP, Port, InfoHash) ->
+    gen_server:call(?SERVER, {is_connected_peer, IP, Port, InfoHash}).
+
+% TODO: Change when we want to do smart peer handling.
+is_connected_peer_bad(IP, Port, InfoHash) ->
     gen_server:call(?SERVER, {is_connected_peer, IP, Port, InfoHash}).
 
 lookup(InfoHash) ->
@@ -74,11 +84,11 @@ init([]) ->
 %%                                      {stop, Reason, State}
 %% Description: Handling call messages
 %%--------------------------------------------------------------------
-handle_call({store_peer, IP, Port, InfoHash}, _From, S) ->
-    ets:insert(S#state.peer_map, {IP, Port, InfoHash}),
+handle_call({store_peer, IP, Port, InfoHash, Ref}, _From, S) ->
+    ets:insert(S#state.peer_map, {IP, Port, InfoHash, Ref}),
     {reply, ok, S};
-handle_call({remove_peer, IP, Port, InfoHash}, _From, S) ->
-    ets:delete(S#state.peer_map, {IP, Port, InfoHash}),
+handle_call({remove_peer, Ref}, _From, S) ->
+    ets:match_delete(S#state.peer_map, {'_', '_', '_', Ref}),
     {reply, ok, S};
 handle_call({is_connected_peer, IP, Port, InfoHash}, _From, S) ->
     case ets:match(S#state.peer_map, {IP, Port, InfoHash}) of

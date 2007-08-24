@@ -182,27 +182,32 @@ handle_info(round_tick, S) ->
 	    {NS, _DoNotTouchPids} = perform_choking_unchoking(S),
 	    {noreply, reset_round(NS#state{round = NS#state.round - 1})}
     end;
-handle_info({'DOWN', _R, process, Pid, Reason}, S) ->
+handle_info({'DOWN', Ref, process, _Pid, _Reason}, S) ->
     % Pid has exited for some reason, handle it accordingly
-    case Reason of
-	normal ->
-	    D = dict:erase(Pid, S#state.peer_process_dict),
-	    {ok, NS} = start_new_peers(S#state{peer_process_dict = D}),
-	    {noreply, NS};
-	shutdown ->
-	    D = dict:erase(Pid, S#state.peer_process_dict),
-	    {ok, NS} = start_new_peers(S#state{peer_process_dict = D}),
-	    {noreply, NS};
-	R ->
-	    PI = dict:fetch(Pid, S#state.peer_process_dict),
-	    D  = dict:erase(Pid, S#state.peer_process_dict),
-	    % TODO: Make this better than it is.
-	    Bad = dict:update(PI#peer_info.ip, fun(L) -> [R | L] end,
-			      [R], S#state.bad_peers),
-	    {ok, NS} = start_new_peers(S#state{peer_process_dict = D,
-					       bad_peers = Bad}),
-	    {noreply, NS}
-    end;
+    % TODO: This is naive. It should be fixed later.
+    etorrent_t_mapper:remove_peer(Ref),
+    {noreply, S};
+
+%%     case Reason of
+%% 	normal ->
+%% 	    D = dict:erase(Pid, S#state.peer_process_dict),
+%% 	    {ok, NS} = start_new_peers(S#state{peer_process_dict = D}),
+%% 	    {noreply, NS};
+%% 	shutdown ->
+%% 	    D = dict:erase(Pid, S#state.peer_process_dict),
+%% 	    {ok, NS} = start_new_peers(S#state{peer_process_dict = D}),
+%% 	    {noreply, NS};
+%% 	R ->
+%% 	    PI = dict:fetch(Pid, S#state.peer_process_dict),
+%% 	    D  = dict:erase(Pid, S#state.peer_process_dict),
+%% 	    % TODO: Make this better than it is.
+%% 	    Bad = dict:update(PI#peer_info.ip, fun(L) -> [R | L] end,
+%% 			      [R], S#state.bad_peers),
+%% 	    {ok, NS} = start_new_peers(S#state{peer_process_dict = D,
+%% 					       bad_peers = Bad}),
+%% 	    {noreply, NS}
+%%     end;
+
 handle_info(Info, State) ->
     io:format("Unknown info: ~p~n", [Info]),
     {noreply, State}.
@@ -409,11 +414,10 @@ spawn_new_peer(IP, Port, N, S) ->
 			  S#state.state_pid,
 			  S#state.file_system_pid,
 			  self()),
+	    _Ref = erlang:monitor(process, Pid),
 	    etorrent_t_peer_recv:connect(Pid, IP, Port),
-	    Ref = erlang:monitor(process, Pid),
-	    PI = #peer_info{ip = IP, port = Port, ref = Ref},
-	    D = dict:store(Pid, PI, S#state.peer_process_dict),
-	    fill_peers(N-1, S#state{ peer_process_dict = D})
+	    etorrent_t_mapper:store_peer(IP, Port, S#state.info_hash),
+	    fill_peers(N-1, S)
     end.
 
 is_bad_peer_or_ourselves(IP, Port, S) ->
@@ -422,25 +426,11 @@ is_bad_peer_or_ourselves(IP, Port, S) ->
 is_ourselves(_IP, _Port, _S) ->
     false. % TODO: Fix this. It is not correct...
 
-is_bad_peer(IP, _Port, S) ->
-    % TODO: Rewrite this crap a bit. It can be done in an ETS table.
-    case dict:find(IP, S#state.bad_peers) of
-	{ok, [_E]} ->
-	    false;
-	{ok, _X} ->
-	    true;
-	error ->
-	    false
-    end.
+is_bad_peer(IP, Port, S) ->
+    etorrent_t_mapper:is_connected_peer_bad(IP, Port, S#state.info_hash).
 
-find_peer_in_process_list(IP, _Port, S) ->
-    % Rewrite this as well. Bad bad bad! Use ETS.
-    case dict:find(IP, S#state.peer_process_dict) of
-	{ok, _V} ->
-	    true;
-	error ->
-	    false
-    end.
+find_peer_in_process_list(IP, Port, S) ->
+    etorrent_t_mapper:is_connected_peer(IP, Port, S#state.info_hash).
 
 %%--------------------------------------------------------------------
 %% Function: resetorrent_round(state()) -> state()
