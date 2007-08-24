@@ -234,7 +234,9 @@ build_tracker_url(S, Event) ->
 	       {"uploaded", Uploaded},
 	       {"downloaded", Downloaded},
 	       {"left", Left},
-	       {"port", Port}],
+	       {"port", Port},
+	       {"no_peer_id", "1"},
+	       {"compact", "1"}],
     EReq = case Event of
 	       none ->
 		   Request;
@@ -250,21 +252,12 @@ find_next_request_time(BC) ->
 						   ?DEFAULT_REQUEST_TIMEOUT}),
     R.
 
-process_ips(D) ->
-    process_ips(D, []).
-
-process_ips([], Accum) ->
-    lists:reverse(Accum);
-process_ips([IPDict | Rest], Accum) ->
-    {ok, {string, IP}} = etorrent_bcoding:search_dict({string, "ip"}, IPDict),
-    {ok, {integer, Port}} = etorrent_bcoding:search_dict({string, "port"},
-						   IPDict),
-    process_ips(Rest, [{IP, Port} | Accum]).
-
 find_ips_in_tracker_response(BC) ->
     case etorrent_bcoding:search_dict_default({string, "peers"}, BC, none) of
 	{list, Ips} ->
-	    process_ips(Ips);
+	    etorrent_metainfo:process_ips_dictionary(Ips);
+	{string, Ips} ->
+	    etorrent_metainfo:process_ips_binary(Ips);
 	none ->
 	    []
     end.

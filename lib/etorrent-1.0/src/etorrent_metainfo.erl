@@ -16,7 +16,9 @@
 
 %% API
 -export([get_piece_length/1, get_pieces/1, get_url/1, get_infohash/1,
-	 parse/1, get_files/1, get_name/1, hexify/1]).
+	 parse/1, get_files/1, get_name/1, hexify/1,
+	 process_ips_dictionary/1,
+	 process_ips_binary/1]).
 
 %%====================================================================
 %% API
@@ -107,9 +109,47 @@ parse(File) ->
 	{error, Reason} ->
 	    {could_not_read_file, Reason}
     end.
+
+%%--------------------------------------------------------------------
+%% Function: process_ips_dictionary/1
+%% Description: Convert an IP-list from a tracker in dictionary format
+%%   to a {IP, Port} list.
+%%--------------------------------------------------------------------
+process_ips_dictionary(D) ->
+    process_ips_dictionary(D, []).
+
+%%--------------------------------------------------------------------
+%% Function: process_ips_binary/1
+%% Description: Convert an IP-list from a tracker in binary format
+%%   to a {IP, Port} list.
+%%--------------------------------------------------------------------
+process_ips_binary(Ips) ->
+    process_ips_binary(Ips, []).
+
 %%====================================================================
 %% Internal functions
 %%====================================================================
+
+process_ips_binary([], Accum) ->
+    lists:reverse(Accum);
+process_ips_binary(Str, Accum) ->
+    {Peer, Rest} = lists:split(6, Str),
+    {IPList, PortList} = lists:split(4, Peer),
+    case {IPList, PortList} of
+	{[I1, I2, I3, I4], [P1, P2]} ->
+	    IP = {I1, I2, I3, I4}, % TODO: Correct endianess?
+	    Port = {P1, P2},
+	    process_ips_binary(Rest, [{IP, Port} | Accum])
+    end.
+
+
+process_ips_dictionary([], Accum) ->
+    lists:reverse(Accum);
+process_ips_dictionary([IPDict | Rest], Accum) ->
+    {ok, {string, IP}} = etorrent_bcoding:search_dict({string, "ip"}, IPDict),
+    {ok, {integer, Port}} = etorrent_bcoding:search_dict({string, "port"},
+						   IPDict),
+    process_ips_dictionary(Rest, [{IP, Port} | Accum]).
 
 %% Find a target that can't fail
 find_target(D, Name) ->
