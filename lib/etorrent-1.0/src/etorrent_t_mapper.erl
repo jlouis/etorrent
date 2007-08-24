@@ -168,9 +168,7 @@ handle_call({remove_peer, Pid}, _From, S) ->
     ets:match_delete(S#state.peer_map, {Pid, '_', '_', '_'}),
     {reply, ok, S};
 handle_call({interest_split, InfoHash}, _From, S) ->
-    % TODO: Can be optimized into a single call
-    Intersted = find_interested_peers(S, InfoHash, true),
-    NotInterested = find_interested_peers(S, InfoHash, false),
+    {Intersted, NotInterested} = find_interested_peers(S, InfoHash),
     {reply, {Intersted, NotInterested}, S};
 handle_call({modify_peer, Pid, F}, _From, S) ->
     [[IPPort, InfoHash, PI]] = ets:match(S#state.peer_map,
@@ -264,13 +262,27 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 %%% Internal functions
 %%--------------------------------------------------------------------
-find_interested_peers(S, InfoHash, Val) ->
-    MS = ets:fun2ms(fun({P, _IP, IH, PI})
-		       when (PI#peer_info.interested == Val andalso
-			     IH == InfoHash) ->
-			    {P, PI#peer_info.downloaded, PI#peer_info.uploaded}
+find_interested_peers(S, InfoHash) ->
+    MS = ets:fun2ms(fun({P, _IP, IH, PI}) when IH == InfoHash ->
+			    {P, PI}
 		    end),
-    ets:select(S#state.peer_map, MS).
+    Matches = ets:select(S#state.peer_map, MS),
+    lists:foldl(fun({P, PI}, {Interested, NotInterested}) ->
+			case PI#peer_info.interested of
+			    true ->
+				{[{P,
+				   PI#peer_info.downloaded,
+				   PI#peer_info.uploaded} | Interested],
+				 NotInterested};
+			    false ->
+				{Interested,
+				 [{P,
+				   PI#peer_info.downloaded,
+				   PI#peer_info.uploaded} | NotInterested]}
+			end
+		end,
+		{[], []},
+		Matches).
 
 %%--------------------------------------------------------------------
 %% Function: reset_round(state(), InfoHash) -> ()
