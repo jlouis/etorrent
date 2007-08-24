@@ -137,7 +137,7 @@ process_ips_binary(Str, Accum) ->
     {IPList, PortList} = lists:split(4, Peer),
     case {IPList, PortList} of
 	{[I1, I2, I3, I4], [P1, P2]} ->
-	    IP = {I1, I2, I3, I4}, % TODO: Correct endianess?
+	    IP = {I1, I2, I3, I4},
 	    <<Port:16/integer-big>> = list_to_binary([P1, P2]),
 	    process_ips_binary(Rest, [{IP, Port} | Accum])
     end.
