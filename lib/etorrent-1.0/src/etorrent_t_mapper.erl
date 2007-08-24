@@ -18,7 +18,8 @@
 %% API
 -export([start_link/0, store_hash/1, remove_hash/1, lookup/1,
 	 store_peer/4, remove_peer/1, is_connected_peer/3,
-	is_connected_peer_bad/3]).
+	is_connected_peer_bad/3,
+	choked/1, unchoked/1, uploaded_data/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -26,6 +27,14 @@
 
 -record(state, { info_hash_map = none,
 		 peer_map = none}).
+
+-record(peer_info, {uploaded = 0,
+		    downloaded = 0,
+		    interested = false,
+		    remote_choking = true,
+
+		    optimistic_unchoke = false}).
+
 -define(SERVER, ?MODULE).
 
 %%====================================================================
@@ -44,11 +53,11 @@ store_hash(InfoHash) ->
 remove_hash(InfoHash) ->
     gen_server:call(?SERVER, {remove_hash, InfoHash}).
 
-store_peer(IP, Port, InfoHash, Ref) ->
-    gen_server:call(?SERVER, {store_peer, IP, Port, InfoHash, Ref}).
+store_peer(IP, Port, InfoHash, Pid) ->
+    gen_server:call(?SERVER, {store_peer, IP, Port, InfoHash, Pid}).
 
-remove_peer(Ref) ->
-    gen_server:call(?SERVER, {remove_peer, Ref}).
+remove_peer(Pid) ->
+    gen_server:call(?SERVER, {remove_peer, Pid}).
 
 is_connected_peer(IP, Port, InfoHash) ->
     gen_server:call(?SERVER, {is_connected_peer, IP, Port, InfoHash}).
@@ -56,6 +65,27 @@ is_connected_peer(IP, Port, InfoHash) ->
 % TODO: Change when we want to do smart peer handling.
 is_connected_peer_bad(IP, Port, InfoHash) ->
     gen_server:call(?SERVER, {is_connected_peer, IP, Port, InfoHash}).
+
+choked(Pid) ->
+    gen_server:call(?SERVER, {modify_peer, Pid,
+			      fun(PI) ->
+				      PI#peer_info{remote_choking = true}
+			      end}).
+
+unchoked(Pid) ->
+    gen_server:call(?SERVER, {modify_peer, Pid,
+			      fun(PI) ->
+				      PI#peer_info{remote_choking = false}
+			      end}).
+
+uploaded_data(Pid, Amount) ->
+    gen_server:call(?SERVER,
+		    {modify_peer, Pid,
+		     fun(PI) ->
+			     PI#peer_info{
+			       uploaded = PI#peer_info.uploaded + Amount}
+		     end}).
+
 
 lookup(InfoHash) ->
     gen_server:call(?SERVER, {lookup, InfoHash}).
@@ -73,7 +103,7 @@ lookup(InfoHash) ->
 %%--------------------------------------------------------------------
 init([]) ->
     {ok, #state{info_hash_map = ets:new(infohash_map, [named_table]),
-	        peer_map      = ets:new(peer_map, [bag, named_table])}}.
+	        peer_map      = ets:new(peer_map, [named_table])}}.
 
 %%--------------------------------------------------------------------
 %% Function: %% handle_call(Request, From, State) -> {reply, Reply, State} |
@@ -84,14 +114,19 @@ init([]) ->
 %%                                      {stop, Reason, State}
 %% Description: Handling call messages
 %%--------------------------------------------------------------------
-handle_call({store_peer, IP, Port, InfoHash, Ref}, _From, S) ->
-    ets:insert(S#state.peer_map, {IP, Port, InfoHash, Ref}),
+handle_call({store_peer, IP, Port, InfoHash, Pid}, _From, S) ->
+    ets:insert(S#state.peer_map, {Pid, {IP, Port}, InfoHash, #peer_info{}}),
     {reply, ok, S};
-handle_call({remove_peer, Ref}, _From, S) ->
-    ets:match_delete(S#state.peer_map, {'_', '_', '_', Ref}),
+handle_call({remove_peer, Pid}, _From, S) ->
+    ets:match_delete(S#state.peer_map, {Pid, '_', '_', '_'}),
+    {reply, ok, S};
+handle_call({modify_peer, Pid, F}, _From, S) ->
+    [[Pid, IPPort, InfoHash, PI]] = ets:match(S#state.peer_map,
+					      {Pid, '_', '_', '_'}),
+    ets:insert(S#state.peer_map, {Pid, IPPort, InfoHash, F(PI)}),
     {reply, ok, S};
 handle_call({is_connected_peer, IP, Port, InfoHash}, _From, S) ->
-    case ets:match(S#state.peer_map, {IP, Port, InfoHash}) of
+    case ets:match(S#state.peer_map, {'_', {IP, Port}, InfoHash, '_'}) of
 	[] ->
 	    {reply, false, S};
 	X when is_list(X) ->

@@ -42,16 +42,6 @@
 
 	        mode = leeching}).
 
--record(peer_info, {uploaded = 0,
-		    downloaded = 0,
-		    interested = false,
-		    remote_choking = true,
-
-		    ref = none,
-		    optimistic_unchoke = false,
-		    ip = none,
-		    port = none}).
-
 -define(MAX_PEER_PROCESSES, 40).
 -define(ROUND_TIME, 10000).
 -define(DEFAULT_NUM_DOWNLOADERS, 4).
@@ -110,19 +100,13 @@ init([OurPeerId, PeerGroup, InfoHash, StatePid, FileSystemPid]) ->
 		 peer_process_dict = dict:new() }}.
 
 handle_call(choked, {Pid, _Tag}, S) ->
-    {reply, ok, peer_dict_update(
-		  Pid,
-		  fun(PI) ->
-			  PI#peer_info{remote_choking = true}
-		  end,
-		  S)};
+    % TODO: This call (and the next couple ones)
+    %  can be shoved directly to etorrent_t_mapper
+    etorrent_t_mapper:choked(Pid),
+    {reply, ok, S};
 handle_call(unchoked, {Pid, _Tag}, S) ->
-    {reply, ok, peer_dict_update(
-		  Pid,
-		  fun(PI) ->
-			  PI#peer_info{ remote_choking = false}
-		  end,
-		  S)};
+    etorrent_t_mapper:unchoked(Pid),
+    {reply, ok, S};
 handle_call({uploaded_data, Amount}, {Pid, _Tag}, S) ->
     {reply, ok, peer_dict_update(
 		  Pid,
