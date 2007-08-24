@@ -11,7 +11,6 @@
 %% API
 -export([read_all_of_file/1, list_tabulate/2, queue_remove/2,
 	 queue_remove_with_check/2, sets_is_empty/1,
-	 build_info_hash_encoded_form_rfc1738/1,
 	 build_uri_encoded_form_rfc1738/1]).
 
 %%====================================================================
@@ -75,10 +74,10 @@ queue_remove(Item, Q) ->
     queue:from_list(List).
 
 %%--------------------------------------------------------------------
-%% Function: build_uri_encoded_form_rfc1738(List) -> String
+%% Function: build_uri_encoded_form_rfc1738(list() | binary()) -> String
 %% Description: Convert the list into RFC1738 encoding (URL-encoding).
 %%--------------------------------------------------------------------
-build_uri_encoded_form_rfc1738(List) ->
+build_uri_encoded_form_rfc1738(List) when is_list(List) ->
     Unreserved = rfc_3986_unreserved_characters_set(),
     lists:flatten(lists:map(
 		    fun (E) ->
@@ -90,16 +89,8 @@ build_uri_encoded_form_rfc1738(List) ->
 				      ["%", io_lib:format("~2.16.0B", [E])])
 			    end
 		    end,
-		    List)).
-
-%%--------------------------------------------------------------------
-%% Function: build_info_hash_encoded_form_rfc1738(List) -> String
-%% Description: Convenience function -- could probably be changed into
-%%   a variant of build_uri_encoded_form_rfc1738 checking types.
-%%--------------------------------------------------------------------
-%% TODO: Put this into build_uri_encoded_form_rfc1738 and rename both
-%%   functions.
-build_info_hash_encoded_form_rfc1738(Binary) ->
+		    List));
+build_uri_encoded_form_rfc1738(Binary) when is_binary(Binary) ->
     build_uri_encoded_form_rfc1738(binary_to_list(Binary)).
 
 %%====================================================================
