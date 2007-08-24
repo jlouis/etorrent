@@ -234,7 +234,9 @@ build_tracker_url(S, Event) ->
 	       {"uploaded", Uploaded},
 	       {"downloaded", Downloaded},
 	       {"left", Left},
-	       {"port", Port}],
+	       {"port", Port},
+	       {"no_peer_id", "1"},
+	       {"compact", "1"}],
     EReq = case Event of
 	       none ->
 		   Request;
