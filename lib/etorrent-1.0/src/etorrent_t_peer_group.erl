@@ -355,7 +355,7 @@ spawn_new_peer(IP, Port, N, S) ->
 			  self()),
 	    _Ref = erlang:monitor(process, Pid),
 	    etorrent_t_peer_recv:connect(Pid, IP, Port),
-	    etorrent_t_mapper:store_peer(IP, Port, S#state.info_hash),
+	    etorrent_t_mapper:store_peer(IP, Port, S#state.info_hash, Pid),
 	    fill_peers(N-1, S)
     end.
 

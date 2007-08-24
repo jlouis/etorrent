@@ -25,7 +25,8 @@
 	 interested/1, not_interested/1,
 	 set_optimistic_unchoke/2,
 	 remove_optimistic_unchoking/1,
-	 interest_split/1]).
+	 interest_split/1,
+	 reset_round/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -129,6 +130,10 @@ interest_split(InfoHash) ->
     gen_server:call(?SERVER,
 		    {interest_split, InfoHash}).
 
+reset_round(InfoHash) ->
+    gen_server:call(?SERVER,
+		    {reset_round, InfoHash}).
+
 lookup(InfoHash) ->
     gen_server:call(?SERVER, {lookup, InfoHash}).
 
@@ -171,6 +176,9 @@ handle_call({modify_peer, Pid, F}, _From, S) ->
     [[IPPort, InfoHash, PI]] = ets:match(S#state.peer_map,
 					      {Pid, '$1', '$2', '$3'}),
     ets:insert(S#state.peer_map, {Pid, IPPort, InfoHash, F(PI)}),
+    {reply, ok, S};
+handle_call({reset_round, InfoHash}, _From, S) ->
+    reset_round(InfoHash, S),
     {reply, ok, S};
 handle_call({remove_optistic_unchoking, InfoHash}, _From, S) ->
     Matches = ets:match(S#state.peer_map, {'$1', '$2', InfoHash, '$3'}),
@@ -262,7 +270,7 @@ find_interested_peers(S, InfoHash, Val) ->
 			     IH == InfoHash) ->
 			    {P, PI#peer_info.downloaded, PI#peer_info.uploaded}
 		    end),
-    match:select(S#state.peer_map, MS).
+    ets:select(S#state.peer_map, MS).
 
 %%--------------------------------------------------------------------
 %% Function: reset_round(state(), InfoHash) -> ()
