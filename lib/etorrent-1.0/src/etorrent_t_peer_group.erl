@@ -8,19 +8,12 @@
 %%%      Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
 %%%-------------------------------------------------------------------
 
-%% TODO: URGH! This is crap... the peer_info record is not used at all but
-%%   that is the record that contains everything we need. So either we should
-%%   store the information in the ets table or we should keep the record and
-%%   maintain it accordingly.
-%%   Another to-fix thing.... grrr...
 -module(etorrent_t_peer_group).
 
 -behaviour(gen_server).
 
 %% API
--export([start_link/5, add_peers/2, uploaded_data/2, downloaded_data/2,
-	peer_interested/1, peer_not_interested/1, peer_choked/1,
-	peer_unchoked/1, got_piece_from_peer/2, new_incoming_peer/2,
+-export([start_link/5, add_peers/2, got_piece_from_peer/2, new_incoming_peer/2,
 	seed/1]).
 
 %% gen_server callbacks
@@ -56,24 +49,6 @@ start_link(OurPeerId, PeerGroup, InfoHash, StatePid, FileSystemPid) ->
 add_peers(Pid, IPList) ->
     gen_server:cast(Pid, {add_peers, IPList}).
 
-uploaded_data(Pid, Amount) ->
-    gen_server:call(Pid, {uploaded_data, Amount}).
-
-downloaded_data(Pid, Amount) ->
-    gen_server:call(Pid, {downloaded_data, Amount}).
-
-peer_interested(Pid) ->
-    gen_server:call(Pid, interested).
-
-peer_not_interested(Pid) ->
-    gen_server:call(Pid, not_interested).
-
-peer_choked(Pid) ->
-    gen_server:call(Pid, choked).
-
-peer_unchoked(Pid) ->
-    gen_server:call(Pid, unchoked).
-
 got_piece_from_peer(Pid, Index) ->
     gen_server:cast(Pid, {got_piece_from_peer, Index}).
 
@@ -99,26 +74,6 @@ init([OurPeerId, PeerGroup, InfoHash, StatePid, FileSystemPid]) ->
 		 file_system_pid = FileSystemPid,
 		 peer_process_dict = dict:new() }}.
 
-handle_call(choked, {Pid, _Tag}, S) ->
-    % TODO: This call (and the next couple ones)
-    %  can be shoved directly to etorrent_t_mapper
-    etorrent_t_mapper:choked(Pid),
-    {reply, ok, S};
-handle_call(unchoked, {Pid, _Tag}, S) ->
-    etorrent_t_mapper:unchoked(Pid),
-    {reply, ok, S};
-handle_call({uploaded_data, Amount}, {Pid, _Tag}, S) ->
-    etorrent_t_mapper:uploaded_data(Pid, Amount),
-    {reply, ok, S};
-handle_call({downloaded_data, Amount}, {Pid, _Tag}, S) ->
-    etorrent_t_mapper:downloaded_data(Pid, Amount),
-    {reply, ok, S};
-handle_call(interested, {Pid, _Tag}, S) ->
-    etorrent_t_mapper:interested(Pid),
-    {reply, ok, S};
-handle_call(not_interested, {Pid, _Tag}, S) ->
-    etorrent_t_mapper:not_interested(Pid),
-    {reply, ok, S};
 handle_call({new_incoming_peer, IP, Port}, _From, S) ->
     {Reply, NS} = case is_bad_peer(IP, Port, S) of
 		      true ->
@@ -156,32 +111,12 @@ handle_info(round_tick, S) ->
 	    etorrent_t_mapper:reset_round(S#state.info_hash),
 	    {noreply, NS#state{round = NS#state.round - 1}}
     end;
-handle_info({'DOWN', Ref, process, _Pid, _Reason}, S) ->
-    % Pid has exited for some reason, handle it accordingly
-    % TODO: This is naive. It should be fixed later.
-    etorrent_t_mapper:remove_peer(Ref),
-    {noreply, S};
-
-%%     case Reason of
-%% 	normal ->
-%% 	    D = dict:erase(Pid, S#state.peer_process_dict),
-%% 	    {ok, NS} = start_new_peers(S#state{peer_process_dict = D}),
-%% 	    {noreply, NS};
-%% 	shutdown ->
-%% 	    D = dict:erase(Pid, S#state.peer_process_dict),
-%% 	    {ok, NS} = start_new_peers(S#state{peer_process_dict = D}),
-%% 	    {noreply, NS};
-%% 	R ->
-%% 	    PI = dict:fetch(Pid, S#state.peer_process_dict),
-%% 	    D  = dict:erase(Pid, S#state.peer_process_dict),
-%% 	    % TODO: Make this better than it is.
-%% 	    Bad = dict:update(PI#peer_info.ip, fun(L) -> [R | L] end,
-%% 			      [R], S#state.bad_peers),
-%% 	    {ok, NS} = start_new_peers(S#state{peer_process_dict = D,
-%% 					       bad_peers = Bad}),
-%% 	    {noreply, NS}
-%%     end;
-
+handle_info({'DOWN', _Ref, process, Pid, _Reason}, S) ->
+    % TODO: This is naive. If Reason is not normal or shutdown
+    %   then handle dirty and bad peers.
+    etorrent_t_mapper:remove_peer(Pid),
+    {ok, NS} = start_new_peers(S),
+    {noreply, NS};
 handle_info(Info, State) ->
     io:format("Unknown info: ~p~n", [Info]),
     {noreply, State}.

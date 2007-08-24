@@ -151,7 +151,7 @@ handle_cast({connect, IP, Port}, S) ->
 	    {stop, normal, S}
     end;
 handle_cast({uploaded_data, Amount}, S) ->
-    etorrent_t_peer_group:uploaded_data(S#state.master_pid, Amount),
+    etorrent_t_mapper:uploaded_data(self(), Amount),
     {noreply, S};
 handle_cast({complete_handshake, _ReservedBytes, Socket}, S) ->
     etorrent_peer_communication:complete_handshake_header(Socket,
@@ -237,17 +237,17 @@ code_change(_OldVsn, State, _Extra) ->
 handle_message(keep_alive, S) ->
     {ok, S};
 handle_message(choke, S) ->
-    etorrent_t_peer_group:peer_choked(S#state.master_pid),
+    etorrent_t_mapper:choked(self()),
     NS = unqueue_all_pieces(S),
     {ok, NS#state { remote_choked = true }};
 handle_message(unchoke, S) ->
-    etorrent_t_peer_group:peer_unchoked(S#state.master_pid),
+    etorrent_t_mapper:unchoked(self()),
     try_to_queue_up_pieces(S#state{remote_choked = false});
 handle_message(interested, S) ->
-    etorrent_t_peer_group:peer_interested(S#state.master_pid),
+    etorrent_t_mapper:interested(self()),
     {ok, S#state { remote_interested = true}};
 handle_message(not_interested, S) ->
-    etorrent_t_peer_group:peer_not_interested(S#state.master_pid),
+    etorrent_t_mapper:not_interested(self()),
     {ok, S#state { remote_interested = false}};
 handle_message({request, Index, Offset, Len}, S) ->
     etorrent_t_peer_send:remote_request(S#state.send_pid, Index, Offset, Len),
@@ -289,7 +289,7 @@ handle_message({bitfield, BitField}, S) ->
 handle_message({piece, Index, Offset, Data}, S) ->
     Len = size(Data),
     etorrent_t_state:downloaded_data(S#state.state_pid, Len),
-    etorrent_t_peer_group:downloaded_data(S#state.master_pid, Len),
+    etorrent_t_mapper:downloaded_data(self(), Len),
     case handle_got_chunk(Index, Offset, Data, Len, S) of
 	stop ->
 	    {stop, normal, S};
