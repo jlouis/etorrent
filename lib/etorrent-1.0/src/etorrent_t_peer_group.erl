@@ -108,35 +108,17 @@ handle_call(unchoked, {Pid, _Tag}, S) ->
     etorrent_t_mapper:unchoked(Pid),
     {reply, ok, S};
 handle_call({uploaded_data, Amount}, {Pid, _Tag}, S) ->
-    {reply, ok, peer_dict_update(
-		  Pid,
-		  fun(PI) ->
-			  PI#peer_info{
-			    uploaded = PI#peer_info.uploaded + Amount}
-		  end,
-		  S)};
+    etorrent_t_mapper:uploaded_data(Pid, Amount),
+    {reply, ok, S};
 handle_call({downloaded_data, Amount}, {Pid, _Tag}, S) ->
-    {reply, ok, peer_dict_update(
-		  Pid,
-		  fun(PI) ->
-			  PI#peer_info{
-			    downloaded = PI#peer_info.downloaded + Amount}
-		  end,
-		  S)};
+    etorrent_t_mapper:downloaded_data(Pid, Amount),
+    {reply, ok, S};
 handle_call(interested, {Pid, _Tag}, S) ->
-    {reply, ok, peer_dict_update(
-		  Pid,
-		  fun(PI) ->
-			  PI#peer_info{interested = true}
-		  end,
-		  S)};
+    etorrent_t_mapper:interested(Pid),
+    {reply, ok, S};
 handle_call(not_interested, {Pid, _Tag}, S) ->
-    {reply, ok, peer_dict_update(
-		  Pid,
-		  fun(PI) ->
-			  PI#peer_info{interested = false}
-		  end,
-		  S)};
+    etorrent_t_mapper:not_interested(Pid),
+    {reply, ok, S};
 handle_call({new_incoming_peer, IP, Port}, _From, S) ->
     {Reply, NS} = case is_bad_peer(IP, Port, S) of
 		      true ->
@@ -164,13 +146,15 @@ handle_cast(_Msg, State) ->
 handle_info(round_tick, S) ->
     case S#state.round of
 	0 ->
-	    {NS, DoNotTouchPids} = perform_choking_unchoking(
-				     remove_optimistic_unchoking(S)),
+	    etorrent_t_mapper:remove_optimistic_unchoking(S#state.info_hash),
+	    {NS, DoNotTouchPids} = perform_choking_unchoking(S),
 	    NNS = select_optimistic_unchoker(DoNotTouchPids, NS),
-	    {noreply, reset_round(NNS#state{round = 2})};
+	    etorrent_t_mapper:reset_round(S#state.info_hash),
+	    {noreply, NNS#state{round = 2}};
 	N when is_integer(N) ->
 	    {NS, _DoNotTouchPids} = perform_choking_unchoking(S),
-	    {noreply, reset_round(NS#state{round = NS#state.round - 1})}
+	    etorrent_t_mapper:reset_round(S#state.info_hash),
+	    {noreply, NS#state{round = NS#state.round - 1}}
     end;
 handle_info({'DOWN', Ref, process, _Pid, _Reason}, S) ->
     % Pid has exited for some reason, handle it accordingly
@@ -225,11 +209,9 @@ start_new_incoming_peer(IP, Port, S) ->
 			  S#state.state_pid,
 			  S#state.file_system_pid,
 			  self()),
-
-	    Ref = erlang:monitor(process, Pid),
-	    PI = #peer_info{port = Port, ip = IP, ref = Ref},
-	    D = dict:store(Pid, PI, S#state.peer_process_dict),
-	    {ok, S#state{peer_process_dict = D}};
+	    erlang:monitor(process, Pid),
+	    etorrent_t_mapper:store_peer(IP, Port, S#state.info_hash, Pid),
+	    {ok, S};
 	true ->
 	    already_enough_connections
     end.
@@ -261,14 +243,9 @@ select_optimistic_unchoker(Size, List, DoNotTouchPids, S) ->
 	true ->
 	    select_optimistic_unchoker(Size, List, DoNotTouchPids, S);
 	false ->
-	    NS = peer_dict_update(Pid,
-				  fun(PI) ->
-					  PI#peer_info{optimistic_unchoke =
-						       true}
-				  end,
-				  S),
+	    etorrent_t_mapper:set_optimistic_unchoke(Pid, true),
 	    etorrent_t_peer_recv:unchoke(Pid),
-	    NS
+	    S
     end.
 
 
@@ -278,8 +255,8 @@ select_optimistic_unchoker(Size, List, DoNotTouchPids, S) ->
 %%   specification.
 %%--------------------------------------------------------------------
 perform_choking_unchoking(S) ->
-    NotInterested = find_not_interested_peers(S#state.peer_process_dict),
-    Interested    = find_interested_peers(S#state.peer_process_dict),
+    {Interested, NotInterested} =
+	etorrent_t_mapper:interest_split(S#state.info_hash),
     % N fastest interesteds should be kept
     {Downloaders, Rest} =
 	find_fastest_peers(?DEFAULT_NUM_DOWNLOADERS,
@@ -295,23 +272,17 @@ perform_choking_unchoking(S) ->
     DoNotTouchPids = sets:from_list(Downloaders),
     {S, DoNotTouchPids}.
 
-remove_optimistic_unchoking(S) ->
-    peer_dict_map(fun(_K, PI) ->
-			  PI#peer_info{optimistic_unchoke = false}
-		  end,
-		  S).
-
 sort_fastest_downloaders(Peers) ->
     lists:sort(
-      fun ({_K1, PI1}, {_K2, PI2}) ->
-	      PI1#peer_info.downloaded > PI2#peer_info.downloaded
+      fun ({_K1, {DL1, _UL1}}, {_K2, {DL2, _UL2}}) ->
+	      DL1 > DL2
       end,
       dict:to_list(Peers)).
 
 sort_fastest_uploaders(Peers) ->
     lists:sort(
-      fun ({_K1, PI1}, {_K2, PI2}) ->
-	      PI1#peer_info.uploaded > PI2#peer_info.uploaded
+      fun ({_K1, {_DL1, UL1}}, {_K2, {_DL2, UL2}}) ->
+	      UL1 > UL2
       end,
       dict:to_list(Peers)).
 
@@ -338,28 +309,6 @@ choke_peers(Pids) ->
 			  etorrent_t_peer_recv:choke(P)
 		  end, Pids),
     ok.
-
-find_interested_peers(Dict) ->
-    dict:filter(fun(_K, PI) -> PI#peer_info.interested end,
-		Dict).
-
-find_not_interested_peers(Dict) ->
-    dict:filter(fun(_K, PI) -> not(PI#peer_info.interested) end,
-		Dict).
-
-
-%%--------------------------------------------------------------------
-%% Function: peer_dict_update(pid, fun(), state()) -> state()
-%% Description: Run fun as an updater on the pid entry in the peer
-%%   process dict.
-%%--------------------------------------------------------------------
-peer_dict_update(Pid, F, S) ->
-    D = dict:update(Pid, F, S#state.peer_process_dict),
-    S#state{peer_process_dict = D}.
-
-peer_dict_map(F, S) ->
-    D = dict:map(F, S#state.peer_process_dict),
-    S#state{peer_process_dict = D}.
 
 update_available_peers(IPList, S) ->
     NewList = lists:usort(IPList ++ S#state.available_peers),
@@ -422,14 +371,3 @@ is_bad_peer(IP, Port, S) ->
 find_peer_in_process_list(IP, Port, S) ->
     etorrent_t_mapper:is_connected_peer(IP, Port, S#state.info_hash).
 
-%%--------------------------------------------------------------------
-%% Function: resetorrent_round(state()) -> state()
-%% Description: Reset the amount of data uploaded and downloaded.
-%%--------------------------------------------------------------------
-reset_round(S) ->
-    D = dict:map(fun(_Pid, PI) ->
-			 PI#peer_info{uploaded = 0,
-				      downloaded = 0}
-		 end,
-		 S#state.peer_process_dict),
-    S#state{peer_process_dict = D}.

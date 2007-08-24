@@ -15,11 +15,17 @@
 
 -behaviour(gen_server).
 
+-include_lib("stdlib/include/ms_transform.hrl").
+
 %% API
 -export([start_link/0, store_hash/1, remove_hash/1, lookup/1,
 	 store_peer/4, remove_peer/1, is_connected_peer/3,
-	is_connected_peer_bad/3,
-	choked/1, unchoked/1, uploaded_data/2]).
+	 is_connected_peer_bad/3,
+	 choked/1, unchoked/1, uploaded_data/2, downloaded_data/2,
+	 interested/1, not_interested/1,
+	 set_optimistic_unchoke/2,
+	 remove_optimistic_unchoking/1,
+	 interest_split/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -86,6 +92,42 @@ uploaded_data(Pid, Amount) ->
 			       uploaded = PI#peer_info.uploaded + Amount}
 		     end}).
 
+downloaded_data(Pid, Amount) ->
+    gen_server:call(?SERVER,
+		    {modify_peer, Pid,
+		     fun(PI) ->
+			     PI#peer_info{
+			       downloaded = PI#peer_info.downloaded + Amount}
+		     end}).
+
+interested(Pid) ->
+    gen_server:call(?SERVER,
+		    {modify_peer, Pid,
+		     fun(PI) ->
+			     PI#peer_info{interested = true}
+		     end}).
+
+not_interested(Pid) ->
+    gen_server:call(?SERVER,
+		    {modify_peer, Pid,
+		     fun(PI) ->
+			     PI#peer_info{interested = false}
+		     end}).
+
+set_optimistic_unchoke(Pid, Val) ->
+    gen_server:call(?SERVER,
+		    {modify_peer, Pid,
+		     fun(PI) ->
+			     PI#peer_info{optimistic_unchoke = Val}
+		     end}).
+
+remove_optimistic_unchoking(InfoHash) ->
+    gen_server:call(?SERVER,
+		    {remove_optistic_unchoking, InfoHash}).
+
+interest_split(InfoHash) ->
+    gen_server:call(?SERVER,
+		    {interest_split, InfoHash}).
 
 lookup(InfoHash) ->
     gen_server:call(?SERVER, {lookup, InfoHash}).
@@ -120,10 +162,25 @@ handle_call({store_peer, IP, Port, InfoHash, Pid}, _From, S) ->
 handle_call({remove_peer, Pid}, _From, S) ->
     ets:match_delete(S#state.peer_map, {Pid, '_', '_', '_'}),
     {reply, ok, S};
+handle_call({interest_split, InfoHash}, _From, S) ->
+    % TODO: Can be optimized into a single call
+    Intersted = find_interested_peers(S, InfoHash, true),
+    NotInterested = find_interested_peers(S, InfoHash, false),
+    {reply, {Intersted, NotInterested}, S};
 handle_call({modify_peer, Pid, F}, _From, S) ->
-    [[Pid, IPPort, InfoHash, PI]] = ets:match(S#state.peer_map,
-					      {Pid, '_', '_', '_'}),
+    [[IPPort, InfoHash, PI]] = ets:match(S#state.peer_map,
+					      {Pid, '$1', '$2', '$3'}),
     ets:insert(S#state.peer_map, {Pid, IPPort, InfoHash, F(PI)}),
+    {reply, ok, S};
+handle_call({remove_optistic_unchoking, InfoHash}, _From, S) ->
+    Matches = ets:match(S#state.peer_map, {'$1', '$2', InfoHash, '$3'}),
+    lists:foreach(fun([Pid, IPPort, PI]) ->
+			  ets:insert(
+			    S#state.peer_map,
+			    {Pid, IPPort, InfoHash,
+			     PI#peer_info{optimistic_unchoke = false}})
+		  end,
+		  Matches),
     {reply, ok, S};
 handle_call({is_connected_peer, IP, Port, InfoHash}, _From, S) ->
     case ets:match(S#state.peer_map, {'_', {IP, Port}, InfoHash, '_'}) of
@@ -199,3 +256,24 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 %%% Internal functions
 %%--------------------------------------------------------------------
+find_interested_peers(S, InfoHash, Val) ->
+    MS = ets:fun2ms(fun({P, _IP, IH, PI})
+		       when (PI#peer_info.interested == Val andalso
+			     IH == InfoHash) ->
+			    {P, PI#peer_info.downloaded, PI#peer_info.uploaded}
+		    end),
+    match:select(S#state.peer_map, MS).
+
+%%--------------------------------------------------------------------
+%% Function: reset_round(state(), InfoHash) -> ()
+%% Description: Reset the amount of uploaded and downloaded data
+%%--------------------------------------------------------------------
+reset_round(S, InfoHash) ->
+    Matches = ets:match(S#state.peer_map, {'$1', '$2', InfoHash, '$3'}),
+    lists:foreach(fun([Pid, IPPort, PI]) ->
+			  ets:insert(S#state.peer_map,
+				     {Pid, IPPort, InfoHash,
+				      PI#peer_info{uploaded = 0,
+						   downloaded = 0}})
+		  end,
+		  Matches).
