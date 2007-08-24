@@ -138,7 +138,7 @@ process_ips_binary(Str, Accum) ->
     case {IPList, PortList} of
 	{[I1, I2, I3, I4], [P1, P2]} ->
 	    IP = {I1, I2, I3, I4}, % TODO: Correct endianess?
-	    Port = {P1, P2},
+	    <<Port:16/integer-big>> = list_to_binary([P1, P2]),
 	    process_ips_binary(Rest, [{IP, Port} | Accum])
     end.
 
