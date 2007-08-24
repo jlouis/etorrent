@@ -17,7 +17,7 @@
 %%====================================================================
 load_torrent(Workdir, Path) ->
     P = filename:join([Workdir, Path]),
-    {ok, Torrent} = etorrent_metainfo:parse(P),
+    {ok, Torrent} = etorrent_bcoding:parse(P),
     {ok, Files} = etorrent_metainfo:get_files(Torrent),
     {ok, Name} = etorrent_metainfo:get_name(Torrent),
     FilesToCheck =

@@ -11,7 +11,8 @@
 -vsn("1.0").
 
 %% API
--export([encode/1, decode/1, search_dict/2, search_dict_default/3]).
+-export([encode/1, decode/1, search_dict/2, search_dict_default/3,
+	parse/1]).
 
 %%====================================================================
 %% API
@@ -75,6 +76,25 @@ search_dict_default(Key, Dict, Default) ->
 	    Val;
 	_ ->
 	    Default
+    end.
+
+%%--------------------------------------------------------------------
+%% Function: parse/1
+%% Description: Parse a file into a Torrent structure.
+%%--------------------------------------------------------------------
+parse(File) ->
+    case file:open(File, [read]) of
+	{ok, IODev} ->
+	    Data = read_data(IODev),
+	    ok = file:close(IODev),
+	    case decode(Data) of
+		{ok, Torrent} ->
+		    {ok, Torrent};
+		{error, Reason} ->
+		    {not_a_torrent, Reason}
+	    end;
+	{error, Reason} ->
+	    {could_not_read_file, Reason}
     end.
 
 %%====================================================================
@@ -163,3 +183,13 @@ decode_dict_items(String, Accum) ->
 			decode_dict_items(Rest2, [{Key, Value} | Accum])
     end.
 
+read_data(IODev) ->
+    eat_lines(IODev, []).
+
+eat_lines(IODev, Accum) ->
+    case io:get_chars(IODev, ">", 8192) of
+	eof ->
+	    lists:concat(lists:reverse(Accum));
+	String ->
+	    eat_lines(IODev, [String | Accum])
+    end.
