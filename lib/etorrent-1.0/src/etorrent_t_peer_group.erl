@@ -277,14 +277,14 @@ sort_fastest_downloaders(Peers) ->
       fun ({_K1, {DL1, _UL1}}, {_K2, {DL2, _UL2}}) ->
 	      DL1 > DL2
       end,
-      dict:to_list(Peers)).
+      Peers).
 
 sort_fastest_uploaders(Peers) ->
     lists:sort(
       fun ({_K1, {_DL1, UL1}}, {_K2, {_DL2, UL2}}) ->
 	      UL1 > UL2
       end,
-      dict:to_list(Peers)).
+      Peers).
 
 find_fastest(N, Interested, F) ->
     List = F(Interested),
