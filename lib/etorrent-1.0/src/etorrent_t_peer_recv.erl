@@ -133,6 +133,9 @@ handle_cast({connect, IP, Port}, S) ->
 		   Socket,
 		   S#state.local_peer_id,
 		   S#state.info_hash) of
+		{ok, _ReservedBytes, PeerId}
+		  when PeerId == S#state.local_peer_id ->
+		    {stop, normal, S};
 		{ok, _ReservedBytes, PeerId} ->
 		    enable_socket_messages(Socket),
 		    {ok, SendPid} =

@@ -165,7 +165,7 @@ build_peer_protocol_header() ->
     <<PSSize:8, ?PROTOCOL_STRING, ?RESERVED_BYTES>>.
 
 %%--------------------------------------------------------------------
-%% Function: recieve_header(socket()) -> {ok, proto_version(),
+%% Function: receive_header(socket()) -> {ok, proto_version(),
 %%                                            info_hash(),
 %%                                            remote_peer_id()} |
 %%                                       {error, Reason}

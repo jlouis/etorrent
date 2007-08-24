@@ -268,7 +268,7 @@ fill_peers(N, S) ->
 	    {ok, S};
 	[{IP, Port} | R] ->
 	    % Possible peer. Check it.
-	    case is_bad_peer_or_ourselves(IP, Port, S) of
+	    case is_bad_peer(IP, Port, S) of
 		true ->
 		    fill_peers(N, S#state{available_peers = R});
 		false ->
@@ -293,12 +293,6 @@ spawn_new_peer(IP, Port, N, S) ->
 	    etorrent_t_mapper:store_peer(IP, Port, S#state.info_hash, Pid),
 	    fill_peers(N-1, S)
     end.
-
-is_bad_peer_or_ourselves(IP, Port, S) ->
-    is_ourselves(IP, Port, S) or is_bad_peer(IP, Port, S).
-
-is_ourselves(_IP, _Port, _S) ->
-    false. % TODO: Fix this. It is not correct...
 
 is_bad_peer(IP, Port, S) ->
     etorrent_t_mapper:is_connected_peer_bad(IP, Port, S#state.info_hash).
