@@ -1,7 +1,8 @@
 %%%-------------------------------------------------------------------
 %%% File    : info_hash_map.erl
 %%% Author  : Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
-%%% Description : Global mapping of infohashes to Peer Masters
+%%% Description : Global mapping of infohashes to peer groups and a mapping
+%%%   of peers we are connected to.
 %%%
 %%% Created : 31 Jul 2007 by Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
 %%%-------------------------------------------------------------------
@@ -10,13 +11,15 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0, store_hash/1, remove_hash/1, lookup/1]).
+-export([start_link/0, store_hash/1, remove_hash/1, lookup/1,
+	 store_peer/3, remove_peer/3, is_connected_peer/3]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3]).
 
--record(state, { info_hash_map = none}).
+-record(state, { info_hash_map = none,
+		 peer_map = none}).
 -define(SERVER, ?MODULE).
 
 %%====================================================================
@@ -35,6 +38,15 @@ store_hash(InfoHash) ->
 remove_hash(InfoHash) ->
     gen_server:call(?SERVER, {remove_hash, InfoHash}).
 
+store_peer(IP, Port, InfoHash) ->
+    gen_server:call(?SERVER, {store_peer, IP, Port, InfoHash}).
+
+remove_peer(IP, Port, InfoHash) ->
+    gen_server:call(?SERVER, {remove_peer, IP, Port, InfoHash}).
+
+is_connected_peer(IP, Port, InfoHash) ->
+    gen_server:call(?SERVER, {is_connected_peer, IP, Port, InfoHash}).
+
 lookup(InfoHash) ->
     gen_server:call(?SERVER, {lookup, InfoHash}).
 
@@ -50,7 +62,8 @@ lookup(InfoHash) ->
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
 init([]) ->
-    {ok, #state{info_hash_map = ets:new(infohash_map, [named_table])}}.
+    {ok, #state{info_hash_map = ets:new(infohash_map, [named_table]),
+	        peer_map      = ets:new(peer_map, [bag, named_table])}}.
 
 %%--------------------------------------------------------------------
 %% Function: %% handle_call(Request, From, State) -> {reply, Reply, State} |
@@ -61,6 +74,19 @@ init([]) ->
 %%                                      {stop, Reason, State}
 %% Description: Handling call messages
 %%--------------------------------------------------------------------
+handle_call({store_peer, IP, Port, InfoHash}, _From, S) ->
+    ets:insert(S#state.peer_map, {IP, Port, InfoHash}),
+    {reply, ok, S};
+handle_call({remove_peer, IP, Port, InfoHash}, _From, S) ->
+    ets:delete(S#state.peer_map, {IP, Port, InfoHash}),
+    {reply, ok, S};
+handle_call({is_connected_peer, IP, Port, InfoHash}, _From, S) ->
+    case ets:match(S#state.peer_map, {IP, Port, InfoHash}) of
+	[] ->
+	    {reply, false, S};
+	X when is_list(X) ->
+	    {reply, true, S}
+    end;
 handle_call({store_hash, InfoHash}, {Pid, _Tag}, S) ->
     Ref = erlang:monitor(process, Pid),
     ets:insert(S#state.info_hash_map, {InfoHash, Pid, Ref}),
