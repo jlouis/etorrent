@@ -23,7 +23,7 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3]).
 
--record(state, { peer_id = none, % TODO: Rename to remote_peer_id
+-record(state, { remote_peer_id = none,
 		 local_peer_id = none,
 		 info_hash = none,
 
@@ -142,7 +142,7 @@ handle_cast({connect, IP, Port}, S) ->
 		    BF = etorrent_t_state:retrieve_bitfield(S#state.state_pid),
 		    etorrent_t_peer_send:send(SendPid, {bitfield, BF}),
 		    {noreply, S#state{tcp_socket = Socket,
-				      peer_id = PeerId,
+				      remote_peer_id = PeerId,
 				      send_pid = SendPid}};
 		{error, _X} ->
 		    {stop, normal, S}
@@ -338,7 +338,8 @@ get_queues(S) ->
 report_errornous_piece(Index, Offset, Len, S) ->
     error_logger:warning_msg(
       "Peer ~s sent us chunk ~p have no piece_request on~nRequests: ~p~n~p~n",
-      [S#state.peer_id, {Index, Offset, Len}, get_requests(S), get_queues(S)]).
+      [S#state.remote_peer_id, {Index, Offset, Len},
+       get_requests(S), get_queues(S)]).
 
 delete_piece(Index, Offset, Len, S) ->
     case delete_piece_from_request_sets(Index, Offset, Len, S) of
