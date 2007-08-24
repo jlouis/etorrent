@@ -202,9 +202,9 @@ calculate_amount_left(Handle, S) ->
     Sum = lists:foldl(fun([_Pn, Ops, Done], Sum) ->
 			      case Done of
 				  fetched ->
-				      Sum + size_of_ops(Ops);
+				      Sum;
 				  not_fetched ->
-				      Sum
+				      Sum + size_of_ops(Ops)
 			      end
 		      end,
 		      0,
