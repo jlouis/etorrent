@@ -7,6 +7,12 @@
 %%% Created : 18 Jul 2007 by
 %%%      Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
 %%%-------------------------------------------------------------------
+
+%% TODO: URGH! This is crap... the peer_info record is not used at all but
+%%   that is the record that contains everything we need. So either we should
+%%   store the information in the ets table or we should keep the record and
+%%   maintain it accordingly.
+%%   Another to-fix thing.... grrr...
 -module(etorrent_t_peer_group).
 
 -behaviour(gen_server).
