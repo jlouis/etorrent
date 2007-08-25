@@ -79,7 +79,7 @@ handle_info(timeout, S) ->
 	{error, closed} ->
 	    {noreply, S, 0};
 	{error, E} ->
-	    {stop, E}
+	    {stop, E, S}
     end.
 
 %%--------------------------------------------------------------------
@@ -126,6 +126,9 @@ lookup_infohash(Socket, ReservedBytes, InfoHash, PeerId) ->
 
 inform_peer_master(Socket, Pid, ReservedBytes, PeerId) ->
     case etorrent_t_peer_group:new_incoming_peer(Pid, PeerId) of
+	ok ->
+	    error_logger:info_reprot([must_not_happen]),
+	    ok;
 	{ok, PeerProcessPid} ->
 	    error_logger:info_report([ok, PeerProcessPid]),
 	    ok = etorrent_listener:controlling_process(Socket, PeerProcessPid),
