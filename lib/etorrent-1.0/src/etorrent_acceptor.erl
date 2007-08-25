@@ -127,11 +127,14 @@ lookup_infohash(Socket, ReservedBytes, InfoHash, PeerId) ->
 inform_peer_master(Socket, Pid, ReservedBytes, PeerId) ->
     case etorrent_t_peer_group:new_incoming_peer(Pid, PeerId) of
 	{ok, PeerProcessPid} ->
+	    error_logger:info_report([ok, PeerProcessPid]),
 	    ok = etorrent_listener:controlling_process(Socket, PeerProcessPid),
+	    error_logger:info_report([moved_control]),
 	    % TODO: Pass PeerId here?
 	    etorrent_t_peer_recv:complete_handshake(PeerProcessPid,
 						    ReservedBytes,
 						    Socket),
+	    error_logger:info_report([handshake_done]),
 	    ok;
 	bad_peer ->
 	    error_logger:info_report([peer_id_is_bad, PeerId]),
