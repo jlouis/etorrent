@@ -223,9 +223,8 @@ sort_fastest_uploaders(Peers) ->
 
 find_fastest(N, Interested, F) ->
     List = F(Interested),
-    PidList = lists:map(fun({K, _DL, _UL}) -> K end, List),
-    SplitPoint = lists:min([length(PidList), N]),
-    {Downloaders, Rest} = lists:split(SplitPoint, PidList),
+    SplitPoint = lists:min([length(List), N]),
+    {Downloaders, Rest} = lists:split(SplitPoint, List),
     {Downloaders, Rest}.
 
 find_fastest_peers(N, Interested, S) when S#state.mode == leeching ->
