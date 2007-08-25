@@ -109,6 +109,8 @@ init([Parent]) ->
 initializing({load_new_torrent, Path, PeerId}, S) ->
     {ok, Torrent, Files} =
 	etorrent_fs_checker:load_torrent(S#state.work_dir, Path),
+    Name = etorrent_metainfo:get_name(Torrent),
+    etorrent_event:starting_torrent(Name),
     ok = etorrent_fs_checker:ensure_file_sizes_correct(Files),
     {ok, FileDict} =
 	etorrent_fs_checker:build_dictionary_on_files(Torrent, Files),
@@ -167,6 +169,8 @@ started({tracker_error_report, Reason}, S) ->
     {next_state, started, S};
 started(seed, S) ->
     etorrent_t_peer_group:seed(S#state.peer_master_pid),
+    Name = etorrent_metainfo:get_name(S#state.torrent),
+    etorrent_event:completed_torrent(Name),
     etorrent_tracker_communication:torrent_completed(S#state.tracker_pid),
     {next_state, started, S};
 started(token, S) ->

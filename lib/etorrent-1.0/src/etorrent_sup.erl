@@ -28,6 +28,9 @@ start_link() ->
 %% Supervisor callbacks
 %%====================================================================
 init([]) ->
+    EventManager = {event_manager,
+		    {etorrent_event, start_link, []},
+		    permanent, 2000, worker, [etorrent_event]},
     InfoHashMap = {torrent_mapper,
 		   {etorrent_t_mapper, start_link, []},
 		    permanent, 2000, worker, [etorrent_t_mapper]},
@@ -50,10 +53,8 @@ init([]) ->
 		   {etorrent_t_pool_sup, start_link, []},
 		   transient, infinity, supervisor, [etorrent_t_pool_sup]},
     {ok, {{one_for_all, 1, 60},
-	  [InfoHashMap, FileAccessMap, Listener, Serializer, DirWatcherSup,
-	  TorrentMgr, TorrentPool]}}.
-
-
+	  [EventManager, InfoHashMap, FileAccessMap, Listener,
+	   Serializer, DirWatcherSup, TorrentMgr, TorrentPool]}}.
 
 %%====================================================================
 %% Internal functions
