@@ -109,6 +109,8 @@ init([Parent]) ->
 initializing({load_new_torrent, Path, PeerId}, S) ->
     {ok, Torrent, Files} =
 	etorrent_fs_checker:load_torrent(S#state.work_dir, Path),
+    Name = etorrent_metainfo:get_name(Torrent),
+    etorrent_event:starting_torrent(Name),
     ok = etorrent_fs_checker:ensure_file_sizes_correct(Files),
     {ok, FileDict} =
 	etorrent_fs_checker:build_dictionary_on_files(Torrent, Files),
