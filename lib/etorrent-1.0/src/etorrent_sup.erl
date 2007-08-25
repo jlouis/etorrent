@@ -40,6 +40,9 @@ init([]) ->
     Listener = {listener,
 		{etorrent_listener, start_link, []},
 		permanent, 2000, worker, [etorrent_listener]},
+    AcceptorSup = {acceptor_sup,
+		   {etorrent_acceptor_sup, start_link, []},
+		   permanent, infinity, supervisor, [etorrent_acceptor_sup]},
     Serializer = {fs_serializer,
 		  {etorrent_fs_serializer, start_link, []},
 		  permanent, 2000, worker, [etorrent_fs_serializer]},
@@ -53,7 +56,7 @@ init([]) ->
 		   {etorrent_t_pool_sup, start_link, []},
 		   transient, infinity, supervisor, [etorrent_t_pool_sup]},
     {ok, {{one_for_all, 1, 60},
-	  [EventManager, InfoHashMap, FileAccessMap, Listener,
+	  [EventManager, InfoHashMap, FileAccessMap, Listener, AcceptorSup,
 	   Serializer, DirWatcherSup, TorrentMgr, TorrentPool]}}.
 
 %%====================================================================

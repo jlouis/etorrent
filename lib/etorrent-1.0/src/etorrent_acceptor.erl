@@ -10,7 +10,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/1]).
+-export([start_link/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -25,8 +25,8 @@
 %% Function: start_link() -> {ok,Pid} | ignore | {error,Error}
 %% Description: Starts the server
 %%--------------------------------------------------------------------
-start_link(ListenSocket) ->
-    gen_server:start_link(?MODULE, [ListenSocket], []).
+start_link() ->
+    gen_server:start_link(?MODULE, [], []).
 
 %%====================================================================
 %% gen_server callbacks
@@ -39,7 +39,8 @@ start_link(ListenSocket) ->
 %%                         {stop, Reason}
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
-init([ListenSocket]) ->
+init([]) ->
+    {ok, ListenSocket} = etorrent_listener:get_socket(),
     {ok, #state{ listen_socket = ListenSocket}, 0}.
 
 %%--------------------------------------------------------------------
