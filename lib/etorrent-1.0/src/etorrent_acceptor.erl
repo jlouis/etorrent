@@ -127,12 +127,9 @@ lookup_infohash(Socket, ReservedBytes, InfoHash, PeerId) ->
     end.
 
 inform_peer_master(Socket, Pid, ReservedBytes, PeerId) ->
-    case etorrent_t_peer_group:new_incoming_peer(Pid, PeerId) of
-	ok ->
-	    error_logger:info_reprot([must_not_happen]),
-	    ok;
+    {ok, {Address, Port}} = inet:peername(Socket),
+    case etorrent_t_peer_group:new_incoming_peer(Pid, Address, Port) of
 	{ok, PeerProcessPid} ->
-	    error_logger:info_report([ok, PeerProcessPid]),
 	    ok = etorrent_listener:controlling_process(Socket, PeerProcessPid),
 	    error_logger:info_report([moved_control]),
 	    % TODO: Pass PeerId here?

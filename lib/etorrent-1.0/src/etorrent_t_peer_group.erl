@@ -13,7 +13,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/5, add_peers/2, got_piece_from_peer/2, new_incoming_peer/2,
+-export([start_link/5, add_peers/2, got_piece_from_peer/2, new_incoming_peer/3,
 	seed/1]).
 
 %% gen_server callbacks
@@ -52,8 +52,8 @@ add_peers(Pid, IPList) ->
 got_piece_from_peer(Pid, Index) ->
     gen_server:cast(Pid, {got_piece_from_peer, Index}).
 
-new_incoming_peer(Pid, PeerId) ->
-    gen_server:call(Pid, {new_incoming_peer, PeerId}).
+new_incoming_peer(Pid, IP, Port) ->
+    gen_server:call(Pid, {new_incoming_peer, IP, Port}).
 
 seed(Pid) ->
     gen_server:cast(Pid, seed).
@@ -135,8 +135,8 @@ code_change(_OldVsn, State, _Extra) ->
 start_new_incoming_peer(IP, Port, S) ->
     PeersMissing =
 	?MAX_PEER_PROCESSES - dict:size(S#state.peer_process_dict),
-    if
-	PeersMissing > 0 ->
+    case PeersMissing > 0 of
+	true ->
 	    {ok, Pid} = etorrent_t_peer_pool_sup:add_peer(
 			  S#state.peer_group_sup,
 			  S#state.our_peer_id,
@@ -147,7 +147,7 @@ start_new_incoming_peer(IP, Port, S) ->
 	    erlang:monitor(process, Pid),
 	    etorrent_t_mapper:store_peer(IP, Port, S#state.info_hash, Pid),
 	    {ok, Pid};
-	true ->
+	false ->
 	    already_enough_connections
     end.
 
