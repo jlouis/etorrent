@@ -28,6 +28,7 @@ ETORRENT_1.0_MODULES = etorrent_listener etorrent_t_pool_sup etorrent_acceptor \
 	etorrent_histogram \
 	etorrent_t_peer_pool_sup \
 	etorrent_t_peer_send \
+	etorrent_event \
 	etorrent_fs_pool_sup
 
 ETORRENT_1.0_SOURCES = $(ETORRENT_1.0_MODULES:%=$(ETORRENT_1.0_SRCDIR)/%.erl)
