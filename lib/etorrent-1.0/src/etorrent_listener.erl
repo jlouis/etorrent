@@ -95,7 +95,9 @@ handle_info(_Info, State) ->
 %% cleaning up. When it returns, the gen_server terminates with Reason.
 %% The return value is ignored.
 %%--------------------------------------------------------------------
-terminate(_Reason, _State) ->
+terminate(_Reason, State) ->
+    % Explicitly close the socket if we terminate.
+    gen_tcp:close(State#state.listen_socket),
     ok.
 
 %%--------------------------------------------------------------------
