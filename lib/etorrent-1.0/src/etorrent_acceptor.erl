@@ -78,6 +78,8 @@ handle_info(timeout, S) ->
 	    {noreply, S, 0};
 	{error, closed} ->
 	    {noreply, S, 0};
+	{error, econnaborted} ->
+	    {noreply, S, 0};
 	{error, E} ->
 	    {stop, E, S}
     end.
