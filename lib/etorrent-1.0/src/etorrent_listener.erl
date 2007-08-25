@@ -11,7 +11,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0, get_socket/0]).
+-export([start_link/0, get_socket/0, controlling_process/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -38,6 +38,9 @@ start_link() ->
 %%--------------------------------------------------------------------
 get_socket() ->
     gen_server:call(?SERVER, get_socket).
+
+controlling_process(Socket, Pid) ->
+    gen_server:call(?SERVER, {controlling_process, Socket, Pid}).
 
 %%====================================================================
 %% gen_server callbacks
@@ -66,6 +69,8 @@ init([]) ->
 %%--------------------------------------------------------------------
 handle_call(get_socket, _From, S) ->
     {reply, {ok, S#state.listen_socket}, S};
+handle_call({controlling_process, Socket, Pid}, _From, S) ->
+    {reply, gen_tcp:controlling_process(Socket, Pid), S};
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
