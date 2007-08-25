@@ -9,13 +9,16 @@
 
 -behaviour(gen_event).
 %% API
--export([start_link/0, add_handler/0]).
+-export([start_link/0, add_handler/0,
+	 starting_torrent/1, stopping_torrent/1, completed_torrent/1]).
 
 %% gen_event callbacks
 -export([init/1, handle_event/2, handle_call/2,
 	 handle_info/2, terminate/2, code_change/3]).
 
 -record(state, {}).
+
+-define(SERVER, ?MODULE).
 
 %%====================================================================
 %% gen_event callbacks

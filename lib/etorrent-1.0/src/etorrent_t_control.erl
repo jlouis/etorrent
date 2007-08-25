@@ -169,6 +169,8 @@ started({tracker_error_report, Reason}, S) ->
     {next_state, started, S};
 started(seed, S) ->
     etorrent_t_peer_group:seed(S#state.peer_master_pid),
+    Name = etorrent_metainfo:get_name(S#state.torrent),
+    etorrent_event:completed_torrent(Name),
     etorrent_tracker_communication:torrent_completed(S#state.tracker_pid),
     {next_state, started, S};
 started(token, S) ->
