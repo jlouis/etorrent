@@ -129,8 +129,8 @@ inform_peer_master(Socket, Pid, ReservedBytes, PeerId) ->
 	    ok = gen_tcp:controlling_process(Socket, PeerProcessPid),
 	    % TODO: Pass PeerId here?
 	    etorrent_t_peer_recv:complete_handshake(PeerProcessPid,
-						 ReservedBytes,
-						 Socket),
+						    ReservedBytes,
+						    Socket),
 	    ok;
 	bad_peer ->
 	    error_logger:info_report([peer_id_is_bad, PeerId]),

@@ -75,13 +75,13 @@ init([OurPeerId, PeerGroup, InfoHash, StatePid, FileSystemPid]) ->
 		 peer_process_dict = dict:new() }}.
 
 handle_call({new_incoming_peer, IP, Port}, _From, S) ->
-    {Reply, NS} = case is_bad_peer(IP, Port, S) of
-		      true ->
-			  {bad_peer, S};
-		      false ->
-			  start_new_incoming_peer(IP, Port, S)
-		  end,
-    {reply, Reply, NS};
+    Reply = case is_bad_peer(IP, Port, S) of
+		true ->
+		    {bad_peer, S};
+		false ->
+		    start_new_incoming_peer(IP, Port, S)
+	    end,
+    {reply, Reply, S};
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -146,7 +146,7 @@ start_new_incoming_peer(IP, Port, S) ->
 			  self()),
 	    erlang:monitor(process, Pid),
 	    etorrent_t_mapper:store_peer(IP, Port, S#state.info_hash, Pid),
-	    {ok, S};
+	    {ok, Pid};
 	true ->
 	    already_enough_connections
     end.
