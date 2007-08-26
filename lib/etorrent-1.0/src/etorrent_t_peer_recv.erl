@@ -13,7 +13,7 @@
 
 %% API
 -export([start_link/5, connect/3, choke/1, unchoke/1, interested/1,
-	 send_have_piece/2, complete_handshake/3, uploaded_data/2,
+	 send_have_piece/2, complete_handshake/4, uploaded_data/2,
 	stop/1]).
 
 %% Temp API
@@ -74,8 +74,8 @@ interested(Pid) ->
 send_have_piece(Pid, PieceNumber) ->
     gen_server:cast(Pid, {send_have_piece, PieceNumber}).
 
-complete_handshake(Pid, ReservedBytes, Socket) ->
-    gen_server:cast(Pid, {complete_handshake, ReservedBytes, Socket}).
+complete_handshake(Pid, ReservedBytes, Socket, PeerId) ->
+    gen_server:cast(Pid, {complete_handshake, ReservedBytes, Socket, PeerId}).
 
 uploaded_data(Pid, Amount) ->
     gen_server:cast(Pid, {uploaded_data, Amount}).
@@ -156,7 +156,7 @@ handle_cast({connect, IP, Port}, S) ->
 handle_cast({uploaded_data, Amount}, S) ->
     etorrent_t_mapper:uploaded_data(self(), Amount),
     {noreply, S};
-handle_cast({complete_handshake, _ReservedBytes, Socket}, S) ->
+handle_cast({complete_handshake, _ReservedBytes, Socket, RemotePeerId}, S) ->
     etorrent_peer_communication:complete_handshake_header(Socket,
 						 S#state.info_hash,
 						 S#state.local_peer_id),
@@ -168,7 +168,8 @@ handle_cast({complete_handshake, _ReservedBytes, Socket}, S) ->
     BF = etorrent_t_state:retrieve_bitfield(S#state.state_pid),
     etorrent_t_peer_send:send(SendPid, {bitfield, BF}),
     {noreply, S#state{tcp_socket = Socket,
-		      send_pid = SendPid}};
+		      send_pid = SendPid,
+		      remote_peer_id = RemotePeerId}};
 handle_cast(choke, S) ->
     etorrent_t_peer_send:choke(S#state.send_pid),
     {noreply, S};

@@ -133,7 +133,8 @@ inform_peer_master(Socket, Pid, ReservedBytes, PeerId) ->
 	    % TODO: Pass PeerId here?
 	    etorrent_t_peer_recv:complete_handshake(PeerProcessPid,
 						    ReservedBytes,
-						    Socket),
+						    Socket,
+						    PeerId),
 	    ok;
 	bad_peer ->
 	    error_logger:info_report([peer_id_is_bad, PeerId]),
