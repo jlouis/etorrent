@@ -20,7 +20,7 @@
 %% API
 -export([start_link/0, store_hash/1, remove_hash/1, lookup/1,
 	 store_peer/4, remove_peer/1, is_connected_peer/3,
-	 is_connected_peer_bad/3,
+	 is_connected_peer_bad/3, set_hash_state/2,
 	 choked/1, unchoked/1, uploaded_data/2, downloaded_data/2,
 	 interested/1, not_interested/1,
 	 set_optimistic_unchoke/2,
@@ -59,6 +59,9 @@ store_hash(InfoHash) ->
 
 remove_hash(InfoHash) ->
     gen_server:call(?SERVER, {remove_hash, InfoHash}).
+
+set_hash_state(InfoHash, State) ->
+    gen_server:call(?SERVER, {set_hash_state, InfoHash, State}).
 
 store_peer(IP, Port, InfoHash, Pid) ->
     gen_server:call(?SERVER, {store_peer, IP, Port, InfoHash, Pid}).
@@ -197,10 +200,10 @@ handle_call({is_connected_peer, IP, Port, InfoHash}, _From, S) ->
     end;
 handle_call({store_hash, InfoHash}, {Pid, _Tag}, S) ->
     Ref = erlang:monitor(process, Pid),
-    ets:insert(S#state.info_hash_map, {InfoHash, Pid, Ref}),
+    ets:insert(S#state.info_hash_map, {InfoHash, Pid, Ref, unknown}),
     {reply, ok, S};
 handle_call({remove_hash, InfoHash}, {Pid, _Tag}, S) ->
-    case ets:match(S#state.info_hash_map, {InfoHash, Pid, '$1'}) of
+    case ets:match(S#state.info_hash_map, {InfoHash, Pid, '$1', '_'}) of
 	[[Ref]] ->
 	    erlang:demonitor(Ref),
 	    ets:delete(S#state.info_hash_map, {InfoHash, Pid, Ref}),
@@ -210,8 +213,19 @@ handle_call({remove_hash, InfoHash}, {Pid, _Tag}, S) ->
 				   [Pid]),
 	    {reply, ok, S}
     end;
+handle_call({set_hash_state, InfoHash, State}, _From, S) ->
+    Selector = ets:fun2ms(fun({IH, Pid, Ref, _St}) when IH =:= InfoHash->
+				  {Pid, Ref}
+			  end),
+    case ets:select(S#state.info_hash_map, Selector) of
+	[{Pid, Ref}] ->
+	    ets:insert(S#state.info_hash_map, {InfoHash, Pid, Ref, State}),
+	    {reply, ok, S};
+	[] ->
+	    {reply, not_found, S}
+    end;
 handle_call({lookup, InfoHash}, _From, S) ->
-    case ets:match(S#state.info_hash_map, {InfoHash, '$1', '_'}) of
+    case ets:match(S#state.info_hash_map, {InfoHash, '$1', '_', '_'}) of
 	[[Pid]] ->
 	    {reply, {ok, Pid}, S};
 	[] ->

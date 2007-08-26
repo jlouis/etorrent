@@ -13,7 +13,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/5, add_peers/2, got_piece_from_peer/2, new_incoming_peer/3,
+-export([start_link/6, add_peers/2, got_piece_from_peer/2, new_incoming_peer/3,
 	seed/1]).
 
 %% gen_server callbacks
@@ -42,9 +42,10 @@
 %%====================================================================
 %% API
 %%====================================================================
-start_link(OurPeerId, PeerGroup, InfoHash, StatePid, FileSystemPid) ->
+start_link(OurPeerId, PeerGroup, InfoHash,
+	   StatePid, FileSystemPid, TorrentState) ->
     gen_server:start_link(?MODULE, [OurPeerId, PeerGroup, InfoHash,
-				    StatePid, FileSystemPid], []).
+				    StatePid, FileSystemPid, TorrentState], []).
 
 add_peers(Pid, IPList) ->
     gen_server:cast(Pid, {add_peers, IPList}).
@@ -62,7 +63,7 @@ seed(Pid) ->
 %% gen_server callbacks
 %%====================================================================
 
-init([OurPeerId, PeerGroup, InfoHash, StatePid, FileSystemPid]) ->
+init([OurPeerId, PeerGroup, InfoHash, StatePid, FileSystemPid, TorrentState]) ->
     {ok, Tref} = timer:send_interval(?ROUND_TIME, self(), round_tick),
     ok = etorrent_t_mapper:store_hash(InfoHash),
     {ok, #state{ our_peer_id = OurPeerId,
@@ -71,6 +72,7 @@ init([OurPeerId, PeerGroup, InfoHash, StatePid, FileSystemPid]) ->
 		 info_hash = InfoHash,
 		 state_pid = StatePid,
 		 timer_ref = Tref,
+		 mode = TorrentState,
 		 file_system_pid = FileSystemPid,
 		 peer_process_dict = dict:new() }}.
 

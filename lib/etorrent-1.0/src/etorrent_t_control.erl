@@ -134,6 +134,15 @@ check_and_start_torrent(FS, S) ->
 	  etorrent_metainfo:get_piece_length(S#state.torrent),
 	  self()),
     {ok, GroupPid} = etorrent_t_sup:add_peer_pool(S#state.parent_pid),
+
+    TorrentFull = etorrent_fs_mapper:torrent_completed(self()),
+    TorrentState = case TorrentFull of
+		       true ->
+			   seeding;
+		       false ->
+			   leeching
+		   end,
+
     {ok, PeerMasterPid} =
 	etorrent_t_sup:add_peer_master(
 	  S#state.parent_pid,
@@ -141,7 +150,12 @@ check_and_start_torrent(FS, S) ->
 	  S#state.peer_id,
 	  etorrent_metainfo:get_infohash(S#state.torrent),
 	  StatePid,
-	  FS),
+	  FS,
+	  TorrentState),
+
+    InfoHash = etorrent_metainfo:get_infohash(S#state.torrent),
+    etorrent_t_mapper:set_hash_state(InfoHash, TorrentState),
+
     {ok, TrackerPid} =
 	etorrent_t_sup:add_tracker(
 	  S#state.parent_pid,
@@ -169,7 +183,9 @@ started({tracker_error_report, Reason}, S) ->
     {next_state, started, S};
 started(seed, S) ->
     etorrent_t_peer_group:seed(S#state.peer_master_pid),
-    Name = etorrent_metainfo:get_name(S#state.torrent),
+    InfoHash = etorrent_metainfo:get_infohash(S#state.torrent),
+    etorrent_t_mapper:set_hash_state(InfoHash, seeding),
+    {ok, Name} = etorrent_metainfo:get_name(S#state.torrent),
     etorrent_event:completed_torrent(Name),
     etorrent_tracker_communication:torrent_completed(S#state.tracker_pid),
     {next_state, started, S};

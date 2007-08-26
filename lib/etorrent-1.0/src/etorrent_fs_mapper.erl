@@ -12,7 +12,8 @@
 %% API
 -export([start_link/0, install_map/1, fetch_map/0,
 	 get_files/3, get_files_hash/3, get_pieces/2, fetched/5,
-	 not_fetched/5, calculate_amount_left/1, convert_diskstate_to_set/1]).
+	 not_fetched/5, calculate_amount_left/1, convert_diskstate_to_set/1,
+	 torrent_completed/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -67,6 +68,9 @@ calculate_amount_left(Handle) ->
 convert_diskstate_to_set(Handle) ->
     gen_server:call(?SERVER, {convert_diskstate_to_set, Handle}).
 
+torrent_completed(Handle) ->
+    gen_server:call(?SERVER, {torrent_completed, Handle}).
+
 %%====================================================================
 %% gen_server callbacks
 %%====================================================================
@@ -107,6 +111,9 @@ handle_call({convert_diskstate_to_set, Handle}, _From, S) ->
     {reply, Reply, S};
 handle_call({calculate_amount_left, Handle}, _From, S) ->
     Reply = calculate_amount_left(Handle, S),
+    {reply, Reply, S};
+handle_call({torrent_completed, Handle}, _From, S) ->
+    Reply = is_torrent_completed(Handle, S),
     {reply, Reply, S};
 handle_call(_Request, _From, State) ->
     Reply = ok,
@@ -210,6 +217,11 @@ calculate_amount_left(Handle, S) ->
 		      0,
 		      Objects),
     Sum.
+
+is_torrent_completed(Handle, S) ->
+    Objects = ets:match(S#state.file_access_map,
+			{Handle, '$1', '_', '$2', not_fetched}),
+    length(Objects) =:= 0.
 
 convert_diskstate_to_set(Handle, S) ->
     Objects = get_all_pieces_of_torrent(Handle, S),

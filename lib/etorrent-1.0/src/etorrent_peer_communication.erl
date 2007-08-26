@@ -111,8 +111,12 @@ send_message(Socket, Message) ->
 %%--------------------------------------------------------------------
 recieve_handshake(Socket) ->
     Header = build_peer_protocol_header(),
-    ok = gen_tcp:send(Socket, Header),
-    receive_header(Socket).
+    case gen_tcp:send(Socket, Header) of
+	ok ->
+	    receive_header(Socket);
+	{error, X}  ->
+	    {error, X}
+    end.
 
 %%--------------------------------------------------------------------
 %% Function: complete_handshake_header(socket(),
