@@ -33,8 +33,12 @@ add_file_system(Pid, FSPool, IDHandle) ->
     FS = {fs,
 	  {etorrent_fs, start_link, [IDHandle, FSPool]},
 	  temporary, 2000, worker, [etorrent_fs]},
-    % TODO: Handle some cases here if already added.
-    supervisor:start_child(Pid, FS).
+    case supervisor:start_child(Pid, FS) of
+	{ok, ChildPid} ->
+	    {ok, ChildPid};
+	{error, already_present} -> % Could be copied to other add_X calls.
+	    supervisor:restart_child(Pid, fs)
+    end.
 
 %%--------------------------------------------------------------------
 %% Func: add_file_system_pool/1

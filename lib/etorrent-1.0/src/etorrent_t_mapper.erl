@@ -6,11 +6,6 @@
 %%%
 %%% Created : 31 Jul 2007 by Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
 %%%-------------------------------------------------------------------
-
-%% TODO: When a peer dies, we need an automatic way to pull it out of
-%%   the peer_map ETS. Either we grab the peer_group process and take it with
-%%   the monitor, or we need seperate monitors on Peers. I am most keen on the
-%%   first solution.
 -module(etorrent_t_mapper).
 
 -behaviour(gen_server).
@@ -73,7 +68,6 @@ remove_peer(Pid) ->
 is_connected_peer(IP, Port, InfoHash) ->
     gen_server:call(?SERVER, {is_connected_peer, IP, Port, InfoHash}).
 
-% TODO: Change when we want to do smart peer handling.
 is_connected_peer_bad(IP, Port, InfoHash) ->
     gen_server:call(?SERVER, {is_connected_peer, IP, Port, InfoHash}).
 
@@ -262,6 +256,7 @@ handle_cast(_Msg, State) ->
 %% Description: Handling all non call/cast messages
 %%--------------------------------------------------------------------
 handle_info({'DOWN', _R, process, Pid, _Reason}, S) ->
+    delete_peers(Pid, S),
     ets:match_delete(S#state.info_hash_map, {'_', Pid}),
     {noreply, S};
 handle_info(_Info, State) ->
@@ -322,3 +317,9 @@ reset_round(InfoHash, S) ->
 						   downloaded = 0}})
 		  end,
 		  Matches).
+
+delete_peers(Pid, S) ->
+    [[InfoHash]] = ets:match(S#state.info_hash_map, {'$1', Pid}),
+    ets:match_delete(S#state.peer_map, {'_', '_', InfoHash, '_'}),
+    ok.
+
