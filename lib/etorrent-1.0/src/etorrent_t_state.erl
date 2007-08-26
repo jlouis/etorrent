@@ -231,7 +231,6 @@ handle_call({report_from_tracker, Complete, Incomplete},
 %%                                      {stop, Reason, State}
 %% Description: Handling cast messages
 %%--------------------------------------------------------------------
-% TODO: etorrent_t_state:handle_cast : Handle interested and choke globally!
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
