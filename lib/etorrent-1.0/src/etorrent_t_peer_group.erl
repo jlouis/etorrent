@@ -113,12 +113,18 @@ handle_info(round_tick, S) ->
 	    etorrent_t_mapper:reset_round(S#state.info_hash),
 	    {noreply, NS#state{round = NS#state.round - 1}}
     end;
-handle_info({'DOWN', _Ref, process, Pid, _Reason}, S) ->
-    % TODO: This is naive. If Reason is not normal or shutdown
-    %   then handle dirty and bad peers.
+handle_info({'DOWN', _Ref, process, Pid, Reason}, S)
+  when (Reason =:= normal) or (Reason =:= shutdown) ->
+    % The peer shut down normally. Hence we just remove him and start up
+    %  other peers. Eventually the tracker will re-add him to the peer list
     etorrent_t_mapper:remove_peer(Pid),
     {ok, NS} = start_new_peers(S),
     {noreply, NS};
+handle_info({'DOWN', _Ref, process, Pid, _Reason}, S) ->
+    % The peer shut down unexpectedly re-add him to the queue ind the *back*
+    {IP, Port} = find_ip_and_port_of_pid(Pid),
+    {noreply, S#state{available_peers =
+		      (S#state.available_peers ++ [{IP, Port}])}};
 handle_info(Info, State) ->
     io:format("Unknown info: ~p~n", [Info]),
     {noreply, State}.
@@ -133,6 +139,9 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 %%% Internal functions
 %%--------------------------------------------------------------------
+find_ip_and_port_of_pid(Pid) ->
+    {ok, IPPort} = etorrent_t_mapper:find_ip_port(Pid),
+    IPPort.
 
 start_new_incoming_peer(IP, Port, S) ->
     PeersMissing =

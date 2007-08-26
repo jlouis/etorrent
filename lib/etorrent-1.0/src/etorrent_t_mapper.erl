@@ -26,7 +26,8 @@
 	 set_optimistic_unchoke/2,
 	 remove_optimistic_unchoking/1,
 	 interest_split/1,
-	 reset_round/1]).
+	 reset_round/1,
+	 find_ip_port/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -137,6 +138,10 @@ reset_round(InfoHash) ->
     gen_server:call(?SERVER,
 		    {reset_round, InfoHash}).
 
+find_ip_port(Pid) ->
+    gen_server:call(?SERVER,
+		    {find_ip_port, Pid}).
+
 lookup(InfoHash) ->
     gen_server:call(?SERVER, {lookup, InfoHash}).
 
@@ -164,6 +169,12 @@ init([]) ->
 %%                                      {stop, Reason, State}
 %% Description: Handling call messages
 %%--------------------------------------------------------------------
+handle_call({find_ip_port, Pid}, _From, S) ->
+    Selector = ets:fun2ms(fun({P, IPPort, InfoHash, PI}) when P =:= Pid ->
+				  IPPort
+			  end),
+    [IPPort] = ets:select(S#state.peer_map, Selector),
+    {reply, {ok, IPPort}, S};
 handle_call({store_peer, IP, Port, InfoHash, Pid}, _From, S) ->
     ets:insert(S#state.peer_map, {Pid, {IP, Port}, InfoHash, #peer_info{}}),
     {reply, ok, S};
