@@ -109,8 +109,7 @@ handshake(Socket) ->
     case etorrent_peer_communication:recieve_handshake(Socket) of
 	{ok, ReservedBytes, InfoHash, PeerId} ->
 	    lookup_infohash(Socket, ReservedBytes, InfoHash, PeerId);
-	{error, Reason} ->
-	    error_logger:info_report([acceptor_handshake, Reason]),
+	{error, _Reason} ->
 	    gen_tcp:close(Socket),
 	    ok
     end.
