@@ -177,13 +177,17 @@ build_peer_protocol_header() ->
 receive_header(Socket) ->
     case gen_tcp:recv(Socket, ?HANDSHAKE_SIZE, ?DEFAULT_HANDSHAKE_TIMEOUT) of
 	{ok, Packet} ->
-	    <<PSL:8/integer, ?PROTOCOL_STRING, ReservedBytes:8/binary,
-	     IH:20/binary, PI:20/binary>> = Packet,
-	    if
-		PSL /= length(?PROTOCOL_STRING) ->
-		    {error, packet_size_mismatch};
-		true ->
-		    {ok, ReservedBytes, IH, PI}
+	    case Packet of
+		<<PSL:8/integer, ?PROTOCOL_STRING, ReservedBytes:8/binary,
+		 IH:20/binary, PI:20/binary>> ->
+		    if
+			PSL /= length(?PROTOCOL_STRING) ->
+			    {error, packet_size_mismatch};
+			true ->
+			    {ok, ReservedBytes, IH, PI}
+		    end;
+		X when is_binary(X) ->
+		    {error, {bad_header, X}}
 	    end;
 	{error, X} ->
 	    {error, X}
