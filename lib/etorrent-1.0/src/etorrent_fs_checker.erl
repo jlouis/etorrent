@@ -138,7 +138,8 @@ fill_file(FD, Missing) ->
 create_file(FD, N) ->
     SZ4 = N div 4,
     Remaining = (N rem 4) * 8,
-    io:format("Writing ~B bytes, should write ~B~n", [SZ4*4 + (N rem 4), N]),
+    error_logger:info_msg("Writing ~B bytes, should write ~B~n",
+			  [SZ4*4 + (N rem 4), N]),
     create_file(FD, 0, SZ4),
     file:write(FD, <<0:Remaining/unsigned>>).
 
