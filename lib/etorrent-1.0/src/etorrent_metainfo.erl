@@ -197,7 +197,7 @@ get_files_section(Torrent) ->
 	    X;
 	false ->
 	    % Single value torrent, fake entry
-	    N = get_name(Torrent),
+	    {ok, N} = get_name(Torrent),
 	    L = get_length(Torrent),
 	    {list,[{dict,[{{string,"path"},
 			   {list,[{string,N}]}},
