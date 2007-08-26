@@ -34,9 +34,13 @@ handle_cast({start_torrent, F}, S) ->
     {noreply, S};
 handle_cast({stop_torrent, F}, S) ->
     error_logger:info_msg("Stopping ~p~n", [F]),
-    [{F, _TorrentSup}] = ets:lookup(S#state.tracking_map, F),
-    etorrent_t_pool_sup:stop_torrent(F),
-    {noreply, S}.
+    case ets:lookup(S#state.tracking_map, F) of
+	[{F, _TorrentSup}] ->
+	    etorrent_t_pool_sup:stop_torrent(F),
+	    {noreply, S};
+	[] -> % Torrent already the 'DOWN' message and was removed
+	    {noreply, S}
+	end.
 
 handle_call(_A, _B, S) ->
     {noreply, S}.
