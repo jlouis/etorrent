@@ -92,8 +92,9 @@ BINDIR = @bindir@
 DOCDIR = @docdir@
 SYSCONFDIR = @sysconfdir@
 DATAROOTDIR = @datarootdir@
+libdir = @libdir@
 
-INST_BEAMDIR = $(prefix)$(etorrent_EBIN)
+INST_BEAMDIR = $(etorrent_EBIN)
 #INST_RELEASEDIR = $(ERLANG_ROOT_DIR)/
 #INST_RELEASEDIR = $(ETORRENTDIR)/releases
 
