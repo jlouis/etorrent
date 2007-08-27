@@ -11,7 +11,7 @@
 	    etorrent_t_sup, etorrent_listener, etorrent_utils,
 	    etorrent_metainfo, http_gzip, etorrent_peer_communication,
 	    etorrent_t_peer_pool_sup, etorrent_fs_pool_sup,
-	    etorrent_event]},
+	    etorrent_event, etorrent_acceptor_sup]},
  {registered, [etorrent_dirwatcher, etorrent_dirwatcher_sup,
                etorrent_t_manager, etorrent_t_mapper, etorrent_dirwatcher_sup,
                etorrent_fs_mapper, etorrent_t_pool_sup, etorrent_fs_serializer,

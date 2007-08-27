@@ -29,6 +29,7 @@ ETORRENT_1.0_MODULES = etorrent_listener etorrent_t_pool_sup etorrent_acceptor \
 	etorrent_t_peer_pool_sup \
 	etorrent_t_peer_send \
 	etorrent_event \
+	etorrent_acceptor_sup \
 	etorrent_fs_pool_sup
 
 ETORRENT_1.0_SOURCES = $(ETORRENT_1.0_MODULES:%=$(ETORRENT_1.0_SRCDIR)/%.erl)
@@ -124,13 +125,13 @@ clean:
 	cd doc && $(MAKE) clean
 
 .PHONY: install
-install: all bootscript
+install: all
 	$(MKDIR_P) $(INST_BEAMDIR)
 	$(INSTALL) -m 644 $(ETORRENT_1.0_BEAMS) $(INST_BEAMDIR)
 	$(INSTALL) -m 644 $(ETORRENT_1.0_APP)   $(INST_BEAMDIR)
 
 	$(MKDIR_P) $(BINDIR)
-	$(INSTALL) -m 644 $(ETORRENTCTL_FILE) $(BINDIR)
+	$(INSTALL) -m 755 $(ETORRENTCTL_FILE) $(BINDIR)
 
 	$(MKDIR_P) $(SYSCONFDIR)
 	$(INSTALL) -m 644 $(CONFIGURATION_FILE) $(SYSCONFDIR)
