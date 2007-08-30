@@ -10,17 +10,29 @@ ETORRENT was mostly conceived as an experiment in how easy it would be
 to write a bittorrent client in Erlang. The hypothesis is that the
 code will be cleaner and smaller than comparative bittorrent clients.
 
--- GETTING STARTED --
+-- GETTING STARTED WITHOUT INSTALLING --
 
 1. run 'make -f Makefile.init'. This calls autoconf and friends.
 2. run './configure'
-3. run 'make'
-4. cd into lib/etorrent-1.0/ebin
-5. copy /etc/etorrent.config into the ebin dir and edit it to your liking.
+3. run 'make' (These steps are not necessary for the latter)
+4. cd into lib/etorrent-1.0/src and run 'erlc *.erl'
+5. copy /etc/etorrent.config into the src dir and edit it to your liking.
    Note that the directory for watching torrents and the directory for
    error logs should exist (or things get nasty).
 6. run 'erl -pa . -config etorrent.config -sname etorrent -s etorrent_app'
 7. drop a .torrent file in the watched dir and see what happens.
+
+-- GETTING STARTED WITH INSTALLING --
+
+NOTE: This method has not yet seen heavy testing. It can be made a lot
+      better than it is.
+
+1. make -f Makefile.init
+2. ./configure
+3. make
+4. make install (as root)
+5. edit ${prefix}/etc/etorrent.config to your liking
+6. run ${bindir}/etorrentctl start
 
 -- REPORTING BUGS --
 
