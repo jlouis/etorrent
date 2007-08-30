@@ -1,5 +1,11 @@
 ** INSTALLATION INSTRUCTIONS **
 
+FOR NOW, READ THE README FILE AND FOLLOW THAT. THIS IS HOW I
+WOULD LIKE IT TO BE OVER TIME.
+
+DARK IN HERE, ISN'T IT?
+
+------------------------------------------------------------
 Rather than a long GNU-version, here is the summary:
 
 ./configure; make; make install
