@@ -13,7 +13,7 @@
 
 
 %% API
--export([new_torrent/2]).
+-export([new_torrent/2, find_torrents_by_file/1, cleanup_torrent_by_pid/1]).
 
 %%====================================================================
 %% API
@@ -28,14 +28,25 @@ new_torrent(File, Supervisor) ->
 		mnesia:write(#tracking_map { filename = File,
 					     supervisor_pid = Supervisor })
 	end,
-    ok = mnesia:transaction(T).
+    mnesia:transaction(T).
 
 %%--------------------------------------------------------------------
-%% Function: 
-%% Description:
+%% Function: find_torrents_by_file(Filename) -> [SupervisorPid]
+%% Description: Find torrent specs matching the filename in question.
 %%--------------------------------------------------------------------
+find_torrents_by_file(Filename) ->
+    Query = qlc:q([T#tracking_map.filename || T <- mnesia:table(tracking_map),
+					      T#tracking_map.filename == Filename]),
+    qlc:e(Query).
 
-
-%%====================================================================
-%% Internal functions
-%%====================================================================
+%%--------------------------------------------------------------------
+%% Function: cleanup_torrent_by_pid(Pid) -> ok
+%% Description: Clean out all references to torrents matching Pid
+%%--------------------------------------------------------------------
+cleanup_torrent_by_pid(Pid) ->
+    F = fun() ->
+		Query = qlc:q([T#tracking_map.filename || T <- mnesia:table(tracking_map),
+							  T#tracking_map.supervisor_pid == Pid]),
+		lists:foreach(fun (F) -> mnesia:delete(tracking_map, F, write) end, qlc:e(Query))
+	end,
+    mnesia:transaction(F).

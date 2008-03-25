@@ -49,7 +49,7 @@ handle_call(_A, _B, S) ->
 
 handle_info({'DOWN', _R, process, Pid, _Reason}, S) ->
     error_logger:info_msg("Got Down Msg ~p~n", [Pid]),
-    delete_torrent_by_pid(Pid),
+    etorrent_mnesia_operations:cleanup_torrent_by_pid(Pid),
     {noreply, S};
 handle_info(Info, State) ->
     error_logger:info_msg("Unknown message: ~p~n", [Info]),
@@ -70,9 +70,7 @@ spawn_new_torrent(F, S) ->
 
 stop_torrent(F, S) ->
     error_logger:info_msg("Stopping ~p~n", [F]),
-    Query = qlc:q([T#tracking_map.filename || T <- mnesia:table(tracking_map),
-					      T#tracking_map.filename == F]),
-    case qlc:e(Query) of
+    case etorrent_mnesia_operations:find_torrents_by_file(F) of
 	[F] ->
 	    etorrent_t_pool_sup:stop_torrent(F);
 	[] ->
@@ -80,14 +78,6 @@ stop_torrent(F, S) ->
 	    ok
     end,
     {noreply, S}.
-
-delete_torrent_by_pid(Pid) ->
-    F = fun() ->
-		Query = qlc:q([T#tracking_map.filename || T <- mnesia:table(tracking_map),
-				    T#tracking_map.supervisor_pid == Pid]),
-		lists:foreach(fun (F) -> mnesia:delete(tracking_map, F, write) end, qlc:e(Query))
-	end,
-    mnesia:transaction(F).
 
 generate_peer_id() ->
     Number = crypto:rand_uniform(0, ?RANDOM_MAX_SIZE),
