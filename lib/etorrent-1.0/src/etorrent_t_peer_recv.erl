@@ -137,7 +137,7 @@ handle_cast({connect, IP, Port}, S) ->
 		  when PeerId == S#state.local_peer_id ->
 		    {stop, normal, S};
 		{ok, _ReservedBytes, PeerId} ->
-		    enable_socket_messages(Socket),
+		    ok = enable_socket_messages(Socket),
 		    {ok, SendPid} =
 			etorrent_t_peer_send:start_link(Socket,
 							S#state.file_system_pid,
@@ -160,7 +160,7 @@ handle_cast({complete_handshake, _ReservedBytes, Socket, RemotePeerId}, S) ->
     etorrent_peer_communication:complete_handshake_header(Socket,
 						 S#state.info_hash,
 						 S#state.local_peer_id),
-    enable_socket_messages(Socket),
+    ok = enable_socket_messages(Socket),
     {ok, SendPid} =
 	etorrent_t_peer_send:start_link(Socket,
 				     S#state.file_system_pid,
@@ -462,7 +462,8 @@ update_with_new_piece(Index, Offset, Len, Data, GBT, N, S) ->
 %%   specifications.
 %%--------------------------------------------------------------------
 enable_socket_messages(Socket) ->
-    inet:setopts(Socket, [binary, {active, true}, {packet, 4}]).
+    ok = inet:setopts(Socket, [binary, {active, true}, {packet, 4}]),
+    ok.
 
 %%--------------------------------------------------------------------
 %% Function: unqueue_all_pieces/1
