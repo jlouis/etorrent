@@ -10,7 +10,7 @@ start() ->
     application:start(timer),
     application:start(sasl),
     mnesia:start(),
-    application:start(etorrent),
+    application:start(etorrent).
 
 start(_Type, _Args) ->
     etorrent_sup:start_link().
