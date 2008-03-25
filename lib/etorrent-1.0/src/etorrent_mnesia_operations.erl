@@ -14,7 +14,7 @@
 
 %% API
 -export([new_torrent/2, find_torrents_by_file/1, cleanup_torrent_by_pid/1,
-	 store_info_hash/3]).
+	 store_info_hash/3, set_info_hash_state/2]).
 
 %%====================================================================
 %% API
@@ -65,5 +65,27 @@ store_info_hash(InfoHash, StorerPid, MonitorRef) ->
 					  state = unknown })
 	end,
     mnesia:transaction(F).
+
+%%--------------------------------------------------------------------
+%% Function: set_info_hash_state(InfoHash, State) -> ok | not_found
+%% Description: Set the state of an info hash.
+%%--------------------------------------------------------------------
+set_info_hash_state(InfoHash, State) ->
+    F = fun() ->
+		case mnesia:read(info_hash, InfoHash, write) of
+		    [IH] ->
+			New = IH#info_hash{state = State},
+			mnesia:write(New),
+			ok;
+		    [] ->
+			not_found
+		end
+	end,
+    {atomic, Res} = mnesia:transaction(F),
+    Res.
+
+%%--------------------------------------------------------------------
+%% Internal functions
+%%--------------------------------------------------------------------
 
 
