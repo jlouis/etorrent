@@ -63,13 +63,10 @@ code_change(_OldVsn, State, _Extra) ->
 
 %% Internal functions
 spawn_new_torrent(F, S) ->
-    T = fun() ->
-		{ok, TorrentSup} =
-		    etorrent_t_pool_sup:add_torrent(F, S#state.local_peer_id),
-		erlang:monitor(process, TorrentSup),
-		mnesia:write(#tracking_map { filename = F, supervisor_pid = TorrentSup })
-	end,
-    mnesia:transaction(T).
+    {ok, TorrentSup} =
+	etorrent_t_pool_sup:add_torrent(F, S#state.local_peer_id),
+    erlang:monitor(process, TorrentSup),
+    etorrent_mnesia_operations:new_torrent(F, TorrentSup).
 
 stop_torrent(F, S) ->
     error_logger:info_msg("Stopping ~p~n", [F]),
