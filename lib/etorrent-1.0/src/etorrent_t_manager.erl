@@ -4,10 +4,7 @@
 -module(etorrent_t_manager).
 -behaviour(gen_server).
 
--include_lib("stdlib/include/qlc.hrl").
-
 -include("etorrent_version.hrl").
--include("etorrent_mnesia_table.hrl").
 
 -export([start_link/0, start_torrent/1, stop_torrent/1]).
 -export([handle_cast/2, handle_call/3, init/1, terminate/2]).
