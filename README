@@ -14,6 +14,9 @@ code will be cleaner and smaller than comparative bittorrent clients.
 
 1. run 'make -f Makefile.init'. This calls autoconf and friends.
 2. run './configure'
+2.5. mkdir lib/etorrent-1.0/ebin
+   This is needed for the correct creation of ebin files. I'll fix this
+   later.
 3. run 'make' (These steps are not necessary for the latter)
 4. cd into lib/etorrent-1.0/src and run 'erlc *.erl'
 5. copy /etc/etorrent.config into the src dir and edit it to your liking.
