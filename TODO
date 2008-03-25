@@ -4,8 +4,6 @@
 
 * Rename etorrent to etorrent_sup.
 
-* Fix the missing mkdir of lib/etorrent-1.0/ebin.
-
 * Revamp etorrent_t_manager.
 
 * DOCUMENTATION!
