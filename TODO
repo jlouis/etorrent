@@ -4,6 +4,20 @@
 
 * Revamp etorrent_t_manager.
 
+* Go to Mnesia
+  We are currently using ets tables directly. It would suit us a great deal to
+  begin utilizing the mnesia system to provide database functionality
+  to us. This is the recommended way and is probably better
+  supported. It will also remove some pesky problems along the way I
+  am sure. We can slowly migrate ets tables to mnesia tables as we
+  need it done.
+
+* Move the piece-chunking code up from the peer connections.
+  It should not be the case that the individual peer connection
+  processes are responsible for managing the chunking of pieces. It
+  should be handled in the process overseeing all peer connections. We
+  will need some pretty tough changes to make this work correctly.
+
 * DOCUMENTATION!
 - Pick functions at random, and document what they are doing.
   It is /especially/ important to document library calls and
