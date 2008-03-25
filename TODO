@@ -2,8 +2,6 @@
 -- This is a list of what To Do before a release is ready to be made.
 ----------------------------------------------------------------------
 
-* Rename etorrent to etorrent_sup.
-
 * Revamp etorrent_t_manager.
 
 * DOCUMENTATION!
