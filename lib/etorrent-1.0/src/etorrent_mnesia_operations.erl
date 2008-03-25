@@ -13,7 +13,8 @@
 
 
 %% API
--export([new_torrent/2, find_torrents_by_file/1, cleanup_torrent_by_pid/1]).
+-export([new_torrent/2, find_torrents_by_file/1, cleanup_torrent_by_pid/1,
+	 store_info_hash/3]).
 
 %%====================================================================
 %% API
@@ -50,3 +51,19 @@ cleanup_torrent_by_pid(Pid) ->
 		lists:foreach(fun (F) -> mnesia:delete(tracking_map, F, write) end, qlc:e(Query))
 	end,
     mnesia:transaction(F).
+
+%%--------------------------------------------------------------------
+%% Function: store_info_hash(InfoHash, StorerPid, MonitorRef) -> transaction
+%% Description: Store that InfoHash is controlled by StorerPid with assigned
+%%  monitor reference MonitorRef
+%%--------------------------------------------------------------------
+store_info_hash(InfoHash, StorerPid, MonitorRef) ->
+    F = fun() ->
+		mnesia:write(#info_hash { info_hash = InfoHash,
+					  storer_pid = StorerPid,
+					  monitor_reference = MonitorRef,
+					  state = unknown })
+	end,
+    mnesia:transaction(F).
+
+
