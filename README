@@ -19,14 +19,25 @@ so we can get it away.
 
 -- GETTING STARTED WITHOUT INSTALLING --
 
-1. run 'make -f Makefile.init'. This calls autoconf and friends.
-2. run './configure'
-3. run 'make' (These steps are not necessary for the latter)
-4. cd into lib/etorrent-1.0/src and run 'erlc *.erl'
+1. run "make -f Makefile.init". This calls autoconf and friends. On non-GNU
+   systems, you need GNU Make and a call to 'gmake' or something such depending
+   on your platform.
+
+2. run "./configure"
+   Optionally: To run with debugging symbols, execute something along
+   the lines of "env ERLCFLAGS='+debug_info' ./configure". This is also
+   needed if you want to run the dialyzer on the source ("make dialyzer").
+
+3. run "make" (These steps are not necessary for the latter)
+
+4. cd into lib/etorrent-1.0/src and run "erlc *.erl"
+
 5. copy /etc/etorrent.config into the src dir and edit it to your liking.
    Note that the directory for watching torrents and the directory for
    error logs should exist (or things get nasty).
-6. run 'erl -pa . -config etorrent.config -sname etorrent -s etorrent_app'
+
+6. run "erl -pa . -config etorrent.config -sname etorrent -s etorrent_app"
+
 7. drop a .torrent file in the watched dir and see what happens.
 
 -- GETTING STARTED WITH INSTALLING --

@@ -60,11 +60,7 @@ $(RELEASEDIR)/%.boot : $(RELEASEDIR)/%.rel
 $(RELEASEDIR)/%.script : $(RELEASEDIR)/%.rel
 	$(ERLC) $(ERLCFLAGS) -o$(RELEASEDIR) -b script $<
 
-### Conditional stuff
 
-ifdef debug
-  ERLCFLAGS+=+debug_info
-endif
 
 ### GENERIC AUTOCONF STUFF
 SHELL = /bin/sh
