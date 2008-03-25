@@ -7,5 +7,8 @@
 
 init() ->
     mnesia:create_table(tracking_map,
-			[{attributes, record_info(fields, tracking_map)}]).
+			[{attributes, record_info(fields, tracking_map)}]),
+    mnesia:create_table(info_hash,
+			[{attributes, record_info(fields, info_hash)}]).
+
 

@@ -28,8 +28,7 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3]).
 
--record(state, { info_hash_map = none,
-		 peer_map = none}).
+-record(state, { peer_map = none}).
 
 -record(peer_info, {uploaded = 0,
 		    downloaded = 0,
@@ -151,8 +150,7 @@ lookup(InfoHash) ->
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
 init([]) ->
-    {ok, #state{info_hash_map = ets:new(infohash_map, [named_table]),
-	        peer_map      = ets:new(peer_map, [named_table])}}.
+    {ok, #state{peer_map      = ets:new(peer_map, [named_table])}}.
 
 %%--------------------------------------------------------------------
 %% Function: %% handle_call(Request, From, State) -> {reply, Reply, State} |
@@ -205,13 +203,13 @@ handle_call({is_connected_peer, IP, Port, InfoHash}, _From, S) ->
     end;
 handle_call({store_hash, InfoHash}, {Pid, _Tag}, S) ->
     Ref = erlang:monitor(process, Pid),
-    ets:insert(S#state.info_hash_map, {InfoHash, Pid, Ref, unknown}),
+    etorrent_mnesia_operations:store_info_hash(InfoHash, Pid, Ref),
     {reply, ok, S};
 handle_call({remove_hash, InfoHash}, {Pid, _Tag}, S) ->
-    case ets:match(S#state.info_hash_map, {InfoHash, Pid, '$1', '_'}) of
-	[[Ref]] ->
+    case etorrent_mnesia_operations:select_info_hash_ref(InfoHash, Pid) of
+	[Ref] ->
 	    erlang:demonitor(Ref),
-	    ets:delete(S#state.info_hash_map, {InfoHash, Pid, Ref}),
+	    etorrent_mnesia_operations:delete_info_hash(InfoHash),
 	    {reply, ok, S};
 	_ ->
 	    error_logger:error_msg("Pid ~p is not in info_hash_map~n",
@@ -219,23 +217,15 @@ handle_call({remove_hash, InfoHash}, {Pid, _Tag}, S) ->
 	    {reply, ok, S}
     end;
 handle_call({set_hash_state, InfoHash, State}, _From, S) ->
-    Selector = ets:fun2ms(fun({IH, Pid, Ref, _St}) when IH =:= InfoHash->
-				  {Pid, Ref}
-			  end),
-    case ets:select(S#state.info_hash_map, Selector) of
-	[{Pid, Ref}] ->
-	    ets:insert(S#state.info_hash_map, {InfoHash, Pid, Ref, State}),
+    case etorrent_mnesia_operations:set_info_hash_state(InfoHash, State) of
+	ok ->
 	    {reply, ok, S};
-	[] ->
+	not_found ->
 	    {reply, not_found, S}
     end;
 handle_call({lookup, InfoHash}, _From, S) ->
-    case ets:match(S#state.info_hash_map, {InfoHash, '$1', '_', '_'}) of
-	[[Pid]] ->
-	    {reply, {ok, Pid}, S};
-	[] ->
-	    {reply, not_found, S}
-    end;
+    Pids = etorrent_mnesia_operations:select_info_hash_pids(InfoHash),
+    {reply, {pids, Pids}, S};
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -257,7 +247,7 @@ handle_cast(_Msg, State) ->
 %%--------------------------------------------------------------------
 handle_info({'DOWN', _R, process, Pid, _Reason}, S) ->
     delete_peers(Pid, S),
-    ets:match_delete(S#state.info_hash_map, {'_', Pid}),
+    etorrent_mnesia_operations:delete_info_hash_by_pid(Pid),
     {noreply, S};
 handle_info(_Info, State) ->
     {noreply, State}.
@@ -318,8 +308,10 @@ reset_round(InfoHash, S) ->
 		  end,
 		  Matches).
 
-delete_peers(Pid, S) ->
-    [[InfoHash]] = ets:match(S#state.info_hash_map, {'$1', Pid}),
+delete_peers(_Pid, S) ->
+    %%[[InfoHash]] = ets:match(S#state.info_hash_map, {'$1', Pid}),
+    %% TODO: Fix this function
+    InfoHash = ok,
     ets:match_delete(S#state.peer_map, {'_', '_', InfoHash, '_'}),
     ok.
 
