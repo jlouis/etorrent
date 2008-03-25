@@ -70,6 +70,7 @@ torrent_completed(Pid) ->
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
 init([{ControlPid, StatePid, PeerMasterPid, Url, InfoHash, PeerId}]) ->
+    process_flag(trap_exit, true),
     {ok, #state{should_contact_tracker = false,
 		peer_master_pid = PeerMasterPid,
 		control_pid = ControlPid,
@@ -154,9 +155,6 @@ handle_info(_Info, State) ->
 terminate(normal, S) ->
     contact_tracker(S, "stopped"),
     ok;
-terminate(shutdown, S) ->
-    contact_tracker(S, "stopped"),
-    ok;
 terminate(_Reason, _S) ->
     ok.
 
@@ -172,10 +170,17 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 contact_tracker(S, Event) ->
     NewUrl = build_tracker_url(S, Event),
+    et:report_event(50, tracker_process, tracker, get,
+		    io_lib:format("Contacted tracker with event: ~p",
+				  [Event])),
     case http_gzip:request(NewUrl) of
 	{ok, {{_, 200, _}, _, Body}} ->
+	    et:report_event(50, tracker, tracker_process, ok200,
+			    "Returned body"),
 	    {ok, Body};
 	{error, E} ->
+	    et:report_event(50, tracker, tracker_process, error,
+			    io_lib:format("Error: ~p", [E])),
 	    {error, E}
     end.
 
@@ -228,17 +233,13 @@ build_tracker_url(S, Event) ->
 							  Left}]),
     {ok, Port} = application:get_env(etorrent, port),
     Request = [{"info_hash",
-		etorrent_utils:build_uri_encoded_form_rfc1738(
-		  S#state.info_hash)},
+		etorrent_utils:build_info_hash_encoded_form_rfc1738(S#state.info_hash)},
 	       {"peer_id",
-		etorrent_utils:build_uri_encoded_form_rfc1738(
-		  S#state.peer_id)},
+		etorrent_utils:build_uri_encoded_form_rfc1738(S#state.peer_id)},
 	       {"uploaded", Uploaded},
 	       {"downloaded", Downloaded},
 	       {"left", Left},
-	       {"port", Port},
-	       {"no_peer_id", "1"},
-	       {"compact", "1"}],
+	       {"port", Port}],
     EReq = case Event of
 	       none ->
 		   Request;
@@ -254,12 +255,23 @@ find_next_request_time(BC) ->
 						   ?DEFAULT_REQUEST_TIMEOUT}),
     R.
 
+process_ips(D) ->
+    process_ips(D, []).
+
+process_ips([], Accum) ->
+    lists:reverse(Accum);
+process_ips([IPDict | Rest], Accum) ->
+    {ok, {string, IP}} = etorrent_bcoding:search_dict({string, "ip"}, IPDict),
+    {ok, {string, PeerId}} = etorrent_bcoding:search_dict({string, "peer id"},
+						    IPDict),
+    {ok, {integer, Port}} = etorrent_bcoding:search_dict({string, "port"},
+						   IPDict),
+    process_ips(Rest, [{IP, Port, PeerId} | Accum]).
+
 find_ips_in_tracker_response(BC) ->
     case etorrent_bcoding:search_dict_default({string, "peers"}, BC, none) of
 	{list, Ips} ->
-	    etorrent_metainfo:process_ips_dictionary(Ips);
-	{string, Ips} ->
-	    etorrent_metainfo:process_ips_binary(Ips);
+	    process_ips(Ips);
 	none ->
 	    []
     end.
