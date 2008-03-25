@@ -1,5 +1,5 @@
 %%%
-%%% This module is responsible for managing the run of a single torrent file.
+%%% This module is responsible for managing the run of set of torrent files.
 %%%
 -module(etorrent_t_manager).
 -behaviour(gen_server).
