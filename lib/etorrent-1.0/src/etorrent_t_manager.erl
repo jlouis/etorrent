@@ -1,3 +1,6 @@
+%%%
+%%% This module is responsible for managing the run of a single torrent file.
+%%%
 -module(etorrent_t_manager).
 -behaviour(gen_server).
 
@@ -14,12 +17,16 @@
 		 local_peer_id }).
 
 %% API
+
+%% Start a new etorrent_t_manager process
 start_link() ->
     gen_server:start_link({local, ?SERVER}, etorrent_t_manager, [], []).
 
+%% Ask the manager process to start a new torrent, given in File.
 start_torrent(File) ->
     gen_server:cast(?SERVER, {start_torrent, File}).
 
+%% Ask the manager process to stop a torrent, identified by File.
 stop_torrent(File) ->
     gen_server:cast(?SERVER, {stop_torrent, File}).
 
@@ -38,7 +45,7 @@ handle_cast({stop_torrent, F}, S) ->
 	[{F, _TorrentSup}] ->
 	    etorrent_t_pool_sup:stop_torrent(F),
 	    {noreply, S};
-	[] -> % Torrent already the 'DOWN' message and was removed
+	[] -> % Torrent already got the 'DOWN' message and was removed
 	    {noreply, S}
 	end.
 
