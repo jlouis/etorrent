@@ -10,6 +10,13 @@ ETORRENT was mostly conceived as an experiment in how easy it would be
 to write a bittorrent client in Erlang. The hypothesis is that the
 code will be cleaner and smaller than comparative bittorrent clients.
 
+Note that the code is not yet battle scarred. It has not stood up to the
+testing of time and as such, it will fail - sometimes in nasty ways and
+maybe as a bad p2p citizen. Hence, you should put restraint in using it
+unless you are able to fix eventual problems. If you've noticed any bad
+behaviour it is definitely a bug and should be reported as soon as possible
+so we can get it away.
+
 -- GETTING STARTED WITHOUT INSTALLING --
 
 1. run 'make -f Makefile.init'. This calls autoconf and friends.
