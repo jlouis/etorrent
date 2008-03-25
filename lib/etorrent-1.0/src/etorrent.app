@@ -16,7 +16,7 @@
                etorrent_t_manager, etorrent_t_mapper, etorrent_dirwatcher_sup,
                etorrent_fs_mapper, etorrent_t_pool_sup, etorrent_fs_serializer,
 	       etorrent_listener]},
- {applications, [kernel, stdlib, inets, crypto, sasl]},
+ {applications, [kernel, stdlib, inets, crypto, sasl, mnesia]},
  {mod, {etorrent_app,[]}},
  {env, [{dir, "/home/jlouis/etorrent_test"},
         {port, 1729}]}]}.
