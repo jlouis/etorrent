@@ -14,7 +14,7 @@
 
 %% API
 -export([new_torrent/2, find_torrents_by_file/1, cleanup_torrent_by_pid/1,
-	 store_info_hash/3, set_info_hash_state/2]).
+	 store_info_hash/3, set_info_hash_state/2, select_info_hash_pids/1]).
 
 %%====================================================================
 %% API
@@ -47,7 +47,7 @@ find_torrents_by_file(Filename) ->
 cleanup_torrent_by_pid(Pid) ->
     F = fun() ->
 		Query = qlc:q([T#tracking_map.filename || T <- mnesia:table(tracking_map),
-							  T#tracking_map.supervisor_pid == Pid]),
+							  T#tracking_map.supervisor_pid =:= Pid]),
 		lists:foreach(fun (F) -> mnesia:delete(tracking_map, F, write) end, qlc:e(Query))
 	end,
     mnesia:transaction(F).
@@ -83,6 +83,14 @@ set_info_hash_state(InfoHash, State) ->
 	end,
     {atomic, Res} = mnesia:transaction(F),
     Res.
+
+%%--------------------------------------------------------------------
+%% Function: select_info_hash_pids(InfoHash) -> Pids
+%%--------------------------------------------------------------------
+select_info_hash_pids(InfoHash) ->
+    Q = qlc:q([IH#info_hash.storer_pid || IH <- mnesia:table(info_hash),
+					  IH#info_hash.info_hash =:= InfoHash]),
+    qlc:e(Q).
 
 %%--------------------------------------------------------------------
 %% Internal functions
