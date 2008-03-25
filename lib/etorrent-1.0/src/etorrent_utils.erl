@@ -11,7 +11,7 @@
 %% API
 -export([read_all_of_file/1, list_tabulate/2, queue_remove/2,
 	 queue_remove_with_check/2, sets_is_empty/1,
-	 build_uri_encoded_form_rfc1738/1]).
+	 build_encoded_form_rfc1738/1]).
 
 %%====================================================================
 %% API
@@ -74,10 +74,10 @@ queue_remove(Item, Q) ->
     queue:from_list(List).
 
 %%--------------------------------------------------------------------
-%% Function: build_uri_encoded_form_rfc1738(list() | binary()) -> String
+%% Function: build_encoded_form_rfc1738(list() | binary()) -> String
 %% Description: Convert the list into RFC1738 encoding (URL-encoding).
 %%--------------------------------------------------------------------
-build_uri_encoded_form_rfc1738(List) when is_list(List) ->
+build_encoded_form_rfc1738(List) when is_list(List) ->
     Unreserved = rfc_3986_unreserved_characters_set(),
     lists:flatten(lists:map(
 		    fun (E) ->
@@ -90,8 +90,8 @@ build_uri_encoded_form_rfc1738(List) when is_list(List) ->
 			    end
 		    end,
 		    List));
-build_uri_encoded_form_rfc1738(Binary) when is_binary(Binary) ->
-    build_uri_encoded_form_rfc1738(binary_to_list(Binary)).
+build_encoded_form_rfc1738(Binary) when is_binary(Binary) ->
+    build_encoded_form_rfc1738(binary_to_list(Binary)).
 
 %%====================================================================
 %% Internal functions
