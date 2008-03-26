@@ -14,7 +14,8 @@
 
 %% API
 -export([new_torrent/2, find_torrents_by_file/1, cleanup_torrent_by_pid/1,
-	 store_info_hash/3, set_info_hash_state/2, select_info_hash_pids/1]).
+	 store_info_hash/3, set_info_hash_state/2, select_info_hash/2,
+	 select_info_hash/1, delete_info_hash/1, delete_info_hash_by_pid/1]).
 
 %%====================================================================
 %% API
@@ -85,12 +86,44 @@ set_info_hash_state(InfoHash, State) ->
     Res.
 
 %%--------------------------------------------------------------------
-%% Function: select_info_hash_pids(InfoHash) -> Pids
+%% Function: select_info_hash_pids(InfoHash, Pid) -> Rows
+%% Description: Return rows matching infohash and pid
 %%--------------------------------------------------------------------
-select_info_hash_pids(InfoHash) ->
-    Q = qlc:q([IH#info_hash.storer_pid || IH <- mnesia:table(info_hash),
-					  IH#info_hash.info_hash =:= InfoHash]),
+select_info_hash(InfoHash, Pid) ->
+    Q = qlc:q([IH || IH <- mnesia:table(info_hash),
+		     IH#info_hash.info_hash =:= InfoHash,
+		     IH#info_hash.storer_pid =:= Pid]),
     qlc:e(Q).
+
+%%--------------------------------------------------------------------
+%% Function: select_info_hash_pids(InfoHash) -> Pids
+%% Description: Return all rows matching infohash
+%%--------------------------------------------------------------------
+select_info_hash(InfoHash) ->
+    Q = qlc:q([IH || IH <- mnesia:table(info_hash),
+		     IH#info_hash.info_hash =:= InfoHash]),
+    qlc:e(Q).
+
+%%--------------------------------------------------------------------
+%% Function: delete_info_hash(InfoHash) -> transaction
+%% Description: Remove the row with InfoHash in it
+%%--------------------------------------------------------------------
+delete_info_hash(InfoHash) ->
+    F = fun() ->
+		mnesia:delete(info_hash, InfoHash, write)
+	end,
+    mnesia:transaction(F).
+
+delete_info_hash_by_pid(Pid) ->
+    F = fun() ->
+		Q = qlc:q([IH#info_hash.info_hash || IH <- mnesia:table(info_hash),
+						     IH#info_hash.storer_pid =:= Pid]),
+		lists:foreach(fun (H) ->
+				      mnesia:delete(info_hash, H, write)
+			      end,
+			      qlc:e(Q))
+	end,
+    mnesia:transaction(F).
 
 %%--------------------------------------------------------------------
 %% Internal functions

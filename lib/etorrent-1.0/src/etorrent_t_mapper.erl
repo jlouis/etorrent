@@ -10,7 +10,7 @@
 
 -behaviour(gen_server).
 
--include_lib("stdlib/include/ms_transform.hrl").
+-include("etorrent_mnesia_table.hrl").
 
 %% API
 -export([start_link/0, store_hash/1, remove_hash/1, lookup/1,
@@ -161,11 +161,11 @@ init([]) ->
 %%                                      {stop, Reason, State}
 %% Description: Handling call messages
 %%--------------------------------------------------------------------
-handle_call({find_ip_port, Pid}, _From, S) ->
-    Selector = ets:fun2ms(fun({P, IPPort, InfoHash, PI}) when P =:= Pid ->
-				  IPPort
-			  end),
-    [IPPort] = ets:select(S#state.peer_map, Selector),
+handle_call({find_ip_port, _Pid}, _From, S) ->
+%%     Selector = ets:fun2ms(fun({P, IPPort, InfoHash, PI}) when P =:= Pid ->
+%% 				  IPPort
+%% 			  end),
+    [IPPort] = ets:select(S#state.peer_map, foo),
     {reply, {ok, IPPort}, S};
 handle_call({store_peer, IP, Port, InfoHash, Pid}, _From, S) ->
     ets:insert(S#state.peer_map, {Pid, {IP, Port}, InfoHash, #peer_info{}}),
@@ -206,8 +206,8 @@ handle_call({store_hash, InfoHash}, {Pid, _Tag}, S) ->
     etorrent_mnesia_operations:store_info_hash(InfoHash, Pid, Ref),
     {reply, ok, S};
 handle_call({remove_hash, InfoHash}, {Pid, _Tag}, S) ->
-    case etorrent_mnesia_operations:select_info_hash_ref(InfoHash, Pid) of
-	[Ref] ->
+    case etorrent_mnesia_operations:select_info_hash(InfoHash, Pid) of
+	[#info_hash { monitor_reference = Ref}] ->
 	    erlang:demonitor(Ref),
 	    etorrent_mnesia_operations:delete_info_hash(InfoHash),
 	    {reply, ok, S};
@@ -224,8 +224,9 @@ handle_call({set_hash_state, InfoHash, State}, _From, S) ->
 	    {reply, not_found, S}
     end;
 handle_call({lookup, InfoHash}, _From, S) ->
-    Pids = etorrent_mnesia_operations:select_info_hash_pids(InfoHash),
-    {reply, {pids, Pids}, S};
+    [#info_hash.storer_pid = Pid] =
+	etorrent_mnesia_operations:select_info_hash(InfoHash),
+    {reply, {pids, Pid}, S};
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
