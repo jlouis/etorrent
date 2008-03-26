@@ -129,11 +129,79 @@ delete_info_hash_by_pid(Pid) ->
 	end,
     mnesia:transaction(F).
 
+
 %%--------------------------------------------------------------------
-%% Function: create_peer_info() -> transaction
-%% Description: Create a new peer_info object and return a unique ref
-%%  to it in the transaction.
+%% Function: store_peer(IP, Port, InfoHash, Pid) -> transaction
+%% Description: Store a row for the peer
 %%--------------------------------------------------------------------
+store_peer(IP, Port, InfoHash, Pid) ->
+    F = fun() ->
+		{atomic, Ref} = create_peer_info(),
+		mnesia:write(#peer_map { pid = Pid,
+					 ip = IP,
+					 port = Port,
+					 info_hash = InfoHash}),
+		mnesia:write(#peer { map = Pid,
+				     info = Ref })
+	end,
+    mnesia:transaction(F).
+
+%%--------------------------------------------------------------------
+%% Function: select_peer_ip_port_by_pid(Pid) -> rows
+%% Description: Select the IP and Port pair of a Pid
+%%--------------------------------------------------------------------
+select_peer_ip_port_by_pid(Pid) ->
+    Q = qlc:q([{PM#peer_map.ip,
+		PM#peer_map.port} || PM <- mnesia:table(peer_map),
+				     PM#peer_map.pid =:= Pid]),
+    qlc:e(Q).
+
+%%--------------------------------------------------------------------
+%% Function: delete_peer(Pid) -> transaction
+%% Description: Delete all references to the peer owned by Pid
+%%--------------------------------------------------------------------
+delete_peer(Pid) ->
+    mnesia:transaction(
+      fun () ->
+	      P = mnesia:read(peer, Pid, write),
+	      mnesia:delete(info_hash, P#peer.info_hash, write),
+	      mnesia:delete(peer_map, Pid, write)
+      end).
+
+peer_statechange(InfoHash, What) ->
+    mnesia:transaction(
+      fun () ->
+	      Q = qlc:q([P#peer_map.pid || P <- mnesia:table(peer_map),
+					   P#peer_map.info_hash =:= InfoHash]),
+	      Pids = qlc:e(Q),
+	      lists:foreach(fun(Pid) ->
+				    Ref = mnesia:read(peer, Pid),
+				    PI = mnesia:read(peer_info, Ref, write),
+				    case What of
+					remove_optimistic_unchoke ->
+					    New = PI#peer_info{ optimistic_unchoke = false }
+				    end,
+				    mnesia:write(peer_info, New)
+			    end,
+			    Pids)
+      end).
+
+is_peer_connected(IP, Port, InfoHash) ->
+    Q = qlc:q(PM#peer_map.pid || PM <- mnesia:table(peer_map),
+				 PM#peer_map.ip =:= IP,
+				 PM#peer_map.port =:= Port,
+				 PM#peer_map.info_hash =:= InfoHash),
+    case qlc:e(Q) of
+	[] ->
+	    false;
+	_ ->
+	    true
+    end.
+
+%%--------------------------------------------------------------------
+%% Internal functions
+%%--------------------------------------------------------------------
+
 create_peer_info() ->
     F = fun() ->
 		Ref = make_ref(),
@@ -146,9 +214,5 @@ create_peer_info() ->
 		Ref
 	end,
     mnesia:transaction(F).
-
-%%--------------------------------------------------------------------
-%% Internal functions
-%%--------------------------------------------------------------------
 
 

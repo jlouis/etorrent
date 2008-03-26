@@ -17,8 +17,7 @@
 -record(peer_map, {pid,
 		   ip,
 		   port,
-		   infohash,
-		   peer_info_id}).
+		   info_hash}).
 
 -record(peer,     {map,
 		   info}).

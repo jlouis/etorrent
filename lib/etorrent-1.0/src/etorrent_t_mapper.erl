@@ -14,7 +14,7 @@
 
 %% API
 -export([start_link/0, store_hash/1, remove_hash/1, lookup/1,
-	 store_peer/4, remove_peer/1, is_connected_peer/3,
+	 remove_peer/1, is_connected_peer/3,
 	 is_connected_peer_bad/3, set_hash_state/2,
 	 choked/1, unchoked/1, uploaded_data/2, downloaded_data/2,
 	 interested/1, not_interested/1,
@@ -50,9 +50,6 @@ remove_hash(InfoHash) ->
 
 set_hash_state(InfoHash, State) ->
     gen_server:call(?SERVER, {set_hash_state, InfoHash, State}).
-
-store_peer(IP, Port, InfoHash, Pid) ->
-    gen_server:call(?SERVER, {store_peer, IP, Port, InfoHash, Pid}).
 
 remove_peer(Pid) ->
     gen_server:call(?SERVER, {remove_peer, Pid}).
@@ -154,46 +151,24 @@ init([]) ->
 %%                                      {stop, Reason, State}
 %% Description: Handling call messages
 %%--------------------------------------------------------------------
-handle_call({find_ip_port, _Pid}, _From, S) ->
-%%     Selector = ets:fun2ms(fun({P, IPPort, InfoHash, PI}) when P =:= Pid ->
-%% 				  IPPort
-%% 			  end),
-    [IPPort] = ets:select(S#state.peer_map, foo),
+handle_call({find_ip_port, Pid}, _From, S) ->
+    [IPPort] = etorrent_mnesia_operations:select_peer_ip_port_by_pid(Pid),
     {reply, {ok, IPPort}, S};
-handle_call({store_peer, IP, Port, InfoHash, Pid}, _From, S) ->
-    ets:insert(S#state.peer_map, {Pid, {IP, Port}, InfoHash, #peer_info{}}),
-    {reply, ok, S};
 handle_call({remove_peer, Pid}, _From, S) ->
-    ets:match_delete(S#state.peer_map, {Pid, '_', '_', '_'}),
+    {atomic, _} = etorrent_mnesia_operations:delete_peer(Pid),
     {reply, ok, S};
 handle_call({interest_split, InfoHash}, _From, S) ->
     {Intersted, NotInterested} = find_interested_peers(S, InfoHash),
     {reply, {Intersted, NotInterested}, S};
-handle_call({modify_peer, Pid, F}, _From, S) ->
-    [[IPPort, InfoHash, PI]] = ets:match(S#state.peer_map,
-					      {Pid, '$1', '$2', '$3'}),
-    ets:insert(S#state.peer_map, {Pid, IPPort, InfoHash, F(PI)}),
-    {reply, ok, S};
 handle_call({reset_round, InfoHash}, _From, S) ->
     reset_round(InfoHash, S),
     {reply, ok, S};
 handle_call({remove_optistic_unchoking, InfoHash}, _From, S) ->
-    Matches = ets:match(S#state.peer_map, {'$1', '$2', InfoHash, '$3'}),
-    lists:foreach(fun([Pid, IPPort, PI]) ->
-			  ets:insert(
-			    S#state.peer_map,
-			    {Pid, IPPort, InfoHash,
-			     PI#peer_info{optimistic_unchoke = false}})
-		  end,
-		  Matches),
+    etorrent_mnesia_operations:peer_statechange(InfoHash, remove_optistic_unchoking),
     {reply, ok, S};
 handle_call({is_connected_peer, IP, Port, InfoHash}, _From, S) ->
-    case ets:match(S#state.peer_map, {'_', {IP, Port}, InfoHash, '_'}) of
-	[] ->
-	    {reply, false, S};
-	X when is_list(X) ->
-	    {reply, true, S}
-    end;
+    R = etorrent_mnesia_operations:is_peer_connected(IP, Port, InfoHash),
+    {reply, R, S};
 handle_call({store_hash, InfoHash}, {Pid, _Tag}, S) ->
     Ref = erlang:monitor(process, Pid),
     etorrent_mnesia_operations:store_info_hash(InfoHash, Pid, Ref),
