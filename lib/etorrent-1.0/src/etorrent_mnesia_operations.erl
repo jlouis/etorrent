@@ -15,7 +15,9 @@
 %% API
 -export([new_torrent/2, find_torrents_by_file/1, cleanup_torrent_by_pid/1,
 	 store_info_hash/3, set_info_hash_state/2, select_info_hash/2,
-	 select_info_hash/1, delete_info_hash/1, delete_info_hash_by_pid/1]).
+	 select_info_hash/1, delete_info_hash/1, delete_info_hash_by_pid/1,
+	 store_peer/4, select_peer_ip_port_by_pid/1, delete_peer/1,
+	peer_statechange/2, is_peer_connected/3]).
 
 %%====================================================================
 %% API
@@ -163,8 +165,8 @@ select_peer_ip_port_by_pid(Pid) ->
 delete_peer(Pid) ->
     mnesia:transaction(
       fun () ->
-	      P = mnesia:read(peer, Pid, write),
-	      mnesia:delete(info_hash, P#peer.info_hash, write),
+	      P = mnesia:read(peer_map, Pid, write),
+	      mnesia:delete(info_hash, P#peer_map.info_hash, write),
 	      mnesia:delete(peer_map, Pid, write)
       end).
 
@@ -187,10 +189,10 @@ peer_statechange(InfoHash, What) ->
       end).
 
 is_peer_connected(IP, Port, InfoHash) ->
-    Q = qlc:q(PM#peer_map.pid || PM <- mnesia:table(peer_map),
-				 PM#peer_map.ip =:= IP,
-				 PM#peer_map.port =:= Port,
-				 PM#peer_map.info_hash =:= InfoHash),
+    Q = qlc:q([PM#peer_map.pid || PM <- mnesia:table(peer_map),
+				  PM#peer_map.ip =:= IP,
+				  PM#peer_map.port =:= Port,
+				  PM#peer_map.info_hash =:= InfoHash]),
     case qlc:e(Q) of
 	[] ->
 	    false;
