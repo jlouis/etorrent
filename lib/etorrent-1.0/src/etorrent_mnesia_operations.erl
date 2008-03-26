@@ -114,6 +114,10 @@ delete_info_hash(InfoHash) ->
 	end,
     mnesia:transaction(F).
 
+%%--------------------------------------------------------------------
+%% Function: delete_info_hash_by_pid(Pid) -> transaction
+%% Description: Remove the row with Pid in it
+%%--------------------------------------------------------------------
 delete_info_hash_by_pid(Pid) ->
     F = fun() ->
 		Q = qlc:q([IH#info_hash.info_hash || IH <- mnesia:table(info_hash),
@@ -122,6 +126,24 @@ delete_info_hash_by_pid(Pid) ->
 				      mnesia:delete(info_hash, H, write)
 			      end,
 			      qlc:e(Q))
+	end,
+    mnesia:transaction(F).
+
+%%--------------------------------------------------------------------
+%% Function: create_peer_info() -> transaction
+%% Description: Create a new peer_info object and return a unique ref
+%%  to it in the transaction.
+%%--------------------------------------------------------------------
+create_peer_info() ->
+    F = fun() ->
+		Ref = make_ref(),
+		mnesia:write(#peer_info { id = Ref,
+					  uploaded = 0,
+					  downloaded = 0,
+					  interested = false,
+					  remote_choking = true,
+					  optimistic_unchoke = false}),
+		Ref
 	end,
     mnesia:transaction(F).
 

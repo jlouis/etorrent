@@ -28,14 +28,7 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3]).
 
--record(state, { peer_map = none}).
-
--record(peer_info, {uploaded = 0,
-		    downloaded = 0,
-		    interested = false,
-		    remote_choking = true,
-
-		    optimistic_unchoke = false}).
+-record(state, {}).
 
 -define(SERVER, ?MODULE).
 
@@ -150,7 +143,7 @@ lookup(InfoHash) ->
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
 init([]) ->
-    {ok, #state{peer_map      = ets:new(peer_map, [named_table])}}.
+    {ok, #state{}}.
 
 %%--------------------------------------------------------------------
 %% Function: %% handle_call(Request, From, State) -> {reply, Reply, State} |
