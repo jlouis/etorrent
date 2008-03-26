@@ -1,5 +1,9 @@
+%%% Local Variables:
+%%% mode: org
+%%% End:
 ----------------------------------------------------------------------
 -- This is a list of what To Do before a release is ready to be made.
+--   Keep the style please. Can be read with emacs org-mode
 ----------------------------------------------------------------------
 
 * Revamp etorrent_t_manager.
@@ -11,7 +15,11 @@
   supported. It will also remove some pesky problems along the way I
   am sure. We can slowly migrate ets tables to mnesia tables as we
   need it done.
-
+** Delete etorrent_t_mapper
+  When we have a complete mnesia-implementation, then the
+  implementation of the etorrent_t_mapper is not needed
+  anymore. Mnesia can run that itself instead. So we just connect
+  directly to the mnesia core and let it do the things.
 * Move the piece-chunking code up from the peer connections.
   It should not be the case that the individual peer connection
   processes are responsible for managing the chunking of pieces. It
