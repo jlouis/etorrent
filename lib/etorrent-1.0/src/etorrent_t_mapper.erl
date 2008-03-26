@@ -158,7 +158,7 @@ handle_call({remove_peer, Pid}, _From, S) ->
     {atomic, _} = etorrent_mnesia_operations:delete_peer(Pid),
     {reply, ok, S};
 handle_call({interest_split, InfoHash}, _From, S) ->
-    {Intersted, NotInterested} = find_interested_peers(S, InfoHash),
+    {Intersted, NotInterested} = find_interested_peers(InfoHash),
     {reply, {Intersted, NotInterested}, S};
 handle_call({reset_round, InfoHash}, _From, S) ->
     reset_round(InfoHash, S),
@@ -241,27 +241,8 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 %%% Internal functions
 %%--------------------------------------------------------------------
-find_interested_peers(S, InfoHash) ->
-    MS = ets:fun2ms(fun({P, _IP, IH, PI}) when IH == InfoHash ->
-			    {P, PI}
-		    end),
-    Matches = ets:select(S#state.peer_map, MS),
-    lists:foldl(fun({P, PI}, {Interested, NotInterested}) ->
-			case PI#peer_info.interested of
-			    true ->
-				{[{P,
-				   PI#peer_info.downloaded,
-				   PI#peer_info.uploaded} | Interested],
-				 NotInterested};
-			    false ->
-				{Interested,
-				 [{P,
-				   PI#peer_info.downloaded,
-				   PI#peer_info.uploaded} | NotInterested]}
-			end
-		end,
-		{[], []},
-		Matches).
+find_interested_peers(InfoHash) ->
+    etorrent_mnesia_operations:select_interested_peers(InfoHash).
 
 %%--------------------------------------------------------------------
 %% Function: reset_round(state(), InfoHash) -> ()

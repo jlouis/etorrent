@@ -200,9 +200,26 @@ is_peer_connected(IP, Port, InfoHash) ->
 	    true
     end.
 
+select_interested_peers(InfoHash) ->
+    InterestedQuery = build_interest_query(true),
+    NotInterestedQuery = build_interest_query(false),
+    {qlc:e(InterestedQuery), qlc:e(NotInterestedQuery)}.
+
 %%--------------------------------------------------------------------
 %% Internal functions
 %%--------------------------------------------------------------------
+
+build_interest_query(Interest) ->
+    qlc:q([{PM#peer_map.pid,
+	    PI#peer_info.uploaded,
+	    PI#peer_info.downloaded}
+	   || PM <- mnesia_table(peer_map),
+	      PM#peer_map =:= InfoHash,
+	      P <- mnesia_table(peer),
+	      P#peer.map =:= PM#peer_map.pid,
+	      PI <- mnesia_table(peer_info),
+	      PI#peer_info.id =:= P#peer.info,
+	      PI#peer_info.interested =:= Interest]).
 
 create_peer_info() ->
     F = fun() ->
