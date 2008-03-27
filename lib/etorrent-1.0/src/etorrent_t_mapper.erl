@@ -249,19 +249,7 @@ find_interested_peers(InfoHash) ->
 %% Description: Reset the amount of uploaded and downloaded data
 %%--------------------------------------------------------------------
 reset_round(InfoHash, S) ->
-    Matches = ets:match(S#state.peer_map, {'$1', '$2', InfoHash, '$3'}),
-    lists:foreach(fun([Pid, IPPort, PI]) ->
-			  ets:insert(S#state.peer_map,
-				     {Pid, IPPort, InfoHash,
-				      PI#peer_info{uploaded = 0,
-						   downloaded = 0}})
-		  end,
-		  Matches).
+    etorrent_mnesia_operations:reset_round(InfoHash).
 
-delete_peers(_Pid, S) ->
-    %%[[InfoHash]] = ets:match(S#state.info_hash_map, {'$1', Pid}),
-    %% TODO: Fix this function
-    InfoHash = ok,
-    ets:match_delete(S#state.peer_map, {'_', '_', InfoHash, '_'}),
-    ok.
-
+delete_peers(Pid, S) ->
+    etorrent_mnesia_operations:delete_peers(Pid).
