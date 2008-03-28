@@ -177,25 +177,28 @@ peer_statechange_infohash(InfoHash, What) ->
 	      Q = qlc:q([P#peer_map.pid || P <- mnesia:table(peer_map),
 					   P#peer_map.info_hash =:= InfoHash]),
 	      Pids = qlc:e(Q),
-	      lists:foreach(fun(Pid) ->
-				    Ref = mnesia:read(peer, Pid, read), %% Read lock here?
-				    PI = mnesia:read(peer_info, Ref, write),
-				    case What of
-					remove_optimistic_unchoke ->
-					    New = PI#peer_info{ optimistic_unchoke = false };
-					remote_choking ->
-					    New = PI#peer_info{ remote_choking = true};
-					remote_unchoking ->
-					    New = PI#peer_info{ remote_choking = false}
-				    end,
-				    mnesia:write(peer_info, New, write)
+	      lists:foreach(fun (Pid) ->
+				    peer_statechange(Pid, What)
 			    end,
 			    Pids)
       end).
 
-% XXX: Implement peer_statechange with the use of peer_statechange_infohash
-peer_statechange(_InfoHash, _What) ->
-    todo.
+peer_statechange(Pid, What) ->
+    F = fun () ->
+		Ref = mnesia:read(peer, Pid, read), %% Read lock here?
+		PI = mnesia:read(peer_info, Ref, write),
+		case What of
+		    remove_optimistic_unchoke ->
+			New = PI#peer_info{ optimistic_unchoke = false };
+		    remote_choking ->
+			New = PI#peer_info{ remote_choking = true};
+		    remote_unchoking ->
+			New = PI#peer_info{ remote_choking = false}
+		end,
+		mnesia:write(peer_info, New, write)
+	end,
+    mnesia:transaction(F).
+
 
 is_peer_connected(IP, Port, InfoHash) ->
     Q = qlc:q([PM#peer_map.pid || PM <- mnesia:table(peer_map),
