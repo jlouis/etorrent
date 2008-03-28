@@ -156,7 +156,7 @@ start_new_incoming_peer(IP, Port, S) ->
 			  S#state.file_system_pid,
 			  self()),
 	    erlang:monitor(process, Pid),
-	    etorrent_t_mapper:store_peer(IP, Port, S#state.info_hash, Pid),
+	    etorrent_mnesia_operations:store_peer(IP, Port, S#state.info_hash, Pid),
 	    {ok, Pid};
 	false ->
 	    already_enough_connections
@@ -300,7 +300,7 @@ spawn_new_peer(IP, Port, N, S) ->
 			  self()),
 	    _Ref = erlang:monitor(process, Pid),
 	    etorrent_t_peer_recv:connect(Pid, IP, Port),
-	    etorrent_t_mapper:store_peer(IP, Port, S#state.info_hash, Pid),
+	    etorrent_mnesia_operations:store_peer(IP, Port, S#state.info_hash, Pid),
 	    fill_peers(N-1, S)
     end.
 

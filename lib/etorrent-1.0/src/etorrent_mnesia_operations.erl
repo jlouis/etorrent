@@ -178,13 +178,13 @@ peer_statechange(InfoHash, What) ->
 					   P#peer_map.info_hash =:= InfoHash]),
 	      Pids = qlc:e(Q),
 	      lists:foreach(fun(Pid) ->
-				    Ref = mnesia:read(peer, Pid),
+				    Ref = mnesia:read(peer, Pid, read), %% Read lock here?
 				    PI = mnesia:read(peer_info, Ref, write),
 				    case What of
 					remove_optimistic_unchoke ->
 					    New = PI#peer_info{ optimistic_unchoke = false }
 				    end,
-				    mnesia:write(peer_info, New)
+				    mnesia:write(peer_info, New, write)
 			    end,
 			    Pids)
       end).
@@ -218,7 +218,7 @@ reset_round(InfoHash) ->
 		Peers = qlc:e(Q2),
 		lists:foreach(fun (P) ->
 				      New = P#peer_info{uploaded = 0, downloaded = 0},
-				      mnesia:write(peer_info, New) end,
+				      mnesia:write(peer_info, New, write) end,
 			      Peers)
 	end,
     mnesia:transaction(F).
