@@ -1,5 +1,5 @@
 %%%-------------------------------------------------------------------
-%%% File    : inets_gzip.erl
+%%% File    : http_gzip.erl
 %%% Author  : Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
 %%% Description : Wrapper around http to honor gzip.
 %%%
@@ -52,6 +52,3 @@ decode_content_encoding(Headers) ->
 	false ->
 	    identity
     end.
-
-	
-	    
