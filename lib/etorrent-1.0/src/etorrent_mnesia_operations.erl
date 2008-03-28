@@ -193,7 +193,11 @@ peer_statechange(Pid, What) ->
 		    remote_choking ->
 			New = PI#peer_info{ remote_choking = true};
 		    remote_unchoking ->
-			New = PI#peer_info{ remote_choking = false}
+			New = PI#peer_info{ remote_choking = false};
+		    interested ->
+			New = PI#peer_info{ interested = true};
+		    not_intersted ->
+			New = PI#peer_info{ interested = false}
 		end,
 		mnesia:write(peer_info, New, write)
 	end,

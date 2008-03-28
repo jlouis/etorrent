@@ -16,7 +16,6 @@
 -export([start_link/0, store_hash/1, remove_hash/1, lookup/1,
 	 set_hash_state/2,
 	 uploaded_data/2, downloaded_data/2,
-	 interested/1, not_interested/1,
 	 set_optimistic_unchoke/2,
 	 interest_split/1,
 	 find_ip_port/1]).
@@ -62,20 +61,6 @@ downloaded_data(Pid, Amount) ->
 		     fun(PI) ->
 			     PI#peer_info{
 			       downloaded = PI#peer_info.downloaded + Amount}
-		     end}).
-
-interested(Pid) ->
-    gen_server:call(?SERVER,
-		    {modify_peer, Pid,
-		     fun(PI) ->
-			     PI#peer_info{interested = true}
-		     end}).
-
-not_interested(Pid) ->
-    gen_server:call(?SERVER,
-		    {modify_peer, Pid,
-		     fun(PI) ->
-			     PI#peer_info{interested = false}
 		     end}).
 
 set_optimistic_unchoke(Pid, Val) ->

@@ -248,10 +248,10 @@ handle_message(unchoke, S) ->
     etorrent_mnesia_operations:peer_statechange(self(), remote_unchoking),
     try_to_queue_up_pieces(S#state{remote_choked = false});
 handle_message(interested, S) ->
-    etorrent_t_mapper:interested(self()),
+    etorrent_mnesia_operations:peer_statechange(self(), interested),
     {ok, S#state { remote_interested = true}};
 handle_message(not_interested, S) ->
-    etorrent_t_mapper:not_interested(self()),
+    etorrent_mnesia_operations:peer_statechange(self(), not_interested),
     {ok, S#state { remote_interested = false}};
 handle_message({request, Index, Offset, Len}, S) ->
     etorrent_t_peer_send:remote_request(S#state.send_pid, Index, Offset, Len),
