@@ -17,7 +17,8 @@
 	 store_info_hash/3, set_info_hash_state/2, select_info_hash/2,
 	 select_info_hash/1, delete_info_hash/1, delete_info_hash_by_pid/1,
 	 store_peer/4, select_peer_ip_port_by_pid/1, delete_peer/1,
-	peer_statechange/2, is_peer_connected/3]).
+	 peer_statechange/2, is_peer_connected/3, select_interested_peers/1,
+	 reset_round/1, delete_peers/1]).
 
 %%====================================================================
 %% API
@@ -201,8 +202,8 @@ is_peer_connected(IP, Port, InfoHash) ->
     end.
 
 select_interested_peers(InfoHash) ->
-    InterestedQuery = build_interest_query(true),
-    NotInterestedQuery = build_interest_query(false),
+    InterestedQuery = build_interest_query(true, InfoHash),
+    NotInterestedQuery = build_interest_query(false, InfoHash),
     {qlc:e(InterestedQuery), qlc:e(NotInterestedQuery)}.
 
 reset_round(InfoHash) ->
@@ -210,14 +211,14 @@ reset_round(InfoHash) ->
          Q = qlc:q([PI || PM <- mnesia:table(peer_map),
 	     	       	  PM#peer_map.info_hash =:= InfoHash,
 			  P <- mnesia:table(peer),
-			  P#peer.map =:= PM#peer_map.id,
-			  PI <- mnesia:table(peer_info)
-			  PI#peer_info.ref =:= P#peer.ref
+			  P#peer.map =:= PM#peer_map.pid,
+			  PI <- mnesia:table(peer_info),
+			  PI#peer_info.id =:= P#peer.info
 			  ]),
          Peers = qlc:e(Q),
          lists:foreach(fun (P) ->
 	     New = P#peer_info{uploaded = 0, downloaded = 0},
-	     mnesia:write(peer_info, P) end,
+	     mnesia:write(peer_info, New) end,
 	     Peers)
     end,
     mnesia:transaction(F).
@@ -235,28 +236,28 @@ delete_peer_map(Pid) ->
 
 delete_peer_info_hash(Pid) ->
   mnesia:transaction(fun () ->
-    Q = qlc:q([PI#peer_info.ref || P <- mnesia:table(peer),
-      				   P#peer.map =:= Pid,
-				   PI <- mnesia:table(peer_info),
-				   PI#peer_info.ref =:= P#peer.ref]),
+    Q = qlc:q([PI#peer_info.id || P <- mnesia:table(peer),
+				  P#peer.map =:= Pid,
+				  PI <- mnesia:table(peer_info),
+				  PI#peer_info.id =:= P#peer.info]),
     Refs = qlc:e(Q),
     lists:foreach(fun (R) -> mnesia:delete(peer_info, R, write) end,
                   Refs)
     end).
-			  
+
 %%--------------------------------------------------------------------
 %% Internal functions
 %%--------------------------------------------------------------------
 
-build_interest_query(Interest) ->
+build_interest_query(Interest, InfoHash) ->
     qlc:q([{PM#peer_map.pid,
 	    PI#peer_info.uploaded,
 	    PI#peer_info.downloaded}
-	   || PM <- mnesia_table(peer_map),
-	      PM#peer_map =:= InfoHash,
-	      P <- mnesia_table(peer),
+	   || PM <- mnesia:table(peer_map),
+	      PM#peer_map.info_hash =:= InfoHash,
+	      P <- mnesia:table(peer),
 	      P#peer.map =:= PM#peer_map.pid,
-	      PI <- mnesia_table(peer_info),
+	      PI <- mnesia:table(peer_info),
 	      PI#peer_info.id =:= P#peer.info,
 	      PI#peer_info.interested =:= Interest]).
 

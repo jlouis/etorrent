@@ -248,8 +248,8 @@ find_interested_peers(InfoHash) ->
 %% Function: reset_round(state(), InfoHash) -> ()
 %% Description: Reset the amount of uploaded and downloaded data
 %%--------------------------------------------------------------------
-reset_round(InfoHash, S) ->
+reset_round(InfoHash, _S) ->
     etorrent_mnesia_operations:reset_round(InfoHash).
 
-delete_peers(Pid, S) ->
+delete_peers(Pid, _S) ->
     etorrent_mnesia_operations:delete_peers(Pid).
