@@ -208,19 +208,19 @@ select_interested_peers(InfoHash) ->
 
 reset_round(InfoHash) ->
     F = fun() ->
-         Q = qlc:q([PI || PM <- mnesia:table(peer_map),
-	     	       	  PM#peer_map.info_hash =:= InfoHash,
-			  P <- mnesia:table(peer),
-			  P#peer.map =:= PM#peer_map.pid,
-			  PI <- mnesia:table(peer_info),
-			  PI#peer_info.id =:= P#peer.info
-			  ]),
-         Peers = qlc:e(Q),
-         lists:foreach(fun (P) ->
-	     New = P#peer_info{uploaded = 0, downloaded = 0},
-	     mnesia:write(peer_info, New) end,
-	     Peers)
-    end,
+		Q1 = qlc:q([P || PM <- mnesia:table(peer_map),
+				 P  <- mnesia:table(peers),
+				 PM#peer_map.info_hash =:= InfoHash,
+				 P#peer.map =:= PM#peer_map.pid]),
+		Q2 = qlc:q([PI || P <- Q1,
+				  PI <- mnesia:table(peer_info),
+				  PI#peer_info.id =:= P#peer.info]),
+		Peers = qlc:e(Q2),
+		lists:foreach(fun (P) ->
+				      New = P#peer_info{uploaded = 0, downloaded = 0},
+				      mnesia:write(peer_info, New) end,
+			      Peers)
+	end,
     mnesia:transaction(F).
 
 delete_peers(Pid) ->
@@ -250,13 +250,14 @@ delete_peer_info_hash(Pid) ->
 %%--------------------------------------------------------------------
 
 build_interest_query(Interest, InfoHash) ->
-    qlc:q([{PM#peer_map.pid,
+    Q = qlc:q([P || PM <- mnesia:table(peer_map),
+		    P <- mnesia:table(peer),
+		    P#peer.map =:= PM#peer_map.pid,
+		    PM#peer_map.info_hash =:= InfoHash]),
+    qlc:q([{P#peer.map,
 	    PI#peer_info.uploaded,
 	    PI#peer_info.downloaded}
-	   || PM <- mnesia:table(peer_map),
-	      PM#peer_map.info_hash =:= InfoHash,
-	      P <- mnesia:table(peer),
-	      P#peer.map =:= PM#peer_map.pid,
+	   || P <- Q,
 	      PI <- mnesia:table(peer_info),
 	      PI#peer_info.id =:= P#peer.info,
 	      PI#peer_info.interested =:= Interest]).
