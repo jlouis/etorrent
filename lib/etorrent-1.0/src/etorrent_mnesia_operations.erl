@@ -18,7 +18,7 @@
 	 select_info_hash/1, delete_info_hash/1, delete_info_hash_by_pid/1,
 	 store_peer/4, select_peer_ip_port_by_pid/1, delete_peer/1,
 	 peer_statechange/2, is_peer_connected/3, select_interested_peers/1,
-	 reset_round/1, delete_peers/1]).
+	 reset_round/1, delete_peers/1, peer_statechange_infohash/2]).
 
 %%====================================================================
 %% API
@@ -171,7 +171,7 @@ delete_peer(Pid) ->
 	      mnesia:delete(peer_map, Pid, write)
       end).
 
-peer_statechange(InfoHash, What) ->
+peer_statechange_infohash(InfoHash, What) ->
     mnesia:transaction(
       fun () ->
 	      Q = qlc:q([P#peer_map.pid || P <- mnesia:table(peer_map),
@@ -182,12 +182,20 @@ peer_statechange(InfoHash, What) ->
 				    PI = mnesia:read(peer_info, Ref, write),
 				    case What of
 					remove_optimistic_unchoke ->
-					    New = PI#peer_info{ optimistic_unchoke = false }
+					    New = PI#peer_info{ optimistic_unchoke = false };
+					remote_choking ->
+					    New = PI#peer_info{ remote_choking = true};
+					remote_unchoking ->
+					    New = PI#peer_info{ remote_choking = false}
 				    end,
 				    mnesia:write(peer_info, New, write)
 			    end,
 			    Pids)
       end).
+
+% XXX: Implement peer_statechange with the use of peer_statechange_infohash
+peer_statechange(_InfoHash, _What) ->
+    todo.
 
 is_peer_connected(IP, Port, InfoHash) ->
     Q = qlc:q([PM#peer_map.pid || PM <- mnesia:table(peer_map),

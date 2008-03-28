@@ -241,11 +241,11 @@ code_change(_OldVsn, State, _Extra) ->
 handle_message(keep_alive, S) ->
     {ok, S};
 handle_message(choke, S) ->
-    etorrent_t_mapper:choked(self()),
+    etorrent_mnesia_operations:peer_statechange(self(), remote_choking),
     NS = unqueue_all_pieces(S),
     {ok, NS#state { remote_choked = true }};
 handle_message(unchoke, S) ->
-    etorrent_t_mapper:unchoked(self()),
+    etorrent_mnesia_operations:peer_statechange(self(), remote_unchoking),
     try_to_queue_up_pieces(S#state{remote_choked = false});
 handle_message(interested, S) ->
     etorrent_t_mapper:interested(self()),

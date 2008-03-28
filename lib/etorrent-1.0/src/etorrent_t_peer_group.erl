@@ -103,8 +103,9 @@ handle_cast(_Msg, State) ->
 handle_info(round_tick, S) ->
     case S#state.round of
 	0 ->
-	    etorrent_mnesia_operations:peer_statechange(S#state.info_hash,
-							remove_optimistic_unchoke),
+	    etorrent_mnesia_operations:peer_statechange_infohash(
+	      S#state.info_hash,
+	      remove_optimistic_unchoke),
 	    {NS, DoNotTouchPids} = perform_choking_unchoking(S),
 	    NNS = select_optimistic_unchoker(DoNotTouchPids, NS),
 	    etorrent_mnesia_operations:reset_round(S#state.info_hash),
@@ -308,7 +309,9 @@ spawn_new_peer(IP, Port, N, S) ->
 	    fill_peers(N-1, S)
     end.
 
+%% XXX: This is definitely wrong. But it is as the code is currently
+%%   implemented.
 is_bad_peer(IP, Port, S) ->
-    etorrent_t_mapper:is_connected_peer_bad(IP, Port, S#state.info_hash).
+    etorrent_mnesia_operations:is_peer_connected(IP, Port, S#state.info_hash).
 
 

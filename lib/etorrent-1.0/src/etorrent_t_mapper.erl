@@ -14,8 +14,8 @@
 
 %% API
 -export([start_link/0, store_hash/1, remove_hash/1, lookup/1,
-	 is_connected_peer_bad/3, set_hash_state/2,
-	 choked/1, unchoked/1, uploaded_data/2, downloaded_data/2,
+	 set_hash_state/2,
+	 uploaded_data/2, downloaded_data/2,
 	 interested/1, not_interested/1,
 	 set_optimistic_unchoke/2,
 	 interest_split/1,
@@ -47,21 +47,6 @@ remove_hash(InfoHash) ->
 
 set_hash_state(InfoHash, State) ->
     gen_server:call(?SERVER, {set_hash_state, InfoHash, State}).
-
-is_connected_peer_bad(IP, Port, InfoHash) ->
-    gen_server:call(?SERVER, {is_connected_peer, IP, Port, InfoHash}).
-
-choked(Pid) ->
-    gen_server:call(?SERVER, {modify_peer, Pid,
-			      fun(PI) ->
-				      PI#peer_info{remote_choking = true}
-			      end}).
-
-unchoked(Pid) ->
-    gen_server:call(?SERVER, {modify_peer, Pid,
-			      fun(PI) ->
-				      PI#peer_info{remote_choking = false}
-			      end}).
 
 uploaded_data(Pid, Amount) ->
     gen_server:call(?SERVER,
