@@ -14,13 +14,11 @@
 
 %% API
 -export([start_link/0, store_hash/1, remove_hash/1, lookup/1,
-	 is_connected_peer/3,
 	 is_connected_peer_bad/3, set_hash_state/2,
 	 choked/1, unchoked/1, uploaded_data/2, downloaded_data/2,
 	 interested/1, not_interested/1,
 	 set_optimistic_unchoke/2,
 	 interest_split/1,
-	 reset_round/1,
 	 find_ip_port/1]).
 
 %% gen_server callbacks
@@ -49,9 +47,6 @@ remove_hash(InfoHash) ->
 
 set_hash_state(InfoHash, State) ->
     gen_server:call(?SERVER, {set_hash_state, InfoHash, State}).
-
-is_connected_peer(IP, Port, InfoHash) ->
-    gen_server:call(?SERVER, {is_connected_peer, IP, Port, InfoHash}).
 
 is_connected_peer_bad(IP, Port, InfoHash) ->
     gen_server:call(?SERVER, {is_connected_peer, IP, Port, InfoHash}).
@@ -109,10 +104,6 @@ interest_split(InfoHash) ->
     gen_server:call(?SERVER,
 		    {interest_split, InfoHash}).
 
-reset_round(InfoHash) ->
-    gen_server:call(?SERVER,
-		    {reset_round, InfoHash}).
-
 find_ip_port(Pid) ->
     gen_server:call(?SERVER,
 		    {find_ip_port, Pid}).
@@ -149,12 +140,6 @@ handle_call({find_ip_port, Pid}, _From, S) ->
 handle_call({interest_split, InfoHash}, _From, S) ->
     {Intersted, NotInterested} = find_interested_peers(InfoHash),
     {reply, {Intersted, NotInterested}, S};
-handle_call({reset_round, InfoHash}, _From, S) ->
-    reset_round(InfoHash, S),
-    {reply, ok, S};
-handle_call({is_connected_peer, IP, Port, InfoHash}, _From, S) ->
-    R = etorrent_mnesia_operations:is_peer_connected(IP, Port, InfoHash),
-    {reply, R, S};
 handle_call({store_hash, InfoHash}, {Pid, _Tag}, S) ->
     Ref = erlang:monitor(process, Pid),
     etorrent_mnesia_operations:store_info_hash(InfoHash, Pid, Ref),
@@ -229,13 +214,6 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 find_interested_peers(InfoHash) ->
     etorrent_mnesia_operations:select_interested_peers(InfoHash).
-
-%%--------------------------------------------------------------------
-%% Function: reset_round(state(), InfoHash) -> ()
-%% Description: Reset the amount of uploaded and downloaded data
-%%--------------------------------------------------------------------
-reset_round(InfoHash, _S) ->
-    etorrent_mnesia_operations:reset_round(InfoHash).
 
 delete_peers(Pid, _S) ->
     etorrent_mnesia_operations:delete_peers(Pid).

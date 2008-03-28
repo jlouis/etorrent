@@ -107,11 +107,11 @@ handle_info(round_tick, S) ->
 							remove_optimistic_unchoke),
 	    {NS, DoNotTouchPids} = perform_choking_unchoking(S),
 	    NNS = select_optimistic_unchoker(DoNotTouchPids, NS),
-	    etorrent_t_mapper:reset_round(S#state.info_hash),
+	    etorrent_mnesia_operations:reset_round(S#state.info_hash),
 	    {noreply, NNS#state{round = 2}};
 	N when is_integer(N) ->
 	    {NS, _DoNotTouchPids} = perform_choking_unchoking(S),
-	    etorrent_t_mapper:reset_round(S#state.info_hash),
+	    etorrent_mnesia_operations:reset_round(S#state.info_hash),
 	    {noreply, NS#state{round = NS#state.round - 1}}
     end;
 handle_info({'DOWN', _Ref, process, Pid, Reason}, S)
@@ -122,7 +122,7 @@ handle_info({'DOWN', _Ref, process, Pid, Reason}, S)
     {ok, NS} = start_new_peers(S),
     {noreply, NS};
 handle_info({'DOWN', _Ref, process, Pid, _Reason}, S) ->
-    % The peer shut down unexpectedly re-add him to the queue ind the *back*
+    % The peer shut down unexpectedly re-add him to the queue in the *back*
     {IP, Port} = find_ip_and_port_of_pid(Pid),
     {noreply, S#state{available_peers =
 		      (S#state.available_peers ++ [{IP, Port}])}};
@@ -288,7 +288,9 @@ fill_peers(N, S) ->
     end.
 
 spawn_new_peer(IP, Port, N, S) ->
-    case find_peer_in_process_list(IP, Port, S) of
+    case etorrent_mnesia_operations:is_peer_connected(IP,
+						      Port,
+						      S#state.info_hash) of
 	true ->
 	    fill_peers(N, S);
 	false ->
@@ -299,6 +301,7 @@ spawn_new_peer(IP, Port, N, S) ->
 			  S#state.state_pid,
 			  S#state.file_system_pid,
 			  self()),
+	    %% XXX: We set a monitor which we do not use!
 	    _Ref = erlang:monitor(process, Pid),
 	    etorrent_t_peer_recv:connect(Pid, IP, Port),
 	    etorrent_mnesia_operations:store_peer(IP, Port, S#state.info_hash, Pid),
@@ -308,6 +311,4 @@ spawn_new_peer(IP, Port, N, S) ->
 is_bad_peer(IP, Port, S) ->
     etorrent_t_mapper:is_connected_peer_bad(IP, Port, S#state.info_hash).
 
-find_peer_in_process_list(IP, Port, S) ->
-    etorrent_t_mapper:is_connected_peer(IP, Port, S#state.info_hash).
 
