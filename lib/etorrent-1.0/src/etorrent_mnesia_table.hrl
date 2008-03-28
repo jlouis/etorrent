@@ -22,3 +22,9 @@
 -record(peer,     {map,
 		   info}).
 
+-record(file_access, {pid,
+		      piece_number,
+		      hash,
+		      files,
+		      state}).
+

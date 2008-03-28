@@ -14,12 +14,11 @@
 
 %% API
 -export([start_link/0, store_hash/1, remove_hash/1, lookup/1,
-	 remove_peer/1, is_connected_peer/3,
+	 is_connected_peer/3,
 	 is_connected_peer_bad/3, set_hash_state/2,
 	 choked/1, unchoked/1, uploaded_data/2, downloaded_data/2,
 	 interested/1, not_interested/1,
 	 set_optimistic_unchoke/2,
-	 remove_optimistic_unchoking/1,
 	 interest_split/1,
 	 reset_round/1,
 	 find_ip_port/1]).
@@ -50,9 +49,6 @@ remove_hash(InfoHash) ->
 
 set_hash_state(InfoHash, State) ->
     gen_server:call(?SERVER, {set_hash_state, InfoHash, State}).
-
-remove_peer(Pid) ->
-    gen_server:call(?SERVER, {remove_peer, Pid}).
 
 is_connected_peer(IP, Port, InfoHash) ->
     gen_server:call(?SERVER, {is_connected_peer, IP, Port, InfoHash}).
@@ -109,10 +105,6 @@ set_optimistic_unchoke(Pid, Val) ->
 			     PI#peer_info{optimistic_unchoke = Val}
 		     end}).
 
-remove_optimistic_unchoking(InfoHash) ->
-    gen_server:call(?SERVER,
-		    {remove_optistic_unchoking, InfoHash}).
-
 interest_split(InfoHash) ->
     gen_server:call(?SERVER,
 		    {interest_split, InfoHash}).
@@ -154,17 +146,11 @@ init([]) ->
 handle_call({find_ip_port, Pid}, _From, S) ->
     [IPPort] = etorrent_mnesia_operations:select_peer_ip_port_by_pid(Pid),
     {reply, {ok, IPPort}, S};
-handle_call({remove_peer, Pid}, _From, S) ->
-    {atomic, _} = etorrent_mnesia_operations:delete_peer(Pid),
-    {reply, ok, S};
 handle_call({interest_split, InfoHash}, _From, S) ->
     {Intersted, NotInterested} = find_interested_peers(InfoHash),
     {reply, {Intersted, NotInterested}, S};
 handle_call({reset_round, InfoHash}, _From, S) ->
     reset_round(InfoHash, S),
-    {reply, ok, S};
-handle_call({remove_optistic_unchoking, InfoHash}, _From, S) ->
-    etorrent_mnesia_operations:peer_statechange(InfoHash, remove_optistic_unchoking),
     {reply, ok, S};
 handle_call({is_connected_peer, IP, Port, InfoHash}, _From, S) ->
     R = etorrent_mnesia_operations:is_peer_connected(IP, Port, InfoHash),

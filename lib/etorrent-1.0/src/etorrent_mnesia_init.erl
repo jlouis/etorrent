@@ -15,6 +15,9 @@ init() ->
     mnesia:create_table(peer_map,
 			[{attributes, record_info(fields, peer_map)}]),
     mnesia:create_table(peer,
-			[{attributes, record_info(fields, peer)}]).
+			[{attributes, record_info(fields, peer)}]),
+    mnesia:create_table(file_access,
+			[{attributes, record_info(fields, file_access)}]).
+
 
 

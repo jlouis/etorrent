@@ -103,7 +103,8 @@ handle_cast(_Msg, State) ->
 handle_info(round_tick, S) ->
     case S#state.round of
 	0 ->
-	    etorrent_t_mapper:remove_optimistic_unchoking(S#state.info_hash),
+	    etorrent_mnesia_operations:peer_statechange(S#state.info_hash,
+							remove_optimistic_unchoke),
 	    {NS, DoNotTouchPids} = perform_choking_unchoking(S),
 	    NNS = select_optimistic_unchoker(DoNotTouchPids, NS),
 	    etorrent_t_mapper:reset_round(S#state.info_hash),
@@ -117,7 +118,7 @@ handle_info({'DOWN', _Ref, process, Pid, Reason}, S)
   when (Reason =:= normal) or (Reason =:= shutdown) ->
     % The peer shut down normally. Hence we just remove him and start up
     %  other peers. Eventually the tracker will re-add him to the peer list
-    etorrent_t_mapper:remove_peer(Pid),
+    etorrent_mnesia_operations:delete_peer(Pid),
     {ok, NS} = start_new_peers(S),
     {noreply, NS};
 handle_info({'DOWN', _Ref, process, Pid, _Reason}, S) ->
