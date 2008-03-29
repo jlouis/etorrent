@@ -3,7 +3,6 @@
 
 -record(info_hash, {info_hash,
 		    storer_pid,
-		    monitor_reference,
 		    state}).
 
 

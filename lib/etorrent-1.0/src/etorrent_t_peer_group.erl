@@ -65,7 +65,7 @@ seed(Pid) ->
 
 init([OurPeerId, PeerGroup, InfoHash, StatePid, FileSystemPid, TorrentState]) ->
     {ok, Tref} = timer:send_interval(?ROUND_TIME, self(), round_tick),
-    ok = etorrent_t_mapper:store_hash(InfoHash),
+    {atomic, _} = etorrent_mnesia_operations:store_info_hash(InfoHash, self()),
     {ok, #state{ our_peer_id = OurPeerId,
 		 peer_group_sup = PeerGroup,
 		 bad_peers = dict:new(),
@@ -124,7 +124,7 @@ handle_info({'DOWN', _Ref, process, Pid, Reason}, S)
     {noreply, NS};
 handle_info({'DOWN', _Ref, process, Pid, _Reason}, S) ->
     % The peer shut down unexpectedly re-add him to the queue in the *back*
-    {IP, Port} = find_ip_and_port_of_pid(Pid),
+    {IP, Port} = etorrent_mnesia_operations:select_peer_ip_port_by_pid(Pid),
     {noreply, S#state{available_peers =
 		      (S#state.available_peers ++ [{IP, Port}])}};
 handle_info(Info, State) ->
@@ -132,7 +132,7 @@ handle_info(Info, State) ->
     {noreply, State}.
 
 terminate(_Reason, S) ->
-    etorrent_t_mapper:remove_hash(S#state.info_hash),
+    {atomic, _} = etorrent_mnesia_operations:delete_info_hash(S#state.info_hash),
     ok.
 
 code_change(_OldVsn, State, _Extra) ->
@@ -141,10 +141,6 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 %%% Internal functions
 %%--------------------------------------------------------------------
-find_ip_and_port_of_pid(Pid) ->
-    {ok, IPPort} = etorrent_t_mapper:find_ip_port(Pid),
-    IPPort.
-
 start_new_incoming_peer(IP, Port, S) ->
     PeersMissing =
 	?MAX_PEER_PROCESSES - dict:size(S#state.peer_process_dict),
@@ -191,7 +187,7 @@ select_optimistic_unchoker(Size, List, DoNotTouchPids, S) ->
 	true ->
 	    select_optimistic_unchoker(Size, List, DoNotTouchPids, S);
 	false ->
-	    etorrent_t_mapper:set_optimistic_unchoke(Pid, true),
+	    etorrent_mnesia_operations:peer_statechange(Pid, {optimistic_unchoke, true}),
 	    etorrent_t_peer_recv:unchoke(Pid),
 	    S
     end.
@@ -204,7 +200,7 @@ select_optimistic_unchoker(Size, List, DoNotTouchPids, S) ->
 %%--------------------------------------------------------------------
 perform_choking_unchoking(S) ->
     {Interested, NotInterested} =
-	etorrent_t_mapper:interest_split(S#state.info_hash),
+	etorrent_mnesia_operations:select_interested_peers(S#state.info_hash),
     % N fastest interesteds should be kept
     {Downloaders, Rest} =
 	find_fastest_peers(?DEFAULT_NUM_DOWNLOADERS,

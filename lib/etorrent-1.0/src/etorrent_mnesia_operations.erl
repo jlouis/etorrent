@@ -14,7 +14,7 @@
 
 %% API
 -export([new_torrent/2, find_torrents_by_file/1, cleanup_torrent_by_pid/1,
-	 store_info_hash/3, set_info_hash_state/2, select_info_hash/2,
+	 store_info_hash/2, set_info_hash_state/2, select_info_hash/2,
 	 select_info_hash/1, delete_info_hash/1, delete_info_hash_by_pid/1,
 	 store_peer/4, select_peer_ip_port_by_pid/1, delete_peer/1,
 	 peer_statechange/2, is_peer_connected/3, select_interested_peers/1,
@@ -61,11 +61,10 @@ cleanup_torrent_by_pid(Pid) ->
 %% Description: Store that InfoHash is controlled by StorerPid with assigned
 %%  monitor reference MonitorRef
 %%--------------------------------------------------------------------
-store_info_hash(InfoHash, StorerPid, MonitorRef) ->
+store_info_hash(InfoHash, StorerPid) ->
     F = fun() ->
 		mnesia:write(#info_hash { info_hash = InfoHash,
 					  storer_pid = StorerPid,
-					  monitor_reference = MonitorRef,
 					  state = unknown })
 	end,
     mnesia:transaction(F).
@@ -188,6 +187,8 @@ peer_statechange(Pid, What) ->
 		Ref = mnesia:read(peer, Pid, read), %% Read lock here?
 		PI = mnesia:read(peer_info, Ref, write),
 		case What of
+		    {optimistic_unchoke, Val} ->
+			New = PI#peer_info{ optimistic_unchoke = Val };
 		    remove_optimistic_unchoke ->
 			New = PI#peer_info{ optimistic_unchoke = false };
 		    remote_choking ->
@@ -197,7 +198,13 @@ peer_statechange(Pid, What) ->
 		    interested ->
 			New = PI#peer_info{ interested = true};
 		    not_intersted ->
-			New = PI#peer_info{ interested = false}
+			New = PI#peer_info{ interested = false};
+		    {uploaded, Amount} ->
+			Uploaded = PI#peer_info.uploaded,
+			New = PI#peer_info{ uploaded = Uploaded + Amount };
+		    {downloaded, Amount} ->
+			Downloaded = PI#peer_info.downloaded,
+			New = PI#peer_info{ downloaded = Downloaded + Amount }
 		end,
 		mnesia:write(peer_info, New, write)
 	end,

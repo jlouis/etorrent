@@ -9,6 +9,8 @@
 
 -behaviour(gen_server).
 
+-include("etorrent_mnesia_table.hrl").
+
 %% API
 -export([start_link/0]).
 
@@ -115,10 +117,10 @@ handshake(Socket) ->
     end.
 
 lookup_infohash(Socket, ReservedBytes, InfoHash, PeerId) ->
-    case etorrent_t_mapper:lookup(InfoHash) of
-	{ok, Pid} ->
+    case etorrent_mnesia_operations:select_info_hash(InfoHash) of
+	[#info_hash.storer_pid = Pid] ->
 	    inform_peer_master(Socket, Pid, ReservedBytes, PeerId);
-	not_found ->
+	[] ->
 	    error_logger:info_report([connection_on_unknown_infohash,
 				      InfoHash]),
 	    gen_tcp:close(Socket),

@@ -13,15 +13,8 @@
 -include("etorrent_mnesia_table.hrl").
 
 %% API
--export([start_link/0, store_hash/1, remove_hash/1, lookup/1,
-	 set_hash_state/2,
-	 uploaded_data/2, downloaded_data/2,
-	 set_optimistic_unchoke/2,
-	 interest_split/1,
-	 find_ip_port/1]).
-
 %% gen_server callbacks
--export([init/1, handle_call/3, handle_cast/2, handle_info/2,
+-export([start_link/0, init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3]).
 
 -record(state, {}).
@@ -37,49 +30,6 @@
 %%--------------------------------------------------------------------
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
-
-store_hash(InfoHash) ->
-    gen_server:call(?SERVER, {store_hash, InfoHash}).
-
-remove_hash(InfoHash) ->
-    gen_server:call(?SERVER, {remove_hash, InfoHash}).
-
-set_hash_state(InfoHash, State) ->
-    gen_server:call(?SERVER, {set_hash_state, InfoHash, State}).
-
-uploaded_data(Pid, Amount) ->
-    gen_server:call(?SERVER,
-		    {modify_peer, Pid,
-		     fun(PI) ->
-			     PI#peer_info{
-			       uploaded = PI#peer_info.uploaded + Amount}
-		     end}).
-
-downloaded_data(Pid, Amount) ->
-    gen_server:call(?SERVER,
-		    {modify_peer, Pid,
-		     fun(PI) ->
-			     PI#peer_info{
-			       downloaded = PI#peer_info.downloaded + Amount}
-		     end}).
-
-set_optimistic_unchoke(Pid, Val) ->
-    gen_server:call(?SERVER,
-		    {modify_peer, Pid,
-		     fun(PI) ->
-			     PI#peer_info{optimistic_unchoke = Val}
-		     end}).
-
-interest_split(InfoHash) ->
-    gen_server:call(?SERVER,
-		    {interest_split, InfoHash}).
-
-find_ip_port(Pid) ->
-    gen_server:call(?SERVER,
-		    {find_ip_port, Pid}).
-
-lookup(InfoHash) ->
-    gen_server:call(?SERVER, {lookup, InfoHash}).
 
 %%====================================================================
 %% gen_server callbacks
@@ -104,38 +54,6 @@ init([]) ->
 %%                                      {stop, Reason, State}
 %% Description: Handling call messages
 %%--------------------------------------------------------------------
-handle_call({find_ip_port, Pid}, _From, S) ->
-    [IPPort] = etorrent_mnesia_operations:select_peer_ip_port_by_pid(Pid),
-    {reply, {ok, IPPort}, S};
-handle_call({interest_split, InfoHash}, _From, S) ->
-    {Intersted, NotInterested} = find_interested_peers(InfoHash),
-    {reply, {Intersted, NotInterested}, S};
-handle_call({store_hash, InfoHash}, {Pid, _Tag}, S) ->
-    Ref = erlang:monitor(process, Pid),
-    etorrent_mnesia_operations:store_info_hash(InfoHash, Pid, Ref),
-    {reply, ok, S};
-handle_call({remove_hash, InfoHash}, {Pid, _Tag}, S) ->
-    case etorrent_mnesia_operations:select_info_hash(InfoHash, Pid) of
-	[#info_hash { monitor_reference = Ref}] ->
-	    erlang:demonitor(Ref),
-	    etorrent_mnesia_operations:delete_info_hash(InfoHash),
-	    {reply, ok, S};
-	_ ->
-	    error_logger:error_msg("Pid ~p is not in info_hash_map~n",
-				   [Pid]),
-	    {reply, ok, S}
-    end;
-handle_call({set_hash_state, InfoHash, State}, _From, S) ->
-    case etorrent_mnesia_operations:set_info_hash_state(InfoHash, State) of
-	ok ->
-	    {reply, ok, S};
-	not_found ->
-	    {reply, not_found, S}
-    end;
-handle_call({lookup, InfoHash}, _From, S) ->
-    [#info_hash.storer_pid = Pid] =
-	etorrent_mnesia_operations:select_info_hash(InfoHash),
-    {reply, {pids, Pid}, S};
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -155,10 +73,6 @@ handle_cast(_Msg, State) ->
 %%                                       {stop, Reason, State}
 %% Description: Handling all non call/cast messages
 %%--------------------------------------------------------------------
-handle_info({'DOWN', _R, process, Pid, _Reason}, S) ->
-    delete_peers(Pid, S),
-    etorrent_mnesia_operations:delete_info_hash_by_pid(Pid),
-    {noreply, S};
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -182,8 +96,3 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 %%% Internal functions
 %%--------------------------------------------------------------------
-find_interested_peers(InfoHash) ->
-    etorrent_mnesia_operations:select_interested_peers(InfoHash).
-
-delete_peers(Pid, _S) ->
-    etorrent_mnesia_operations:delete_peers(Pid).
