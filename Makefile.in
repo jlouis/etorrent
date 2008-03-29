@@ -23,7 +23,7 @@ ETORRENT_1.0_MODULES = etorrent_listener etorrent_t_pool_sup etorrent_acceptor \
 	etorrent_peer_communication etorrent_utils etorrent_fs_checker \
 	etorrent_t_control \
 	etorrent_fs etorrent_t_manager http_gzip etorrent_fs_mapper \
-	etorrent_t_mapper etorrent_fs_process \
+	etorrent_fs_process \
 	etorrent_t_peer_group etorrent_fs_serializer etorrent_t_peer_recv \
 	etorrent_histogram \
 	etorrent_t_peer_pool_sup \

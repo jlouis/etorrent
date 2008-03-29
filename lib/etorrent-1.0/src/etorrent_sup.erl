@@ -31,9 +31,6 @@ init([]) ->
     EventManager = {event_manager,
 		    {etorrent_event, start_link, []},
 		    permanent, 2000, worker, [etorrent_event]},
-    InfoHashMap = {torrent_mapper,
-		   {etorrent_t_mapper, start_link, []},
-		    permanent, 2000, worker, [etorrent_t_mapper]},
     FileAccessMap = {fs_mapper,
 		     {etorrent_fs_mapper, start_link, []},
 		     permanent, 2000, worker, [etorrent_fs_mapper]},
@@ -56,7 +53,7 @@ init([]) ->
 		   {etorrent_t_pool_sup, start_link, []},
 		   transient, infinity, supervisor, [etorrent_t_pool_sup]},
     {ok, {{one_for_all, 1, 60},
-	  [EventManager, InfoHashMap, FileAccessMap, Listener, AcceptorSup,
+	  [EventManager, FileAccessMap, Listener, AcceptorSup,
 	   Serializer, DirWatcherSup, TorrentMgr, TorrentPool]}}.
 
 %%====================================================================
