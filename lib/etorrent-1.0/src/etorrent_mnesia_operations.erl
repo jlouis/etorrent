@@ -18,7 +18,10 @@
 	 select_info_hash/1, delete_info_hash/1, delete_info_hash_by_pid/1,
 	 store_peer/4, select_peer_ip_port_by_pid/1, delete_peer/1,
 	 peer_statechange/2, is_peer_connected/3, select_interested_peers/1,
-	 reset_round/1, delete_peers/1, peer_statechange_infohash/2]).
+	 reset_round/1, delete_peers/1, peer_statechange_infohash/2,
+
+	 file_access_insert/5, file_access_insert/2, file_access_set_state/3,
+	 file_access_torrent_pieces/1, file_access_is_complete/1]).
 
 %%====================================================================
 %% API
@@ -266,6 +269,66 @@ delete_peer_info_hash(Pid) ->
     lists:foreach(fun (R) -> mnesia:delete(peer_info, R, write) end,
                   Refs)
     end).
+
+file_access_insert(Pid, PieceNumber, Hash, Files, State) ->
+    mnesia:transaction(
+      fun () ->
+	      mnesia:write(file_access,
+			   #file_access {pid = Pid,
+					 piece_number = PieceNumber,
+					 hash = Hash,
+					 files = Files,
+					 state = State },
+			   write)
+      end).
+
+file_access_insert(Pid, Dict) ->
+    mnesia:transaction(
+      fun () ->
+	      dict:map(fun (PN, {Hash, Files, Done}) ->
+			       file_access_insert(Pid,
+						  PN,
+						  Hash,
+						  Files,
+						  case Done of
+						      ok ->
+							  fetched;
+						      not_ok ->
+							  not_fetched;
+						      none ->
+							  not_fetched
+						  end)
+		       end,
+		       Dict)
+      end).
+
+file_access_set_state(Pid, Pn, State) ->
+    mnesia:transaction(
+      fun () ->
+	      Q = qlc:q([R || R <- mnesia:table(file_access),
+			      R#file_access.pid =:= Pid,
+			      R#file_access.piece_number =:= Pn]),
+	      lists:foreach(fun (R) ->
+				    mnesia:write(file_access,
+						 R#file_access{state = State},
+						 write)
+			    end,
+			    qlc:e(Q))
+      end).
+
+file_access_torrent_pieces(Pid) ->
+    Q = qlc:q([{R#file_access.piece_number,
+		R#file_access.files,
+		R#file_access.state} || R <- mnesia:table(file_access),
+					R#file_access.pid =:= Pid]),
+    qlc:e(Q).
+
+file_access_is_complete(Pid) ->
+    Q = qlc:q([R || R <- mnesia:table(file_access),
+		    R#file_access.pid =:= Pid,
+		    R#file_access.state =:= not_fetched]),
+    Objs = qlc:e(Q),
+    length(Objs) =:= 0.
 
 %%--------------------------------------------------------------------
 %% Internal functions

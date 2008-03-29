@@ -11,7 +11,7 @@
 
 %% API
 -export([start_link/0, install_map/1, fetch_map/0,
-	 get_files/3, get_files_hash/3, get_pieces/2, fetched/5,
+	 get_files_hash/3, get_pieces/2, fetched/5,
 	 not_fetched/5, calculate_amount_left/1, convert_diskstate_to_set/1,
 	 torrent_completed/1]).
 
@@ -19,7 +19,7 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3]).
 
--record(state, {file_access_map = none}).
+-record(state, {}).
 
 -define(SERVER, ?MODULE).
 
@@ -46,9 +46,6 @@ install_map(FileDict) ->
 %%--------------------------------------------------------------------
 fetch_map() ->
     gen_server:call(?SERVER, fetch_map).
-
-get_files(ETS, Handle, Pn) ->
-    ets:match(ETS, {Handle, Pn, '_', '$1', '_'}).
 
 get_files_hash(ETS, Handle, Pn) ->
     ets:match(ETS, {Handle, Pn, '$1', '$2', '_'}).
@@ -83,8 +80,7 @@ torrent_completed(Handle) ->
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
 init([]) ->
-    {ok, #state{ file_access_map =
-		   ets:new(file_access_map, [named_table, bag])}}.
+    {ok, #state{}}.
 
 %%--------------------------------------------------------------------
 %% Function: %% handle_call(Request, From, State) -> {reply, Reply, State} |
@@ -96,10 +92,8 @@ init([]) ->
 %% Description: Handling call messages
 %%--------------------------------------------------------------------
 handle_call({install_map, FileDict}, {From, _Tag}, S) ->
-    install_map_in_tracking_table(FileDict, From, S),
+    install_map_in_tracking_table(FileDict, From),
     {reply, ok, S};
-handle_call(fetch_map, _From, S) ->
-    {reply, S#state.file_access_map, S};
 handle_call({fetched, Handle, Pn, H, O, D}, _From, S) ->
     set_fetched(Handle, Pn, H, O, D, S),
     {reply, ok, S};
@@ -134,9 +128,9 @@ handle_cast(_Msg, State) ->
 %%                                       {stop, Reason, State}
 %% Description: Handling all non call/cast messages
 %%--------------------------------------------------------------------
-handle_info({'DOWN', _R, process, Pid, _Reason}, S) ->
-    ets:match_delete(S#state.file_access_map,
-		     {Pid, '_', '_', '_', '_'}),
+handle_info({'DOWN', _R, process, _Pid, _Reason}, S) ->
+%%    ets:match_delete(S#state.file_access_map,
+%%		     {Pid, '_', '_', '_', '_'}),
     {noreply, S};
 handle_info(_Info, State) ->
     {noreply, State}.
@@ -161,32 +155,14 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 %%% Internal functions
 %%--------------------------------------------------------------------
-install_map_in_tracking_table(FileDict, Pid, S) ->
+install_map_in_tracking_table(FileDict, Pid) ->
     erlang:monitor(process, Pid),
-    dict:map(fun(PieceNumber, {Hash, Files, Done}) ->
-		     case Done of
-			 ok ->
-			     ets:insert(
-			       S#state.file_access_map,
-			       {Pid, PieceNumber, Hash, Files, fetched});
-			 not_ok ->
-			     ets:insert(
-			       S#state.file_access_map,
-			       {Pid, PieceNumber, Hash, Files, not_fetched});
-			 none ->
-			     ets:insert(
-			       S#state.file_access_map,
-			       {Pid, PieceNumber, Hash, Files, not_fetched})
-		     end
-	      end,
-	      FileDict),
+    etorrent_mnesia_operations:file_access_insert(Pid, FileDict),
     ok.
 
-set_state(Handle, Pn, Hash, Ops, Done, State, S) ->
-    ets:delete_object(S#state.file_access_map,
-		      {Handle, Pn, Hash, Ops, Done}),
-    ets:insert(S#state.file_access_map,
-	       {Handle, Pn, Hash, Ops, State}).
+set_state(Handle, Pn, _Hash, _Ops, _Done, State, _S) ->
+    etorrent_mnesia_operations:file_access_set_state(
+      Handle, Pn, State).
 
 set_fetched(Handle, P, H, O, D, S) ->
     set_state(Handle, P, H, O, D, fetched, S).
@@ -200,9 +176,8 @@ size_of_ops(Ops) ->
 		0,
 		Ops).
 
-get_all_pieces_of_torrent(Handle, S) ->
-    ets:match(S#state.file_access_map,
-			{Handle, '$1', '_', '$2', '$3'}).
+get_all_pieces_of_torrent(Handle, _S) ->
+    etorrent_mnesia_operations:file_access_torrent_pieces(Handle).
 
 calculate_amount_left(Handle, S) ->
     Objects = get_all_pieces_of_torrent(Handle, S),
@@ -218,10 +193,8 @@ calculate_amount_left(Handle, S) ->
 		      Objects),
     Sum.
 
-is_torrent_completed(Handle, S) ->
-    Objects = ets:match(S#state.file_access_map,
-			{Handle, '$1', '_', '$2', not_fetched}),
-    length(Objects) =:= 0.
+is_torrent_completed(Handle, _S) ->
+    etorrent_mnesia_operations:file_access_is_complete(Handle).
 
 convert_diskstate_to_set(Handle, S) ->
     Objects = get_all_pieces_of_torrent(Handle, S),
