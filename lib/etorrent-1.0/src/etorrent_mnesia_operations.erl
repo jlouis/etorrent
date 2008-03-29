@@ -21,7 +21,8 @@
 	 reset_round/1, delete_peers/1, peer_statechange_infohash/2,
 
 	 file_access_insert/5, file_access_insert/2, file_access_set_state/3,
-	 file_access_torrent_pieces/1, file_access_is_complete/1]).
+	 file_access_torrent_pieces/1, file_access_is_complete/1,
+	 file_access_disk_operations/2]).
 
 %%====================================================================
 %% API
@@ -315,6 +316,12 @@ file_access_set_state(Pid, Pn, State) ->
 			    end,
 			    qlc:e(Q))
       end).
+
+file_access_disk_operations(Handle, Pn) ->
+    Q = qlc:q([R#file_access.files || R <- mnesia:table(file_access),
+				      R#file_access.pid =:= Handle,
+				      R#file_access.piece_number =:= Pn]),
+    qlc:e(Q).
 
 file_access_torrent_pieces(Pid) ->
     Q = qlc:q([{R#file_access.piece_number,

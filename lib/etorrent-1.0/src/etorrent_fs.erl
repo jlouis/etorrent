@@ -77,11 +77,10 @@ init([IDHandle, FSPool]) ->
 	        file_mapping_handle = IDHandle}}.
 
 handle_call({read_piece, PieceNum}, _From, S) ->
-     [[FilesToRead]] =
-	etorrent_fs_mapper:get_files(S#state.file_mapping_table,
-				     S#state.file_mapping_handle,
-				     PieceNum),
-    {ok, Data, NS} = read_pieces_and_assemble(FilesToRead, [], S),
+    [Operations] =
+	etorrent_mnesia_operations:file_access_disk_operations(
+	  S#state.file_mapping_handle, PieceNum),
+    {ok, Data, NS} = read_pieces_and_assemble(Operations, [], S),
     {reply, {ok, Data}, NS};
 handle_call({write_piece, PieceNum, Data}, _From, S) ->
     [[Hash, FilesToWrite]] =

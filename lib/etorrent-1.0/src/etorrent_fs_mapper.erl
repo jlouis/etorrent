@@ -11,8 +11,8 @@
 
 %% API
 -export([start_link/0, install_map/1, fetch_map/0,
-	 get_files_hash/3, get_pieces/2, fetched/5,
-	 not_fetched/5, calculate_amount_left/1, convert_diskstate_to_set/1,
+	 get_files_hash/3, get_pieces/2,
+	 calculate_amount_left/1, convert_diskstate_to_set/1,
 	 torrent_completed/1]).
 
 %% gen_server callbacks
@@ -53,12 +53,6 @@ get_files_hash(ETS, Handle, Pn) ->
 get_pieces(ETS, Handle) ->
     ets:match(ETS, {Handle, '$1', '$2', '$3', '$4'}).
 
-fetched(Handle, PieceNum, Hash, Ops, Done) ->
-    gen_server:call(?SERVER, {fetched, Handle, PieceNum, Hash, Ops, Done}).
-
-not_fetched(Handle, PieceNum, Hash, Ops, Done) ->
-    gen_server:call(?SERVER, {not_fetched, Handle, PieceNum, Hash, Ops, Done}).
-
 calculate_amount_left(Handle) ->
     gen_server:call(?SERVER, {calculate_amount_left, Handle}).
 
@@ -93,12 +87,6 @@ init([]) ->
 %%--------------------------------------------------------------------
 handle_call({install_map, FileDict}, {From, _Tag}, S) ->
     install_map_in_tracking_table(FileDict, From),
-    {reply, ok, S};
-handle_call({fetched, Handle, Pn, H, O, D}, _From, S) ->
-    set_fetched(Handle, Pn, H, O, D, S),
-    {reply, ok, S};
-handle_call({not_fetched, Handle, Pn, H, O, D}, _From, S) ->
-    set_not_fetched(Handle, Pn, H, O, D, S),
     {reply, ok, S};
 handle_call({convert_diskstate_to_set, Handle}, _From, S) ->
     Reply = convert_diskstate_to_set(Handle, S),
@@ -159,16 +147,6 @@ install_map_in_tracking_table(FileDict, Pid) ->
     erlang:monitor(process, Pid),
     etorrent_mnesia_operations:file_access_insert(Pid, FileDict),
     ok.
-
-set_state(Handle, Pn, _Hash, _Ops, _Done, State, _S) ->
-    etorrent_mnesia_operations:file_access_set_state(
-      Handle, Pn, State).
-
-set_fetched(Handle, P, H, O, D, S) ->
-    set_state(Handle, P, H, O, D, fetched, S).
-
-set_not_fetched(Handle, P, H, O, D, S) ->
-    set_state(Handle, P, H, O, D, not_fetched, S).
 
 size_of_ops(Ops) ->
     lists:foldl(fun ({_Path, _Offset, Size}, Total) ->
