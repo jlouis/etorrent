@@ -27,12 +27,12 @@
 		      files,
 		      state}). % state is: fetched | not_fetched | chunked
 
--record(chunks, {ref,
-		 pid, % Refers to file_access
-		 piece_number,
-		 offset,
-		 size,
-		 state}). % state is: ....
+-record(chunk, {ref,
+		pid, % Refers to file_access
+		piece_number,
+		offset,
+		size,
+		state}). % state is: ....
 
 
 
