@@ -31,10 +31,6 @@ VERSION ++ (Not decided yet)
 * Use Edoc
 - This takes time, so pick a single module at a time and correct it
 
-
---- build 0100 ---
-
-
 * TorrentPeerMaster
 - Figure out a better choking/unchoking algorithm.
   The current algorithm is the original one. We should look for a
@@ -44,15 +40,12 @@ VERSION ++ (Not decided yet)
      ** Bittornado
      ** rtorrent
 
-
 * Cleanups
 - Decide what to do if we connect multiply to the same IP
-
 
 * Temporary IP-ban on errors
   If we find an error on a given peer, ban him temporarily for some
    time.
-
 
 * ROBUSTNESS
 - What happens if process X dies
@@ -60,4 +53,3 @@ VERSION ++ (Not decided yet)
    dies. Ensure that the system is robust.
 
 
---- build 0200 ---
