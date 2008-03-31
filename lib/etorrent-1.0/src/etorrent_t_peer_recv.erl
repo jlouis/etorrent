@@ -45,9 +45,11 @@
 		 send_pid = none,
 		 state_pid = none}).
 
--define(DEFAULT_CONNECT_TIMEOUT, 120000).
--define(DEFAULT_CHUNK_SIZE, 16384).
--define(BASE_QUEUE_LEVEL, 10).
+-define(DEFAULT_CONNECT_TIMEOUT, 120000). % Default timeout in ms
+-define(DEFAULT_CHUNK_SIZE, 16384). % Default size for a chunk. All clients use this.
+-define(BASE_QUEUE_LEVEL, 10). % How many chunks to keep queued. An advanced client
+                               % will fine-tune this number.
+
 %%====================================================================
 %% API
 %%====================================================================
@@ -59,6 +61,11 @@ start_link(LocalPeerId, InfoHash, StatePid, FilesystemPid, MasterPid) ->
     gen_server:start_link(?MODULE, [LocalPeerId, InfoHash,
 				    StatePid, FilesystemPid, MasterPid], []).
 
+%%--------------------------------------------------------------------
+%% Function: connect(Pid, IP, Port)
+%% Description: Connect to the IP and Portnumber for communication with
+%%   the peer.
+%%--------------------------------------------------------------------
 connect(Pid, IP, Port) ->
     gen_server:cast(Pid, {connect, IP, Port}).
 
