@@ -69,24 +69,52 @@ start_link(LocalPeerId, InfoHash, StatePid, FilesystemPid, MasterPid) ->
 connect(Pid, IP, Port) ->
     gen_server:cast(Pid, {connect, IP, Port}).
 
+%%--------------------------------------------------------------------
+%% Function: choke(Pid)
+%% Description: Choke the peer.
+%%--------------------------------------------------------------------
 choke(Pid) ->
     gen_server:cast(Pid, choke).
 
+%%--------------------------------------------------------------------
+%% Function: unchoke(Pid)
+%% Description: Unchoke the peer.
+%%--------------------------------------------------------------------
 unchoke(Pid) ->
     gen_server:cast(Pid, unchoke).
 
+%%--------------------------------------------------------------------
+%% Function: interested(Pid)
+%% Description: Tell the peer we are interested.
+%%--------------------------------------------------------------------
 interested(Pid) ->
     gen_server:cast(Pid, interested).
 
+%%--------------------------------------------------------------------
+%% Function: send_have_piece(Pid, PieceNumber)
+%% Description: Tell the peer we have just piece PieceNumber.
+%%--------------------------------------------------------------------
 send_have_piece(Pid, PieceNumber) ->
     gen_server:cast(Pid, {send_have_piece, PieceNumber}).
 
+%%--------------------------------------------------------------------
+%% Function: complete_handshake(Pid, ReservedBytes, Socket, PeerId)
+%% Description: Complete the handshake initiated by another client.
+%%--------------------------------------------------------------------
 complete_handshake(Pid, ReservedBytes, Socket, PeerId) ->
     gen_server:cast(Pid, {complete_handshake, ReservedBytes, Socket, PeerId}).
 
+%%--------------------------------------------------------------------
+%% Function: uploaded_data(Pid, Amount)
+%% Description: Record that we uploaded Amount bytes of data to the peer.
+%%--------------------------------------------------------------------
 uploaded_data(Pid, Amount) ->
     gen_server:cast(Pid, {uploaded_data, Amount}).
 
+%%--------------------------------------------------------------------
+%% Function: stop(Pid)
+%% Description: Stop this peer.
+%%--------------------------------------------------------------------
 stop(Pid) ->
     gen_server:cast(Pid, stop).
 
@@ -192,6 +220,7 @@ handle_cast(interested, S) ->
 	    {noreply, S#state{local_interested = true}}
     end;
 handle_cast({send_have_piece, PieceNumber}, S) ->
+    %% XXX: I think this is wrong. It will fuck up the histogram at the peer.
     case sets:is_element(PieceNumber, S#state.piece_set) of
 	true ->
 	    % Peer has the piece, so ignore sending the HAVE message
