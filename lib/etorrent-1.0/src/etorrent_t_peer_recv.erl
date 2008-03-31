@@ -220,16 +220,8 @@ handle_cast(interested, S) ->
 	    {noreply, S#state{local_interested = true}}
     end;
 handle_cast({send_have_piece, PieceNumber}, S) ->
-    %% XXX: I think this is wrong. It will fuck up the histogram at the peer.
-    case sets:is_element(PieceNumber, S#state.piece_set) of
-	true ->
-	    % Peer has the piece, so ignore sending the HAVE message
-	    {noreply, S};
-	false ->
-	    % Peer is missing the piece, so send it.
-	    etorrent_t_peer_send:send_have_piece(S#state.send_pid, PieceNumber),
-	    {noreply, S}
-    end;
+    etorrent_t_peer_send:send_have_piece(S#state.send_pid, PieceNumber),
+    {noreply, S};
 handle_cast(_Msg, State) ->
     {noreply, State}.
 

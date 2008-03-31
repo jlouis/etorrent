@@ -7,15 +7,6 @@
 ----------------------------------------------------------------------
 
 * Bugs:
-** Should we send HAVE_PIECE, even if the peer already has the piece?
-  On one hand, not sending the message means that we use less
-  bandwdith. But it also means that the peer can't really keep a
-  proper histogram of what pieces has been sent out there.
-
-  1. Investigate the documentation.
-  2. Talk to #bittorrent mayhaps
-  3. Implement a proper solution.
-  4. Consider making this a bug on googlecode, so we can track it.
 
 * Move the piece-chunking code up from the peer connections.
   It should not be the case that the individual peer connection
