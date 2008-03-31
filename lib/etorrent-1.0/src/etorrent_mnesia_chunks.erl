@@ -14,7 +14,7 @@
 -define(DEFAULT_CHUNK_SIZE, 16384). % Default size for a chunk. All clients use this.
 
 %% API
--export([add_piece_chunks/3, select_chunks/5]).
+-export([add_piece_chunks/3, select_chunks/5, store_chunk/2]).
 
 %%====================================================================
 %% API
@@ -32,8 +32,19 @@ select_chunks(Pid, Handle, PieceSet, StatePid, Num) ->
     case etorrent_t_state:request_new_piece(StatePid, PieceSet) of
 	not_interested ->
 	    not_interested;
+	endgame ->
+	    mnesia:transaction(
+	      fun () ->
+		      Q1 = qlc:q([R || R <- mnesia:table(chunks),
+				      R#chunk.pid =:= Handle,
+				      R#chunk.state =:= assigned]),
+		      Q2 = qlc:q([R || R <- mnesia:table(chunks),
+				       R#chunk.pid =:= Handle,
+				       R#chunk.state =:= not_fetched]),
+		      shuffle(qlc:e(qlc:append(Q1, Q2)))
+	      end);
 	{ok, PieceNum} ->
-	    {atomic, _} = ensure_chunking(Handle, PieceNum),
+	    {atomic, _} = ensure_chunking(Handle, PieceNum, StatePid),
 	    mnesia:transaction(
 	      fun () ->
 		      Q = qlc:q([R || R <- mnesia:table(chunks),
@@ -73,6 +84,35 @@ add_piece_chunks(PieceNum, PieceSize, Torrent) ->
 			    Chunks)
       end).
 
+store_chunk(Ref, Data) ->
+    mnesia:transaction(
+      fun () ->
+	      R = mnesia:read(chunk, Ref, write),
+	      Pid = R#chunk.pid,
+	      mnesia:write(chunk, R#chunk { state = fetched,
+					    assign = Data }),
+	      P = mnesia:read(file_access, Pid, write),
+	      mnesia:write(file_access,
+			   P#file_access { left = P#file_access.left - 1 }),
+	      check_for_full_piece(Pid, R#chunk.piece_number),
+	      ok
+      end).
+
+check_for_full_piece(Pid, PieceNumber) ->
+    mnesia:transaction(
+      fun () ->
+	      R = mnesia:read(file_access, Pid, read),
+	      case R#file_access.left of
+		  0 ->
+		      store_piece(Pid, PieceNumber);
+		  N when is_integer(N) ->
+		      ok
+	      end
+      end).
+
+store_piece(_Pid, _PieceNumber) ->
+    todo.
+
 %%====================================================================
 %% Internal functions
 %%====================================================================
@@ -101,13 +141,14 @@ assign_chunk_to_pid(Ans, Pid) ->
       fun () ->
 	      lists:foreach(fun(R) ->
 				    mnesia:write(chunk,
-						 R#chunk{state = {assigned_to, Pid}},
+						 R#chunk{state = assigned,
+							 assign = Pid},
 						 write)
 			    end,
 			    Ans)
       end).
 
-ensure_chunking(Handle, PieceNum) ->
+ensure_chunking(Handle, PieceNum, StatePid) ->
     mnesia:transaction(
       fun () ->
 	      R = mnesia:read(file_access, Handle, read),
@@ -116,10 +157,23 @@ ensure_chunking(Handle, PieceNum) ->
 		      ok;
 		  not_chunked ->
 		      add_piece_chunks(PieceNum, piece_size(R), Handle),
-		      ok
+		      Q = qlc:q([S || S <- mnesia:table(file_access),
+				      S#file_access.pid =:= Handle,
+				      S#file_access.state =:= not_fetched]),
+		      case length(qlc:e(Q)) of
+			  0 ->
+			      etorrent_t_state:endgame(StatePid),
+			      ok;
+			  N when is_integer(N) ->
+			      ok
+		      end
 	      end
       end).
 
 piece_size(#file_access{ files = Files }) ->
     Sum = lists:foldl(fun ({_, _, S}, A) -> S + A end, 0, Files),
     Sum.
+
+% XXX: Come up with a better shuffle function.
+shuffle(X) ->
+    X.

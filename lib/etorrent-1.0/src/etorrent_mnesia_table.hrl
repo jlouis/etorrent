@@ -33,6 +33,7 @@
 		piece_number,
 		offset,
 		size,
+		assign = unknown,
 		state}). % state is: ....
 
 

@@ -15,7 +15,8 @@
 -export([start_link/2, report_to_tracker/1, report_from_tracker/3,
 	 retrieve_bitfield/1, remote_have_piece/2, num_pieces/1,
 	 remote_bitfield/2, remove_bitfield/2, request_new_piece/2,
-	 downloaded_data/2, uploaded_data/2, got_piece_from_peer/3]).
+	 downloaded_data/2, uploaded_data/2, got_piece_from_peer/3,
+	 endgame/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -24,6 +25,8 @@
 -record(state, {uploaded = 0,
 		downloaded = 0,
 		left = 0,
+
+		endgame = false,
 
 		seeders = 0,
 		leechers = 0,
@@ -48,6 +51,9 @@
 %%--------------------------------------------------------------------
 start_link(PieceSize, ControlPid) ->
     gen_server:start_link(?MODULE, [PieceSize, ControlPid], []).
+
+endgame(Pid) ->
+    gen_server:call(Pid, endgame).
 
 report_to_tracker(Pid) ->
     gen_server:call(Pid, report_to_tracker).
@@ -128,6 +134,8 @@ handle_call({got_piece_from_peer, Pn, DataSize}, {Pid, _Tag}, S) ->
 	    ok
     end,
     {reply, ok, S#state { left = Left, piece_assignment = Assignments}};
+handle_call(endgame, _From, S) ->
+    {reply, ok, S#state { endgame = true }};
 handle_call({downloaded_data, Amount}, _From, S) ->
     {reply, ok, S#state { downloaded = S#state.downloaded + Amount }};
 handle_call({uploaded_data, Amount}, _From, S) ->
@@ -199,6 +207,8 @@ handle_call({remove_bitfield, PieceSet}, _From, S) ->
 		     S#state.histogram,
 		     PieceSet),
     {reply, ok, S#state{histogram = NewH}};
+handle_call({request_new_piece, _}, _, S) when S#state.endgame =:= true ->
+    {reply, endgame, S};
 handle_call({request_new_piece, PeerPieces}, {From, _Tag}, S) ->
     EligiblePieces = sets:intersection(PeerPieces, S#state.piece_setorrent_missing),
     case etorrent_utils:sets_is_empty(EligiblePieces) of
