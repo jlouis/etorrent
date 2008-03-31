@@ -33,6 +33,7 @@ select_chunks(Pid, Handle, PieceSet, StatePid, Num) ->
 	not_interested ->
 	    not_interested;
 	{ok, PieceNum} ->
+	    {atomic, _} = ensure_chunking(Handle, PieceNum),
 	    mnesia:transaction(
 	      fun () ->
 		      Q = qlc:q([R || R <- mnesia:table(chunks),
@@ -46,15 +47,19 @@ select_chunks(Pid, Handle, PieceSet, StatePid, Num) ->
 	      end)
     end.
 
-
 %%--------------------------------------------------------------------
 %% Function: add_piece_chunks(PieceNum, PieceSize, Torrent) -> ok.
 %% Description: Add chunks for a piece of a given torrent.
 %%--------------------------------------------------------------------
 add_piece_chunks(PieceNum, PieceSize, Torrent) ->
-    {ok, Chunks, _} = chunkify(PieceNum, PieceSize),
+    {ok, Chunks, NumChunks} = chunkify(PieceNum, PieceSize),
     mnesia:transaction(
       fun () ->
+	      R = mnesia:read(file_access, Torrent, write),
+	      {atomic, _} = mnesia:write(file_access,
+					 R#file_access{ state = chunked,
+							left = NumChunks},
+					 write),
 	      lists:foreach(fun({PN, Offset, Size}) ->
 				    mnesia:write(chunks,
 						 #chunk{ ref = make_ref(),
@@ -101,3 +106,20 @@ assign_chunk_to_pid(Ans, Pid) ->
 			    end,
 			    Ans)
       end).
+
+ensure_chunking(Handle, PieceNum) ->
+    mnesia:transaction(
+      fun () ->
+	      R = mnesia:read(file_access, Handle, read),
+	      case R#file_access.state of
+		  chunked ->
+		      ok;
+		  not_chunked ->
+		      add_piece_chunks(PieceNum, piece_size(R), Handle),
+		      ok
+	      end
+      end).
+
+piece_size(#file_access{ files = Files }) ->
+    Sum = lists:foldl(fun ({_, _, S}, A) -> S + A end, 0, Files),
+    Sum.

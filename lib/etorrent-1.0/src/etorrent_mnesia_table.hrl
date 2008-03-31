@@ -25,6 +25,7 @@
 		      piece_number,
 		      hash,
 		      files,
+		      left = unknown, % Number of chunks left...
 		      state}). % state is: fetched | not_fetched | chunked
 
 -record(chunk, {ref,
