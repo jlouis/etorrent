@@ -11,7 +11,7 @@
 
 %% API
 -export([start_link/0, install_map/1, fetch_map/0,
-	 get_files_hash/3, get_pieces/2,
+	 get_files_hash/3,
 	 calculate_amount_left/1, convert_diskstate_to_set/1,
 	 torrent_completed/1]).
 
@@ -49,9 +49,6 @@ fetch_map() ->
 
 get_files_hash(ETS, Handle, Pn) ->
     ets:match(ETS, {Handle, Pn, '$1', '$2', '_'}).
-
-get_pieces(ETS, Handle) ->
-    ets:match(ETS, {Handle, '$1', '$2', '$3', '$4'}).
 
 calculate_amount_left(Handle) ->
     gen_server:call(?SERVER, {calculate_amount_left, Handle}).

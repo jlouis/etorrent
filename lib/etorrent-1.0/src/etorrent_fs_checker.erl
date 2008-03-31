@@ -8,6 +8,8 @@
 %%%-------------------------------------------------------------------
 -module(etorrent_fs_checker).
 
+-include("etorrent_mnesia_table.hrl").
+
 %% API
 -export([load_torrent/2, ensure_file_sizes_correct/1,
 	build_dictionary_on_files/2, check_torrent_contents/2]).
@@ -42,10 +44,9 @@ ensure_file_sizes_correct(Files) ->
     ok.
 
 check_torrent_contents(FS, Handle) ->
-    T = etorrent_fs_mapper:fetch_map(),
-    Pieces = etorrent_fs_mapper:get_pieces(T, Handle),
+    Pieces = etorrent_mnesia_operations:file_access_get_pieces(Handle),
     lists:foreach(
-      fun([PieceNum, Hash, _Ops, _Done]) ->
+      fun(#file_access{piece_number = PieceNum, hash = Hash}) ->
 	      {ok, Data} = etorrent_fs:read_piece(FS, PieceNum),
 	      case Hash =:= crypto:sha(Data) of
 		  true ->

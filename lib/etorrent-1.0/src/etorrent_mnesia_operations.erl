@@ -22,7 +22,7 @@
 
 	 file_access_insert/5, file_access_insert/2, file_access_set_state/3,
 	 file_access_torrent_pieces/1, file_access_is_complete/1,
-	 file_access_disk_operations/2]).
+	 file_access_disk_operations/2, file_access_get_pieces/1]).
 
 %%====================================================================
 %% API
@@ -336,6 +336,11 @@ file_access_is_complete(Pid) ->
 		    R#file_access.state =:= not_fetched]),
     Objs = qlc:e(Q),
     length(Objs) =:= 0.
+
+file_access_get_pieces(Handle) ->
+    Q = qlc:q([R || R <- mnesia:table(file_access),
+		    R#file_access.pid =:= Handle]),
+    qlc:e(Q).
 
 %%--------------------------------------------------------------------
 %% Internal functions
