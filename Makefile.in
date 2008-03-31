@@ -31,7 +31,8 @@ ETORRENT_1.0_MODULES = etorrent_listener etorrent_t_pool_sup etorrent_acceptor \
 	etorrent_event \
 	etorrent_acceptor_sup \
 	etorrent_fs_pool_sup \
-	etorrent_mnesia_init etorrent_mnesia_operations
+	etorrent_mnesia_init etorrent_mnesia_operations \
+	etorrent_mnesia_chunks
 
 ETORRENT_1.0_SOURCES = $(ETORRENT_1.0_MODULES:%=$(ETORRENT_1.0_SRCDIR)/%.erl)
 
