@@ -16,9 +16,6 @@
 	 send_have_piece/2, complete_handshake/4, uploaded_data/2,
 	stop/1]).
 
-%% Temp API
--export([chunkify/2]).
-
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3]).
@@ -542,7 +539,7 @@ queue_up_requests(S, 0) ->
 queue_up_requests(S, N) ->
     case queue:out(S#state.request_queue) of
 	{empty, Q} ->
-	    select_piece_for_queueing(S#state{request_queue = Q}, N);
+	    select_chunks_for_queueing(S#state{request_queue = Q}, N);
 	{{value, {Index, Offset, Len}}, Q} ->
 	    etorrent_t_peer_send:local_request(S#state.send_pid,
 					    Index, Offset, Len),
@@ -553,46 +550,25 @@ queue_up_requests(S, N) ->
     end.
 
 %%--------------------------------------------------------------------
-%% Function: select_piece_for_queueing(state(), N) -> ...
-%% Description: Select a piece and chunk it up for queueing. Then make
+%% Function: select_chunks_for_queueing(state(), N) -> ...
+%% Description: Select some chunks for queueing. Then make
 %%  a tail-call into queue_up_requests continuing the queue, or fail
 %%  if no piece is eligible.
 %%--------------------------------------------------------------------
-select_piece_for_queueing(S, N) ->
-    true = queue:is_empty(S#state.request_queue),
-    case etorrent_t_state:request_new_piece(S#state.state_pid,
-					    S#state.piece_set) of
-	{ok, PieceNum, PieceSize} ->
-	    {ok, Chunks, NumChunks} = chunkify(PieceNum, PieceSize),
+select_chunks_for_queueing(S, N) ->
+    true = queue:is_empty(S#state.request_queue), % Assert the queue is empty.
+    case etorrent_t_state:request_new_chunks(S#state.state_pid, S#state.piece_set) of
+	{ok, Chunks, NumChunks} ->
 	    {ok, ChunkDict} = build_chunk_dict(Chunks),
+	    % XXX: In due time, the piece_request entry should be removed from here.
 	    queue_up_requests(S#state{piece_request =
-				        [{PieceNum, ChunkDict, NumChunks} |
-					 S#state.piece_request],
+				      [{1, % XXX: This is a wrong dummy!
+					ChunkDict, NumChunks} | S#state.piece_request],
 				      request_queue = queue:from_list(Chunks)},
 			      N);
 	E when is_atom(E) ->
 	    {partially_queued, S, N, E}
     end.
-
-%%--------------------------------------------------------------------
-%% Function: chunkify(integer(), integer()) ->
-%%  {ok, list_of_chunk(), integer()}
-%% Description: From a Piece number and its total size this function
-%%  builds the chunks the piece consist of.
-%%--------------------------------------------------------------------
-chunkify(PieceNum, PieceSize) ->
-    chunkify(?DEFAULT_CHUNK_SIZE, 0, PieceNum, PieceSize, []).
-
-chunkify(_ChunkSize, _Offset, _PieceNum, 0, Acc) ->
-    {ok, lists:reverse(Acc), length(Acc)};
-chunkify(ChunkSize, Offset, PieceNum, Left, Acc)
- when ChunkSize =< Left ->
-    chunkify(ChunkSize, Offset+ChunkSize, PieceNum, Left-ChunkSize,
-	     [{PieceNum, Offset, ChunkSize} | Acc]);
-chunkify(ChunkSize, Offset, PieceNum, Left, Acc) ->
-    chunkify(ChunkSize, Offset+Left, PieceNum, 0,
-	     [{PieceNum, Offset, Left} | Acc]).
-
 %%--------------------------------------------------------------------
 %% Function: build_chunk_dict(list_of_chunks()) -> gb_tree()
 %% Description: Build a gb_tree from the chunks suitable for filling
