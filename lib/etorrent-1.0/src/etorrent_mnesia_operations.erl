@@ -22,7 +22,7 @@
 
 	 file_access_insert/5, file_access_insert/2, file_access_set_state/3,
 	 file_access_torrent_pieces/1, file_access_is_complete/1,
-	 file_access_get_pieces/1,
+	 file_access_get_pieces/1, file_access_delete/1,
 	 file_access_get_piece/2]).
 
 %%====================================================================
@@ -282,6 +282,12 @@ file_access_insert(Pid, PieceNumber, Hash, Files, State) ->
 					 files = Files,
 					 state = State },
 			   write)
+      end).
+
+file_access_delete(Pid) ->
+    mnesia:transaction(
+      fun () ->
+	      mnesia:delete(file_access, Pid, write)
       end).
 
 file_access_insert(Pid, Dict) ->

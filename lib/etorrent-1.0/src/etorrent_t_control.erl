@@ -271,6 +271,7 @@ handle_info(Info, StateName, State) ->
 %% Reason. The return value is ignored.
 %%--------------------------------------------------------------------
 terminate(_Reason, _StateName, _State) ->
+    etorrent_mnesia_operations:file_access_delete(self()),
     ok.
 
 %%--------------------------------------------------------------------
@@ -285,6 +286,6 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 %%% Internal functions
 %%--------------------------------------------------------------------
 add_filesystem(FileDict, S) ->
-    ok = etorrent_fs_mapper:install_map(FileDict),
+    etorrent_mnesia_operations:file_access_insert(self(), FileDict),
     {ok, FSPool} = etorrent_t_sup:add_file_system_pool(S#state.parent_pid),
     etorrent_t_sup:add_file_system(S#state.parent_pid, FSPool, self()).
