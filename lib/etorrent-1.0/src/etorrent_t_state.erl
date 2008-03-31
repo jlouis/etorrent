@@ -96,8 +96,8 @@ got_piece_from_peer(Pid, Pn, DataSize) ->
 %%--------------------------------------------------------------------
 init([PieceSize, ControlPid]) ->
     {PieceSet, Missing, Size} =
-	etorrent_fs_mapper:convert_diskstate_to_set(ControlPid),
-    AmountLeft = etorrent_fs_mapper:calculate_amount_left(ControlPid),
+	convert_diskstate_to_set(ControlPid),
+    AmountLeft = calculate_amount_left(ControlPid),
     {ok, #state{piece_set = PieceSet,
 		piece_setorrent_missing = Missing,
 		piece_assignment = dict:new(),
@@ -286,3 +286,41 @@ find_piece_size(PieceNum, S) when PieceNum == (S#state.num_pieces-1) ->
 find_piece_size(PieceNum, S) when PieceNum < (S#state.num_pieces-1) ->
     S#state.piece_size.
 
+
+size_of_ops(Ops) ->
+    lists:foldl(fun ({_Path, _Offset, Size}, Total) ->
+			Size + Total end,
+		0,
+		Ops).
+
+calculate_amount_left(Handle) ->
+    Objects = etorrent_mnesia_operations:file_access_torrent_pieces(Handle),
+    Sum = lists:foldl(fun([_Pn, Ops, Done], Sum) ->
+			      case Done of
+				  fetched ->
+				      Sum;
+				  not_fetched ->
+				      Sum + size_of_ops(Ops)
+			      end
+		      end,
+		      0,
+		      Objects),
+    Sum.
+
+convert_diskstate_to_set(Handle) ->
+    Objects = etorrent_mnesia_operations:file_access_torrent_pieces(Handle),
+    {Set, MissingSet} =
+	lists:foldl(fun([Pn, _Ops, Done], {Set, MissingSet}) ->
+			    case Done of
+				fetched ->
+				    {sets:add_element(Pn, Set),
+				     MissingSet};
+				not_fetched ->
+				    {Set,
+				     sets:add_element(Pn, MissingSet)}
+			    end
+		    end,
+		    {sets:new(), sets:new()},
+		    Objects),
+    Size = length(Objects),
+    {Set, MissingSet, Size}.

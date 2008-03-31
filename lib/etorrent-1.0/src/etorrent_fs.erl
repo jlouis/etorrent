@@ -9,6 +9,8 @@
 %%%-------------------------------------------------------------------
 -module(etorrent_fs).
 
+-include("etorrent_mnesia_table.hrl").
+
 -behaviour(gen_server).
 
 %% API
@@ -19,8 +21,7 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3]).
 
--record(state, { file_mapping_table = none,
-		 file_mapping_handle = none,
+-record(state, { file_mapping_handle = none,
 		 file_pool = none,
 
 		 file_process_dict = none}).
@@ -70,23 +71,21 @@ write_piece(Pid, Pn, Data) ->
 %% gen_server callbacks
 %%====================================================================
 init([IDHandle, FSPool]) ->
-    ETS = etorrent_fs_mapper:fetch_map(),
     {ok, #state{file_process_dict = dict:new(),
-	        file_mapping_table = ETS,
 		file_pool = FSPool,
 	        file_mapping_handle = IDHandle}}.
 
 handle_call({read_piece, PieceNum}, _From, S) ->
-    [Operations] =
-	etorrent_mnesia_operations:file_access_disk_operations(
-	  S#state.file_mapping_handle, PieceNum),
+    [#file_access { files = Operations}] =
+	etorrent_mnesia_operations:file_access_get_piece(
+	  S#state.file_mapping_handle,
+	  PieceNum),
     {ok, Data, NS} = read_pieces_and_assemble(Operations, [], S),
     {reply, {ok, Data}, NS};
 handle_call({write_piece, PieceNum, Data}, _From, S) ->
-    [[Hash, FilesToWrite]] =
-	etorrent_fs_mapper:get_files_hash(S#state.file_mapping_table,
-					  S#state.file_mapping_handle,
-					  PieceNum),
+    [#file_access { hash = Hash, files = FilesToWrite }] =
+	etorrent_mnesia_operations:file_access_get_piece(S#state.file_mapping_handle,
+							 PieceNum),
     case Hash == crypto:sha(Data) of
 	true ->
 	    {ok, NS} = write_piece_data(Data, FilesToWrite, S),

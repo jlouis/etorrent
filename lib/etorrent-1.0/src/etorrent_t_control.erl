@@ -135,7 +135,7 @@ check_and_start_torrent(FS, S) ->
 	  self()),
     {ok, GroupPid} = etorrent_t_sup:add_peer_pool(S#state.parent_pid),
 
-    TorrentFull = etorrent_fs_mapper:torrent_completed(self()),
+    TorrentFull = etorrent_mnesia_operations:file_access_is_complete(self()),
     TorrentState = case TorrentFull of
 		       true ->
 			   seeding;

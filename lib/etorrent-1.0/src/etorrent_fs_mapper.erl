@@ -10,10 +10,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0, install_map/1, fetch_map/0,
-	 get_files_hash/3,
-	 calculate_amount_left/1, convert_diskstate_to_set/1,
-	 torrent_completed/1]).
+-export([start_link/0, install_map/1, fetch_map/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -47,18 +44,6 @@ install_map(FileDict) ->
 fetch_map() ->
     gen_server:call(?SERVER, fetch_map).
 
-get_files_hash(ETS, Handle, Pn) ->
-    ets:match(ETS, {Handle, Pn, '$1', '$2', '_'}).
-
-calculate_amount_left(Handle) ->
-    gen_server:call(?SERVER, {calculate_amount_left, Handle}).
-
-convert_diskstate_to_set(Handle) ->
-    gen_server:call(?SERVER, {convert_diskstate_to_set, Handle}).
-
-torrent_completed(Handle) ->
-    gen_server:call(?SERVER, {torrent_completed, Handle}).
-
 %%====================================================================
 %% gen_server callbacks
 %%====================================================================
@@ -85,15 +70,6 @@ init([]) ->
 handle_call({install_map, FileDict}, {From, _Tag}, S) ->
     install_map_in_tracking_table(FileDict, From),
     {reply, ok, S};
-handle_call({convert_diskstate_to_set, Handle}, _From, S) ->
-    Reply = convert_diskstate_to_set(Handle, S),
-    {reply, Reply, S};
-handle_call({calculate_amount_left, Handle}, _From, S) ->
-    Reply = calculate_amount_left(Handle, S),
-    {reply, Reply, S};
-handle_call({torrent_completed, Handle}, _From, S) ->
-    Reply = is_torrent_completed(Handle, S),
-    {reply, Reply, S};
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -145,46 +121,3 @@ install_map_in_tracking_table(FileDict, Pid) ->
     etorrent_mnesia_operations:file_access_insert(Pid, FileDict),
     ok.
 
-size_of_ops(Ops) ->
-    lists:foldl(fun ({_Path, _Offset, Size}, Total) ->
-			Size + Total end,
-		0,
-		Ops).
-
-get_all_pieces_of_torrent(Handle, _S) ->
-    etorrent_mnesia_operations:file_access_torrent_pieces(Handle).
-
-calculate_amount_left(Handle, S) ->
-    Objects = get_all_pieces_of_torrent(Handle, S),
-    Sum = lists:foldl(fun([_Pn, Ops, Done], Sum) ->
-			      case Done of
-				  fetched ->
-				      Sum;
-				  not_fetched ->
-				      Sum + size_of_ops(Ops)
-			      end
-		      end,
-		      0,
-		      Objects),
-    Sum.
-
-is_torrent_completed(Handle, _S) ->
-    etorrent_mnesia_operations:file_access_is_complete(Handle).
-
-convert_diskstate_to_set(Handle, S) ->
-    Objects = get_all_pieces_of_torrent(Handle, S),
-    {Set, MissingSet} =
-	lists:foldl(fun([Pn, _Ops, Done], {Set, MissingSet}) ->
-			    case Done of
-				fetched ->
-				    {sets:add_element(Pn, Set),
-				     MissingSet};
-				not_fetched ->
-				    {Set,
-				     sets:add_element(Pn, MissingSet)}
-			    end
-		    end,
-		    {sets:new(), sets:new()},
-		    Objects),
-    Size = length(Objects),
-    {Set, MissingSet, Size}.
