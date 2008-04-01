@@ -11,6 +11,8 @@
 
 -behaviour(gen_server).
 
+-include("etorrent_mnesia_table.hrl").
+
 %% API
 -export([start_link/5, connect/3, choke/1, unchoke/1, interested/1,
 	 send_have_piece/2, complete_handshake/4, uploaded_data/2,
@@ -31,7 +33,6 @@
 
 		 local_interested = false,
 
-		 request_queue = none,
 		 remote_request_set = none,
 
 		 piece_set = none,
@@ -129,7 +130,6 @@ stop(Pid) ->
 init([LocalPeerId, InfoHash, StatePid, FilesystemPid, MasterPid]) ->
     {ok, #state{ local_peer_id = LocalPeerId,
 		 piece_set = sets:new(),
-		 request_queue = queue:new(),
 		 remote_request_set = sets:new(),
 		 info_hash = InfoHash,
 		 state_pid = StatePid,
@@ -250,6 +250,7 @@ handle_info(_Info, State) ->
 %%--------------------------------------------------------------------
 terminate(_Reason, S) ->
     ok = etorrent_t_state:remove_bitfield(S#state.state_pid, S#state.piece_set),
+    unqueue_all_pieces(S),
     catch(etorrent_t_peer_send:stop(S#state.send_pid)),
     ok.
 
@@ -329,38 +330,12 @@ handle_message({piece, Index, Offset, Data}, S) ->
 handle_message(Unknown, S) ->
     {stop, {unknown_message, Unknown}, S}.
 
-
-%% delete_piece_from_request_sets(Ref, S) ->
-%%     case sets:is_element({Index, Offset, Len}, S#state.remote_request_set) of
-%% 	true ->
-%% 	    RemoteRSet = sets:del_element({Index, Offset, Len},
-%% 					  S#state.remote_request_set),
-%% 	    {ok, S#state{remote_request_set = RemoteRSet}};
-%% 	false ->
-%% 	    % If the piece is not in the remote request set, the peer has
-%% 	    %   sent us a message "out of band". We don't care at all and
-%% 	    %   attempt to find it in the request queue instead
-%% 	    case etorrent_utils:queue_remove_with_check({Index, Offset, Len},
-%% 					       S#state.request_queue) of
-%% 		{ok, NQ} ->
-%% 		    {ok, S#state{request_queue = NQ}};
-%% 		false ->
-%% 		    % Bastard sent us something out of band. This *can*
-%% 		    % happen in fast choking/unchoking runs!
-%% 		    out_of_band
-%% 	    end
-%%     end.
-
-delete_piece(_Ref, _S) ->
-    ok.
-
-
-%%% TODO: Implement me!
-match_piece_ref(_Index, _Offset, _Len, _S) ->
-    ok.
+delete_piece(Ref, Index, Offset, Len, S) ->
+    RS = sets:del_element({Ref, Index, Offset, Len}, S#state.remote_request_set),
+    {ok, S#state { remote_request_set = RS}}.
 
 handle_got_chunk(Index, Offset, Data, Len, S) ->
-    Ref = match_piece_ref(Index, Offset, Len, S),
+    {atomic, [Ref]} = etorrent_mnesia_chunks:select_chunk(S#state.master_pid, Index, Offset, Len),
     %%% XXX: More stability here. What happens when things fuck up?
     case etorrent_mnesia_chunks:store_chunk(
 	   Ref,
@@ -369,7 +344,7 @@ handle_got_chunk(Index, Offset, Data, Len, S) ->
 	   S#state.file_system_pid,
 	   S#state.master_pid) of
 	{atomic, _} ->
-	    delete_piece(Ref, S);
+	    delete_piece(Ref, Index, Offset, Len, S);
 	_ ->
 	    stop
     end.
@@ -383,8 +358,7 @@ send_message(Msg, S) ->
 %%   specifications.
 %%--------------------------------------------------------------------
 enable_socket_messages(Socket) ->
-    ok = inet:setopts(Socket, [binary, {active, true}, {packet, 4}]),
-    ok.
+    inet:setopts(Socket, [binary, {active, true}, {packet, 4}]).
 
 %%--------------------------------------------------------------------
 %% Function: unqueue_all_pieces/1
@@ -394,10 +368,10 @@ enable_socket_messages(Socket) ->
 %%--------------------------------------------------------------------
 unqueue_all_pieces(S) ->
     Requests = sets:to_list(S#state.remote_request_set),
-    Q = S#state.request_queue,
-    NQ = queue:join(Q, queue:from_list(Requests)),
-    S#state{remote_request_set = sets:new(),
-	     request_queue = NQ}.
+    etorrent_mnesia_chunks:putback_chunks(lists:map(fun({R, _, _, _}) -> R end,
+						    Requests),
+					  self()),
+    S#state{remote_request_set = sets:new()}.
 
 %%--------------------------------------------------------------------
 %% Function: try_to_queue_up_requests(state()) -> {ok, state()}
@@ -409,71 +383,28 @@ try_to_queue_up_pieces(S) when S#state.remote_choked == true ->
     {ok, S};
 try_to_queue_up_pieces(S) ->
     PiecesToQueue = ?BASE_QUEUE_LEVEL - sets:size(S#state.remote_request_set),
-    case queue_up_requests(S, PiecesToQueue) of
-	{ok, NS} ->
-	    {ok, NS};
-	{partially_queued, NS, Left, not_interested}
-	  when Left == ?BASE_QUEUE_LEVEL ->
-	    % Out of pieces to give him
+    case etorrent_mnesia_chunks:select_chunks(self(),
+					      S#state.master_pid,
+					      S#state.piece_set,
+					      S#state.state_pid,
+					      PiecesToQueue) of
+	not_interested ->
 	    etorrent_t_peer_send:not_interested(S#state.send_pid),
-	    {ok, NS#state{local_interested = false}};
-	{partially_queued, NS, _Left, not_interested} ->
-	    % We still have some pieces in the queue
-	    {ok, NS}
+	    {ok, S#state { local_interested = false}};
+	{atomic, Items} ->
+	    queue_items(Items, S)
     end.
 
-%%--------------------------------------------------------------------
-%% Function: queue_up_requests(state(), N) -> {ok, state()} | ...
-%% Description: Try to queue up N requests at the other end.
-%%   If no pieces are ready in the queue, attempt to select a piece
-%%   for queueing.
-%%   Either succeds with {ok, state()} or fails because no piece is
-%%   eligible.
-%%--------------------------------------------------------------------
-queue_up_requests(S, 0) ->
+queue_items([], S) ->
     {ok, S};
-queue_up_requests(S, N) ->
-    case queue:out(S#state.request_queue) of
-	{empty, Q} ->
-	    select_chunks_for_queueing(S#state{request_queue = Q}, N);
-	{{value, {Index, Offset, Len}}, Q} ->
-	    etorrent_t_peer_send:local_request(S#state.send_pid,
-					    Index, Offset, Len),
-	    RS = sets:add_element({Index, Offset, Len},
-				  S#state.remote_request_set),
-	    queue_up_requests(S#state{request_queue = Q,
-				      remote_request_set = RS}, N-1)
-    end.
+queue_items([Chunk | Chunks], S) ->
+    etorrent_t_peer_send:local_request(S#state.send_pid,
+				       Chunk#chunk.piece_number,
+				       Chunk#chunk.offset,
+				       Chunk#chunk.size),
+    RS = sets:add_element({Chunk#chunk.ref,
+			   Chunk#chunk.piece_number,
+			   Chunk#chunk.offset,
+			   Chunk#chunk.size}, S#state.remote_request_set),
+    queue_items(Chunks, S#state { remote_request_set = RS }).
 
-%%--------------------------------------------------------------------
-%% Function: select_chunks_for_queueing(state(), N) -> ...
-%% Description: Select some chunks for queueing. Then make
-%%  a tail-call into queue_up_requests continuing the queue, or fail
-%%  if no piece is eligible.
-%%--------------------------------------------------------------------
-select_chunks_for_queueing(S, N) ->
-    true = queue:is_empty(S#state.request_queue), % Assert the queue is empty.
-    case etorrent_t_state:request_new_chunks(S#state.state_pid, S#state.piece_set) of
-	{ok, Chunks, NumChunks} ->
-	    {ok, ChunkDict} = build_chunk_dict(Chunks),
-	    % XXX: In due time, the piece_request entry should be removed from here.
-	    queue_up_requests(S#state{piece_request =
-				      [{1, % XXX: This is a wrong dummy!
-					ChunkDict, NumChunks} | S#state.piece_request],
-				      request_queue = queue:from_list(Chunks)},
-			      N);
-	E when is_atom(E) ->
-	    {partially_queued, S, N, E}
-    end.
-%%--------------------------------------------------------------------
-%% Function: build_chunk_dict(list_of_chunks()) -> gb_tree()
-%% Description: Build a gb_tree from the chunks suitable for filling
-%%  up when the requested pieces come in from the peer.
-%%--------------------------------------------------------------------
-build_chunk_dict(Chunklist) ->
-    Tree = lists:foldl(fun({_Index, Begin, Len}, GBT) ->
-			      gb_trees:enter(Begin, {Len, none}, GBT)
-		      end,
-		      gb_trees:empty(),
-		      Chunklist),
-    {ok, gb_trees:balance(Tree)}.

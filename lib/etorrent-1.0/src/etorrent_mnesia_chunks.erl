@@ -14,7 +14,8 @@
 -define(DEFAULT_CHUNK_SIZE, 16384). % Default size for a chunk. All clients use this.
 
 %% API
--export([add_piece_chunks/3, select_chunks/5, store_chunk/5]).
+-export([add_piece_chunks/3, select_chunks/5, store_chunk/5,
+	 putback_chunks/2, select_chunk/4]).
 
 %%====================================================================
 %% API
@@ -23,6 +24,21 @@
 %% Function: 
 %% Description:
 %%--------------------------------------------------------------------
+
+%%--------------------------------------------------------------------
+%% Function: select_chunk(Handle, Index, Offset, Len) -> {atomic, Ref}
+%% Description: Select the ref of a chunk.
+%%--------------------------------------------------------------------
+select_chunk(Handle, Idx, Offset, Size) ->
+    mnesia:transaction(
+      fun () ->
+	      Q = qlc:q([R#chunk.ref || R <- mnesia:table(chunk),
+					R#chunk.piece_number =:= Idx,
+					R#chunk.offset =:= Offset,
+					R#chunk.size =:= Size,
+					R#chunk.pid =:= Handle]),
+	      qlc:e(Q)
+      end).
 
 %%--------------------------------------------------------------------
 %% Function: select_chunks(Handle, PieceSet, StatePid, Num) -> ...
@@ -57,6 +73,29 @@ select_chunks(Pid, Handle, PieceSet, StatePid, Num) ->
 		      Ans
 	      end)
     end.
+
+%%--------------------------------------------------------------------
+%% Function: add_piece_chunks(PieceNum, PieceSize, Torrent) -> ok.
+%% Description: Add chunks for a piece of a given torrent.
+%%--------------------------------------------------------------------
+putback_chunks(Refs, Pid) ->
+    mnesia:transaction(
+      fun () ->
+	      lists:foreach(fun(Ref) ->
+				    Row = mnesia:read(chunk, Ref, write),
+				    case Row#chunk.state of
+					fetched ->
+					    ok;
+					not_fetched ->
+					    ok;
+					assigned when Row#chunk.assign == Pid ->
+					    mnesia:write(chunk, Row#chunk{ state = not_fetched,
+									   assign = unknown },
+							 write)
+				    end
+			    end,
+			    Refs)
+      end).
 
 %%--------------------------------------------------------------------
 %% Function: add_piece_chunks(PieceNum, PieceSize, Torrent) -> ok.
