@@ -115,13 +115,14 @@ store_piece(Pid, PieceNumber, StatePid, FSPid, MasterPid) ->
       fun () ->
 	      Q = qlc:q([{Cs#chunk.offset,
 			  Cs#chunk.size,
+			  Cs#chunk.state,
 			  Cs#chunk.assign}
 			   || Cs <- mnesia:table(chunks),
 					    Cs#chunk.pid =:= Pid,
 					    Cs#chunk.piece_number =:= PieceNumber,
 					    Cs#chunk.state =:= fetched]),
 	      Q2 = qlc:keysort(1, Q),
-	      Q3 = qlc:q([D || {_Offset, _Size, D} <- Q2]),
+	      Q3 = qlc:q([D || {_Offset, _Size, _State, D} <- Q2]),
 	      Piece = qlc:e(Q3),
 	      ok = invariant_check(qlc:e(Q2)),
 	      case etorrent_fs:write_piece(FSPid,
@@ -147,13 +148,13 @@ putback_piece(_Pid, _PieceNumber) ->
     todo.
 
 invariant_check(PList) ->
-    V = lists:foldl(fun (_E, error) -> error;
-			({Offset, _T}, N) when Offset /= N ->
+    V = lists:foldl(fun (_T, error) -> error;
+			({Offset, _Size, fetched, _D}, N) when Offset /= N ->
 			    error;
-		        ({_Offset, {Len, Data}}, _N) when Len /= size(Data) ->
+			({_Offset, Size, fetched, Data}, _N) when Size /= size(Data) ->
 			    error;
-			({Offset, {Len, _}}, N) when Offset == N ->
-			    Offset + Len
+			({Offset, Size, fetched, _Data}, N) when Offset == N ->
+			    Offset + Size
 		    end,
 		    0,
 		    PList),
