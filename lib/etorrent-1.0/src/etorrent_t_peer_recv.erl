@@ -317,6 +317,7 @@ handle_message({bitfield, BitField}, S) ->
     end;
 handle_message({piece, Index, Offset, Data}, S) ->
     Len = size(Data),
+    %% XXX: Consider taking this over to the point where the piece has been checked...
     etorrent_t_state:downloaded_data(S#state.state_pid, Len),
     etorrent_mnesia_operations:peer_statechange(self(), {downloaded, Len}),
     case handle_got_chunk(Index, Offset, Data, Len, S) of
@@ -329,157 +330,52 @@ handle_message(Unknown, S) ->
     {stop, {unknown_message, Unknown}, S}.
 
 
-delete_piece_from_request_sets(Index, Offset, Len, S) ->
-    case sets:is_element({Index, Offset, Len}, S#state.remote_request_set) of
-	true ->
-	    RemoteRSet = sets:del_element({Index, Offset, Len},
-					  S#state.remote_request_set),
-	    {ok, S#state{remote_request_set = RemoteRSet}};
-	false ->
-	    % If the piece is not in the remote request set, the peer has
-	    %   sent us a message "out of band". We don't care at all and
-	    %   attempt to find it in the request queue instead
-	    case etorrent_utils:queue_remove_with_check({Index, Offset, Len},
-					       S#state.request_queue) of
-		{ok, NQ} ->
-		    {ok, S#state{request_queue = NQ}};
-		false ->
-		    % Bastard sent us something out of band. This *can*
-		    % happen in fast choking/unchoking runs!
-		    out_of_band
-	    end
-    end.
+%% delete_piece_from_request_sets(Ref, S) ->
+%%     case sets:is_element({Index, Offset, Len}, S#state.remote_request_set) of
+%% 	true ->
+%% 	    RemoteRSet = sets:del_element({Index, Offset, Len},
+%% 					  S#state.remote_request_set),
+%% 	    {ok, S#state{remote_request_set = RemoteRSet}};
+%% 	false ->
+%% 	    % If the piece is not in the remote request set, the peer has
+%% 	    %   sent us a message "out of band". We don't care at all and
+%% 	    %   attempt to find it in the request queue instead
+%% 	    case etorrent_utils:queue_remove_with_check({Index, Offset, Len},
+%% 					       S#state.request_queue) of
+%% 		{ok, NQ} ->
+%% 		    {ok, S#state{request_queue = NQ}};
+%% 		false ->
+%% 		    % Bastard sent us something out of band. This *can*
+%% 		    % happen in fast choking/unchoking runs!
+%% 		    out_of_band
+%% 	    end
+%%     end.
 
-get_requests(S) ->
-    lists:flatten(lists:map(fun({Index, _, _}) ->
-					  io_lib:format("|~B|", [Index])
-				  end,
-				  S#state.piece_request)).
+delete_piece(_Ref, _S) ->
+    ok.
 
-get_queues(S) ->
-    lists:flatten(lists:map(
-		    fun({Index, Offset, Len}) ->
-			    io_lib:format("|~p|", [{Index, Offset, Len}])
-		    end,
-		    lists:concat([queue:to_list(S#state.request_queue),
-				  sets:to_list(S#state.remote_request_set)]))).
 
-report_errornous_piece(Index, Offset, Len, S) ->
-    error_logger:warning_msg(
-      "Peer ~s sent us chunk ~p have no piece_request on~nRequests: ~p~n~p~n",
-      [S#state.remote_peer_id, {Index, Offset, Len},
-       get_requests(S), get_queues(S)]).
-
-delete_piece(Index, Offset, Len, S) ->
-    case delete_piece_from_request_sets(Index, Offset, Len, S) of
-	{ok, NS} ->
-	    NS;
-	out_of_band ->
-	    S
-    end.
-
-handle_store_piece(Index, S) ->
-    case check_and_store_piece(Index, S) of
-	ok ->
-	    PR = lists:keydelete(Index, 1, S#state.piece_request),
-	    {ok, S#state{piece_request = PR}};
-	wrong_hash ->
-	    stop
-    end.
-
-handle_update_piece(Index, Offset, Len, Data, GBT, N, S) ->
-    case update_with_new_piece(Index, Offset, Len, Data, GBT, N, S) of
-	{done, NS} ->
-	    handle_store_piece(Index, NS);
-	{not_done, NS} ->
-	    {ok, NS}
-    end.
+%%% TODO: Implement me!
+match_piece_ref(_Index, _Offset, _Len, _S) ->
+    ok.
 
 handle_got_chunk(Index, Offset, Data, Len, S) ->
-    NS = delete_piece(Index, Offset, Len, S),
-    case lists:keysearch(Index, 1, NS#state.piece_request) of
-	false ->
-	    report_errornous_piece(Index, Offset, Len, NS),
-	    stop;
-	{value, {_CurrentIndex, GBT, N}} ->
-	    handle_update_piece(Index, Offset, Len, Data, GBT, N, NS)
-    end.
-
-check_and_store_piece(Index, S) ->
-    case lists:keysearch(Index, 1, S#state.piece_request) of
-	{value, {_CurrentIndex, GBT, 0}} ->
-	    PList = gb_trees:to_list(GBT),
-	    ok = invariant_check(PList),
-	    Piece = lists:map(
-		      fun({_Offset, {_Len, Data}}) ->
-			      Data
-		      end,
-		      PList),
-	    case etorrent_fs:write_piece(S#state.file_system_pid,
-				    Index,
-				    list_to_binary(Piece)) of
-		ok ->
-		    ok = etorrent_t_state:got_piece_from_peer(
-			   S#state.state_pid,
-			   Index,
-			   piece_size(Piece)),
-		    ok = etorrent_t_peer_group:got_piece_from_peer(
-			   S#state.master_pid,
-			   Index),
-		    ok;
-		wrong_hash ->
-		    wrong_hash
-	    end
-    end.
-
-piece_size(Data) ->
-    lists:foldl(fun(D, Acc) ->
-			Acc + size(D)
-		end,
-		0,
-		Data).
-
-invariant_check(PList) ->
-    V = lists:foldl(fun (_E, error) -> error;
-			({Offset, _T}, N) when Offset /= N ->
-			    error;
-		        ({_Offset, {Len, Data}}, _N) when Len /= size(Data) ->
-			    error;
-			({Offset, {Len, _}}, N) when Offset == N ->
-			    Offset + Len
-		    end,
-		    0,
-		    PList),
-    case V of
-	error ->
-	    error;
-	N when is_integer(N) ->
-	    ok
+    Ref = match_piece_ref(Index, Offset, Len, S),
+    %%% XXX: More stability here. What happens when things fuck up?
+    case etorrent_mnesia_chunks:store_chunk(
+	   Ref,
+	   Data,
+	   S#state.state_pid,
+	   S#state.file_system_pid,
+	   S#state.master_pid) of
+	{atomic, _} ->
+	    delete_piece(Ref, S);
+	_ ->
+	    stop
     end.
 
 send_message(Msg, S) ->
     etorrent_t_peer_send:send(S#state.send_pid, Msg).
-
-update_piece_count(X, N) when X == none ->
-    N-1;
-update_piece_count(_X, N) ->
-    N.
-
-update_with_new_piece(Index, Offset, Len, Data, GBT, N, S) ->
-    {PLen, Slot} = gb_trees:get(Offset, GBT),
-    PLen = Len,
-    PiecesLeft = update_piece_count(Slot, N),
-    PR = lists:keyreplace(
-	   Index, 1, S#state.piece_request,
-	   {Index,
-	    gb_trees:update(Offset, {Len, Data}, GBT),
-	    PiecesLeft}),
-    case PiecesLeft of
-	0 ->
-	    {done, S#state{piece_request = PR}};
-	K when integer(K) ->
-	    {not_done, S#state{piece_request = PR}}
-    end.
 
 %%--------------------------------------------------------------------
 %% Function: enable_socketorrent_messages(socket() -> ok
