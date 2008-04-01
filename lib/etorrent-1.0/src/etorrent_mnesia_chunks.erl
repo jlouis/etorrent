@@ -144,8 +144,22 @@ store_piece(Pid, PieceNumber, StatePid, FSPid, MasterPid) ->
 %% Internal functions
 %%====================================================================
 
-putback_piece(_Pid, _PieceNumber) ->
-    todo.
+%%% XXX: This function ought to do something more.
+putback_piece(Pid, PieceNumber) ->
+    mnesia:transaction(
+      fun () ->
+	      Q = qlc:q([C || C <- mnesia:table(chunks),
+			      C#chunk.pid =:= Pid,
+			      C#chunk.piece_number =:= PieceNumber]),
+	      Rows = qlc:e(Q),
+	      lists:foreach(fun(Row) ->
+				    mnesia:write(chunk,
+						 Row#chunk { state = not_fetched,
+							     assign = unknown },
+						 write)
+			    end,
+			    Rows)
+      end).
 
 invariant_check(PList) ->
     V = lists:foldl(fun (_T, error) -> error;
