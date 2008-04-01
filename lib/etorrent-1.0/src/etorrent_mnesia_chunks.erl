@@ -14,7 +14,7 @@
 -define(DEFAULT_CHUNK_SIZE, 16384). % Default size for a chunk. All clients use this.
 
 %% API
--export([add_piece_chunks/3, select_chunks/5, store_chunk/2]).
+-export([add_piece_chunks/3, select_chunks/5, store_chunk/5]).
 
 %%====================================================================
 %% API
@@ -84,7 +84,7 @@ add_piece_chunks(PieceNum, PieceSize, Torrent) ->
 			    Chunks)
       end).
 
-store_chunk(Ref, Data) ->
+store_chunk(Ref, Data, StatePid, FSPid, MasterPid) ->
     mnesia:transaction(
       fun () ->
 	      R = mnesia:read(chunk, Ref, write),
@@ -94,28 +94,75 @@ store_chunk(Ref, Data) ->
 	      P = mnesia:read(file_access, Pid, write),
 	      mnesia:write(file_access,
 			   P#file_access { left = P#file_access.left - 1 }),
-	      check_for_full_piece(Pid, R#chunk.piece_number),
+	      check_for_full_piece(Pid, R#chunk.piece_number, StatePid, FSPid, MasterPid),
 	      ok
       end).
 
-check_for_full_piece(Pid, PieceNumber) ->
+check_for_full_piece(Pid, PieceNumber, StatePid, FSPid, MasterPid) ->
     mnesia:transaction(
       fun () ->
 	      R = mnesia:read(file_access, Pid, read),
 	      case R#file_access.left of
 		  0 ->
-		      store_piece(Pid, PieceNumber);
+		      store_piece(Pid, PieceNumber, StatePid, FSPid, MasterPid);
 		  N when is_integer(N) ->
 		      ok
 	      end
       end).
 
-store_piece(_Pid, _PieceNumber) ->
-    todo.
+store_piece(Pid, PieceNumber, StatePid, FSPid, MasterPid) ->
+    mnesia:transaction(
+      fun () ->
+	      Q = qlc:q([{Cs#chunk.offset,
+			  Cs#chunk.size,
+			  Cs#chunk.assign}
+			   || Cs <- mnesia:table(chunks),
+					    Cs#chunk.pid =:= Pid,
+					    Cs#chunk.piece_number =:= PieceNumber,
+					    Cs#chunk.state =:= fetched]),
+	      Q2 = qlc:keysort(1, Q),
+	      Q3 = qlc:q([D || {_Offset, _Size, D} <- Q2]),
+	      Piece = qlc:e(Q3),
+	      ok = invariant_check(qlc:e(Q2)),
+	      case etorrent_fs:write_piece(FSPid,
+					   PieceNumber,
+					   list_to_binary(Piece)) of
+		  ok ->
+		      ok = etorrent_t_state:got_piece_from_peer(
+			     StatePid, PieceNumber, piece_size(Piece)),
+		      ok = etorrent_t_peer_group:got_piece_from_peer(
+			     MasterPid, PieceNumber),
+		      ok;
+		  wrong_hash ->
+		      putback_piece(Pid, PieceNumber),
+		      wrong_hash
+	      end
+      end).
 
 %%====================================================================
 %% Internal functions
 %%====================================================================
+
+putback_piece(_Pid, _PieceNumber) ->
+    todo.
+
+invariant_check(PList) ->
+    V = lists:foldl(fun (_E, error) -> error;
+			({Offset, _T}, N) when Offset /= N ->
+			    error;
+		        ({_Offset, {Len, Data}}, _N) when Len /= size(Data) ->
+			    error;
+			({Offset, {Len, _}}, N) when Offset == N ->
+			    Offset + Len
+		    end,
+		    0,
+		    PList),
+    case V of
+	error ->
+	    error;
+	N when is_integer(N) ->
+	    ok
+    end.
 
 %%--------------------------------------------------------------------
 %% Function: chunkify(integer(), integer()) ->
