@@ -90,10 +90,12 @@ store_chunk(Ref, Data, StatePid, FSPid, MasterPid) ->
 	      R = mnesia:read(chunk, Ref, write),
 	      Pid = R#chunk.pid,
 	      mnesia:write(chunk, R#chunk { state = fetched,
-					    assign = Data }),
+					    assign = Data },
+			   write),
 	      P = mnesia:read(file_access, Pid, write),
 	      mnesia:write(file_access,
-			   P#file_access { left = P#file_access.left - 1 }),
+			   P#file_access { left = P#file_access.left - 1 },
+			   write),
 	      check_for_full_piece(Pid, R#chunk.piece_number, StatePid, FSPid, MasterPid),
 	      ok
       end).
@@ -130,7 +132,12 @@ store_piece(Pid, PieceNumber, StatePid, FSPid, MasterPid) ->
 					   list_to_binary(Piece)) of
 		  ok ->
 		      ok = etorrent_t_state:got_piece_from_peer(
-			     StatePid, PieceNumber, piece_size(Piece)),
+			     StatePid, PieceNumber,
+			     lists:foldl(fun({_, S, _, _}, Acc) ->
+						 S + Acc
+					 end,
+					 0,
+					 Piece)),
 		      ok = etorrent_t_peer_group:got_piece_from_peer(
 			     MasterPid, PieceNumber),
 		      ok;
