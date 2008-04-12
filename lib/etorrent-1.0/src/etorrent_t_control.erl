@@ -135,7 +135,8 @@ check_and_start_torrent(FS, S) ->
 	  self()),
     {ok, GroupPid} = etorrent_t_sup:add_peer_pool(S#state.parent_pid),
 
-    TorrentFull = etorrent_mnesia_operations:file_access_is_complete(self()),
+    {atomic, TorrentFull} =
+	etorrent_mnesia_operations:file_access_is_complete(self()),
     TorrentState = case TorrentFull of
 		       true ->
 			   seeding;
@@ -154,7 +155,7 @@ check_and_start_torrent(FS, S) ->
 	  TorrentState),
 
     InfoHash = etorrent_metainfo:get_infohash(S#state.torrent),
-    etorrent_mnesia_operations:set_info_hash_state(InfoHash, TorrentState),
+    {atomic, _} = etorrent_mnesia_operations:set_info_hash_state(InfoHash, TorrentState),
 
     {ok, TrackerPid} =
 	etorrent_t_sup:add_tracker(
