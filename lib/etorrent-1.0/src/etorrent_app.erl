@@ -2,7 +2,7 @@
 -behaviour(application).
 
 -export([db_initialize/0]).
--export([start/2, stop/1, start/0]).
+-export([start/2, stop/1, start/0, reload/0]).
 
 start() ->
     application:start(crypto),
@@ -23,5 +23,15 @@ db_initialize() ->
     mnesia:start(),
     etorrent_mnesia_init:init(),
     mnesia:stop().
+
+purge_rl(X) ->
+    code:purge(X),
+    code:load_file(X).
+
+reload() ->
+    purge_rl(etorrent_dirwatcher),
+    purge_rl(etorrent_t_manager),
+    purge_rl(etorrent_mnesia_operations).
+
 
 
