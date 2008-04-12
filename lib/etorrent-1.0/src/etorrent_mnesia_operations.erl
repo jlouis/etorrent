@@ -327,11 +327,14 @@ file_access_set_state(Pid, Pn, State) ->
       end).
 
 file_access_torrent_pieces(Pid) ->
-    Q = qlc:q([{R#file_access.piece_number,
-		R#file_access.files,
-		R#file_access.state} || R <- mnesia:table(file_access),
-					R#file_access.pid =:= Pid]),
-    qlc:e(Q).
+    mnesia:transaction(
+      fun () ->
+	      Q = qlc:q([{R#file_access.piece_number,
+			  R#file_access.files,
+			  R#file_access.state} || R <- mnesia:table(file_access),
+						  R#file_access.pid =:= Pid]),
+	      qlc:e(Q)
+      end).
 
 file_access_is_complete(Pid) ->
     mnesia:transaction(
@@ -352,10 +355,13 @@ file_access_get_pieces(Handle) ->
       end).
 
 file_access_get_piece(Handle, Pn) ->
-    Q = qlc:q([R || R <- mnesia:table(file_access),
-		    R#file_access.pid =:= Handle,
-		    R#file_access.piece_number =:= Pn]),
-    qlc:e(Q).
+    mnesia:transaction(
+      fun () ->
+	      Q = qlc:q([R || R <- mnesia:table(file_access),
+			      R#file_access.pid =:= Handle,
+			      R#file_access.piece_number =:= Pn]),
+	      qlc:e(Q)
+      end).
 
 %%--------------------------------------------------------------------
 %% Internal functions

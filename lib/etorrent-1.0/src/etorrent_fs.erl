@@ -76,14 +76,14 @@ init([IDHandle, FSPool]) ->
 	        file_mapping_handle = IDHandle}}.
 
 handle_call({read_piece, PieceNum}, _From, S) ->
-    [#file_access { files = Operations}] =
+    {atomic, [#file_access { files = Operations}]} =
 	etorrent_mnesia_operations:file_access_get_piece(
 	  S#state.file_mapping_handle,
 	  PieceNum),
     {ok, Data, NS} = read_pieces_and_assemble(Operations, [], S),
     {reply, {ok, Data}, NS};
 handle_call({write_piece, PieceNum, Data}, _From, S) ->
-    [#file_access { hash = Hash, files = FilesToWrite }] =
+    {atomic, [#file_access { hash = Hash, files = FilesToWrite }]} =
 	etorrent_mnesia_operations:file_access_get_piece(S#state.file_mapping_handle,
 							 PieceNum),
     case Hash == crypto:sha(Data) of

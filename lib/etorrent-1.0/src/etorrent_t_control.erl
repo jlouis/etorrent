@@ -129,50 +129,50 @@ check_and_start_torrent(FS, S) ->
     ok = etorrent_fs_checker:check_torrent_contents(FS, self()),
     ok = etorrent_fs_serializer:release_token(),
     error_logger:info_report(adding_state),
-    {ok, StatePid} =
-	etorrent_t_sup:add_state(
+    case etorrent_t_sup:add_state(
 	  S#state.parent_pid,
 	  etorrent_metainfo:get_piece_length(S#state.torrent),
-	  self()),
-    error_logger:info_report(adding_peer_pool),
-    {ok, GroupPid} = etorrent_t_sup:add_peer_pool(S#state.parent_pid),
+	  self()) of 
+	{ok, StatePid} ->
+	    error_logger:info_report(adding_peer_pool),
+	    {ok, GroupPid} = etorrent_t_sup:add_peer_pool(S#state.parent_pid),
 
-    error_logger:info_report(full_check),
-    {atomic, TorrentFull} =
-	etorrent_mnesia_operations:file_access_is_complete(self()),
-    TorrentState = case TorrentFull of
-		       true ->
-			   seeding;
-		       false ->
-			   leeching
-		   end,
+	    error_logger:info_report(full_check),
+	    {atomic, TorrentFull} =
+		etorrent_mnesia_operations:file_access_is_complete(self()),
+	    TorrentState = case TorrentFull of
+			       true ->
+				   seeding;
+			       false ->
+				   leeching
+			   end,
+	    {ok, PeerMasterPid} =
+		etorrent_t_sup:add_peer_master(
+		  S#state.parent_pid,
+		  GroupPid,
+		  S#state.peer_id,
+		  etorrent_metainfo:get_infohash(S#state.torrent),
+		  StatePid,
+		  FS,
+		  TorrentState),
 
-    {ok, PeerMasterPid} =
-	etorrent_t_sup:add_peer_master(
-	  S#state.parent_pid,
-	  GroupPid,
-	  S#state.peer_id,
-	  etorrent_metainfo:get_infohash(S#state.torrent),
-	  StatePid,
-	  FS,
-	  TorrentState),
+		InfoHash = etorrent_metainfo:get_infohash(S#state.torrent),
+	    {atomic, _} = etorrent_mnesia_operations:set_info_hash_state(InfoHash, TorrentState),
 
-    InfoHash = etorrent_metainfo:get_infohash(S#state.torrent),
-    {atomic, _} = etorrent_mnesia_operations:set_info_hash_state(InfoHash, TorrentState),
-
-    {ok, TrackerPid} =
-	etorrent_t_sup:add_tracker(
-	  S#state.parent_pid,
-	  StatePid,
-	  PeerMasterPid,
-	  etorrent_metainfo:get_url(S#state.torrent),
-	  etorrent_metainfo:get_infohash(S#state.torrent),
-	  S#state.peer_id),
-    etorrent_tracker_communication:start_now(TrackerPid),
-    S#state{file_system_pid = FS,
-	    tracker_pid = TrackerPid,
-	    state_pid = StatePid,
-	    peer_master_pid = PeerMasterPid}.
+	    {ok, TrackerPid} =
+		etorrent_t_sup:add_tracker(
+		  S#state.parent_pid,
+		  StatePid,
+		  PeerMasterPid,
+		  etorrent_metainfo:get_url(S#state.torrent),
+		  etorrent_metainfo:get_infohash(S#state.torrent),
+		  S#state.peer_id),
+	    etorrent_tracker_communication:start_now(TrackerPid),
+	    S#state{file_system_pid = FS,
+		    tracker_pid = TrackerPid,
+		    state_pid = StatePid,
+		    peer_master_pid = PeerMasterPid}
+    end.
 
 waiting_check(token, S) ->
     NS = check_and_start_torrent(S#state.file_system_pid, S),

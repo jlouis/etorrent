@@ -304,9 +304,10 @@ size_of_ops(Ops) ->
 		Ops).
 
 calculate_amount_left(Handle) ->
-    Objects = etorrent_mnesia_operations:file_access_torrent_pieces(Handle),
-    Sum = lists:foldl(fun([_Pn, Ops, Done], Sum) ->
-			      case Done of
+    {atomic, Objects} =
+	etorrent_mnesia_operations:file_access_torrent_pieces(Handle),
+    Sum = lists:foldl(fun({_Pn, Ops, State}, Sum) ->
+			      case State of
 				  fetched ->
 				      Sum;
 				  not_fetched ->
@@ -318,10 +319,11 @@ calculate_amount_left(Handle) ->
     Sum.
 
 convert_diskstate_to_set(Handle) ->
-    Objects = etorrent_mnesia_operations:file_access_torrent_pieces(Handle),
+    {atomic, Objects} =
+	etorrent_mnesia_operations:file_access_torrent_pieces(Handle),
     {Set, MissingSet} =
-	lists:foldl(fun([Pn, _Ops, Done], {Set, MissingSet}) ->
-			    case Done of
+	lists:foldl(fun({Pn, _Ops, State}, {Set, MissingSet}) ->
+			    case State of
 				fetched ->
 				    {sets:add_element(Pn, Set),
 				     MissingSet};
