@@ -71,11 +71,9 @@ cleanup_torrent_by_pid(Pid) ->
 %%--------------------------------------------------------------------
 store_info_hash(InfoHash, StorerPid) ->
     F = fun() ->
-		mnesia:write(info_hash,
-			     #info_hash { info_hash = InfoHash,
+		mnesia:write(#info_hash { info_hash = InfoHash,
 					  storer_pid = StorerPid,
-					  state = unknown },
-			    write)
+					  state = unknown })
 	end,
     mnesia:transaction(F).
 
@@ -88,7 +86,7 @@ set_info_hash_state(InfoHash, State) ->
 		case mnesia:read(info_hash, InfoHash, write) of
 		    [IH] ->
 			New = IH#info_hash{state = State},
-			mnesia:write(info_hash, New, write),
+			mnesia:write(New),
 			ok;
 		    [] ->
 			not_found
@@ -148,16 +146,13 @@ delete_info_hash_by_pid(Pid) ->
 store_peer(IP, Port, InfoHash, Pid) ->
     F = fun() ->
 		{atomic, Ref} = create_peer_info(),
-		mnesia:write(peer_map,
-			     #peer_map { pid = Pid,
+		mnesia:write(#peer_map { pid = Pid,
 					 ip = IP,
 					 port = Port,
-					 info_hash = InfoHash},
-			    write),
-		mnesia:write(peer,
-			     #peer { map = Pid,
-				     info = Ref },
-			    write)
+					 info_hash = InfoHash}),
+
+		mnesia:write(#peer { map = Pid,
+				     info = Ref })
 	end,
     mnesia:transaction(F).
 
@@ -219,7 +214,7 @@ peer_statechange(Pid, What) ->
 			Downloaded = PI#peer_info.downloaded,
 			New = PI#peer_info{ downloaded = Downloaded + Amount }
 		end,
-		mnesia:write(peer_info, New, write)
+		mnesia:write(New)
 	end,
     mnesia:transaction(F).
 
@@ -257,7 +252,7 @@ reset_round(InfoHash) ->
 		Peers = qlc:e(Q2),
 		lists:foreach(fun (P) ->
 				      New = P#peer_info{uploaded = 0, downloaded = 0},
-				      mnesia:write(peer_info, New, write) end,
+				      mnesia:write(New) end,
 			      Peers)
 	end,
     mnesia:transaction(F).
@@ -287,13 +282,11 @@ delete_peer_info_hash(Pid) ->
 file_access_insert(Pid, PieceNumber, Hash, Files, State) ->
     mnesia:transaction(
       fun () ->
-	      mnesia:write(file_access,
-			   #file_access {pid = Pid,
+	      mnesia:write(#file_access {pid = Pid,
 					 piece_number = PieceNumber,
 					 hash = Hash,
 					 files = Files,
-					 state = State },
-			   write)
+					 state = State })
       end).
 
 file_access_delete(Pid) ->
@@ -329,9 +322,7 @@ file_access_set_state(Pid, Pn, State) ->
 			      R#file_access.pid =:= Pid,
 			      R#file_access.piece_number =:= Pn]),
 	      lists:foreach(fun (R) ->
-				    mnesia:write(file_access,
-						 R#file_access{state = State},
-						 write)
+				    mnesia:write(R#file_access{state = State})
 			    end,
 			    qlc:e(Q))
       end).

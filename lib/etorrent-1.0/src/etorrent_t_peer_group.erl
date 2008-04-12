@@ -65,7 +65,9 @@ seed(Pid) ->
 
 init([OurPeerId, PeerGroup, InfoHash, StatePid, FileSystemPid, TorrentState]) ->
     {ok, Tref} = timer:send_interval(?ROUND_TIME, self(), round_tick),
+    error_logger:info_report(InfoHash),
     {atomic, _} = etorrent_mnesia_operations:store_info_hash(InfoHash, self()),
+    error_logger:info_report(stored_infohash),
     {ok, #state{ our_peer_id = OurPeerId,
 		 peer_group_sup = PeerGroup,
 		 bad_peers = dict:new(),
