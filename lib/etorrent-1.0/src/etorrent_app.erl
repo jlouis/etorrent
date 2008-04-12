@@ -10,6 +10,7 @@ start() ->
     application:start(timer),
     application:start(sasl),
     mnesia:start(),
+    db_initialize(),
     application:start(etorrent).
 
 start(_Type, _Args) ->
@@ -20,9 +21,7 @@ stop(_State) ->
 
 db_initialize() ->
     mnesia:create_schema([node()]),
-    mnesia:start(),
-    etorrent_mnesia_init:init(),
-    mnesia:stop().
+    etorrent_mnesia_init:init().
 
 purge_rl(X) ->
     code:purge(X),
