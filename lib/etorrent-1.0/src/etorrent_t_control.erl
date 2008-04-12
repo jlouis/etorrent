@@ -287,5 +287,10 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 %%--------------------------------------------------------------------
 add_filesystem(FileDict, S) ->
     etorrent_mnesia_operations:file_access_insert(self(), FileDict),
-    {ok, FSPool} = etorrent_t_sup:add_file_system_pool(S#state.parent_pid),
-    etorrent_t_sup:add_file_system(S#state.parent_pid, FSPool, self()).
+    FSP = case etorrent_t_sup:add_file_system_pool(S#state.parent_pid) of
+	      {ok, FSPool} ->
+		  FSPool;
+	      {error, {already_started, FSPool}} ->
+		  FSPool
+	  end,
+    etorrent_t_sup:add_file_system(S#state.parent_pid, FSP, self()).
