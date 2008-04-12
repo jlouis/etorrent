@@ -274,7 +274,7 @@ fill_peers(N, S) ->
 	[] ->
 	    % No peers available, just stop trying to fill peers
 	    {ok, S};
-	[{IP, Port} | R] ->
+	[{IP, Port, _PeerId} | R] ->
 	    % Possible peer. Check it.
 	    case is_bad_peer(IP, Port, S) of
 		true ->
@@ -288,9 +288,9 @@ spawn_new_peer(IP, Port, N, S) ->
     case etorrent_mnesia_operations:is_peer_connected(IP,
 						      Port,
 						      S#state.info_hash) of
-	true ->
+	{atomic, true} ->
 	    fill_peers(N, S);
-	false ->
+	{atomic, false} ->
 	    {ok, Pid} = etorrent_t_peer_pool_sup:add_peer(
 			  S#state.peer_group_sup,
 			  S#state.our_peer_id,
@@ -301,7 +301,8 @@ spawn_new_peer(IP, Port, N, S) ->
 	    %% XXX: We set a monitor which we do not use!
 	    _Ref = erlang:monitor(process, Pid),
 	    etorrent_t_peer_recv:connect(Pid, IP, Port),
-	    etorrent_mnesia_operations:store_peer(IP, Port, S#state.info_hash, Pid),
+	    {atomic, _} =
+		etorrent_mnesia_operations:store_peer(IP, Port, S#state.info_hash, Pid),
 	    fill_peers(N-1, S)
     end.
 

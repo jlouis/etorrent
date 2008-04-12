@@ -21,9 +21,9 @@
 -record(peer,     {map,
 		   info}).
 
--record(file_access, {pid,
+-record(file_access, {hash,
 		      piece_number,
-		      hash,
+		      pid,
 		      files,
 		      left = unknown, % Number of chunks left...
 		      state}). % state is: fetched | not_fetched | chunked

@@ -219,16 +219,20 @@ peer_statechange(Pid, What) ->
 
 
 is_peer_connected(IP, Port, InfoHash) ->
-    Q = qlc:q([PM#peer_map.pid || PM <- mnesia:table(peer_map),
-				  PM#peer_map.ip =:= IP,
-				  PM#peer_map.port =:= Port,
-				  PM#peer_map.info_hash =:= InfoHash]),
-    case qlc:e(Q) of
-	[] ->
-	    false;
-	_ ->
-	    true
-    end.
+    Query =
+	fun () ->
+		Q = qlc:q([PM#peer_map.pid || PM <- mnesia:table(peer_map),
+					      PM#peer_map.ip =:= IP,
+					      PM#peer_map.port =:= Port,
+					      PM#peer_map.info_hash =:= InfoHash]),
+		case qlc:e(Q) of
+		    [] ->
+			false;
+		    _ ->
+			true
+		end
+	end,
+    mnesia:transaction(Query).
 
 select_interested_peers(InfoHash) ->
     InterestedQuery = build_interest_query(true, InfoHash),
