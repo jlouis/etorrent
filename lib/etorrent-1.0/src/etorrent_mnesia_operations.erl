@@ -71,9 +71,11 @@ cleanup_torrent_by_pid(Pid) ->
 %%--------------------------------------------------------------------
 store_info_hash(InfoHash, StorerPid) ->
     F = fun() ->
-		mnesia:write(#info_hash { info_hash = InfoHash,
+		mnesia:write(info_hash,
+			     #info_hash { info_hash = InfoHash,
 					  storer_pid = StorerPid,
-					  state = unknown })
+					  state = unknown },
+			    write)
 	end,
     mnesia:transaction(F).
 
@@ -86,7 +88,7 @@ set_info_hash_state(InfoHash, State) ->
 		case mnesia:read(info_hash, InfoHash, write) of
 		    [IH] ->
 			New = IH#info_hash{state = State},
-			mnesia:write(New),
+			mnesia:write(info_hash, New, write),
 			ok;
 		    [] ->
 			not_found
@@ -146,12 +148,16 @@ delete_info_hash_by_pid(Pid) ->
 store_peer(IP, Port, InfoHash, Pid) ->
     F = fun() ->
 		{atomic, Ref} = create_peer_info(),
-		mnesia:write(#peer_map { pid = Pid,
+		mnesia:write(peer_map,
+			     #peer_map { pid = Pid,
 					 ip = IP,
 					 port = Port,
-					 info_hash = InfoHash}),
-		mnesia:write(#peer { map = Pid,
-				     info = Ref })
+					 info_hash = InfoHash},
+			    write),
+		mnesia:write(peer,
+			     #peer { map = Pid,
+				     info = Ref },
+			    write)
 	end,
     mnesia:transaction(F).
 
