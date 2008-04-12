@@ -44,7 +44,7 @@ ensure_file_sizes_correct(Files) ->
     ok.
 
 check_torrent_contents(FS, Handle) ->
-    Pieces = etorrent_mnesia_operations:file_access_get_pieces(Handle),
+    {atomic, Pieces} = etorrent_mnesia_operations:file_access_get_pieces(Handle),
     lists:foreach(
       fun(#file_access{piece_number = PieceNum, hash = Hash}) ->
 	      {ok, Data} = etorrent_fs:read_piece(FS, PieceNum),

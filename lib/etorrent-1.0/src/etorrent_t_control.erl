@@ -128,13 +128,16 @@ initializing({load_new_torrent, Path, PeerId}, S) ->
 check_and_start_torrent(FS, S) ->
     ok = etorrent_fs_checker:check_torrent_contents(FS, self()),
     ok = etorrent_fs_serializer:release_token(),
+    error_logger:info_report(adding_state),
     {ok, StatePid} =
 	etorrent_t_sup:add_state(
 	  S#state.parent_pid,
 	  etorrent_metainfo:get_piece_length(S#state.torrent),
 	  self()),
+    error_logger:info_report(adding_peer_pool),
     {ok, GroupPid} = etorrent_t_sup:add_peer_pool(S#state.parent_pid),
 
+    error_logger:info_report(full_check),
     {atomic, TorrentFull} =
 	etorrent_mnesia_operations:file_access_is_complete(self()),
     TorrentState = case TorrentFull of

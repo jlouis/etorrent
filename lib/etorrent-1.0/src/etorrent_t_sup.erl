@@ -71,6 +71,7 @@ add_state(Pid, PieceLength, ControlPid) ->
 	     {etorrent_t_state, start_link,
 	      [PieceLength, ControlPid]},
 	     temporary, 5000, worker, [etorrent_t_state]},
+    error_logger:info_report([in_add_state, State]),
     supervisor:start_child(Pid, State).
 
 add_peer_pool(Pid) ->
