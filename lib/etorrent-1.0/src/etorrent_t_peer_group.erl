@@ -80,9 +80,9 @@ init([OurPeerId, PeerGroup, InfoHash, StatePid, FileSystemPid, TorrentState]) ->
 
 handle_call({new_incoming_peer, IP, Port}, _From, S) ->
     Reply = case is_bad_peer(IP, Port, S) of
-		true ->
+		{atomic, true} ->
 		    {bad_peer, S};
-		false ->
+		{atomic, false} ->
 		    start_new_incoming_peer(IP, Port, S)
 	    end,
     {reply, Reply, S};

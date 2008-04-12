@@ -59,8 +59,8 @@ select_chunks(Pid, Handle, PieceSet, StatePid, Num) ->
 				       R#chunk.state =:= not_fetched]),
 		      shuffle(qlc:e(qlc:append(Q1, Q2)))
 	      end);
-	{ok, PieceNum} ->
-	    {atomic, _} = ensure_chunking(Handle, PieceNum, StatePid),
+	{ok, PieceNum, Size} ->
+	    {atomic, _} = ensure_chunking(Handle, PieceNum, StatePid, Size),
 	    mnesia:transaction(
 	      fun () ->
 		      Q = qlc:q([R || R <- mnesia:table(chunks),
@@ -256,15 +256,18 @@ assign_chunk_to_pid(Ans, Pid) ->
 			    Ans)
       end).
 
-ensure_chunking(Handle, PieceNum, StatePid) ->
+ensure_chunking(Handle, PieceNum, StatePid, Size) ->
     mnesia:transaction(
       fun () ->
-	      R = mnesia:read(file_access, Handle, read),
+	      Q = qlc:q([S || S <- mnesia:table(file_access),
+			      S#file_access.pid =:= Handle,
+			      S#file_access.piece_number =:= PieceNum]),
+	      [R] = qlc:e(Q),
 	      case R#file_access.state of
 		  chunked ->
 		      ok;
 		  not_chunked ->
-		      add_piece_chunks(PieceNum, piece_size(R), Handle),
+		      add_piece_chunks(PieceNum, Size, Handle),
 		      Q = qlc:q([S || S <- mnesia:table(file_access),
 				      S#file_access.pid =:= Handle,
 				      S#file_access.state =:= not_fetched]),
@@ -277,10 +280,6 @@ ensure_chunking(Handle, PieceNum, StatePid) ->
 		      end
 	      end
       end).
-
-piece_size(#file_access{ files = Files }) ->
-    Sum = lists:foldl(fun ({_, _, S}, A) -> S + A end, 0, Files),
-    Sum.
 
 % XXX: Come up with a better shuffle function.
 shuffle(X) ->
