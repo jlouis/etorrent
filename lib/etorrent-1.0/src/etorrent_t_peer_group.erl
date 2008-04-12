@@ -277,9 +277,9 @@ fill_peers(N, S) ->
 	[{IP, Port, _PeerId} | R] ->
 	    % Possible peer. Check it.
 	    case is_bad_peer(IP, Port, S) of
-		true ->
+		{atomic, true} ->
 		    fill_peers(N, S#state{available_peers = R});
-		false ->
+		{atomic, false} ->
 		    spawn_new_peer(IP, Port, N, S#state{available_peers = R})
 	    end
     end.
