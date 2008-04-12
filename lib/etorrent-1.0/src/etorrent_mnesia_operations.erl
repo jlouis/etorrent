@@ -344,9 +344,12 @@ file_access_is_complete(Pid) ->
       end).
 
 file_access_get_pieces(Handle) ->
-    Q = qlc:q([R || R <- mnesia:table(file_access),
-		    R#file_access.pid =:= Handle]),
-    qlc:e(Q).
+    mnesia:transaction(
+      fun () ->
+	      Q = qlc:q([R || R <- mnesia:table(file_access),
+			      R#file_access.pid =:= Handle]),
+	      qlc:e(Q)
+      end).
 
 file_access_get_piece(Handle, Pn) ->
     Q = qlc:q([R || R <- mnesia:table(file_access),
