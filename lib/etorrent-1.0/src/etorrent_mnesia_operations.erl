@@ -92,8 +92,7 @@ set_info_hash_state(InfoHash, State) ->
 			not_found
 		end
 	end,
-    {atomic, Res} = mnesia:transaction(F),
-    Res.
+    mnesia:transaction(F),
 
 %%--------------------------------------------------------------------
 %% Function: select_info_hash_pids(InfoHash, Pid) -> Rows
@@ -335,11 +334,14 @@ file_access_torrent_pieces(Pid) ->
     qlc:e(Q).
 
 file_access_is_complete(Pid) ->
-    Q = qlc:q([R || R <- mnesia:table(file_access),
-		    R#file_access.pid =:= Pid,
-		    R#file_access.state =:= not_fetched]),
-    Objs = qlc:e(Q),
-    length(Objs) =:= 0.
+    mnesia:transaction(
+      fun () ->
+	      Q = qlc:q([R || R <- mnesia:table(file_access),
+			      R#file_access.pid =:= Pid,
+			      R#file_access.state =:= not_fetched]),
+	      Objs = qlc:e(Q),
+	      length(Objs) =:= 0
+      end).
 
 file_access_get_pieces(Handle) ->
     Q = qlc:q([R || R <- mnesia:table(file_access),
