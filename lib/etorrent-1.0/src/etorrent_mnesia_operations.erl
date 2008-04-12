@@ -45,9 +45,12 @@ new_torrent(File, Supervisor) ->
 %% Description: Find torrent specs matching the filename in question.
 %%--------------------------------------------------------------------
 find_torrents_by_file(Filename) ->
-    Query = qlc:q([T#tracking_map.filename || T <- mnesia:table(tracking_map),
-					      T#tracking_map.filename == Filename]),
-    qlc:e(Query).
+    mnesia:transaction(
+      fun () ->
+	      Query = qlc:q([T#tracking_map.filename || T <- mnesia:table(tracking_map),
+							T#tracking_map.filename == Filename]),
+	      qlc:e(Query)
+      end).
 
 %%--------------------------------------------------------------------
 %% Function: cleanup_torrent_by_pid(Pid) -> ok

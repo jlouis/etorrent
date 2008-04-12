@@ -68,10 +68,11 @@ spawn_new_torrent(F, S) ->
 stop_torrent(F, S) ->
     error_logger:info_msg("Stopping ~p~n", [F]),
     case etorrent_mnesia_operations:find_torrents_by_file(F) of
-	[F] ->
-	    etorrent_t_pool_sup:stop_torrent(F);
-	[] ->
-	    % Already stopped, do nothing, silently ignore
+	{atomic, [F]} ->
+	    etorrent_t_pool_sup:stop_torrent(F),
+	    ok;
+	{atomic, []} ->
+	    %% Was already removed, it is ok.
 	    ok
     end,
     {noreply, S}.
