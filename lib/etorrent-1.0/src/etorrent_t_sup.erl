@@ -36,7 +36,7 @@ add_file_system(Pid, FSPool, IDHandle) ->
     case supervisor:start_child(Pid, FS) of
 	{ok, ChildPid} ->
 	    {ok, ChildPid};
-	{error, already_present} -> % Could be copied to other add_X calls.
+	{error, already_started} -> % Could be copied to other add_X calls.
 	    supervisor:restart_child(Pid, fs)
     end.
 
