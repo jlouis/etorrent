@@ -92,7 +92,7 @@ set_info_hash_state(InfoHash, State) ->
 			not_found
 		end
 	end,
-    mnesia:transaction(F),
+    mnesia:transaction(F).
 
 %%--------------------------------------------------------------------
 %% Function: select_info_hash_pids(InfoHash, Pid) -> Rows
