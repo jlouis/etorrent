@@ -13,7 +13,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/6, add_peers/2, got_piece_from_peer/2, new_incoming_peer/3,
+-export([start_link/7, add_peers/2, got_piece_from_peer/2, new_incoming_peer/3,
 	seed/1]).
 
 %% gen_server callbacks
@@ -32,6 +32,7 @@
 	        state_pid = none,
 	        file_system_pid = none,
 		peer_group_sup = none,
+		control_pid = none,
 
 	        mode = leeching}).
 
@@ -43,9 +44,9 @@
 %% API
 %%====================================================================
 start_link(OurPeerId, PeerGroup, InfoHash,
-	   StatePid, FileSystemPid, TorrentState) ->
+	   StatePid, FileSystemPid, TorrentState, ControlPid) ->
     gen_server:start_link(?MODULE, [OurPeerId, PeerGroup, InfoHash,
-				    StatePid, FileSystemPid, TorrentState], []).
+				    StatePid, FileSystemPid, TorrentState, ControlPid], []).
 
 add_peers(Pid, IPList) ->
     gen_server:cast(Pid, {add_peers, IPList}).
@@ -63,7 +64,7 @@ seed(Pid) ->
 %% gen_server callbacks
 %%====================================================================
 
-init([OurPeerId, PeerGroup, InfoHash, StatePid, FileSystemPid, TorrentState]) ->
+init([OurPeerId, PeerGroup, InfoHash, StatePid, FileSystemPid, TorrentState, ControlPid]) ->
     {ok, Tref} = timer:send_interval(?ROUND_TIME, self(), round_tick),
     error_logger:info_report(InfoHash),
     {atomic, _} = etorrent_mnesia_operations:store_info_hash(InfoHash, self()),
@@ -74,6 +75,7 @@ init([OurPeerId, PeerGroup, InfoHash, StatePid, FileSystemPid, TorrentState]) ->
 		 info_hash = InfoHash,
 		 state_pid = StatePid,
 		 timer_ref = Tref,
+		 control_pid = ControlPid,
 		 mode = TorrentState,
 		 file_system_pid = FileSystemPid,
 		 peer_process_dict = dict:new() }}.
@@ -154,7 +156,8 @@ start_new_incoming_peer(IP, Port, S) ->
 			  S#state.info_hash,
 			  S#state.state_pid,
 			  S#state.file_system_pid,
-			  self()),
+			  self(),
+			  S#state.control_pid),
 	    erlang:monitor(process, Pid),
 	    etorrent_mnesia_operations:store_peer(IP, Port, S#state.info_hash, Pid),
 	    {ok, Pid};
@@ -299,7 +302,8 @@ spawn_new_peer(IP, Port, N, S) ->
 			  S#state.info_hash,
 			  S#state.state_pid,
 			  S#state.file_system_pid,
-			  self()),
+			  self(),
+			  S#state.control_pid),
 	    %% XXX: We set a monitor which we do not use!
 	    _Ref = erlang:monitor(process, Pid),
 	    etorrent_t_peer_recv:connect(Pid, IP, Port),

@@ -10,7 +10,7 @@
 -behaviour(supervisor).
 
 %% API
--export([start_link/0, add_peer/6]).
+-export([start_link/0, add_peer/7]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -27,9 +27,9 @@
 start_link() ->
     supervisor:start_link(?MODULE, []).
 
-add_peer(GroupPid, LocalPeerId, InfoHash, StatePid, FilesystemPid, Parent) ->
+add_peer(GroupPid, LocalPeerId, InfoHash, StatePid, FilesystemPid, Parent, ControlPid) ->
     supervisor:start_child(GroupPid, [LocalPeerId, InfoHash, StatePid,
-				     FilesystemPid, Parent]).
+				     FilesystemPid, Parent, ControlPid]).
 
 %%====================================================================
 %% Supervisor callbacks

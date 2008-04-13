@@ -132,7 +132,7 @@ check_and_start_torrent(FS, S) ->
     case etorrent_t_sup:add_state(
 	  S#state.parent_pid,
 	  etorrent_metainfo:get_piece_length(S#state.torrent),
-	  self()) of 
+	  self()) of
 	{ok, StatePid} ->
 	    error_logger:info_report(adding_peer_pool),
 	    {ok, GroupPid} = etorrent_t_sup:add_peer_pool(S#state.parent_pid),
@@ -154,7 +154,8 @@ check_and_start_torrent(FS, S) ->
 		  etorrent_metainfo:get_infohash(S#state.torrent),
 		  StatePid,
 		  FS,
-		  TorrentState),
+		  TorrentState,
+		  self()),
 
 		InfoHash = etorrent_metainfo:get_infohash(S#state.torrent),
 	    {atomic, _} = etorrent_mnesia_operations:set_info_hash_state(InfoHash, TorrentState),

@@ -60,7 +60,7 @@ select_chunks(Pid, Handle, PieceSet, StatePid, Num) ->
 		      shuffle(qlc:e(qlc:append(Q1, Q2)))
 	      end);
 	{ok, PieceNum, Size} ->
-	    {atomic, _} = ensure_chunking(Handle, PieceNum, StatePid, Size),
+	    {atomic, ok} = ensure_chunking(Handle, PieceNum, StatePid, Size),
 	    mnesia:transaction(
 	      fun () ->
 		      Q = qlc:q([R || R <- mnesia:table(chunks),
@@ -266,7 +266,7 @@ ensure_chunking(Handle, PieceNum, StatePid, Size) ->
 	      case R#file_access.state of
 		  chunked ->
 		      ok;
-		  not_chunked ->
+		  not_fetched ->
 		      add_piece_chunks(PieceNum, Size, Handle),
 		      Q = qlc:q([S || S <- mnesia:table(file_access),
 				      S#file_access.pid =:= Handle,
@@ -278,6 +278,7 @@ ensure_chunking(Handle, PieceNum, StatePid, Size) ->
 			  N when is_integer(N) ->
 			      ok
 		      end
+	          % If we get 'fetched' here it is an error.
 	      end
       end).
 

@@ -14,7 +14,7 @@
 -include("etorrent_mnesia_table.hrl").
 
 %% API
--export([start_link/5, connect/3, choke/1, unchoke/1, interested/1,
+-export([start_link/6, connect/3, choke/1, unchoke/1, interested/1,
 	 send_have_piece/2, complete_handshake/4, uploaded_data/2,
 	stop/1]).
 
@@ -41,6 +41,7 @@
 		 file_system_pid = none,
 		 master_pid = none,
 		 send_pid = none,
+		 control_pid = none,
 		 state_pid = none}).
 
 -define(DEFAULT_CONNECT_TIMEOUT, 120000). % Default timeout in ms
@@ -55,9 +56,9 @@
 %% Function: start_link() -> {ok,Pid} | ignore | {error,Error}
 %% Description: Starts the server
 %%--------------------------------------------------------------------
-start_link(LocalPeerId, InfoHash, StatePid, FilesystemPid, MasterPid) ->
+start_link(LocalPeerId, InfoHash, StatePid, FilesystemPid, MasterPid, ControlPid) ->
     gen_server:start_link(?MODULE, [LocalPeerId, InfoHash,
-				    StatePid, FilesystemPid, MasterPid], []).
+				    StatePid, FilesystemPid, MasterPid, ControlPid], []).
 
 %%--------------------------------------------------------------------
 %% Function: connect(Pid, IP, Port)
@@ -127,13 +128,14 @@ stop(Pid) ->
 %%                         {stop, Reason}
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
-init([LocalPeerId, InfoHash, StatePid, FilesystemPid, MasterPid]) ->
+init([LocalPeerId, InfoHash, StatePid, FilesystemPid, MasterPid, ControlPid]) ->
     {ok, #state{ local_peer_id = LocalPeerId,
 		 piece_set = sets:new(),
 		 remote_request_set = sets:new(),
 		 info_hash = InfoHash,
 		 state_pid = StatePid,
 		 master_pid = MasterPid,
+		 control_pid = ControlPid,
 		 file_system_pid = FilesystemPid}}.
 
 %%--------------------------------------------------------------------
@@ -335,14 +337,14 @@ delete_piece(Ref, Index, Offset, Len, S) ->
     {ok, S#state { remote_request_set = RS}}.
 
 handle_got_chunk(Index, Offset, Data, Len, S) ->
-    {atomic, [Ref]} = etorrent_mnesia_chunks:select_chunk(S#state.master_pid, Index, Offset, Len),
+    {atomic, [Ref]} = etorrent_mnesia_chunks:select_chunk(S#state.control_pid, Index, Offset, Len),
     %%% XXX: More stability here. What happens when things fuck up?
     case etorrent_mnesia_chunks:store_chunk(
 	   Ref,
 	   Data,
 	   S#state.state_pid,
 	   S#state.file_system_pid,
-	   S#state.master_pid) of
+	   S#state.control_pid) of
 	{atomic, _} ->
 	    delete_piece(Ref, Index, Offset, Len, S);
 	_ ->
@@ -384,7 +386,7 @@ try_to_queue_up_pieces(S) when S#state.remote_choked == true ->
 try_to_queue_up_pieces(S) ->
     PiecesToQueue = ?BASE_QUEUE_LEVEL - sets:size(S#state.remote_request_set),
     case etorrent_mnesia_chunks:select_chunks(self(),
-					      S#state.master_pid,
+					      S#state.control_pid,
 					      S#state.piece_set,
 					      S#state.state_pid,
 					      PiecesToQueue) of
