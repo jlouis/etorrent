@@ -236,9 +236,13 @@ is_peer_connected(IP, Port, InfoHash) ->
     mnesia:transaction(Query).
 
 select_interested_peers(InfoHash) ->
-    InterestedQuery = build_interest_query(true, InfoHash),
-    NotInterestedQuery = build_interest_query(false, InfoHash),
-    {qlc:e(InterestedQuery), qlc:e(NotInterestedQuery)}.
+    mnesia:transaction(
+      fun () ->
+	      InterestedQuery = build_interest_query(true, InfoHash),
+	      NotInterestedQuery = build_interest_query(false, InfoHash),
+	      {qlc:e(InterestedQuery), qlc:e(NotInterestedQuery)}
+      end).
+
 
 reset_round(InfoHash) ->
     F = fun() ->

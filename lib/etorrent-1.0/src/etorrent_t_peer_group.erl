@@ -107,16 +107,23 @@ handle_cast(_Msg, State) ->
 handle_info(round_tick, S) ->
     case S#state.round of
 	0 ->
-	    etorrent_mnesia_operations:peer_statechange_infohash(
-	      S#state.info_hash,
-	      remove_optimistic_unchoke),
+	    error_logger:info_report(tick_zero),
+	    {atomic, _} = etorrent_mnesia_operations:peer_statechange_infohash(
+			    S#state.info_hash,
+			    remove_optimistic_unchoke),
+	    error_logger:info_report(changed_peer_state),
 	    {NS, DoNotTouchPids} = perform_choking_unchoking(S),
 	    NNS = select_optimistic_unchoker(DoNotTouchPids, NS),
-	    etorrent_mnesia_operations:reset_round(S#state.info_hash),
+	    	    error_logger:info_report(selected_optimistic_unchoker),
+	    {atomic, _} = etorrent_mnesia_operations:reset_round(S#state.info_hash),
+	    	    	    error_logger:info_report(resat_round),
 	    {noreply, NNS#state{round = 2}};
 	N when is_integer(N) ->
+	    	    error_logger:info_report(tick_n),
 	    {NS, _DoNotTouchPids} = perform_choking_unchoking(S),
-	    etorrent_mnesia_operations:reset_round(S#state.info_hash),
+	    error_logger:info_report(performed_choking_unchoking),
+	    {atomic, _} = etorrent_mnesia_operations:reset_round(S#state.info_hash),
+	    error_logger:info_report(resat_round),
 	    {noreply, NS#state{round = NS#state.round - 1}}
     end;
 handle_info({'DOWN', _Ref, process, Pid, Reason}, S)
@@ -192,7 +199,8 @@ select_optimistic_unchoker(Size, List, DoNotTouchPids, S) ->
 	true ->
 	    select_optimistic_unchoker(Size, List, DoNotTouchPids, S);
 	false ->
-	    etorrent_mnesia_operations:peer_statechange(Pid, {optimistic_unchoke, true}),
+	    {atomic, _} =
+		etorrent_mnesia_operations:peer_statechange(Pid, {optimistic_unchoke, true}),
 	    etorrent_t_peer_recv:unchoke(Pid),
 	    S
     end.
@@ -204,7 +212,7 @@ select_optimistic_unchoker(Size, List, DoNotTouchPids, S) ->
 %%   specification.
 %%--------------------------------------------------------------------
 perform_choking_unchoking(S) ->
-    {Interested, NotInterested} =
+    {atomic, {Interested, NotInterested}} =
 	etorrent_mnesia_operations:select_interested_peers(S#state.info_hash),
     % N fastest interesteds should be kept
     {Downloaders, Rest} =
