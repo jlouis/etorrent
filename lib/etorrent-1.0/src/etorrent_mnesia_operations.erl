@@ -303,18 +303,16 @@ file_access_insert(Pid, Dict) ->
     mnesia:transaction(
       fun () ->
 	      dict:map(fun (PN, {Hash, Files, Done}) ->
+			       State = case Done of
+					   ok -> fetched;
+					   not_ok -> not_fetched;
+					   none -> not_fetched
+				       end,
 			       file_access_insert(Pid,
 						  PN,
 						  Hash,
 						  Files,
-						  case Done of
-						      ok ->
-							  fetched;
-						      not_ok ->
-							  not_fetched;
-						      none ->
-							  not_fetched
-						  end)
+						  State)
 		       end,
 		       Dict)
       end).

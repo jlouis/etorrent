@@ -14,7 +14,7 @@
 -define(DEFAULT_CHUNK_SIZE, 16384). % Default size for a chunk. All clients use this.
 
 %% API
--export([add_piece_chunks/3, select_chunks/5, store_chunk/5,
+-export([add_piece_chunks/2, select_chunks/5, store_chunk/5,
 	 putback_chunks/2, select_chunk/4]).
 
 %%====================================================================
@@ -51,19 +51,19 @@ select_chunks(Pid, Handle, PieceSet, StatePid, Num) ->
 	endgame ->
 	    mnesia:transaction(
 	      fun () ->
-		      Q1 = qlc:q([R || R <- mnesia:table(chunks),
+		      Q1 = qlc:q([R || R <- mnesia:table(chunk),
 				      R#chunk.pid =:= Handle,
 				      R#chunk.state =:= assigned]),
-		      Q2 = qlc:q([R || R <- mnesia:table(chunks),
+		      Q2 = qlc:q([R || R <- mnesia:table(chunk),
 				       R#chunk.pid =:= Handle,
 				       R#chunk.state =:= not_fetched]),
 		      shuffle(qlc:e(qlc:append(Q1, Q2)))
 	      end);
 	{ok, PieceNum, Size} ->
-	    {atomic, ok} = ensure_chunking(Handle, PieceNum, StatePid, Size),
 	    mnesia:transaction(
 	      fun () ->
-		      Q = qlc:q([R || R <- mnesia:table(chunks),
+		      {atomic, _} = ensure_chunking(Handle, PieceNum, StatePid, Size),
+		      Q = qlc:q([R || R <- mnesia:table(chunk),
 				      R#chunk.pid =:= Handle,
 				      R#chunk.piece_number =:= PieceNum,
 				      R#chunk.state =:= not_fetched]),
@@ -98,29 +98,28 @@ putback_chunks(Refs, Pid) ->
       end).
 
 %%--------------------------------------------------------------------
-%% Function: add_piece_chunks(PieceNum, PieceSize, Torrent) -> ok.
+%% Function: add_piece_chunks(#file_access, PieceSize) -> ok.
 %% Description: Add chunks for a piece of a given torrent.
 %%--------------------------------------------------------------------
-add_piece_chunks(PieceNum, PieceSize, Torrent) ->
-    {ok, Chunks, NumChunks} = chunkify(PieceNum, PieceSize),
+add_chunk([], _) ->
+    ok;
+add_chunk([{PieceNumber, Offset, Size} | Rest], Pid) ->
+    ok = mnesia:write(#chunk{ ref = make_ref(),
+			      pid = Pid,
+			      piece_number = PieceNumber,
+			      offset = Offset,
+			      size = Size,
+			      assign = unknown,
+			      state = unfetched}),
+    add_chunk(Rest, Pid).
+
+add_piece_chunks(R, PieceSize) ->
+    {ok, Chunks, NumChunks} = chunkify(R#file_access.piece_number, PieceSize),
     mnesia:transaction(
       fun () ->
-	      R = mnesia:read(file_access, Torrent, write),
-	      {atomic, _} = mnesia:write(file_access,
-					 R#file_access{ state = chunked,
-							left = NumChunks},
-					 write),
-	      lists:foreach(fun({PN, Offset, Size}) ->
-				    mnesia:write(chunks,
-						 #chunk{ ref = make_ref(),
-							 pid = Torrent,
-							 piece_number = PN,
-							 offset = Offset,
-							 size = Size,
-							 state = unfetched},
-						 write)
-			    end,
-			    Chunks)
+	      ok = mnesia:write(R#file_access{ state = chunked,
+					       left = NumChunks}),
+	      add_chunk(Chunks, R#file_access.pid)
       end).
 
 store_chunk(Ref, Data, StatePid, FSPid, MasterPid) ->
@@ -158,7 +157,7 @@ store_piece(Pid, PieceNumber, StatePid, FSPid, MasterPid) ->
 			  Cs#chunk.size,
 			  Cs#chunk.state,
 			  Cs#chunk.assign}
-			   || Cs <- mnesia:table(chunks),
+			   || Cs <- mnesia:table(chunk),
 					    Cs#chunk.pid =:= Pid,
 					    Cs#chunk.piece_number =:= PieceNumber,
 					    Cs#chunk.state =:= fetched]),
@@ -194,7 +193,7 @@ store_piece(Pid, PieceNumber, StatePid, FSPid, MasterPid) ->
 putback_piece(Pid, PieceNumber) ->
     mnesia:transaction(
       fun () ->
-	      Q = qlc:q([C || C <- mnesia:table(chunks),
+	      Q = qlc:q([C || C <- mnesia:table(chunk),
 			      C#chunk.pid =:= Pid,
 			      C#chunk.piece_number =:= PieceNumber]),
 	      Rows = qlc:e(Q),
@@ -265,7 +264,7 @@ ensure_chunking(Handle, PieceNum, StatePid, Size) ->
 		  chunked ->
 		      ok;
 		  not_fetched ->
-		      add_piece_chunks(PieceNum, Size, Handle),
+		      add_piece_chunks(R, Size),
 		      Q1 = qlc:q([T || T <- mnesia:table(file_access),
 				       T#file_access.pid =:= Handle,
 				       T#file_access.state =:= not_fetched]),
