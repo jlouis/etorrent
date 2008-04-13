@@ -247,7 +247,7 @@ select_interested_peers(InfoHash) ->
 reset_round(InfoHash) ->
     F = fun() ->
 		Q1 = qlc:q([P || PM <- mnesia:table(peer_map),
-				 P  <- mnesia:table(peers),
+				 P  <- mnesia:table(peer),
 				 PM#peer_map.info_hash =:= InfoHash,
 				 P#peer.map =:= PM#peer_map.pid]),
 		Q2 = qlc:q([PI || P <- Q1,
