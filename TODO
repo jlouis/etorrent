@@ -6,13 +6,14 @@
 --   Keep the style please. Can be read with emacs org-mode
 ----------------------------------------------------------------------
 
-* Bugs:
-
 * Move the piece-chunking code up from the peer connections.
   It should not be the case that the individual peer connection
   processes are responsible for managing the chunking of pieces. It
   should be handled in the process overseeing all peer connections. We
   will need some pretty tough changes to make this work correctly.
+
+* We seem to be passing around a master_pid we are not using anymore.
+  Consider killing this master pid!
 
 * Consider making the histogram into mnesia
   Rather than using a histogram as it is now, consider rewriting
