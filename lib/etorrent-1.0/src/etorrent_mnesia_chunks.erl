@@ -199,10 +199,8 @@ putback_piece(Pid, PieceNumber) ->
 			      C#chunk.piece_number =:= PieceNumber]),
 	      Rows = qlc:e(Q),
 	      lists:foreach(fun(Row) ->
-				    mnesia:write(chunk,
-						 Row#chunk { state = not_fetched,
-							     assign = unknown },
-						 write)
+				    mnesia:write(Row#chunk { state = not_fetched,
+							     assign = unknown })
 			    end,
 			    Rows)
       end).

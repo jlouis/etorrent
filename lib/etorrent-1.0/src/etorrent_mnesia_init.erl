@@ -19,7 +19,7 @@ init() ->
     mnesia:create_table(file_access,
 			[{attributes, record_info(fields, file_access)}]),
     mnesia:create_table(chunks,
-			[{attributes, record_info(fields, chunks)}]).
+			[{attributes, record_info(fields, chunk)}]).
 
 
 
