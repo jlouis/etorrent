@@ -268,10 +268,10 @@ ensure_chunking(Handle, PieceNum, StatePid, Size) ->
 		      ok;
 		  not_fetched ->
 		      add_piece_chunks(PieceNum, Size, Handle),
-		      Q = qlc:q([S || S <- mnesia:table(file_access),
-				      S#file_access.pid =:= Handle,
-				      S#file_access.state =:= not_fetched]),
-		      case length(qlc:e(Q)) of
+		      Q1 = qlc:q([T || T <- mnesia:table(file_access),
+				       T#file_access.pid =:= Handle,
+				       T#file_access.state =:= not_fetched]),
+		      case length(qlc:e(Q1)) of
 			  0 ->
 			      etorrent_t_state:endgame(StatePid),
 			      ok;
