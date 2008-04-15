@@ -49,6 +49,8 @@ VERSION ++ (Not decided yet)
    time.
 
 * ROBUSTNESS
+- In general, robustness is not really taken care of. We ought to make
+  the system more robust by not relying so much on Pids etc. 
 - What happens if process X dies
   Go through all processes, and think about what happens if it
    dies. Ensure that the system is robust.
