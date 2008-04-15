@@ -110,7 +110,7 @@ add_chunk([{PieceNumber, Offset, Size} | Rest], Pid) ->
 			      offset = Offset,
 			      size = Size,
 			      assign = unknown,
-			      state = unfetched}),
+			      state = not_fetched}),
     add_chunk(Rest, Pid).
 
 add_piece_chunks(R, PieceSize) ->

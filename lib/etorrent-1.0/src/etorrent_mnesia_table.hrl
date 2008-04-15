@@ -34,7 +34,7 @@
 		offset,
 		size,
 		assign = unknown,
-		state}). % state is: ....
+		state}). % state is: fetched | not_fetched | assigned
 
 
 

@@ -382,6 +382,7 @@ unqueue_all_pieces(S) ->
 %%  and choking.
 %%--------------------------------------------------------------------
 try_to_queue_up_pieces(S) when S#state.remote_choked == true ->
+    error_logger:info_report(queue_choked),
     {ok, S};
 try_to_queue_up_pieces(S) ->
     PiecesToQueue = ?BASE_QUEUE_LEVEL - sets:size(S#state.remote_request_set),
@@ -391,15 +392,19 @@ try_to_queue_up_pieces(S) ->
 					      S#state.state_pid,
 					      PiecesToQueue) of
 	not_interested ->
+	    error_logger:info_report(not_interested),
 	    etorrent_t_peer_send:not_interested(S#state.send_pid),
 	    {ok, S#state { local_interested = false}};
 	{atomic, Items} ->
+	    error_logger:info_report(queueing_items),
 	    queue_items(Items, S)
     end.
 
 queue_items([], S) ->
+    error_logger:info_report(queue_empty),
     {ok, S};
-queue_items([Chunk | Chunks], S) ->
+queue_items([Chunk | Rest], S) ->
+    error_logger:info_report([queueing, Chunk]),
     etorrent_t_peer_send:local_request(S#state.send_pid,
 				       Chunk#chunk.piece_number,
 				       Chunk#chunk.offset,
@@ -408,5 +413,5 @@ queue_items([Chunk | Chunks], S) ->
 			   Chunk#chunk.piece_number,
 			   Chunk#chunk.offset,
 			   Chunk#chunk.size}, S#state.remote_request_set),
-    queue_items(Chunks, S#state { remote_request_set = RS }).
+    queue_items(Rest, S#state { remote_request_set = RS }).
 
