@@ -20,6 +20,7 @@
   it into mnesia tables. This would, hopefully, make for some much
   better code that is smaller than now.
 
+* Only count downloaded bytes when we _know_ the bytes are from the torrent in question
 * DOCUMENTATION!
 - Pick functions at random, and document what they are doing.
   It is /especially/ important to document library calls and
