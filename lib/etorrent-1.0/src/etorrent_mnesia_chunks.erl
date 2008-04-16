@@ -193,6 +193,17 @@ store_chunk(Ref, Data, PieceNumber, FSPid) ->
 	    store_piece(Pid, PieceNumber, FSPid)
     end.
 
+delete_chunks(Pid, PieceNumber) ->
+    mnesia:transaction(
+      fun () ->
+	      Q = qlc:q([C || C <- mnesia:table(chunk),
+			      C#chunk.pid =:= Pid,
+			      C#chunk.piece_number =:= PieceNumber,
+			      C#chunk.state =:= fetched]),
+	      lists:foreach(fun(C) -> mnesia:delete_object(C) end, qlc:e(Q)),
+	      ok
+      end).
+
 store_piece(Pid, PieceNumber, FSPid) ->
     R = mnesia:transaction(
       fun () ->
@@ -216,7 +227,7 @@ store_piece(Pid, PieceNumber, FSPid) ->
 					 PieceNumber,
 					 P) of
 		ok ->
-		    % XXX: Delete chunks!
+		    {atomic, ok} = delete_chunks(Pid, PieceNumber),
 		    ok;
 		wrong_hash ->
 		    putback_piece(Pid, PieceNumber),
