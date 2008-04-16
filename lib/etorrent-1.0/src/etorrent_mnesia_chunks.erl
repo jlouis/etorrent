@@ -69,6 +69,7 @@ select_chunks(Pid, Handle, PieceSet, StatePid, Num) ->
 				      R#chunk.state =:= not_fetched]),
 		      QC = qlc:cursor(Q),
 		      Ans = qlc:next_answers(QC, Num),
+		      ok = qlc:delete_cursor(QC),
 		      assign_chunk_to_pid(Ans, Pid),
 		      Ans
 	      end)
