@@ -45,6 +45,44 @@ select_chunk(Handle, Idx, Offset, Size) ->
 %% Description: Return some chunks for downloading
 %%--------------------------------------------------------------------
 select_chunks(Pid, Handle, PieceSet, StatePid, Num) ->
+    case piece_chunk_available(Handle, PieceSet, Num, Pid) of
+	{atomic, {ok, Chunks}} ->
+	    {ok, Chunks};
+	{atomic, none_applicable} ->
+	    select_new_piece_for_chunking(Pid, Handle, PieceSet, StatePid, Num)
+    end.
+
+find_chunked(Handle) ->
+    Q = qlc:q([R#file_access.piece_number || R <- mnesia:table(file_access),
+					     R#file_access.pid =:= Handle,
+					     R#file_access.state =:= chunked]),
+    qlc:e(Q).
+
+piece_chunk_available(Handle, PieceSet, Num, Pid) ->
+    mnesia:transaction(
+      fun () ->
+	      Chunked = find_chunked(Handle),
+	      case sets:intersection(PieceSet, sets:from_list(Chunked)) of
+		  [] ->
+		      none_applicable;
+		  [PieceNum | _] ->
+		      Chunks = select_chunk_by_piecenum(Handle, PieceNum, Num, Pid),
+		      {ok, Chunks}
+	      end
+      end).
+
+select_chunk_by_piecenum(Handle, PieceNum, Num, Pid) ->
+    Q = qlc:q([R || R <- mnesia:table(chunk),
+		    R#chunk.pid =:= Handle,
+		    R#chunk.piece_number =:= PieceNum,
+		    R#chunk.state =:= not_fetched]),
+    QC = qlc:cursor(Q),
+    Ans = qlc:next_answers(QC, Num),
+    ok = qlc:delete_cursor(QC),
+    {atomic, _} = assign_chunk_to_pid(Ans, Pid),
+    Ans.
+
+select_new_piece_for_chunking(Pid, Handle, PieceSet, StatePid, Num) ->
     case etorrent_t_state:request_new_piece(StatePid, PieceSet) of
 	not_interested ->
 	    not_interested;
@@ -52,27 +90,17 @@ select_chunks(Pid, Handle, PieceSet, StatePid, Num) ->
 	    mnesia:transaction(
 	      fun () ->
 		      Q1 = qlc:q([R || R <- mnesia:table(chunk),
-				      R#chunk.pid =:= Handle,
-				      R#chunk.state =:= assigned]),
-		      Q2 = qlc:q([R || R <- mnesia:table(chunk),
 				       R#chunk.pid =:= Handle,
-				       R#chunk.state =:= not_fetched]),
-		      shuffle(qlc:e(qlc:append(Q1, Q2)))
+				       (R#chunk.state =:= assigned)
+					   or (R#chunk.state =:= not_fetched)]),
+		      shuffle(qlc:e(Q1))
 	      end);
 	{ok, PieceNum, Size} ->
-	    mnesia:transaction(
-	      fun () ->
-		      {atomic, _} = ensure_chunking(Handle, PieceNum, StatePid, Size),
-		      Q = qlc:q([R || R <- mnesia:table(chunk),
-				      R#chunk.pid =:= Handle,
-				      R#chunk.piece_number =:= PieceNum,
-				      R#chunk.state =:= not_fetched]),
-		      QC = qlc:cursor(Q),
-		      Ans = qlc:next_answers(QC, Num),
-		      ok = qlc:delete_cursor(QC),
-		      assign_chunk_to_pid(Ans, Pid),
-		      Ans
-	      end)
+	    {atomic, _} = mnesia:transaction(
+			    fun () ->
+				    {atomic, _} = ensure_chunking(Handle, PieceNum, StatePid, Size)
+			    end),
+	    select_chunks(Pid, Handle, PieceSet, StatePid, Num)
     end.
 
 %%--------------------------------------------------------------------
