@@ -47,14 +47,14 @@ select_chunk(Handle, Idx, Offset, Size) ->
 select_chunks(Pid, Handle, PieceSet, StatePid, Num) ->
     case piece_chunk_available(Handle, PieceSet, Num, Pid) of
 	{atomic, {ok, Chunks}} ->
-	    {atomic, {ok, Chunks}};
+	    {ok, Chunks};
 	{atomic, {partial, Chunks, Remaining, PieceNum}} ->
 	    NewSet = sets:del_element(PieceNum, PieceSet),
 	    case select_chunks(Pid, Handle, NewSet, StatePid, Remaining) of
 		not_interested ->
-		    {atomic, {ok, Chunks}};
+		    {ok, Chunks};
 		{atomic, {ok, NewChunks}} ->
-		    {atomic, {ok, lists:append(NewChunks, Chunks)}}
+		    {ok, lists:append(NewChunks, Chunks)}
 	    end;
 	{atomic, none_applicable} ->
 	    select_new_piece_for_chunking(Pid, Handle, PieceSet, StatePid, Num)
@@ -101,14 +101,15 @@ select_new_piece_for_chunking(Pid, Handle, PieceSet, StatePid, Num) ->
 	not_interested ->
 	    not_interested;
 	endgame ->
-	    mnesia:transaction(
-	      fun () ->
-		      Q1 = qlc:q([R || R <- mnesia:table(chunk),
-				       R#chunk.pid =:= Handle,
-				       (R#chunk.state =:= assigned)
-					   or (R#chunk.state =:= not_fetched)]),
-		      {ok, shuffle(qlc:e(Q1))}
-	      end);
+	    {atomic, R} = mnesia:transaction(
+			    fun () ->
+				    Q1 = qlc:q([R || R <- mnesia:table(chunk),
+						     R#chunk.pid =:= Handle,
+						     (R#chunk.state =:= assigned)
+							 or (R#chunk.state =:= not_fetched)]),
+				    {ok, shuffle(qlc:e(Q1))}
+			    end),
+	    R;
 	{ok, PieceNum, Size} ->
 	    {atomic, _} = mnesia:transaction(
 			    fun () ->

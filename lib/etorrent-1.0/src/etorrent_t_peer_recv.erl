@@ -400,7 +400,7 @@ try_to_queue_up_pieces(S) ->
 	    error_logger:info_report(not_interested),
 	    etorrent_t_peer_send:not_interested(S#state.send_pid),
 	    {ok, S#state { local_interested = false}};
-	{atomic, {ok, Items}} ->
+	{ok, Items} ->
 	    error_logger:info_report(queueing_items),
 	    queue_items(Items, S)
     end.
