@@ -47,7 +47,7 @@ select_chunk(Handle, Idx, Offset, Size) ->
 select_chunks(Pid, Handle, PieceSet, StatePid, Num) ->
     case piece_chunk_available(Handle, PieceSet, Num, Pid) of
 	{atomic, {ok, Chunks}} ->
-	    {ok, Chunks};
+	    {atomic, {ok, Chunks}};
 	{atomic, none_applicable} ->
 	    select_new_piece_for_chunking(Pid, Handle, PieceSet, StatePid, Num)
     end.
