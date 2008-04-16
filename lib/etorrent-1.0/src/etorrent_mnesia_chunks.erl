@@ -62,7 +62,8 @@ piece_chunk_available(Handle, PieceSet, Num, Pid) ->
     mnesia:transaction(
       fun () ->
 	      Chunked = find_chunked(Handle),
-	      case sets:intersection(PieceSet, sets:from_list(Chunked)) of
+	      Eligible = sets:intersection(PieceSet, sets:from_list(Chunked)),
+	      case sets:to_list(Eligible) of
 		  [] ->
 		      none_applicable;
 		  [PieceNum | _] ->
