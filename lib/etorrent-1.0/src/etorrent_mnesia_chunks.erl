@@ -48,6 +48,14 @@ select_chunks(Pid, Handle, PieceSet, StatePid, Num) ->
     case piece_chunk_available(Handle, PieceSet, Num, Pid) of
 	{atomic, {ok, Chunks}} ->
 	    {atomic, {ok, Chunks}};
+	{atomic, {partial, Chunks, Remaining, PieceNum}} ->
+	    NewSet = sets:del_element(PieceNum, PieceSet),
+	    case select_chunks(Pid, Handle, NewSet, StatePid, Remaining) of
+		not_interested ->
+		    {atomic, {ok, Chunks}};
+		{atomic, {ok, NewChunks}} ->
+		    {atomic, {ok, lists:append(NewChunks, Chunks)}}
+	    end;
 	{atomic, none_applicable} ->
 	    select_new_piece_for_chunking(Pid, Handle, PieceSet, StatePid, Num)
     end.
@@ -67,8 +75,7 @@ piece_chunk_available(Handle, PieceSet, Num, Pid) ->
 		  [] ->
 		      none_applicable;
 		  [PieceNum | _] ->
-		      Chunks = select_chunk_by_piecenum(Handle, PieceNum, Num, Pid),
-		      {ok, Chunks}
+		      select_chunk_by_piecenum(Handle, PieceNum, Num, Pid)
 	      end
       end).
 
@@ -81,7 +88,13 @@ select_chunk_by_piecenum(Handle, PieceNum, Num, Pid) ->
     Ans = qlc:next_answers(QC, Num),
     ok = qlc:delete_cursor(QC),
     {atomic, _} = assign_chunk_to_pid(Ans, Pid),
-    Ans.
+    case length(Ans) of
+	Num ->
+	    {ok, Ans};
+	N when is_integer(N) ->
+	    Remaining = Num - N,
+	    {partial, Ans, Remaining, PieceNum}
+    end.
 
 select_new_piece_for_chunking(Pid, Handle, PieceSet, StatePid, Num) ->
     case etorrent_t_state:request_new_piece(StatePid, PieceSet) of
@@ -94,7 +107,7 @@ select_new_piece_for_chunking(Pid, Handle, PieceSet, StatePid, Num) ->
 				       R#chunk.pid =:= Handle,
 				       (R#chunk.state =:= assigned)
 					   or (R#chunk.state =:= not_fetched)]),
-		      shuffle(qlc:e(Q1))
+		      {ok, shuffle(qlc:e(Q1))}
 	      end);
 	{ok, PieceNum, Size} ->
 	    {atomic, _} = mnesia:transaction(
