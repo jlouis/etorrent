@@ -342,6 +342,7 @@ handle_got_chunk(Index, Offset, Data, Len, S) ->
     case etorrent_mnesia_chunks:store_chunk(
 	   Ref,
 	   Data,
+	   Index,
 	   S#state.state_pid,
 	   S#state.file_system_pid,
 	   S#state.control_pid) of
@@ -349,7 +350,9 @@ handle_got_chunk(Index, Offset, Data, Len, S) ->
 	    error_logger:info_report(stored_chunk),
 	    delete_piece(Ref, Index, Offset, Len, S);
 	{aborted, Reason} ->
+	    Desc = mnesia:error_description(Reason),
 	    error_logger:info_report([aborted, Reason]),
+	    error_logger:info_report(Desc),
 	    stop
     end.
 

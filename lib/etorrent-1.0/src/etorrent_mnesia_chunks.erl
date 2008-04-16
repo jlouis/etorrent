@@ -14,7 +14,7 @@
 -define(DEFAULT_CHUNK_SIZE, 16384). % Default size for a chunk. All clients use this.
 
 %% API
--export([add_piece_chunks/2, select_chunks/5, store_chunk/5,
+-export([add_piece_chunks/2, select_chunks/5, store_chunk/6,
 	 putback_chunks/2, select_chunk/4]).
 
 %%====================================================================
@@ -122,14 +122,18 @@ add_piece_chunks(R, PieceSize) ->
 	      add_chunk(Chunks, R#file_access.pid)
       end).
 
-store_chunk(Ref, Data, StatePid, FSPid, MasterPid) ->
+store_chunk(Ref, Data, PieceNumber, StatePid, FSPid, MasterPid) ->
     mnesia:transaction(
       fun () ->
-	      R = mnesia:read(chunk, Ref, write),
+	      error_logger:info_report([reading, Ref]),
+	      [R] = mnesia:read(chunk, Ref, write),
 	      Pid = R#chunk.pid,
 	      mnesia:write(R#chunk { state = fetched,
 				     assign = Data }),
-	      P = mnesia:read(file_access, Pid, write),
+	      Q = qlc:q([S || S <- mnesia:table(file_access),
+			      S#file_access.pid =:= Pid,
+			      S#file_access.piece_number =:= PieceNumber]),
+	      [P] = qlc:e(Q),
 	      mnesia:write(P#file_access { left = P#file_access.left - 1 }),
 	      check_for_full_piece(Pid, R#chunk.piece_number, StatePid, FSPid, MasterPid),
 	      ok
