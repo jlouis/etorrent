@@ -346,8 +346,10 @@ handle_got_chunk(Index, Offset, Data, Len, S) ->
 	   S#state.file_system_pid,
 	   S#state.control_pid) of
 	{atomic, _} ->
+	    error_logger:info_report(stored_chunk),
 	    delete_piece(Ref, Index, Offset, Len, S);
-	_ ->
+	{aborted, Reason} ->
+	    error_logger:info_report([aborted, Reason]),
 	    stop
     end.
 

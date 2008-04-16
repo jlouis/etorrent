@@ -127,13 +127,10 @@ store_chunk(Ref, Data, StatePid, FSPid, MasterPid) ->
       fun () ->
 	      R = mnesia:read(chunk, Ref, write),
 	      Pid = R#chunk.pid,
-	      mnesia:write(chunk, R#chunk { state = fetched,
-					    assign = Data },
-			   write),
+	      mnesia:write(R#chunk { state = fetched,
+				     assign = Data }),
 	      P = mnesia:read(file_access, Pid, write),
-	      mnesia:write(file_access,
-			   P#file_access { left = P#file_access.left - 1 },
-			   write),
+	      mnesia:write(P#file_access { left = P#file_access.left - 1 }),
 	      check_for_full_piece(Pid, R#chunk.piece_number, StatePid, FSPid, MasterPid),
 	      ok
       end).
