@@ -53,7 +53,7 @@ select_chunks(Pid, Handle, PieceSet, StatePid, Num) ->
 	    case select_chunks(Pid, Handle, NewSet, StatePid, Remaining) of
 		not_interested ->
 		    {ok, Chunks};
-		{atomic, {ok, NewChunks}} ->
+		{ok, NewChunks} ->
 		    {ok, lists:append(NewChunks, Chunks)}
 	    end;
 	{atomic, none_applicable} ->
