@@ -6,12 +6,6 @@
 --   Keep the style please. Can be read with emacs org-mode
 ----------------------------------------------------------------------
 
-* Move the piece-chunking code up from the peer connections.
-  It should not be the case that the individual peer connection
-  processes are responsible for managing the chunking of pieces. It
-  should be handled in the process overseeing all peer connections. We
-  will need some pretty tough changes to make this work correctly.
-
 * We seem to be passing around a master_pid we are not using anymore.
   Consider killing this master pid!
 
@@ -50,7 +44,7 @@ VERSION ++ (Not decided yet)
 
 * ROBUSTNESS
 - In general, robustness is not really taken care of. We ought to make
-  the system more robust by not relying so much on Pids etc. 
+  the system more robust by not relying so much on Pids etc.
 - What happens if process X dies
   Go through all processes, and think about what happens if it
    dies. Ensure that the system is robust.
