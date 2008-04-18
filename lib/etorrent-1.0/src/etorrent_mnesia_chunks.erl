@@ -169,13 +169,13 @@ store_piece(Pid, PieceNumber, StatePid, FSPid, MasterPid) ->
 					   PieceNumber,
 					   list_to_binary(Piece)) of
 		  ok ->
-		      ok = etorrent_t_state:got_piece_from_peer(
-			     StatePid,
-			     lists:foldl(fun({_, S, _, _}, Acc) ->
+		      DataSize = lists:foldl(fun({_, S, _, _}, Acc) ->
 						 S + Acc
 					 end,
 					 0,
-					 Piece)),
+					 Piece),
+		      ok = etorrent_t_state:got_piece_from_peer(StatePid, DataSize),
+		      ok = etorrent_t_state:downloaded_data(StatePid, DataSize),
 		      ok = etorrent_t_peer_group:broadcast_have(MasterPid, PieceNumber),
 		      ok;
 		  wrong_hash ->

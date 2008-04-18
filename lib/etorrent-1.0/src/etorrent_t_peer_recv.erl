@@ -321,8 +321,6 @@ handle_message({bitfield, BitField}, S) ->
 handle_message({piece, Index, Offset, Data}, S) ->
     Len = size(Data),
     error_logger:info_report([got_a_piece, Index, Offset]),
-    %% XXX: Consider taking this over to the point where the piece has been checked...
-    etorrent_t_state:downloaded_data(S#state.state_pid, Len),
     etorrent_mnesia_operations:peer_statechange(self(), {downloaded, Len}),
     case handle_got_chunk(Index, Offset, Data, Len, S) of
 	stop ->
