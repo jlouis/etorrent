@@ -147,7 +147,7 @@ check_and_start_torrent(FS, S) ->
 				   leeching
 			   end,
 	    {ok, PeerMasterPid} =
-		etorrent_t_sup:add_peer_master(
+		etorrent_t_sup:add_peer_group(
 		  S#state.parent_pid,
 		  GroupPid,
 		  S#state.peer_id,
