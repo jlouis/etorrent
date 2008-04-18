@@ -1,9 +1,15 @@
 -record(tracking_map, {filename,
 		       supervisor_pid}).
 
--record(info_hash, {info_hash,
-		    storer_pid,
-		    state}).
+%% A single torrent is represented as the 'torrent' record
+-record(torrent, {info_hash, % Info hash of the torrent
+		  storer_pid, % Which pid is responsible for it
+		  left, % How many bytes are there left before we have the full torrent
+		  uploaded, % How many bytes have we uploaded
+		  downloaded, % How many bytes have we downloaded
+		  complete = 0, % How many people have a completed file?
+		  incomplete = 0, % How many people are downloaded
+		  state}). % What is our state: leecher | unknown | seeder
 
 
 -record(peer_info, {id,

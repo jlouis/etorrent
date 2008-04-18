@@ -14,8 +14,8 @@
 
 %% API
 -export([new_torrent/2, find_torrents_by_file/1, cleanup_torrent_by_pid/1,
-	 store_info_hash/2, set_info_hash_state/2, select_info_hash/2,
-	 select_info_hash/1, delete_info_hash/1, delete_info_hash_by_pid/1,
+	 store_torrent/5, set_torrent_state/2, select_torrent/2,
+	 select_torrent/1, delete_torrent/1, delete_torrent_by_pid/1,
 	 store_peer/4, select_peer_ip_port_by_pid/1, delete_peer/1,
 	 peer_statechange/2, is_peer_connected/3, select_interested_peers/1,
 	 reset_round/1, delete_peers/1, peer_statechange_infohash/2,
@@ -65,27 +65,30 @@ cleanup_torrent_by_pid(Pid) ->
     mnesia:transaction(F).
 
 %%--------------------------------------------------------------------
-%% Function: store_info_hash(InfoHash, StorerPid, MonitorRef) -> transaction
+%% Function: store_torrent(InfoHash, StorerPid, MonitorRef) -> transaction
 %% Description: Store that InfoHash is controlled by StorerPid with assigned
 %%  monitor reference MonitorRef
 %%--------------------------------------------------------------------
-store_info_hash(InfoHash, StorerPid) ->
+store_torrent(InfoHash, StorerPid, Left, Downloaded, Uploaded) ->
     F = fun() ->
-		mnesia:write(#info_hash { info_hash = InfoHash,
-					  storer_pid = StorerPid,
-					  state = unknown })
+		mnesia:write(#torrent { info_hash = InfoHash,
+					storer_pid = StorerPid,
+					left = Left,
+					uploaded = Uploaded,
+					downloaded = Downloaded,
+					state = unknown })
 	end,
     mnesia:transaction(F).
 
 %%--------------------------------------------------------------------
-%% Function: set_info_hash_state(InfoHash, State) -> ok | not_found
+%% Function: set_torrent_state(InfoHash, State) -> ok | not_found
 %% Description: Set the state of an info hash.
 %%--------------------------------------------------------------------
-set_info_hash_state(InfoHash, State) ->
+set_torrent_state(InfoHash, State) ->
     F = fun() ->
-		case mnesia:read(info_hash, InfoHash, write) of
-		    [IH] ->
-			New = IH#info_hash{state = State},
+		case mnesia:read(torrent, InfoHash, write) of
+		    [T] ->
+			New = T#torrent{state = State},
 			mnesia:write(New),
 			ok;
 		    [] ->
@@ -95,46 +98,43 @@ set_info_hash_state(InfoHash, State) ->
     mnesia:transaction(F).
 
 %%--------------------------------------------------------------------
-%% Function: select_info_hash_pids(InfoHash, Pid) -> Rows
+%% Function: select_torrent(InfoHash, Pid) -> Rows
 %% Description: Return rows matching infohash and pid
 %%--------------------------------------------------------------------
-select_info_hash(InfoHash, Pid) ->
-    Q = qlc:q([IH || IH <- mnesia:table(info_hash),
-		     IH#info_hash.info_hash =:= InfoHash,
-		     IH#info_hash.storer_pid =:= Pid]),
+select_torrent(InfoHash, Pid) ->
+    Q = qlc:q([IH || IH <- mnesia:table(torrent),
+		     IH#torrent.info_hash =:= InfoHash,
+		     IH#torrent.storer_pid =:= Pid]),
     qlc:e(Q).
 
 %%--------------------------------------------------------------------
-%% Function: select_info_hash_pids(InfoHash) -> Pids
+%% Function: select_torrent(InfoHash) -> Pids
 %% Description: Return all rows matching infohash
 %%--------------------------------------------------------------------
-select_info_hash(InfoHash) ->
-    Q = qlc:q([IH || IH <- mnesia:table(info_hash),
-		     IH#info_hash.info_hash =:= InfoHash]),
+select_torrent(InfoHash) ->
+    Q = qlc:q([IH || IH <- mnesia:table(torrent),
+		     IH#torrent.info_hash =:= InfoHash]),
     qlc:e(Q).
 
 %%--------------------------------------------------------------------
-%% Function: delete_info_hash(InfoHash) -> transaction
+%% Function: delete_torrent(InfoHash) -> transaction
 %% Description: Remove the row with InfoHash in it
 %%--------------------------------------------------------------------
-delete_info_hash(InfoHash) ->
+delete_torrent(Torrent) ->
     F = fun() ->
-		mnesia:delete(info_hash, InfoHash, write)
+		mnesia:delete(Torrent)
 	end,
     mnesia:transaction(F).
 
 %%--------------------------------------------------------------------
-%% Function: delete_info_hash_by_pid(Pid) -> transaction
+%% Function: delete_torrent_by_pid(Pid) -> transaction
 %% Description: Remove the row with Pid in it
 %%--------------------------------------------------------------------
-delete_info_hash_by_pid(Pid) ->
+delete_torrent_by_pid(Pid) ->
     F = fun() ->
-		Q = qlc:q([IH#info_hash.info_hash || IH <- mnesia:table(info_hash),
-						     IH#info_hash.storer_pid =:= Pid]),
-		lists:foreach(fun (H) ->
-				      mnesia:delete(info_hash, H, write)
-			      end,
-			      qlc:e(Q))
+		Q = qlc:q([T || T <- mnesia:table(torrent),
+				T#torrent.storer_pid =:= Pid]),
+		lists:foreach(fun (Tr) -> mnesia:delete(Tr) end, qlc:e(Q))
 	end,
     mnesia:transaction(F).
 
@@ -174,7 +174,7 @@ delete_peer(Pid) ->
     mnesia:transaction(
       fun () ->
 	      P = mnesia:read(peer_map, Pid, write),
-	      mnesia:delete(info_hash, P#peer_map.info_hash, write),
+	      mnesia:delete(torrent, P#peer_map.info_hash, write),
 	      mnesia:delete(peer_map, Pid, write)
       end).
 

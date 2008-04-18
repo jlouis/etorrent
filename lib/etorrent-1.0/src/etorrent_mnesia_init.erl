@@ -8,8 +8,8 @@
 init() ->
     mnesia:create_table(tracking_map,
 			[{attributes, record_info(fields, tracking_map)}]),
-    mnesia:create_table(info_hash,
-			[{attributes, record_info(fields, info_hash)}]),
+    mnesia:create_table(torrent,
+			[{attributes, record_info(fields, torrent)}]),
     mnesia:create_table(peer_info,
 			[{attributes, record_info(fields, peer_info)}]),
     mnesia:create_table(peer_map,

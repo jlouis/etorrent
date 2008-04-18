@@ -67,7 +67,8 @@ seed(Pid) ->
 init([OurPeerId, PeerGroup, InfoHash, StatePid, FileSystemPid, TorrentState, ControlPid]) ->
     {ok, Tref} = timer:send_interval(?ROUND_TIME, self(), round_tick),
     error_logger:info_report(InfoHash),
-    {atomic, _} = etorrent_mnesia_operations:store_info_hash(InfoHash, self()),
+    {atomic, _} = etorrent_mnesia_operations:store_torrent(InfoHash, self(),
+							  0,0,0), % XXX: This might need a fix
     error_logger:info_report(stored_infohash),
     {ok, #state{ our_peer_id = OurPeerId,
 		 peer_group_sup = PeerGroup,
@@ -136,7 +137,7 @@ handle_info(Info, State) ->
     {noreply, State}.
 
 terminate(_Reason, S) ->
-    {atomic, _} = etorrent_mnesia_operations:delete_info_hash(S#state.info_hash),
+    {atomic, _} = etorrent_mnesia_operations:delete_torrent(S#state.info_hash),
     ok.
 
 code_change(_OldVsn, State, _Extra) ->

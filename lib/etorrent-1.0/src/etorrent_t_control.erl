@@ -158,7 +158,7 @@ check_and_start_torrent(FS, S) ->
 		  self()),
 
 		InfoHash = etorrent_metainfo:get_infohash(S#state.torrent),
-	    {atomic, _} = etorrent_mnesia_operations:set_info_hash_state(InfoHash, TorrentState),
+	    {atomic, _} = etorrent_mnesia_operations:set_torrent_state(InfoHash, TorrentState),
 
 	    {ok, TrackerPid} =
 		etorrent_t_sup:add_tracker(
@@ -189,7 +189,7 @@ started({tracker_error_report, Reason}, S) ->
 started(seed, S) ->
     etorrent_t_peer_group:seed(S#state.peer_master_pid),
     InfoHash = etorrent_metainfo:get_infohash(S#state.torrent),
-    etorrent_mnesia_operations:set_info_hash_state(InfoHash, seeding),
+    etorrent_mnesia_operations:set_torrent_state(InfoHash, seeding),
     {ok, Name} = etorrent_metainfo:get_name(S#state.torrent),
     etorrent_event:completed_torrent(Name),
     etorrent_tracker_communication:torrent_completed(S#state.tracker_pid),
