@@ -33,7 +33,6 @@
 
 		piece_set = none,
 		piece_setorrent_missing = none,
-		piece_assignment = none,
 		piece_size = 0,
 	        num_pieces = 0,
 		torrent_size = 0,
@@ -106,7 +105,6 @@ init([PieceSize, ControlPid]) ->
     AmountLeft = calculate_amount_left(ControlPid),
     {ok, #state{piece_set = PieceSet,
 		piece_setorrent_missing = Missing,
-		piece_assignment = dict:new(),
 		num_pieces = Size,
 		piece_size = PieceSize,
 		histogram = etorrent_histogram:new(),
@@ -123,9 +121,7 @@ init([PieceSize, ControlPid]) ->
 %%                                      {stop, Reason, State}
 %% Description: Handling call messages
 %%--------------------------------------------------------------------
-handle_call({got_piece_from_peer, Pn, DataSize}, {Pid, _Tag}, S) ->
-    Assignments = dict:update(Pid, fun(L) -> lists:delete(Pn, L) end,
-			      [], S#state.piece_assignment),
+handle_call({got_piece_from_peer, _Pn, DataSize}, _From, S) ->
     Left = S#state.left - DataSize,
     case Left == 0 of
 	true ->
@@ -133,7 +129,7 @@ handle_call({got_piece_from_peer, Pn, DataSize}, {Pid, _Tag}, S) ->
 	false ->
 	    ok
     end,
-    {reply, ok, S#state { left = Left, piece_assignment = Assignments}};
+    {reply, ok, S#state { left = Left }};
 handle_call(endgame, _From, S) ->
     {reply, ok, S#state { endgame = true }};
 handle_call({downloaded_data, Amount}, _From, S) ->
@@ -209,7 +205,7 @@ handle_call({remove_bitfield, PieceSet}, _From, S) ->
     {reply, ok, S#state{histogram = NewH}};
 handle_call({request_new_piece, _}, _, S) when S#state.endgame =:= true ->
     {reply, endgame, S};
-handle_call({request_new_piece, PeerPieces}, {From, _Tag}, S) ->
+handle_call({request_new_piece, PeerPieces}, _From, S) ->
     EligiblePieces = sets:intersection(PeerPieces, S#state.piece_setorrent_missing),
     case etorrent_utils:sets_is_empty(EligiblePieces) of
 	true ->
@@ -221,13 +217,8 @@ handle_call({request_new_piece, PeerPieces}, {From, _Tag}, S) ->
 		    PieceSize = find_piece_size(PieceNum, S),
 		    Missing = sets:del_element(PieceNum,
 					       S#state.piece_setorrent_missing),
-		    erlang:monitor(process, From),
-		    Assignments =
-			dict:update(From, fun(L) -> [PieceNum | L] end,
-				    [PieceNum], S#state.piece_assignment),
 		    {reply, {ok, PieceNum, PieceSize},
-		     S#state{piece_setorrent_missing = Missing,
-			     piece_assignment = Assignments}}
+		     S#state{piece_setorrent_missing = Missing }}
 	    end
     end;
 handle_call({report_from_tracker, Complete, Incomplete},
@@ -250,20 +241,6 @@ handle_cast(_Msg, State) ->
 %%                                       {stop, Reason, State}
 %% Description: Handling all non call/cast messages
 %%--------------------------------------------------------------------
-handle_info({'DOWN', _Ref, process, Pid, _Reason}, S) ->
-    case dict:find(Pid, S#state.piece_assignment) of
-	{ok, Assignment} ->
-	    Missing = lists:foldl(fun(Pn, Missing) ->
-					  sets:add_element(Pn, Missing)
-				  end,
-				  S#state.piece_setorrent_missing,
-				  Assignment),
-	    Assignments = dict:erase(Pid, S#state.piece_assignment),
-	    {noreply, S#state{piece_setorrent_missing = Missing,
-			      piece_assignment  = Assignments}};
-	error ->
-	    {noreply, S}
-    end;
 handle_info(_Info, State) ->
     {noreply, State}.
 
