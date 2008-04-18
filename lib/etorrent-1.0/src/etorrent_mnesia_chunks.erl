@@ -170,14 +170,13 @@ store_piece(Pid, PieceNumber, StatePid, FSPid, MasterPid) ->
 					   list_to_binary(Piece)) of
 		  ok ->
 		      ok = etorrent_t_state:got_piece_from_peer(
-			     StatePid, PieceNumber,
+			     StatePid,
 			     lists:foldl(fun({_, S, _, _}, Acc) ->
 						 S + Acc
 					 end,
 					 0,
 					 Piece)),
-		      ok = etorrent_t_peer_group:got_piece_from_peer(
-			     MasterPid, PieceNumber),
+		      ok = etorrent_t_peer_group:broadcast_have(MasterPid, PieceNumber),
 		      ok;
 		  wrong_hash ->
 		      putback_piece(Pid, PieceNumber),

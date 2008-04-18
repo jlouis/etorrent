@@ -13,7 +13,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/7, add_peers/2, got_piece_from_peer/2, new_incoming_peer/3,
+-export([start_link/7, add_peers/2, broadcast_have/2, new_incoming_peer/3,
 	seed/1]).
 
 %% gen_server callbacks
@@ -51,8 +51,8 @@ start_link(OurPeerId, PeerGroup, InfoHash,
 add_peers(Pid, IPList) ->
     gen_server:cast(Pid, {add_peers, IPList}).
 
-got_piece_from_peer(Pid, Index) ->
-    gen_server:cast(Pid, {got_piece_from_peer, Index}).
+broadcast_have(Pid, Index) ->
+    gen_server:cast(Pid, {broadcast_have, Index}).
 
 new_incoming_peer(Pid, IP, Port) ->
     gen_server:call(Pid, {new_incoming_peer, IP, Port}).
@@ -96,7 +96,7 @@ handle_cast({add_peers, IPList}, S) ->
     {ok, NS} = update_available_peers(IPList, S),
     {ok, NS2} = start_new_peers(NS),
     {noreply, NS2};
-handle_cast({got_piece_from_peer, Index}, S) ->
+handle_cast({broadcast_have, Index}, S) ->
     broadcast_have_message(Index, S),
     {noreply, S};
 handle_cast(seed, S) ->

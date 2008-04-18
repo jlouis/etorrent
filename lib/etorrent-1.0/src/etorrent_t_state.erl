@@ -15,7 +15,7 @@
 -export([start_link/2, report_to_tracker/1, report_from_tracker/3,
 	 retrieve_bitfield/1, remote_have_piece/2, num_pieces/1,
 	 remote_bitfield/2, remove_bitfield/2, request_new_piece/2,
-	 downloaded_data/2, uploaded_data/2, got_piece_from_peer/3,
+	 downloaded_data/2, uploaded_data/2, got_piece_from_peer/2,
 	 endgame/1]).
 
 %% gen_server callbacks
@@ -85,8 +85,8 @@ downloaded_data(Pid, Amount) ->
 uploaded_data(Pid, Amount) ->
     gen_server:call(Pid, {uploaded_data, Amount}).
 
-got_piece_from_peer(Pid, Pn, DataSize) ->
-    gen_server:call(Pid, {got_piece_from_peer, Pn, DataSize}).
+got_piece_from_peer(Pid, DataSize) ->
+    gen_server:call(Pid, {got_piece_from_peer, DataSize}).
 
 %%====================================================================
 %% gen_server callbacks
@@ -121,7 +121,7 @@ init([PieceSize, ControlPid]) ->
 %%                                      {stop, Reason, State}
 %% Description: Handling call messages
 %%--------------------------------------------------------------------
-handle_call({got_piece_from_peer, _Pn, DataSize}, _From, S) ->
+handle_call({got_piece_from_peer, DataSize}, _From, S) ->
     Left = S#state.left - DataSize,
     case Left == 0 of
 	true ->
