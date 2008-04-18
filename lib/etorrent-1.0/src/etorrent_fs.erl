@@ -86,9 +86,10 @@ handle_call({write_piece, PieceNum, Data}, _From, S) ->
     {atomic, [#file_access { hash = Hash, files = FilesToWrite }]} =
 	etorrent_mnesia_operations:file_access_get_piece(S#state.file_mapping_handle,
 							 PieceNum),
-    case Hash == crypto:sha(Data) of
+    D = iolist_to_binary(Data),
+    case Hash == crypto:sha(D) of
 	true ->
-	    {ok, NS} = write_piece_data(Data, FilesToWrite, S),
+	    {ok, NS} = write_piece_data(D, FilesToWrite, S),
 	    {reply, ok, NS};
 	false ->
 	    {reply, wrong_hash, S}
@@ -160,11 +161,11 @@ read_pieces_and_assemble([{Path, Offset, Size} | Rest], Done, S) ->
 	    read_pieces_and_assemble(Rest, [Data | Done], NS)
     end.
 
-write_piece_data(Data, [], S) ->
-    0 = size(Data),
+write_piece_data(<<>>, [], S) ->
     {ok, S};
 write_piece_data(Data, [{Path, Offset, Size} | Rest], S) ->
     <<Chunk:Size/binary, Remaining/binary>> = Data,
+    error_logger:info_report([writing, Path, Offset, Size]),
     case dict:find(Path, S#state.file_process_dict) of
 	{ok, Pid} ->
 	    Ref = make_ref(),

@@ -331,23 +331,20 @@ handle_message({piece, Index, Offset, Data}, S) ->
 handle_message(Unknown, S) ->
     {stop, {unknown_message, Unknown}, S}.
 
-delete_piece(Ref, Index, Offset, Len, S) ->
+delete_chunk(Ref, Index, Offset, Len, S) ->
     RS = sets:del_element({Ref, Index, Offset, Len}, S#state.remote_request_set),
     {ok, S#state { remote_request_set = RS}}.
 
 handle_got_chunk(Index, Offset, Data, Len, S) ->
     {atomic, [Ref]} = etorrent_mnesia_chunks:select_chunk(S#state.control_pid, Index, Offset, Len),
-    %%% XXX: More stability here. What happens when things fuck up?
     case etorrent_mnesia_chunks:store_chunk(
 	   Ref,
 	   Data,
-	   S#state.state_pid,
-	   S#state.file_system_pid,
-	   S#state.control_pid) of
-	{atomic, _} ->
-	    delete_piece(Ref, Index, Offset, Len, S);
-	_ ->
-	    stop
+	   Index,
+	   S#state.file_system_pid) of
+	ok ->
+	    error_logger:info_report(stored_chunk),
+	    delete_chunk(Ref, Index, Offset, Len, S)
     end.
 
 send_message(Msg, S) ->
@@ -394,7 +391,7 @@ try_to_queue_up_pieces(S) ->
 	    error_logger:info_report(not_interested),
 	    etorrent_t_peer_send:not_interested(S#state.send_pid),
 	    {ok, S#state { local_interested = false}};
-	{atomic, Items} ->
+	{ok, Items} ->
 	    error_logger:info_report(queueing_items),
 	    queue_items(Items, S)
     end.

@@ -14,7 +14,7 @@
 -define(DEFAULT_CHUNK_SIZE, 16384). % Default size for a chunk. All clients use this.
 
 %% API
--export([add_piece_chunks/2, select_chunks/5, store_chunk/5,
+-export([add_piece_chunks/2, select_chunks/5, store_chunk/4,
 	 putback_chunks/2, select_chunk/4]).
 
 %%====================================================================
@@ -45,33 +45,77 @@ select_chunk(Handle, Idx, Offset, Size) ->
 %% Description: Return some chunks for downloading
 %%--------------------------------------------------------------------
 select_chunks(Pid, Handle, PieceSet, StatePid, Num) ->
+    case piece_chunk_available(Handle, PieceSet, Num, Pid) of
+	{atomic, {ok, Chunks}} ->
+	    {ok, Chunks};
+	{atomic, {partial, Chunks, Remaining, PieceNum}} ->
+	    NewSet = sets:del_element(PieceNum, PieceSet),
+	    case select_chunks(Pid, Handle, NewSet, StatePid, Remaining) of
+		not_interested ->
+		    {ok, Chunks};
+		{ok, NewChunks} ->
+		    {ok, lists:append(NewChunks, Chunks)}
+	    end;
+	{atomic, none_applicable} ->
+	    select_new_piece_for_chunking(Pid, Handle, PieceSet, StatePid, Num)
+    end.
+
+find_chunked(Handle) ->
+    Q = qlc:q([R#file_access.piece_number || R <- mnesia:table(file_access),
+					     R#file_access.pid =:= Handle,
+					     R#file_access.state =:= chunked]),
+    qlc:e(Q).
+
+piece_chunk_available(Handle, PieceSet, Num, Pid) ->
+    mnesia:transaction(
+      fun () ->
+	      Chunked = find_chunked(Handle),
+	      Eligible = sets:intersection(PieceSet, sets:from_list(Chunked)),
+	      case sets:to_list(Eligible) of
+		  [] ->
+		      none_applicable;
+		  [PieceNum | _] ->
+		      select_chunk_by_piecenum(Handle, PieceNum, Num, Pid)
+	      end
+      end).
+
+select_chunk_by_piecenum(Handle, PieceNum, Num, Pid) ->
+    Q = qlc:q([R || R <- mnesia:table(chunk),
+		    R#chunk.pid =:= Handle,
+		    R#chunk.piece_number =:= PieceNum,
+		    R#chunk.state =:= not_fetched]),
+    QC = qlc:cursor(Q),
+    Ans = qlc:next_answers(QC, Num),
+    ok = qlc:delete_cursor(QC),
+    {atomic, _} = assign_chunk_to_pid(Ans, Pid),
+    case length(Ans) of
+	Num ->
+	    {ok, Ans};
+	N when is_integer(N) ->
+	    Remaining = Num - N,
+	    {partial, Ans, Remaining, PieceNum}
+    end.
+
+select_new_piece_for_chunking(Pid, Handle, PieceSet, StatePid, Num) ->
     case etorrent_t_state:request_new_piece(StatePid, PieceSet) of
 	not_interested ->
 	    not_interested;
 	endgame ->
-	    mnesia:transaction(
-	      fun () ->
-		      Q1 = qlc:q([R || R <- mnesia:table(chunk),
-				      R#chunk.pid =:= Handle,
-				      R#chunk.state =:= assigned]),
-		      Q2 = qlc:q([R || R <- mnesia:table(chunk),
-				       R#chunk.pid =:= Handle,
-				       R#chunk.state =:= not_fetched]),
-		      shuffle(qlc:e(qlc:append(Q1, Q2)))
-	      end);
+	    {atomic, R} = mnesia:transaction(
+			    fun () ->
+				    Q1 = qlc:q([R || R <- mnesia:table(chunk),
+						     R#chunk.pid =:= Handle,
+						     (R#chunk.state =:= assigned)
+							 or (R#chunk.state =:= not_fetched)]),
+				    {ok, shuffle(qlc:e(Q1))}
+			    end),
+	    R;
 	{ok, PieceNum, Size} ->
-	    mnesia:transaction(
-	      fun () ->
-		      {atomic, _} = ensure_chunking(Handle, PieceNum, StatePid, Size),
-		      Q = qlc:q([R || R <- mnesia:table(chunk),
-				      R#chunk.pid =:= Handle,
-				      R#chunk.piece_number =:= PieceNum,
-				      R#chunk.state =:= not_fetched]),
-		      QC = qlc:cursor(Q),
-		      Ans = qlc:next_answers(QC, Num),
-		      assign_chunk_to_pid(Ans, Pid),
-		      Ans
-	      end)
+	    {atomic, _} = mnesia:transaction(
+			    fun () ->
+				    {atomic, _} = ensure_chunking(Handle, PieceNum, StatePid, Size)
+			    end),
+	    select_chunks(Pid, Handle, PieceSet, StatePid, Num)
     end.
 
 %%--------------------------------------------------------------------
@@ -122,45 +166,55 @@ add_piece_chunks(R, PieceSize) ->
 	      add_chunk(Chunks, R#file_access.pid)
       end).
 
-store_chunk(Ref, Data, StatePid, FSPid, MasterPid) ->
+store_chunk(Ref, Data, PieceNumber, FSPid) ->
+    R = mnesia:transaction(
+	  fun () ->
+		  [R] = mnesia:read(chunk, Ref, write),
+		  Pid = R#chunk.pid,
+		  mnesia:write(R#chunk { state = fetched,
+					 assign = Data }),
+		  Q = qlc:q([S || S <- mnesia:table(file_access),
+				  S#file_access.pid =:= Pid,
+				  S#file_access.piece_number =:= PieceNumber]),
+		  [P] = qlc:e(Q),
+		  case P#file_access.left - 1 of
+		      0 ->
+			  mnesia:write(P#file_access { left = 0, state = fetched }),
+			  {store_piece, Pid};
+		      N when is_integer(N) ->
+			  mnesia:write(P#file_access { left = N }),
+			  ok
+		  end
+      end),
+    case R of
+	{atomic, ok} ->
+	    ok;
+	{atomic, {store_piece, Pid}} ->
+	    store_piece(Pid, PieceNumber, FSPid)
+    end.
+
+delete_chunks(Pid, PieceNumber) ->
     mnesia:transaction(
       fun () ->
-	      R = mnesia:read(chunk, Ref, write),
-	      Pid = R#chunk.pid,
-	      mnesia:write(chunk, R#chunk { state = fetched,
-					    assign = Data },
-			   write),
-	      P = mnesia:read(file_access, Pid, write),
-	      mnesia:write(file_access,
-			   P#file_access { left = P#file_access.left - 1 },
-			   write),
-	      check_for_full_piece(Pid, R#chunk.piece_number, StatePid, FSPid, MasterPid),
+	      Q = qlc:q([C || C <- mnesia:table(chunk),
+			      C#chunk.pid =:= Pid,
+			      C#chunk.piece_number =:= PieceNumber,
+			      C#chunk.state =:= fetched]),
+	      lists:foreach(fun(C) -> mnesia:delete_object(C) end, qlc:e(Q)),
 	      ok
       end).
 
-check_for_full_piece(Pid, PieceNumber, StatePid, FSPid, MasterPid) ->
-    mnesia:transaction(
-      fun () ->
-	      R = mnesia:read(file_access, Pid, read),
-	      case R#file_access.left of
-		  0 ->
-		      store_piece(Pid, PieceNumber, StatePid, FSPid, MasterPid);
-		  N when is_integer(N) ->
-		      ok
-	      end
-      end).
-
-store_piece(Pid, PieceNumber, StatePid, FSPid, MasterPid) ->
-    mnesia:transaction(
+store_piece(Pid, PieceNumber, FSPid) ->
+    R = mnesia:transaction(
       fun () ->
 	      Q = qlc:q([{Cs#chunk.offset,
 			  Cs#chunk.size,
 			  Cs#chunk.state,
 			  Cs#chunk.assign}
-			   || Cs <- mnesia:table(chunk),
-					    Cs#chunk.pid =:= Pid,
-					    Cs#chunk.piece_number =:= PieceNumber,
-					    Cs#chunk.state =:= fetched]),
+			 || Cs <- mnesia:table(chunk),
+			    Cs#chunk.pid =:= Pid,
+			    Cs#chunk.piece_number =:= PieceNumber,
+			    Cs#chunk.state =:= fetched]),
 	      Q2 = qlc:keysort(1, Q),
 	      Q3 = qlc:q([D || {_Offset, _Size, _State, D} <- Q2]),
 	      Piece = qlc:e(Q3),
@@ -177,6 +231,7 @@ store_piece(Pid, PieceNumber, StatePid, FSPid, MasterPid) ->
 		      ok = etorrent_t_state:got_piece_from_peer(StatePid, DataSize),
 		      ok = etorrent_t_state:downloaded_data(StatePid, DataSize),
 		      ok = etorrent_t_peer_group:broadcast_have(MasterPid, PieceNumber),
+		      {atomic, ok} = delete_chunks(Pid, PieceNumber),
 		      ok;
 		  wrong_hash ->
 		      putback_piece(Pid, PieceNumber),
