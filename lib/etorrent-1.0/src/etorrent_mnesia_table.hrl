@@ -27,19 +27,26 @@
 -record(peer,     {map,
 		   info}).
 
--record(file_access, {hash,
-		      piece_number,
-		      pid,
-		      files,
+%% Histogram entries
+-record(histogram, {ref, % unique reference
+		    pid, % pid owning the histogram entry
+		    todo}).
+
+%% Individual pieces are represented via the file_access record
+-record(file_access, {hash, % Hash of piece
+		      piece_number, % piece number index
+		      pid, % Pid owning this piece
+		      files, % File operations to manipulate piece
 		      left = unknown, % Number of chunks left...
 		      state}). % state is: fetched | not_fetched | chunked
 
--record(chunk, {ref,
-		pid, % Refers to file_access
-		piece_number,
-		offset,
-		size,
-		assign = unknown,
+%% A 16K chunk of data
+-record(chunk, {ref, % unique reference
+		pid, % Pid owning this chunk, referers to file_access.pid
+		piece_number, % piece_number this chunk belongs to
+		offset, % Offset of chunk in the piece
+		size, % size of chunk in the piece (almost always 16K, but last piece may differ)
+		assign = unknown, % Aux data for piece
 		state}). % state is: fetched | not_fetched | assigned
 
 
