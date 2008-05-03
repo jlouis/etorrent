@@ -10,11 +10,15 @@
   Consider killing this master pid!
 
 * Consider making the histogram into mnesia
-  Rather than using a histogram as it is now, consider rewriting
-  it into mnesia tables. This would, hopefully, make for some much
-  better code that is smaller than now.
+  Rather than using a histogram as it is now, rewrite it into mnesia
+  tables. This would, hopefully, make for some much better code that
+  is smaller than now. Looks like the piecemap would already be there
+  in file_access, and the histogram list can easily be added I think.
+
+* We are currently ignoring the endgame. This can be fixed easily though.
 
 * Only count downloaded bytes when we _know_ the bytes are from the torrent in question
+
 * DOCUMENTATION!
 - Pick functions at random, and document what they are doing.
   It is /especially/ important to document library calls and
@@ -24,8 +28,10 @@
 VERSION ++ (Not decided yet)
 ------------------------------------------------------------
 
+
 * Use Edoc
 - This takes time, so pick a single module at a time and correct it
+
 
 * TorrentPeerMaster
 - Figure out a better choking/unchoking algorithm.
@@ -36,12 +42,15 @@ VERSION ++ (Not decided yet)
      ** Bittornado
      ** rtorrent
 
+
 * Cleanups
 - Decide what to do if we connect multiply to the same IP
+
 
 * Temporary IP-ban on errors
   If we find an error on a given peer, ban him temporarily for some
    time.
+
 
 * ROBUSTNESS
 - In general, robustness is not really taken care of. We ought to make

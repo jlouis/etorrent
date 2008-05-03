@@ -13,7 +13,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/7, add_peers/2, broadcast_have/2, new_incoming_peer/3,
+-export([start_link/6, add_peers/2, broadcast_have/2, new_incoming_peer/3,
 	seed/1]).
 
 %% gen_server callbacks
@@ -29,10 +29,9 @@
 		timer_ref = none,
 		round = 0,
 
-	        state_pid = none,
 	        file_system_pid = none,
 		peer_group_sup = none,
-		control_pid = none,
+		torrent_handle = none,
 
 	        mode = leeching}).
 
@@ -44,9 +43,9 @@
 %% API
 %%====================================================================
 start_link(OurPeerId, PeerGroup, InfoHash,
-	   StatePid, FileSystemPid, TorrentState, ControlPid) ->
+	   FileSystemPid, TorrentState, TorrentHandle) ->
     gen_server:start_link(?MODULE, [OurPeerId, PeerGroup, InfoHash,
-				    StatePid, FileSystemPid, TorrentState, ControlPid], []).
+				    FileSystemPid, TorrentState, TorrentHandle], []).
 
 add_peers(Pid, IPList) ->
     gen_server:cast(Pid, {add_peers, IPList}).
@@ -64,19 +63,14 @@ seed(Pid) ->
 %% gen_server callbacks
 %%====================================================================
 
-init([OurPeerId, PeerGroup, InfoHash, StatePid, FileSystemPid, TorrentState, ControlPid]) ->
+init([OurPeerId, PeerGroup, InfoHash, FileSystemPid, TorrentState, TorrentHandle]) ->
     {ok, Tref} = timer:send_interval(?ROUND_TIME, self(), round_tick),
-    error_logger:info_report(InfoHash),
-    {atomic, _} = etorrent_mnesia_operations:store_torrent(InfoHash, self(),
-							  0,0,0), % XXX: This might need a fix
-    error_logger:info_report(stored_infohash),
     {ok, #state{ our_peer_id = OurPeerId,
 		 peer_group_sup = PeerGroup,
 		 bad_peers = dict:new(),
 		 info_hash = InfoHash,
-		 state_pid = StatePid,
 		 timer_ref = Tref,
-		 control_pid = ControlPid,
+		 torrent_handle = TorrentHandle,
 		 mode = TorrentState,
 		 file_system_pid = FileSystemPid,
 		 peer_process_dict = dict:new() }}.
@@ -137,6 +131,7 @@ handle_info(Info, State) ->
     {noreply, State}.
 
 terminate(_Reason, S) ->
+    error_logger:info_report([peer_group_terminating]),
     {atomic, _} = etorrent_mnesia_operations:delete_torrent(S#state.info_hash),
     ok.
 
@@ -155,10 +150,9 @@ start_new_incoming_peer(IP, Port, S) ->
 			  S#state.peer_group_sup,
 			  S#state.our_peer_id,
 			  S#state.info_hash,
-			  S#state.state_pid,
 			  S#state.file_system_pid,
 			  self(),
-			  S#state.control_pid),
+			  S#state.torrent_handle),
 	    erlang:monitor(process, Pid),
 	    etorrent_mnesia_operations:store_peer(IP, Port, S#state.info_hash, Pid),
 	    {ok, Pid};
@@ -302,10 +296,9 @@ spawn_new_peer(IP, Port, N, S) ->
 			  S#state.peer_group_sup,
 			  S#state.our_peer_id,
 			  S#state.info_hash,
-			  S#state.state_pid,
 			  S#state.file_system_pid,
 			  self(),
-			  S#state.control_pid),
+			  S#state.torrent_handle),
 	    %% XXX: We set a monitor which we do not use!
 	    _Ref = erlang:monitor(process, Pid),
 	    etorrent_t_peer_recv:connect(Pid, IP, Port),

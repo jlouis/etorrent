@@ -26,7 +26,7 @@
 
 		parent = none,
 	        piece_cache = none,
-		state_pid = none,
+		torrent_handle = none,
 	        file_system_pid = none}).
 
 -define(DEFAULT_KEEP_ALIVE_INTERVAL, 120*1000). % From proto. spec.
@@ -34,9 +34,9 @@
 %%====================================================================
 %% API
 %%====================================================================
-start_link(Socket, FilesystemPid, StatePid) ->
+start_link(Socket, FilesystemPid, TorrentHandle) ->
     gen_fsm:start_link(?MODULE,
-			  [Socket, FilesystemPid, StatePid, self()], []).
+			  [Socket, FilesystemPid, TorrentHandle, self()], []).
 
 send(Pid, Msg) ->
     gen_fsm:send_event(Pid, {send, Msg}).
@@ -68,13 +68,13 @@ stop(Pid) ->
 %%====================================================================
 %% gen_server callbacks
 %%====================================================================
-init([Socket, FilesystemPid, StatePid, Parent]) ->
+init([Socket, FilesystemPid, TorrentHandle, Parent]) ->
     {ok,
      keep_alive,
      #state{socket = Socket,
 	    request_queue = queue:new(),
 	    parent = Parent,
-	    state_pid = StatePid,
+	    torrent_handle = TorrentHandle,
 	    file_system_pid = FilesystemPid},
      ?DEFAULT_KEEP_ALIVE_INTERVAL}.
 
@@ -99,7 +99,8 @@ running(timeout, S) when S#state.choke == false ->
 	{{value, {Index, Offset, Len}}, NQ} ->
 	    case send_piece(Index, Offset, Len, S) of
 		{ok, NS} ->
-		    etorrent_t_state:uploaded_data(S#state.state_pid, Len),
+		    etorrent_mnesia_operations:set_torrent_state(S#state.torrent_handle,
+								 {add_upload, Len}),
 		    etorrent_t_peer_recv:uploaded_data(S#state.parent, Len),
 		    {next_state, running, NS#state{request_queue = NQ}, 0};
 		conn_closed ->

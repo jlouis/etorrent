@@ -27,7 +27,6 @@
 		work_dir = none,
 
 		parent_pid = none,
-		state_pid = none,
 		tracker_pid = none,
 		file_system_pid = none,
 		peer_master_pid = none,
@@ -126,54 +125,50 @@ initializing({load_new_torrent, Path, PeerId}, S) ->
     end.
 
 check_and_start_torrent(FS, S) ->
-    ok = etorrent_fs_checker:check_torrent_contents(FS, self()),
+    ok = etorrent_fs_checker:check_torrent_contents(FS, S#state.parent_pid),
     ok = etorrent_fs_serializer:release_token(),
     error_logger:info_report(adding_state),
-    case etorrent_t_sup:add_state(
+    InfoHash = etorrent_metainfo:get_infohash(S#state.torrent),
+    {atomic, _} =
+	etorrent_mnesia_operations:store_torrent(InfoHash,
+						 S#state.parent_pid,
+						 {{uploaded, 0},
+						  {downloaded, 0},
+						  {left, calculate_amount_left(S#state.parent_pid)}}),
+    error_logger:info_report(adding_peer_pool),
+    {ok, GroupPid} = etorrent_t_sup:add_peer_pool(S#state.parent_pid),
+    error_logger:info_report(full_check),
+    {atomic, TorrentFull} =
+	etorrent_mnesia_operations:file_access_is_complete(S#state.parent_pid),
+    TorrentState = case TorrentFull of
+		       true ->
+			   seeding;
+		       false ->
+			   leeching
+		   end,
+    {ok, PeerMasterPid} =
+	etorrent_t_sup:add_peer_group(
 	  S#state.parent_pid,
-	  etorrent_metainfo:get_piece_length(S#state.torrent),
-	  self()) of
-	{ok, StatePid} ->
-	    error_logger:info_report(adding_peer_pool),
-	    {ok, GroupPid} = etorrent_t_sup:add_peer_pool(S#state.parent_pid),
+	  GroupPid,
+	  S#state.peer_id,
+	  InfoHash,
+	  FS,
+	  TorrentState),
 
-	    error_logger:info_report(full_check),
-	    {atomic, TorrentFull} =
-		etorrent_mnesia_operations:file_access_is_complete(self()),
-	    TorrentState = case TorrentFull of
-			       true ->
-				   seeding;
-			       false ->
-				   leeching
-			   end,
-	    {ok, PeerMasterPid} =
-		etorrent_t_sup:add_peer_group(
-		  S#state.parent_pid,
-		  GroupPid,
-		  S#state.peer_id,
-		  etorrent_metainfo:get_infohash(S#state.torrent),
-		  StatePid,
-		  FS,
-		  TorrentState,
-		  self()),
+    InfoHash = etorrent_metainfo:get_infohash(S#state.torrent),
+    {atomic, _} = etorrent_mnesia_operations:set_torrent_state(InfoHash, TorrentState),
 
-		InfoHash = etorrent_metainfo:get_infohash(S#state.torrent),
-	    {atomic, _} = etorrent_mnesia_operations:set_torrent_state(InfoHash, TorrentState),
-
-	    {ok, TrackerPid} =
-		etorrent_t_sup:add_tracker(
-		  S#state.parent_pid,
-		  StatePid,
-		  PeerMasterPid,
-		  etorrent_metainfo:get_url(S#state.torrent),
-		  etorrent_metainfo:get_infohash(S#state.torrent),
-		  S#state.peer_id),
-	    etorrent_tracker_communication:start_now(TrackerPid),
-	    S#state{file_system_pid = FS,
-		    tracker_pid = TrackerPid,
-		    state_pid = StatePid,
-		    peer_master_pid = PeerMasterPid}
-    end.
+    {ok, TrackerPid} =
+	etorrent_t_sup:add_tracker(
+	  S#state.parent_pid,
+	  PeerMasterPid,
+	  etorrent_metainfo:get_url(S#state.torrent),
+	  etorrent_metainfo:get_infohash(S#state.torrent),
+	  S#state.peer_id),
+    etorrent_tracker_communication:start_now(TrackerPid),
+    S#state{file_system_pid = FS,
+	    tracker_pid = TrackerPid,
+	    peer_master_pid = PeerMasterPid}.
 
 waiting_check(token, S) ->
     NS = check_and_start_torrent(S#state.file_system_pid, S),
@@ -275,8 +270,8 @@ handle_info(Info, StateName, State) ->
 %% necessary cleaning up. When it returns, the gen_fsm terminates with
 %% Reason. The return value is ignored.
 %%--------------------------------------------------------------------
-terminate(_Reason, _StateName, _State) ->
-    etorrent_mnesia_operations:file_access_delete(self()),
+terminate(_Reason, _StateName, S) ->
+    etorrent_mnesia_operations:file_access_delete(S#state.parent_pid),
     ok.
 
 %%--------------------------------------------------------------------
@@ -291,11 +286,32 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 %%% Internal functions
 %%--------------------------------------------------------------------
 add_filesystem(FileDict, S) ->
-    etorrent_mnesia_operations:file_access_insert(self(), FileDict),
+    etorrent_mnesia_operations:file_access_insert(S#state.parent_pid, FileDict),
     FSP = case etorrent_t_sup:add_file_system_pool(S#state.parent_pid) of
 	      {ok, FSPool} ->
 		  FSPool;
 	      {error, {already_started, FSPool}} ->
 		  FSPool
 	  end,
-    etorrent_t_sup:add_file_system(S#state.parent_pid, FSP, self()).
+    etorrent_t_sup:add_file_system(S#state.parent_pid, FSP, S#state.parent_pid).
+
+calculate_amount_left(ParentPid) ->
+    {atomic, Objects} =
+	etorrent_mnesia_operations:file_access_torrent_pieces(ParentPid),
+    Sum = lists:foldl(fun({_Pn, Ops, State}, Sum) ->
+			      case State of
+				  fetched ->
+				      Sum;
+				  not_fetched ->
+				      Sum + size_of_ops(Ops)
+			      end
+		      end,
+		      0,
+		      Objects),
+    Sum.
+
+size_of_ops(Ops) ->
+    lists:foldl(fun ({_Path, _Offset, Size}, Total) ->
+                       Size + Total end,
+               0,
+               Ops).

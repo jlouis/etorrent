@@ -14,16 +14,20 @@
 
 %% API
 -export([new_torrent/2, find_torrents_by_file/1, cleanup_torrent_by_pid/1,
-	 store_torrent/5, set_torrent_state/2, select_torrent/2,
+	 store_torrent/3, set_torrent_state/2, select_torrent/2,
 	 select_torrent/1, delete_torrent/1, delete_torrent_by_pid/1,
 	 store_peer/4, select_peer_ip_port_by_pid/1, delete_peer/1,
 	 peer_statechange/2, is_peer_connected/3, select_interested_peers/1,
 	 reset_round/1, delete_peers/1, peer_statechange_infohash/2,
 
+	 torrent_size/1, get_bitfield/1, get_num_pieces/1, check_interest/2,
+
 	 file_access_insert/5, file_access_insert/2, file_access_set_state/3,
 	 file_access_torrent_pieces/1, file_access_is_complete/1,
 	 file_access_get_pieces/1, file_access_delete/1,
-	 file_access_get_piece/2]).
+	 file_access_get_piece/2,
+	 file_access_piece_valid/2,
+	 file_access_piece_interesting/2]).
 
 %%====================================================================
 %% API
@@ -41,6 +45,27 @@ new_torrent(File, Supervisor) ->
     mnesia:transaction(T).
 
 %%--------------------------------------------------------------------
+%% Function: check_interested(Handle, PieceSet) ->
+%% Description: Returns the interest of a peer
+%%--------------------------------------------------------------------
+check_interest(Pid, PieceSet) ->
+    %%% XXX: This function could also check for validity and probably should
+    mnesia:transaction(
+      fun () ->
+	      Q = qlc:q([R#file_access.piece_number || R <- mnesia:table(file_access),
+						       R#file_access.pid =:= Pid,
+						       (R#file_access.state =:= fetched)
+							   orelse (R#file_access.state =:= chunked)]),
+	      case sets:size(sets:intersection(sets:from_list(qlc:e(Q)),
+					       PieceSet)) of
+		  0 ->
+		      not_interested;
+		  N when is_integer(N) ->
+		      interested
+	      end
+      end).
+
+%%--------------------------------------------------------------------
 %% Function: find_torrents_by_file(Filename) -> [SupervisorPid]
 %% Description: Find torrent specs matching the filename in question.
 %%--------------------------------------------------------------------
@@ -51,6 +76,54 @@ find_torrents_by_file(Filename) ->
 							T#tracking_map.filename == Filename]),
 	      qlc:e(Query)
       end).
+
+
+%%--------------------------------------------------------------------
+%% Function: get_num_pieces(Pid) -> integer()
+%% Description: Return the number of pieces for the given torrent
+%%--------------------------------------------------------------------
+get_num_pieces(Pid) ->
+    mnesia:transaction(
+      fun () ->
+	      Q1 = qlc:q([Q || Q <- mnesia:table(file_access),
+			       Q#file_access.pid =:= Pid]),
+	      length(qlc:e(Q1))
+      end).
+
+%%--------------------------------------------------------------------
+%% Function: get_bitfield(Pid) -> bitfield()
+%% Description: Return the bitfield we have for the given torrent
+%%--------------------------------------------------------------------
+get_bitfield(Pid) ->
+    {atomic, {NumPieces, PieceSet}} =
+	mnesia:transaction(
+	  fun () ->
+		  {atomic, NumPieces} = get_num_pieces(Pid),
+		  Q2 = qlc:q([R#file_access.piece_number || R <- mnesia:table(file_access),
+							    R#file_access.pid =:= Pid,
+							    R#file_access.state =:= fetched]),
+		  PieceSet = sets:from_list(qlc:e(Q2)),
+		  {NumPieces, PieceSet}
+	  end),
+    etorrent_peer_communication:construct_bitfield(NumPieces, PieceSet).
+
+%%--------------------------------------------------------------------
+%% Function: torrent_size(Pid) -> integer()
+%% Description: What is the total size of the torrent in question.
+%%--------------------------------------------------------------------
+torrent_size(Pid) ->
+    F = fun () ->
+		Query = qlc:q([F || F <- mnesia:table(file_access),
+				    F#file_access.pid =:= Pid]),
+		qlc:e(Query)
+	end,
+    {atomic, Res} = mnesia:transaction(F),
+    lists:foldl(fun(#file_access{ files = {_, Ops, _}}, Sum) ->
+			Sum + etorrent_fs:size_of_ops(Ops)
+		end,
+		0,
+		Res).
+
 
 %%--------------------------------------------------------------------
 %% Function: cleanup_torrent_by_pid(Pid) -> ok
@@ -69,13 +142,13 @@ cleanup_torrent_by_pid(Pid) ->
 %% Description: Store that InfoHash is controlled by StorerPid with assigned
 %%  monitor reference MonitorRef
 %%--------------------------------------------------------------------
-store_torrent(InfoHash, StorerPid, Left, Downloaded, Uploaded) ->
+store_torrent(InfoHash, StorerPid, {{uploaded, U}, {downloaded, D}, {left, L}}) ->
     F = fun() ->
 		mnesia:write(#torrent { info_hash = InfoHash,
 					storer_pid = StorerPid,
-					left = Left,
-					uploaded = Uploaded,
-					downloaded = Downloaded,
+					left = L,
+					uploaded = U,
+					downloaded = D,
 					state = unknown })
 	end,
     mnesia:transaction(F).
@@ -84,11 +157,37 @@ store_torrent(InfoHash, StorerPid, Left, Downloaded, Uploaded) ->
 %% Function: set_torrent_state(InfoHash, State) -> ok | not_found
 %% Description: Set the state of an info hash.
 %%--------------------------------------------------------------------
+set_torrent_state(Pid, S) when is_pid(Pid) ->
+    {atomic, InfoHash} = mnesia:transaction(
+			   fun () ->
+				   Q = qlc:q([R || R <- mnesia:table(torrent),
+						   R#torrent.storer_pid =:= Pid]),
+				   [IH] = qlc:e(Q),
+				   IH
+			   end),
+    set_torrent_state(InfoHash, S);
 set_torrent_state(InfoHash, State) ->
     F = fun() ->
 		case mnesia:read(torrent, InfoHash, write) of
 		    [T] ->
-			New = T#torrent{state = State},
+			New = case State of
+				  unknown ->
+				      T#torrent{state = unknown};
+				  leeching ->
+				      T#torrent{state = leeching};
+				  seeding ->
+				      T#torrent{state = seeding};
+				  endgame ->
+				      T#torrent{state = endgame};
+				  {add_downloaded, Amount} ->
+				      T#torrent{downloaded = T#torrent.downloaded + Amount};
+				  {add_upload, Amount} ->
+				      T#torrent{uploaded = T#torrent.uploaded + Amount};
+				  {substract_left, Amount} ->
+				      T#torrent{left = T#torrent.left - Amount};
+				  {tracker_report, Seeders, Leechers} ->
+				      T#torrent{seeders = Seeders, leechers = Leechers}
+			      end,
 			mnesia:write(New),
 			ok;
 		    [] ->
@@ -108,29 +207,52 @@ select_torrent(InfoHash, Pid) ->
     qlc:e(Q).
 
 %%--------------------------------------------------------------------
-%% Function: select_torrent(InfoHash) -> Pids
+%% Function: select_torrent(Id) -> Pids
+%%   Id = infohash() | pid()
 %% Description: Return all rows matching infohash
 %%--------------------------------------------------------------------
-select_torrent(InfoHash) ->
-    Q = qlc:q([IH || IH <- mnesia:table(torrent),
-		     IH#torrent.info_hash =:= InfoHash]),
-    qlc:e(Q).
+select_torrent(Pid) when is_pid(Pid) ->
+    mnesia:transaction(
+      fun () ->
+	      error_logger:info_report(selecting_by_pid),
+	      Q = qlc:q([IH || IH <- mnesia:table(torrent),
+			       IH#torrent.storer_pid =:= Pid]),
+	      qlc:e(Q)
+      end);
+select_torrent(InfoHash) when is_binary(InfoHash) ->
+    mnesia:transaction(
+      fun () ->
+	      error_logger:info_report(selecting_by_hash),
+	      mnesia:read(torrent, InfoHash, read)
+      end).
 
 %%--------------------------------------------------------------------
 %% Function: delete_torrent(InfoHash) -> transaction
 %% Description: Remove the row with InfoHash in it
 %%--------------------------------------------------------------------
-delete_torrent(Torrent) ->
+delete_torrent(InfoHash) when is_binary(InfoHash) ->
+    mnesia:transaction(
+      fun () ->
+	      case mnesia:read(torrent, infohash, write) of
+		  [R] ->
+		      {atomic, _} = delete_torrent(R);
+		  [] ->
+		      ok
+	      end
+      end);
+delete_torrent(Torrent) when is_record(Torrent, torrent) ->
     F = fun() ->
-		mnesia:delete(Torrent)
+		mnesia:delete_object(Torrent)
 	end,
     mnesia:transaction(F).
+
 
 %%--------------------------------------------------------------------
 %% Function: delete_torrent_by_pid(Pid) -> transaction
 %% Description: Remove the row with Pid in it
 %%--------------------------------------------------------------------
 delete_torrent_by_pid(Pid) ->
+    error_logger:info_report([delete_torrent_by_pid, Pid]),
     F = fun() ->
 		Q = qlc:q([T || T <- mnesia:table(torrent),
 				T#torrent.storer_pid =:= Pid]),
@@ -173,7 +295,7 @@ select_peer_ip_port_by_pid(Pid) ->
 delete_peer(Pid) ->
     mnesia:transaction(
       fun () ->
-	      P = mnesia:read(peer_map, Pid, write),
+	      [P] = mnesia:read(peer_map, Pid, write),
 	      mnesia:delete(torrent, P#peer_map.info_hash, write),
 	      mnesia:delete(peer_map, Pid, write)
       end).
@@ -192,8 +314,8 @@ peer_statechange_infohash(InfoHash, What) ->
 
 peer_statechange(Pid, What) ->
     F = fun () ->
-		Ref = mnesia:read(peer, Pid, read), %% Read lock here?
-		PI = mnesia:read(peer_info, Ref, write),
+		[Peer] = mnesia:read(peer, Pid, read), %% Read lock here?
+		[PI] = mnesia:read(peer_info, Peer#peer.info, write),
 		case What of
 		    {optimistic_unchoke, Val} ->
 			New = PI#peer_info{ optimistic_unchoke = Val };
@@ -214,7 +336,8 @@ peer_statechange(Pid, What) ->
 			Downloaded = PI#peer_info.downloaded,
 			New = PI#peer_info{ downloaded = Downloaded + Amount }
 		end,
-		mnesia:write(New)
+		mnesia:write(New),
+		ok
 	end,
     mnesia:transaction(F).
 
@@ -364,6 +487,37 @@ file_access_get_piece(Handle, Pn) ->
 			      R#file_access.pid =:= Handle,
 			      R#file_access.piece_number =:= Pn]),
 	      qlc:e(Q)
+      end).
+
+file_access_piece_valid(Handle, Pn) ->
+    mnesia:transaction(
+      fun () ->
+	      Q = qlc:q([R || R <- mnesia:table(file_access),
+			      R#file_access.pid =:= Handle,
+			      R#file_access.piece_number =:= Pn]),
+	      case qlc:e(Q) of
+		  [] ->
+		      false;
+		  [_] ->
+		      true
+	      end
+      end).
+
+file_access_piece_interesting(Handle, Pn) ->
+    mnesia:transaction(
+      fun () ->
+	      Q = qlc:q([R || R <- mnesia:table(file_access),
+			      R#file_access.pid =:= Handle,
+			      R#file_access.piece_number =:= Pn]),
+	      [R] = qlc:e(Q),
+	      case R#file_access.state of
+		  fetched ->
+		      false;
+		  chunked ->
+		      true;
+		  not_fetched ->
+		      true
+	      end
       end).
 
 %%--------------------------------------------------------------------

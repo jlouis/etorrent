@@ -14,7 +14,7 @@
 -include("etorrent_mnesia_table.hrl").
 
 %% API
--export([start_link/6, connect/3, choke/1, unchoke/1, interested/1,
+-export([start_link/5, connect/3, choke/1, unchoke/1, interested/1,
 	 send_have_piece/2, complete_handshake/4, uploaded_data/2,
 	stop/1]).
 
@@ -39,10 +39,9 @@
 		 piece_request = [],
 
 		 file_system_pid = none,
-		 master_pid = none,
+		 peer_group_pid = none,
 		 send_pid = none,
-		 control_pid = none,
-		 state_pid = none}).
+		 torrent_handle = none}).
 
 -define(DEFAULT_CONNECT_TIMEOUT, 120000). % Default timeout in ms
 -define(DEFAULT_CHUNK_SIZE, 16384). % Default size for a chunk. All clients use this.
@@ -56,9 +55,9 @@
 %% Function: start_link() -> {ok,Pid} | ignore | {error,Error}
 %% Description: Starts the server
 %%--------------------------------------------------------------------
-start_link(LocalPeerId, InfoHash, StatePid, FilesystemPid, MasterPid, ControlPid) ->
+start_link(LocalPeerId, InfoHash, FilesystemPid, MasterPid, TorrentHandle) ->
     gen_server:start_link(?MODULE, [LocalPeerId, InfoHash,
-				    StatePid, FilesystemPid, MasterPid, ControlPid], []).
+				    FilesystemPid, MasterPid, TorrentHandle], []).
 
 %%--------------------------------------------------------------------
 %% Function: connect(Pid, IP, Port)
@@ -128,14 +127,13 @@ stop(Pid) ->
 %%                         {stop, Reason}
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
-init([LocalPeerId, InfoHash, StatePid, FilesystemPid, MasterPid, ControlPid]) ->
+init([LocalPeerId, InfoHash, FilesystemPid, MasterPid, TorrentHandle]) ->
     {ok, #state{ local_peer_id = LocalPeerId,
 		 piece_set = sets:new(),
 		 remote_request_set = sets:new(),
 		 info_hash = InfoHash,
-		 state_pid = StatePid,
-		 master_pid = MasterPid,
-		 control_pid = ControlPid,
+		 peer_group_pid = MasterPid,
+		 torrent_handle = TorrentHandle,
 		 file_system_pid = FilesystemPid}}.
 
 %%--------------------------------------------------------------------
@@ -175,8 +173,8 @@ handle_cast({connect, IP, Port}, S) ->
 		    {ok, SendPid} =
 			etorrent_t_peer_send:start_link(Socket,
 							S#state.file_system_pid,
-							S#state.state_pid),
-		    BF = etorrent_t_state:retrieve_bitfield(S#state.state_pid),
+							S#state.torrent_handle),
+		    BF = etorrent_mnesia_operations:get_bitfield(S#state.torrent_handle),
 		    etorrent_t_peer_send:send(SendPid, {bitfield, BF}),
 		    {noreply, S#state{tcp_socket = Socket,
 				      remote_peer_id = PeerId,
@@ -198,8 +196,8 @@ handle_cast({complete_handshake, _ReservedBytes, Socket, RemotePeerId}, S) ->
     {ok, SendPid} =
 	etorrent_t_peer_send:start_link(Socket,
 				     S#state.file_system_pid,
-				     S#state.state_pid),
-    BF = etorrent_t_state:retrieve_bitfield(S#state.state_pid),
+				     S#state.torrent_handle),
+    BF = etorrent_mnesia_operations:get_bitfield(S#state.torrent_handle),
     etorrent_t_peer_send:send(SendPid, {bitfield, BF}),
     {noreply, S#state{tcp_socket = Socket,
 		      send_pid = SendPid,
@@ -251,7 +249,9 @@ handle_info(_Info, State) ->
 %% The return value is ignored.
 %%--------------------------------------------------------------------
 terminate(_Reason, S) ->
-    ok = etorrent_t_state:remove_bitfield(S#state.state_pid, S#state.piece_set),
+    ok = etorrent_mnesia_histogram:remove_bitfield(
+	   S#state.torrent_handle,
+	   S#state.piece_set),
     unqueue_all_pieces(S),
     catch(etorrent_t_peer_send:stop(S#state.send_pid)),
     ok.
@@ -273,10 +273,10 @@ handle_message(choke, S) ->
     NS = unqueue_all_pieces(S),
     {ok, NS#state { remote_choked = true }};
 handle_message(unchoke, S) ->
-    etorrent_mnesia_operations:peer_statechange(self(), remote_unchoking),
+    {atomic, ok} = etorrent_mnesia_operations:peer_statechange(self(), remote_unchoking),
     try_to_queue_up_pieces(S#state{remote_choked = false});
 handle_message(interested, S) ->
-    etorrent_mnesia_operations:peer_statechange(self(), interested),
+    {atomic, ok} = etorrent_mnesia_operations:peer_statechange(self(), interested),
     {ok, S#state { remote_interested = true}};
 handle_message(not_interested, S) ->
     etorrent_mnesia_operations:peer_statechange(self(), not_interested),
@@ -288,31 +288,43 @@ handle_message({cancel, Index, Offset, Len}, S) ->
     etorrent_t_peer_send:cancel(S#state.send_pid, Index, Offset, Len),
     {ok, S};
 handle_message({have, PieceNum}, S) ->
-    PieceSet = sets:add_element(PieceNum, S#state.piece_set),
-    case etorrent_t_state:remote_have_piece(S#state.state_pid, PieceNum) of
-	interested when S#state.local_interested == true ->
-	    {ok, S#state{piece_set = PieceSet}};
-	interested when S#state.local_interested == false ->
-	    send_message(interested, S),
-	    {ok, S#state{local_interested = true,
-			 piece_set = PieceSet}};
-	not_interested ->
-	    {ok, S#state{piece_set = PieceSet}}
+    case piece_valid(S#state.torrent_handle, PieceNum) of
+	true ->
+	    PieceSet = sets:add_element(PieceNum, S#state.piece_set),
+	    {atomic, ok} = etorrent_mnesia_histogram:increase_piece(
+			     S#state.torrent_handle,
+			     PieceNum),
+	    NS = S#state{piece_set = PieceSet},
+	    case etorrent_mnesia_operations:file_access_piece_interesting(
+		   S#state.torrent_handle,
+		   PieceNum) of
+		{atomic, true} when S#state.local_interested =:= true ->
+		    {ok, NS};
+		{atomic, true} when S#state.local_interested =:= false ->
+		    send_message(interested, S),
+		    {ok, NS#state{local_interested = true}};
+		{atomic, false} ->
+		    {ok, NS}
+	    end
     end;
 handle_message({bitfield, BitField}, S) ->
     case sets:size(S#state.piece_set) of
 	0 ->
-	    Size = etorrent_t_state:num_pieces(S#state.state_pid),
+	    {atomic, Size} = etorrent_mnesia_operations:get_num_pieces(S#state.torrent_handle),
 	    {ok, PieceSet} =
 		etorrent_peer_communication:destruct_bitfield(Size, BitField),
-	    case etorrent_t_state:remote_bitfield(S#state.state_pid, PieceSet) of
-		interested ->
+	    ok = etorrent_mnesia_histogram:remote_bitfield(S#state.torrent_handle,
+								     PieceSet),
+	    case etorrent_mnesia_operations:check_interest(S#state.torrent_handle,
+							   PieceSet) of
+		{atomic, interested} ->
 		    send_message(interested, S),
+		    %%% XXX: peer_statechange here?
 		    {ok, S#state{piece_set = PieceSet,
 				 local_interested = true}};
-		not_interested ->
+		{atomic, not_interested} ->
 		    {ok, S#state{piece_set = PieceSet}};
-		not_valid ->
+		{atomic, not_valid} ->
 		    {stop, invalid_pieces, S}
 	    end;
 	N when is_integer(N) ->
@@ -323,8 +335,6 @@ handle_message({piece, Index, Offset, Data}, S) ->
     error_logger:info_report([got_a_piece, Index, Offset]),
     etorrent_mnesia_operations:peer_statechange(self(), {downloaded, Len}),
     case handle_got_chunk(Index, Offset, Data, Len, S) of
-	stop ->
-	    {stop, normal, S};
 	{ok, NS} ->
 	    try_to_queue_up_pieces(NS)
     end;
@@ -336,14 +346,13 @@ delete_chunk(Ref, Index, Offset, Len, S) ->
     {ok, S#state { remote_request_set = RS}}.
 
 handle_got_chunk(Index, Offset, Data, Len, S) ->
-    {atomic, [Ref]} = etorrent_mnesia_chunks:select_chunk(S#state.control_pid, Index, Offset, Len),
+    {atomic, [Ref]} = etorrent_mnesia_chunks:select_chunk(S#state.torrent_handle, Index, Offset, Len),
     case etorrent_mnesia_chunks:store_chunk(
 	   Ref,
 	   Data,
-	   Index,
-	   S#state.file_system_pid) of
+	   S#state.file_system_pid,
+	   S#state.torrent_handle) of
 	ok ->
-	    error_logger:info_report(stored_chunk),
 	    delete_chunk(Ref, Index, Offset, Len, S)
     end.
 
@@ -382,18 +391,20 @@ try_to_queue_up_pieces(S) when S#state.remote_choked == true ->
     {ok, S};
 try_to_queue_up_pieces(S) ->
     PiecesToQueue = ?BASE_QUEUE_LEVEL - sets:size(S#state.remote_request_set),
-    case etorrent_mnesia_chunks:select_chunks(self(),
-					      S#state.control_pid,
-					      S#state.piece_set,
-					      S#state.state_pid,
-					      PiecesToQueue) of
+    error_logger:info_report([selecting_chunks, self(), S#state.torrent_handle]),
+    case etorrent_mnesia_chunks:pick_chunks(self(),
+					    S#state.torrent_handle,
+					    S#state.piece_set,
+					    PiecesToQueue) of
 	not_interested ->
 	    error_logger:info_report(not_interested),
 	    etorrent_t_peer_send:not_interested(S#state.send_pid),
 	    {ok, S#state { local_interested = false}};
 	{ok, Items} ->
 	    error_logger:info_report(queueing_items),
-	    queue_items(Items, S)
+	    queue_items(Items, S);
+	{partial, Items, _} ->
+	    queue_items(Items, S) % XXX: I don't think I need something more here
     end.
 
 queue_items([], S) ->
@@ -410,4 +421,14 @@ queue_items([Chunk | Rest], S) ->
 			   Chunk#chunk.offset,
 			   Chunk#chunk.size}, S#state.remote_request_set),
     queue_items(Rest, S#state { remote_request_set = RS }).
+
+piece_valid(ControlPid, PieceNum) ->
+    case etorrent_mnesia_operations:file_access_piece_valid(
+	   ControlPid,
+	   PieceNum) of
+	{atomic, true} ->
+	    true;
+	{atomic, false} ->
+	    false
+    end.
 

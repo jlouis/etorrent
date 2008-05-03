@@ -7,7 +7,7 @@
 	    etorrent_fs_checker, etorrent_t_peer_recv, etorrent_fs,
 	    etorrent_t_peer_send, etorrent_t_pool_sup,
 	    etorrent_fs_process, etorrent_tracker_communication,
-	    etorrent_fs_serializer, etorrent_t_state, etorrent_histogram,
+	    etorrent_fs_serializer, etorrent_mnesia_histogram,
 	    etorrent_t_sup, etorrent_listener, etorrent_utils,
 	    etorrent_metainfo, http_gzip, etorrent_peer_communication,
 	    etorrent_t_peer_pool_sup, etorrent_fs_pool_sup,

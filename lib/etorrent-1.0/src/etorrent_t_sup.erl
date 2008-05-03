@@ -12,8 +12,8 @@
 -behaviour(supervisor).
 
 %% API
--export([start_link/2, add_file_system/3, add_peer_group/8,
-	 add_tracker/6, add_state/3, add_peer_pool/1,
+-export([start_link/2, add_file_system/3, add_peer_group/6,
+	 add_tracker/5, add_peer_pool/1,
 	 add_file_system_pool/1]).
 
 %% Supervisor callbacks
@@ -51,27 +51,20 @@ add_file_system_pool(Pid) ->
     supervisor:start_child(Pid, FSPool).
 
 add_peer_group(Pid, GroupPid, Local_Peer_Id,
-		InfoHash, StatePid, FileSystemPid, TorrentState, ControlPid) ->
+		InfoHash, FileSystemPid, TorrentState) ->
     PeerGroup = {peer_group,
 		  {etorrent_t_peer_group, start_link,
 		   [Local_Peer_Id, GroupPid,
-		    InfoHash, StatePid, FileSystemPid, TorrentState, ControlPid]},
+		    InfoHash, FileSystemPid, TorrentState, Pid]},
 		  temporary, 2000, worker, [etorrent_t_peer_group]},
     supervisor:start_child(Pid, PeerGroup).
 
-add_tracker(Pid, StatePid, PeerGroupPid, URL, InfoHash, Local_Peer_Id) ->
+add_tracker(Pid, PeerGroupPid, URL, InfoHash, Local_Peer_Id) ->
     Tracker = {tracker_communication,
 	       {etorrent_tracker_communication, start_link,
-		[self(), StatePid, PeerGroupPid, URL, InfoHash, Local_Peer_Id]},
+		[self(), PeerGroupPid, URL, InfoHash, Local_Peer_Id]},
 	       temporary, 90000, worker, [etorrent_tracker_communication]},
     supervisor:start_child(Pid, Tracker).
-
-add_state(Pid, PieceLength, ControlPid) ->
-    State = {state,
-	     {etorrent_t_state, start_link,
-	      [PieceLength, ControlPid]},
-	     temporary, 5000, worker, [etorrent_t_state]},
-    supervisor:start_child(Pid, State).
 
 add_peer_pool(Pid) ->
     Group = {peer_pool_sup,

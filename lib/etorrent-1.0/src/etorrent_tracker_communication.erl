@@ -10,8 +10,10 @@
 
 -behaviour(gen_server).
 
+-include("etorrent_mnesia_table.hrl").
+
 %% API
--export([start_link/6, contact_tracker_now/1, start_now/1, stop_now/1,
+-export([start_link/5, contact_tracker_now/1, start_now/1, stop_now/1,
 	torrent_completed/1]).
 
 %% gen_server callbacks
@@ -21,7 +23,6 @@
 -record(state, {should_contact_tracker = false,
 		queued_message = none,
 		peer_master_pid = none,
-	        state_pid = none,
 	        url = none,
 	        info_hash = none,
 	        peer_id = none,
@@ -40,9 +41,9 @@
 %% Function: start_link() -> {ok,Pid} | ignore | {error,Error}
 %% Description: Starts the server
 %%--------------------------------------------------------------------
-start_link(ControlPid, StatePid, PeerMasterPid, Url, InfoHash, PeerId) ->
+start_link(ControlPid, PeerMasterPid, Url, InfoHash, PeerId) ->
     gen_server:start_link(?MODULE,
-			  [{ControlPid, StatePid, PeerMasterPid,
+			  [{ControlPid, PeerMasterPid,
 			    Url, InfoHash, PeerId}],
 			  []).
 
@@ -69,12 +70,11 @@ torrent_completed(Pid) ->
 %%                         {stop, Reason}
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
-init([{ControlPid, StatePid, PeerMasterPid, Url, InfoHash, PeerId}]) ->
+init([{ControlPid, PeerMasterPid, Url, InfoHash, PeerId}]) ->
     process_flag(trap_exit, true),
     {ok, #state{should_contact_tracker = false,
 		peer_master_pid = PeerMasterPid,
 		control_pid = ControlPid,
-		state_pid = StatePid,
 		url = Url,
 		info_hash = InfoHash,
 		peer_id = PeerId}}.
@@ -192,7 +192,6 @@ decode_and_handle_body(Body, S) ->
 
 handle_tracker_response(BC, S) ->
     ControlPid = S#state.control_pid,
-    StatePid = S#state.state_pid,
     PeerMasterPid = S#state.peer_master_pid,
     RequestTime = find_next_request_time(BC),
     TrackerId = find_tracker_id(BC),
@@ -208,10 +207,12 @@ handle_tracker_response(BC, S) ->
 	WarningMessage /= none ->
 	    etorrent_t_control:tracker_warning_report(ControlPid, WarningMessage),
 	    etorrent_t_peer_group:add_peers(PeerMasterPid, NewIPs),
-	    etorrent_t_state:report_from_tracker(StatePid, Complete, Incomplete);
+	    etorrent_mnesia_operations:set_torrent_state(S#state.info_hash,
+							 {tracker_report, Complete, Incomplete});
 	true ->
 	    etorrent_t_peer_group:add_peers(PeerMasterPid, NewIPs),
-	    etorrent_t_state:report_from_tracker(StatePid, Complete, Incomplete)
+	    etorrent_mnesia_operations:set_torrent_state(S#state.info_hash,
+							 {tracker_report, Complete, Incomplete})
     end,
     {ok, RequestTime, S#state{trackerid = TrackerId}}.
 
@@ -225,20 +226,15 @@ construct_headers([{Key, Value} | Rest], HeaderLines) ->
     construct_headers(Rest, [Data | HeaderLines]).
 
 build_tracker_url(S, Event) ->
-    {{uploaded, Uploaded},
-     {downloaded, Downloaded},
-     {left, Left}} =
-	etorrent_t_state:report_to_tracker(S#state.state_pid),
-    error_logger:info_msg("Reporting to tracker: ~p~n", [{Uploaded, Downloaded,
-							  Left}]),
+    {atomic, [R]} = etorrent_mnesia_operations:select_torrent(S#state.info_hash),
     {ok, Port} = application:get_env(etorrent, port),
     Request = [{"info_hash",
 		etorrent_utils:build_encoded_form_rfc1738(S#state.info_hash)},
 	       {"peer_id",
 		etorrent_utils:build_encoded_form_rfc1738(S#state.peer_id)},
-	       {"uploaded", Uploaded},
-	       {"downloaded", Downloaded},
-	       {"left", Left},
+	       {"uploaded", R#torrent.uploaded},
+	       {"downloaded", R#torrent.downloaded},
+	       {"left", R#torrent.left},
 	       {"port", Port}],
     EReq = case Event of
 	       none ->

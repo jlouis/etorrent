@@ -17,7 +17,7 @@ ETORRENT_1.0_EBINDIR = lib/etorrent-1.0/ebin
 
 ETORRENT_1.0_MODULES = etorrent_listener etorrent_t_pool_sup etorrent_acceptor \
 	etorrent_metainfo etorrent_tracker_communication etorrent_bcoding \
-	etorrent_app etorrent_t_state \
+	etorrent_app \
 	etorrent_dirwatcher etorrent_sup etorrent_t_sup \
 	etorrent_dirwatcher_sup \
 	etorrent_peer_communication etorrent_utils etorrent_fs_checker \
@@ -25,14 +25,13 @@ ETORRENT_1.0_MODULES = etorrent_listener etorrent_t_pool_sup etorrent_acceptor \
 	etorrent_fs etorrent_t_manager http_gzip \
 	etorrent_fs_process \
 	etorrent_t_peer_group etorrent_fs_serializer etorrent_t_peer_recv \
-	etorrent_histogram \
 	etorrent_t_peer_pool_sup \
 	etorrent_t_peer_send \
 	etorrent_event \
 	etorrent_acceptor_sup \
 	etorrent_fs_pool_sup \
 	etorrent_mnesia_init etorrent_mnesia_operations \
-	etorrent_mnesia_chunks
+	etorrent_mnesia_chunks etorrent_mnesia_histogram
 
 ETORRENT_1.0_SOURCES = $(ETORRENT_1.0_MODULES:%=$(ETORRENT_1.0_SRCDIR)/%.erl)
 

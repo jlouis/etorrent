@@ -14,17 +14,12 @@
 -define(DEFAULT_CHUNK_SIZE, 16384). % Default size for a chunk. All clients use this.
 
 %% API
--export([add_piece_chunks/2, select_chunks/5, store_chunk/4,
+-export([add_piece_chunks/2, pick_chunks/4, store_chunk/4,
 	 putback_chunks/2, select_chunk/4]).
 
 %%====================================================================
 %% API
 %%====================================================================
-%%--------------------------------------------------------------------
-%% Function: 
-%% Description:
-%%--------------------------------------------------------------------
-
 %%--------------------------------------------------------------------
 %% Function: select_chunk(Handle, Index, Offset, Len) -> {atomic, Ref}
 %% Description: Select the ref of a chunk.
@@ -44,21 +39,81 @@ select_chunk(Handle, Idx, Offset, Size) ->
 %% Function: select_chunks(Handle, PieceSet, StatePid, Num) -> ...
 %% Description: Return some chunks for downloading
 %%--------------------------------------------------------------------
-select_chunks(Pid, Handle, PieceSet, StatePid, Num) ->
-    case piece_chunk_available(Handle, PieceSet, Num, Pid) of
-	{atomic, {ok, Chunks}} ->
-	    {ok, Chunks};
-	{atomic, {partial, Chunks, Remaining, PieceNum}} ->
-	    NewSet = sets:del_element(PieceNum, PieceSet),
-	    case select_chunks(Pid, Handle, NewSet, StatePid, Remaining) of
-		not_interested ->
-		    {ok, Chunks};
-		{ok, NewChunks} ->
-		    {ok, lists:append(NewChunks, Chunks)}
-	    end;
-	{atomic, none_applicable} ->
-	    select_new_piece_for_chunking(Pid, Handle, PieceSet, StatePid, Num)
+pick_chunks(Pid, Handle, PieceSet, Num) ->
+    pick_chunks(Pid, Handle, PieceSet, [], Num).
+
+pick_chunks(_Pid, _Handle, _PieceSet, SoFar, 0) ->
+    {ok, SoFar};
+pick_chunks(Pid, Handle, PieceSet, SoFar, N) ->
+    case pick_amongst_chunked(Pid, Handle, PieceSet, N) of
+	{atomic, {ok, Chunks, 0}} ->
+	    {ok, SoFar ++ Chunks};
+	{atomic, {ok, Chunks, Left, PickedPiece}} when Left > 0 ->
+	    pick_chunks(Pid, Handle,
+			sets:del_element(PickedPiece,
+					 PieceSet),
+			SoFar ++ Chunks,
+			Left);
+	{atomic, none_eligible} ->
+	    case chunkify_new_piece(Handle, PieceSet) of
+		{atomic, ok} ->
+		    pick_chunks(Pid,
+				Handle,
+				PieceSet,
+				SoFar,
+				N);
+		{atomic, none_eligible} ->
+		    case SoFar of
+			[] ->
+			    not_interested;
+			L when is_list(L) ->
+			    {partial, L, N}
+		    end
+	    end
     end.
+
+pick_amongst_chunked(Pid, Handle, PieceSet, N) ->
+    mnesia:transaction(
+      fun () ->
+	      ChunkedPieces = find_chunked(Handle),
+	      Eligible = sets:to_list(sets:intersection(PieceSet, sets:from_list(ChunkedPieces))),
+	      case Eligible of
+		  [] ->
+		      none_eligible;
+		  [PieceNum | _] ->
+		      case select_chunks_by_piecenum(Handle, PieceNum,
+						     N, Pid) of
+			  {ok, Ans} ->
+			      {ok, Ans, 0};
+			  {partial, Chunks, Remaining, PieceNum} ->
+			      {ok, Chunks, Remaining, PieceNum}
+		      end
+	      end
+      end).
+
+chunkify_new_piece(Handle, PieceSet) ->
+    mnesia:transaction(
+      fun () ->
+	      Q1 = qlc:q([S || R <- mnesia:table(file_access),
+			       S <- sets:to_list(PieceSet),
+			       R#file_access.pid =:= Handle,
+			       R#file_access.piece_number =:= S,
+			       R#file_access.state =:= not_fetched]),
+	      Eligible = qlc:e(Q1),
+	      case Eligible of
+		  [] ->
+		      none_eligible;
+		  L when is_list(L) ->
+		      case etorrent_mnesia_histogram:find_rarest_piece(
+			     Handle,
+			     sets:from_list(L)) of
+			  {atomic, {ok, PieceNum}} ->
+			      error_logger:info_report([selected, PieceNum]),
+			      ensure_chunking(Handle, PieceNum),
+			      ok
+		      end
+	      end
+      end).
 
 find_chunked(Handle) ->
     Q = qlc:q([R#file_access.piece_number || R <- mnesia:table(file_access),
@@ -66,20 +121,8 @@ find_chunked(Handle) ->
 					     R#file_access.state =:= chunked]),
     qlc:e(Q).
 
-piece_chunk_available(Handle, PieceSet, Num, Pid) ->
-    mnesia:transaction(
-      fun () ->
-	      Chunked = find_chunked(Handle),
-	      Eligible = sets:intersection(PieceSet, sets:from_list(Chunked)),
-	      case sets:to_list(Eligible) of
-		  [] ->
-		      none_applicable;
-		  [PieceNum | _] ->
-		      select_chunk_by_piecenum(Handle, PieceNum, Num, Pid)
-	      end
-      end).
 
-select_chunk_by_piecenum(Handle, PieceNum, Num, Pid) ->
+select_chunks_by_piecenum(Handle, PieceNum, Num, Pid) ->
     Q = qlc:q([R || R <- mnesia:table(chunk),
 		    R#chunk.pid =:= Handle,
 		    R#chunk.piece_number =:= PieceNum,
@@ -96,28 +139,6 @@ select_chunk_by_piecenum(Handle, PieceNum, Num, Pid) ->
 	    {partial, Ans, Remaining, PieceNum}
     end.
 
-select_new_piece_for_chunking(Pid, Handle, PieceSet, StatePid, Num) ->
-    case etorrent_t_state:request_new_piece(StatePid, PieceSet) of
-	not_interested ->
-	    not_interested;
-	endgame ->
-	    {atomic, R} = mnesia:transaction(
-			    fun () ->
-				    Q1 = qlc:q([R || R <- mnesia:table(chunk),
-						     R#chunk.pid =:= Handle,
-						     (R#chunk.state =:= assigned)
-							 or (R#chunk.state =:= not_fetched)]),
-				    {ok, shuffle(qlc:e(Q1))}
-			    end),
-	    R;
-	{ok, PieceNum, Size} ->
-	    {atomic, _} = mnesia:transaction(
-			    fun () ->
-				    {atomic, _} = ensure_chunking(Handle, PieceNum, StatePid, Size)
-			    end),
-	    select_chunks(Pid, Handle, PieceSet, StatePid, Num)
-    end.
-
 %%--------------------------------------------------------------------
 %% Function: add_piece_chunks(PieceNum, PieceSize, Torrent) -> ok.
 %% Description: Add chunks for a piece of a given torrent.
@@ -126,7 +147,7 @@ putback_chunks(Refs, Pid) ->
     mnesia:transaction(
       fun () ->
 	      lists:foreach(fun(Ref) ->
-				    Row = mnesia:read(chunk, Ref, write),
+				    [Row] = mnesia:read(chunk, Ref, write),
 				    case Row#chunk.state of
 					fetched ->
 					    ok;
@@ -145,18 +166,6 @@ putback_chunks(Refs, Pid) ->
 %% Function: add_piece_chunks(#file_access, PieceSize) -> ok.
 %% Description: Add chunks for a piece of a given torrent.
 %%--------------------------------------------------------------------
-add_chunk([], _) ->
-    ok;
-add_chunk([{PieceNumber, Offset, Size} | Rest], Pid) ->
-    ok = mnesia:write(#chunk{ ref = make_ref(),
-			      pid = Pid,
-			      piece_number = PieceNumber,
-			      offset = Offset,
-			      size = Size,
-			      assign = unknown,
-			      state = not_fetched}),
-    add_chunk(Rest, Pid).
-
 add_piece_chunks(R, PieceSize) ->
     {ok, Chunks, NumChunks} = chunkify(R#file_access.piece_number, PieceSize),
     mnesia:transaction(
@@ -166,78 +175,36 @@ add_piece_chunks(R, PieceSize) ->
 	      add_chunk(Chunks, R#file_access.pid)
       end).
 
-store_chunk(Ref, Data, PieceNumber, FSPid) ->
-    R = mnesia:transaction(
+store_chunk(Ref, Data, FSPid, MasterPid) ->
+    {atomic, Res} =
+	mnesia:transaction(
 	  fun () ->
 		  [R] = mnesia:read(chunk, Ref, write),
 		  Pid = R#chunk.pid,
-		  mnesia:write(R#chunk { state = fetched,
-					 assign = Data }),
-		  Q = qlc:q([S || S <- mnesia:table(file_access),
-				  S#file_access.pid =:= Pid,
-				  S#file_access.piece_number =:= PieceNumber]),
-		  [P] = qlc:e(Q),
-		  case P#file_access.left - 1 of
+		  PieceNum = R#chunk.piece_number,
+		  mnesia:write(chunk, R#chunk { state = fetched,
+						assign = Data },
+			       write),
+		  Q1 = qlc:q([C || C <- mnesia:table(file_access),
+				   C#file_access.pid =:= Pid,
+				   C#file_access.piece_number =:= PieceNum]),
+		  [P] = qlc:e(Q1),
+		  NewP = P#file_access { left = P#file_access.left - 1 },
+		  mnesia:write(NewP),
+		  case NewP#file_access.left of
 		      0 ->
-			  mnesia:write(P#file_access { left = 0, state = fetched }),
-			  {store_piece, Pid};
+			  {full, Pid, R#chunk.piece_number};
 		      N when is_integer(N) ->
-			  mnesia:write(P#file_access { left = N }),
 			  ok
 		  end
       end),
-    case R of
-	{atomic, ok} ->
+    case Res of
+	{full, Pid, PieceNum} ->
+	    store_piece(Pid, PieceNum, FSPid, MasterPid),
 	    ok;
-	{atomic, {store_piece, Pid}} ->
-	    store_piece(Pid, PieceNumber, FSPid)
+	ok ->
+	    ok
     end.
-
-delete_chunks(Pid, PieceNumber) ->
-    mnesia:transaction(
-      fun () ->
-	      Q = qlc:q([C || C <- mnesia:table(chunk),
-			      C#chunk.pid =:= Pid,
-			      C#chunk.piece_number =:= PieceNumber,
-			      C#chunk.state =:= fetched]),
-	      lists:foreach(fun(C) -> mnesia:delete_object(C) end, qlc:e(Q)),
-	      ok
-      end).
-
-store_piece(Pid, PieceNumber, FSPid) ->
-    R = mnesia:transaction(
-      fun () ->
-	      Q = qlc:q([{Cs#chunk.offset,
-			  Cs#chunk.size,
-			  Cs#chunk.state,
-			  Cs#chunk.assign}
-			 || Cs <- mnesia:table(chunk),
-			    Cs#chunk.pid =:= Pid,
-			    Cs#chunk.piece_number =:= PieceNumber,
-			    Cs#chunk.state =:= fetched]),
-	      Q2 = qlc:keysort(1, Q),
-	      Q3 = qlc:q([D || {_Offset, _Size, _State, D} <- Q2]),
-	      Piece = qlc:e(Q3),
-	      ok = invariant_check(qlc:e(Q2)),
-	      case etorrent_fs:write_piece(FSPid,
-					   PieceNumber,
-					   list_to_binary(Piece)) of
-		  ok ->
-		      DataSize = lists:foldl(fun({_, S, _, _}, Acc) ->
-						 S + Acc
-					 end,
-					 0,
-					 Piece),
-		      ok = etorrent_t_state:got_piece_from_peer(StatePid, DataSize),
-		      ok = etorrent_t_state:downloaded_data(StatePid, DataSize),
-		      ok = etorrent_t_peer_group:broadcast_have(MasterPid, PieceNumber),
-		      {atomic, ok} = delete_chunks(Pid, PieceNumber),
-		      ok;
-		  wrong_hash ->
-		      putback_piece(Pid, PieceNumber),
-		      wrong_hash
-	      end
-      end).
 
 %%====================================================================
 %% Internal functions
@@ -307,7 +274,7 @@ assign_chunk_to_pid(Ans, Pid) ->
 			    Ans)
       end).
 
-ensure_chunking(Handle, PieceNum, StatePid, Size) ->
+ensure_chunking(Handle, PieceNum) ->
     mnesia:transaction(
       fun () ->
 	      Q = qlc:q([S || S <- mnesia:table(file_access),
@@ -315,16 +282,14 @@ ensure_chunking(Handle, PieceNum, StatePid, Size) ->
 			      S#file_access.piece_number =:= PieceNum]),
 	      [R] = qlc:e(Q),
 	      case R#file_access.state of
-		  chunked ->
-		      ok;
 		  not_fetched ->
-		      add_piece_chunks(R, Size),
+		      add_piece_chunks(R, etorrent_fs:size_of_ops(R#file_access.files)),
 		      Q1 = qlc:q([T || T <- mnesia:table(file_access),
 				       T#file_access.pid =:= Handle,
 				       T#file_access.state =:= not_fetched]),
 		      case length(qlc:e(Q1)) of
 			  0 ->
-			      etorrent_t_state:endgame(StatePid),
+			      {atomic, _} = etorrent_mnesia_operations:set_torrent_state(Handle, endgame),
 			      ok;
 			  N when is_integer(N) ->
 			      ok
@@ -333,6 +298,58 @@ ensure_chunking(Handle, PieceNum, StatePid, Size) ->
 	      end
       end).
 
-% XXX: Come up with a better shuffle function.
-shuffle(X) ->
-    X.
+add_chunk([], _) ->
+    ok;
+add_chunk([{PieceNumber, Offset, Size} | Rest], Pid) ->
+    ok = mnesia:write(#chunk{ ref = make_ref(),
+			      pid = Pid,
+			      piece_number = PieceNumber,
+			      offset = Offset,
+			      size = Size,
+			      assign = unknown,
+			      state = not_fetched}),
+    add_chunk(Rest, Pid).
+
+
+% XXX: Update to a state 'storing' and check for this when calling here.
+%   will avoid a little pesky problem that might occur.
+store_piece(ControlPid, PieceNumber, FSPid, MasterPid) ->
+    F = fun () ->
+	      Q = qlc:q([{Cs#chunk.offset,
+			  Cs#chunk.size,
+			  Cs#chunk.state,
+			  Cs#chunk.assign}
+			   || Cs <- mnesia:table(chunk),
+			      Cs#chunk.pid =:= ControlPid,
+			      Cs#chunk.piece_number =:= PieceNumber,
+			      Cs#chunk.state =:= fetched]),
+	      Q2 = qlc:keysort(1, Q),
+	      Q3 = qlc:q([D || {_Offset, _Size, _State, D} <- Q2]),
+	      Piece = qlc:e(Q3),
+	      Invariant = qlc:e(Q2),
+	      {Piece, Invariant}
+      end,
+    {atomic, {Piece, Invariant}} = mnesia:transaction(F),
+    ok = invariant_check(Invariant),
+    case etorrent_fs:write_piece(FSPid,
+				 PieceNumber,
+				 list_to_binary(Piece)) of
+	ok ->
+	    DataSize = lists:foldl(fun({_, S, _, _}, Acc) ->
+					   S + Acc
+				   end,
+				   0,
+				   Piece),
+	    {atomic, ok} = etorrent_mnesia_operations:set_torrent_state(ControlPid,
+									{subtract_left, DataSize}),
+	    {atomic, _} =
+		etorrent_mnesia_operations:set_torrent_state(ControlPid,
+							     {add_downloaded, DataSize}),
+	    ok = etorrent_t_peer_group:broadcast_have(MasterPid, PieceNumber),
+	    ok;
+	wrong_hash ->
+	    putback_piece(ControlPid, PieceNumber),
+	    wrong_hash
+    end.
+
+

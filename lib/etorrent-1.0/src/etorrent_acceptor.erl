@@ -118,9 +118,9 @@ handshake(Socket) ->
 
 lookup_infohash(Socket, ReservedBytes, InfoHash, PeerId) ->
     case etorrent_mnesia_operations:select_torrent(InfoHash) of
-	[#torrent.storer_pid = Pid] ->
+	{atomic, [#torrent.storer_pid = Pid]} ->
 	    inform_peer_master(Socket, Pid, ReservedBytes, PeerId);
-	[] ->
+	{atomic, []} ->
 	    error_logger:info_report([connection_on_unknown_infohash,
 				      InfoHash]),
 	    gen_tcp:close(Socket),

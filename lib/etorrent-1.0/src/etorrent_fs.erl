@@ -15,7 +15,7 @@
 
 %% API
 -export([start_link/2, load_file_information/2,
-	 stop/1, read_piece/2, write_piece/3]).
+	 stop/1, read_piece/2, write_piece/3, size_of_ops/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -29,6 +29,16 @@
 %%====================================================================
 %% API
 %%====================================================================
+
+%%--------------------------------------------------------------------
+%% Function: size_of_ops(operation_list) -> integer()
+%% Description: Return the file size of the given operations
+%%--------------------------------------------------------------------
+size_of_ops(Ops) ->
+    lists:foldl(fun ({_Path, _Offset, Size}, Total) ->
+                       Size + Total end,
+               0,
+               Ops).
 
 %%--------------------------------------------------------------------
 %% Function: start_link/0

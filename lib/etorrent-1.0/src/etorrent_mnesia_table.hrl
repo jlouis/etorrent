@@ -7,8 +7,8 @@
 		  left, % How many bytes are there left before we have the full torrent
 		  uploaded, % How many bytes have we uploaded
 		  downloaded, % How many bytes have we downloaded
-		  complete = 0, % How many people have a completed file?
-		  incomplete = 0, % How many people are downloaded
+		  seeders = 0, % How many people have a completed file?
+		  leechers = 0, % How many people are downloaded
 		  state}). % What is our state: leecher | unknown | seeder
 
 
@@ -27,16 +27,18 @@
 -record(peer,     {map,
 		   info}).
 
-%% Histogram entries
+%% Histogram entries, maps a frequency to its entries
 -record(histogram, {ref, % unique reference
 		    pid, % pid owning the histogram entry
-		    todo}).
+		    frequency, % Key giving a frequency
+		    entries}). % set containing entries of piece numbers
 
 %% Individual pieces are represented via the file_access record
 -record(file_access, {hash, % Hash of piece
 		      piece_number, % piece number index
 		      pid, % Pid owning this piece
 		      files, % File operations to manipulate piece
+		      frequency = 0, % How often does this piece occur at others?
 		      left = unknown, % Number of chunks left...
 		      state}). % state is: fetched | not_fetched | chunked
 

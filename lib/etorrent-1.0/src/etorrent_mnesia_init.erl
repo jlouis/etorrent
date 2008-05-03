@@ -18,6 +18,8 @@ init() ->
 			[{attributes, record_info(fields, peer)}]),
     mnesia:create_table(file_access,
 			[{attributes, record_info(fields, file_access)}]),
+    mnesia:create_table(histogram,
+			[{attributes, record_info(fields, histogram)}]),
     mnesia:create_table(chunk,
 			[{attributes, record_info(fields, chunk)}]).
 
