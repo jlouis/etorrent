@@ -314,16 +314,16 @@ add_chunk([{PieceNumber, Offset, Size} | Rest], Pid) ->
 %   will avoid a little pesky problem that might occur.
 store_piece(ControlPid, PieceNumber, FSPid, MasterPid) ->
     F = fun () ->
-	      Q = qlc:q([{Cs#chunk.offset,
-			  Cs#chunk.size,
-			  Cs#chunk.state,
-			  Cs#chunk.assign}
+		Q = qlc:q([{Cs#chunk.offset,
+			    Cs#chunk.size,
+			    Cs#chunk.state,
+			    Cs#chunk.assign}
 			   || Cs <- mnesia:table(chunk),
 			      Cs#chunk.pid =:= ControlPid,
 			      Cs#chunk.piece_number =:= PieceNumber,
 			      Cs#chunk.state =:= fetched]),
-	      Q2 = qlc:keysort(1, Q),
-	      Q3 = qlc:q([D || {_Offset, _Size, _State, D} <- Q2]),
+		Q2 = qlc:keysort(1, Q),
+		Q3 = qlc:q([D || {_, _, _, D} <- Q]),
 	      Piece = qlc:e(Q3),
 	      Invariant = qlc:e(Q2),
 	      {Piece, Invariant}
@@ -334,11 +334,9 @@ store_piece(ControlPid, PieceNumber, FSPid, MasterPid) ->
 				 PieceNumber,
 				 list_to_binary(Piece)) of
 	ok ->
-	    DataSize = lists:foldl(fun({_, S, _, _}, Acc) ->
-					   S + Acc
-				   end,
+	    DataSize = lists:foldl(fun({_, S, _, _}, Acc) -> S + Acc end,
 				   0,
-				   Piece),
+				   Invariant),
 	    {atomic, ok} = etorrent_mnesia_operations:set_torrent_state(ControlPid,
 									{subtract_left, DataSize}),
 	    {atomic, _} =
