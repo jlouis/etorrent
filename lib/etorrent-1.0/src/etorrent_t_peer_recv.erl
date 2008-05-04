@@ -332,7 +332,6 @@ handle_message({bitfield, BitField}, S) ->
     end;
 handle_message({piece, Index, Offset, Data}, S) ->
     Len = size(Data),
-    error_logger:info_report([got_a_piece, Index, Offset]),
     etorrent_mnesia_operations:peer_statechange(self(), {downloaded, Len}),
     case handle_got_chunk(Index, Offset, Data, Len, S) of
 	{ok, NS} ->
@@ -387,31 +386,25 @@ unqueue_all_pieces(S) ->
 %%  and choking.
 %%--------------------------------------------------------------------
 try_to_queue_up_pieces(S) when S#state.remote_choked == true ->
-    error_logger:info_report(queue_choked),
     {ok, S};
 try_to_queue_up_pieces(S) ->
     PiecesToQueue = ?BASE_QUEUE_LEVEL - sets:size(S#state.remote_request_set),
-    error_logger:info_report([selecting_chunks, self(), S#state.torrent_handle]),
     case etorrent_mnesia_chunks:pick_chunks(self(),
 					    S#state.torrent_handle,
 					    S#state.piece_set,
 					    PiecesToQueue) of
 	not_interested ->
-	    error_logger:info_report(not_interested),
 	    etorrent_t_peer_send:not_interested(S#state.send_pid),
 	    {ok, S#state { local_interested = false}};
 	{ok, Items} ->
-	    error_logger:info_report(queueing_items),
 	    queue_items(Items, S);
 	{partial, Items, _} ->
 	    queue_items(Items, S) % XXX: I don't think I need something more here
     end.
 
 queue_items([], S) ->
-    error_logger:info_report(queue_empty),
     {ok, S};
 queue_items([Chunk | Rest], S) ->
-    error_logger:info_report([queueing, Chunk]),
     etorrent_t_peer_send:local_request(S#state.send_pid,
 				       Chunk#chunk.piece_number,
 				       Chunk#chunk.offset,

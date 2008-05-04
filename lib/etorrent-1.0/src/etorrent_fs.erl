@@ -175,7 +175,6 @@ write_piece_data(<<>>, [], S) ->
     {ok, S};
 write_piece_data(Data, [{Path, Offset, Size} | Rest], S) ->
     <<Chunk:Size/binary, Remaining/binary>> = Data,
-    error_logger:info_report([writing, Path, Offset, Size]),
     case dict:find(Path, S#state.file_process_dict) of
 	{ok, Pid} ->
 	    Ref = make_ref(),

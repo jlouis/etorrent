@@ -108,7 +108,6 @@ chunkify_new_piece(Handle, PieceSet) ->
 			     Handle,
 			     sets:from_list(L)) of
 			  {atomic, {ok, PieceNum}} ->
-			      error_logger:info_report([selected, PieceNum]),
 			      ensure_chunking(Handle, PieceNum),
 			      ok
 		      end
