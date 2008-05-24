@@ -27,12 +27,6 @@
 -record(peer,     {map,
 		   info}).
 
-%% Histogram entries, maps a frequency to its entries
--record(histogram, {ref, % unique reference
-		    pid, % pid owning the histogram entry
-		    frequency, % Key giving a frequency
-		    entries}). % set containing entries of piece numbers
-
 %% Individual pieces are represented via the file_access record
 -record(file_access, {hash, % Hash of piece
 		      piece_number, % piece number index

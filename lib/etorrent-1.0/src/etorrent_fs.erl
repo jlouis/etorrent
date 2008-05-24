@@ -93,6 +93,7 @@ handle_call({read_piece, PieceNum}, _From, S) ->
     {ok, Data, NS} = read_pieces_and_assemble(Operations, [], S),
     {reply, {ok, Data}, NS};
 handle_call({write_piece, PieceNum, Data}, _From, S) ->
+    error_logger:info_report([storing_piece, PieceNum]),
     {atomic, [#file_access { hash = Hash, files = FilesToWrite }]} =
 	etorrent_mnesia_operations:file_access_get_piece(S#state.file_mapping_handle,
 							 PieceNum),
