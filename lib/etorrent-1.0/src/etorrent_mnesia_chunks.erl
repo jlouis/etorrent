@@ -103,14 +103,9 @@ chunkify_new_piece(Handle, PieceSet) ->
 	      case Eligible of
 		  [] ->
 		      none_eligible;
-		  L when is_list(L) ->
-		      case etorrent_mnesia_histogram:find_rarest_piece(
-			     Handle,
-			     sets:from_list(L)) of
-			  {atomic, {ok, PieceNum}} ->
-			      ensure_chunking(Handle, PieceNum),
-			      ok
-		      end
+		  [P | _] ->
+		      ensure_chunking(Handle, P),
+		      ok
 	      end
       end).
 

@@ -249,9 +249,6 @@ handle_info(_Info, State) ->
 %% The return value is ignored.
 %%--------------------------------------------------------------------
 terminate(_Reason, S) ->
-    ok = etorrent_mnesia_histogram:remove_bitfield(
-	   S#state.torrent_handle,
-	   S#state.piece_set),
     unqueue_all_pieces(S),
     catch(etorrent_t_peer_send:stop(S#state.send_pid)),
     ok.
@@ -291,9 +288,6 @@ handle_message({have, PieceNum}, S) ->
     case piece_valid(S#state.torrent_handle, PieceNum) of
 	true ->
 	    PieceSet = sets:add_element(PieceNum, S#state.piece_set),
-	    {atomic, ok} = etorrent_mnesia_histogram:increase_piece(
-			     S#state.torrent_handle,
-			     PieceNum),
 	    NS = S#state{piece_set = PieceSet},
 	    case etorrent_mnesia_operations:file_access_piece_interesting(
 		   S#state.torrent_handle,
@@ -313,8 +307,6 @@ handle_message({bitfield, BitField}, S) ->
 	    {atomic, Size} = etorrent_mnesia_operations:get_num_pieces(S#state.torrent_handle),
 	    {ok, PieceSet} =
 		etorrent_peer_communication:destruct_bitfield(Size, BitField),
-	    ok = etorrent_mnesia_histogram:remote_bitfield(S#state.torrent_handle,
-								     PieceSet),
 	    case etorrent_mnesia_operations:check_interest(S#state.torrent_handle,
 							   PieceSet) of
 		{atomic, interested} ->
