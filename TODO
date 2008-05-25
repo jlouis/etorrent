@@ -6,6 +6,23 @@
 --   Keep the style please. Can be read with emacs org-mode
 ----------------------------------------------------------------------
 
+* Optimize the mnesia code.
+  Currently, the mnesia code is crap. It can be optimized quite a lot
+  and it will probably make the code run a lot faster than now. It has
+  the wrong kind of DB-schema and performs as pure shit. There are no
+  indexes and too much crap is placed inside expensive transactions.
+
+  We must find the functions that can go outside transactions and then
+  place it outside.
+** Step 1: Rework the 'torrent' table.
+   It seems utter wrong to use the infohash as the id, when the rest
+   of the code uses the Pid. Consider make Pid the primary key of the
+   table or use something else as the unique identifier.
+
+   Should it be the Pid or something else? Something else means that
+   we don't rely on a Pid that can die unexpectedly, so this is
+   probably better. The id can be stored in the tracking map along
+   with the infohash (which I don't think we use for anything else).
 * We seem to be passing around a master_pid we are not using anymore.
   Consider killing this master pid!
 
