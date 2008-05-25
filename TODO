@@ -14,6 +14,7 @@
 
   We must find the functions that can go outside transactions and then
   place it outside.
+
 ** Step 1: Rework the 'torrent' table.
    It seems utter wrong to use the infohash as the id, when the rest
    of the code uses the Pid. Consider make Pid the primary key of the
@@ -23,6 +24,9 @@
    we don't rely on a Pid that can die unexpectedly, so this is
    probably better. The id can be stored in the tracking map along
    with the infohash (which I don't think we use for anything else).
+
+   The tracking_map has already been updated.
+
 * We seem to be passing around a master_pid we are not using anymore.
   Consider killing this master pid!
 
@@ -45,10 +49,6 @@
 - Pick functions at random, and document what they are doing.
   It is /especially/ important to document library calls and
    non-standard internal functions in OTP modules.
-
-------------------------------------------------------------
-VERSION ++ (Not decided yet)
-------------------------------------------------------------
 
 * TorrentPeerMaster
 - Figure out a better choking/unchoking algorithm.
