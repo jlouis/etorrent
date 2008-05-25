@@ -373,9 +373,7 @@ unqueue_all_pieces(S) ->
 
 %%--------------------------------------------------------------------
 %% Function: try_to_queue_up_requests(state()) -> {ok, state()}
-%% Description: Try to queue up requests at the other end. This function
-%%  differs from queue_up_requests in the sense it also handles interest
-%%  and choking.
+%% Description: Try to queue up requests at the other end.
 %%--------------------------------------------------------------------
 try_to_queue_up_pieces(S) when S#state.remote_choked == true ->
     {ok, S};
@@ -391,7 +389,7 @@ try_to_queue_up_pieces(S) ->
 	{ok, Items} ->
 	    queue_items(Items, S);
 	{partial, Items, _} ->
-	    queue_items(Items, S) % XXX: I don't think I need something more here
+	    queue_items(Items, S)
     end.
 
 queue_items([], S) ->
