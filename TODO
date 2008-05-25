@@ -9,15 +9,20 @@
 * We seem to be passing around a master_pid we are not using anymore.
   Consider killing this master pid!
 
-* Consider making the histogram into mnesia
-  Rather than using a histogram as it is now, rewrite it into mnesia
-  tables. This would, hopefully, make for some much better code that
-  is smaller than now. Looks like the piecemap would already be there
-  in file_access, and the histogram list can easily be added I think.
-
 * We are currently ignoring the endgame. This can be fixed easily though.
+  The endgame is not handled at all. We do check for the endgame
+  however. We should then alter the piece picking strategy a
+  bit. We just pick out all eligible chunks for a peer first and then
+  pick the required number of chunks randomly.
+
+* Use highwatermark/lowwatermark for queued pieces.
+  Rather than queue new pieces one at a time, we could just queue on
+  some watermarks. This lowers the amount of code traversed a great
+  deal. Also: it paves the way for maintaining queue length as a
+  bandwidth*delay product like construction.
 
 * Only count downloaded bytes when we _know_ the bytes are from the torrent in question
+
 
 * DOCUMENTATION!
 - Pick functions at random, and document what they are doing.
@@ -27,11 +32,6 @@
 ------------------------------------------------------------
 VERSION ++ (Not decided yet)
 ------------------------------------------------------------
-
-
-* Use Edoc
-- This takes time, so pick a single module at a time and correct it
-
 
 * TorrentPeerMaster
 - Figure out a better choking/unchoking algorithm.
