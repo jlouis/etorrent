@@ -1,5 +1,6 @@
--record(tracking_map, {filename,
-		       supervisor_pid}).
+-record(tracking_map, {id,  %% Unique identifier of torrent
+		       filename, %% The filename
+		       supervisor_pid}). %% The Pid of who is supervising the torrent
 
 %% A single torrent is represented as the 'torrent' record
 -record(torrent, {info_hash, % Info hash of the torrent

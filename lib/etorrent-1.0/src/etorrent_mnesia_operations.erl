@@ -13,7 +13,7 @@
 
 
 %% API
--export([new_torrent/2, find_torrents_by_file/1, cleanup_torrent_by_pid/1,
+-export([new_torrent/3, find_torrents_by_file/1, cleanup_torrent_by_pid/1,
 	 store_torrent/3, set_torrent_state/2, select_torrent/2,
 	 select_torrent/1, delete_torrent/1, delete_torrent_by_pid/1,
 	 store_peer/4, select_peer_ip_port_by_pid/1, delete_peer/1,
@@ -37,9 +37,10 @@
 %% Description: Add a new torrent given by File with the Supervisor
 %%   pid as given to the database structure.
 %%--------------------------------------------------------------------
-new_torrent(File, Supervisor) ->
+new_torrent(File, Supervisor, Id) ->
     T = fun () ->
-		mnesia:write(#tracking_map { filename = File,
+		mnesia:write(#tracking_map { id = Id,
+					     filename = File,
 					     supervisor_pid = Supervisor })
 	end,
     mnesia:transaction(T).

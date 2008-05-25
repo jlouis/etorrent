@@ -13,7 +13,8 @@
 -define(SERVER, ?MODULE).
 -define(RANDOM_MAX_SIZE, 1000000000).
 
--record(state, {local_peer_id}).
+-record(state, {local_peer_id,
+	        id_counter}).
 
 %% API
 
@@ -31,11 +32,12 @@ stop_torrent(File) ->
 
 %% Callbacks
 init(_Args) ->
-    {ok, #state { local_peer_id = generate_peer_id()}}.
+    {ok, #state { local_peer_id = generate_peer_id(),
+		  id_counter = 0}}.
 
 handle_cast({start_torrent, F}, S) ->
-    spawn_new_torrent(F, S),
-    {noreply, S};
+    NS = spawn_new_torrent(F, S),
+    {noreply, NS};
 handle_cast({stop_torrent, F}, S) ->
     stop_torrent(F, S),
     {noreply, S}.
@@ -63,7 +65,8 @@ spawn_new_torrent(F, S) ->
     {ok, TorrentSup} =
 	etorrent_t_pool_sup:add_torrent(F, S#state.local_peer_id),
     erlang:monitor(process, TorrentSup),
-    etorrent_mnesia_operations:new_torrent(F, TorrentSup).
+    etorrent_mnesia_operations:new_torrent(F, TorrentSup, S#state.id_counter + 1),
+    S#state { id_counter = S#state.id_counter + 1 }.
 
 stop_torrent(F, S) ->
     error_logger:info_msg("Stopping ~p~n", [F]),
