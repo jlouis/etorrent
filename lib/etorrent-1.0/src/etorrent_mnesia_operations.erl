@@ -38,12 +38,9 @@
 %%   pid as given to the database structure.
 %%--------------------------------------------------------------------
 new_torrent(File, Supervisor, Id) ->
-    T = fun () ->
-		mnesia:write(#tracking_map { id = Id,
-					     filename = File,
-					     supervisor_pid = Supervisor })
-	end,
-    mnesia:transaction(T).
+    mnesia:dirty_write(#tracking_map { id = Id,
+				       filename = File,
+				       supervisor_pid = Supervisor }).
 
 %%--------------------------------------------------------------------
 %% Function: check_interested(Handle, PieceSet) ->
