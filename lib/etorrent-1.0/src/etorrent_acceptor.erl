@@ -116,10 +116,10 @@ handshake(Socket) ->
 	    ok
     end.
 
-lookup_infohash(Socket, ReservedBytes, InfoHash, PeerId) ->
-    case etorrent_mnesia_operations:select_torrent(InfoHash) of
-	{atomic, [#torrent.storer_pid = Pid]} ->
-	    inform_peer_master(Socket, Pid, ReservedBytes, PeerId);
+lookup_infohash(Socket, _ReservedBytes, InfoHash, _PeerId) ->
+    case etorrent_mnesia_operations:tracking_map_by_infohash(InfoHash) of
+	{atomic, [#tracking_map.id = _Id]} ->
+	    not_implemented; % TODO: Figure out a way to reimplement accepts.
 	{atomic, []} ->
 	    error_logger:info_report([connection_on_unknown_infohash,
 				      InfoHash]),
@@ -127,18 +127,18 @@ lookup_infohash(Socket, ReservedBytes, InfoHash, PeerId) ->
 	    ok
     end.
 
-inform_peer_master(Socket, Pid, ReservedBytes, PeerId) ->
-    {ok, {Address, Port}} = inet:peername(Socket),
-    case etorrent_t_peer_group:new_incoming_peer(Pid, Address, Port) of
-	{ok, PeerProcessPid} ->
-	    ok = gen_tcp:controlling_process(Socket, PeerProcessPid),
-	    etorrent_t_peer_recv:complete_handshake(PeerProcessPid,
-						    ReservedBytes,
-						    Socket,
-						    PeerId),
-	    ok;
-	bad_peer ->
-	    error_logger:info_report([peer_id_is_bad, PeerId]),
-	    gen_tcp:close(Socket),
-	    ok
-    end.
+%% inform_peer_master(Socket, Pid, ReservedBytes, PeerId) ->
+%%     {ok, {Address, Port}} = inet:peername(Socket),
+%%     case etorrent_t_peer_group:new_incoming_peer(Pid, Address, Port) of
+%% 	{ok, PeerProcessPid} ->
+%% 	    ok = gen_tcp:controlling_process(Socket, PeerProcessPid),
+%% 	    etorrent_t_peer_recv:complete_handshake(PeerProcessPid,
+%% 						    ReservedBytes,
+%% 						    Socket,
+%% 						    PeerId),
+%% 	    ok;
+%% 	bad_peer ->
+%% 	    error_logger:info_report([peer_id_is_bad, PeerId]),
+%% 	    gen_tcp:close(Socket),
+%% 	    ok
+%%     end.

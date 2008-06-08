@@ -13,13 +13,14 @@
 
 
 %% API
--export([new_torrent/3, find_torrents_by_file/1, cleanup_torrent_by_pid/1,
-	 store_torrent/3, set_torrent_state/2, select_torrent/2,
+-export([new_torrent/3, cleanup_torrent_by_pid/1,
+	 store_torrent/2, set_torrent_state/2, select_torrent/2,
 	 select_torrent/1, delete_torrent/1, delete_torrent_by_pid/1,
 	 store_peer/4, select_peer_ip_port_by_pid/1, delete_peer/1,
 	 peer_statechange/2, is_peer_connected/3, select_interested_peers/1,
 	 reset_round/1, delete_peers/1, peer_statechange_infohash/2,
 
+	 tracking_map_by_infohash/1, tracking_map_by_file/1,
 	 torrent_size/1, get_bitfield/1, get_num_pieces/1, check_interest/2,
 
 	 file_access_insert/5, file_access_insert/2, file_access_set_state/3,
@@ -64,10 +65,10 @@ check_interest(Pid, PieceSet) ->
       end).
 
 %%--------------------------------------------------------------------
-%% Function: find_torrents_by_file(Filename) -> [SupervisorPid]
+%% Function: tracking_map_by_file(Filename) -> [SupervisorPid]
 %% Description: Find torrent specs matching the filename in question.
 %%--------------------------------------------------------------------
-find_torrents_by_file(Filename) ->
+tracking_map_by_file(Filename) ->
     mnesia:transaction(
       fun () ->
 	      Query = qlc:q([T#tracking_map.filename || T <- mnesia:table(tracking_map),
@@ -75,6 +76,17 @@ find_torrents_by_file(Filename) ->
 	      qlc:e(Query)
       end).
 
+%%--------------------------------------------------------------------
+%% Function: tracking_map_by_infohash(Infohash) -> [#tracking_map]
+%% Description: Find tracking map matching a given infohash.
+%%--------------------------------------------------------------------
+tracking_map_by_infohash(InfoHash) ->
+    mnesia:transaction(
+      fun () ->
+	      Q = qlc:q([T || T <- mnesia:table(tracking_map),
+			      T#tracking_map.info_hash =:= InfoHash]),
+	      qlc:e(Q)
+      end).
 
 %%--------------------------------------------------------------------
 %% Function: get_num_pieces(Pid) -> integer()
@@ -140,10 +152,9 @@ cleanup_torrent_by_pid(Pid) ->
 %% Description: Store that InfoHash is controlled by StorerPid with assigned
 %%  monitor reference MonitorRef
 %%--------------------------------------------------------------------
-store_torrent(InfoHash, StorerPid, {{uploaded, U}, {downloaded, D}, {left, L}}) ->
+store_torrent(Id, {{uploaded, U}, {downloaded, D}, {left, L}}) ->
     F = fun() ->
-		mnesia:write(#torrent { info_hash = InfoHash,
-					storer_pid = StorerPid,
+		mnesia:write(#torrent { id = Id,
 					left = L,
 					uploaded = U,
 					downloaded = D,
@@ -155,7 +166,7 @@ store_torrent(InfoHash, StorerPid, {{uploaded, U}, {downloaded, D}, {left, L}}) 
 %% Function: set_torrent_state(InfoHash, State) -> ok | not_found
 %% Description: Set the state of an info hash.
 %%--------------------------------------------------------------------
-set_torrent_state(Pid, S) when is_pid(Pid) ->
+set_torrent_state(Id, S) when is_integer(Id) ->
     {atomic, InfoHash} = mnesia:transaction(
 			   fun () ->
 				   Q = qlc:q([R || R <- mnesia:table(torrent),

@@ -1,10 +1,11 @@
 -record(tracking_map, {id,  %% Unique identifier of torrent
 		       filename, %% The filename
-		       supervisor_pid}). %% The Pid of who is supervising the torrent
+		       supervisor_pid,%% The Pid of who is supervising the torrent
+		       info_hash %% Info hash of the torrent in question. May be unknown.
+		      }).
 
 %% A single torrent is represented as the 'torrent' record
--record(torrent, {info_hash, % Info hash of the torrent
-		  storer_pid, % Which pid is responsible for it
+-record(torrent, {id, % Unique identifier of torrent, monotonically increasing...
 		  left, % How many bytes are there left before we have the full torrent
 		  uploaded, % How many bytes have we uploaded
 		  downloaded, % How many bytes have we downloaded
