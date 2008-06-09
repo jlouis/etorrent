@@ -14,7 +14,7 @@
 
 %% API
 -export([new_torrent/3, cleanup_torrent_by_pid/1,
-	 store_torrent/2, set_torrent_state/2, select_torrent/2,
+	 store_torrent/2, set_torrent_state/2,
 	 select_torrent/1, delete_torrent/1, delete_torrent_by_pid/1,
 	 store_peer/4, select_peer_ip_port_by_pid/1, delete_peer/1,
 	 peer_statechange/2, is_peer_connected/3, select_interested_peers/1,
@@ -167,19 +167,10 @@ store_torrent(Id, {{uploaded, U}, {downloaded, D}, {left, L}}) ->
 %% Description: Set the state of an info hash.
 %%--------------------------------------------------------------------
 set_torrent_state(Id, S) when is_integer(Id) ->
-    {atomic, InfoHash} = mnesia:transaction(
-			   fun () ->
-				   Q = qlc:q([R || R <- mnesia:table(torrent),
-						   R#torrent.storer_pid =:= Pid]),
-				   [IH] = qlc:e(Q),
-				   IH
-			   end),
-    set_torrent_state(InfoHash, S);
-set_torrent_state(InfoHash, State) ->
     F = fun() ->
-		case mnesia:read(torrent, InfoHash, write) of
+		case mnesia:read(torrent, Id, write) of
 		    [T] ->
-			New = case State of
+			New = case S of
 				  unknown ->
 				      T#torrent{state = unknown};
 				  leeching ->
@@ -206,34 +197,11 @@ set_torrent_state(InfoHash, State) ->
     mnesia:transaction(F).
 
 %%--------------------------------------------------------------------
-%% Function: select_torrent(InfoHash, Pid) -> Rows
-%% Description: Return rows matching infohash and pid
+%% Function: select_torrent(Id, Pid) -> Rows
+%% Description: Return the torrent identified by Id
 %%--------------------------------------------------------------------
-select_torrent(InfoHash, Pid) ->
-    Q = qlc:q([IH || IH <- mnesia:table(torrent),
-		     IH#torrent.info_hash =:= InfoHash,
-		     IH#torrent.storer_pid =:= Pid]),
-    qlc:e(Q).
-
-%%--------------------------------------------------------------------
-%% Function: select_torrent(Id) -> Pids
-%%   Id = infohash() | pid()
-%% Description: Return all rows matching infohash
-%%--------------------------------------------------------------------
-select_torrent(Pid) when is_pid(Pid) ->
-    mnesia:transaction(
-      fun () ->
-	      error_logger:info_report(selecting_by_pid),
-	      Q = qlc:q([IH || IH <- mnesia:table(torrent),
-			       IH#torrent.storer_pid =:= Pid]),
-	      qlc:e(Q)
-      end);
-select_torrent(InfoHash) when is_binary(InfoHash) ->
-    mnesia:transaction(
-      fun () ->
-	      error_logger:info_report(selecting_by_hash),
-	      mnesia:read(torrent, InfoHash, read)
-      end).
+select_torrent(Id) ->
+    mnesia:dirty_read(torrent, Id).
 
 %%--------------------------------------------------------------------
 %% Function: delete_torrent(InfoHash) -> transaction
@@ -260,15 +228,13 @@ delete_torrent(Torrent) when is_record(Torrent, torrent) ->
 %% Function: delete_torrent_by_pid(Pid) -> transaction
 %% Description: Remove the row with Pid in it
 %%--------------------------------------------------------------------
-delete_torrent_by_pid(Pid) ->
-    error_logger:info_report([delete_torrent_by_pid, Pid]),
-    F = fun() ->
-		Q = qlc:q([T || T <- mnesia:table(torrent),
-				T#torrent.storer_pid =:= Pid]),
-		lists:foreach(fun (Tr) -> mnesia:delete(Tr) end, qlc:e(Q))
+delete_torrent_by_pid(Id) ->
+    error_logger:info_report([delete_torrent_by_pid, Id]),
+    F = fun () ->
+		Tr = mnesia:read(torrent, Id),
+		mnesia:delete(Tr)
 	end,
     mnesia:transaction(F).
-
 
 %%--------------------------------------------------------------------
 %% Function: store_peer(IP, Port, InfoHash, Pid) -> transaction
