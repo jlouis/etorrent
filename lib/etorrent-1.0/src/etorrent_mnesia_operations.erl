@@ -13,14 +13,16 @@
 
 
 %% API
--export([new_torrent/3, cleanup_torrent_by_pid/1,
+-export([cleanup_torrent_by_pid/1,
 	 store_torrent/2, set_torrent_state/2,
 	 select_torrent/1, delete_torrent/1, delete_torrent_by_pid/1,
 	 store_peer/4, select_peer_ip_port_by_pid/1, delete_peer/1,
 	 peer_statechange/2, is_peer_connected/3, select_interested_peers/1,
 	 reset_round/1, delete_peers/1, peer_statechange_infohash/2,
 
+	 tracking_map_new/3,
 	 tracking_map_by_infohash/1, tracking_map_by_file/1,
+
 	 torrent_size/1, get_bitfield/1, get_num_pieces/1, check_interest/2,
 
 	 file_access_insert/5, file_access_insert/2, file_access_set_state/3,
@@ -34,11 +36,11 @@
 %% API
 %%====================================================================
 %%--------------------------------------------------------------------
-%% Function: new_torrent(Filename, Supervisor) -> ok
+%% Function: tracking_map_new(Filename, Supervisor) -> ok
 %% Description: Add a new torrent given by File with the Supervisor
 %%   pid as given to the database structure.
 %%--------------------------------------------------------------------
-new_torrent(File, Supervisor, Id) ->
+tracking_map_new(File, Supervisor, Id) ->
     mnesia:dirty_write(#tracking_map { id = Id,
 				       filename = File,
 				       supervisor_pid = Supervisor }).

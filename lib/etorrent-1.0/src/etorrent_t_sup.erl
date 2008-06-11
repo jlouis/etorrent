@@ -12,7 +12,7 @@
 -behaviour(supervisor).
 
 %% API
--export([start_link/2, add_file_system/3, add_peer_group/6,
+-export([start_link/3, add_file_system/3, add_peer_group/6,
 	 add_tracker/5, add_peer_pool/1,
 	 add_file_system_pool/1]).
 
@@ -22,8 +22,8 @@
 %%====================================================================
 %% API functions
 %%====================================================================
-start_link(File, Local_PeerId) ->
-    supervisor:start_link(?MODULE, [File, Local_PeerId]).
+start_link(File, Local_PeerId, Id) ->
+    supervisor:start_link(?MODULE, [File, Local_PeerId, Id]).
 
 %%--------------------------------------------------------------------
 %% Func: add_filesystem/3
@@ -84,10 +84,10 @@ add_peer_pool(Pid) ->
 %% to find out about restart strategy, maximum restart frequency and child
 %% specifications.
 %%--------------------------------------------------------------------
-init([File, Local_PeerId]) ->
+init([File, Local_PeerId, Id]) ->
     Control =
 	{control,
-	 {etorrent_t_control, start_link_load, [File, Local_PeerId]},
+	 {etorrent_t_control, start_link_load, [File, Local_PeerId, Id]},
 	 transient, 2000, worker, [etorrent_t_control]},
     {ok, {{one_for_all, 1, 60}, [Control]}}.
 
