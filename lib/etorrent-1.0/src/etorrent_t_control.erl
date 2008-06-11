@@ -12,7 +12,7 @@
 -behaviour(gen_fsm).
 
 %% API
--export([start_link_load/2, token/1, start/1, stop/1, load_new_torrent/3,
+-export([start_link_load/3, token/1, start/1, stop/1, load_new_torrent/3,
 	torrent_checked/2, tracker_error_report/2, seed/1,
 	tracker_warning_report/2]).
 
@@ -21,7 +21,9 @@
 	 stopped/2, handle_sync_event/4, handle_info/3, terminate/3,
 	 code_change/4]).
 
--record(state, {path = none,
+-record(state, {id = none,
+
+		path = none,
 		torrent = none,
 		peer_id = none,
 		work_dir = none,
@@ -43,13 +45,13 @@
 %% initialize. To ensure a synchronized start-up procedure, this function
 %% does not return until Module:init/1 has returned.
 %%--------------------------------------------------------------------
-start_link_load(File, Local_PeerId) ->
-    {ok, Pid} = start_link(self()),
+start_link_load(File, Local_PeerId, Id) ->
+    {ok, Pid} = start_link([self(), Id]),
     load_new_torrent(Pid, File, Local_PeerId),
     {ok, Pid}.
 
-start_link(Parent) ->
-    gen_fsm:start_link(?MODULE, [Parent], []).
+start_link([Parent, Id]) ->
+    gen_fsm:start_link(?MODULE, [Parent, Id], []).
 
 token(Pid) ->
     gen_fsm:send_event(Pid, token).
@@ -87,9 +89,10 @@ seed(Pid) ->
 %% gen_fsm:start_link/3,4, this function is called by the new process to
 %% initialize.
 %%--------------------------------------------------------------------
-init([Parent]) ->
+init([Parent, Id]) ->
     {ok, WorkDir} = application:get_env(etorrent, dir),
     {ok, initializing, #state{work_dir = WorkDir,
+			      id = Id,
 			      parent_pid = Parent}}.
 
 %%--------------------------------------------------------------------
@@ -130,8 +133,7 @@ check_and_start_torrent(FS, S) ->
     error_logger:info_report(adding_state),
     InfoHash = etorrent_metainfo:get_infohash(S#state.torrent),
     {atomic, _} =
-	etorrent_mnesia_operations:store_torrent(InfoHash,
-						 S#state.parent_pid,
+	etorrent_mnesia_operations:store_torrent(S#state.id,
 						 {{uploaded, 0},
 						  {downloaded, 0},
 						  {left, calculate_amount_left(S#state.parent_pid)}}),

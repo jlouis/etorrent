@@ -63,14 +63,14 @@ code_change(_OldVsn, State, _Extra) ->
 %% Internal functions
 spawn_new_torrent(F, S) ->
     {ok, TorrentSup} =
-	etorrent_t_pool_sup:add_torrent(F, S#state.local_peer_id),
+	etorrent_t_pool_sup:add_torrent(F, S#state.local_peer_id, S#state.id_counter),
     erlang:monitor(process, TorrentSup),
-    etorrent_mnesia_operations:new_torrent(F, TorrentSup, S#state.id_counter + 1),
+    etorrent_mnesia_operations:new_torrent(F, TorrentSup, S#state.id_counter),
     S#state { id_counter = S#state.id_counter + 1 }.
 
 stop_torrent(F, S) ->
     error_logger:info_msg("Stopping ~p~n", [F]),
-    case etorrent_mnesia_operations:find_torrents_by_file(F) of
+    case etorrent_mnesia_operations:tracking_map_by_file(F) of
 	{atomic, [F]} ->
 	    etorrent_t_pool_sup:stop_torrent(F),
 	    ok;
