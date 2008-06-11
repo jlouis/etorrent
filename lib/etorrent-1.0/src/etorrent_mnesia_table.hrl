@@ -5,7 +5,8 @@
 		      }).
 
 %% A single torrent is represented as the 'torrent' record
--record(torrent, {id, % Unique identifier of torrent, monotonically increasing...
+-record(torrent, {id, % Unique identifier of torrent, monotonically increasing
+		      %   foreign keys to tracking_map.id
 		  left, % How many bytes are there left before we have the full torrent
 		  uploaded, % How many bytes have we uploaded
 		  downloaded, % How many bytes have we downloaded
@@ -14,7 +15,7 @@
 		  state}). % What is our state: leecher | unknown | seeder
 
 
--record(peer_info, {id,
+-record(peer_info, {id, % Each peer is identified by its peer_id here
 		    uploaded,
 		    downloaded,
 		    interested,
@@ -32,7 +33,7 @@
 %% Individual pieces are represented via the file_access record
 -record(file_access, {hash, % Hash of piece
 		      piece_number, % piece number index
-		      pid, % Pid owning this piece
+		      id, % Id of this piece owning this piece
 		      files, % File operations to manipulate piece
 		      frequency = 0, % How often does this piece occur at others?
 		      left = unknown, % Number of chunks left...

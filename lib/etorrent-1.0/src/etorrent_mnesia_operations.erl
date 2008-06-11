@@ -13,6 +13,7 @@
 
 
 %% API
+%%% TODO: Consider splitting this code into more parts. Easily done per table.
 -export([cleanup_torrent_by_pid/1,
 	 store_torrent/2, set_torrent_state/2,
 	 select_torrent/1, delete_torrent/1, delete_torrent_by_pid/1,
@@ -20,12 +21,18 @@
 	 peer_statechange/2, is_peer_connected/3, select_interested_peers/1,
 	 reset_round/1, delete_peers/1, peer_statechange_infohash/2,
 
+	 %% Manipulating the tracking map
 	 tracking_map_new/3,
 	 tracking_map_by_infohash/1, tracking_map_by_file/1,
 
-	 torrent_size/1, get_bitfield/1, get_num_pieces/1, check_interest/2,
+	 %% Manipulating pieces
+	 pieces_torrent_size/1,
+	 pieces_check_interest/2,
+	 pieces_get_num/1,
+	 pieces_get_bitfield/1,
 
-	 file_access_insert/5, file_access_insert/2, file_access_set_state/3,
+	 %% This is incorrently named as file_access. Should be pieces.
+	 file_access_new/2, file_access_set_state/3,
 	 file_access_torrent_pieces/1, file_access_is_complete/1,
 	 file_access_get_pieces/1, file_access_delete/1,
 	 file_access_get_piece/2,
@@ -44,27 +51,6 @@ tracking_map_new(File, Supervisor, Id) ->
     mnesia:dirty_write(#tracking_map { id = Id,
 				       filename = File,
 				       supervisor_pid = Supervisor }).
-
-%%--------------------------------------------------------------------
-%% Function: check_interested(Handle, PieceSet) ->
-%% Description: Returns the interest of a peer
-%%--------------------------------------------------------------------
-check_interest(Pid, PieceSet) ->
-    %%% XXX: This function could also check for validity and probably should
-    mnesia:transaction(
-      fun () ->
-	      Q = qlc:q([R#file_access.piece_number || R <- mnesia:table(file_access),
-						       R#file_access.pid =:= Pid,
-						       (R#file_access.state =:= fetched)
-							   orelse (R#file_access.state =:= chunked)]),
-	      case sets:size(sets:intersection(sets:from_list(qlc:e(Q)),
-					       PieceSet)) of
-		  0 ->
-		      not_interested;
-		  N when is_integer(N) ->
-		      interested
-	      end
-      end).
 
 %%--------------------------------------------------------------------
 %% Function: tracking_map_by_file(Filename) -> [SupervisorPid]
@@ -90,43 +76,71 @@ tracking_map_by_infohash(InfoHash) ->
 	      qlc:e(Q)
       end).
 
+
 %%--------------------------------------------------------------------
-%% Function: get_num_pieces(Pid) -> integer()
+%% Function: pieces_check_interest(Handle, PieceSet) ->
+%% Description: Returns the interest of a peer
+%%--------------------------------------------------------------------
+pieces_check_interest(Id, PieceSet) when is_integer(Id) ->
+    %%% XXX: This function could also check for validity and probably should
+    F = fun () ->
+		Q = qlc:q([R#file_access.piece_number ||
+			      R <- mnesia:table(file_access),
+			      R#file_access.id =:= Id,
+			      (R#file_access.state =:= fetched)
+				  orelse (R#file_access.state =:= chunked)]),
+		qlc:e(Q)
+	end,
+    {atomic, PS} = mnesia:transaction(F),
+    case sets:size(sets:intersection(sets:from_list(PS), PieceSet)) of
+	0 ->
+	    not_interested;
+	N when is_integer(N) ->
+	    interested
+    end.
+
+
+%%--------------------------------------------------------------------
+%% Function: pieces_get_num(Pid) -> integer()
 %% Description: Return the number of pieces for the given torrent
 %%--------------------------------------------------------------------
-get_num_pieces(Pid) ->
+pieces_get_num(Id) when is_integer(Id) ->
     mnesia:transaction(
       fun () ->
 	      Q1 = qlc:q([Q || Q <- mnesia:table(file_access),
-			       Q#file_access.pid =:= Pid]),
+			       Q#file_access.id =:= Id]),
 	      length(qlc:e(Q1))
       end).
 
 %%--------------------------------------------------------------------
-%% Function: get_bitfield(Pid) -> bitfield()
+%% Function: pieces_get_bitfield(Pid) -> bitfield()
 %% Description: Return the bitfield we have for the given torrent
 %%--------------------------------------------------------------------
-get_bitfield(Pid) ->
-    {atomic, {NumPieces, PieceSet}} =
-	mnesia:transaction(
-	  fun () ->
-		  {atomic, NumPieces} = get_num_pieces(Pid),
-		  Q2 = qlc:q([R#file_access.piece_number || R <- mnesia:table(file_access),
-							    R#file_access.pid =:= Pid,
-							    R#file_access.state =:= fetched]),
-		  PieceSet = sets:from_list(qlc:e(Q2)),
-		  {NumPieces, PieceSet}
-	  end),
-    etorrent_peer_communication:construct_bitfield(NumPieces, PieceSet).
+pieces_get_bitfield(Id) when is_integer(Id) ->
+    {atomic, NumPieces} = pieces_get_num(Id), %%% May be stored once and for all rather than calculated
+    {atomic, Fetched}   = pieces_get_fetched(Id),
+    etorrent_peer_communication:construct_bitfield(NumPieces,
+						   sets:from_list(Fetched)).
+
+pieces_get_fetched(Id) when is_integer(Id) ->
+    F = fun () ->
+		Q = qlc:q([R#file_access.piece_number ||
+			      R <- mnesia:table(file_access),
+			      R#file_access.id =:= Id,
+			      R#file_access.state =:= fetched]),
+		qlc:e(Q)
+	end,
+    mnesia:transaction(F).
+
 
 %%--------------------------------------------------------------------
-%% Function: torrent_size(Pid) -> integer()
+%% Function: pieces_torrent_size(Pid) -> integer()
 %% Description: What is the total size of the torrent in question.
 %%--------------------------------------------------------------------
-torrent_size(Pid) ->
+pieces_torrent_size(Id) when is_integer(Id) ->
     F = fun () ->
 		Query = qlc:q([F || F <- mnesia:table(file_access),
-				    F#file_access.pid =:= Pid]),
+				    F#file_access.id =:= Id]),
 		qlc:e(Query)
 	end,
     {atomic, Res} = mnesia:transaction(F),
@@ -383,15 +397,6 @@ delete_peer_info_hash(Pid) ->
                   Refs)
     end).
 
-file_access_insert(Pid, PieceNumber, Hash, Files, State) ->
-    mnesia:transaction(
-      fun () ->
-	      mnesia:write(#file_access {pid = Pid,
-					 piece_number = PieceNumber,
-					 hash = Hash,
-					 files = Files,
-					 state = State })
-      end).
 
 file_access_delete(Pid) ->
     mnesia:transaction(
@@ -399,78 +404,74 @@ file_access_delete(Pid) ->
 	      mnesia:delete(file_access, Pid, write)
       end).
 
-file_access_insert(Pid, Dict) ->
-    mnesia:transaction(
-      fun () ->
-	      dict:map(fun (PN, {Hash, Files, Done}) ->
-			       State = case Done of
-					   ok -> fetched;
-					   not_ok -> not_fetched;
-					   none -> not_fetched
-				       end,
-			       file_access_insert(Pid,
-						  PN,
-						  Hash,
-						  Files,
-						  State)
+file_access_new(Id, Dict) when is_integer(Id) ->
+    dict:map(fun (PN, {Hash, Files, Done}) ->
+		     State = case Done of
+				 ok -> fetched;
+				 not_ok -> not_fetched;
+				 none -> not_fetched
+			     end,
+		     mnesia:dirty_write(
+		       #file_access {id = Id,
+				     piece_number = PN,
+				     hash = Hash,
+				     files = Files,
+				     state = State })
 		       end,
-		       Dict)
-      end).
+		       Dict).
 
-file_access_set_state(Pid, Pn, State) ->
+file_access_set_state(Id, Pn, State) when is_integer(Id) ->
     mnesia:transaction(
       fun () ->
 	      Q = qlc:q([R || R <- mnesia:table(file_access),
-			      R#file_access.pid =:= Pid,
+			      R#file_access.id =:= Id,
 			      R#file_access.piece_number =:= Pn]),
-	      lists:foreach(fun (R) ->
-				    mnesia:write(R#file_access{state = State})
-			    end,
-			    qlc:e(Q))
+	      [Row] = qlc:e(Q),
+	      mnesia:write(Row#file_access{state = State})
       end).
 
-file_access_torrent_pieces(Pid) ->
+file_access_torrent_pieces(Id) when is_integer(Id) ->
     mnesia:transaction(
       fun () ->
 	      Q = qlc:q([{R#file_access.piece_number,
 			  R#file_access.files,
 			  R#file_access.state} || R <- mnesia:table(file_access),
-						  R#file_access.pid =:= Pid]),
+						  R#file_access.id =:= Id]),
 	      qlc:e(Q)
       end).
 
-file_access_is_complete(Pid) ->
+file_access_is_complete(Id) when is_integer(Id) ->
     mnesia:transaction(
       fun () ->
 	      Q = qlc:q([R || R <- mnesia:table(file_access),
-			      R#file_access.pid =:= Pid,
+			      R#file_access.id =:= Id,
 			      R#file_access.state =:= not_fetched]),
 	      Objs = qlc:e(Q),
 	      length(Objs) =:= 0
       end).
 
-file_access_get_pieces(Handle) ->
+file_access_get_pieces(Id) when is_integer(Id) ->
     mnesia:transaction(
       fun () ->
 	      Q = qlc:q([R || R <- mnesia:table(file_access),
-			      R#file_access.pid =:= Handle]),
+			      R#file_access.id =:= Id]),
 	      qlc:e(Q)
       end).
 
-file_access_get_piece(Handle, Pn) ->
+file_access_get_piece(Id, Pn) when is_integer(Id) ->
     mnesia:transaction(
       fun () ->
 	      Q = qlc:q([R || R <- mnesia:table(file_access),
-			      R#file_access.pid =:= Handle,
+			      R#file_access.id =:= Id,
 			      R#file_access.piece_number =:= Pn]),
 	      qlc:e(Q)
       end).
 
-file_access_piece_valid(Handle, Pn) ->
+file_access_piece_valid(Id, Pn) when is_integer(Id) ->
     mnesia:transaction(
       fun () ->
 	      Q = qlc:q([R || R <- mnesia:table(file_access),
-			      R#file_access.pid =:= Handle,
+			      R#file_access.id =:= Id,
 			      R#file_access.piece_number =:= Pn]),
 	      case qlc:e(Q) of
 		  [] ->
@@ -480,11 +481,11 @@ file_access_piece_valid(Handle, Pn) ->
 	      end
       end).
 
-file_access_piece_interesting(Handle, Pn) ->
+file_access_piece_interesting(Id, Pn) when is_integer(Id) ->
     mnesia:transaction(
       fun () ->
 	      Q = qlc:q([R || R <- mnesia:table(file_access),
-			      R#file_access.pid =:= Handle,
+			      R#file_access.id =:= Id,
 			      R#file_access.piece_number =:= Pn]),
 	      [R] = qlc:e(Q),
 	      case R#file_access.state of
@@ -526,5 +527,3 @@ create_peer_info() ->
 		Ref
 	end,
     mnesia:transaction(F).
-
-
