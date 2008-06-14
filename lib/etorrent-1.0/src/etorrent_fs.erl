@@ -21,9 +21,8 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3]).
 
--record(state, { file_mapping_handle = none,
+-record(state, { torrent_id = none, %% id of torrent we are serving
 		 file_pool = none,
-
 		 file_process_dict = none}).
 
 %%====================================================================
@@ -80,22 +79,19 @@ write_piece(Pid, Pn, Data) ->
 %%====================================================================
 %% gen_server callbacks
 %%====================================================================
-init([IDHandle, FSPool]) ->
+init([IDHandle, FSPool]) when is_integer(IDHandle) ->
     {ok, #state{file_process_dict = dict:new(),
 		file_pool = FSPool,
-	        file_mapping_handle = IDHandle}}.
+		torrent_id = IDHandle}}.
 
 handle_call({read_piece, PieceNum}, _From, S) ->
     {atomic, [#file_access { files = Operations}]} =
-	etorrent_mnesia_operations:file_access_get_piece(
-	  S#state.file_mapping_handle,
-	  PieceNum),
+	etorrent_pieces:get_piece(S#state.torrent_id, PieceNum),
     {ok, Data, NS} = read_pieces_and_assemble(Operations, [], S),
     {reply, {ok, Data}, NS};
 handle_call({write_piece, PieceNum, Data}, _From, S) ->
     {atomic, [#file_access { hash = Hash, files = FilesToWrite }]} =
-	etorrent_mnesia_operations:file_access_get_piece(S#state.file_mapping_handle,
-							 PieceNum),
+	etorrent_pieces:get_piece(S#state.torrent_id, PieceNum),
     D = iolist_to_binary(Data),
     case Hash == crypto:sha(D) of
 	true ->
