@@ -307,15 +307,16 @@ handle_message({bitfield, BitField}, S) ->
 	    {ok, PieceSet} =
 		etorrent_peer_communication:destruct_bitfield(Size, BitField),
 	    case etorrent_pieces:check_interest(S#state.torrent_id, PieceSet) of
-		{atomic, interested} ->
+		interested ->
 		    send_message(interested, S),
 		    %%% XXX: peer_statechange here?
 		    {ok, S#state{piece_set = PieceSet,
 				 local_interested = true}};
-		{atomic, not_interested} ->
+		not_interested ->
 		    {ok, S#state{piece_set = PieceSet}};
-		{atomic, not_valid} ->
-		    {stop, invalid_pieces, S}
+%%% XXX: We should check for piece validity.
+%		not_valid ->
+%		    {stop, invalid_pieces, S}
 	    end;
 	N when is_integer(N) ->
 	    {stop, got_out_of_band_bitfield, S}
@@ -403,10 +404,8 @@ queue_items([Chunk | Rest], S) ->
 			   Chunk#chunk.size}, S#state.remote_request_set),
     queue_items(Rest, S#state { remote_request_set = RS }).
 
-piece_valid(ControlPid, PieceNum) ->
-    case etorrent_mnesia_operations:file_access_piece_valid(
-	   ControlPid,
-	   PieceNum) of
+piece_valid(Id, PieceNum) ->
+    case etorrent_pieces:piece_valid(Id, PieceNum) of
 	{atomic, true} ->
 	    true;
 	{atomic, false} ->
