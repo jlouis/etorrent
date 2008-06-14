@@ -13,7 +13,8 @@
 
 %% API
 -export([new/2, set_state/3, is_complete/1,
-	 get_pieces/1, delete/1, get_piece/2, piece_valid/2,
+	 get_pieces/1, get_num/1,
+	 delete/1, get_piece/2, piece_valid/2,
 	 piece_interesting/2,
 	 torrent_size/1, get_bitfield/1, check_interest/2]).
 
@@ -197,9 +198,10 @@ torrent_size(Id) when is_integer(Id) ->
 		0,
 		Res).
 
-%%====================================================================
-%% Internal functions
-%%====================================================================
+%%--------------------------------------------------------------------
+%% Function: get_num(Id) -> integer()
+%% Description: Number of pieces for torrent Id
+%%--------------------------------------------------------------------
 get_num(Id) when is_integer(Id) ->
     mnesia:transaction(
       fun () ->
@@ -207,6 +209,10 @@ get_num(Id) when is_integer(Id) ->
 			       Q#piece.id =:= Id]),
 	      length(qlc:e(Q1))
       end).
+
+%%====================================================================
+%% Internal functions
+%%====================================================================
 
 
 get_fetched(Id) when is_integer(Id) ->
