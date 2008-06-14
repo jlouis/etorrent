@@ -72,6 +72,8 @@ torrent_completed(Pid) ->
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
 init([ControlPid, PeerMasterPid, Url, InfoHash, PeerId, TorrentId]) ->
+    dbg:p(self(), call),
+    tr:tr(etorrent_tracker_communication, build_tracker_url),
     {ok, #state{should_contact_tracker = false,
 		peer_master_pid = PeerMasterPid,
 		control_pid = ControlPid,
@@ -171,17 +173,10 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 contact_tracker(S, Event) ->
     NewUrl = build_tracker_url(S, Event),
-    et:report_event(50, tracker_process, tracker, get,
-		    io_lib:format("Contacted tracker with event: ~p",
-				  [Event])),
     case http_gzip:request(NewUrl) of
 	{ok, {{_, 200, _}, _, Body}} ->
-	    et:report_event(50, tracker, tracker_process, ok200,
-			    "Returned body"),
 	    {ok, Body};
 	{error, E} ->
-	    et:report_event(50, tracker, tracker_process, error,
-			    io_lib:format("Error: ~p", [E])),
 	    {error, E}
     end.
 
