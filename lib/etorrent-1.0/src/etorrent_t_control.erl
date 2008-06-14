@@ -138,7 +138,7 @@ check_and_start_torrent(FS, S) ->
 	etorrent_mnesia_operations:store_torrent(S#state.id,
 						 {{uploaded, 0},
 						  {downloaded, 0},
-						  {left, calculate_amount_left(S#state.parent_pid)}}),
+						  {left, calculate_amount_left(S#state.id)}}),
     error_logger:info_report(adding_peer_pool),
     {ok, GroupPid} = etorrent_t_sup:add_peer_pool(S#state.parent_pid),
     error_logger:info_report(full_check),
@@ -297,7 +297,7 @@ add_filesystem(FileDict, S) ->
 	  end,
     etorrent_t_sup:add_file_system(S#state.parent_pid, FSP, S#state.id).
 
-calculate_amount_left(Id) ->
+calculate_amount_left(Id) when is_integer(Id) ->
     {atomic, Pieces} = etorrent_pieces:get_pieces(Id),
     Sum = lists:foldl(fun(#piece{files = Files, state = State}, Sum) ->
 			      case State of

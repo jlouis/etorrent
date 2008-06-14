@@ -13,7 +13,7 @@
 -include("etorrent_mnesia_table.hrl").
 
 %% API
--export([start_link/5, contact_tracker_now/1, start_now/1, stop_now/1,
+-export([start_link/6, contact_tracker_now/1, start_now/1, stop_now/1,
 	torrent_completed/1]).
 
 %% gen_server callbacks
@@ -29,7 +29,8 @@
 		trackerid = none,
 		time_left = 0,
 		timer = none,
-	        control_pid = none}).
+		control_pid = none,
+		torrent_id = none}).
 
 -define(DEFAULT_REQUEST_TIMEOUT, 180).
 -define(DEFAULT_CONNECTION_TIMEOUT_INTERVAL, 1800).
@@ -41,10 +42,10 @@
 %% Function: start_link() -> {ok,Pid} | ignore | {error,Error}
 %% Description: Starts the server
 %%--------------------------------------------------------------------
-start_link(ControlPid, PeerMasterPid, Url, InfoHash, PeerId) ->
+start_link(ControlPid, PeerMasterPid, Url, InfoHash, PeerId, TorrentId) ->
     gen_server:start_link(?MODULE,
-			  [{ControlPid, PeerMasterPid,
-			    Url, InfoHash, PeerId}],
+			  [ControlPid, PeerMasterPid,
+			    Url, InfoHash, PeerId, TorrentId],
 			  []).
 
 contact_tracker_now(Pid) ->
@@ -70,11 +71,11 @@ torrent_completed(Pid) ->
 %%                         {stop, Reason}
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
-init([{ControlPid, PeerMasterPid, Url, InfoHash, PeerId}]) ->
-    process_flag(trap_exit, true),
+init([ControlPid, PeerMasterPid, Url, InfoHash, PeerId, TorrentId]) ->
     {ok, #state{should_contact_tracker = false,
 		peer_master_pid = PeerMasterPid,
 		control_pid = ControlPid,
+		torrent_id = TorrentId,
 		url = Url,
 		info_hash = InfoHash,
 		peer_id = PeerId}}.
@@ -207,11 +208,11 @@ handle_tracker_response(BC, S) ->
 	WarningMessage /= none ->
 	    etorrent_t_control:tracker_warning_report(ControlPid, WarningMessage),
 	    etorrent_t_peer_group:add_peers(PeerMasterPid, NewIPs),
-	    etorrent_mnesia_operations:set_torrent_state(S#state.info_hash,
+	    etorrent_mnesia_operations:set_torrent_state(S#state.torrent_id,
 							 {tracker_report, Complete, Incomplete});
 	true ->
 	    etorrent_t_peer_group:add_peers(PeerMasterPid, NewIPs),
-	    etorrent_mnesia_operations:set_torrent_state(S#state.info_hash,
+	    etorrent_mnesia_operations:set_torrent_state(S#state.torrent_id,
 							 {tracker_report, Complete, Incomplete})
     end,
     {ok, RequestTime, S#state{trackerid = TrackerId}}.
@@ -226,7 +227,7 @@ construct_headers([{Key, Value} | Rest], HeaderLines) ->
     construct_headers(Rest, [Data | HeaderLines]).
 
 build_tracker_url(S, Event) ->
-    {atomic, [R]} = etorrent_mnesia_operations:select_torrent(S#state.info_hash),
+    {atomic, [R]} = etorrent_mnesia_operations:select_torrent(S#state.torrent_id),
     {ok, Port} = application:get_env(etorrent, port),
     Request = [{"info_hash",
 		etorrent_utils:build_encoded_form_rfc1738(S#state.info_hash)},
