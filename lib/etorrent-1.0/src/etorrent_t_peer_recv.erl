@@ -313,7 +313,7 @@ handle_message({bitfield, BitField}, S) ->
 		    {ok, S#state{piece_set = PieceSet,
 				 local_interested = true}};
 		not_interested ->
-		    {ok, S#state{piece_set = PieceSet}};
+		    {ok, S#state{piece_set = PieceSet}}
 %%% XXX: We should check for piece validity.
 %		not_valid ->
 %		    {stop, invalid_pieces, S}

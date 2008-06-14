@@ -29,7 +29,7 @@ start_link(File, Local_PeerId, Id) ->
 %% Func: add_filesystem/3
 %% Description: Add a filesystem process to the torrent.
 %%--------------------------------------------------------------------
-add_file_system(Pid, FSPool, IDHandle) ->
+add_file_system(Pid, FSPool, IDHandle) when is_integer(IDHandle) ->
     FS = {fs,
 	  {etorrent_fs, start_link, [IDHandle, FSPool]},
 	  temporary, 2000, worker, [etorrent_fs]},

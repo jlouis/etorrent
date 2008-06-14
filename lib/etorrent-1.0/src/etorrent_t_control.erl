@@ -289,7 +289,7 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 %%--------------------------------------------------------------------
 add_filesystem(FileDict, S) ->
     etorrent_pieces:new(S#state.id, FileDict),
-    FSP = case etorrent_t_sup:add_file_system_pool(S#state.parent_pid) of
+    FSP = case etorrent_t_sup:add_file_system_pool(S#state.id) of
 	      {ok, FSPool} ->
 		  FSPool;
 	      {error, {already_started, FSPool}} ->
