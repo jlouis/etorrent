@@ -41,7 +41,7 @@
 
 %% A 16K chunk of data
 -record(chunk, {ref, % unique reference
-		pid, % Pid owning this chunk, referers to file_access.pid
+		id, % Pid owning this chunk, referers to file_access.pid
 		piece_number, % piece_number this chunk belongs to
 		offset, % Offset of chunk in the piece
 		size, % size of chunk in the piece (almost always 16K, but last piece may differ)
