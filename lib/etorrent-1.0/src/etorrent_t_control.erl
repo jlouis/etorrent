@@ -130,7 +130,7 @@ initializing({load_new_torrent, Path, PeerId}, S) ->
     end.
 
 check_and_start_torrent(FS, S) ->
-    ok = etorrent_fs_checker:check_torrent_contents(FS, S#state.parent_pid),
+    ok = etorrent_fs_checker:check_torrent_contents(FS, S#state.id),
     ok = etorrent_fs_serializer:release_token(),
     error_logger:info_report(adding_state),
     InfoHash = etorrent_metainfo:get_infohash(S#state.torrent),
