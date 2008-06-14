@@ -23,13 +23,7 @@
 
 	 %% Manipulating the tracking map
 	 tracking_map_new/3,
-	 tracking_map_by_infohash/1, tracking_map_by_file/1,
-
-	 %% Manipulating pieces
-	 pieces_torrent_size/1,
-	 pieces_check_interest/2,
-	 pieces_get_num/1,
-	 pieces_get_bitfield/1]).
+	 tracking_map_by_infohash/1, tracking_map_by_file/1]).
 
 %%====================================================================
 %% API
@@ -69,78 +63,6 @@ tracking_map_by_infohash(InfoHash) ->
       end).
 
 
-%%--------------------------------------------------------------------
-%% Function: pieces_check_interest(Handle, PieceSet) ->
-%% Description: Returns the interest of a peer
-%%--------------------------------------------------------------------
-pieces_check_interest(Id, PieceSet) when is_integer(Id) ->
-    %%% XXX: This function could also check for validity and probably should
-    F = fun () ->
-		Q = qlc:q([R#piece.piece_number ||
-			      R <- mnesia:table(file_access),
-			      R#piece.id =:= Id,
-			      (R#piece.state =:= fetched)
-				  orelse (R#piece.state =:= chunked)]),
-		qlc:e(Q)
-	end,
-    {atomic, PS} = mnesia:transaction(F),
-    case sets:size(sets:intersection(sets:from_list(PS), PieceSet)) of
-	0 ->
-	    not_interested;
-	N when is_integer(N) ->
-	    interested
-    end.
-
-
-%%--------------------------------------------------------------------
-%% Function: pieces_get_num(Pid) -> integer()
-%% Description: Return the number of pieces for the given torrent
-%%--------------------------------------------------------------------
-pieces_get_num(Id) when is_integer(Id) ->
-    mnesia:transaction(
-      fun () ->
-	      Q1 = qlc:q([Q || Q <- mnesia:table(file_access),
-			       Q#piece.id =:= Id]),
-	      length(qlc:e(Q1))
-      end).
-
-%%--------------------------------------------------------------------
-%% Function: pieces_get_bitfield(Pid) -> bitfield()
-%% Description: Return the bitfield we have for the given torrent
-%%--------------------------------------------------------------------
-pieces_get_bitfield(Id) when is_integer(Id) ->
-    {atomic, NumPieces} = pieces_get_num(Id), %%% May be stored once and for all rather than calculated
-    {atomic, Fetched}   = pieces_get_fetched(Id),
-    etorrent_peer_communication:construct_bitfield(NumPieces,
-						   sets:from_list(Fetched)).
-
-pieces_get_fetched(Id) when is_integer(Id) ->
-    F = fun () ->
-		Q = qlc:q([R#piece.piece_number ||
-			      R <- mnesia:table(file_access),
-			      R#piece.id =:= Id,
-			      R#piece.state =:= fetched]),
-		qlc:e(Q)
-	end,
-    mnesia:transaction(F).
-
-
-%%--------------------------------------------------------------------
-%% Function: pieces_torrent_size(Pid) -> integer()
-%% Description: What is the total size of the torrent in question.
-%%--------------------------------------------------------------------
-pieces_torrent_size(Id) when is_integer(Id) ->
-    F = fun () ->
-		Query = qlc:q([F || F <- mnesia:table(file_access),
-				    F#piece.id =:= Id]),
-		qlc:e(Query)
-	end,
-    {atomic, Res} = mnesia:transaction(F),
-    lists:foldl(fun(#piece{ files = {_, Ops, _}}, Sum) ->
-			Sum + etorrent_fs:size_of_ops(Ops)
-		end,
-		0,
-		Res).
 
 
 %%--------------------------------------------------------------------

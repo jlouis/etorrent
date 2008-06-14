@@ -197,6 +197,7 @@ handle_cast({complete_handshake, _ReservedBytes, Socket, RemotePeerId}, S) ->
 	etorrent_t_peer_send:start_link(Socket,
 				     S#state.file_system_pid,
 				     S#state.torrent_handle),
+    
     BF = etorrent_mnesia_operations:get_bitfield(S#state.torrent_handle),
     etorrent_t_peer_send:send(SendPid, {bitfield, BF}),
     {noreply, S#state{tcp_socket = Socket,

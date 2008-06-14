@@ -14,7 +14,8 @@
 %% API
 -export([new/2, set_state/3, is_complete/1,
 	 get_pieces/1, delete/1, get_piece/2, piece_valid/2,
-	 piece_interesting/2]).
+	 piece_interesting/2,
+	 torrent_size/1, get_bitfield/1, check_interest/2]).
 
 %%====================================================================
 %% API
@@ -146,6 +147,74 @@ piece_interesting(Id, Pn) when is_integer(Id) ->
 	      end
       end).
 
+%%--------------------------------------------------------------------
+%% Function: get_bitfield(Id) -> bitfield()
+%% Description: Return the bitfield we have for the given torrent
+%%--------------------------------------------------------------------
+get_bitfield(Id) when is_integer(Id) ->
+    {atomic, NumPieces} = get_num(Id), %%% May be stored once and for all rather than calculated
+    {atomic, Fetched}   = get_fetched(Id),
+    etorrent_peer_communication:construct_bitfield(NumPieces,
+						   sets:from_list(Fetched)).
+
+%%--------------------------------------------------------------------
+%% Function: check_interest(Id, PieceSet) -> interested | not_interested
+%% Description: Given a set of pieces, return if we are interested in any of them.
+%%--------------------------------------------------------------------
+check_interest(Id, PieceSet) when is_integer(Id) ->
+    %%% XXX: This function could also check for validity and probably should
+    F = fun () ->
+		Q = qlc:q([R#piece.piece_number ||
+			      R <- mnesia:table(file_access),
+			      R#piece.id =:= Id,
+			      (R#piece.state =:= fetched)
+				  orelse (R#piece.state =:= chunked)]),
+		qlc:e(Q)
+	end,
+    {atomic, PS} = mnesia:transaction(F),
+    case sets:size(sets:intersection(sets:from_list(PS), PieceSet)) of
+	0 ->
+	    not_interested;
+	N when is_integer(N) ->
+	    interested
+    end.
+
+
+%%--------------------------------------------------------------------
+%% Function: torrent_size(Id) -> integer()
+%% Description: What is the total size of the torrent in question.
+%%--------------------------------------------------------------------
+torrent_size(Id) when is_integer(Id) ->
+    F = fun () ->
+		Query = qlc:q([F || F <- mnesia:table(file_access),
+				    F#piece.id =:= Id]),
+		qlc:e(Query)
+	end,
+    {atomic, Res} = mnesia:transaction(F),
+    lists:foldl(fun(#piece{ files = {_, Ops, _}}, Sum) ->
+			Sum + etorrent_fs:size_of_ops(Ops)
+		end,
+		0,
+		Res).
+
 %%====================================================================
 %% Internal functions
 %%====================================================================
+get_num(Id) when is_integer(Id) ->
+    mnesia:transaction(
+      fun () ->
+	      Q1 = qlc:q([Q || Q <- mnesia:table(file_access),
+			       Q#piece.id =:= Id]),
+	      length(qlc:e(Q1))
+      end).
+
+
+get_fetched(Id) when is_integer(Id) ->
+    F = fun () ->
+		Q = qlc:q([R#piece.piece_number ||
+			      R <- mnesia:table(file_access),
+			      R#piece.id =:= Id,
+			      R#piece.state =:= fetched]),
+		qlc:e(Q)
+	end,
+    mnesia:transaction(F).
