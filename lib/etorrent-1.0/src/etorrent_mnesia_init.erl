@@ -18,7 +18,7 @@ init() ->
     mnesia:create_table(peer,
 			[{attributes, record_info(fields, peer)}]),
     mnesia:create_table(file_access,
-			[{attributes, record_info(fields, file_access)}]),
+			[{attributes, record_info(fields, piece)}]),
     mnesia:create_table(chunk,
 			[{attributes, record_info(fields, chunk)}]),
     mnesia:wait_for_tables(BaseTables, 5000).

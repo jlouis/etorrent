@@ -30,8 +30,8 @@
 -record(peer,     {map,
 		   info}).
 
-%% Individual pieces are represented via the file_access record
--record(file_access, {hash, % Hash of piece
+%% Individual pieces are represented via the piece record
+-record(piece, {hash, % Hash of piece
 		      piece_number, % piece number index
 		      id, % Id of this piece owning this piece
 		      files, % File operations to manipulate piece

@@ -76,11 +76,11 @@ tracking_map_by_infohash(InfoHash) ->
 pieces_check_interest(Id, PieceSet) when is_integer(Id) ->
     %%% XXX: This function could also check for validity and probably should
     F = fun () ->
-		Q = qlc:q([R#file_access.piece_number ||
+		Q = qlc:q([R#piece.piece_number ||
 			      R <- mnesia:table(file_access),
-			      R#file_access.id =:= Id,
-			      (R#file_access.state =:= fetched)
-				  orelse (R#file_access.state =:= chunked)]),
+			      R#piece.id =:= Id,
+			      (R#piece.state =:= fetched)
+				  orelse (R#piece.state =:= chunked)]),
 		qlc:e(Q)
 	end,
     {atomic, PS} = mnesia:transaction(F),
@@ -100,7 +100,7 @@ pieces_get_num(Id) when is_integer(Id) ->
     mnesia:transaction(
       fun () ->
 	      Q1 = qlc:q([Q || Q <- mnesia:table(file_access),
-			       Q#file_access.id =:= Id]),
+			       Q#piece.id =:= Id]),
 	      length(qlc:e(Q1))
       end).
 
@@ -116,10 +116,10 @@ pieces_get_bitfield(Id) when is_integer(Id) ->
 
 pieces_get_fetched(Id) when is_integer(Id) ->
     F = fun () ->
-		Q = qlc:q([R#file_access.piece_number ||
+		Q = qlc:q([R#piece.piece_number ||
 			      R <- mnesia:table(file_access),
-			      R#file_access.id =:= Id,
-			      R#file_access.state =:= fetched]),
+			      R#piece.id =:= Id,
+			      R#piece.state =:= fetched]),
 		qlc:e(Q)
 	end,
     mnesia:transaction(F).
@@ -132,11 +132,11 @@ pieces_get_fetched(Id) when is_integer(Id) ->
 pieces_torrent_size(Id) when is_integer(Id) ->
     F = fun () ->
 		Query = qlc:q([F || F <- mnesia:table(file_access),
-				    F#file_access.id =:= Id]),
+				    F#piece.id =:= Id]),
 		qlc:e(Query)
 	end,
     {atomic, Res} = mnesia:transaction(F),
-    lists:foldl(fun(#file_access{ files = {_, Ops, _}}, Sum) ->
+    lists:foldl(fun(#piece{ files = {_, Ops, _}}, Sum) ->
 			Sum + etorrent_fs:size_of_ops(Ops)
 		end,
 		0,

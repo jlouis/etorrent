@@ -96,9 +96,9 @@ chunkify_new_piece(Id, PieceSet) when is_integer(Id) ->
       fun () ->
 	      Q1 = qlc:q([S || R <- mnesia:table(file_access),
 			       S <- sets:to_list(PieceSet),
-			       R#file_access.id =:= Id,
-			       R#file_access.piece_number =:= S,
-			       R#file_access.state =:= not_fetched]),
+			       R#piece.id =:= Id,
+			       R#piece.piece_number =:= S,
+			       R#piece.state =:= not_fetched]),
 	      Eligible = qlc:e(Q1),
 	      case Eligible of
 		  [] ->
@@ -110,9 +110,9 @@ chunkify_new_piece(Id, PieceSet) when is_integer(Id) ->
       end).
 
 find_chunked(Id) when is_integer(Id) ->
-    Q = qlc:q([R#file_access.piece_number || R <- mnesia:table(file_access),
-					     R#file_access.id =:= Id,
-					     R#file_access.state =:= chunked]),
+    Q = qlc:q([R#piece.piece_number || R <- mnesia:table(file_access),
+					     R#piece.id =:= Id,
+					     R#piece.state =:= chunked]),
     qlc:e(Q).
 
 
@@ -157,16 +157,16 @@ putback_chunks(Refs, Pid) ->
       end).
 
 %%--------------------------------------------------------------------
-%% Function: add_piece_chunks(#file_access, PieceSize) -> ok.
+%% Function: add_piece_chunks(#piece, PieceSize) -> ok.
 %% Description: Add chunks for a piece of a given torrent.
 %%--------------------------------------------------------------------
 add_piece_chunks(R, PieceSize) ->
-    {ok, Chunks, NumChunks} = chunkify(R#file_access.piece_number, PieceSize),
+    {ok, Chunks, NumChunks} = chunkify(R#piece.piece_number, PieceSize),
     mnesia:transaction(
       fun () ->
-	      ok = mnesia:write(R#file_access{ state = chunked,
+	      ok = mnesia:write(R#piece{ state = chunked,
 					       left = NumChunks}),
-	      add_chunk(Chunks, R#file_access.id)
+	      add_chunk(Chunks, R#piece.id)
       end).
 
 store_chunk(Ref, Data, FSPid, MasterPid) ->
@@ -180,12 +180,12 @@ store_chunk(Ref, Data, FSPid, MasterPid) ->
 						assign = Data },
 			       write),
 		  Q1 = qlc:q([C || C <- mnesia:table(file_access),
-				   C#file_access.id =:= Id,
-				   C#file_access.piece_number =:= PieceNum]),
+				   C#piece.id =:= Id,
+				   C#piece.piece_number =:= PieceNum]),
 		  [P] = qlc:e(Q1),
-		  NewP = P#file_access { left = P#file_access.left - 1 },
+		  NewP = P#piece { left = P#piece.left - 1 },
 		  mnesia:write(NewP),
-		  case NewP#file_access.left of
+		  case NewP#piece.left of
 		      0 ->
 			  {full, Id, R#chunk.piece_number};
 		      N when is_integer(N) ->
@@ -272,15 +272,15 @@ ensure_chunking(Id, PieceNum) ->
     mnesia:transaction(
       fun () ->
 	      Q = qlc:q([S || S <- mnesia:table(file_access),
-			      S#file_access.id =:= Id,
-			      S#file_access.piece_number =:= PieceNum]),
+			      S#piece.id =:= Id,
+			      S#piece.piece_number =:= PieceNum]),
 	      [R] = qlc:e(Q),
-	      case R#file_access.state of
+	      case R#piece.state of
 		  not_fetched ->
-		      add_piece_chunks(R, etorrent_fs:size_of_ops(R#file_access.files)),
+		      add_piece_chunks(R, etorrent_fs:size_of_ops(R#piece.files)),
 		      Q1 = qlc:q([T || T <- mnesia:table(file_access),
-				       T#file_access.id =:= Id,
-				       T#file_access.state =:= not_fetched]),
+				       T#piece.id =:= Id,
+				       T#piece.state =:= not_fetched]),
 		      case length(qlc:e(Q1)) of
 			  0 ->
 			      {atomic, _} = etorrent_mnesia_operations:set_torrent_state(Id, endgame),

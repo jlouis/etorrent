@@ -46,7 +46,7 @@ ensure_file_sizes_correct(Files) ->
 check_torrent_contents(FS, Id) ->
     {atomic, Pieces} = etorrent_pieces:get_pieces(Id),
     lists:foreach(
-      fun(#file_access{piece_number = PieceNum, hash = Hash}) ->
+      fun(#piece{piece_number = PieceNum, hash = Hash}) ->
 	      {ok, Data} = etorrent_fs:read_piece(FS, PieceNum),
 	      State =
 		  case Hash =:= crypto:sha(Data) of

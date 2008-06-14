@@ -11,6 +11,8 @@
 
 -behaviour(gen_fsm).
 
+-include("etorrent_mnesia_table.hrl").
+
 %% API
 -export([start_link_load/3, token/1, start/1, stop/1, load_new_torrent/3,
 	torrent_checked/2, tracker_error_report/2, seed/1,
@@ -140,8 +142,7 @@ check_and_start_torrent(FS, S) ->
     error_logger:info_report(adding_peer_pool),
     {ok, GroupPid} = etorrent_t_sup:add_peer_pool(S#state.parent_pid),
     error_logger:info_report(full_check),
-    {atomic, TorrentFull} =
-	etorrent_mnesia_operations:file_access_is_complete(S#state.parent_pid),
+    {atomic, TorrentFull} = etorrent_pieces:is_complete(S#state.id),
     TorrentState = case TorrentFull of
 		       true ->
 			   seeding;
@@ -272,7 +273,7 @@ handle_info(Info, StateName, State) ->
 %% Reason. The return value is ignored.
 %%--------------------------------------------------------------------
 terminate(_Reason, _StateName, S) ->
-    etorrent_mnesia_operations:file_access_delete(S#state.parent_pid),
+    etorrent_pieces:delete(S#state.id),
     ok.
 
 %%--------------------------------------------------------------------
@@ -287,7 +288,7 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 %%% Internal functions
 %%--------------------------------------------------------------------
 add_filesystem(FileDict, S) ->
-    etorrent_mnesia_operations:file_access_insert(S#state.parent_pid, FileDict),
+    etorrent_pieces:new(S#state.id, FileDict),
     FSP = case etorrent_t_sup:add_file_system_pool(S#state.parent_pid) of
 	      {ok, FSPool} ->
 		  FSPool;
@@ -296,19 +297,18 @@ add_filesystem(FileDict, S) ->
 	  end,
     etorrent_t_sup:add_file_system(S#state.parent_pid, FSP, S#state.parent_pid).
 
-calculate_amount_left(ParentPid) ->
-    {atomic, Objects} =
-	etorrent_mnesia_operations:file_access_torrent_pieces(ParentPid),
-    Sum = lists:foldl(fun({_Pn, Ops, State}, Sum) ->
+calculate_amount_left(Id) ->
+    {atomic, Pieces} = etorrent_pieces:get_pieces(Id),
+    Sum = lists:foldl(fun(#piece{files = Files, state = State}, Sum) ->
 			      case State of
 				  fetched ->
 				      Sum;
 				  not_fetched ->
-				      Sum + size_of_ops(Ops)
+				      Sum + size_of_ops(Files)
 			      end
 		      end,
 		      0,
-		      Objects),
+		      Pieces),
     Sum.
 
 size_of_ops(Ops) ->
