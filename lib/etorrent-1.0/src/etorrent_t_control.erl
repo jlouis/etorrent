@@ -289,13 +289,13 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 %%--------------------------------------------------------------------
 add_filesystem(FileDict, S) ->
     etorrent_pieces:new(S#state.id, FileDict),
-    FSP = case etorrent_t_sup:add_file_system_pool(S#state.id) of
+    FSP = case etorrent_t_sup:add_file_system_pool(S#state.parent_pid) of
 	      {ok, FSPool} ->
 		  FSPool;
 	      {error, {already_started, FSPool}} ->
 		  FSPool
 	  end,
-    etorrent_t_sup:add_file_system(S#state.parent_pid, FSP, S#state.parent_pid).
+    etorrent_t_sup:add_file_system(S#state.parent_pid, FSP, S#state.id).
 
 calculate_amount_left(Id) ->
     {atomic, Pieces} = etorrent_pieces:get_pieces(Id),
