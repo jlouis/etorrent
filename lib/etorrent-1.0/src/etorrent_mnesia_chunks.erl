@@ -94,7 +94,7 @@ pick_amongst_chunked(Pid, Handle, PieceSet, N) ->
 chunkify_new_piece(Id, PieceSet) when is_integer(Id) ->
     mnesia:transaction(
       fun () ->
-	      Q1 = qlc:q([S || R <- mnesia:table(file_access),
+	      Q1 = qlc:q([S || R <- mnesia:table(piece),
 			       S <- sets:to_list(PieceSet),
 			       R#piece.id =:= Id,
 			       R#piece.piece_number =:= S,
@@ -110,7 +110,7 @@ chunkify_new_piece(Id, PieceSet) when is_integer(Id) ->
       end).
 
 find_chunked(Id) when is_integer(Id) ->
-    Q = qlc:q([R#piece.piece_number || R <- mnesia:table(file_access),
+    Q = qlc:q([R#piece.piece_number || R <- mnesia:table(piece),
 					     R#piece.id =:= Id,
 					     R#piece.state =:= chunked]),
     qlc:e(Q).
@@ -179,7 +179,7 @@ store_chunk(Ref, Data, FSPid, MasterPid) ->
 		  mnesia:write(chunk, R#chunk { state = fetched,
 						assign = Data },
 			       write),
-		  Q1 = qlc:q([C || C <- mnesia:table(file_access),
+		  Q1 = qlc:q([C || C <- mnesia:table(piece),
 				   C#piece.id =:= Id,
 				   C#piece.piece_number =:= PieceNum]),
 		  [P] = qlc:e(Q1),
@@ -271,14 +271,14 @@ assign_chunk_to_pid(Ans, Pid) ->
 ensure_chunking(Id, PieceNum) ->
     mnesia:transaction(
       fun () ->
-	      Q = qlc:q([S || S <- mnesia:table(file_access),
+	      Q = qlc:q([S || S <- mnesia:table(piece),
 			      S#piece.id =:= Id,
 			      S#piece.piece_number =:= PieceNum]),
 	      [R] = qlc:e(Q),
 	      case R#piece.state of
 		  not_fetched ->
 		      add_piece_chunks(R, etorrent_fs:size_of_ops(R#piece.files)),
-		      Q1 = qlc:q([T || T <- mnesia:table(file_access),
+		      Q1 = qlc:q([T || T <- mnesia:table(piece),
 				       T#piece.id =:= Id,
 				       T#piece.state =:= not_fetched]),
 		      case length(qlc:e(Q1)) of

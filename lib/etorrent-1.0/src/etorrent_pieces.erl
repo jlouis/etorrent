@@ -53,7 +53,7 @@ new(Id, Dict) when is_integer(Id) ->
 delete(Id) when is_integer(Id) ->
     mnesia:transaction(
       fun () ->
-	      mnesia:delete(file_access, Id, write)
+	      mnesia:delete(piece, Id, write)
       end).
 
 %%--------------------------------------------------------------------
@@ -63,7 +63,7 @@ delete(Id) when is_integer(Id) ->
 set_state(Id, Pn, State) when is_integer(Id) ->
     mnesia:transaction(
       fun () ->
-	      Q = qlc:q([R || R <- mnesia:table(file_access),
+	      Q = qlc:q([R || R <- mnesia:table(piece),
 			      R#piece.id =:= Id,
 			      R#piece.piece_number =:= Pn]),
 	      [Row] = qlc:e(Q),
@@ -77,7 +77,7 @@ set_state(Id, Pn, State) when is_integer(Id) ->
 is_complete(Id) when is_integer(Id) ->
     mnesia:transaction(
       fun () ->
-	      Q = qlc:q([R || R <- mnesia:table(file_access),
+	      Q = qlc:q([R || R <- mnesia:table(piece),
 			      R#piece.id =:= Id,
 			      R#piece.state =:= not_fetched]),
 	      Objs = qlc:e(Q),
@@ -91,7 +91,7 @@ is_complete(Id) when is_integer(Id) ->
 get_pieces(Id) when is_integer(Id) ->
     mnesia:transaction(
       fun () ->
-	      Q = qlc:q([R || R <- mnesia:table(file_access),
+	      Q = qlc:q([R || R <- mnesia:table(piece),
 			      R#piece.id =:= Id]),
 	      qlc:e(Q)
       end).
@@ -103,7 +103,7 @@ get_pieces(Id) when is_integer(Id) ->
 get_piece(Id, Pn) when is_integer(Id) ->
     mnesia:transaction(
       fun () ->
-	      Q = qlc:q([R || R <- mnesia:table(file_access),
+	      Q = qlc:q([R || R <- mnesia:table(piece),
 			      R#piece.id =:= Id,
 			      R#piece.piece_number =:= Pn]),
 	      qlc:e(Q)
@@ -116,7 +116,7 @@ get_piece(Id, Pn) when is_integer(Id) ->
 piece_valid(Id, Pn) when is_integer(Id) ->
     mnesia:transaction(
       fun () ->
-	      Q = qlc:q([R || R <- mnesia:table(file_access),
+	      Q = qlc:q([R || R <- mnesia:table(piece),
 			      R#piece.id =:= Id,
 			      R#piece.piece_number =:= Pn]),
 	      case qlc:e(Q) of
@@ -134,7 +134,7 @@ piece_valid(Id, Pn) when is_integer(Id) ->
 piece_interesting(Id, Pn) when is_integer(Id) ->
     mnesia:transaction(
       fun () ->
-	      Q = qlc:q([R || R <- mnesia:table(file_access),
+	      Q = qlc:q([R || R <- mnesia:table(piece),
 			      R#piece.id =:= Id,
 			      R#piece.piece_number =:= Pn]),
 	      [R] = qlc:e(Q),
@@ -166,7 +166,7 @@ check_interest(Id, PieceSet) when is_integer(Id) ->
     %%% XXX: This function could also check for validity and probably should
     F = fun () ->
 		Q = qlc:q([R#piece.piece_number ||
-			      R <- mnesia:table(file_access),
+			      R <- mnesia:table(piece),
 			      R#piece.id =:= Id,
 			      (R#piece.state =:= fetched)
 				  orelse (R#piece.state =:= chunked)]),
@@ -187,7 +187,7 @@ check_interest(Id, PieceSet) when is_integer(Id) ->
 %%--------------------------------------------------------------------
 torrent_size(Id) when is_integer(Id) ->
     F = fun () ->
-		Query = qlc:q([F || F <- mnesia:table(file_access),
+		Query = qlc:q([F || F <- mnesia:table(piece),
 				    F#piece.id =:= Id]),
 		qlc:e(Query)
 	end,
@@ -205,7 +205,7 @@ torrent_size(Id) when is_integer(Id) ->
 get_num(Id) when is_integer(Id) ->
     mnesia:transaction(
       fun () ->
-	      Q1 = qlc:q([Q || Q <- mnesia:table(file_access),
+	      Q1 = qlc:q([Q || Q <- mnesia:table(piece),
 			       Q#piece.id =:= Id]),
 	      length(qlc:e(Q1))
       end).
@@ -218,7 +218,7 @@ get_num(Id) when is_integer(Id) ->
 get_fetched(Id) when is_integer(Id) ->
     F = fun () ->
 		Q = qlc:q([R#piece.piece_number ||
-			      R <- mnesia:table(file_access),
+			      R <- mnesia:table(piece),
 			      R#piece.id =:= Id,
 			      R#piece.state =:= fetched]),
 		qlc:e(Q)
