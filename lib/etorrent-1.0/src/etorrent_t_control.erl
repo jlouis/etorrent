@@ -156,7 +156,8 @@ check_and_start_torrent(FS, S) ->
 	  S#state.peer_id,
 	  InfoHash,
 	  FS,
-	  TorrentState),
+	  TorrentState,
+	  S#state.id),
 
     InfoHash = etorrent_metainfo:get_infohash(S#state.torrent),
     {atomic, _} = etorrent_mnesia_operations:set_torrent_state(S#state.id, TorrentState),

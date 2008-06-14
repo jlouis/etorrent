@@ -31,7 +31,7 @@
 
 	        file_system_pid = none,
 		peer_group_sup = none,
-		torrent_handle = none,
+		torrent_id = none,
 
 	        mode = leeching}).
 
@@ -63,14 +63,15 @@ seed(Pid) ->
 %% gen_server callbacks
 %%====================================================================
 
-init([OurPeerId, PeerGroup, InfoHash, FileSystemPid, TorrentState, TorrentHandle]) ->
+init([OurPeerId, PeerGroup, InfoHash,
+      FileSystemPid, TorrentState, TorrentId]) when is_integer(TorrentId) ->
     {ok, Tref} = timer:send_interval(?ROUND_TIME, self(), round_tick),
     {ok, #state{ our_peer_id = OurPeerId,
 		 peer_group_sup = PeerGroup,
 		 bad_peers = dict:new(),
 		 info_hash = InfoHash,
 		 timer_ref = Tref,
-		 torrent_handle = TorrentHandle,
+		 torrent_id = TorrentId,
 		 mode = TorrentState,
 		 file_system_pid = FileSystemPid,
 		 peer_process_dict = dict:new() }}.
@@ -152,7 +153,7 @@ start_new_incoming_peer(IP, Port, S) ->
 			  S#state.info_hash,
 			  S#state.file_system_pid,
 			  self(),
-			  S#state.torrent_handle),
+			  S#state.torrent_id),
 	    erlang:monitor(process, Pid),
 	    etorrent_mnesia_operations:store_peer(IP, Port, S#state.info_hash, Pid),
 	    {ok, Pid};
@@ -298,7 +299,7 @@ spawn_new_peer(IP, Port, N, S) ->
 			  S#state.info_hash,
 			  S#state.file_system_pid,
 			  self(),
-			  S#state.torrent_handle),
+			  S#state.torrent_id),
 	    %% XXX: We set a monitor which we do not use!
 	    _Ref = erlang:monitor(process, Pid),
 	    etorrent_t_peer_recv:connect(Pid, IP, Port),

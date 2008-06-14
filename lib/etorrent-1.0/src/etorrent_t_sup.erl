@@ -12,7 +12,7 @@
 -behaviour(supervisor).
 
 %% API
--export([start_link/3, add_file_system/3, add_peer_group/6,
+-export([start_link/3, add_file_system/3, add_peer_group/7,
 	 add_tracker/6, add_peer_pool/1,
 	 add_file_system_pool/1]).
 
@@ -51,11 +51,11 @@ add_file_system_pool(Pid) ->
     supervisor:start_child(Pid, FSPool).
 
 add_peer_group(Pid, GroupPid, Local_Peer_Id,
-		InfoHash, FileSystemPid, TorrentState) ->
+		InfoHash, FileSystemPid, TorrentState, TorrentId) ->
     PeerGroup = {peer_group,
 		  {etorrent_t_peer_group, start_link,
 		   [Local_Peer_Id, GroupPid,
-		    InfoHash, FileSystemPid, TorrentState, Pid]},
+		    InfoHash, FileSystemPid, TorrentState, TorrentId]},
 		  temporary, 2000, worker, [etorrent_t_peer_group]},
     supervisor:start_child(Pid, PeerGroup).
 

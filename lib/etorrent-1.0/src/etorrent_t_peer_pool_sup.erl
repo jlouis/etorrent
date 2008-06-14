@@ -27,9 +27,9 @@
 start_link() ->
     supervisor:start_link(?MODULE, []).
 
-add_peer(GroupPid, LocalPeerId, InfoHash, FilesystemPid, Parent, ControlPid) ->
+add_peer(GroupPid, LocalPeerId, InfoHash, FilesystemPid, Parent, Id) ->
     supervisor:start_child(GroupPid, [LocalPeerId, InfoHash,
-				     FilesystemPid, Parent, ControlPid]).
+				     FilesystemPid, Parent, Id]).
 
 %%====================================================================
 %% Supervisor callbacks
