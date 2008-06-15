@@ -6,13 +6,6 @@
 --   Keep the style please. Can be read with emacs org-mode
 ----------------------------------------------------------------------
 
-
-
-* Support compact=1 tracker requests
-   Most trackers today disallows anything but compact responses. We
-   should implement code that can figure out how to play with compact
-   responses.
-
 * Optimize the mnesia code.
    Currently, the mnesia code is crap. It can be optimized quite a lot
    and it will probably make the code run a lot faster than now. It has

@@ -17,6 +17,12 @@ unless you are able to fix eventual problems. If you've noticed any bad
 behaviour it is definitely a bug and should be reported as soon as possible
 so we can get it away.
 
+Currently supported BEPs:
+
+BEP 03 - The BitTorrent Protocol Specification.
+BEP 04 - Known Number Allocations.
+BEP 23 - Tracker Returns Compact Peer Lists.
+
 -- GETTING STARTED WITHOUT INSTALLING --
 
 1. run "make -f Makefile.init". This calls autoconf and friends. On non-GNU
