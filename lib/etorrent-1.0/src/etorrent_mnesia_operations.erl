@@ -44,7 +44,7 @@ set_torrent_state(Id, S) when is_integer(Id) ->
 				      T#torrent{downloaded = T#torrent.downloaded + Amount};
 				  {add_upload, Amount} ->
 				      T#torrent{uploaded = T#torrent.uploaded + Amount};
-				  {substract_left, Amount} ->
+				  {subtract_left, Amount} ->
 				      T#torrent{left = T#torrent.left - Amount};
 				  {tracker_report, Seeders, Leechers} ->
 				      T#torrent{seeders = Seeders, leechers = Leechers}
