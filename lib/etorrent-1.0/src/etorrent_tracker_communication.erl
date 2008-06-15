@@ -231,7 +231,8 @@ build_tracker_url(S, Event) ->
 	       {"uploaded", R#torrent.uploaded},
 	       {"downloaded", R#torrent.downloaded},
 	       {"left", R#torrent.left},
-	       {"port", Port}],
+	       {"port", Port},
+	       {"compact", 1}],
     EReq = case Event of
 	       none ->
 		   Request;
