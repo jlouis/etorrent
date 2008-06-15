@@ -65,7 +65,6 @@ spawn_new_torrent(F, S) ->
     {ok, TorrentSup} =
 	etorrent_t_pool_sup:add_torrent(F, S#state.local_peer_id, S#state.id_counter),
     erlang:monitor(process, TorrentSup),
-    etorrent_tracking_map:new(F, TorrentSup, S#state.id_counter),
     S#state { id_counter = S#state.id_counter + 1 }.
 
 stop_torrent(F, S) ->

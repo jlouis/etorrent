@@ -2,8 +2,7 @@
 		       filename, %% The filename
 		       supervisor_pid,%% The Pid of who is supervising the torrent
 		       info_hash, %% Info hash of the torrent in question. May be unknown.
-		       state %% started | stopped | checking
-		      }).
+		       state}). %% started | stopped | checking | awaiting_check
 
 %% A single torrent is represented as the 'torrent' record
 -record(torrent, {id, % Unique identifier of torrent, monotonically increasing

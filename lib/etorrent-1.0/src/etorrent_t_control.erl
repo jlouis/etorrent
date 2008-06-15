@@ -14,7 +14,7 @@
 -include("etorrent_mnesia_table.hrl").
 
 %% API
--export([start_link_load/3, token/1, start/1, stop/1, load_new_torrent/3,
+-export([start_link/3, token/1, start/1, stop/1, load_new_torrent/3,
 	torrent_checked/2, tracker_error_report/2, seed/1,
 	tracker_warning_report/2]).
 
@@ -38,6 +38,8 @@
 		disk_state = none,
 		available_peers = []}).
 
+-define(CHECK_WAIT_TIME, 3000).
+
 %%====================================================================
 %% API
 %%====================================================================
@@ -47,13 +49,8 @@
 %% initialize. To ensure a synchronized start-up procedure, this function
 %% does not return until Module:init/1 has returned.
 %%--------------------------------------------------------------------
-start_link_load(File, Local_PeerId, Id) ->
-    {ok, Pid} = start_link([self(), Id]),
-    load_new_torrent(Pid, File, Local_PeerId),
-    {ok, Pid}.
-
-start_link([Parent, Id]) ->
-    gen_fsm:start_link(?MODULE, [Parent, Id], []).
+start_link(Id, Path, PeerId) ->
+    gen_fsm:start_link(?MODULE, [self(), Id, Path, PeerId], []).
 
 token(Pid) ->
     gen_fsm:send_event(Pid, token).
@@ -91,11 +88,14 @@ seed(Pid) ->
 %% gen_fsm:start_link/3,4, this function is called by the new process to
 %% initialize.
 %%--------------------------------------------------------------------
-init([Parent, Id]) ->
+init([Parent, Id, Path, PeerId]) ->
     {ok, WorkDir} = application:get_env(etorrent, dir),
+    etorrent_tracking_map:new(Path, Parent, Id),
     {ok, initializing, #state{work_dir = WorkDir,
 			      id = Id,
-			      parent_pid = Parent}}.
+			      path = Path,
+			      peer_id = PeerId,
+			      parent_pid = Parent}, 0}. % Force timeout instantly.
 
 %%--------------------------------------------------------------------
 %% Function:
@@ -110,23 +110,22 @@ init([Parent, Id]) ->
 %% called if a timeout occurs.
 %%--------------------------------------------------------------------
 % Load a torrent at Path with Torrent
-initializing({load_new_torrent, Path, PeerId}, S) ->
+initializing(timeout, S) ->
     {ok, Torrent, Files} =
-	etorrent_fs_checker:load_torrent(S#state.work_dir, Path),
+	etorrent_fs_checker:load_torrent(S#state.work_dir, S#state.path),
     Name = etorrent_metainfo:get_name(Torrent),
     etorrent_event:starting_torrent(Name),
-    ok = etorrent_fs_checker:ensure_file_sizes_correct(Files),
-    {ok, FileDict} =
-	etorrent_fs_checker:build_dictionary_on_files(Torrent, Files),
-    {ok, FS} = add_filesystem(FileDict, S),
+    case etorrent_tracking_map:is_ready_for_checking(S#state.id) of
+	false ->
+	    {next_state, initializing, S, ?CHECK_WAIT_TIME};
+	true ->
+	    ok = etorrent_fs_checker:ensure_file_sizes_correct(Files),
+	    {ok, FileDict} =
+		etorrent_fs_checker:build_dictionary_on_files(Torrent, Files),
+	    {ok, FS} = add_filesystem(FileDict, S),
 
-    NS = S#state{path = Path, torrent = Torrent, peer_id = PeerId,
-		 file_system_pid = FS},
-    case etorrent_fs_serializer:request_token() of
-	ok ->
-	    {next_state, started, check_and_start_torrent(FS, NS)};
-	wait ->
-	    {next_state, waiting_check, NS#state{disk_state = FileDict}}
+	    NS = S#state{torrent = Torrent, file_system_pid = FS},
+	    {next_state, started, check_and_start_torrent(FS, NS)}
     end.
 
 check_and_start_torrent(FS, S) ->
@@ -149,6 +148,7 @@ check_and_start_torrent(FS, S) ->
 		       false ->
 			   leeching
 		   end,
+    etorrent_tracking_map:set_state(S#state.id, started),
     {ok, PeerMasterPid} =
 	etorrent_t_sup:add_peer_group(
 	  S#state.parent_pid,

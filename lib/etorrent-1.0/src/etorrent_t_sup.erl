@@ -84,10 +84,10 @@ add_peer_pool(Pid) ->
 %% to find out about restart strategy, maximum restart frequency and child
 %% specifications.
 %%--------------------------------------------------------------------
-init([File, Local_PeerId, Id]) ->
+init([Path, PeerId, Id]) ->
     Control =
 	{control,
-	 {etorrent_t_control, start_link_load, [File, Local_PeerId, Id]},
+	 {etorrent_t_control, start_link, [Id, Path, PeerId]},
 	 transient, 2000, worker, [etorrent_t_control]},
     {ok, {{one_for_all, 1, 60}, [Control]}}.
 
