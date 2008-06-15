@@ -15,7 +15,7 @@
 %% API
 %%% TODO: Consider splitting this code into more parts. Easily done per table.
 -export([cleanup_torrent_by_pid/1,
-	 store_torrent/2, set_torrent_state/2,
+	 set_torrent_state/2,
 	 select_torrent/1, delete_torrent/1, delete_torrent_by_pid/1,
 	 store_peer/4, select_peer_ip_port_by_pid/1, delete_peer/1,
 	 peer_statechange/2, is_peer_connected/3, select_interested_peers/1,
@@ -77,20 +77,6 @@ cleanup_torrent_by_pid(Pid) ->
 	end,
     mnesia:transaction(F).
 
-%%--------------------------------------------------------------------
-%% Function: store_torrent(InfoHash, StorerPid, MonitorRef) -> transaction
-%% Description: Store that InfoHash is controlled by StorerPid with assigned
-%%  monitor reference MonitorRef
-%%--------------------------------------------------------------------
-store_torrent(Id, {{uploaded, U}, {downloaded, D}, {left, L}}) ->
-    F = fun() ->
-		mnesia:write(#torrent { id = Id,
-					left = L,
-					uploaded = U,
-					downloaded = D,
-					state = unknown })
-	end,
-    mnesia:transaction(F).
 
 %%--------------------------------------------------------------------
 %% Function: set_torrent_state(InfoHash, State) -> ok | not_found
