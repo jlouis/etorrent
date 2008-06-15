@@ -25,7 +25,7 @@ BEP 23 - Tracker Returns Compact Peer Lists.
 
 -- GETTING STARTED WITHOUT INSTALLING --
 
-1. run "make -f Makefile.init". This calls autoconf and friends. On non-GNU
+1. run "./autogen.sh". This calls autoconf and friends. On non-GNU
    systems, you need GNU Make and a call to 'gmake' or something such depending
    on your platform.
 
@@ -36,11 +36,12 @@ BEP 23 - Tracker Returns Compact Peer Lists.
 
 3. run "make" (These steps are not necessary for the latter)
 
-4. cd into lib/etorrent-1.0/src and run "erlc *.erl"
+4. cd into lib/etorrent-1.0/ebin.
 
-5. copy /etc/etorrent.config into the src dir and edit it to your liking.
+5. copy /etc/etorrent.config into the ebin dir and edit it to your liking.
    Note that the directory for watching torrents and the directory for
-   error logs should exist (or things get nasty).
+   error logs should exist (or things get nasty). Copy ../src/etorrent.app
+   to the ebin dir as well.
 
 6. run "erl -pa . -config etorrent.config -sname etorrent -s etorrent_app"
 
