@@ -191,8 +191,8 @@ handle_tracker_response(BC, S) ->
     PeerMasterPid = S#state.peer_master_pid,
     RequestTime = find_next_request_time(BC),
     TrackerId = find_tracker_id(BC),
-    Complete = find_completes(BC),
-    Incomplete = find_incompletes(BC),
+    Complete = decode_integer("complete", BC),
+    Incomplete = decode_integer("incomplete", BC),
     NewIPs = find_ips_in_tracker_response(BC),
     ErrorMessage = fetch_error_message(BC),
     WarningMessage = fetch_warning_message(BC),
@@ -282,15 +282,13 @@ find_tracker_id(BC) ->
 				BC,
 				tracker_id_not_given).
 
-find_completes(BC) ->
-    {integer, N} =
-	etorrent_bcoding:search_dict_default({string, "complete"}, BC, no_completes),
-    N.
-
-find_incompletes(BC) ->
-    {integer, N} =
-	etorrent_bcoding:search_dict_default({string, "incomplete"}, BC, no_incompletes),
-    N.
+decode_integer(Target, BC) ->
+    case etorrent_bcoding:search_dict_default({string, Target}, BC, none) of
+	{integer, N} ->
+	    N;
+	none ->
+	    0
+    end.
 
 fetch_error_message(BC) ->
     etorrent_bcoding:search_dict_default({string, "failure reason"}, BC, none).
