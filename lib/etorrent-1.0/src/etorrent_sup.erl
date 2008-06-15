@@ -37,9 +37,6 @@ init([]) ->
     AcceptorSup = {acceptor_sup,
 		   {etorrent_acceptor_sup, start_link, []},
 		   permanent, infinity, supervisor, [etorrent_acceptor_sup]},
-    Serializer = {fs_serializer,
-		  {etorrent_fs_serializer, start_link, []},
-		  permanent, 2000, worker, [etorrent_fs_serializer]},
     DirWatcherSup = {dirwatcher_sup,
 		  {etorrent_dirwatcher_sup, start_link, []},
 		  transient, infinity, supervisor, [etorrent_dirwatcher_sup]},
@@ -51,7 +48,7 @@ init([]) ->
 		   transient, infinity, supervisor, [etorrent_t_pool_sup]},
     {ok, {{one_for_all, 1, 60},
 	  [EventManager, Listener, AcceptorSup,
-	   Serializer, DirWatcherSup, TorrentMgr, TorrentPool]}}.
+	   DirWatcherSup, TorrentMgr, TorrentPool]}}.
 
 %%====================================================================
 %% Internal functions
