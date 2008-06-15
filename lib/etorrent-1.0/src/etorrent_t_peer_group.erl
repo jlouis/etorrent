@@ -276,7 +276,7 @@ fill_peers(N, S) ->
 	[] ->
 	    % No peers available, just stop trying to fill peers
 	    {ok, S};
-	[{IP, Port, _PeerId} | R] ->
+	[{IP, Port} | R] ->
 	    % Possible peer. Check it.
 	    case is_bad_peer(IP, Port, S) of
 		{atomic, true} ->

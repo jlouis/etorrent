@@ -248,23 +248,31 @@ find_next_request_time(BC) ->
 						   ?DEFAULT_REQUEST_TIMEOUT}),
     R.
 
-process_ips(D) ->
-    process_ips(D, []).
+%%--------------------------------------------------------------------
+%% Function: decode_ips(IpData) -> [{IP, Port}]
+%% Description: Decode the IP response from the tracker
+%%--------------------------------------------------------------------
+decode_ips(D) ->
+    decode_ips(D, []).
 
-process_ips([], Accum) ->
-    lists:reverse(Accum);
-process_ips([IPDict | Rest], Accum) ->
+decode_ips([], Accum) ->
+    Accum;
+decode_ips([IPDict | Rest], Accum) ->
     {ok, {string, IP}} = etorrent_bcoding:search_dict({string, "ip"}, IPDict),
-    {ok, {string, PeerId}} = etorrent_bcoding:search_dict({string, "peer id"},
-						    IPDict),
     {ok, {integer, Port}} = etorrent_bcoding:search_dict({string, "port"},
 						   IPDict),
-    process_ips(Rest, [{IP, Port, PeerId} | Accum]).
+    decode_ips(Rest, [{IP, Port} | Accum]);
+decode_ips(<<>>, Accum) ->
+    Accum;
+decode_ips(<<B1:8, B2:8, B3:8, B4:8, Port:16/big, Rest/binary>>, Accum) ->
+    decode_ips(Rest, [{{B1, B2, B3, B4}, Port} | Accum]).
 
 find_ips_in_tracker_response(BC) ->
     case etorrent_bcoding:search_dict_default({string, "peers"}, BC, none) of
 	{list, Ips} ->
-	    process_ips(Ips);
+	    decode_ips(Ips);
+	{string, Ips} ->
+	    decode_ips(list_to_binary(Ips));
 	none ->
 	    []
     end.
