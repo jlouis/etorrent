@@ -283,10 +283,14 @@ find_tracker_id(BC) ->
 				tracker_id_not_given).
 
 find_completes(BC) ->
-    etorrent_bcoding:search_dict_default({string, "complete"}, BC, no_completes).
+    {integer, N} =
+	etorrent_bcoding:search_dict_default({string, "complete"}, BC, no_completes),
+    N.
 
 find_incompletes(BC) ->
-    etorrent_bcoding:search_dict_default({string, "incomplete"}, BC, no_incompletes).
+    {integer, N} =
+	etorrent_bcoding:search_dict_default({string, "incomplete"}, BC, no_incompletes),
+    N.
 
 fetch_error_message(BC) ->
     etorrent_bcoding:search_dict_default({string, "failure reason"}, BC, none).
