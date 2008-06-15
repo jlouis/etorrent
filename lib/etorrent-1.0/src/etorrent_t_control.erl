@@ -19,7 +19,7 @@
 	tracker_warning_report/2]).
 
 %% gen_fsm callbacks
--export([init/1, handle_event/3, initializing/2, waiting_check/2, started/2,
+-export([init/1, handle_event/3, initializing/2, started/2,
 	 stopped/2, handle_sync_event/4, handle_info/3, terminate/3,
 	 code_change/4]).
 
@@ -111,74 +111,68 @@ init([Parent, Id, Path, PeerId]) ->
 %%--------------------------------------------------------------------
 % Load a torrent at Path with Torrent
 initializing(timeout, S) ->
-    {ok, Torrent, Files} =
-	etorrent_fs_checker:load_torrent(S#state.work_dir, S#state.path),
-    Name = etorrent_metainfo:get_name(Torrent),
-    etorrent_event:starting_torrent(Name),
     case etorrent_tracking_map:is_ready_for_checking(S#state.id) of
 	false ->
 	    {next_state, initializing, S, ?CHECK_WAIT_TIME};
 	true ->
-	    ok = etorrent_fs_checker:ensure_file_sizes_correct(Files),
-	    {ok, FileDict} =
-		etorrent_fs_checker:build_dictionary_on_files(Torrent, Files),
-	    {ok, FS} = add_filesystem(FileDict, S),
+	    %% TODO: Try to coalesce some of these operations together.
 
-	    NS = S#state{torrent = Torrent, file_system_pid = FS},
-	    {next_state, started, check_and_start_torrent(FS, NS)}
+	    %% Read the torrent, check its contents for what we are missing
+	    {ok, Torrent, FSPid, InfoHash} =
+		etorrent_fs_checker:read_and_check_torrent(
+		  S#state.id,
+		  S#state.parent_pid,
+		  S#state.work_dir,
+		  S#state.path),
+	    %% Update the tracking map. This torrent has been started.
+	    etorrent_tracking_map:set_state(S#state.id, started),
+
+	    %% Add a torrent entry for this torrent.
+	    {atomic, _} =
+		etorrent_torrent:new(S#state.id,
+				     {{uploaded, 0},
+				      {downloaded, 0},
+				      {left, calculate_amount_left(S#state.id)}}),
+
+	    %% Add a peer pool
+	    %% TODO: We can pre-add this in the supervisor I think.
+	    {ok, GroupPid} = etorrent_t_sup:add_peer_pool(S#state.parent_pid),
+
+	    %% Are we leeching or seeding this torrent?
+	    TorrentState = query_torrent_state(S#state.id),
+	    {atomic, _} =
+		etorrent_mnesia_operations:set_torrent_state(S#state.id, TorrentState),
+
+	    %% And a process for controlling the peers for this torrent.
+	    {ok, PeerMasterPid} =
+		etorrent_t_sup:add_peer_group(
+		  S#state.parent_pid,
+		  GroupPid,
+		  S#state.peer_id,
+		  InfoHash,
+		  FSPid,
+		  TorrentState,
+		  S#state.id),
+
+	    %% Start the tracker
+	    {ok, TrackerPid} =
+		etorrent_t_sup:add_tracker(
+		  S#state.parent_pid,
+		  PeerMasterPid,
+		  etorrent_metainfo:get_url(S#state.torrent),
+		  etorrent_metainfo:get_infohash(S#state.torrent),
+		  S#state.peer_id,
+		  S#state.id),
+	    %% TODO: We should make this call be part of the init of the tracker.
+	    etorrent_tracker_communication:start_now(TrackerPid),
+
+	    {next_state, started,
+	     S#state{file_system_pid = FSPid,
+		     tracker_pid = TrackerPid,
+		     torrent = Torrent,
+		     peer_master_pid = PeerMasterPid}}
+
     end.
-
-check_and_start_torrent(FS, S) ->
-    ok = etorrent_fs_checker:check_torrent_contents(FS, S#state.id),
-    error_logger:info_report(adding_state),
-    InfoHash = etorrent_metainfo:get_infohash(S#state.torrent),
-    {atomic, _} =
-	etorrent_torrent:new(S#state.id,
-			     {{uploaded, 0},
-			      {downloaded, 0},
-			      {left, calculate_amount_left(S#state.id)}}),
-    error_logger:info_report(adding_peer_pool),
-    {ok, GroupPid} = etorrent_t_sup:add_peer_pool(S#state.parent_pid),
-    error_logger:info_report(full_check),
-    {atomic, TorrentFull} = etorrent_pieces:is_complete(S#state.id),
-    TorrentState = case TorrentFull of
-		       true ->
-			   seeding;
-		       false ->
-			   leeching
-		   end,
-    etorrent_tracking_map:set_state(S#state.id, started),
-    {ok, PeerMasterPid} =
-	etorrent_t_sup:add_peer_group(
-	  S#state.parent_pid,
-	  GroupPid,
-	  S#state.peer_id,
-	  InfoHash,
-	  FS,
-	  TorrentState,
-	  S#state.id),
-
-    InfoHash = etorrent_metainfo:get_infohash(S#state.torrent),
-    {atomic, _} = etorrent_mnesia_operations:set_torrent_state(S#state.id, TorrentState),
-
-    {ok, TrackerPid} =
-	etorrent_t_sup:add_tracker(
-	  S#state.parent_pid,
-	  PeerMasterPid,
-	  etorrent_metainfo:get_url(S#state.torrent),
-	  etorrent_metainfo:get_infohash(S#state.torrent),
-	  S#state.peer_id,
-	  S#state.id),
-    etorrent_tracker_communication:start_now(TrackerPid),
-    S#state{file_system_pid = FS,
-	    tracker_pid = TrackerPid,
-	    peer_master_pid = PeerMasterPid}.
-
-waiting_check(token, S) ->
-    NS = check_and_start_torrent(S#state.file_system_pid, S),
-    {next_state, started, NS};
-waiting_check(stop, S) ->
-    {next_state, stopped, S}.
 
 started(stop, S) ->
     {stop, argh, S};
@@ -282,16 +276,6 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 %%--------------------------------------------------------------------
 %%% Internal functions
 %%--------------------------------------------------------------------
-add_filesystem(FileDict, S) ->
-    etorrent_pieces:new(S#state.id, FileDict),
-    FSP = case etorrent_t_sup:add_file_system_pool(S#state.parent_pid) of
-	      {ok, FSPool} ->
-		  FSPool;
-	      {error, {already_started, FSPool}} ->
-		  FSPool
-	  end,
-    etorrent_t_sup:add_file_system(S#state.parent_pid, FSP, S#state.id).
-
 calculate_amount_left(Id) when is_integer(Id) ->
     {atomic, Pieces} = etorrent_pieces:get_pieces(Id),
     Sum = lists:foldl(fun(#piece{files = Files, state = State}, Sum) ->
@@ -311,3 +295,11 @@ size_of_ops(Ops) ->
                        Size + Total end,
                0,
                Ops).
+
+query_torrent_state(Id) ->
+    case etorrent_pieces:is_complete(Id) of
+	{atomic, true} ->
+	    seeding;
+	{atomic, false} ->
+	    leeching
+    end.

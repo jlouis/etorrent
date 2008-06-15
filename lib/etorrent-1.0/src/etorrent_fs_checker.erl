@@ -11,23 +11,45 @@
 -include("etorrent_mnesia_table.hrl").
 
 %% API
--export([load_torrent/2, ensure_file_sizes_correct/1,
+-export([read_and_check_torrent/4, load_torrent/2, ensure_file_sizes_correct/1,
 	build_dictionary_on_files/2, check_torrent_contents/2]).
 
 %%====================================================================
 %% API
 %%====================================================================
+
+read_and_check_torrent(Id, SupervisorPid, WorkDir, Path) ->
+    %% Load the torrent
+    {ok, Torrent, Files, Infohash} =
+	load_torrent(WorkDir, Path),
+
+    %% Ensure the files are filled up with garbage of correct size
+    ok = ensure_file_sizes_correct(Files),
+
+    %% Build the dictionary mapping pieces to file operations
+    {ok, FileDict} =
+	build_dictionary_on_files(Torrent, Files),
+
+    %% Initialize the filesystem, initializes the piecemap
+    {ok, FS} = add_filesystem(Id, SupervisorPid, FileDict),
+
+    %% Check the contents of the torrent, updates the state of the piecemap
+    ok = etorrent_fs_checker:check_torrent_contents(FS, Id),
+
+    {ok, Torrent, FS, Infohash}.
+
 load_torrent(Workdir, Path) ->
     P = filename:join([Workdir, Path]),
     {ok, Torrent} = etorrent_bcoding:parse(P),
     {ok, Files} = etorrent_metainfo:get_files(Torrent),
     {ok, Name} = etorrent_metainfo:get_name(Torrent),
+    InfoHash = etorrent_metainfo:get_infohash(Torrent),
     FilesToCheck =
 	lists:map(fun ({Filename, Size}) ->
 			  {filename:join([Workdir, Name, Filename]), Size}
 		  end,
 		  Files),
-    {ok, Torrent, FilesToCheck}.
+    {ok, Torrent, FilesToCheck, InfoHash}.
 
 ensure_file_sizes_correct(Files) ->
     lists:map(fun ({Pth, ISz}) ->
@@ -76,6 +98,16 @@ build_dictionary_on_files(Torrent, Files) ->
 %%====================================================================
 %% Internal functions
 %%====================================================================
+
+add_filesystem(Id, SupervisorPid, FileDict) ->
+    etorrent_pieces:new(Id, FileDict),
+    FSP = case etorrent_t_sup:add_file_system_pool(SupervisorPid) of
+	      {ok, FSPool} ->
+		  FSPool;
+	      {error, {already_started, FSPool}} ->
+		  FSPool
+	  end,
+    etorrent_t_sup:add_file_system(SupervisorPid, FSP, Id).
 
 torrent_size(Files) ->
     lists:foldl(fun ({_F, S}, A) ->
