@@ -48,7 +48,7 @@ handle_call(_A, _B, S) ->
 
 handle_info({'DOWN', _R, process, Pid, _Reason}, S) ->
     error_logger:info_msg("Got Down Msg ~p~n", [Pid]),
-    etorrent_mnesia_operations:cleanup_torrent_by_pid(Pid),
+    etorrent_tracking_map:delete(Pid),
     {noreply, S};
 handle_info(Info, State) ->
     error_logger:info_msg("Unknown message: ~p~n", [Info]),
@@ -65,12 +65,12 @@ spawn_new_torrent(F, S) ->
     {ok, TorrentSup} =
 	etorrent_t_pool_sup:add_torrent(F, S#state.local_peer_id, S#state.id_counter),
     erlang:monitor(process, TorrentSup),
-    etorrent_mnesia_operations:tracking_map_new(F, TorrentSup, S#state.id_counter),
+    etorrent_tracking_map:new(F, TorrentSup, S#state.id_counter),
     S#state { id_counter = S#state.id_counter + 1 }.
 
 stop_torrent(F, S) ->
     error_logger:info_msg("Stopping ~p~n", [F]),
-    case etorrent_mnesia_operations:tracking_map_by_file(F) of
+    case etorrent_tracking_map:by_file(F) of
 	{atomic, [F]} ->
 	    etorrent_t_pool_sup:stop_torrent(F),
 	    ok;

@@ -117,7 +117,7 @@ handshake(Socket) ->
     end.
 
 lookup_infohash(Socket, _ReservedBytes, InfoHash, _PeerId) ->
-    case etorrent_mnesia_operations:tracking_map_by_infohash(InfoHash) of
+    case etorrent_tracking_map:by_infohash(InfoHash) of
 	{atomic, [#tracking_map.id = _Id]} ->
 	    not_implemented; % TODO: Figure out a way to reimplement accepts.
 	{atomic, []} ->

@@ -8,75 +8,20 @@
 -module(etorrent_mnesia_operations).
 
 -include_lib("stdlib/include/qlc.hrl").
-
 -include("etorrent_mnesia_table.hrl").
 
 
 %% API
 %%% TODO: Consider splitting this code into more parts. Easily done per table.
--export([cleanup_torrent_by_pid/1,
-	 set_torrent_state/2,
+-export([set_torrent_state/2,
 	 select_torrent/1, delete_torrent/1, delete_torrent_by_pid/1,
 	 store_peer/4, select_peer_ip_port_by_pid/1, delete_peer/1,
 	 peer_statechange/2, is_peer_connected/3, select_interested_peers/1,
-	 reset_round/1, delete_peers/1, peer_statechange_infohash/2,
-
-	 %% Manipulating the tracking map
-	 tracking_map_new/3,
-	 tracking_map_by_infohash/1, tracking_map_by_file/1]).
+	 reset_round/1, delete_peers/1, peer_statechange_infohash/2]).
 
 %%====================================================================
 %% API
 %%====================================================================
-%%--------------------------------------------------------------------
-%% Function: tracking_map_new(Filename, Supervisor) -> ok
-%% Description: Add a new torrent given by File with the Supervisor
-%%   pid as given to the database structure.
-%%--------------------------------------------------------------------
-tracking_map_new(File, Supervisor, Id) ->
-    mnesia:dirty_write(#tracking_map { id = Id,
-				       filename = File,
-				       supervisor_pid = Supervisor }).
-
-%%--------------------------------------------------------------------
-%% Function: tracking_map_by_file(Filename) -> [SupervisorPid]
-%% Description: Find torrent specs matching the filename in question.
-%%--------------------------------------------------------------------
-tracking_map_by_file(Filename) ->
-    mnesia:transaction(
-      fun () ->
-	      Query = qlc:q([T#tracking_map.filename || T <- mnesia:table(tracking_map),
-							T#tracking_map.filename == Filename]),
-	      qlc:e(Query)
-      end).
-
-%%--------------------------------------------------------------------
-%% Function: tracking_map_by_infohash(Infohash) -> [#tracking_map]
-%% Description: Find tracking map matching a given infohash.
-%%--------------------------------------------------------------------
-tracking_map_by_infohash(InfoHash) ->
-    mnesia:transaction(
-      fun () ->
-	      Q = qlc:q([T || T <- mnesia:table(tracking_map),
-			      T#tracking_map.info_hash =:= InfoHash]),
-	      qlc:e(Q)
-      end).
-
-
-
-
-%%--------------------------------------------------------------------
-%% Function: cleanup_torrent_by_pid(Pid) -> ok
-%% Description: Clean out all references to torrents matching Pid
-%%--------------------------------------------------------------------
-cleanup_torrent_by_pid(Pid) ->
-    F = fun() ->
-		Query = qlc:q([T#tracking_map.filename || T <- mnesia:table(tracking_map),
-							  T#tracking_map.supervisor_pid =:= Pid]),
-		lists:foreach(fun (F) -> mnesia:delete(tracking_map, F, write) end, qlc:e(Query))
-	end,
-    mnesia:transaction(F).
-
 
 %%--------------------------------------------------------------------
 %% Function: set_torrent_state(InfoHash, State) -> ok | not_found
