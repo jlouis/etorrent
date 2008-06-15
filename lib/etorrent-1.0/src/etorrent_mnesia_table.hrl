@@ -1,7 +1,8 @@
 -record(tracking_map, {id,  %% Unique identifier of torrent
 		       filename, %% The filename
 		       supervisor_pid,%% The Pid of who is supervising the torrent
-		       info_hash %% Info hash of the torrent in question. May be unknown.
+		       info_hash, %% Info hash of the torrent in question. May be unknown.
+		       state %% started | stopped | checking
 		      }).
 
 %% A single torrent is represented as the 'torrent' record
