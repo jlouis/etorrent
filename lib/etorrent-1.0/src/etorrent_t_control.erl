@@ -130,7 +130,6 @@ initializing(timeout, S) ->
 
 check_and_start_torrent(FS, S) ->
     ok = etorrent_fs_checker:check_torrent_contents(FS, S#state.id),
-    ok = etorrent_fs_serializer:release_token(),
     error_logger:info_report(adding_state),
     InfoHash = etorrent_metainfo:get_infohash(S#state.torrent),
     {atomic, _} =
@@ -192,15 +191,9 @@ started(seed, S) ->
     {ok, Name} = etorrent_metainfo:get_name(S#state.torrent),
     etorrent_event:completed_torrent(Name),
     etorrent_tracker_communication:torrent_completed(S#state.tracker_pid),
-    {next_state, started, S};
-started(token, S) ->
-    ok = etorrent_fs_serializer:release_token(),
     {next_state, started, S}.
 
 stopped(start, S) ->
-    {stop, argh, S};
-stopped(token, S) ->
-    ok = etorrent_fs_serializer:release_token(),
     {stop, argh, S}.
 
 %%--------------------------------------------------------------------
