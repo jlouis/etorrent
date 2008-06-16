@@ -143,10 +143,10 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%--------------------------------------------------------------------
 start_new_incoming_peer(IP, Port, S) ->
-    PeersMissing =
-	?MAX_PEER_PROCESSES - dict:size(S#state.peer_process_dict),
-    case PeersMissing > 0 of
-	true ->
+    case ?MAX_PEER_PROCESSES - dict:size(S#state.peer_process_dict) of
+	0 ->
+	    already_enough_connections;
+	N when is_integer(N), N > 0 ->
 	    {ok, Pid} = etorrent_t_peer_pool_sup:add_peer(
 			  S#state.peer_group_sup,
 			  S#state.our_peer_id,
@@ -221,16 +221,12 @@ perform_choking_unchoking(S) ->
 
 sort_fastest_downloaders(Peers) ->
     lists:sort(
-      fun ({_K1, DL1, _UL1}, {_K2, DL2, _UL2}) ->
-	      DL1 > DL2
-      end,
+      fun ({_, DL1, _}, {_, DL2, _}) -> DL1 > DL2 end,
       Peers).
 
 sort_fastest_uploaders(Peers) ->
     lists:sort(
-      fun ({_K1, _DL1, UL1}, {_K2, _DL2, UL2}) ->
-	      UL1 > UL2
-      end,
+      fun ({_, _, UL1}, {_, _, UL2}) -> UL1 > UL2 end,
       Peers).
 
 find_fastest(N, Interested, F) ->
