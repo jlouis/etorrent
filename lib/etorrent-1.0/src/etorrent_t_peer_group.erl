@@ -124,6 +124,7 @@ handle_info({'DOWN', _Ref, process, Pid, Reason}, S)
 handle_info({'DOWN', _Ref, process, Pid, _Reason}, S) ->
     % The peer shut down unexpectedly re-add him to the queue in the *back*
     {IP, Port} = etorrent_mnesia_operations:select_peer_ip_port_by_pid(Pid),
+    etorrent_mnesia_operations:delete_peer(Pid),
     {noreply, S#state{available_peers =
 		      (S#state.available_peers ++ [{IP, Port}])}};
 handle_info(Info, State) ->
@@ -258,13 +259,8 @@ choke_peers(Pids) ->
 
 start_new_peers(IPList, State) ->
     %% Update the PeerList with the new incoming peers
-    S = case IPList of
-	    [] ->
-		State;
-	    L when is_list(L) ->
-		PeerList = lists:usort(IPList ++ State#state.available_peers),
-		State#state { available_peers = PeerList}
-	end,
+    PeerList = lists:usort(IPList ++ State#state.available_peers),
+    S = State#state { available_peers = PeerList},
 
     %% Replenish the connected peers.
     fill_peers(?MAX_PEER_PROCESSES - dict:size(S#state.peer_process_dict), S).
@@ -287,6 +283,12 @@ fill_peers(N, S) ->
 	    end
     end.
 
+%%--------------------------------------------------------------------
+%% Function: spawn_new_peer(IP, Port, N, S) -> {ok, State}
+%% Description: Attempt to spawn the peer at IP/Port. N is the number of
+%%   peers we still need to spawn and S is the current state. Returns
+%%   a new state to be put into the process.
+%%--------------------------------------------------------------------
 spawn_new_peer(IP, Port, N, S) ->
     case etorrent_mnesia_operations:is_peer_connected(IP,
 						      Port,
