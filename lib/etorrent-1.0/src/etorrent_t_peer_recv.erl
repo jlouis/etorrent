@@ -187,7 +187,7 @@ handle_cast({connect, IP, Port}, S) ->
 	    {stop, normal, S}
     end;
 handle_cast({uploaded_data, Amount}, S) ->
-    etorrent_mnesia_operations:peer_statechange(self(), {uploaded, Amount}),
+    etorrent_peer:statechange(self(), {uploaded, Amount}),
     {noreply, S};
 handle_cast({complete_handshake, _ReservedBytes, Socket, RemotePeerId}, S) ->
     etorrent_peer_communication:complete_handshake_header(Socket,
@@ -323,7 +323,7 @@ handle_message({bitfield, BitField}, S) ->
     end;
 handle_message({piece, Index, Offset, Data}, S) ->
     Len = size(Data),
-    etorrent_mnesia_operations:peer_statechange(self(), {downloaded, Len}),
+    etorrent_peer:statechange(self(), {downloaded, Len}),
     case handle_got_chunk(Index, Offset, Data, Len, S) of
 	{ok, NS} ->
 	    try_to_queue_up_pieces(NS)
