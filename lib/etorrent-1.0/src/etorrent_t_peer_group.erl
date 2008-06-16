@@ -102,29 +102,27 @@ handle_cast(_Msg, State) ->
 handle_info(round_tick, S) ->
     case S#state.round of
 	0 ->
-	    {atomic, _} = etorrent_mnesia_operations:peer_statechange_infohash(
-			    S#state.info_hash,
-			    remove_optimistic_unchoke),
+	    etorrent_peer:statechange(S#state.torrent_id, remove_optimistic_unchoke),
 	    {NS, DoNotTouchPids} = perform_choking_unchoking(S),
 	    NNS = select_optimistic_unchoker(DoNotTouchPids, NS),
-	    {atomic, _} = etorrent_mnesia_operations:reset_round(S#state.info_hash),
+	    {atomic, _} = etorrent_peer:reset_round(S#state.torrent_id),
 	    {noreply, NNS#state{round = 2}};
 	N when is_integer(N) ->
 	    {NS, _DoNotTouchPids} = perform_choking_unchoking(S),
-	    {atomic, _} = etorrent_mnesia_operations:reset_round(S#state.info_hash),
+	    {atomic, _} = etorrent_peer:reset_round(S#state.torrent_id),
 	    {noreply, NS#state{round = NS#state.round - 1}}
     end;
 handle_info({'DOWN', _Ref, process, Pid, Reason}, S)
   when (Reason =:= normal) or (Reason =:= shutdown) ->
     % The peer shut down normally. Hence we just remove him and start up
     %  other peers. Eventually the tracker will re-add him to the peer list
-    etorrent_mnesia_operations:delete_peer(Pid),
+    etorrent_peer:delete(Pid),
     {ok, NS} = start_new_peers([], S),
     {noreply, NS};
 handle_info({'DOWN', _Ref, process, Pid, _Reason}, S) ->
     % The peer shut down unexpectedly re-add him to the queue in the *back*
-    {IP, Port} = etorrent_mnesia_operations:select_peer_ip_port_by_pid(Pid),
-    etorrent_mnesia_operations:delete_peer(Pid),
+    {IP, Port} = etorrent_peer:get_ip_port(Pid),
+    etorrent_peer:delete(Pid),
     {noreply, S#state{available_peers =
 		      (S#state.available_peers ++ [{IP, Port}])}};
 handle_info(Info, State) ->
@@ -155,7 +153,7 @@ start_new_incoming_peer(IP, Port, S) ->
 			  self(),
 			  S#state.torrent_id),
 	    erlang:monitor(process, Pid),
-	    etorrent_mnesia_operations:store_peer(IP, Port, S#state.info_hash, Pid),
+	    etorrent_peer:new(IP, Port, S#state.torrent_id, Pid),
 	    {ok, Pid};
 	false ->
 	    already_enough_connections
@@ -190,7 +188,7 @@ select_optimistic_unchoker(Size, List, DoNotTouchPids, S) ->
 	    select_optimistic_unchoker(Size, List, DoNotTouchPids, S);
 	false ->
 	    {atomic, _} =
-		etorrent_mnesia_operations:peer_statechange(Pid, {optimistic_unchoke, true}),
+		etorrent_peer:statechange(Pid, {optimizations_unchoke, true}),
 	    etorrent_t_peer_recv:unchoke(Pid),
 	    S
     end.
@@ -203,7 +201,7 @@ select_optimistic_unchoker(Size, List, DoNotTouchPids, S) ->
 %%--------------------------------------------------------------------
 perform_choking_unchoking(S) ->
     {atomic, {Interested, NotInterested}} =
-	etorrent_mnesia_operations:select_interested_peers(S#state.info_hash),
+	etorrent_peer:partition_peers_by_interest(S#state.torrent_id),
     % N fastest interesteds should be kept
     {Downloaders, Rest} =
 	find_fastest_peers(?DEFAULT_NUM_DOWNLOADERS,
@@ -286,9 +284,7 @@ fill_peers(N, S) ->
 %%   a new state to be put into the process.
 %%--------------------------------------------------------------------
 spawn_new_peer(IP, Port, N, S) ->
-    case etorrent_mnesia_operations:is_peer_connected(IP,
-						      Port,
-						      S#state.info_hash) of
+    case etorrent_peer:is_connected(IP, Port, S#state.torrent_id) of
 	{atomic, true} ->
 	    fill_peers(N, S);
 	{atomic, false} ->
@@ -303,13 +299,13 @@ spawn_new_peer(IP, Port, N, S) ->
 	    _Ref = erlang:monitor(process, Pid),
 	    etorrent_t_peer_recv:connect(Pid, IP, Port),
 	    {atomic, _} =
-		etorrent_mnesia_operations:store_peer(IP, Port, S#state.info_hash, Pid),
+		etorrent_peer:new(IP, Port, S#state.torrent_id, Pid),
 	    fill_peers(N-1, S)
     end.
 
 %% XXX: This is definitely wrong. But it is as the code is currently
 %%   implemented.
 is_bad_peer(IP, Port, S) ->
-    etorrent_mnesia_operations:is_peer_connected(IP, Port, S#state.info_hash).
+    etorrent_peer:is_connected(IP, Port, S#state.torrent_id).
 
 
