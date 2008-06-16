@@ -341,6 +341,7 @@ handle_got_chunk(Index, Offset, Data, Len, S) ->
 	   Ref,
 	   Data,
 	   S#state.file_system_pid,
+	   S#state.peer_group_pid,
 	   S#state.torrent_id) of
 	ok ->
 	    delete_chunk(Ref, Index, Offset, Len, S)

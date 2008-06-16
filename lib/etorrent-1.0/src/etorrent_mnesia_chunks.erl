@@ -14,7 +14,7 @@
 -define(DEFAULT_CHUNK_SIZE, 16384). % Default size for a chunk. All clients use this.
 
 %% API
--export([add_piece_chunks/2, pick_chunks/4, store_chunk/4,
+-export([add_piece_chunks/2, pick_chunks/4, store_chunk/5,
 	 putback_chunks/2, select_chunk/4]).
 
 %%====================================================================
@@ -169,7 +169,7 @@ add_piece_chunks(R, PieceSize) ->
 	      add_chunk(Chunks, R#piece.id)
       end).
 
-store_chunk(Ref, Data, FSPid, MasterPid) ->
+store_chunk(Ref, Data, FSPid, MasterPid, Id) ->
     {atomic, Res} =
 	mnesia:transaction(
 	  fun () ->
@@ -194,7 +194,7 @@ store_chunk(Ref, Data, FSPid, MasterPid) ->
       end),
     case Res of
 	{full, Pid, PieceNum} ->
-	    store_piece(Pid, PieceNum, FSPid, MasterPid),
+	    store_piece(Pid, PieceNum, FSPid, MasterPid, Id),
 	    ok;
 	ok ->
 	    ok
@@ -307,14 +307,14 @@ add_chunk([{PieceNumber, Offset, Size} | Rest], Id) when is_integer(Id) ->
 
 % XXX: Update to a state 'storing' and check for this when calling here.
 %   will avoid a little pesky problem that might occur.
-store_piece(Id, PieceNumber, FSPid, MasterPid) when is_integer(Id) ->
+store_piece(Ref, PieceNumber, FSPid, MasterPid, Id) ->
     F = fun () ->
 		Q = qlc:q([{Cs#chunk.offset,
 			    Cs#chunk.size,
 			    Cs#chunk.state,
 			    Cs#chunk.assign}
 			   || Cs <- mnesia:table(chunk),
-			      Cs#chunk.id =:= Id,
+			      Cs#chunk.ref =:= Ref,
 			      Cs#chunk.piece_number =:= PieceNumber,
 			      Cs#chunk.state =:= fetched]),
 		Q2 = qlc:keysort(1, Q),
