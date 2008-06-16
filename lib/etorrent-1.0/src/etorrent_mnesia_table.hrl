@@ -15,20 +15,16 @@
 		  state}). % What is our state: leecher | unknown | seeder
 
 
--record(peer_info, {id, % Each peer is identified by its peer_id here
-		    uploaded,
-		    downloaded,
-		    interested,
-		    remote_choking,
-		    optimistic_unchoke}).
-
--record(peer_map, {pid,
-		   ip,
-		   port,
-		   info_hash}).
-
--record(peer,     {map,
-		   info}).
+%% The peer record represents a peer we are talking to
+-record(peer, {pid, % We identify each peer with it's pid.
+	       ip,  % Ip of peer in question
+	       port, % Port of peer in question
+	       torrent_id, % Torrent Id this peer belongs to
+	       uploaded = 0, % Amount of uploaded bytes this round
+	       downloaded = 0, % Amount of downloaded bytes this round
+	       interested = false, % Is this peer interested in us?
+	       remote_choking, % true if the remote is choking us.
+	       optimistic_unchoke}). % true if we have selected this peer for opt. unchoke
 
 %% Individual pieces are represented via the piece record
 -record(piece, {hash, % Hash of piece

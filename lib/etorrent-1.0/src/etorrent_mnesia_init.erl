@@ -6,15 +6,11 @@
 -export([init/0]).
 
 init() ->
-    BaseTables = [tracking_map, torrent, peer_info, peer_map, peer, piece, chunk],
+    BaseTables = [tracking_map, torrent, peer, piece, chunk],
     mnesia:create_table(tracking_map,
 			[{attributes, record_info(fields, tracking_map)}]),
     mnesia:create_table(torrent,
 			[{attributes, record_info(fields, torrent)}]),
-    mnesia:create_table(peer_info,
-			[{attributes, record_info(fields, peer_info)}]),
-    mnesia:create_table(peer_map,
-			[{attributes, record_info(fields, peer_map)}]),
     mnesia:create_table(peer,
 			[{attributes, record_info(fields, peer)}]),
     mnesia:create_table(piece,
