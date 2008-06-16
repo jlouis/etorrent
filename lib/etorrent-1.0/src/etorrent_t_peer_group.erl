@@ -116,7 +116,7 @@ handle_info({'DOWN', _Ref, process, Pid, Reason}, S)
   when (Reason =:= normal) or (Reason =:= shutdown) ->
     % The peer shut down normally. Hence we just remove him and start up
     %  other peers. Eventually the tracker will re-add him to the peer list
-    etorrent_peer:delete(Pid),
+    etorrent_peer:delete (Pid),
     {ok, NS} = start_new_peers([], S),
     {noreply, NS};
 handle_info({'DOWN', _Ref, process, Pid, _Reason}, S) ->
@@ -154,9 +154,7 @@ start_new_incoming_peer(IP, Port, S) ->
 			  S#state.torrent_id),
 	    erlang:monitor(process, Pid),
 	    etorrent_peer:new(IP, Port, S#state.torrent_id, Pid),
-	    {ok, Pid};
-	false ->
-	    already_enough_connections
+	    {ok, Pid}
     end.
 
 
