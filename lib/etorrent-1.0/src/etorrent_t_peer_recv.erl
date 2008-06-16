@@ -267,7 +267,7 @@ code_change(_OldVsn, State, _Extra) ->
 handle_message(keep_alive, S) ->
     {ok, S};
 handle_message(choke, S) ->
-    {atomic, ok} = etorrent_peer:statechange(self, remote_choking),
+    {atomic, ok} = etorrent_peer:statechange(self(), remote_choking),
     NS = unqueue_all_pieces(S),
     {ok, NS#state { remote_choked = true }};
 handle_message(unchoke, S) ->
