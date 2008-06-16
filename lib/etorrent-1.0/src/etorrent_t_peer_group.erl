@@ -89,9 +89,8 @@ handle_call(_Request, _From, State) ->
     {reply, Reply, State}.
 
 handle_cast({add_peers, IPList}, S) ->
-    {ok, NS} = update_available_peers(IPList, S),
-    {ok, NS2} = start_new_peers(NS),
-    {noreply, NS2};
+    {ok, NS} = start_new_peers(IPList, S),
+    {noreply, NS};
 handle_cast({broadcast_have, Index}, S) ->
     broadcast_have_message(Index, S),
     {noreply, S};
@@ -120,7 +119,7 @@ handle_info({'DOWN', _Ref, process, Pid, Reason}, S)
     % The peer shut down normally. Hence we just remove him and start up
     %  other peers. Eventually the tracker will re-add him to the peer list
     etorrent_mnesia_operations:delete_peer(Pid),
-    {ok, NS} = start_new_peers(S),
+    {ok, NS} = start_new_peers([], S),
     {noreply, NS};
 handle_info({'DOWN', _Ref, process, Pid, _Reason}, S) ->
     % The peer shut down unexpectedly re-add him to the queue in the *back*
@@ -160,6 +159,7 @@ start_new_incoming_peer(IP, Port, S) ->
 	false ->
 	    already_enough_connections
     end.
+
 
 broadcast_have_message(Index, S) ->
     Pids = dict:fetch_keys(S#state.peer_process_dict),
@@ -255,18 +255,19 @@ choke_peers(Pids) ->
 		  end, Pids),
     ok.
 
-update_available_peers(IPList, S) ->
-    NewList = lists:usort(IPList ++ S#state.available_peers),
-    {ok, S#state{ available_peers = NewList}}.
 
-start_new_peers(S) ->
-    PeersMissing = ?MAX_PEER_PROCESSES - dict:size(S#state.peer_process_dict),
-    case PeersMissing > 0 of
-	true ->
-	    fill_peers(PeersMissing, S);
-	false ->
-	    {ok, S}
-    end.
+start_new_peers(IPList, State) ->
+    %% Update the PeerList with the new incoming peers
+    S = case IPList of
+	    [] ->
+		State;
+	    L when is_list(L) ->
+		PeerList = lists:usort(IPList ++ State#state.available_peers),
+		State#state { available_peers = PeerList}
+	end,
+
+    %% Replenish the connected peers.
+    fill_peers(?MAX_PEER_PROCESSES - dict:size(S#state.peer_process_dict), S).
 
 %%% NOTE: fill_peers/2 and spawn_new_peer/5 tail calls each other.
 fill_peers(0, S) ->
