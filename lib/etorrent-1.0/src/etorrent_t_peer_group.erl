@@ -12,6 +12,8 @@
 
 -behaviour(gen_server).
 
+-include("etorrent_mnesia_table.hrl").
+
 %% API
 -export([start_link/6, add_peers/2, broadcast_have/2, new_incoming_peer/3,
 	seed/1]).
@@ -236,10 +238,10 @@ find_fastest_peers(N, Interested, S) when S#state.mode == leeching ->
 find_fastest_peers(N, Interested, S) when S#state.mode == seeding ->
     find_fastest(N, Interested, fun sort_fastest_uploaders/1).
 
-unchoke_peers(Pids) ->
-    lists:foreach(fun({Pid, _DL, _UL}) ->
-			  etorrent_t_peer_recv:unchoke(Pid)
-		  end, Pids),
+unchoke_peers(Peers) ->
+    lists:foreach(fun(P) ->
+			  etorrent_t_peer_recv:unchoke(P#peer.pid)
+		  end, Peers),
     ok.
 
 choke_peers(Pids) ->
@@ -268,9 +270,9 @@ fill_peers(N, S) ->
 	[{IP, Port} | R] ->
 	    % Possible peer. Check it.
 	    case is_bad_peer(IP, Port, S) of
-		{atomic, true} ->
+		true ->
 		    fill_peers(N, S#state{available_peers = R});
-		{atomic, false} ->
+		false ->
 		    spawn_new_peer(IP, Port, N, S#state{available_peers = R})
 	    end
     end.
@@ -283,9 +285,9 @@ fill_peers(N, S) ->
 %%--------------------------------------------------------------------
 spawn_new_peer(IP, Port, N, S) ->
     case etorrent_peer:is_connected(IP, Port, S#state.torrent_id) of
-	{atomic, true} ->
+	true ->
 	    fill_peers(N, S);
-	{atomic, false} ->
+	false ->
 	    {ok, Pid} = etorrent_t_peer_pool_sup:add_peer(
 			  S#state.peer_group_sup,
 			  S#state.our_peer_id,
@@ -296,8 +298,7 @@ spawn_new_peer(IP, Port, N, S) ->
 	    %% XXX: We set a monitor which we do not use!
 	    _Ref = erlang:monitor(process, Pid),
 	    etorrent_t_peer_recv:connect(Pid, IP, Port),
-	    {atomic, _} =
-		etorrent_peer:new(IP, Port, S#state.torrent_id, Pid),
+	    ok = etorrent_peer:new(IP, Port, S#state.torrent_id, Pid),
 	    fill_peers(N-1, S)
     end.
 

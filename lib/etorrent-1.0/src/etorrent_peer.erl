@@ -50,7 +50,7 @@ get_ip_port(Pid) ->
 %% Description: Delete all references to the peer owned by Pid
 %%--------------------------------------------------------------------
 delete(Pid) ->
-    mnesia:dirty_delete(peer, Pid, write).
+    mnesia:dirty_delete(peer, Pid).
 
 %%--------------------------------------------------------------------
 %% Function: statechange(Id, What) -> transaction
@@ -63,7 +63,7 @@ statechange(Id, What) when is_integer(Id) ->
 			      P#peer.torrent_id =:= Id]),
 	      lists:foreach(fun (R) ->
 				    NR = alter_state(R, What),
-				    mnesia:write(peer, NR)
+				    mnesia:write(NR)
 			    end,
 			    qlc:e(Q))
       end);
@@ -92,8 +92,8 @@ is_connected(IP, Port, Id) when is_integer(Id) ->
 				P#peer.torrent_id =:= Id]),
 		length(qlc:e(Q)) > 0
 	end,
-    {atomic, N} = mnesia:transaction(F),
-    N.
+    {atomic, B} = mnesia:transaction(F),
+    B.
 
 
 %%--------------------------------------------------------------------

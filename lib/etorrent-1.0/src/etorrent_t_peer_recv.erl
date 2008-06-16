@@ -267,17 +267,17 @@ code_change(_OldVsn, State, _Extra) ->
 handle_message(keep_alive, S) ->
     {ok, S};
 handle_message(choke, S) ->
-    etorrent_mnesia_operations:peer_statechange(self(), remote_choking),
+    {atomic, ok} = etorrent_peer:statechange(self, remote_choking),
     NS = unqueue_all_pieces(S),
     {ok, NS#state { remote_choked = true }};
 handle_message(unchoke, S) ->
-    {atomic, ok} = etorrent_mnesia_operations:peer_statechange(self(), remote_unchoking),
+    {atomic, ok} = etorrent_peer:statechange(self(), remote_unchoking),
     try_to_queue_up_pieces(S#state{remote_choked = false});
 handle_message(interested, S) ->
-    {atomic, ok} = etorrent_mnesia_operations:peer_statechange(self(), interested),
+    {atomic, ok} = etorrent_peer:statechange(self(), interested),
     {ok, S#state { remote_interested = true}};
 handle_message(not_interested, S) ->
-    etorrent_mnesia_operations:peer_statechange(self(), not_interested),
+    etorrent_mnesia_peer:statechange(self(), not_interested),
     {ok, S#state { remote_interested = false}};
 handle_message({request, Index, Offset, Len}, S) ->
     etorrent_t_peer_send:remote_request(S#state.send_pid, Index, Offset, Len),
