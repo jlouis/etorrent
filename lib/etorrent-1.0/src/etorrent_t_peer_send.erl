@@ -195,6 +195,7 @@ handle_cast({cancel_piece, Index, OffSet, Len}, S) ->
 
 %% Terminating normally means we should inform our recv pair
 terminate(normal, S) ->
+    error_logger:info_report([peer_send_terminating_normally]),
     etorrent_t_peer_recv:stop(S#state.parent),
     ok;
 terminate(Reason, State) ->

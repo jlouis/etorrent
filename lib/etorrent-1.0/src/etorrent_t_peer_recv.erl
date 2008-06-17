@@ -230,6 +230,7 @@ handle_cast(_Msg, State) ->
 %% Description: Handling all non call/cast messages
 %%--------------------------------------------------------------------
 handle_info({tcp_closed, _P}, S) ->
+    error_logger:info_report([recv_tcp_closed]),
     {stop, normal, S};
 handle_info({tcp, _Socket, M}, S) ->
     Msg = etorrent_peer_communication:recv_message(M),
@@ -251,6 +252,13 @@ handle_info(_Info, State) ->
 %%--------------------------------------------------------------------
 terminate(_Reason, S) ->
     unqueue_all_pieces(S),
+    case S#state.tcp_socket of
+	none ->
+	    error_logger:info_report([socket_none]),
+	    ok;
+	Sock ->
+	    gen_tcp:close(Sock)
+    end,
     catch(etorrent_t_peer_send:stop(S#state.send_pid)),
     ok.
 
