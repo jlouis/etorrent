@@ -181,7 +181,7 @@ started({tracker_error_report, Reason}, S) ->
     {next_state, started, S};
 started(seed, S) ->
     etorrent_t_peer_group:seed(S#state.peer_master_pid),
-    etorrent_mnesia_operations:set_torrent_state(S#state.id, seeding),
+    etorrent_torrent:statechange(S#state.id, seeding),
     {ok, Name} = etorrent_metainfo:get_name(S#state.torrent),
     etorrent_event:completed_torrent(Name),
     etorrent_tracker_communication:torrent_completed(S#state.tracker_pid),

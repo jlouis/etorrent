@@ -133,7 +133,7 @@ handle_info(Info, State) ->
 
 terminate(_Reason, S) ->
     error_logger:info_report([peer_group_terminating]),
-    {atomic, _} = etorrent_mnesia_operations:delete_torrent(S#state.info_hash),
+    {atomic, _} = etorrent_torrent:delete(S#state.torrent_id),
     ok.
 
 code_change(_OldVsn, State, _Extra) ->

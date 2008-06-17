@@ -277,7 +277,7 @@ handle_message(interested, S) ->
     {atomic, ok} = etorrent_peer:statechange(self(), interested),
     {ok, S#state { remote_interested = true}};
 handle_message(not_interested, S) ->
-    etorrent_mnesia_peer:statechange(self(), not_interested),
+    etorrent_peer:statechange(self(), not_interested),
     {ok, S#state { remote_interested = false}};
 handle_message({request, Index, Offset, Len}, S) ->
     etorrent_t_peer_send:remote_request(S#state.send_pid, Index, Offset, Len),

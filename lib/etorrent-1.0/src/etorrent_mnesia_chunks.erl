@@ -283,7 +283,8 @@ ensure_chunking(Id, PieceNum) ->
 				       T#piece.state =:= not_fetched]),
 		      case length(qlc:e(Q1)) of
 			  0 ->
-			      {atomic, _} = etorrent_mnesia_operations:set_torrent_state(Id, endgame),
+			      {atomic, _} =
+				  etorrent_torrent:statechange(Id, endgame),
 			      ok;
 			  N when is_integer(N) ->
 			      ok
@@ -332,11 +333,10 @@ store_piece(Ref, PieceNumber, FSPid, MasterPid, Id) ->
 	    DataSize = lists:foldl(fun({_, S, _, _}, Acc) -> S + Acc end,
 				   0,
 				   Invariant),
-	    {atomic, ok} = etorrent_mnesia_operations:set_torrent_state(Id,
-									{subtract_left, DataSize}),
-	    {atomic, _} =
-		etorrent_mnesia_operations:set_torrent_state(Id,
-							     {add_downloaded, DataSize}),
+	    {atomic, ok} = etorrent_torrent:statechange(Id,
+							{subtract_left, DataSize}),
+	    {atomic, _} = etorrent_torrent:statechange(Id,
+						       {add_downloaded, DataSize}),
 	    ok = etorrent_t_peer_group:broadcast_have(MasterPid, PieceNumber),
 	    ok;
 	wrong_hash ->

@@ -99,8 +99,8 @@ running(timeout, S) when S#state.choke == false ->
 	{{value, {Index, Offset, Len}}, NQ} ->
 	    case send_piece(Index, Offset, Len, S) of
 		{ok, NS} ->
-		    etorrent_mnesia_operations:set_torrent_state(S#state.torrent_handle,
-								 {add_upload, Len}),
+		    etorrent_torrent:statechange(S#state.torrent_handle,
+					       {add_upload, Len}),
 		    etorrent_t_peer_recv:uploaded_data(S#state.parent, Len),
 		    {next_state, running, NS#state{request_queue = NQ}, 0};
 		conn_closed ->
