@@ -6,6 +6,11 @@
 --   Keep the style please. Can be read with emacs org-mode
 ----------------------------------------------------------------------
 
+* Review endgame support. Something is murky in there.
+   The torrents won't complete and sits in the endgame forever. That
+   is pretty bad, so we will need to figure out why that happens and
+   add a fix to the code.
+
 * Optimize the mnesia code.
    Currently, the mnesia code is crap. It can be optimized quite a lot
    and it will probably make the code run a lot faster than now. It has
