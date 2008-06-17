@@ -203,12 +203,12 @@ handle_tracker_response(BC, S) ->
 	WarningMessage /= none ->
 	    etorrent_t_control:tracker_warning_report(ControlPid, WarningMessage),
 	    etorrent_t_peer_group:add_peers(PeerMasterPid, NewIPs),
-	    etorrent_mnesia_operations:set_torrent_state(S#state.torrent_id,
-							 {tracker_report, Complete, Incomplete});
+	    etorrent_torrent:statechange(S#state.torrent_id,
+					 {tracker_report, Complete, Incomplete});
 	true ->
 	    etorrent_t_peer_group:add_peers(PeerMasterPid, NewIPs),
-	    etorrent_mnesia_operations:set_torrent_state(S#state.torrent_id,
-							 {tracker_report, Complete, Incomplete})
+	    etorrent_torrent:statechange(S#state.torrent_id,
+					 {tracker_report, Complete, Incomplete})
     end,
     {ok, RequestTime, S#state{trackerid = TrackerId}}.
 
@@ -222,7 +222,7 @@ construct_headers([{Key, Value} | Rest], HeaderLines) ->
     construct_headers(Rest, [Data | HeaderLines]).
 
 build_tracker_url(S, Event) ->
-    [R] = etorrent_mnesia_operations:select_torrent(S#state.torrent_id),
+    [R] = etorrent_torrent:get_by_id(S#state.torrent_id),
     {ok, Port} = application:get_env(etorrent, port),
     Request = [{"info_hash",
 		etorrent_utils:build_encoded_form_rfc1738(S#state.info_hash)},

@@ -141,7 +141,7 @@ initializing(timeout, S) ->
 	    %% Are we leeching or seeding this torrent?
 	    TorrentState = query_torrent_state(S#state.id),
 	    {atomic, _} =
-		etorrent_mnesia_operations:set_torrent_state(S#state.id, TorrentState),
+		etorrent_torrent:statechange(S#state.id, TorrentState),
 
 	    %% And a process for controlling the peers for this torrent.
 	    {ok, PeerMasterPid} =

@@ -11,7 +11,7 @@
 -include("etorrent_mnesia_table.hrl").
 
 %% API
--export([new/2, delete/1, statechange/2]).
+-export([new/2, delete/1, get_by_id/1, statechange/2]).
 
 %%====================================================================
 %% API
