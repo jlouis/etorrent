@@ -176,7 +176,7 @@ handle_cast({connect, IP, Port}, S) ->
 							S#state.file_system_pid,
 							S#state.torrent_id),
 		    BF = etorrent_pieces:get_bitfield(S#state.torrent_id),
-		    etorrent_t_peer_send:send(SendPid, {bitfield, BF}),
+		    etorrent_t_peer_send:bitfield(SendPid, BF),
 		    {noreply, S#state{tcp_socket = Socket,
 				      remote_peer_id = PeerId,
 				      send_pid = SendPid}};
@@ -199,7 +199,7 @@ handle_cast({complete_handshake, _ReservedBytes, Socket, RemotePeerId}, S) ->
 				     S#state.file_system_pid,
 				     S#state.torrent_id),
     BF = etorrent_pieces:get_bitfield(S#state.torrent_id),
-    etorrent_t_peer_send:send(SendPid, {bitfield, BF}),
+    etorrent_t_peer_send:bitfield(SendPid, BF),
     {noreply, S#state{tcp_socket = Socket,
 		      send_pid = SendPid,
 		      remote_peer_id = RemotePeerId}};
@@ -214,7 +214,7 @@ handle_cast(interested, S) ->
 	true ->
 	    {noreply, S};
 	false ->
-	    send_message(interested, S),
+	    etorrent_t_peer_send:interested(S#state.send_pid),
 	    {noreply, S#state{local_interested = true}}
     end;
 handle_cast({send_have_piece, PieceNumber}, S) ->
@@ -294,7 +294,7 @@ handle_message({have, PieceNum}, S) ->
 		{atomic, true} when S#state.local_interested =:= true ->
 		    {ok, NS};
 		{atomic, true} when S#state.local_interested =:= false ->
-		    send_message(interested, S),
+		    etorrent_t_peer_send:interested(S#state.send_pid),
 		    {ok, NS#state{local_interested = true}};
 		{atomic, false} ->
 		    {ok, NS}
@@ -308,7 +308,7 @@ handle_message({bitfield, BitField}, S) ->
 		etorrent_peer_communication:destruct_bitfield(Size, BitField),
 	    case etorrent_pieces:check_interest(S#state.torrent_id, PieceSet) of
 		interested ->
-		    send_message(interested, S),
+		    etorrent_t_peer_send:interested(S#state.send_pid),
 		    %%% XXX: peer_statechange here?
 		    {ok, S#state{piece_set = PieceSet,
 				 local_interested = true}};
@@ -346,9 +346,6 @@ handle_got_chunk(Index, Offset, Data, Len, S) ->
 	ok ->
 	    delete_chunk(Ref, Index, Offset, Len, S)
     end.
-
-send_message(Msg, S) ->
-    etorrent_t_peer_send:send(S#state.send_pid, Msg).
 
 %%--------------------------------------------------------------------
 %% Function: enable_socketorrent_messages(socket() -> ok

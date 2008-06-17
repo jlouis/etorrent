@@ -12,9 +12,11 @@ start() ->
     application:start(inets),
     application:start(timer),
     application:start(sasl),
+    timer:start(), % TODO: Set as a kernel parameter
     mnesia:start(),
     db_initialize(),
     application:start(etorrent).
+
 
 start(_Type, _Args) ->
     etorrent_sup:start_link().
