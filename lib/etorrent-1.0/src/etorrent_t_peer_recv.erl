@@ -250,16 +250,21 @@ handle_info(_Info, State) ->
 %% cleaning up. When it returns, the gen_server terminates with Reason.
 %% The return value is ignored.
 %%--------------------------------------------------------------------
-terminate(_Reason, S) ->
+terminate(Reason, S) ->
     unqueue_all_pieces(S),
     case S#state.tcp_socket of
 	none ->
-	    error_logger:info_report([socket_none]),
 	    ok;
 	Sock ->
 	    gen_tcp:close(Sock)
     end,
-    catch(etorrent_t_peer_send:stop(S#state.send_pid)),
+    case Reason of
+	normal ->
+	    ok;
+	_ ->
+	    error_logger:info_report([reason_for_termination, Reason])
+    end,
+    etorrent_t_peer_send:stop(S#state.send_pid),
     ok.
 
 %%--------------------------------------------------------------------
