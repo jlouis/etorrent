@@ -167,17 +167,10 @@ handle_cast({connect, IP, Port}, S) ->
 		  when PeerId == S#state.local_peer_id ->
 		    {stop, normal, S};
 		{ok, _ReservedBytes, PeerId} ->
-		    ok = enable_socket_messages(Socket),
-		    {ok, SendPid} =
-			etorrent_t_peer_send:start_link(Socket,
-							S#state.file_system_pid,
-							S#state.torrent_id),
-		    BF = etorrent_pieces:get_bitfield(S#state.torrent_id),
-		    etorrent_t_peer_send:bitfield(SendPid, BF),
-		    {noreply, S#state{tcp_socket = Socket,
-				      remote_peer_id = PeerId,
-				      send_pid = SendPid}};
-		{error, _X} ->
+		    complete_connection_setup(S#state { tcp_socket = Socket,
+						        remote_peer_id = PeerId});
+		{error, X} ->
+		    error_logger:info_report([handshake_failed, X]),
 		    {stop, normal, S}
 	    end;
 	{error, _Reason} ->
@@ -190,16 +183,8 @@ handle_cast({complete_handshake, _ReservedBytes, Socket, RemotePeerId}, S) ->
     etorrent_peer_communication:complete_handshake_header(Socket,
 						 S#state.info_hash,
 						 S#state.local_peer_id),
-    ok = enable_socket_messages(Socket),
-    {ok, SendPid} =
-	etorrent_t_peer_send:start_link(Socket,
-				     S#state.file_system_pid,
-				     S#state.torrent_id),
-    BF = etorrent_pieces:get_bitfield(S#state.torrent_id),
-    etorrent_t_peer_send:bitfield(SendPid, BF),
-    {noreply, S#state{tcp_socket = Socket,
-		      send_pid = SendPid,
-		      remote_peer_id = RemotePeerId}};
+    complete_connection_setup(S#state { tcp_socket = Socket,
+					remote_peer_id = RemotePeerId });
 handle_cast(choke, S) ->
     etorrent_t_peer_send:choke(S#state.send_pid),
     {noreply, S};
@@ -415,3 +400,22 @@ piece_valid(Id, PieceNum) ->
 	    false
     end.
 
+%%--------------------------------------------------------------------
+%% Function: complete_connection_setup() -> gen_server_reply()}
+%% Description: Do the bookkeeping needed to set up the peer:
+%%    * enable passive messaging mode on the socket.
+%%    * Start the send pid
+%%    * Send off the bitfield
+%%--------------------------------------------------------------------
+complete_connection_setup(S) ->
+    ok = enable_socket_messages(S#state.tcp_socket),
+
+    {ok, SendPid} =
+	etorrent_t_peer_send:start_link(S#state.tcp_socket,
+					S#state.file_system_pid,
+					S#state.torrent_id),
+
+    BF = etorrent_pieces:get_bitfield(S#state.torrent_id),
+    etorrent_t_peer_send:bitfield(SendPid, BF),
+
+    {noreply, S#state{send_pid = SendPid}}.
