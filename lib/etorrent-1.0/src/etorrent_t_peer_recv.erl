@@ -385,10 +385,11 @@ try_to_queue_up_pieces(S) ->
 %%--------------------------------------------------------------------
 %% Function: queue_chunks([Chunk], State) -> {ok, State}
 %% Description: Send chunk messages for each chunk we decided to queue.
+%%   also add these chunks to the piece request set.
 %%--------------------------------------------------------------------
 queue_items(ChunkList, S) ->
     F = fun(Chunk) ->
-		etorrent_t_peer_send:request(S#state.send_pid, Chunk)
+		etorrent_t_peer_send:local_request(S#state.send_pid, Chunk)
 	end,
     lists:foreach(F, ChunkList),
 
