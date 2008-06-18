@@ -390,15 +390,16 @@ queue_items(ChunkList, S) ->
     F = fun(Chunk) ->
 		etorrent_t_peer_send:request(S#state.send_pid, Chunk)
 	end,
+    lists:foreach(F, ChunkList),
+
     G = fun(Chunk, RS) ->
 		sets:add_element({Chunk#chunk.ref,
 				  Chunk#chunk.piece_number,
 				  Chunk#chunk.offset,
 				  Chunk#chunk.size}, RS)
 	end,
-
-    lists:foreach(F, ChunkList),
     RSet = lists:fold(G, S#state.remote_request_set, ChunkList),
+
     {ok, S#state { remote_request_set = RSet }}.
 
 piece_valid(Id, PieceNum) ->
