@@ -259,6 +259,14 @@ will carry out checks of all read blocks and thus it is near
 impossible to have disk corruption in such a scheme.
 
 \section{Peer processes}
+
+General rule: we try to carry out bookkeeping as close to the peer as
+possible. Ie, we update mnesia tables whenever a message arrives or
+when a message gets sent in a early/late manner. Upon arrival, the
+first thing we do is to update database tables locally. Upon message
+sending, the last thing we do is to update. Sender/Reciever processes
+are responsible for updating and tracking the information.
+
 \chapter{Programming planning}
 \section{Filesystem}
 A central problem to the eTorrent project is the File system. The
