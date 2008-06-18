@@ -22,9 +22,9 @@
 	       torrent_id, % Torrent Id this peer belongs to
 	       uploaded = 0, % Amount of uploaded bytes this round
 	       downloaded = 0, % Amount of downloaded bytes this round
-	       interested = false, % Is this peer interested in us?
-	       remote_choking, % true if the remote is choking us.
-	       optimistic_unchoke}). % true if we have selected this peer for opt. unchoke
+	       remote_interested = false, % Is this peer interested in us?
+	       remote_choking = true, % true if the remote is choking us.
+	       optimistic_unchoke = false }). % true if we have selected this peer for opt. unchoke
 
 %% Individual pieces are represented via the piece record
 -record(piece, {hash, % Hash of piece

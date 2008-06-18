@@ -30,12 +30,7 @@ new(IP, Port, TorrentId, Pid) ->
     mnesia:dirty_write(#peer { pid = Pid,
 			       ip = IP,
 			       port = Port,
-			       torrent_id = TorrentId,
-			       uploaded = 0,
-			       downloaded = 0,
-			       interested = false,
-			       remote_choking = true,
-			       optimistic_unchoke = false}).
+			       torrent_id = TorrentId}).
 
 %%--------------------------------------------------------------------
 %% Function: get_ip_port(Pid) -> {IP, Port}
@@ -130,7 +125,7 @@ partition_peers_by_interest(Id) when is_integer(Id) ->
 query_interested(IsInterested, Id) ->
     qlc:q([P || P <- mnesia:table(peer),
 		P#peer.torrent_id =:= Id,
-		P#peer.interested =:= IsInterested]).
+		P#peer.remote_interested =:= IsInterested]).
 
 %%--------------------------------------------------------------------
 %% Function: alter_state(Row, What) -> NewRow
@@ -148,9 +143,9 @@ alter_state(Peer, What) ->
 	remote_unchoking ->
 	    Peer#peer{ remote_choking = false};
 	interested ->
-	    Peer#peer{ interested = true};
+	    Peer#peer{ remote_interested = true};
 	not_intersted ->
-	    Peer#peer{ interested = false};
+	    Peer#peer{ remote_interested = false};
 	{uploaded, Amount} ->
 	    Uploaded = Peer#peer.uploaded,
 	    Peer#peer{ uploaded = Uploaded + Amount };
