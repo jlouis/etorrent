@@ -210,13 +210,8 @@ handle_cast(unchoke, S) ->
     etorrent_t_peer_send:unchoke(S#state.send_pid),
     {noreply, S};
 handle_cast(interested, S) ->
-    case S#state.local_interested of
-	true ->
-	    {noreply, S};
-	false ->
-	    etorrent_t_peer_send:interested(S#state.send_pid),
-	    {noreply, S#state{local_interested = true}}
-    end;
+    etorrent_t_peer_send:interested(S#state.send_pid),
+    {noreply, S#state{local_interested = true}};
 handle_cast({send_have_piece, PieceNumber}, S) ->
     etorrent_t_peer_send:send_have_piece(S#state.send_pid, PieceNumber),
     {noreply, S};

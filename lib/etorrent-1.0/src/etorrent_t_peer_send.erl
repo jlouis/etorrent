@@ -24,6 +24,7 @@
 	        request_queue = none,
 
 		choke = true,
+		interested = false, % Are we interested in the peer?
 		timer = none,
 		parent = none,
 	        piece_cache = none,
@@ -165,10 +166,14 @@ handle_cast(unchoke, S) when S#state.choke == true ->
 				  request_queue = queue:new()});
 handle_cast({bitfield, BF}, S) ->
     send_message({bitfield, BF}, S);
-handle_cast(not_interested, S) ->
-    send_message(not_interested, S);
-handle_cast(interested, S) ->
-    send_message(interested, S);
+handle_cast(not_interested, S) when S#state.interested =:= false ->
+    {noreply, S, 0};
+handle_cast(not_interested, S) when S#state.interested =:= true ->
+    send_message(not_interested, S#state { interested = false });
+handle_cast(interested, S) when S#state.interested =:= true ->
+    {noreply, S, 0};
+handle_cast(interested, S) when S#state.interested =:= false ->
+    send_message(interested, S#state { interested = true });
 handle_cast({have, Pn}, S) ->
     send_message({have, Pn}, S);
 handle_cast({local_request_piece, Index, Offset, Len}, S) ->
