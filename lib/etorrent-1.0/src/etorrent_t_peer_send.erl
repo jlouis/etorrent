@@ -9,11 +9,13 @@
 %%%-------------------------------------------------------------------
 -module(etorrent_t_peer_send).
 
+-include("etorrent_mnesia_table.hrl").
+
 -behaviour(gen_server).
 
 %% API
 -export([start_link/3, remote_request/4, cancel/4, choke/1, unchoke/1,
-	 local_request/4, not_interested/1, send_have_piece/2, stop/1,
+	 local_request/4, local_request/2, not_interested/1, send_have_piece/2, stop/1,
 	 bitfield/2, interested/1]).
 
 %% gen_server callbacks
@@ -46,14 +48,17 @@ start_link(Socket, FilesystemPid, TorrentId) ->
 %%  {Index, Offset, Len}
 %%--------------------------------------------------------------------
 remote_request(Pid, Index, Offset, Len) ->
-    gen_server:cast(Pid, {remote_request_piece, Index, Offset, Len}).
+    gen_server:cast(Pid, {remote_request, Index, Offset, Len}).
 
 %%--------------------------------------------------------------------
 %% Func: local_request(Pid, Index, Offset, Len)
 %% Description: We request a piece from the peer: {Index, Offset, Len}
 %%--------------------------------------------------------------------
 local_request(Pid, Index, Offset, Len) ->
-    gen_server:cast(Pid, {local_request_piece, Index, Offset, Len}).
+    gen_server:cast(Pid, {local_request, Index, Offset, Len}).
+
+local_request(Pid, Chunk) when is_record(Chunk, chunk) ->
+    gen_server:cast(Pid, {local_request, Chunk}).
 
 %%--------------------------------------------------------------------
 %% Func: cancel(Pid, Index, Offset, Len)
@@ -176,9 +181,11 @@ handle_cast(interested, S) when S#state.interested =:= false ->
     send_message(interested, S#state { interested = true });
 handle_cast({have, Pn}, S) ->
     send_message({have, Pn}, S);
-handle_cast({local_request_piece, Index, Offset, Len}, S) ->
+handle_cast({local_request, Index, Offset, Len}, S) ->
     send_message({request, Index, Offset, Len}, S);
-handle_cast({remote_request_piece, _Index, _Offset, _Len}, S)
+handle_cast({local_request, C}, S) when is_record(C, chunk) ->
+    send_message({request, C#chunk.piece_number, C#chunk.offset, C#chunk.size}, S);
+handle_cast({remote_request, _Index, _Offset, _Len}, S)
   when S#state.choke == true ->
     {noreply, S, 0};
 handle_cast(stop, S) ->

@@ -254,6 +254,12 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 %%% Internal functions
 %%--------------------------------------------------------------------
+
+%%--------------------------------------------------------------------
+%% Func: handle_message(Msg, State) -> {ok, NewState} | {stop, Reason, NewState}
+%% Description: Process an incoming message Msg from the wire. Return either
+%%  {ok, S} if the processing was ok, or {stop, Reason, S} in case of an error.
+%%--------------------------------------------------------------------
 handle_message(keep_alive, S) ->
     {ok, S};
 handle_message(choke, S) ->
@@ -299,7 +305,6 @@ handle_message({bitfield, BitField}, S) ->
 	    case etorrent_pieces:check_interest(S#state.torrent_id, PieceSet) of
 		interested ->
 		    etorrent_t_peer_send:interested(S#state.send_pid),
-		    %%% XXX: peer_statechange here?
 		    {ok, S#state{piece_set = PieceSet,
 				 local_interested = true}};
 		not_interested ->
@@ -309,7 +314,8 @@ handle_message({bitfield, BitField}, S) ->
 %		    {stop, invalid_pieces, S}
 	    end;
 	N when is_integer(N) ->
-	    {stop, got_out_of_band_bitfield, S}
+	    %% This is a bad peer. Kill him!
+	    {stop, normal, S}
     end;
 handle_message({piece, Index, Offset, Data}, S) ->
     Len = size(Data),
@@ -321,10 +327,12 @@ handle_message({piece, Index, Offset, Data}, S) ->
 handle_message(Unknown, S) ->
     {stop, {unknown_message, Unknown}, S}.
 
-delete_chunk(Ref, Index, Offset, Len, S) ->
-    RS = sets:del_element({Ref, Index, Offset, Len}, S#state.remote_request_set),
-    {ok, S#state { remote_request_set = RS}}.
 
+%%--------------------------------------------------------------------
+%% Func: handle_got_chunk(Index, Offset, Data, Len, S) -> {ok, State}
+%% Description: We just got some chunk data. Store it in the mnesia DB
+%%   TODO: This is one of the functions which is a candidate for optimization!
+%%--------------------------------------------------------------------
 handle_got_chunk(Index, Offset, Data, Len, S) ->
     {atomic, [Ref]} = etorrent_mnesia_chunks:select_chunk(S#state.torrent_id, Index, Offset, Len),
     case etorrent_mnesia_chunks:store_chunk(
@@ -334,22 +342,16 @@ handle_got_chunk(Index, Offset, Data, Len, S) ->
 	   S#state.peer_group_pid,
 	   S#state.torrent_id) of
 	ok ->
-	    delete_chunk(Ref, Index, Offset, Len, S)
+	    RS = sets:del_element({Ref, Index, Offset, Len}, S#state.remote_request_set),
+	    {ok, S#state { remote_request_set = RS }}
     end.
-
-%%--------------------------------------------------------------------
-%% Function: enable_socketorrent_messages(socket() -> ok
-%% Description: Make the socket active and configure it to bittorrent
-%%   specifications.
-%%--------------------------------------------------------------------
-enable_socket_messages(Socket) ->
-    inet:setopts(Socket, [binary, {active, true}, {packet, 4}]).
 
 %%--------------------------------------------------------------------
 %% Function: unqueue_all_pieces/1
 %% Description: Unqueue all queued pieces at the other end. We place
 %%   the earlier queued items at the end to compensate for quick
 %%   choke/unchoke problems and live data.
+%%   TODO: Optimization candidate!
 %%--------------------------------------------------------------------
 unqueue_all_pieces(S) ->
     Requests = sets:to_list(S#state.remote_request_set),
@@ -361,6 +363,7 @@ unqueue_all_pieces(S) ->
 %%--------------------------------------------------------------------
 %% Function: try_to_queue_up_requests(state()) -> {ok, state()}
 %% Description: Try to queue up requests at the other end.
+%%   TODO: This function should use watermarks rather than this puny implementation.
 %%--------------------------------------------------------------------
 try_to_queue_up_pieces(S) when S#state.remote_choked == true ->
     {ok, S};
@@ -379,18 +382,24 @@ try_to_queue_up_pieces(S) ->
 	    queue_items(Items, S)
     end.
 
-queue_items([], S) ->
-    {ok, S};
-queue_items([Chunk | Rest], S) ->
-    etorrent_t_peer_send:local_request(S#state.send_pid,
-				       Chunk#chunk.piece_number,
-				       Chunk#chunk.offset,
-				       Chunk#chunk.size),
-    RS = sets:add_element({Chunk#chunk.ref,
-			   Chunk#chunk.piece_number,
-			   Chunk#chunk.offset,
-			   Chunk#chunk.size}, S#state.remote_request_set),
-    queue_items(Rest, S#state { remote_request_set = RS }).
+%%--------------------------------------------------------------------
+%% Function: queue_chunks([Chunk], State) -> {ok, State}
+%% Description: Send chunk messages for each chunk we decided to queue.
+%%--------------------------------------------------------------------
+queue_items(ChunkList, S) ->
+    F = fun(Chunk) ->
+		etorrent_t_peer_send:request(S#state.send_pid, Chunk)
+	end,
+    G = fun(Chunk, RS) ->
+		sets:add_element({Chunk#chunk.ref,
+				  Chunk#chunk.piece_number,
+				  Chunk#chunk.offset,
+				  Chunk#chunk.size}, RS)
+	end,
+
+    lists:foreach(F, ChunkList),
+    RSet = lists:fold(G, S#state.remote_request_set, ChunkList),
+    {ok, S#state { remote_request_set = RSet }}.
 
 piece_valid(Id, PieceNum) ->
     case etorrent_pieces:piece_valid(Id, PieceNum) of
@@ -408,7 +417,8 @@ piece_valid(Id, PieceNum) ->
 %%    * Send off the bitfield
 %%--------------------------------------------------------------------
 complete_connection_setup(S) ->
-    ok = enable_socket_messages(S#state.tcp_socket),
+    ok = inet:setopts(S#state.tcp_socket,
+		      [binary, {active, true}, {packet, 4}]),
 
     {ok, SendPid} =
 	etorrent_t_peer_send:start_link(S#state.tcp_socket,
