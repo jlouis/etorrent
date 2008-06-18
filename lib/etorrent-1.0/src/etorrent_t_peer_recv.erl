@@ -15,7 +15,7 @@
 
 %% API
 -export([start_link/5, connect/3, choke/1, unchoke/1, interested/1,
-	 send_have_piece/2, complete_handshake/4, uploaded_data/2,
+	 send_have_piece/2, complete_handshake/4,
 	stop/1]).
 
 %% gen_server callbacks
@@ -63,7 +63,10 @@ start_link(LocalPeerId, InfoHash, FilesystemPid, MasterPid, Id) ->
 %%--------------------------------------------------------------------
 %% Function: connect(Pid, IP, Port)
 %% Description: Connect to the IP and Portnumber for communication with
-%%   the peer.
+%%   the peer. Note we don't handle the connect in the init phase. This is
+%%   due to the fact that a connect may take a considerable amount of time.
+%%   With this scheme, we spawn off processes, and then make them all attempt
+%%   connects in parallel, which is much easier.
 %%--------------------------------------------------------------------
 connect(Pid, IP, Port) ->
     gen_server:cast(Pid, {connect, IP, Port}).
@@ -102,13 +105,6 @@ send_have_piece(Pid, PieceNumber) ->
 %%--------------------------------------------------------------------
 complete_handshake(Pid, ReservedBytes, Socket, PeerId) ->
     gen_server:cast(Pid, {complete_handshake, ReservedBytes, Socket, PeerId}).
-
-%%--------------------------------------------------------------------
-%% Function: uploaded_data(Pid, Amount)
-%% Description: Record that we uploaded Amount bytes of data to the peer.
-%%--------------------------------------------------------------------
-uploaded_data(Pid, Amount) ->
-    gen_server:cast(Pid, {uploaded_data, Amount}).
 
 %%--------------------------------------------------------------------
 %% Function: stop(Pid)
@@ -158,6 +154,7 @@ handle_call(_Request, _From, State) ->
 %%--------------------------------------------------------------------
 handle_cast(stop, S) ->
     {stop, normal, S};
+
 handle_cast({connect, IP, Port}, S) ->
     case gen_tcp:connect(IP, Port, [binary, {active, false}],
 			 ?DEFAULT_CONNECT_TIMEOUT) of
