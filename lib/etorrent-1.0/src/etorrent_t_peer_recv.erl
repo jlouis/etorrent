@@ -334,8 +334,8 @@ handle_message(Unknown, S) ->
 %%   TODO: This is one of the functions which is a candidate for optimization!
 %%--------------------------------------------------------------------
 handle_got_chunk(Index, Offset, Data, Len, S) ->
-    {atomic, [Ref]} = etorrent_mnesia_chunks:select_chunk(S#state.torrent_id, Index, Offset, Len),
-    case etorrent_mnesia_chunks:store_chunk(
+    {atomic, [Ref]} = etorrent_chunk:select_chunk(S#state.torrent_id, Index, Offset, Len),
+    case etorrent_chunk:store_chunk(
 	   Ref,
 	   Data,
 	   S#state.file_system_pid,
@@ -355,7 +355,7 @@ handle_got_chunk(Index, Offset, Data, Len, S) ->
 %%--------------------------------------------------------------------
 unqueue_all_pieces(S) ->
     Requests = sets:to_list(S#state.remote_request_set),
-    etorrent_mnesia_chunks:putback_chunks(lists:map(fun({R, _, _, _}) -> R end,
+    etorrent_chunk:putback_chunks(lists:map(fun({R, _, _, _}) -> R end,
 						    Requests),
 					  self()),
     S#state{remote_request_set = sets:new()}.
@@ -369,7 +369,7 @@ try_to_queue_up_pieces(S) when S#state.remote_choked == true ->
     {ok, S};
 try_to_queue_up_pieces(S) ->
     PiecesToQueue = ?BASE_QUEUE_LEVEL - sets:size(S#state.remote_request_set),
-    case etorrent_mnesia_chunks:pick_chunks(self(),
+    case etorrent_chunk:pick_chunks(self(),
 					    S#state.torrent_id,
 					    S#state.piece_set,
 					    PiecesToQueue) of
@@ -399,7 +399,7 @@ queue_items(ChunkList, S) ->
 				  Chunk#chunk.offset,
 				  Chunk#chunk.size}, RS)
 	end,
-    RSet = lists:fold(G, S#state.remote_request_set, ChunkList),
+    RSet = lists:foldl(G, S#state.remote_request_set, ChunkList),
 
     {ok, S#state { remote_request_set = RSet }}.
 

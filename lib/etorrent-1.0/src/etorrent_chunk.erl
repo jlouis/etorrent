@@ -5,7 +5,7 @@
 %%%
 %%% Created : 31 Mar 2008 by Jesper Louis Andersen <>
 %%%-------------------------------------------------------------------
--module(etorrent_mnesia_chunks).
+-module(etorrent_chunk).
 
 -include_lib("stdlib/include/qlc.hrl").
 
