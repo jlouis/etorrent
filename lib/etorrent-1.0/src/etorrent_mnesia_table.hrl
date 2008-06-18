@@ -35,14 +35,11 @@
 		      left = unknown, % Number of chunks left...
 		      state}). % state is: fetched | not_fetched | chunked
 
-%% A 16K chunk of data
--record(chunk, {ref, % unique reference
-		id, % id owning this chunk, referers to piece.id
-		piece_number, % piece_number this chunk belongs to
-		offset, % Offset of chunk in the piece
-		size, % size of chunk in the piece (almost always 16K, but last piece may differ)
-		assign = unknown, % Aux data for piece
-		state}). % state is: fetched | not_fetched | assigned
+%% A mapping containing the chunks tracking
+-record(chunk, {idt, % {id, piece_number, state} tuple
+		     % state is fetched | {assigned, Pid} | not_fetched,
+		chunks}). % {offset, size}
+
 
 
 
