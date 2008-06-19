@@ -143,7 +143,7 @@ putback_chunks(Pid) ->
 				    {Id, PieceNum, _} = C#chunk.idt,
 				    Chunks = C#chunk.chunks,
 				    NotFetchIdt = {Id, PieceNum, not_fetched},
-				    case mnesia:read(chunk, NotFetchIdt) of
+				    case mnesia:read(chunk, NotFetchIdt, write) of
 					[] ->
 					    mnesia:write(#chunk{ idt = NotFetchIdt,
 								 chunks = Chunks});
@@ -160,7 +160,7 @@ putback_chunks(Pid) ->
 %% Description: Add chunks for a piece of a given torrent.
 %%--------------------------------------------------------------------
 
-store_chunk(Id, PieceNum, {Offset, Len}, Data, FSPid, MasterPid, Pid) ->
+store_chunk(Id, PieceNum, {Offset, Len}, Data, FSPid, PeerGroupPid, Pid) ->
     {atomic, Res} =
 	mnesia:transaction(
 	  fun () ->
@@ -196,7 +196,7 @@ store_chunk(Id, PieceNum, {Offset, Len}, Data, FSPid, MasterPid, Pid) ->
 	  end),
     case Res of
 	full ->
-	    store_piece(Id, PieceNum, FSPid, MasterPid),
+	    store_piece(Id, PieceNum, FSPid, PeerGroupPid),
 	    ok;
 	ok ->
 	    ok
@@ -283,7 +283,7 @@ ensure_chunking(Id, PieceNum) ->
 %   will avoid a little pesky problem that might occur.
 store_piece(Id, PieceNumber, FSPid, MasterPid) ->
     F = fun () ->
-		[R] = mnesia:read(chunk, {Id, PieceNumber, fetched}),
+		[R] = mnesia:read(chunk, {Id, PieceNumber, fetched}, read),
 		mnesia:delete_object(R),
 		R#chunk.chunks
 	end,

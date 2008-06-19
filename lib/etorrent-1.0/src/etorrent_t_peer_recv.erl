@@ -334,17 +334,15 @@ handle_message(Unknown, S) ->
 %%   TODO: This is one of the functions which is a candidate for optimization!
 %%--------------------------------------------------------------------
 handle_got_chunk(Index, Offset, Data, Len, S) ->
-    {atomic, [Ref]} = etorrent_chunk:select_chunk(S#state.torrent_id, Index, Offset, Len),
-    case etorrent_chunk:store_chunk(
-	   Ref,
-	   Data,
-	   S#state.file_system_pid,
-	   S#state.peer_group_pid,
-	   S#state.torrent_id) of
-	ok ->
-	    RS = sets:del_element({Ref, Index, Offset, Len}, S#state.remote_request_set),
-	    {ok, S#state { remote_request_set = RS }}
-    end.
+    ok = etorrent_chunk:store_chunk(S#state.torrent_id,
+				    Index,
+				    {Offset, Len},
+				    Data,
+				    S#state.file_system_pid,
+				    S#state.peer_group_pid,
+				    self()),
+	RS = sets:del_element({Index, Offset, Len}, S#state.remote_request_set),
+    {ok, S#state { remote_request_set = RS }}.
 
 %%--------------------------------------------------------------------
 %% Function: unqueue_all_pieces/1
@@ -354,10 +352,7 @@ handle_got_chunk(Index, Offset, Data, Len, S) ->
 %%   TODO: Optimization candidate!
 %%--------------------------------------------------------------------
 unqueue_all_pieces(S) ->
-    Requests = sets:to_list(S#state.remote_request_set),
-    etorrent_chunk:putback_chunks(lists:map(fun({R, _, _, _}) -> R end,
-						    Requests),
-					  self()),
+    etorrent_chunk:putback_chunks(self()),
     S#state{remote_request_set = sets:new()}.
 
 %%--------------------------------------------------------------------
