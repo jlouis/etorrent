@@ -32,13 +32,13 @@ pick_chunks(_Pid, _Handle, _PieceSet, SoFar, 0) ->
     {ok, SoFar};
 pick_chunks(Pid, Handle, PieceSet, SoFar, N) ->
     case pick_amongst_chunked(Pid, Handle, PieceSet, N) of
-	{atomic, {ok, Chunks, 0}} ->
-	    {ok, SoFar ++ Chunks};
+	{atomic, {ok, Chunks, PieceNum, 0}} ->
+	    {ok, [{PieceNum, Chunks} | SoFar]};
 	{atomic, {ok, Chunks, Left, PickedPiece}} when Left > 0 ->
 	    pick_chunks(Pid, Handle,
 			sets:del_element(PickedPiece,
 					 PieceSet),
-			SoFar ++ Chunks,
+			[{PickedPiece, Chunks} | SoFar],
 			Left);
 	{atomic, none_eligible} ->
 	    case chunkify_new_piece(Handle, PieceSet) of
@@ -70,7 +70,7 @@ pick_amongst_chunked(Pid, Handle, PieceSet, N) ->
 		      case select_chunks_by_piecenum(Handle, PieceNum,
 						     N, Pid) of
 			  {ok, Ans} ->
-			      {ok, Ans, 0};
+			      {ok, Ans, PieceNum, 0};
 			  {partial, Chunks, Remaining, PieceNum} ->
 			      {ok, Chunks, Remaining, PieceNum}
 		      end

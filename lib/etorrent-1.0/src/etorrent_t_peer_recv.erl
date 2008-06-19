@@ -393,11 +393,12 @@ queue_items(ChunkList, S) ->
 	end,
     lists:foreach(F, ChunkList),
 
-    G = fun(Chunk, RS) ->
-		sets:add_element({Chunk#chunk.ref,
-				  Chunk#chunk.piece_number,
-				  Chunk#chunk.offset,
-				  Chunk#chunk.size}, RS)
+    G = fun({Pn, Chunks}, RS) ->
+		lists:foldl(fun ({Offset, Size}, RRS) ->
+				      sets:add_element({Pn, Offset, Size}, RRS)
+			    end,
+			    RS,
+			    Chunks)
 	end,
     RSet = lists:foldl(G, S#state.remote_request_set, ChunkList),
 

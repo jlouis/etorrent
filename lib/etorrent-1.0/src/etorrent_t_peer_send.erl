@@ -183,8 +183,14 @@ handle_cast({have, Pn}, S) ->
     send_message({have, Pn}, S);
 handle_cast({local_request, Index, Offset, Len}, S) ->
     send_message({request, Index, Offset, Len}, S);
-handle_cast({local_request, C}, S) when is_record(C, chunk) ->
-    send_message({request, C#chunk.piece_number, C#chunk.offset, C#chunk.size}, S);
+handle_cast({local_request, CList}, S) when is_list(CList) ->
+    case (catch send_requests(CList, S)) of % May throw error_closed for a quick exit
+	ok ->
+	    {noreply, S, 0};
+	{error_closed} ->
+	    error_logger:info_report([remote_closed, S#state.torrent_id]),
+	    {stop, normal, S}
+    end;
 handle_cast({remote_request, _Index, _Offset, _Len}, S)
   when S#state.choke == true ->
     {noreply, S, 0};
@@ -283,3 +289,21 @@ set_timer(S) ->
 	_ ->
 	    {noreply, S}
     end.
+
+send_requests(CList, S) ->
+    lists:foreach(
+      fun ({Pn, Chunks}) ->
+	      lists:foreach(
+		fun({Offset, Size}) ->
+			Msg = {request, Pn, Offset, Size},
+			case etorrent_peer_communication:send_message(S#state.socket, Msg) of
+			    ok ->
+				ok;
+			    {error, closed} ->
+				throw(error_closed)
+			end
+		end,
+		Chunks)
+      end,
+      CList),
+      ok.
