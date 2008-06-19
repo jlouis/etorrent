@@ -282,17 +282,17 @@ handle_message({cancel, Index, Offset, Len}, S) ->
     etorrent_t_peer_send:cancel(S#state.send_pid, Index, Offset, Len),
     {ok, S};
 handle_message({have, PieceNum}, S) ->
-    case piece_valid(S#state.torrent_id, PieceNum) of
+    case etorrent_piece:piece_valid(S#state.torrent_id, PieceNum) of
 	true ->
 	    PieceSet = sets:add_element(PieceNum, S#state.piece_set),
 	    NS = S#state{piece_set = PieceSet},
 	    case etorrent_piece:piece_interesting(S#state.torrent_id, PieceNum) of
-		{atomic, true} when S#state.local_interested =:= true ->
+		true when S#state.local_interested =:= true ->
 		    {ok, NS};
-		{atomic, true} when S#state.local_interested =:= false ->
+		true when S#state.local_interested =:= false ->
 		    etorrent_t_peer_send:interested(S#state.send_pid),
 		    {ok, NS#state{local_interested = true}};
-		{atomic, false} ->
+		false ->
 		    {ok, NS}
 	    end
     end;
@@ -398,14 +398,6 @@ queue_items(ChunkList, S) ->
     RSet = lists:foldl(G, S#state.remote_request_set, ChunkList),
 
     {ok, S#state { remote_request_set = RSet }}.
-
-piece_valid(Id, PieceNum) ->
-    case etorrent_piece:piece_valid(Id, PieceNum) of
-	{atomic, true} ->
-	    true;
-	{atomic, false} ->
-	    false
-    end.
 
 %%--------------------------------------------------------------------
 %% Function: complete_connection_setup() -> gen_server_reply()}
