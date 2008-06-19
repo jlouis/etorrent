@@ -286,7 +286,7 @@ handle_message({have, PieceNum}, S) ->
 	true ->
 	    PieceSet = sets:add_element(PieceNum, S#state.piece_set),
 	    NS = S#state{piece_set = PieceSet},
-	    case etorrent_pieces:piece_interesting(S#state.torrent_id, PieceNum) of
+	    case etorrent_piece:piece_interesting(S#state.torrent_id, PieceNum) of
 		{atomic, true} when S#state.local_interested =:= true ->
 		    {ok, NS};
 		{atomic, true} when S#state.local_interested =:= false ->
@@ -299,10 +299,10 @@ handle_message({have, PieceNum}, S) ->
 handle_message({bitfield, BitField}, S) ->
     case sets:size(S#state.piece_set) of
 	0 ->
-	    {atomic, Size} = etorrent_pieces:get_num(S#state.torrent_id),
+	    {atomic, Size} = etorrent_piece:get_num(S#state.torrent_id),
 	    {ok, PieceSet} =
 		etorrent_peer_communication:destruct_bitfield(Size, BitField),
-	    case etorrent_pieces:check_interest(S#state.torrent_id, PieceSet) of
+	    case etorrent_piece:check_interest(S#state.torrent_id, PieceSet) of
 		interested ->
 		    etorrent_t_peer_send:interested(S#state.send_pid),
 		    {ok, S#state{piece_set = PieceSet,
@@ -405,7 +405,7 @@ queue_items(ChunkList, S) ->
     {ok, S#state { remote_request_set = RSet }}.
 
 piece_valid(Id, PieceNum) ->
-    case etorrent_pieces:piece_valid(Id, PieceNum) of
+    case etorrent_piece:piece_valid(Id, PieceNum) of
 	{atomic, true} ->
 	    true;
 	{atomic, false} ->
@@ -428,7 +428,7 @@ complete_connection_setup(S) ->
 					S#state.file_system_pid,
 					S#state.torrent_id),
 
-    BF = etorrent_pieces:get_bitfield(S#state.torrent_id),
+    BF = etorrent_piece:get_bitfield(S#state.torrent_id),
     etorrent_t_peer_send:bitfield(SendPid, BF),
 
     {noreply, S#state{send_pid = SendPid}}.

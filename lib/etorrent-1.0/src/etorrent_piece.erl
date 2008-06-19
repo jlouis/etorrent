@@ -5,14 +5,14 @@
 %%%
 %%% Created : 14 Jun 2008 by Jesper Louis Andersen <>
 %%%-------------------------------------------------------------------
--module(etorrent_pieces).
+-module(etorrent_piece).
 
 -include_lib("stdlib/include/qlc.hrl").
 
 -include("etorrent_mnesia_table.hrl").
 
 %% API
--export([new/2, set_state/3, is_complete/1,
+-export([new/2, statechange/3, is_complete/1,
 	 get_pieces/1, get_num/1,
 	 delete/1, get_piece/2, piece_valid/2,
 	 piece_interesting/2,
@@ -57,10 +57,10 @@ delete(Id) when is_integer(Id) ->
       end).
 
 %%--------------------------------------------------------------------
-%% Function: set_state(Id, PieceNumber, S) -> ok
+%% Function: statechange(Id, PieceNumber, S) -> ok
 %% Description: Update the {Id, PieceNumber} pair to have state S
 %%--------------------------------------------------------------------
-set_state(Id, Pn, State) when is_integer(Id) ->
+statechange(Id, Pn, State) when is_integer(Id) ->
     mnesia:transaction(
       fun () ->
 	      Q = qlc:q([R || R <- mnesia:table(piece),

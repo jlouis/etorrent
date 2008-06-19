@@ -262,7 +262,7 @@ handle_info(Info, StateName, State) ->
 %% Reason. The return value is ignored.
 %%--------------------------------------------------------------------
 terminate(_Reason, _StateName, S) ->
-    etorrent_pieces:delete(S#state.id),
+    etorrent_piece:delete(S#state.id),
     ok.
 
 %%--------------------------------------------------------------------
@@ -277,7 +277,7 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 %%% Internal functions
 %%--------------------------------------------------------------------
 calculate_amount_left(Id) when is_integer(Id) ->
-    {atomic, Pieces} = etorrent_pieces:get_pieces(Id),
+    {atomic, Pieces} = etorrent_piece:get_pieces(Id),
     Sum = lists:foldl(fun(#piece{files = Files, state = State}, Sum) ->
 			      case State of
 				  fetched ->
@@ -297,7 +297,7 @@ size_of_ops(Ops) ->
                Ops).
 
 query_torrent_state(Id) ->
-    case etorrent_pieces:is_complete(Id) of
+    case etorrent_piece:is_complete(Id) of
 	{atomic, true} ->
 	    seeding;
 	{atomic, false} ->

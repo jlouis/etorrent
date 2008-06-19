@@ -305,7 +305,7 @@ store_piece(Id, PieceNumber, FSPid, MasterPid) ->
 	wrong_hash ->
 	    %% Piece had wrong hash and its chunks have already been cleaned.
 	    %%   set the state to be not_fetched again.
-	    {atomic, ok} = etorrent_piece:set_state(Id, PieceNumber, not_fetched),
+	    {atomic, ok} = etorrent_piece:statechange(Id, PieceNumber, not_fetched),
 	    wrong_hash
     end.
 

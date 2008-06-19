@@ -66,7 +66,7 @@ ensure_file_sizes_correct(Files) ->
     ok.
 
 check_torrent_contents(FS, Id) ->
-    {atomic, Pieces} = etorrent_pieces:get_pieces(Id),
+    {atomic, Pieces} = etorrent_piece:get_pieces(Id),
     lists:foreach(
       fun(#piece{piece_number = PieceNum, hash = Hash}) ->
 	      {ok, Data} = etorrent_fs:read_piece(FS, PieceNum),
@@ -77,7 +77,7 @@ check_torrent_contents(FS, Id) ->
 		      false ->
 			  not_fetched
 		  end,
-	      etorrent_pieces:set_state(Id, PieceNum, State)
+	      etorrent_piece:statechange(Id, PieceNum, State)
       end,
       Pieces),
     ok.
@@ -100,7 +100,7 @@ build_dictionary_on_files(Torrent, Files) ->
 %%====================================================================
 
 add_filesystem(Id, SupervisorPid, FileDict) ->
-    etorrent_pieces:new(Id, FileDict),
+    etorrent_piece:new(Id, FileDict),
     FSP = case etorrent_t_sup:add_file_system_pool(SupervisorPid) of
 	      {ok, FSPool} ->
 		  FSPool;

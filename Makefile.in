@@ -31,7 +31,7 @@ ETORRENT_1.0_MODULES = etorrent_listener etorrent_t_pool_sup etorrent_acceptor \
 	etorrent_acceptor_sup \
 	etorrent_fs_pool_sup etorrent_tracking_map \
 	etorrent_mnesia_init \
-	etorrent_chunk etorrent_pieces etorrent_torrent \
+	etorrent_chunk etorrent_piece etorrent_torrent \
 	etorrent_peer \
 	tr
 
