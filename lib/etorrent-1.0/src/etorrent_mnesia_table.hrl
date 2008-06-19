@@ -27,13 +27,13 @@
 	       optimistic_unchoke = false }). % true if we have selected this peer for opt. unchoke
 
 %% Individual pieces are represented via the piece record
--record(piece, {hash, % Hash of piece
-		      piece_number, % piece number index
-		      id, % Id of this piece owning this piece
-		      files, % File operations to manipulate piece
-		      frequency = 0, % How often does this piece occur at others?
-		      left = unknown, % Number of chunks left...
-		      state}). % state is: fetched | not_fetched | chunked
+-record(piece, {idpn, % {Id, PieceNumber} pair identifying the piece
+	        hash, % Hash of piece
+		id, % Id of this piece owning this piece, again for an index
+		piece_number, % Piece Number of piece, replicated for fast qlc access
+		files, % File operations to manipulate piece
+		left = unknown, % Number of chunks left...
+		state}). % state is: fetched | not_fetched | chunked
 
 %% A mapping containing the chunks tracking
 -record(chunk, {idt, % {id, piece_number, state} tuple

@@ -38,11 +38,12 @@ new(Id, Dict) when is_integer(Id) ->
 				 none -> not_fetched
 			     end,
 		     mnesia:dirty_write(
-		       #piece {id = Id,
-				     piece_number = PN,
-				     hash = Hash,
-				     files = Files,
-				     state = State })
+		       #piece {idpn = {Id, PN},
+			       id = Id,
+			       piece_number = PN,
+			       hash = Hash,
+			       files = Files,
+			       state = State })
 		       end,
 		       Dict).
 
@@ -53,7 +54,12 @@ new(Id, Dict) when is_integer(Id) ->
 delete(Id) when is_integer(Id) ->
     mnesia:transaction(
       fun () ->
-	      mnesia:delete(piece, Id, write)
+	      Q = qlc:q([P || P <- mnesia:table(piece),
+			      P#piece.id =:= Id]),
+	      lists:foreach(fun (P) ->
+				    mnesia:delete_object(P)
+			    end,
+			    qlc:e(Q))
       end).
 
 %%--------------------------------------------------------------------
@@ -63,11 +69,8 @@ delete(Id) when is_integer(Id) ->
 statechange(Id, Pn, State) when is_integer(Id) ->
     mnesia:transaction(
       fun () ->
-	      Q = qlc:q([R || R <- mnesia:table(piece),
-			      R#piece.id =:= Id,
-			      R#piece.piece_number =:= Pn]),
-	      [Row] = qlc:e(Q),
-	      mnesia:write(Row#piece{state = State})
+	      [R] = mnesia:read(piece, {Id, Pn}, write),
+	      mnesia:write(R#piece{state = State})
       end).
 
 %%--------------------------------------------------------------------
@@ -101,52 +104,34 @@ get_pieces(Id) when is_integer(Id) ->
 %% Description: Return the piece PieceNumber for the Id torrent
 %%--------------------------------------------------------------------
 get_piece(Id, Pn) when is_integer(Id) ->
-    mnesia:transaction(
-      fun () ->
-	      Q = qlc:q([R || R <- mnesia:table(piece),
-			      R#piece.id =:= Id,
-			      R#piece.piece_number =:= Pn]),
-	      qlc:e(Q)
-      end).
+    mnesia:dirty_read(piece, {Id, Pn}).
 
 %%--------------------------------------------------------------------
 %% Function: piece_valid(Id, PieceNumber) -> bool()
 %% Description: Is the piece valid for this torrent?
 %%--------------------------------------------------------------------
 piece_valid(Id, Pn) when is_integer(Id) ->
-    mnesia:transaction(
-      fun () ->
-	      Q = qlc:q([R || R <- mnesia:table(piece),
-			      R#piece.id =:= Id,
-			      R#piece.piece_number =:= Pn]),
-	      case qlc:e(Q) of
-		  [] ->
-		      false;
-		  [_] ->
-		      true
-	      end
-      end).
+    case mnesia:dirty_read(piece, {Id, Pn}) of
+	[] ->
+	    false;
+	[_|_] ->
+	    true
+    end.
 
 %%--------------------------------------------------------------------
 %% Function: piece_interesting(Id, Pn) -> bool()
 %% Description: Is the piece interesting?
 %%--------------------------------------------------------------------
 piece_interesting(Id, Pn) when is_integer(Id) ->
-    mnesia:transaction(
-      fun () ->
-	      Q = qlc:q([R || R <- mnesia:table(piece),
-			      R#piece.id =:= Id,
-			      R#piece.piece_number =:= Pn]),
-	      [R] = qlc:e(Q),
-	      case R#piece.state of
-		  fetched ->
-		      false;
-		  chunked ->
-		      true;
-		  not_fetched ->
-		      true
-	      end
-      end).
+    [P] = mnesia:dirty_read(piece, {Id, Pn}),
+    case P#piece.state of
+	fetched ->
+	    false;
+	chunked ->
+	    true;
+	not_fetched ->
+	    true
+    end.
 
 %%--------------------------------------------------------------------
 %% Function: get_bitfield(Id) -> bitfield()
@@ -167,19 +152,20 @@ check_interest(Id, PieceSet) when is_integer(Id) ->
     F = fun () ->
 		Q = qlc:q([R#piece.piece_number ||
 			      R <- mnesia:table(piece),
+			      P <- PieceSet,
 			      R#piece.id =:= Id,
+			      P =:= P#piece.piece_number,
 			      (R#piece.state =:= fetched)
 				  orelse (R#piece.state =:= chunked)]),
-		qlc:e(Q)
+		qlc:e(Q, {max_list_size, 1})
 	end,
     {atomic, PS} = mnesia:transaction(F),
-    case sets:size(sets:intersection(sets:from_list(PS), PieceSet)) of
-	0 ->
+    case PS of
+	[] ->
 	    not_interested;
-	N when is_integer(N) ->
+	[_|_] ->
 	    interested
     end.
-
 
 %%--------------------------------------------------------------------
 %% Function: torrent_size(Id) -> integer()
