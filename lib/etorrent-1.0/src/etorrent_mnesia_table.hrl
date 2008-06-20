@@ -44,6 +44,8 @@
 		     % state is fetched | {assigned, Pid} | not_fetched,
 		chunks}). % {offset, size}
 
+-record(chunk_data, {idt, % {id, piece_number, offset}
+		     data}). % The chunk data, if exists
 
 
 
