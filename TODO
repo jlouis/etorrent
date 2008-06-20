@@ -6,14 +6,9 @@
 --   Keep the style please. Can be read with emacs org-mode
 ----------------------------------------------------------------------
 
-* Go through the etorrent_chunk code.
-   There are many improvements possible to this code. Both in the
-   speed deparment, but also in the readability department. Consider
-   an alternative way of coding it.
-- No passing of PeerMaster and FSPid
-   We could handle the work directly in the peer calling. Seems like
-   a better placing of concerns. And while here, move store_piece to
-   the piece code.
+* We seem to be passing around a master_pid we are not using anymore.
+   Consider killing this master pid! It seems to passed around in some
+   places. It should also be called PeerGroupPid where needed.
 
 * Review endgame support. Something is murky in there.
    The torrents won't complete and sits in the endgame forever. That
@@ -23,15 +18,18 @@
    Also, endgame support is currently totally broken. We should rework
    the endgame support entirely.
 
-* We seem to be passing around a master_pid we are not using anymore.
-  Consider killing this master pid! It seems to passed around in some
-  places. It should also be called PeerGroupPid where needed.
-
 * Use highwatermark/lowwatermark for queued pieces.
-  Rather than queue new pieces one at a time, we could just queue on
-  some watermarks. This lowers the amount of code traversed a great
-  deal. Also: it paves the way for maintaining queue length as a
-  bandwidth*delay product like construction.
+   Rather than queue new pieces one at a time, we could just queue on
+   some watermarks. This lowers the amount of code traversed a great
+   deal. Also: it paves the way for maintaining queue length as a
+   bandwidth*delay product like construction.
+
+* Use passive sockets
+   We need to use passive sockets at some point. The reason is that
+   active sockets have no flow control, and the granularity of whole
+   packets are bad from a choke/unchoke perspective. The code that
+   needs change is rather contained, luckily, and can be placed in
+   peer_communication.
 
 * DOCUMENTATION!
 - Pick functions at random, and document what they are doing.

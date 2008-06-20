@@ -16,7 +16,8 @@
 	 get_pieces/1, get_num/1,
 	 delete/1, get_piece/2, piece_valid/2,
 	 piece_interesting/2,
-	 torrent_size/1, get_bitfield/1, check_interest/2]).
+	 torrent_size/1, get_bitfield/1, check_interest/2,
+	 store_piece/4]).
 
 %%====================================================================
 %% API
@@ -196,6 +197,44 @@ get_num(Id) when is_integer(Id) ->
 	      length(qlc:e(Q1))
       end).
 
+%%--------------------------------------------------------------------
+%% Function: store_piece(Id, PieceNumber, FSPid, MasterPid) -> ok | wrong_hash
+%% Description: Store the piece pair {Id, PieceNumber}. Return ok or wrong_hash
+%%   in the case that the piece does not Hash-match.
+%%
+%% Precondition: All chunks for PieceNumber must be downloaded in advance
+%%
+%% XXX: Update to a state 'storing' and check for this when calling here.
+%%   will avoid a little pesky problem that might occur.
+%%--------------------------------------------------------------------
+store_piece(Id, PieceNumber, FSPid, MasterPid) ->
+    F = fun () ->
+		[R] = mnesia:read(chunk, {Id, PieceNumber, fetched}, read),
+		mnesia:delete_object(R),
+		R#chunk.chunks
+	end,
+    {atomic, Chunks} = mnesia:transaction(F),
+    ok = invariant_check(Chunks),
+    Data = list_to_binary(lists:map(fun ({_Offset, Data}) -> Data end,
+							  Chunks)),
+    DataSize = size(Data),
+    case etorrent_fs:write_piece(FSPid,
+				 PieceNumber,
+				 Data) of
+	ok ->
+	    {atomic, ok} = etorrent_torrent:statechange(Id,
+							{subtract_left, DataSize}),
+	    {atomic, ok} = etorrent_torrent:statechange(Id,
+							{add_downloaded, DataSize}),
+	    ok = etorrent_t_peer_group:broadcast_have(MasterPid, PieceNumber),
+	    ok;
+	wrong_hash ->
+	    %% Piece had wrong hash and its chunks have already been cleaned.
+	    %%   set the state to be not_fetched again.
+	    {atomic, ok} = etorrent_piece:statechange(Id, PieceNumber, not_fetched),
+	    wrong_hash
+    end.
+
 %%====================================================================
 %% Internal functions
 %%====================================================================
@@ -210,3 +249,29 @@ get_fetched(Id) when is_integer(Id) ->
 		qlc:e(Q)
 	end,
     mnesia:transaction(F).
+
+
+%%--------------------------------------------------------------------
+%% Function: invariant_check(PList) -> ok | error
+%% Description: Check that a list of chunks for a full piece obeys some
+%%   invariants. This piece of code is there mostly as a debugging tool,
+%%   but I (jlouis) keep it in to catch some bugs.
+%%  TODO: This function needs some work to be correct. The data changed.
+%%--------------------------------------------------------------------
+invariant_check(PList) ->
+    V = lists:foldl(fun (_T, error) -> error;
+			({Offset, _Size, fetched, _D}, N) when Offset /= N ->
+			    error;
+			({_Offset, Size, fetched, Data}, _N) when Size /= size(Data) ->
+			    error;
+			({Offset, Size, fetched, _Data}, N) when Offset == N ->
+			    Offset + Size
+		    end,
+		    0,
+		    PList),
+    case V of
+	error ->
+	    error;
+	N when is_integer(N) ->
+	    ok
+    end.

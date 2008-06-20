@@ -14,7 +14,7 @@
 -define(DEFAULT_CHUNK_SIZE, 16384). % Default size for a chunk. All clients use this.
 
 %% API
--export([pick_chunks/4, store_chunk/7, putback_chunks/1]).
+-export([pick_chunks/4, store_chunk/5, putback_chunks/1]).
 
 %%====================================================================
 %% API
@@ -113,7 +113,7 @@ putback_chunks(Pid) ->
 %% Description: Workhorse function. Store a chunk in the chunk mnesia table. If we have all
 %%    chunks we need, then store the piece on disk.
 %%--------------------------------------------------------------------
-store_chunk(Id, PieceNum, {Offset, Len}, Data, FSPid, PeerGroupPid, Pid) ->
+store_chunk(Id, PieceNum, {Offset, Len}, Data, Pid) ->
     {atomic, Res} =
 	mnesia:transaction(
 	  fun () ->
@@ -147,12 +147,7 @@ store_chunk(Id, PieceNum, {Offset, Len}, Data, FSPid, PeerGroupPid, Pid) ->
 			  ok
 		  end
 	  end),
-    case Res of
-	full ->
-	    store_piece(Id, PieceNum, FSPid, PeerGroupPid);
-	ok ->
-	    ok
-    end.
+    Res.
 
 %%====================================================================
 %% Internal functions
@@ -230,30 +225,6 @@ add_piece_chunks(R, PieceSize) ->
 					 chunks = Chunks})
       end).
 
-%%--------------------------------------------------------------------
-%% Function: invariant_check(PList) -> ok | error
-%% Description: Check that a list of chunks for a full piece obeys some
-%%   invariants. This piece of code is there mostly as a debugging tool,
-%%   but I (jlouis) keep it in to catch some bugs.
-%%  TODO: This function needs some work to be correct. The data changed.
-%%--------------------------------------------------------------------
-invariant_check(PList) ->
-    V = lists:foldl(fun (_T, error) -> error;
-			({Offset, _Size, fetched, _D}, N) when Offset /= N ->
-			    error;
-			({_Offset, Size, fetched, Data}, _N) when Size /= size(Data) ->
-			    error;
-			({Offset, Size, fetched, _Data}, N) when Offset == N ->
-			    Offset + Size
-		    end,
-		    0,
-		    PList),
-    case V of
-	error ->
-	    error;
-	N when is_integer(N) ->
-	    ok
-    end.
 
 %%--------------------------------------------------------------------
 %% Function: chunkify(PieceSize) ->
@@ -299,33 +270,4 @@ chunkify_piece(Id, P) when is_record(P, piece) ->
 	      end
       end).
 
-% XXX: Update to a state 'storing' and check for this when calling here.
-%   will avoid a little pesky problem that might occur.
-store_piece(Id, PieceNumber, FSPid, MasterPid) ->
-    F = fun () ->
-		[R] = mnesia:read(chunk, {Id, PieceNumber, fetched}, read),
-		mnesia:delete_object(R),
-		R#chunk.chunks
-	end,
-    {atomic, Chunks} = mnesia:transaction(F),
-    ok = invariant_check(Chunks),
-    Data = list_to_binary(lists:map(fun ({_Offset, Data}) -> Data end,
-							  Chunks)),
-    DataSize = size(Data),
-    case etorrent_fs:write_piece(FSPid,
-				 PieceNumber,
-				 Data) of
-	ok ->
-	    {atomic, ok} = etorrent_torrent:statechange(Id,
-							{subtract_left, DataSize}),
-	    {atomic, ok} = etorrent_torrent:statechange(Id,
-							{add_downloaded, DataSize}),
-	    ok = etorrent_t_peer_group:broadcast_have(MasterPid, PieceNumber),
-	    ok;
-	wrong_hash ->
-	    %% Piece had wrong hash and its chunks have already been cleaned.
-	    %%   set the state to be not_fetched again.
-	    {atomic, ok} = etorrent_piece:statechange(Id, PieceNumber, not_fetched),
-	    wrong_hash
-    end.
 

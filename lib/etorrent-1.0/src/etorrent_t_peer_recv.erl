@@ -334,14 +334,20 @@ handle_message(Unknown, S) ->
 %%   TODO: This is one of the functions which is a candidate for optimization!
 %%--------------------------------------------------------------------
 handle_got_chunk(Index, Offset, Data, Len, S) ->
-    ok = etorrent_chunk:store_chunk(S#state.torrent_id,
+    case etorrent_chunk:store_chunk(S#state.torrent_id,
 				    Index,
 				    {Offset, Len},
 				    Data,
-				    S#state.file_system_pid,
-				    S#state.peer_group_pid,
-				    self()),
-	RS = sets:del_element({Index, Offset, Len}, S#state.remote_request_set),
+				    self()) of
+	full ->
+	    etorrent_piece:store_piece(S#state.torrent_id,
+				       Index,
+				       S#state.file_system_pid,
+				       S#state.peer_group_pid);
+	ok ->
+	    ok
+    end,
+    RS = sets:del_element({Index, Offset, Len}, S#state.remote_request_set),
     {ok, S#state { remote_request_set = RS }}.
 
 %%--------------------------------------------------------------------
