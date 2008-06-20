@@ -21,6 +21,7 @@
 %% Function: new(Id, LoadData, NPieces) -> NPieces
 %% Description: Initialize a torrent entry for Id with the tracker
 %%   state as given. Pieces is the number of pieces for this torrent.
+%% Precondition: The #piece table has been filled with the torrents pieces.
 %%--------------------------------------------------------------------
 new(Id, {{uploaded, U}, {downloaded, D}, {left, L}}, NPieces) ->
     F = fun() ->
@@ -32,7 +33,8 @@ new(Id, {{uploaded, U}, {downloaded, D}, {left, L}}, NPieces) ->
 					state = unknown })
 	end,
     mnesia:transaction(F),
-    mnesia:dirty_update_counter(torrent, Id, NPieces).
+    Missing = etorrent_piece:get_num_not_fetched(Id),
+    mnesia:dirty_update_counter(torrent, Id, Missing).
 
 %%--------------------------------------------------------------------
 %% Function: delete(Id) -> transaction

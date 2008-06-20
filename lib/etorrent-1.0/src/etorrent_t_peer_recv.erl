@@ -299,7 +299,8 @@ handle_message({have, PieceNum}, S) ->
 handle_message({bitfield, BitField}, S) ->
     case sets:size(S#state.piece_set) of
 	0 ->
-	    {atomic, Size} = etorrent_piece:get_num(S#state.torrent_id),
+	    {atomic, Size} =
+		etorrent_torrent:get_num_pieces(S#state.torrent_id),
 	    {ok, PieceSet} =
 		etorrent_peer_communication:destruct_bitfield(Size, BitField),
 	    case etorrent_piece:check_interest(S#state.torrent_id, PieceSet) of

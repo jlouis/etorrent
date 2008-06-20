@@ -13,7 +13,7 @@
 
 %% API
 -export([new/2, statechange/3, is_complete/1,
-	 get_pieces/1,
+	 get_pieces/1, get_num_not_fetched/1,
 	 delete/1, get_piece/2, piece_valid/2,
 	 piece_interesting/2,
 	 torrent_size/1, get_bitfield/1, check_interest/2,
@@ -223,6 +223,21 @@ store_piece(Id, PieceNumber, FSPid, GroupPid) ->
 	    {atomic, ok} = etorrent_piece:statechange(Id, PieceNumber, not_fetched),
 	    wrong_hash
     end.
+
+%%--------------------------------------------------------------------
+%% Function: get_num_fetched(Id) -> integer()
+%% Description: Return the number of not_fetched pieces for torrent Id.
+%%--------------------------------------------------------------------
+get_num_not_fetched(Id) when is_integer(Id) ->
+    F = fun () ->
+		Q = qlc:q([R#piece.piece_number ||
+			      R <- mnesia:table(piece),
+			      R#piece.id =:= Id,
+			      R#piece.state =:= not_fetched]),
+		length(qlc:e(Q))
+	end,
+    {atomic, N} = mnesia:transaction(F),
+    N.
 
 %%====================================================================
 %% Internal functions
