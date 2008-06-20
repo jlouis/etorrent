@@ -58,17 +58,21 @@ pick_chunks(Pid, Handle, PieceSet, SoFar, N) ->
 	    end
     end.
 
-pick_amongst_chunked(Pid, Handle, PieceSet, N) ->
+pick_amongst_chunked(Pid, Id, PieceSet, N) when is_integer(Id) ->
     mnesia:transaction(
       fun () ->
-	      ChunkedPieces = find_chunked(Handle),
-	      Eligible = sets:to_list(sets:intersection(PieceSet, sets:from_list(ChunkedPieces))),
-	      case Eligible of
+	      Q = qlc:q([R#piece.piece_number || R <- mnesia:table(piece),
+						 R#piece.id =:= Id,
+						 S <- PieceSet,
+						 R#piece.piece_number =:= S,
+						 R#piece.state =:= chunked]),
+	      Rows = qlc:e(Q, {max_list_size, 1}),
+	      case Rows of
 		  [] ->
 		      none_eligible;
-		  [PieceNum | _] ->
+		  [PieceNum] ->
 		      {ok, Chunks, Remaining} =
-			  select_chunks_by_piecenum(Handle, PieceNum,
+			  select_chunks_by_piecenum(Id, PieceNum,
 						    N, Pid),
 		      {ok, Chunks, Remaining, PieceNum}
 	      end
@@ -92,11 +96,6 @@ chunkify_new_piece(Id, PieceSet) when is_integer(Id) ->
 	      end
       end).
 
-find_chunked(Id) when is_integer(Id) ->
-    Q = qlc:q([R#piece.piece_number || R <- mnesia:table(piece),
-				       R#piece.id =:= Id,
-				       R#piece.state =:= chunked]),
-    qlc:e(Q).
 
 
 %%--------------------------------------------------------------------
