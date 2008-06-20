@@ -22,7 +22,7 @@
 %%====================================================================
 
 %%--------------------------------------------------------------------
-%% Function: select_chunks(Handle, PieceSet, StatePid, Num) -> ...
+%% Function: pick_chunks(Handle, PieceSet, StatePid, Num) -> ...
 %% Description: Return some chunks for downloading
 %%--------------------------------------------------------------------
 pick_chunks(Pid, Handle, PieceSet, Num) ->
@@ -97,11 +97,18 @@ chunkify_new_piece(Id, PieceSet) when is_integer(Id) ->
 
 find_chunked(Id) when is_integer(Id) ->
     Q = qlc:q([R#piece.piece_number || R <- mnesia:table(piece),
-					     R#piece.id =:= Id,
-					     R#piece.state =:= chunked]),
+				       R#piece.id =:= Id,
+				       R#piece.state =:= chunked]),
     qlc:e(Q).
 
 
+%%--------------------------------------------------------------------
+%% Function: select_chunks_by_piecenum(Id, PieceNum, Num, Pid) ->
+%%     {ok, [{Offset, Len}]} | {partial, [{Offset, Len}], Remain}
+%% Description: Select up to Num chunks from PieceNum. Will return either
+%%  {ok, Chunks} if it got all chunks it wanted, or {partial, Chunks, Remain}
+%%  if it got some chunks and there is still Remain chunks left to pick.
+%%--------------------------------------------------------------------
 select_chunks_by_piecenum(Id, PieceNum, Num, Pid) ->
     %% Pick up to Num chunks
     [R] = mnesia:read(chunk, {Id, PieceNum, not_fetched}, write),
@@ -122,7 +129,7 @@ select_chunks_by_piecenum(Id, PieceNum, Num, Pid) ->
 		    {ok, Return};
 		N when is_integer(N) ->
 		    Remaining = Num - N,
-		    {partial, Return, Remaining, PieceNum}
+		    {partial, Return, Remaining}
 	    end;
 	[_|_] ->
 	    %% More left, we got everything we wanted to get
@@ -131,8 +138,8 @@ select_chunks_by_piecenum(Id, PieceNum, Num, Pid) ->
     end.
 
 %%--------------------------------------------------------------------
-%% Function: add_piece_chunks(PieceNum, PieceSize, Torrent) -> ok.
-%% Description: Add chunks for a piece of a given torrent.
+%% Function: putback_chunks(Pid) -> transaction
+%% Description: Find all chunks assigned to Pid and mark them as not_fetched
 %%--------------------------------------------------------------------
 putback_chunks(Pid) ->
     MatchHead = #chunk { idt = {'_', '_', {assigned, Pid}}, _='_'},
@@ -156,10 +163,10 @@ putback_chunks(Pid) ->
       end).
 
 %%--------------------------------------------------------------------
-%% Function: add_piece_chunks(#piece, PieceSize) -> ok.
-%% Description: Add chunks for a piece of a given torrent.
+%% Function: store_chunk(Id, PieceNum, {Offset, Len}, Data, FSPid, PeerGroupPid, Pid) -> ok
+%% Description: Workhorse function. Store a chunk in the chunk mnesia table. If we have all
+%%    chunks we need, then store the piece on disk.
 %%--------------------------------------------------------------------
-
 store_chunk(Id, PieceNum, {Offset, Len}, Data, FSPid, PeerGroupPid, Pid) ->
     {atomic, Res} =
 	mnesia:transaction(
@@ -196,8 +203,7 @@ store_chunk(Id, PieceNum, {Offset, Len}, Data, FSPid, PeerGroupPid, Pid) ->
 	  end),
     case Res of
 	full ->
-	    store_piece(Id, PieceNum, FSPid, PeerGroupPid),
-	    ok;
+	    store_piece(Id, PieceNum, FSPid, PeerGroupPid);
 	ok ->
 	    ok
     end.
@@ -206,7 +212,13 @@ store_chunk(Id, PieceNum, {Offset, Len}, Data, FSPid, PeerGroupPid, Pid) ->
 %% Internal functions
 %%====================================================================
 
-
+%%--------------------------------------------------------------------
+%% Function: invariant_check(PList) -> ok | error
+%% Description: Check that a list of chunks for a full piece obeys some
+%%   invariants. This piece of code is there mostly as a debugging tool,
+%%   but I (jlouis) keep it in to catch some bugs.
+%%  TODO: This function needs some work to be correct. The data changed.
+%%--------------------------------------------------------------------
 invariant_check(PList) ->
     V = lists:foldl(fun (_T, error) -> error;
 			({Offset, _Size, fetched, _D}, N) when Offset /= N ->
@@ -297,7 +309,7 @@ store_piece(Id, PieceNumber, FSPid, MasterPid) ->
 				 Data) of
 	ok ->
 	    {atomic, ok} = etorrent_torrent:statechange(Id,
-							{substract_left, DataSize}),
+							{subtract_left, DataSize}),
 	    {atomic, ok} = etorrent_torrent:statechange(Id,
 							{add_downloaded, DataSize}),
 	    ok = etorrent_t_peer_group:broadcast_have(MasterPid, PieceNumber),
