@@ -14,6 +14,14 @@
    Also, endgame support is currently totally broken. We should rework
    the endgame support entirely.
 
+- introduce the table #chunk_data containing data for chunks.
+  There are several good reasons to do this. The most important is
+   that writing almost 4-8 mb of chunk data each time we receive a
+   chunk is not going to make a happy camper process ;)
+
+- Implement endgame code in pick_chunks.
+- Alter t_peer_recv's to understand endgame.
+
 * Use highwatermark/lowwatermark for queued pieces.
    Rather than queue new pieces one at a time, we could just queue on
    some watermarks. This lowers the amount of code traversed a great
