@@ -67,13 +67,10 @@ pick_amongst_chunked(Pid, Handle, PieceSet, N) ->
 		  [] ->
 		      none_eligible;
 		  [PieceNum | _] ->
-		      case select_chunks_by_piecenum(Handle, PieceNum,
-						     N, Pid) of
-			  {ok, Ans} ->
-			      {ok, Ans, PieceNum, 0};
-			  {partial, Chunks, Remaining, PieceNum} ->
-			      {ok, Chunks, Remaining, PieceNum}
-		      end
+		      {ok, Chunks, Remaining} =
+			  select_chunks_by_piecenum(Handle, PieceNum,
+						    N, Pid),
+		      {ok, Chunks, Remaining, PieceNum}
 	      end
       end).
 
@@ -85,11 +82,11 @@ chunkify_new_piece(Id, PieceSet) when is_integer(Id) ->
 			       R#piece.id =:= Id,
 			       R#piece.piece_number =:= S,
 			       R#piece.state =:= not_fetched]),
-	      Eligible = qlc:e(Q1),
+	      Eligible = qlc:e(Q1, {max_list_size, 1}),
 	      case Eligible of
 		  [] ->
 		      none_eligible;
-		  [P | _] ->
+		  [P] ->
 		      ensure_chunking(Id, P),
 		      ok
 	      end
@@ -124,17 +121,12 @@ select_chunks_by_piecenum(Id, PieceNum, Num, Pid) ->
 	[] ->
 	    %% Nothing left, we may not have got everything
 	    mnesia:delete_object(R),
-	    case length(Return) of
-		Num ->
-		    {ok, Return};
-		N when is_integer(N) ->
-		    Remaining = Num - N,
-		    {partial, Return, Remaining}
-	    end;
+	    Remaining = Num - length(Return),
+	    {ok, Return, Remaining};
 	[_|_] ->
 	    %% More left, we got everything we wanted to get
 	    mnesia:write(R#chunk {chunks = Rest}),
-	    {ok, Return}
+	    {ok, Return, 0}
     end.
 
 %%--------------------------------------------------------------------
