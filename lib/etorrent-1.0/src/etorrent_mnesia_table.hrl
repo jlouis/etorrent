@@ -10,6 +10,7 @@
 		  left, % How many bytes are there left before we have the full torrent
 		  uploaded, % How many bytes have we uploaded
 		  downloaded, % How many bytes have we downloaded
+		  pieces = unknown, % Number of pieces this torrent has
 		  seeders = 0, % How many people have a completed file?
 		  leechers = 0, % How many people are downloaded
 		  state}). % What is our state: leecher | unknown | seeder

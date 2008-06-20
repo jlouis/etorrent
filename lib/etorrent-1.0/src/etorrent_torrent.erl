@@ -11,30 +11,27 @@
 -include("etorrent_mnesia_table.hrl").
 
 %% API
--export([new/2, delete/1, get_by_id/1, statechange/2]).
+-export([new/3, delete/1, get_by_id/1, statechange/2]).
 
 %%====================================================================
 %% API
 %%====================================================================
 %%--------------------------------------------------------------------
-%% Function: 
-%% Description:
+%% Function: new(Id, LoadData, NPieces) -> NPieces
+%% Description: Initialize a torrent entry for Id with the tracker
+%%   state as given. Pieces is the number of pieces for this torrent.
 %%--------------------------------------------------------------------
-
-%%--------------------------------------------------------------------
-%% Function: new(Id, LoadData) -> transaction
-%% Description: Initialyze a torrent entry for Id with the tracker
-%%   state as given.
-%%--------------------------------------------------------------------
-new(Id, {{uploaded, U}, {downloaded, D}, {left, L}}) ->
+new(Id, {{uploaded, U}, {downloaded, D}, {left, L}}, NPieces) ->
     F = fun() ->
 		mnesia:write(#torrent { id = Id,
 					left = L,
 					uploaded = U,
 					downloaded = D,
+					pieces = NPieces,
 					state = unknown })
 	end,
-    mnesia:transaction(F).
+    mnesia:transaction(F),
+    mnesia:dirty_update_counter(torrent, Id, NPieces).
 
 %%--------------------------------------------------------------------
 %% Function: delete(Id) -> transaction

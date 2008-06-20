@@ -118,7 +118,7 @@ initializing(timeout, S) ->
 	    %% TODO: Try to coalesce some of these operations together.
 
 	    %% Read the torrent, check its contents for what we are missing
-	    {ok, Torrent, FSPid, InfoHash} =
+	    {ok, Torrent, FSPid, InfoHash, NumberOfPieces} =
 		etorrent_fs_checker:read_and_check_torrent(
 		  S#state.id,
 		  S#state.parent_pid,
@@ -129,10 +129,12 @@ initializing(timeout, S) ->
 
 	    %% Add a torrent entry for this torrent.
 	    {atomic, _} =
-		etorrent_torrent:new(S#state.id,
-				     {{uploaded, 0},
-				      {downloaded, 0},
-				      {left, calculate_amount_left(S#state.id)}}),
+		etorrent_torrent:new(
+		  S#state.id,
+		  {{uploaded, 0},
+		   {downloaded, 0},
+		   {left, calculate_amount_left(S#state.id)}},
+		  NumberOfPieces),
 
 	    %% Add a peer pool
 	    %% TODO: We can pre-add this in the supervisor I think.

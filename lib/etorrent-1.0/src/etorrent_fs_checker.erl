@@ -27,7 +27,7 @@ read_and_check_torrent(Id, SupervisorPid, WorkDir, Path) ->
     ok = ensure_file_sizes_correct(Files),
 
     %% Build the dictionary mapping pieces to file operations
-    {ok, FileDict} =
+    {ok, FileDict, NumberOfPieces} =
 	build_dictionary_on_files(Torrent, Files),
 
     %% Initialize the filesystem, initializes the piecemap
@@ -36,7 +36,7 @@ read_and_check_torrent(Id, SupervisorPid, WorkDir, Path) ->
     %% Check the contents of the torrent, updates the state of the piecemap
     ok = etorrent_fs_checker:check_torrent_contents(FS, Id),
 
-    {ok, Torrent, FS, Infohash}.
+    {ok, Torrent, FS, Infohash, NumberOfPieces}.
 
 load_torrent(Workdir, Path) ->
     P = filename:join([Workdir, Path]),
@@ -91,7 +91,8 @@ build_dictionary_on_files(Torrent, Files) ->
 		    PSize,
 		    LastPieceSize,
 		    lists:zip(lists:seq(0, length(Pieces)-1), Pieces),
-		    []).
+		    [],
+		    0).
 
 
 
@@ -134,20 +135,20 @@ extract_piece(Left, [{Pth, Sz} | R], Offset, Building) ->
 			  [{Pth, Offset, BytesWeCanGet} | Building])
     end.
 
-construct_fpmap([], _Offset, _PieceSize, _LPS, [], Done) ->
-    {ok, dict:from_list(Done)};
-construct_fpmap([], _O, _P, _LPS, _Pieces, _D) ->
+construct_fpmap([], _Offset, _PieceSize, _LPS, [], Done, N) ->
+    {ok, dict:from_list(Done), N};
+construct_fpmap([], _O, _P, _LPS, _Pieces, _D, _N) ->
     error_more_pieces;
 construct_fpmap(FileList, Offset, PieceSize, LastPieceSize,
-		[{Num, Hash}], Done) -> % Last piece
+		[{Num, Hash}], Done, N) -> % Last piece
     {ok, FL, OS, Ops} = extract_piece(LastPieceSize, FileList, Offset, []),
     construct_fpmap(FL, OS, PieceSize, LastPieceSize, [],
-		    [{Num, {Hash, lists:reverse(Ops), none}} | Done]);
+		    [{Num, {Hash, lists:reverse(Ops), none}} | Done], N+1);
 construct_fpmap(FileList, Offset, PieceSize, LastPieceSize,
-		[{Num, Hash} | Ps], Done) ->
+		[{Num, Hash} | Ps], Done, N) ->
     {ok, FL, OS, Ops} = extract_piece(PieceSize, FileList, Offset, []),
     construct_fpmap(FL, OS, PieceSize, LastPieceSize, Ps,
-		    [{Num, {Hash, lists:reverse(Ops), none}} | Done]).
+		    [{Num, {Hash, lists:reverse(Ops), none}} | Done], N+1).
 
 fill_file_ensure_path(Path, Missing) ->
     case file:open(Path, [read, write, delayed_write, binary, raw]) of
