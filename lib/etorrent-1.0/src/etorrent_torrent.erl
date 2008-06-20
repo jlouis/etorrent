@@ -11,7 +11,8 @@
 -include("etorrent_mnesia_table.hrl").
 
 %% API
--export([new/3, delete/1, get_by_id/1, statechange/2]).
+-export([new/3, delete/1, get_by_id/1, statechange/2,
+	 get_num_pieces/1, downloaded_piece/1]).
 
 %%====================================================================
 %% API
@@ -53,6 +54,30 @@ delete(Torrent) when is_record(Torrent, torrent) ->
 %%--------------------------------------------------------------------
 get_by_id(Id) ->
     mnesia:dirty_read(torrent, Id).
+
+%%--------------------------------------------------------------------
+%% Function: get_num_pieces(Id) -> integer()
+%% Description: Return the number of pieces for torrent Id
+%%--------------------------------------------------------------------
+get_num_pieces(Id) ->
+    [R] = mnesia:dirty_read(torrent, Id),
+    R#torrent.pieces.
+
+
+%%--------------------------------------------------------------------
+%% Function: downloaded_piece(Id) -> ok | endgame
+%% Description: track that we downloaded a piece, eventually updating
+%%  the endgame result.
+%%--------------------------------------------------------------------
+downloaded_piece(Id) ->
+    N = mnesia:dirty_update_counter(torrent, Id, -1),
+    case N of
+	0 ->
+	    statechange(Id, endgame),
+	    endgame;
+	N when is_integer(N) ->
+	    ok
+    end.
 
 %%--------------------------------------------------------------------
 %% Function: statechange(InfoHash, State) -> ok | not_found

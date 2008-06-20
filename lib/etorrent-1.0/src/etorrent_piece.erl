@@ -13,7 +13,7 @@
 
 %% API
 -export([new/2, statechange/3, is_complete/1,
-	 get_pieces/1, get_num/1,
+	 get_pieces/1,
 	 delete/1, get_piece/2, piece_valid/2,
 	 piece_interesting/2,
 	 torrent_size/1, get_bitfield/1, check_interest/2,
@@ -139,7 +139,7 @@ piece_interesting(Id, Pn) when is_integer(Id) ->
 %% Description: Return the bitfield we have for the given torrent
 %%--------------------------------------------------------------------
 get_bitfield(Id) when is_integer(Id) ->
-    {atomic, NumPieces} = get_num(Id), %%% May be stored once and for all rather than calculated
+    NumPieces = etorrent_torrent:get_num_pieces(Id),
     {atomic, Fetched}   = get_fetched(Id),
     etorrent_peer_communication:construct_bitfield(NumPieces,
 						   sets:from_list(Fetched)).
@@ -186,18 +186,6 @@ torrent_size(Id) when is_integer(Id) ->
 		Res).
 
 %%--------------------------------------------------------------------
-%% Function: get_num(Id) -> integer()
-%% Description: Number of pieces for torrent Id
-%%--------------------------------------------------------------------
-get_num(Id) when is_integer(Id) ->
-    mnesia:transaction(
-      fun () ->
-	      Q1 = qlc:q([Q || Q <- mnesia:table(piece),
-			       Q#piece.id =:= Id]),
-	      length(qlc:e(Q1))
-      end).
-
-%%--------------------------------------------------------------------
 %% Function: store_piece(Id, PieceNumber, FSPid, GroupPid) -> ok | wrong_hash
 %% Description: Store the piece pair {Id, PieceNumber}. Return ok or wrong_hash
 %%   in the case that the piece does not Hash-match.
@@ -226,6 +214,7 @@ store_piece(Id, PieceNumber, FSPid, GroupPid) ->
 							{subtract_left, DataSize}),
 	    {atomic, ok} = etorrent_torrent:statechange(Id,
 							{add_downloaded, DataSize}),
+	    ok = etorrent_torrent:downloaded_piece(Id),
 	    ok = etorrent_t_peer_group:broadcast_have(GroupPid, PieceNumber),
 	    ok;
 	wrong_hash ->
