@@ -6,49 +6,38 @@
 --   Keep the style please. Can be read with emacs org-mode
 ----------------------------------------------------------------------
 
+* Go through the etorrent_chunk code.
+   There are many improvements possible to this code. Both in the
+   speed deparment, but also in the readability department. Consider
+   an alternative way of coding it.
+- No passing of PeerMaster and FSPid
+   We could handle the work directly in the peer calling. Seems like
+   a better placing of concerns.
+- The picking code can probably be streamlined.
+   I don't know how to do this yet, but I have a hunch that it can be
+   made a lot simpler. I have rewritten it twice as of this moment,
+   but I am far from satisfied yet. Must have a better way to do this.
+- Move code that belongs in other modules.
+   Some calls here belong in different libraries. Consider moving them
+   accordingly.
+
 * Review endgame support. Something is murky in there.
    The torrents won't complete and sits in the endgame forever. That
    is pretty bad, so we will need to figure out why that happens and
    add a fix to the code.
 
-* Optimize the mnesia code.
-   Currently, the mnesia code is crap. It can be optimized quite a lot
-   and it will probably make the code run a lot faster than now. It has
-   the wrong kind of DB-schema and performs as pure shit. There are no
-   indexes and too much crap is placed inside expensive transactions.
-
-   We must find the functions that can go outside transactions and then
-   place it outside.
-
-- Step 1: Rework the 'torrent' table.
-   It seems utter wrong to use the infohash as the id, when the rest
-   of the code uses the Pid. Consider make Pid the primary key of the
-   table or use something else as the unique identifier.
-
-   Should it be the Pid or something else? Something else means that
-   we don't rely on a Pid that can die unexpectedly, so this is
-   probably better. The id can be stored in the tracking map along
-   with the infohash (which I don't think we use for anything else).
-
-   The tracking_map has already been updated.
+   Also, endgame support is currently totally broken. We should rework
+   the endgame support entirely.
 
 * We seem to be passing around a master_pid we are not using anymore.
-  Consider killing this master pid!
-
-* We are currently ignoring the endgame. This can be fixed easily though.
-  The endgame is not handled at all. We do check for the endgame
-  however. We should then alter the piece picking strategy a
-  bit. We just pick out all eligible chunks for a peer first and then
-  pick the required number of chunks randomly.
+  Consider killing this master pid! It seems to passed around in some
+  places. It should also be called PeerGroupPid where needed.
 
 * Use highwatermark/lowwatermark for queued pieces.
   Rather than queue new pieces one at a time, we could just queue on
   some watermarks. This lowers the amount of code traversed a great
   deal. Also: it paves the way for maintaining queue length as a
   bandwidth*delay product like construction.
-
-* Only count downloaded bytes when we _know_ the bytes are from the torrent in question
-
 
 * DOCUMENTATION!
 - Pick functions at random, and document what they are doing.
@@ -64,15 +53,12 @@
      ** Bittornado
      ** rtorrent
 
-
 * Cleanups
 - Decide what to do if we connect multiply to the same IP
-
 
 * Temporary IP-ban on errors
   If we find an error on a given peer, ban him temporarily for some
    time.
-
 
 * ROBUSTNESS
 - In general, robustness is not really taken care of. We ought to make
