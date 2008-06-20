@@ -132,12 +132,8 @@ store_chunk(Id, PieceNum, {Offset, Len}, Data, Pid) ->
 							       S#chunk.chunks) }),
 
 		  %% Count down the number of missing chunks for the piece
-		  %% XXX: This is expensive! A better piece table should optimize this to
-		  %%    a mnesia:read/3
-		  Q1 = qlc:q([C || C <- mnesia:table(piece),
-				   C#piece.id =:= Id,
-				   C#piece.piece_number =:= PieceNum]),
-		  [P] = qlc:e(Q1),
+		  %% Next lines can be thrown into a seperate counter for speed.
+		  [P] = mnesia:read(piece, {Id, PieceNum}, write),
 		  NewP = P#piece { left = P#piece.left - 1 },
 		  mnesia:write(NewP),
 		  case NewP#piece.left of
