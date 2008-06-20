@@ -31,6 +31,12 @@
    needs change is rather contained, luckily, and can be placed in
    peer_communication.
 
+   An even more sinister idea: change to active sockets when the rate
+   of the peer exceeds a certain set amount to cut down the amount of
+   processing needed. We *do* have some flow control as a peer will
+   only send things we requested, so a peer can't overflow us by more
+   than that anyway.
+
 * DOCUMENTATION!
 - Pick functions at random, and document what they are doing.
   It is /especially/ important to document library calls and
