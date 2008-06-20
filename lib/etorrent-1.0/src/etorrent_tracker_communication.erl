@@ -22,7 +22,7 @@
 
 -record(state, {should_contact_tracker = false,
 		queued_message = none,
-		peer_master_pid = none,
+		peer_group_pid = none,
 	        url = none,
 	        info_hash = none,
 	        peer_id = none,
@@ -42,9 +42,9 @@
 %% Function: start_link() -> {ok,Pid} | ignore | {error,Error}
 %% Description: Starts the server
 %%--------------------------------------------------------------------
-start_link(ControlPid, PeerMasterPid, Url, InfoHash, PeerId, TorrentId) ->
+start_link(ControlPid, PeerGroupPid, Url, InfoHash, PeerId, TorrentId) ->
     gen_server:start_link(?MODULE,
-			  [ControlPid, PeerMasterPid,
+			  [ControlPid, PeerGroupPid,
 			    Url, InfoHash, PeerId, TorrentId],
 			  []).
 
@@ -71,11 +71,11 @@ torrent_completed(Pid) ->
 %%                         {stop, Reason}
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
-init([ControlPid, PeerMasterPid, Url, InfoHash, PeerId, TorrentId]) ->
+init([ControlPid, PeerGroupPid, Url, InfoHash, PeerId, TorrentId]) ->
     dbg:p(self(), call),
     tr:tr(etorrent_tracker_communication, build_tracker_url),
     {ok, #state{should_contact_tracker = false,
-		peer_master_pid = PeerMasterPid,
+		peer_group_pid = PeerGroupPid,
 		control_pid = ControlPid,
 		torrent_id = TorrentId,
 		url = Url,
@@ -188,7 +188,6 @@ decode_and_handle_body(Body, S) ->
 
 handle_tracker_response(BC, S) ->
     ControlPid = S#state.control_pid,
-    PeerMasterPid = S#state.peer_master_pid,
     RequestTime = find_next_request_time(BC),
     TrackerId = find_tracker_id(BC),
     Complete = decode_integer("complete", BC),
@@ -202,11 +201,11 @@ handle_tracker_response(BC, S) ->
 	    etorrent_t_control:tracker_error_report(ControlPid, E);
 	WarningMessage /= none ->
 	    etorrent_t_control:tracker_warning_report(ControlPid, WarningMessage),
-	    etorrent_t_peer_group:add_peers(PeerMasterPid, NewIPs),
+	    etorrent_t_peer_group:add_peers(S#state.peer_group_pid, NewIPs),
 	    etorrent_torrent:statechange(S#state.torrent_id,
 					 {tracker_report, Complete, Incomplete});
 	true ->
-	    etorrent_t_peer_group:add_peers(PeerMasterPid, NewIPs),
+	    etorrent_t_peer_group:add_peers(S#state.peer_group_pid, NewIPs),
 	    etorrent_torrent:statechange(S#state.torrent_id,
 					 {tracker_report, Complete, Incomplete})
     end,

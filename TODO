@@ -6,10 +6,6 @@
 --   Keep the style please. Can be read with emacs org-mode
 ----------------------------------------------------------------------
 
-* We seem to be passing around a master_pid we are not using anymore.
-   Consider killing this master pid! It seems to passed around in some
-   places. It should also be called PeerGroupPid where needed.
-
 * Review endgame support. Something is murky in there.
    The torrents won't complete and sits in the endgame forever. That
    is pretty bad, so we will need to figure out why that happens and
@@ -24,7 +20,7 @@
    deal. Also: it paves the way for maintaining queue length as a
    bandwidth*delay product like construction.
 
-* Use passive sockets
+* Use passive sockets [Milestone: 1.1]
    We need to use passive sockets at some point. The reason is that
    active sockets have no flow control, and the granularity of whole
    packets are bad from a choke/unchoke perspective. The code that
@@ -42,7 +38,7 @@
   It is /especially/ important to document library calls and
    non-standard internal functions in OTP modules.
 
-* TorrentPeerMaster
+* TorrentPeerMaster [Milestone: not decided]
 - Figure out a better choking/unchoking algorithm.
   The current algorithm is the original one. We should look for a
    better algorithm and implement that. Suggestions for digging:
@@ -54,11 +50,11 @@
 * Cleanups
 - Decide what to do if we connect multiply to the same IP
 
-* Temporary IP-ban on errors
+* Temporary IP-ban on errors [Milestone: 1.1]
   If we find an error on a given peer, ban him temporarily for some
    time.
 
-* ROBUSTNESS
+* ROBUSTNESS [Milestone: 1.2]
 - In general, robustness is not really taken care of. We ought to make
   the system more robust by not relying so much on Pids etc.
 - What happens if process X dies

@@ -56,9 +56,9 @@
 %% Function: start_link() -> {ok,Pid} | ignore | {error,Error}
 %% Description: Starts the server
 %%--------------------------------------------------------------------
-start_link(LocalPeerId, InfoHash, FilesystemPid, MasterPid, Id) ->
+start_link(LocalPeerId, InfoHash, FilesystemPid, GroupPid, Id) ->
     gen_server:start_link(?MODULE, [LocalPeerId, InfoHash,
-				    FilesystemPid, MasterPid, Id], []).
+				    FilesystemPid, GroupPid, Id], []).
 
 %%--------------------------------------------------------------------
 %% Function: connect(Pid, IP, Port)
@@ -124,12 +124,12 @@ stop(Pid) ->
 %%                         {stop, Reason}
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
-init([LocalPeerId, InfoHash, FilesystemPid, MasterPid, Id]) ->
+init([LocalPeerId, InfoHash, FilesystemPid, GroupPid, Id]) ->
     {ok, #state{ local_peer_id = LocalPeerId,
 		 piece_set = sets:new(),
 		 remote_request_set = sets:new(),
 		 info_hash = InfoHash,
-		 peer_group_pid = MasterPid,
+		 peer_group_pid = GroupPid,
 		 torrent_id = Id,
 		 file_system_pid = FilesystemPid}}.
 

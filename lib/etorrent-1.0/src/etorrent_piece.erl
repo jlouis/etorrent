@@ -198,7 +198,7 @@ get_num(Id) when is_integer(Id) ->
       end).
 
 %%--------------------------------------------------------------------
-%% Function: store_piece(Id, PieceNumber, FSPid, MasterPid) -> ok | wrong_hash
+%% Function: store_piece(Id, PieceNumber, FSPid, GroupPid) -> ok | wrong_hash
 %% Description: Store the piece pair {Id, PieceNumber}. Return ok or wrong_hash
 %%   in the case that the piece does not Hash-match.
 %%
@@ -207,7 +207,7 @@ get_num(Id) when is_integer(Id) ->
 %% XXX: Update to a state 'storing' and check for this when calling here.
 %%   will avoid a little pesky problem that might occur.
 %%--------------------------------------------------------------------
-store_piece(Id, PieceNumber, FSPid, MasterPid) ->
+store_piece(Id, PieceNumber, FSPid, GroupPid) ->
     F = fun () ->
 		[R] = mnesia:read(chunk, {Id, PieceNumber, fetched}, read),
 		mnesia:delete_object(R),
@@ -226,7 +226,7 @@ store_piece(Id, PieceNumber, FSPid, MasterPid) ->
 							{subtract_left, DataSize}),
 	    {atomic, ok} = etorrent_torrent:statechange(Id,
 							{add_downloaded, DataSize}),
-	    ok = etorrent_t_peer_group:broadcast_have(MasterPid, PieceNumber),
+	    ok = etorrent_t_peer_group:broadcast_have(GroupPid, PieceNumber),
 	    ok;
 	wrong_hash ->
 	    %% Piece had wrong hash and its chunks have already been cleaned.

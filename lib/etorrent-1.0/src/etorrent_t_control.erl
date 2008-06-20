@@ -33,7 +33,7 @@
 		parent_pid = none,
 		tracker_pid = none,
 		file_system_pid = none,
-		peer_master_pid = none,
+		peer_group_pid = none,
 
 		disk_state = none,
 		available_peers = []}).
@@ -144,7 +144,7 @@ initializing(timeout, S) ->
 		etorrent_torrent:statechange(S#state.id, TorrentState),
 
 	    %% And a process for controlling the peers for this torrent.
-	    {ok, PeerMasterPid} =
+	    {ok, PeerGroupPid} =
 		etorrent_t_sup:add_peer_group(
 		  S#state.parent_pid,
 		  GroupPid,
@@ -158,7 +158,7 @@ initializing(timeout, S) ->
 	    {ok, TrackerPid} =
 		etorrent_t_sup:add_tracker(
 		  S#state.parent_pid,
-		  PeerMasterPid,
+		  PeerGroupPid,
 		  etorrent_metainfo:get_url(Torrent),
 		  etorrent_metainfo:get_infohash(Torrent),
 		  S#state.peer_id,
@@ -170,7 +170,7 @@ initializing(timeout, S) ->
 	     S#state{file_system_pid = FSPid,
 		     tracker_pid = TrackerPid,
 		     torrent = Torrent,
-		     peer_master_pid = PeerMasterPid}}
+		     peer_group_pid = PeerGroupPid}}
 
     end.
 
@@ -180,7 +180,7 @@ started({tracker_error_report, Reason}, S) ->
     io:format("Got tracker error: ~s~n", [Reason]),
     {next_state, started, S};
 started(seed, S) ->
-    etorrent_t_peer_group:seed(S#state.peer_master_pid),
+    etorrent_t_peer_group:seed(S#state.peer_group_pid),
     etorrent_torrent:statechange(S#state.id, seeding),
     {ok, Name} = etorrent_metainfo:get_name(S#state.torrent),
     etorrent_event:completed_torrent(Name),
