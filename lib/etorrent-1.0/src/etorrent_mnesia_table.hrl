@@ -14,6 +14,9 @@
 		  leechers = 0, % How many people are downloaded
 		  state}). % What is our state: leecher | unknown | seeder
 
+%% Counter for how many pieces is missing from this torrent
+-record(torrent_c_pieces, {id, % Torrent id
+			   missing}). % Number of missing pieces
 
 %% The peer record represents a peer we are talking to
 -record(peer, {pid, % We identify each peer with it's pid.
