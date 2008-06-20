@@ -12,7 +12,7 @@
 
 %% API
 -export([new/3, delete/1, get_by_id/1, statechange/2,
-	 get_num_pieces/1, downloaded_piece/1]).
+	 get_num_pieces/1, decrease_not_fetched/1]).
 
 %%====================================================================
 %% API
@@ -67,11 +67,11 @@ get_num_pieces(Id) ->
 
 
 %%--------------------------------------------------------------------
-%% Function: downloaded_piece(Id) -> ok | endgame
+%% Function: decrease_not_fetched(Id) -> ok | endgame
 %% Description: track that we downloaded a piece, eventually updating
 %%  the endgame result.
 %%--------------------------------------------------------------------
-downloaded_piece(Id) ->
+decrease_not_fetched(Id) ->
     N = mnesia:dirty_update_counter(torrent, Id, -1),
     case N of
 	0 ->

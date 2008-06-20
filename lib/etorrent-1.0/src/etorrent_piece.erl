@@ -187,7 +187,7 @@ torrent_size(Id) when is_integer(Id) ->
 
 %%--------------------------------------------------------------------
 %% Function: store_piece(Id, PieceNumber, FSPid, GroupPid)
-%%     -> ok | wrong_hash | endgame
+%%     -> ok | wrong_hash
 %% Description: Store the piece pair {Id, PieceNumber}. Return ok or wrong_hash
 %%   in the case that the piece does not Hash-match.
 %%
@@ -216,7 +216,7 @@ store_piece(Id, PieceNumber, FSPid, GroupPid) ->
 	    {atomic, ok} = etorrent_torrent:statechange(Id,
 							{add_downloaded, DataSize}),
 	    ok = etorrent_t_peer_group:broadcast_have(GroupPid, PieceNumber),
-	    etorrent_torrent:downloaded_piece(Id);
+	    ok;
 	wrong_hash ->
 	    %% Piece had wrong hash and its chunks have already been cleaned.
 	    %%   set the state to be not_fetched again.

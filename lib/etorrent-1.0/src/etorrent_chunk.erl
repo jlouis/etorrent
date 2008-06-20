@@ -259,18 +259,8 @@ chunkify_piece(Id, P) when is_record(P, piece) ->
     mnesia:transaction(
       fun () ->
 	      add_piece_chunks(P, etorrent_fs:size_of_ops(P#piece.files)),
-	      %% XXX: This can be optimized. Track this in the #torrent table
-	      Q1 = qlc:q([T || T <- mnesia:table(piece),
-			       T#piece.id =:= Id,
-			       T#piece.state =:= not_fetched]),
-	      case length(qlc:e(Q1)) of
-		  0 ->
-		      {atomic, _} =
-			  etorrent_torrent:statechange(Id, endgame),
-		      ok;
-		  N when is_integer(N) ->
-		      ok
-	      end
+	      etorrent_torrent:decrease_not_fetched(Id), % endgames as side-eff.
+	      ok
       end).
 
 
