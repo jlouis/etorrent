@@ -101,17 +101,19 @@ putback_chunks(Pid) ->
 				mnesia:write(#chunk{ idt = NotFetchIdt,
 						     chunks = Chunks});
 			    [R] ->
-				mnesia:write(R#chunk { chunks =
-						       R#chunk.chunks ++ Chunks})
+				mnesia:write(
+				  R#chunk { chunks =
+					    R#chunk.chunks ++ Chunks})
 			end
 		end,
 		Rows)
       end).
 
 %%--------------------------------------------------------------------
-%% Function: store_chunk(Id, PieceNum, {Offset, Len}, Data, FSPid, PeerGroupPid, Pid) -> ok
-%% Description: Workhorse function. Store a chunk in the chunk mnesia table. If we have all
-%%    chunks we need, then store the piece on disk.
+%% Function: store_chunk(Id, PieceNum, {Offset, Len},
+%%                       Data, FSPid, PeerGroupPid, Pid) -> ok
+%% Description: Workhorse function. Store a chunk in the chunk mnesia table.
+%%    If we have all chunks we need, then store the piece on disk.
 %%--------------------------------------------------------------------
 store_chunk(Id, PieceNum, {Offset, Len}, Data, Pid) ->
     {atomic, Res} =
@@ -123,13 +125,18 @@ store_chunk(Id, PieceNum, {Offset, Len}, Data, Pid) ->
 			  mnesia:write(#chunk { idt = {Id, PieceNum, fetched},
 						chunks = [{Offset, Data}]});
 		      [R] ->
-			  mnesia:write(R#chunk { chunks = [{Offset, Data} | R#chunk.chunks]})
+			  mnesia:write(
+			    R#chunk { chunks =
+				      [{Offset, Data} | R#chunk.chunks]})
 		  end,
 
 		  %% Update that the chunk is not anymore assigned to the Pid
-		  [S] = mnesia:read(chunk, {Id, PieceNum, {assigned, Pid}}, write),
-		  mnesia:write(S#chunk { chunks = lists:delete({Offset, Len},
-							       S#chunk.chunks) }),
+		  [S] = mnesia:read(chunk,
+				    {Id, PieceNum, {assigned, Pid}},
+				    write),
+		  mnesia:write(S#chunk { chunks =
+					 lists:delete({Offset, Len},
+						      S#chunk.chunks) }),
 
 		  %% Count down the number of missing chunks for the piece
 		  %% Next lines can be thrown into a seperate counter for speed.
