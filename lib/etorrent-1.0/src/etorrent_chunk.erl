@@ -266,10 +266,11 @@ chunkify(PieceSize) ->
 
 chunkify(_ChunkSize, _Offset, 0, Acc) ->
     {ok, lists:reverse(Acc), length(Acc)};
-chunkify(ChunkSize, Offset, Left, Acc)
- when ChunkSize =< Left ->
+
+chunkify(ChunkSize, Offset, Left, Acc) when ChunkSize =< Left ->
     chunkify(ChunkSize, Offset+ChunkSize, Left-ChunkSize,
 	     [{Offset, ChunkSize} | Acc]);
+
 chunkify(ChunkSize, Offset, Left, Acc) ->
     chunkify(ChunkSize, Offset+Left, 0,
 	     [{Offset, Left} | Acc]).

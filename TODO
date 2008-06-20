@@ -1,5 +1,5 @@
 %%% Local Variables:
-%%% mode: org
+%%% mode: todoo
 %%% End:
 ----------------------------------------------------------------------
 -- This is a list of what To Do before a release is ready to be made.
@@ -12,14 +12,8 @@
    an alternative way of coding it.
 - No passing of PeerMaster and FSPid
    We could handle the work directly in the peer calling. Seems like
-   a better placing of concerns.
-- The picking code can probably be streamlined.
-   I don't know how to do this yet, but I have a hunch that it can be
-   made a lot simpler. I have rewritten it twice as of this moment,
-   but I am far from satisfied yet. Must have a better way to do this.
-- Move code that belongs in other modules.
-   Some calls here belong in different libraries. Consider moving them
-   accordingly.
+   a better placing of concerns. And while here, move store_piece to
+   the piece code.
 
 * Review endgame support. Something is murky in there.
    The torrents won't complete and sits in the endgame forever. That
