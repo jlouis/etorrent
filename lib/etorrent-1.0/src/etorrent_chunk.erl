@@ -160,7 +160,7 @@ store_chunk(Id, PieceNum, {Offset, Len}, Data, Pid) ->
 			      N when is_integer(N) ->
 				  ok
 			  end;
-		      already_there ->
+		      already_downloaded ->
 			  ok
 		  end
 	  end),
