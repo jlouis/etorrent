@@ -119,17 +119,26 @@ store_chunk(Id, PieceNum, {Offset, Len}, Data, Pid) ->
     {atomic, Res} =
 	mnesia:transaction(
 	  fun () ->
-		  %% Add the newly fetched data to the fetched list
+		  %% Add the newly fetched data to the fetched list and add the
+		  %%   data itself to the #chunk_data table.
+		  DataState =
+		      case mnesia:dirty_read(chunk_data, {Id, PieceNum, Offset}) of
+			  [] ->
+			      mnesia:write(#chunk_data { idt = {Id, PieceNum, Offset},
+							 data = Data }),
+			      ok;
+			  [_] ->
+			      already_downloaded
+		      end,
 		  case mnesia:read(chunk, {Id, PieceNum, fetched}, write) of
 		      [] ->
 			  mnesia:write(#chunk { idt = {Id, PieceNum, fetched},
-						chunks = [{Offset, Data}]});
+						chunks = [Offset]});
 		      [R] ->
 			  mnesia:write(
 			    R#chunk { chunks =
-				      [{Offset, Data} | R#chunk.chunks]})
+				      [Offset | R#chunk.chunks]})
 		  end,
-
 		  %% Update that the chunk is not anymore assigned to the Pid
 		  [S] = mnesia:read(chunk,
 				    {Id, PieceNum, {assigned, Pid}},
@@ -140,13 +149,18 @@ store_chunk(Id, PieceNum, {Offset, Len}, Data, Pid) ->
 
 		  %% Count down the number of missing chunks for the piece
 		  %% Next lines can be thrown into a seperate counter for speed.
-		  [P] = mnesia:read(piece, {Id, PieceNum}, write),
-		  NewP = P#piece { left = P#piece.left - 1 },
-		  mnesia:write(NewP),
-		  case NewP#piece.left of
-		      0 ->
-			  full;
-		      N when is_integer(N) ->
+		  case DataState of
+		      ok ->
+			  [P] = mnesia:read(piece, {Id, PieceNum}, write),
+			  NewP = P#piece { left = P#piece.left - 1 },
+			  mnesia:write(NewP),
+			  case NewP#piece.left of
+			      0 ->
+				  full;
+			      N when is_integer(N) ->
+				  ok
+			  end;
+		      already_there ->
 			  ok
 		  end
 	  end),

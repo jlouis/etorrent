@@ -202,11 +202,19 @@ store_piece(Id, PieceNumber, FSPid, GroupPid) ->
 		mnesia:delete_object(R),
 		R#chunk.chunks
 	end,
-    {atomic, Chunks} = mnesia:transaction(F),
-    ok = invariant_check(Chunks),
+    {atomic, Offsets} = mnesia:transaction(F),
+    SOffsets = lists:usort(Offsets),
+    G = fun () ->
+		Q = qlc:q([{Offset, R#chunk_data.data} ||
+			      Offset <- SOffsets,
+			      R <- mnesia:table(piece_data),
+			      R#chunk_data.idt =:= {Id, PieceNumber, Offset}]),
+		qlc:e(qlc:keysort(Q, 2))
+	end,
+    {atomic, Chunks} = mnesia:transaction(G),
     Data = list_to_binary(lists:map(fun ({_Offset, Data}) -> Data end,
-							  Chunks)),
-    DataSize = size(Data),
+				    Chunks)),
+    DataSize = size(Data), % XXX: We can probably check this against #piece.
     case etorrent_fs:write_piece(FSPid,
 				 PieceNumber,
 				 Data) of
@@ -253,29 +261,3 @@ get_fetched(Id) when is_integer(Id) ->
 		qlc:e(Q)
 	end,
     mnesia:transaction(F).
-
-
-%%--------------------------------------------------------------------
-%% Function: invariant_check(PList) -> ok | error
-%% Description: Check that a list of chunks for a full piece obeys some
-%%   invariants. This piece of code is there mostly as a debugging tool,
-%%   but I (jlouis) keep it in to catch some bugs.
-%%  TODO: This function needs some work to be correct. The data changed.
-%%--------------------------------------------------------------------
-invariant_check(PList) ->
-    V = lists:foldl(fun (_T, error) -> error;
-			({Offset, _Size, fetched, _D}, N) when Offset /= N ->
-			    error;
-			({_Offset, Size, fetched, Data}, _N) when Size /= size(Data) ->
-			    error;
-			({Offset, Size, fetched, _Data}, N) when Offset == N ->
-			    Offset + Size
-		    end,
-		    0,
-		    PList),
-    case V of
-	error ->
-	    error;
-	N when is_integer(N) ->
-	    ok
-    end.
