@@ -12,7 +12,8 @@
 
 %% API
 -export([new/3, delete/1, get_by_id/1, statechange/2,
-	 get_num_pieces/1, decrease_not_fetched/1]).
+	 get_num_pieces/1, decrease_not_fetched/1,
+	 is_endgame/1]).
 
 %%====================================================================
 %% API
@@ -114,6 +115,14 @@ statechange(Id, What) when is_integer(Id) ->
 		end
 	end,
     mnesia:transaction(F).
+
+%%--------------------------------------------------------------------
+%% Function: is_endgame(Id) -> bool()
+%% Description: Returns true if the torrent is in endgame mode
+%%--------------------------------------------------------------------
+is_endgame(Id) ->
+    [T] = mnesia:dirty_read(torrent, Id),
+    T#torrent.state =:= endgame.
 
 %%====================================================================
 %% Internal functions

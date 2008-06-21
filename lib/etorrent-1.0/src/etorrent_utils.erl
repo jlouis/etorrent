@@ -11,7 +11,8 @@
 %% API
 -export([read_all_of_file/1, list_tabulate/2, queue_remove/2,
 	 queue_remove_with_check/2, sets_is_empty/1,
-	 build_encoded_form_rfc1738/1]).
+	 build_encoded_form_rfc1738/1,
+	 shuffle/1]).
 
 %%====================================================================
 %% API
@@ -93,6 +94,14 @@ build_encoded_form_rfc1738(List) when is_list(List) ->
 build_encoded_form_rfc1738(Binary) when is_binary(Binary) ->
     build_encoded_form_rfc1738(binary_to_list(Binary)).
 
+%%--------------------------------------------------------------------
+%% Function: shuffle(List1) -> List2
+%% Description: Permute List1 randomly. Returns the permuted list.
+%%--------------------------------------------------------------------
+shuffle(List) ->
+    error_logger:info_report(implement_shuffle),
+    List.
+
 %%====================================================================
 %% Internal functions
 %%====================================================================
@@ -120,6 +129,7 @@ rfc_3986_unreserved_characters() ->
 
 rfc_3986_unreserved_characters_set() ->
     sets:from_list(rfc_3986_unreserved_characters()).
+
 
 
 

@@ -31,7 +31,19 @@
 %% TODO: Needs heavy changes for endgame support.
 %%--------------------------------------------------------------------
 pick_chunks(Pid, Id, PieceSet, Remaining) ->
-    pick_chunks(pick_chunked, {Pid, Id, PieceSet, [], Remaining}).
+    case pick_chunks(pick_chunked, {Pid, Id, PieceSet, [], Remaining}) of
+	not_interested ->
+	    %% Do the endgame mode handling
+	    case etorrent_torrent:is_endgame(Id) of
+		false ->
+		    %% No endgame yet, just return
+		    not_interested;
+		true ->
+		    pick_chunks(endgame, {Pid, Id, PieceSet})
+	    end;
+	Other ->
+	    Other
+    end.
 
 %%
 %% There are 0 remaining chunks to be desired, return the chunks so far
@@ -78,9 +90,13 @@ pick_chunks(chunkify_piece, {Pid, Id, PieceSet, SoFar, Remaining}) ->
 	    not_interested;
 	{atomic, none_eligible} ->
 	    {partial, SoFar, Remaining}
-    end.
-
-
+    end;
+%%
+%% Handle the endgame for a torrent gracefully
+pick_chunks(endgame, {Pid, Id, PieceSet}) ->
+    error_logger:info_report([endgame_not_yet_supported]),
+    Remaining = find_remaning_chunks(Pid, Id, PieceSet),
+    {endgame, etorrent_utils:shuffle(Remaining)}.
 
 %%--------------------------------------------------------------------
 %% Function: putback_chunks(Pid) -> transaction
@@ -169,6 +185,14 @@ store_chunk(Id, PieceNum, {Offset, Len}, Data, Pid) ->
 %%====================================================================
 %% Internal functions
 %%====================================================================
+
+%%--------------------------------------------------------------------
+%% Function: find_remaining_chunks(Id, PieceSet) -> [Chunk]
+%% Description: Find all remaining chunks for a torrent matching PieceSet
+%%--------------------------------------------------------------------
+find_remaning_chunks(_Pid, _Id, _PieceSet) ->
+    error_logger:info_report(implement_find_remaining_chunks),
+    [].
 
 %%--------------------------------------------------------------------
 %% Function: chunkify_new_piece(Id, PieceSet) -> ok | none_eligible
