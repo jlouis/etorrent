@@ -16,7 +16,7 @@
 %% API
 -export([start_link/5, connect/3, choke/1, unchoke/1, interested/1,
 	 send_have_piece/2, complete_handshake/4,
-	stop/1]).
+	 stop/1, endgame_got_chunk/3]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -100,6 +100,13 @@ interested(Pid) ->
 %%--------------------------------------------------------------------
 send_have_piece(Pid, PieceNumber) ->
     gen_server:cast(Pid, {send_have_piece, PieceNumber}).
+
+%%--------------------------------------------------------------------
+%% Function: endgame_got_chunk(Pid, Index, Offset) -> ok
+%% Description: We got the chunk {Index, Offset}, handle it.
+%%--------------------------------------------------------------------
+endgame_got_chunk(Pid, Index, Offset) ->
+    gen_server:cast(Pid, {endgame_got_chunk, Index, Offset}).
 
 %%--------------------------------------------------------------------
 %% Function: complete_handshake(Pid, ReservedBytes, Socket, PeerId)
@@ -199,6 +206,9 @@ handle_cast(interested, S) ->
 handle_cast({send_have_piece, PieceNumber}, S) ->
     etorrent_t_peer_send:send_have_piece(S#state.send_pid, PieceNumber),
     {noreply, S};
+handle_cast({endgame_got_chunk, Index, Offset}, S) ->
+    NS = handle_endgame_got_chunk(Index, Offset, S),
+    {noreply, NS};
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
@@ -330,6 +340,15 @@ handle_message({piece, Index, Offset, Data}, S) ->
 handle_message(Unknown, S) ->
     {stop, {unknown_message, Unknown}, S}.
 
+
+%%--------------------------------------------------------------------
+%% Func: handle_endgame_got_chunk(Index, Offset, S) -> State
+%% Description: Some other peer just downloaded {Index, Offset} so try
+%%   not to download it here if we can avoid it.
+%%--------------------------------------------------------------------
+handle_endgame_got_chunk(_Index, _Offset, S) ->
+    todo,
+    S.
 
 %%--------------------------------------------------------------------
 %% Func: handle_got_chunk(Index, Offset, Data, Len, S) -> {ok, State}
