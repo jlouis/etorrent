@@ -99,8 +99,7 @@ build_encoded_form_rfc1738(Binary) when is_binary(Binary) ->
 %% Description: Permute List1 randomly. Returns the permuted list.
 %%--------------------------------------------------------------------
 shuffle(List) ->
-    error_logger:info_report(implement_shuffle),
-    List.
+    merge_shuffle(List).
 
 %%====================================================================
 %% Internal functions
@@ -130,6 +129,46 @@ rfc_3986_unreserved_characters() ->
 rfc_3986_unreserved_characters_set() ->
     sets:from_list(rfc_3986_unreserved_characters()).
 
+%%
+%% Flip a coin randomly
+flip_coin() ->
+    random:uniform(2) - 1.
+
+%%
+%% Merge 2 lists, using a coin flip to choose which list to take the next element from.
+merge(A, []) ->
+    A;
+merge([], B) ->
+    B;
+merge([A | As], [B | Bs]) ->
+    case flip_coin() of
+	0 ->
+	    [A | merge(As, [B | Bs])];
+	1 ->
+	    [B | merge([A | As], Bs)]
+    end.
+
+%%
+%% Partition a list into items.
+partition(List) ->
+    partition_l(List, [], []).
+
+partition_l([], A, B) ->
+    {A, B};
+partition_l([Item], A, B) ->
+    {B, [Item | A]};
+partition_l([Item | Rest], A, B) ->
+    partition_l(Rest, B, [Item | A]).
+
+%%
+%% Shuffle a list by partitioning it and then merging it back by coin-flips
+merge_shuffle([]) ->
+    [];
+merge_shuffle([Item]) ->
+    [Item];
+merge_shuffle(List) ->
+    {A, B} = partition(List),
+    merge(merge_shuffle(A), merge_shuffle(B)).
 
 
 
