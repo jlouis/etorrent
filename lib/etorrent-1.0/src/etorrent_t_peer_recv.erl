@@ -356,11 +356,13 @@ handle_endgame_got_chunk({Index, Offset, Len}, S) ->
 					Offset,
 					Len),
 	    etorrent_chunk:endgame_remove_chunk(S#state.send_pid,
+						S#state.torrent_id,
 						{Index, Offset, Len}),
 	    S#state { remote_request_set = RS };
 	false ->
 	    %% Not an element in the request queue, ignore
 	    etorrent_chunk:endgame_remove_chunk(S#state.send_pid,
+						S#state.torrent_id,
 						{Index, Offset, Len}),
 	    S
     end.

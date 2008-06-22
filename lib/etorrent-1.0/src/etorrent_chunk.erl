@@ -14,7 +14,8 @@
 -define(DEFAULT_CHUNK_SIZE, 16384). % Default size for a chunk. All clients use this.
 
 %% API
--export([pick_chunks/4, store_chunk/5, putback_chunks/1]).
+-export([pick_chunks/4, store_chunk/5, putback_chunks/1,
+	 endgame_remove_chunk/3]).
 
 %%====================================================================
 %% API
@@ -181,6 +182,11 @@ store_chunk(Id, PieceNum, {Offset, Len}, Data, Pid) ->
 		  end
 	  end),
     Res.
+
+endgame_remove_chunk(Pid, Id, {Index, Offset, Len}) ->
+    [R] = mnesia:dirty_read(chunk, {Id, Index, {assigned, Pid}}),
+    NC = lists:delete({Index, Offset, Len}, R#chunk.chunks),
+    mnesia:dirty_write(R#chunk {chunks = NC}).
 
 %%====================================================================
 %% Internal functions
