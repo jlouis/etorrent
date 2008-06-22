@@ -198,7 +198,7 @@ find_remaning_chunks(Id, PieceSet) ->
     {atomic, Rows} = mnesia:transaction(F),
 
     Res = lists:foldl(fun ({PN, Chunks}, Accum) ->
-			      case sets:member(PN, PieceSet) of
+			      case sets:is_element(PN, PieceSet) of
 				  true ->
 				      NewChunks = lists:map(fun ({Os, Sz}) ->
 								    {PN, Os, Sz}
