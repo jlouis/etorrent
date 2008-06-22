@@ -16,7 +16,7 @@
 %% API
 -export([start_link/5, connect/3, choke/1, unchoke/1, interested/1,
 	 send_have_piece/2, complete_handshake/4,
-	 stop/1, endgame_got_chunk/3]).
+	 stop/1, endgame_got_chunk/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -105,8 +105,8 @@ send_have_piece(Pid, PieceNumber) ->
 %% Function: endgame_got_chunk(Pid, Index, Offset) -> ok
 %% Description: We got the chunk {Index, Offset}, handle it.
 %%--------------------------------------------------------------------
-endgame_got_chunk(Pid, Index, Offset) ->
-    gen_server:cast(Pid, {endgame_got_chunk, Index, Offset}).
+endgame_got_chunk(Pid, Chunk) ->
+    gen_server:cast(Pid, {endgame_got_chunk, Chunk}).
 
 %%--------------------------------------------------------------------
 %% Function: complete_handshake(Pid, ReservedBytes, Socket, PeerId)
@@ -206,8 +206,8 @@ handle_cast(interested, S) ->
 handle_cast({send_have_piece, PieceNumber}, S) ->
     etorrent_t_peer_send:send_have_piece(S#state.send_pid, PieceNumber),
     {noreply, S};
-handle_cast({endgame_got_chunk, Index, Offset}, S) ->
-    NS = handle_endgame_got_chunk(Index, Offset, S),
+handle_cast({endgame_got_chunk, Chunk}, S) ->
+    NS = handle_endgame_got_chunk(Chunk, S),
     {noreply, NS};
 handle_cast(_Msg, State) ->
     {noreply, State}.
@@ -346,9 +346,24 @@ handle_message(Unknown, S) ->
 %% Description: Some other peer just downloaded {Index, Offset} so try
 %%   not to download it here if we can avoid it.
 %%--------------------------------------------------------------------
-handle_endgame_got_chunk(_Index, _Offset, S) ->
-    todo,
-    S.
+handle_endgame_got_chunk({Index, Offset, Len}, S) ->
+    case sets:is_element({Index, Offset, Len}, S#state.remote_request_set) of
+	true ->
+	    %% Delete the element from the request set.
+	    RS = sets:del_element({Index, Offset, Len}, S#state.remote_request_set),
+	    etorrent_t_peer_send:cancel(S#state.send_pid,
+					Index,
+					Offset,
+					Len),
+	    etorrent_chunk:endgame_remove_chunk(S#state.send_pid,
+						{Index, Offset, Len}),
+	    S#state { remote_request_set = RS };
+	false ->
+	    %% Not an element in the request queue, ignore
+	    etorrent_chunk:endgame_remove_chunk(S#state.send_pid,
+						{Index, Offset, Len}),
+	    S
+    end.
 
 %%--------------------------------------------------------------------
 %% Func: handle_got_chunk(Index, Offset, Data, Len, S) -> {ok, State}
@@ -446,7 +461,6 @@ queue_items(ChunkList, S) ->
 			    Chunks)
 	end,
     RSet = lists:foldl(G, S#state.remote_request_set, ChunkList),
-
     {ok, S#state { remote_request_set = RSet }}.
 
 %%--------------------------------------------------------------------
