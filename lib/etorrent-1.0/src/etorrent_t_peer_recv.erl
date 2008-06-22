@@ -350,6 +350,16 @@ handle_got_chunk(Index, Offset, Data, Len, S) ->
 	ok ->
 	    ok
     end,
+    %% Tell other peers we got the chunk if in endgame
+    case S#state.endgame of
+	true ->
+	    etorrent_t_peer_group:broadcast_got_chunk(
+	      S#state.peer_group_pid,
+	      Index,
+	      Offset);
+	false ->
+	    ok
+    end,
     RS = sets:del_element({Index, Offset, Len}, S#state.remote_request_set),
     {ok, S#state { remote_request_set = RS }}.
 
@@ -379,6 +389,9 @@ try_to_queue_up_pieces(S) ->
     case sets:size(S#state.remote_request_set) of
 	N when N > ?LOW_WATERMARK ->
 	    {ok, S};
+	%% XXX: This case can be optimized since we don't have
+	%% to request pieces all the time. We can reduce it to every 5th, every 10th
+	%% Or maybe even statechange.
 	N when is_integer(N) ->
 	    PiecesToQueue = ?HIGH_WATERMARK - N,
 	    case etorrent_chunk:pick_chunks(self(),
