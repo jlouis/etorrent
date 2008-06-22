@@ -38,6 +38,8 @@
 		 piece_set = none,
 		 piece_request = [],
 
+		 endgame = false, % Are we in endgame mode?
+
 		 file_system_pid = none,
 		 peer_group_pid = none,
 		 send_pid = none,
@@ -369,6 +371,10 @@ unqueue_all_pieces(S) ->
 %%--------------------------------------------------------------------
 try_to_queue_up_pieces(S) when S#state.remote_choked == true ->
     {ok, S};
+%%
+%% If we are in endgame, then we can just skip stuff
+try_to_queue_up_pieces(S) when S#state.endgame =:= true ->
+    {ok, S};
 try_to_queue_up_pieces(S) ->
     case sets:size(S#state.remote_request_set) of
 	N when N > ?LOW_WATERMARK ->
@@ -384,8 +390,8 @@ try_to_queue_up_pieces(S) ->
 		    {ok, S#state { local_interested = false}};
 		{ok, Items} ->
 		    queue_items(Items, S);
-		{partial, Items, _} ->
-		    queue_items(Items, S)
+		{endgame, Items} ->
+		    queue_items(Items, S#state { endgame = true })
 	    end
     end.
 

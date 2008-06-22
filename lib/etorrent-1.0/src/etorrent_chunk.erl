@@ -89,7 +89,7 @@ pick_chunks(chunkify_piece, {Pid, Id, PieceSet, SoFar, Remaining}) ->
 	{atomic, none_eligible} when SoFar =:= [] ->
 	    not_interested;
 	{atomic, none_eligible} ->
-	    {partial, SoFar, Remaining}
+	    {ok, SoFar}
     end;
 %%
 %% Handle the endgame for a torrent gracefully
