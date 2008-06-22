@@ -46,8 +46,8 @@
 
 -define(DEFAULT_CONNECT_TIMEOUT, 120000). % Default timeout in ms
 -define(DEFAULT_CHUNK_SIZE, 16384). % Default size for a chunk. All clients use this.
--define(BASE_QUEUE_LEVEL, 10). % How many chunks to keep queued. An advanced client
-                               % will fine-tune this number.
+-define(HIGH_WATERMARK, 50). % How many chunks to queue up to
+-define(LOW_WATERMARK, 30).  % Requeue when there are less than this number of pieces in queue
 
 %%====================================================================
 %% API
@@ -370,18 +370,23 @@ unqueue_all_pieces(S) ->
 try_to_queue_up_pieces(S) when S#state.remote_choked == true ->
     {ok, S};
 try_to_queue_up_pieces(S) ->
-    PiecesToQueue = ?BASE_QUEUE_LEVEL - sets:size(S#state.remote_request_set),
-    case etorrent_chunk:pick_chunks(self(),
+    case sets:size(S#state.remote_request_set) of
+	N when N > ?LOW_WATERMARK ->
+	    {ok, S};
+	N when is_integer(N) ->
+	    PiecesToQueue = ?HIGH_WATERMARK - N,
+	    case etorrent_chunk:pick_chunks(self(),
 					    S#state.torrent_id,
 					    S#state.piece_set,
 					    PiecesToQueue) of
-	not_interested ->
-	    etorrent_t_peer_send:not_interested(S#state.send_pid),
-	    {ok, S#state { local_interested = false}};
-	{ok, Items} ->
-	    queue_items(Items, S);
-	{partial, Items, _} ->
-	    queue_items(Items, S)
+		not_interested ->
+		    etorrent_t_peer_send:not_interested(S#state.send_pid),
+		    {ok, S#state { local_interested = false}};
+		{ok, Items} ->
+		    queue_items(Items, S);
+		{partial, Items, _} ->
+		    queue_items(Items, S)
+	    end
     end.
 
 %%--------------------------------------------------------------------

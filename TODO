@@ -16,12 +16,6 @@
 
 - Alter t_peer_recv's to understand endgame.
 
-* Use highwatermark/lowwatermark for queued pieces.
-   Rather than queue new pieces one at a time, we could just queue on
-   some watermarks. This lowers the amount of code traversed a great
-   deal. Also: it paves the way for maintaining queue length as a
-   bandwidth*delay product like construction.
-
 * Use passive sockets [Milestone: 1.1]
    We need to use passive sockets at some point. The reason is that
    active sockets have no flow control, and the granularity of whole
