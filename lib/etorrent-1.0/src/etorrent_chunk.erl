@@ -39,7 +39,7 @@ pick_chunks(Pid, Id, PieceSet, Remaining) ->
 		    %% No endgame yet, just return
 		    not_interested;
 		true ->
-		    pick_chunks(endgame, {Pid, Id, PieceSet})
+		    pick_chunks(endgame, {Id, PieceSet})
 	    end;
 	Other ->
 	    Other
@@ -93,9 +93,9 @@ pick_chunks(chunkify_piece, {Pid, Id, PieceSet, SoFar, Remaining}) ->
     end;
 %%
 %% Handle the endgame for a torrent gracefully
-pick_chunks(endgame, {Pid, Id, PieceSet}) ->
+pick_chunks(endgame, {Id, PieceSet}) ->
     error_logger:info_report([endgame_not_yet_supported]),
-    Remaining = find_remaning_chunks(Pid, Id, PieceSet),
+    Remaining = find_remaning_chunks(Id, PieceSet),
     {endgame, etorrent_utils:shuffle(Remaining)}.
 
 %%--------------------------------------------------------------------
@@ -190,9 +190,28 @@ store_chunk(Id, PieceNum, {Offset, Len}, Data, Pid) ->
 %% Function: find_remaining_chunks(Id, PieceSet) -> [Chunk]
 %% Description: Find all remaining chunks for a torrent matching PieceSet
 %%--------------------------------------------------------------------
-find_remaning_chunks(_Pid, _Id, _PieceSet) ->
-    error_logger:info_report(implement_find_remaining_chunks),
-    [].
+find_remaning_chunks(Id, PieceSet) ->
+    MatchHead = #chunk { idt = {Id, '$1', {assigned, '_'}}, chunks = '$2'},
+    F = fun () ->
+		mnesia:select(chunk, [{MatchHead, [], [{'$1', '$2'}]}])
+	end,
+    {atomic, Rows} = mnesia:transaction(F),
+
+    Res = lists:foldl(fun ({PN, Chunks}, Accum) ->
+			      case sets:member(PN, PieceSet) of
+				  true ->
+				      NewChunks = lists:map(fun ({Os, Sz}) ->
+								    {PN, Os, Sz}
+							    end,
+							    Chunks),
+				      NewChunks ++ Accum;
+				  false ->
+				      Accum
+			      end
+		      end,
+		      [],
+		      Rows),
+    {endgame, Res}.
 
 %%--------------------------------------------------------------------
 %% Function: chunkify_new_piece(Id, PieceSet) -> ok | none_eligible

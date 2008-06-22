@@ -14,7 +14,7 @@
    Also, endgame support is currently totally broken. We should rework
    the endgame support entirely.
 
-- Implement endgame code in pick_chunks.
+- Implement the shuffle function.
 - Alter t_peer_recv's to understand endgame.
 
 * Use highwatermark/lowwatermark for queued pieces.
