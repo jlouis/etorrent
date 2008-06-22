@@ -391,8 +391,7 @@ handle_got_chunk(Index, Offset, Data, Len, S) ->
 	true ->
 	    etorrent_t_peer_group:broadcast_got_chunk(
 	      S#state.peer_group_pid,
-	      Index,
-	      Offset);
+	      {Index, Offset, Len});
 	false ->
 	    ok
     end,

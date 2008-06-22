@@ -16,7 +16,7 @@
 
 %% API
 -export([start_link/6, add_peers/2, broadcast_have/2, new_incoming_peer/3,
-	seed/1, broadcast_got_chunk/3]).
+	seed/1, broadcast_got_chunk/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -55,8 +55,8 @@ add_peers(Pid, IPList) ->
 broadcast_have(Pid, Index) ->
     gen_server:cast(Pid, {broadcast_have, Index}).
 
-broadcast_got_chunk(Pid, Index, Offset) ->
-    gen_server:cast(Pid, {broadcast_got_chunk, Index, Offset}).
+broadcast_got_chunk(Pid, Chunk) ->
+    gen_server:cast(Pid, {broadcast_got_chunk, Chunk}).
 
 new_incoming_peer(Pid, IP, Port) ->
     gen_server:call(Pid, {new_incoming_peer, IP, Port}).
@@ -99,8 +99,8 @@ handle_cast({add_peers, IPList}, S) ->
 handle_cast({broadcast_have, Index}, S) ->
     broadcast_have_message(Index, S),
     {noreply, S};
-handle_cast({broadcast_got_chunk, Index, Offset}, S) ->
-    bcast_got_chunk(Index, Offset, S),
+handle_cast({broadcast_got_chunk, Chunk}, S) ->
+    bcast_got_chunk(Chunk, S),
     {noreply, S};
 handle_cast(seed, S) ->
     {noreply, S#state{mode = seeding}};
@@ -172,9 +172,9 @@ foreach_pid(F, S) ->
     lists:foreach(F, Pids),
     ok.
 
-bcast_got_chunk(Index, Offset, S) ->
+bcast_got_chunk(Chunk, S) ->
     foreach_pid(fun (Pid) ->
-			etorrent_t_peer_recv:endgame_got_chunk(Pid, Index, Offset)
+			etorrent_t_peer_recv:endgame_got_chunk(Pid, Chunk)
 		end,
 		S).
 
