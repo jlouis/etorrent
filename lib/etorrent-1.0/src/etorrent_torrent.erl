@@ -73,7 +73,7 @@ get_num_pieces(Id) ->
 %%  the endgame result.
 %%--------------------------------------------------------------------
 decrease_not_fetched(Id) ->
-    N = mnesia:dirty_update_counter(torrent, Id, -1),
+    N = mnesia:dirty_update_counter(torrent_c_pieces, Id, -1),
     case N of
 	0 ->
 	    statechange(Id, endgame),
