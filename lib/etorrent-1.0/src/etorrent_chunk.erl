@@ -235,7 +235,7 @@ chunkify_new_piece(Id, PieceSet) when is_integer(Id) ->
     PieceList = sets:to_list(PieceSet),
     mnesia:transaction(
       fun () ->
-	      Q1 = qlc:q([S || R <- mnesia:table(piece),
+	      Q1 = qlc:q([R || R <- mnesia:table(piece),
 			       S <- PieceList,
 			       R#piece.id =:= Id,
 			       R#piece.piece_number =:= S,
