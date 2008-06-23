@@ -35,7 +35,7 @@ new(Id, {{uploaded, U}, {downloaded, D}, {left, L}}, NPieces) ->
 	end,
     mnesia:transaction(F),
     Missing = etorrent_piece:get_num_not_fetched(Id),
-    mnesia:dirty_update_counter(torrent, Id, Missing).
+    mnesia:dirty_update_counter(torrent_c_pieces, Id, Missing).
 
 %%--------------------------------------------------------------------
 %% Function: delete(Id) -> transaction
