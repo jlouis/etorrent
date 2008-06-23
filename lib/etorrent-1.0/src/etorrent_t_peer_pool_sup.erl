@@ -38,7 +38,7 @@ init([]) ->
     PeerRecvs = {peer_recv,
 		 {etorrent_t_peer_recv, start_link, []},
 		 transient, infinity, supervisor, [etorrent_t_peer_recv]},
-    {ok, {{simple_one_for_one, 1, 60}, [PeerRecvs]}}.
+    {ok, {{simple_one_for_one, 5, 60}, [PeerRecvs]}}.
 
 %%====================================================================
 %% Internal functions
