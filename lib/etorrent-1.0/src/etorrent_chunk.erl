@@ -232,6 +232,7 @@ find_remaning_chunks(Id, PieceSet) ->
 %%   so pick_chunks/2 can shortcut the selection.
 %%--------------------------------------------------------------------
 chunkify_new_piece(Id, PieceSet) when is_integer(Id) ->
+    % XXX: This can be run outside transaction context
     {atomic, Piece} =
 	mnesia:transaction(
 	  fun () ->
@@ -239,7 +240,6 @@ chunkify_new_piece(Id, PieceSet) when is_integer(Id) ->
 				   R#piece.id =:= Id,
 				   sets:is_element(R#piece.piece_number, PieceSet),
 				   R#piece.state =:= not_fetched]),
-		  io:format("~s~n", [qlc:info(Q1)]),
 		  C = qlc:cursor(Q1),
 		  R = qlc:next_answers(C, 1),
 		  ok = qlc:delete_cursor(C),
