@@ -306,7 +306,9 @@ handle_message({have, PieceNum}, S) ->
 		    {ok, NS#state{local_interested = true}};
 		false ->
 		    {ok, NS}
-	    end
+	    end;
+	false ->
+	    {stop, {invalid_piece, S#state.remote_peer_id}, S}
     end;
 handle_message({bitfield, BitField}, S) ->
     case sets:size(S#state.piece_set) of
