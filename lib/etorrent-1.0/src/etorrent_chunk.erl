@@ -32,8 +32,7 @@
 %% TODO: Needs heavy changes for endgame support.
 %%--------------------------------------------------------------------
 pick_chunks(Pid, Id, PieceSet, Remaining) ->
-    PieceList = sets:to_list(PieceSet),
-    case pick_chunks(pick_chunked, {Pid, Id, PieceList, [], Remaining}) of
+    case pick_chunks(pick_chunked, {Pid, Id, PieceSet, [], Remaining}) of
 	not_interested ->
 	    %% Do the endgame mode handling
 	    case etorrent_torrent:is_endgame(Id) of
@@ -54,12 +53,13 @@ pick_chunks(_Operation, {_Pid, _Id, _PieceSet, SoFar, 0}) ->
 %%
 %% Pick chunks from the already chunked pieces
 pick_chunks(pick_chunked, {Pid, Id, PieceSet, SoFar, Remaining}) ->
+    PieceList = sets:to_list(PieceSet),
     {atomic, Res} =
 	mnesia:transaction(
 	  fun () ->
 		  Q = qlc:q([R#piece.piece_number || R <- mnesia:table(piece),
 						     R#piece.id =:= Id,
-						     S <- PieceSet,
+						     S <- PieceList,
 						     R#piece.piece_number =:= S,
 						     R#piece.state =:= chunked]),
 		  Rows = qlc:e(Q, {max_list_size, 1}),
