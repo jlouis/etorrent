@@ -150,10 +150,11 @@ get_bitfield(Id) when is_integer(Id) ->
 %%--------------------------------------------------------------------
 check_interest(Id, PieceSet) when is_integer(Id) ->
     %%% XXX: This function could also check for validity and probably should
+    PieceList = sets:to_list(PieceSet),
     F = fun () ->
 		Q = qlc:q([R#piece.piece_number ||
 			      R <- mnesia:table(piece),
-			      P <- PieceSet,
+			      P <- PieceList,
 			      R#piece.id =:= Id,
 			      P =:= P#piece.piece_number,
 			      (R#piece.state =:= fetched)
