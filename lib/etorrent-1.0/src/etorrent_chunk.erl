@@ -32,7 +32,8 @@
 %% TODO: Needs heavy changes for endgame support.
 %%--------------------------------------------------------------------
 pick_chunks(Pid, Id, PieceSet, Remaining) ->
-    case pick_chunks(pick_chunked, {Pid, Id, PieceSet, [], Remaining}) of
+    PieceList = sets:to_list(PieceSet),
+    case pick_chunks(pick_chunked, {Pid, Id, PieceList, [], Remaining}) of
 	not_interested ->
 	    %% Do the endgame mode handling
 	    case etorrent_torrent:is_endgame(Id) of
