@@ -159,7 +159,10 @@ check_interest(Id, PieceSet) when is_integer(Id) ->
 			      P =:= P#piece.piece_number,
 			      (R#piece.state =:= fetched)
 				  orelse (R#piece.state =:= chunked)]),
-		qlc:e(Q, {max_list_size, 1})
+		C = qlc:cursor(Q),
+		R = qlc:next_answers(C, 1),
+		ok = qlc:delete_cursor(C),
+		R
 	end,
     {atomic, PS} = mnesia:transaction(F),
     case PS of

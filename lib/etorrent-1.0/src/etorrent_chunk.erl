@@ -62,7 +62,9 @@ pick_chunks(pick_chunked, {Pid, Id, PieceSet, SoFar, Remaining}) ->
 						     S <- PieceList,
 						     R#piece.piece_number =:= S,
 						     R#piece.state =:= chunked]),
-		  Rows = qlc:e(Q, {max_list_size, 1}),
+		  C = qlc:cursor(Q),
+		  Rows = qlc:next_answers(C, 1),
+		  ok = qlc:delete_cursor(C),
 		  case Rows of
 		      [] ->
 			  none;
@@ -230,15 +232,18 @@ find_remaning_chunks(Id, PieceSet) ->
 %%   so pick_chunks/2 can shortcut the selection.
 %%--------------------------------------------------------------------
 chunkify_new_piece(Id, PieceSet) when is_integer(Id) ->
+    PieceList = sets:to_list(PieceSet),
     mnesia:transaction(
       fun () ->
 	      Q1 = qlc:q([S || R <- mnesia:table(piece),
-			       S <- sets:to_list(PieceSet),
+			       S <- PieceList,
 			       R#piece.id =:= Id,
 			       R#piece.piece_number =:= S,
 			       R#piece.state =:= not_fetched]),
-	      Eligible = qlc:e(Q1, {max_list_size, 1}),
-	      case Eligible of
+	      C = qlc:cursor(Q1),
+	      R = qlc:next_answers(C, 1),
+	      ok = qlc:delete_cursor(C),
+	      case R of
 		  [] ->
 		      none_eligible;
 		  [P] ->
