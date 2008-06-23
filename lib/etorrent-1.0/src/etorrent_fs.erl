@@ -65,7 +65,7 @@ load_file_information(Pid, FileDict) ->
 %% Function: read_piece(Pid, N) -> {ok, Binary}
 %% Description: Ask file_system process Pid to retrieve Piece N
 %%--------------------------------------------------------------------
-read_piece(Pid, Pn) ->
+read_piece(Pid, Pn) when is_integer(Pn) ->
     gen_server:call(Pid, {read_piece, Pn}).
 
 %%--------------------------------------------------------------------
@@ -85,7 +85,7 @@ init([IDHandle, FSPool]) when is_integer(IDHandle) ->
 		torrent_id = IDHandle}}.
 
 handle_call({read_piece, PieceNum}, _From, S) ->
-    {atomic, [#piece { files = Operations}]} =
+    [#piece { files = Operations}] =
 	etorrent_piece:get_piece(S#state.torrent_id, PieceNum),
     {ok, Data, NS} = read_pieces_and_assemble(Operations, [], S),
     {reply, {ok, Data}, NS};
