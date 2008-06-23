@@ -12,7 +12,7 @@
 -export([read_all_of_file/1, list_tabulate/2, queue_remove/2,
 	 queue_remove_with_check/2, sets_is_empty/1,
 	 build_encoded_form_rfc1738/1,
-	 shuffle/1]).
+	 shuffle/1, gsplit/2]).
 
 %%====================================================================
 %% API
@@ -44,6 +44,25 @@ sets_is_empty(Set) ->
 	_ ->
 	    false
     end.
+
+%%--------------------------------------------------------------------
+%% Function: gsplit(N, L1) -> {L2, L3}
+%% Description:
+%%    types: N          - integer()
+%%           L1, L2, L3 - list()
+%%
+%%   Graceful split. Works is lists:split, but if N is greater than
+%%     length(L1) then L1 =:= L2 and L3 = []
+%%--------------------------------------------------------------------
+gsplit(N, L) ->
+    gsplit(N, L, []).
+
+gsplit(_N, [], Rest) ->
+    {lists:reverse(Rest), []};
+gsplit(0, L1, Rest) ->
+    {lists:reverse(Rest), L1};
+gsplit(N, [H|T], Rest) ->
+    gsplit(N-1, T, [H | Rest]).
 
 %%--------------------------------------------------------------------
 %% Function: queue_remove_with_check(Item, Q1) -> {ok, Q2} | false
