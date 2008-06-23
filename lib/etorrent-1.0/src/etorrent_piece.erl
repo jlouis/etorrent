@@ -115,7 +115,7 @@ piece_valid(Id, Pn) when is_integer(Id) ->
     case mnesia:dirty_read(piece, {Id, Pn}) of
 	[] ->
 	    false;
-	[_|_] ->
+	[_] ->
 	    true
     end.
 
