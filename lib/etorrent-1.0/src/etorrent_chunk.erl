@@ -263,7 +263,7 @@ chunkify_new_piece(Id, PieceSet) when is_integer(Id) ->
 select_chunks_by_piecenum(Id, PieceNum, Num, Pid) ->
     %% Pick up to Num chunks
     [R] = mnesia:read(chunk, {Id, PieceNum, not_fetched}, write),
-    {Return, Rest} = lists:split(Num, R#chunk.chunks),
+    {Return, Rest} = etorrent_utils:gsplit(Num, R#chunk.chunks),
     [_|_] = Return, % Assert the state of Return
 
     %% Explain to the tables we took some chunks
