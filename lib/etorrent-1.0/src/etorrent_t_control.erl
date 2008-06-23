@@ -128,13 +128,12 @@ initializing(timeout, S) ->
 	    etorrent_tracking_map:set_state(S#state.id, started),
 
 	    %% Add a torrent entry for this torrent.
-	    {atomic, _} =
-		etorrent_torrent:new(
-		  S#state.id,
-		  {{uploaded, 0},
-		   {downloaded, 0},
-		   {left, calculate_amount_left(S#state.id)}},
-		  NumberOfPieces),
+	    etorrent_torrent:new(
+	      S#state.id,
+	      {{uploaded, 0},
+	       {downloaded, 0},
+	       {left, calculate_amount_left(S#state.id)}},
+	      NumberOfPieces),
 
 	    %% Add a peer pool
 	    %% TODO: We can pre-add this in the supervisor I think.
