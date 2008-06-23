@@ -88,11 +88,11 @@ pick_chunks(pick_chunked, {Pid, Id, PieceSet, SoFar, Remaining}) ->
 %% Find a new piece to chunkify. Give up if no more pieces can be chunkified
 pick_chunks(chunkify_piece, {Pid, Id, PieceSet, SoFar, Remaining}) ->
     case chunkify_new_piece(Id, PieceSet) of
-	{atomic, ok} ->
+	ok ->
 	    pick_chunks(pick_chunked, {Pid, Id, PieceSet, SoFar, Remaining});
-	{atomic, none_eligible} when SoFar =:= [] ->
+	none_eligible when SoFar =:= [] ->
 	    not_interested;
-	{atomic, none_eligible} ->
+	none_eligible ->
 	    {ok, SoFar}
     end;
 %%
@@ -232,26 +232,26 @@ find_remaning_chunks(Id, PieceSet) ->
 %%   so pick_chunks/2 can shortcut the selection.
 %%--------------------------------------------------------------------
 chunkify_new_piece(Id, PieceSet) when is_integer(Id) ->
-    PieceList = sets:to_list(PieceSet),
-    mnesia:transaction(
-      fun () ->
-	      Q1 = qlc:q([R || R <- mnesia:table(piece),
-			       S <- PieceList,
-			       R#piece.id =:= Id,
-			       R#piece.piece_number =:= S,
-			       R#piece.state =:= not_fetched]),
-	      C = qlc:cursor(Q1),
-	      R = qlc:next_answers(C, 1),
-	      ok = qlc:delete_cursor(C),
-	      case R of
-		  [] ->
-		      none_eligible;
-		  [P] ->
-		      chunkify_piece(Id, P),
-		      ok
-	      end
-      end).
-
+    {atomic, Piece} =
+	mnesia:transaction(
+	  fun () ->
+		  Q1 = qlc:q([R || R <- mnesia:table(piece),
+				   R#piece.id =:= Id,
+				   sets:is_element(R#piece.piece_number, PieceSet),
+				   R#piece.state =:= not_fetched]),
+		  io:format("~s~n", [qlc:info(Q1)]),
+		  C = qlc:cursor(Q1),
+		  R = qlc:next_answers(C, 1),
+		  ok = qlc:delete_cursor(C),
+		  R
+	  end),
+    case Piece of
+	[] ->
+	    none_eligible;
+	[P] ->
+	    chunkify_piece(Id, P),
+	    ok
+    end.
 
 %%--------------------------------------------------------------------
 %% Function: select_chunks_by_piecenum(Id, PieceNum, Num, Pid) ->
@@ -327,9 +327,8 @@ chunkify(ChunkSize, Offset, Left, Acc) ->
 chunkify_piece(Id, P) when is_record(P, piece) ->
     mnesia:transaction(
       fun () ->
-	      add_piece_chunks(P, etorrent_fs:size_of_ops(P#piece.files)),
-	      etorrent_torrent:decrease_not_fetched(Id), % endgames as side-eff.
-	      ok
-      end).
-
+	      add_piece_chunks(P, etorrent_fs:size_of_ops(P#piece.files))
+      end),
+    etorrent_torrent:decrease_not_fetched(Id), % endgames as side-eff.
+    ok.
 
