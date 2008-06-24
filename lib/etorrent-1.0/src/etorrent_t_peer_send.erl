@@ -15,7 +15,7 @@
 
 %% API
 -export([start_link/3, remote_request/4, cancel/4, choke/1, unchoke/1,
-	 local_request/4, local_request/2, not_interested/1, send_have_piece/2, stop/1,
+	 local_request/2, not_interested/1, send_have_piece/2, stop/1,
 	 bitfield/2, interested/1]).
 
 %% gen_server callbacks
@@ -54,9 +54,8 @@ remote_request(Pid, Index, Offset, Len) ->
 %% Func: local_request(Pid, Index, Offset, Len)
 %% Description: We request a piece from the peer: {Index, Offset, Len}
 %%--------------------------------------------------------------------
-local_request(Pid, Index, Offset, Len) ->
-    gen_server:cast(Pid, {local_request, Index, Offset, Len}).
-
+local_request(Pid, {Index, Offset, Len}) ->
+    gen_server:cast(Pid, {local_request, Index, Offset, Len});
 local_request(Pid, Chunk) when is_record(Chunk, chunk) ->
     gen_server:cast(Pid, {local_request, Chunk}).
 

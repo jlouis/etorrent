@@ -276,7 +276,8 @@ select_chunks_by_piecenum(Id, PieceNum, Num, Pid) ->
 		      mnesia:write(Q#chunk { chunks = Q#chunk.chunks ++ Return}),
 		      %% Return remaining
 		      Remaining = Num - length(Return),
-		      {ok, Return, Remaining}
+		      IndexedReturn = lists:map(fun({Offset, Size}) -> {PieceNum, Offset, Size} end, Return),
+		      {ok, IndexedReturn, Remaining}
 	      end
       end).
 
