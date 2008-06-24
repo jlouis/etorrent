@@ -257,7 +257,14 @@ select_chunks_by_piecenum(Id, PieceNum, Num, Pid) ->
     [_|_] = Return, % Assert the state of Return
 
     %% Explain to the tables we took some chunks
-    [Q] = mnesia:read(chunk, {Pid, PieceNum, {assigned, Pid}}, write),
+    Q =
+	case mnesia:read(chunk, {Pid, PieceNum, {assigned, Pid}}, write) of
+	    [] ->
+		#chunk { idt = {Id, PieceNum, {assigned, Pid}},
+			 chunks = [] };
+	    [C] when is_record(C, chunk) ->
+		C
+	end,
     mnesia:write(Q#chunk { chunks = Q#chunk.chunks ++ Return}),
 
     %% Based on how much is left, not_fetched, we should update correctly
