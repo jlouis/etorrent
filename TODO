@@ -9,6 +9,19 @@
 * Push the state into the #piece tables idpn column or think about it
    Currently, this manifests a bug in the code.
 
+* Add another state for #piece records [Milestone: 0.9]
+   The state 'chunked_no_left' should indicate that the piece has been
+   chunked, but there are no chunks left to pick from it. The state is
+   introduced when we empty the #chunk record with not_fetched for the
+   #piece and it is reintroduced in putback_chunks so we may again
+   pick from it. Also, in the endgame, we should pick off from this
+   state.
+
+   It turns out to be an optimization, so put it into 0.9 for now.
+
+* Let the system start with +Ktrue and +A 256 [Milestone: 0.9]
+   Will greatly enhance the performance of the application.
+
 * Use passive sockets [Milestone: 1.1]
    We need to use passive sockets at some point. The reason is that
    active sockets have no flow control, and the granularity of whole
