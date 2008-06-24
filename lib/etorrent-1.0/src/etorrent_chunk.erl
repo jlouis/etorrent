@@ -233,25 +233,15 @@ find_remaning_chunks(Id, PieceSet) ->
 %%--------------------------------------------------------------------
 chunkify_new_piece(Id, PieceSet) when is_integer(Id) ->
     % XXX: This can be run outside transaction context
-    {atomic, Piece} =
-	mnesia:transaction(
-	  fun () ->
-		  Q1 = qlc:q([R || R <- mnesia:table(piece),
-				   R#piece.id =:= Id,
-				   sets:is_element(R#piece.piece_number, PieceSet),
-				   R#piece.state =:= not_fetched]),
-		  C = qlc:cursor(Q1),
-		  R = qlc:next_answers(C, 1),
-		  ok = qlc:delete_cursor(C),
-		  R
-	  end),
-    case Piece of
-	[] ->
+    It = gb_sets:iterator(PieceSet),
+    case find_new_piece(Id, It) of
+	none ->
 	    none_eligible;
-	[P] ->
+	P when is_record(P, piece) ->
 	    chunkify_piece(Id, P),
 	    ok
     end.
+
 
 %%--------------------------------------------------------------------
 %% Function: select_chunks_by_piecenum(Id, PieceNum, Num, Pid) ->
@@ -339,3 +329,20 @@ chunkify_piece(Id, P) when is_record(P, piece) ->
     etorrent_torrent:decrease_not_fetched(Id), % endgames as side-eff.
     ok.
 
+%%--------------------------------------------------------------------
+%% Function: find_new_piece(Id, Iterator) -> #piece | none
+%% Description: Search an iterator for a not_fetched piece. Return the #piece
+%%   record or none.
+%%--------------------------------------------------------------------
+find_new_piece(Id, Iterator) ->
+    case gb_sets:next(Iterator) of
+	{PieceNumber, Next} ->
+	    case mnesia:dirty_read(piece, {Id, PieceNumber, not_fetched}) of
+		[] ->
+		    find_new_piece(Id, Next);
+		[P] ->
+		    P
+	    end;
+	none ->
+	    none
+    end.
