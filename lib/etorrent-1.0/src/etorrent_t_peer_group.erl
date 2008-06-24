@@ -150,12 +150,9 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%--------------------------------------------------------------------
 
-%% ------------------------------------------------------------
-%% XXX: Current line of review
-%% ------------------------------------------------------------
 start_new_incoming_peer(IP, Port, S) ->
     case ?MAX_PEER_PROCESSES - S#state.num_peers of
-	0 ->
+	N when N =< 0 ->
 	    {reply, already_enough_connections, S};
 	N when is_integer(N), N > 0 ->
 	    {ok, Pid} = etorrent_t_peer_pool_sup:add_peer(
@@ -242,24 +239,22 @@ perform_choking_unchoking(S) ->
 
 sort_fastest_downloaders(Peers) ->
     lists:sort(
-      fun ({_, DL1, _}, {_, DL2, _}) -> DL1 > DL2 end,
+      fun (P1, P2) ->
+	      P1#peer.downloaded > P2#peer.downloaded
+      end,
       Peers).
 
 sort_fastest_uploaders(Peers) ->
     lists:sort(
-      fun ({_, _, UL1}, {_, _, UL2}) -> UL1 > UL2 end,
+      fun (P1, P2) ->
+	      P1#peer.uploaded > P2#peer.uploaded
+      end,
       Peers).
 
-find_fastest(N, Interested, F) ->
-    List = F(Interested),
-    SplitPoint = lists:min([length(List), N]),
-    {Downloaders, Rest} = lists:split(SplitPoint, List),
-    {Downloaders, Rest}.
-
-find_fastest_peers(N, Interested, S) when S#state.mode == leeching ->
-    find_fastest(N, Interested, fun sort_fastest_downloaders/1);
-find_fastest_peers(N, Interested, S) when S#state.mode == seeding ->
-    find_fastest(N, Interested, fun sort_fastest_uploaders/1).
+find_fastest_peers(N, Interested, S) when S#state.mode =:= leeching ->
+    etorrent_utils:gsplit(N, sort_fastest_downloaders(Interested));
+find_fastest_peers(N, Interested, S) when S#state.mode =:= seeding ->
+    etorrent_utils:gsplit(N, sort_fastest_uploaders(Interested)).
 
 unchoke_peers(Peers) ->
     lists:foreach(fun(P) ->
@@ -267,12 +262,11 @@ unchoke_peers(Peers) ->
 		  end, Peers),
     ok.
 
-choke_peers(Pids) ->
-    lists:foreach(fun({Pid, _DL, _UL}) ->
-			  etorrent_t_peer_recv:choke(Pid)
-		  end, Pids),
+choke_peers(Peers) ->
+    lists:foreach(fun(P) ->
+			  etorrent_t_peer_recv:choke(P#peer.pid)
+		  end, Peers),
     ok.
-
 
 start_new_peers(IPList, State) ->
     %% Update the PeerList with the new incoming peers
@@ -318,11 +312,10 @@ spawn_new_peer(IP, Port, N, S) ->
 			  S#state.file_system_pid,
 			  self(),
 			  S#state.torrent_id),
-	    %% XXX: We set a monitor which we do not use!
-	    _Ref = erlang:monitor(process, Pid),
+	    erlang:monitor(process, Pid),
 	    etorrent_t_peer_recv:connect(Pid, IP, Port),
 	    ok = etorrent_peer:new(IP, Port, S#state.torrent_id, Pid),
-	    fill_peers(N-1, S)
+	    fill_peers(N-1, S#state { num_peers = S#state.num_peers +1})
     end.
 
 %% XXX: This is definitely wrong. But it is as the code is currently
