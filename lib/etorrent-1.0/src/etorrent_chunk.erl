@@ -307,7 +307,7 @@ chunkify_piece(Id, P) when is_record(P, piece) ->
     {atomic, Res} =
 	mnesia:transaction(
 	  fun () ->
-		  [S] = mnesia:read_object(P),
+		  [S] = mnesia:read({piece, P#piece.idpn}),
 		  case S#piece.state of
 		  not_fetched ->
 			  ok = mnesia:write(S#piece{ state = chunked,
