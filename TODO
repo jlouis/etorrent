@@ -6,7 +6,12 @@
 --   Keep the style please. Can be read with emacs org-mode
 ----------------------------------------------------------------------
 
-* Figure out the choking/unchoking code on mnesia [Milestone: 0.8].
+* Eradicate XXX and TODO [Milestone 0.8]
+   Go through the code and remove all XXX and TODOs remaining
+   there. There is a few that have been added when I find something
+   disgusting in the code base.
+
+* Figure out the choking/unchoking code on mnesia [Milestone: 0.8]
    Something is wrong. I am not at all recieving *anything* from any
    peer at all. We should carefully read through the spec and figure
    out exactly what is wrong.
