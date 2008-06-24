@@ -53,6 +53,8 @@ pick_chunks(_Operation, {_Pid, _Id, _PieceSet, SoFar, 0}) ->
 %%
 %% Pick chunks from the already chunked pieces
 pick_chunks(pick_chunked, {Pid, Id, PieceSet, SoFar, Remaining}) ->
+    %%% XXX: The following idiom can be substituted with a gb_sets:iterator
+    %%%   and optimized to run outside transaction context.
     PieceList = gb_sets:to_list(PieceSet),
     {atomic, Res} =
 	mnesia:transaction(

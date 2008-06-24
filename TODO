@@ -6,8 +6,14 @@
 --   Keep the style please. Can be read with emacs org-mode
 ----------------------------------------------------------------------
 
-* Push the state into the #piece tables idpn column or think about it
-   Currently, this manifests a bug in the code.
+* Figure out the choking/unchoking code on mnesia [Milestone: 0.8].
+   Something is wrong. I am not at all recieving *anything* from any
+   peer at all. We should carefully read through the spec and figure
+   out exactly what is wrong.
+
+   Also, consider writing down explicitly in the #peer table what
+   is inside a column rather than the impossible to discern true/false
+   atoms.
 
 * Add another state for #piece records [Milestone: 0.9]
    The state 'chunked_no_left' should indicate that the piece has been
