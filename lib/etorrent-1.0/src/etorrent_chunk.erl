@@ -76,7 +76,7 @@ pick_chunks(pick_chunked, {Pid, Id, PieceSet, SoFar, Remaining}) ->
 					  Remaining, Pid),
 	    pick_chunks(pick_chunked, {Pid, Id,
 				       gb_sets:del_element(PieceNum, PieceSet),
-				       Chunks ++ SoFar,
+				       [Chunks | SoFar],
 				       Left})
     end;
 
@@ -276,8 +276,7 @@ select_chunks_by_piecenum(Id, PieceNum, Num, Pid) ->
 		      mnesia:write(Q#chunk { chunks = Q#chunk.chunks ++ Return}),
 		      %% Return remaining
 		      Remaining = Num - length(Return),
-		      IndexedReturn = lists:map(fun({Offset, Size}) -> {PieceNum, Offset, Size} end, Return),
-		      {ok, IndexedReturn, Remaining}
+		      {ok, {PieceNum, Return}, Remaining}
 	      end
       end).
 

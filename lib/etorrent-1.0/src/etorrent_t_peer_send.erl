@@ -54,10 +54,10 @@ remote_request(Pid, Index, Offset, Len) ->
 %% Func: local_request(Pid, Index, Offset, Len)
 %% Description: We request a piece from the peer: {Index, Offset, Len}
 %%--------------------------------------------------------------------
-local_request(Pid, {Index, Offset, Len}) ->
-    gen_server:cast(Pid, {local_request, Index, Offset, Len});
 local_request(Pid, Chunk) when is_record(Chunk, chunk) ->
-    gen_server:cast(Pid, {local_request, Chunk}).
+    gen_server:cast(Pid, {local_request, Chunk});
+local_request(Pid, ChunkList) ->
+    gen_server:cast(Pid, {local_request, ChunkList}).
 
 %%--------------------------------------------------------------------
 %% Func: cancel(Pid, Index, Offset, Len)
@@ -180,15 +180,9 @@ handle_cast(interested, S) when S#state.interested =:= false ->
     send_message(interested, S#state { interested = true });
 handle_cast({have, Pn}, S) ->
     send_message({have, Pn}, S);
-handle_cast({local_request, Index, Offset, Len}, S) ->
-    send_message({request, Index, Offset, Len}, S);
-handle_cast({local_request, CList}, S) when is_list(CList) ->
-    case (catch send_requests(CList, S)) of % May throw error_closed for a quick exit
-	ok ->
-	    {noreply, S, 0};
-	{error_closed} ->
-	    {stop, normal, S}
-    end;
+handle_cast({local_request, {Pn, CList}}, S) when is_list(CList) ->
+    send_requests(Pn, CList, S),
+    {stop, normal, S};
 handle_cast({remote_request, _Index, _Offset, _Len}, S)
   when S#state.choke == true ->
     {noreply, S, 0};
@@ -285,20 +279,16 @@ set_timer(S) ->
 	    {noreply, S}
     end.
 
-send_requests(CList, S) ->
+send_requests(Pn, CList, S) ->
     lists:foreach(
-      fun ({Pn, Chunks}) ->
-	      lists:foreach(
-		fun({Offset, Size}) ->
-			Msg = {request, Pn, Offset, Size},
-			case etorrent_peer_communication:send_message(S#state.socket, Msg) of
-			    ok ->
-				ok;
-			    {error, closed} ->
-				throw(error_closed)
-			end
-		end,
-		Chunks)
+      fun({Offset, Size}) ->
+	      Msg = {request, Pn, Offset, Size},
+	      case etorrent_peer_communication:send_message(S#state.socket, Msg) of
+		  ok ->
+		      ok;
+		  {error, closed} ->
+		      ok
+	      end
       end,
       CList),
-      ok.
+    ok.
