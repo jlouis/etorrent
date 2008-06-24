@@ -135,8 +135,8 @@ stop(Pid) ->
 %%--------------------------------------------------------------------
 init([LocalPeerId, InfoHash, FilesystemPid, GroupPid, Id]) ->
     {ok, #state{ local_peer_id = LocalPeerId,
-		 piece_set = sets:new(),
-		 remote_request_set = sets:new(),
+		 piece_set = gb_sets:new(),
+		 remote_request_set = gb_sets:new(),
 		 info_hash = InfoHash,
 		 peer_group_pid = GroupPid,
 		 torrent_id = Id,
@@ -296,7 +296,7 @@ handle_message({cancel, Index, Offset, Len}, S) ->
 handle_message({have, PieceNum}, S) ->
     case etorrent_piece:piece_valid(S#state.torrent_id, PieceNum) of
 	true ->
-	    PieceSet = sets:add_element(PieceNum, S#state.piece_set),
+	    PieceSet = gb_sets:add_element(PieceNum, S#state.piece_set),
 	    NS = S#state{piece_set = PieceSet},
 	    case etorrent_piece:piece_interesting(S#state.torrent_id, PieceNum) of
 		true when S#state.local_interested =:= true ->
@@ -311,7 +311,7 @@ handle_message({have, PieceNum}, S) ->
 	    {stop, {invalid_piece, S#state.remote_peer_id}, S}
     end;
 handle_message({bitfield, BitField}, S) ->
-    case sets:size(S#state.piece_set) of
+    case gb_sets:size(S#state.piece_set) of
 	0 ->
 	    Size = etorrent_torrent:get_num_pieces(S#state.torrent_id),
 	    {ok, PieceSet} =
@@ -348,10 +348,10 @@ handle_message(Unknown, S) ->
 %%   not to download it here if we can avoid it.
 %%--------------------------------------------------------------------
 handle_endgame_got_chunk({Index, Offset, Len}, S) ->
-    case sets:is_element({Index, Offset, Len}, S#state.remote_request_set) of
+    case gb_sets:is_element({Index, Offset, Len}, S#state.remote_request_set) of
 	true ->
 	    %% Delete the element from the request set.
-	    RS = sets:del_element({Index, Offset, Len}, S#state.remote_request_set),
+	    RS = gb_sets:del_element({Index, Offset, Len}, S#state.remote_request_set),
 	    etorrent_t_peer_send:cancel(S#state.send_pid,
 					Index,
 					Offset,
@@ -396,7 +396,7 @@ handle_got_chunk(Index, Offset, Data, Len, S) ->
 	false ->
 	    ok
     end,
-    RS = sets:del_element({Index, Offset, Len}, S#state.remote_request_set),
+    RS = gb_sets:del_element({Index, Offset, Len}, S#state.remote_request_set),
     {ok, S#state { remote_request_set = RS }}.
 
 %%--------------------------------------------------------------------
@@ -408,7 +408,7 @@ handle_got_chunk(Index, Offset, Data, Len, S) ->
 %%--------------------------------------------------------------------
 unqueue_all_pieces(S) ->
     etorrent_chunk:putback_chunks(self()),
-    S#state{remote_request_set = sets:new()}.
+    S#state{remote_request_set = gb_sets:new()}.
 
 %%--------------------------------------------------------------------
 %% Function: try_to_queue_up_requests(state()) -> {ok, state()}
@@ -422,7 +422,7 @@ try_to_queue_up_pieces(S) when S#state.remote_choked == true ->
 try_to_queue_up_pieces(S) when S#state.endgame =:= true ->
     {ok, S};
 try_to_queue_up_pieces(S) ->
-    case sets:size(S#state.remote_request_set) of
+    case gb_sets:size(S#state.remote_request_set) of
 	N when N > ?LOW_WATERMARK ->
 	    {ok, S};
 	%% XXX: This case can be optimized since we don't have
@@ -457,7 +457,7 @@ queue_items(ChunkList, S) ->
 
     G = fun({Pn, Chunks}, RS) ->
 		lists:foldl(fun ({Offset, Size}, RRS) ->
-				      sets:add_element({Pn, Offset, Size}, RRS)
+				      gb_sets:add_element({Pn, Offset, Size}, RRS)
 			    end,
 			    RS,
 			    Chunks)

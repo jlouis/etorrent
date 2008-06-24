@@ -53,7 +53,7 @@ pick_chunks(_Operation, {_Pid, _Id, _PieceSet, SoFar, 0}) ->
 %%
 %% Pick chunks from the already chunked pieces
 pick_chunks(pick_chunked, {Pid, Id, PieceSet, SoFar, Remaining}) ->
-    PieceList = sets:to_list(PieceSet),
+    PieceList = gb_sets:to_list(PieceSet),
     {atomic, Res} =
 	mnesia:transaction(
 	  fun () ->
@@ -80,7 +80,7 @@ pick_chunks(pick_chunked, {Pid, Id, PieceSet, SoFar, Remaining}) ->
 	    pick_chunks(chunkify_piece, {Pid, Id, PieceSet, SoFar, Remaining});
 	{ok, Chunks, Remaining, PieceNum} ->
 	    pick_chunks(pick_chunked, {Pid, Id,
-				       sets:del_element(PieceNum, PieceSet),
+				       gb_sets:del_element(PieceNum, PieceSet),
 				       Chunks ++ SoFar,
 				       Remaining})
     end;
@@ -207,7 +207,7 @@ find_remaning_chunks(Id, PieceSet) ->
     {atomic, Rows} = mnesia:transaction(F),
 
     Res = lists:foldl(fun ({PN, Chunks}, Accum) ->
-			      case sets:is_element(PN, PieceSet) of
+			      case gb_sets:is_element(PN, PieceSet) of
 				  true ->
 				      NewChunks = lists:map(fun ({Os, Sz}) ->
 								    {PN, Os, Sz}

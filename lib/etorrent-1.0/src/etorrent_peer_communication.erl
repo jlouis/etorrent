@@ -207,7 +207,7 @@ construct_bitfield(Size, PieceSet) ->
 	     [etorrent_utils:list_tabulate(
 		Size,
 		fun(N) ->
-			case sets:is_element(N, PieceSet) of
+			case gb_sets:is_element(N, PieceSet) of
 			    true -> 1;
 			    false -> 0
 			end
@@ -234,7 +234,7 @@ bytify([B1, B2, B3, B4, B5, B6, B7, B8]) ->
 destruct_bitfield(Size, BinaryLump) ->
     ByteList = binary_to_list(BinaryLump),
     Numbers = decode_bytes(0, ByteList, []),
-    PieceSet = sets:from_list(lists:flatten(Numbers)),
+    PieceSet = gb_sets:from_list(lists:flatten(Numbers)),
     case max_element(PieceSet) < Size of
 	true ->
 	    {ok, PieceSet};
@@ -243,14 +243,14 @@ destruct_bitfield(Size, BinaryLump) ->
     end.
 
 max_element(Set) ->
-    sets:fold(fun(E, Max) ->
-		      case E > Max of
-			  true ->
-			      E;
-			  false ->
-			      Max
-		      end
-	      end, 0, Set).
+    gb_sets:fold(fun(E, Max) ->
+			 case E > Max of
+			     true ->
+				 E;
+			     false ->
+				 Max
+			 end
+		 end, 0, Set).
 
 decode_byte(B, Add) ->
     <<B1:1/integer, B2:1/integer, B3:1/integer, B4:1/integer,

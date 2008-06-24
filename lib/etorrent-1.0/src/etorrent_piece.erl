@@ -142,7 +142,7 @@ get_bitfield(Id) when is_integer(Id) ->
     NumPieces = etorrent_torrent:get_num_pieces(Id),
     {atomic, Fetched}   = get_fetched(Id),
     etorrent_peer_communication:construct_bitfield(NumPieces,
-						   sets:from_list(Fetched)).
+						   gb_sets:from_list(Fetched)).
 
 %%--------------------------------------------------------------------
 %% Function: check_interest(Id, PieceSet) -> interested | not_interested
@@ -150,7 +150,7 @@ get_bitfield(Id) when is_integer(Id) ->
 %%--------------------------------------------------------------------
 check_interest(Id, PieceSet) when is_integer(Id) ->
     %%% XXX: This function could also check for validity and probably should
-    PieceList = sets:to_list(PieceSet),
+    PieceList = gb_sets:to_list(PieceSet),
     F = fun () ->
 		Q = qlc:q([R#piece.piece_number ||
 			      R <- mnesia:table(piece),
