@@ -277,6 +277,7 @@ handle_message(choke, S) ->
     NS = unqueue_all_pieces(S),
     {ok, NS#state { remote_choked = true }};
 handle_message(unchoke, S) ->
+    error_logger:info_report([peer_unchoked, S#state.remote_peer_id]),
     {atomic, ok} = etorrent_peer:statechange(self(), remote_unchoking),
     try_to_queue_up_pieces(S#state{remote_choked = false});
 handle_message(interested, S) ->
@@ -316,10 +317,12 @@ handle_message({bitfield, BitField}, S) ->
 		etorrent_peer_communication:destruct_bitfield(Size, BitField),
 	    case etorrent_piece:check_interest(S#state.torrent_id, PieceSet) of
 		interested ->
+		    error_logger:info_report([interested, S#state.remote_peer_id]),
 		    etorrent_t_peer_send:interested(S#state.send_pid),
 		    {ok, S#state{piece_set = PieceSet,
 				 local_interested = true}};
 		not_interested ->
+		    error_logger:info_report([not_interested, S#state.remote_peer_id]),
 		    {ok, S#state{piece_set = PieceSet}}
 %%% XXX: We should check for piece validity.
 %		not_valid ->
@@ -331,6 +334,7 @@ handle_message({bitfield, BitField}, S) ->
     end;
 handle_message({piece, Index, Offset, Data}, S) ->
     Len = size(Data),
+    error_logger:info_report([got_chunk, Index, Offset]),
     etorrent_peer:statechange(self(), {downloaded, Len}),
     case handle_got_chunk(Index, Offset, Data, Len, S) of
 	{ok, NS} ->

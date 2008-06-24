@@ -94,7 +94,6 @@ pick_chunks(chunkify_piece, {Pid, Id, PieceSet, SoFar, Remaining}) ->
 %%
 %% Handle the endgame for a torrent gracefully
 pick_chunks(endgame, {Id, PieceSet}) ->
-    error_logger:info_report([endgame_not_yet_supported]),
     Remaining = find_remaning_chunks(Id, PieceSet),
     {endgame, etorrent_utils:shuffle(Remaining)}.
 
@@ -307,7 +306,6 @@ chunkify(ChunkSize, Offset, Left, Acc) ->
 %%   to the chunk table.
 %%--------------------------------------------------------------------
 chunkify_piece(Id, P) when is_record(P, piece) ->
-    error_logger:info_report([chunking, P#piece.id]),
     {ok, Chunks, NumChunks} = chunkify(etorrent_fs:size_of_ops(P#piece.files)),
     {atomic, Res} =
 	mnesia:transaction(

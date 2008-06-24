@@ -150,26 +150,23 @@ get_bitfield(Id) when is_integer(Id) ->
 %%--------------------------------------------------------------------
 check_interest(Id, PieceSet) when is_integer(Id) ->
     %%% XXX: This function could also check for validity and probably should
-    PieceList = gb_sets:to_list(PieceSet),
-    F = fun () ->
-		Q = qlc:q([R#piece.piece_number ||
-			      R <- mnesia:table(piece),
-			      P <- PieceList,
-			      R#piece.id =:= Id,
-			      P =:= P#piece.piece_number,
-			      (R#piece.state =:= fetched)
-				  orelse (R#piece.state =:= chunked)]),
-		C = qlc:cursor(Q),
-		R = qlc:next_answers(C, 1),
-		ok = qlc:delete_cursor(C),
-		R
-	end,
-    {atomic, PS} = mnesia:transaction(F),
-    case PS of
+    %%% XXX: This function does the wrong thing currently. It should be fixed!
+    It = gb_sets:iterator(PieceSet),
+    find_interest_piece(Id, gb_sets:next(It)).
+
+find_interest_piece(_Id, none) ->
+    not_interested;
+find_interest_piece(Id, {Pn, Next}) ->
+    case mnesia:dirty_read(piece, {Id, Pn}) of
 	[] ->
-	    not_interested;
-	[_|_] ->
-	    interested
+	    invalid_piece;
+	[P] when is_record(P, piece) ->
+	    case P#piece.state of
+		not_fetched ->
+		    interested;
+		_Other ->
+		    find_interest_piece(Id, gb_sets:next(Next))
+	    end
     end.
 
 %%--------------------------------------------------------------------
