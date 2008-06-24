@@ -178,8 +178,7 @@ handle_cast({connect, IP, Port}, S) ->
 		{ok, _ReservedBytes, PeerId} ->
 		    complete_connection_setup(S#state { tcp_socket = Socket,
 						        remote_peer_id = PeerId});
-		{error, X} ->
-		    error_logger:info_report([handshake_failed, X]),
+		{error, _} ->
 		    {stop, normal, S}
 	    end;
 	{error, _Reason} ->
@@ -219,7 +218,6 @@ handle_cast(_Msg, State) ->
 %% Description: Handling all non call/cast messages
 %%--------------------------------------------------------------------
 handle_info({tcp_closed, _P}, S) ->
-    error_logger:info_report([recv_tcp_closed]),
     {stop, normal, S};
 handle_info({tcp, _Socket, M}, S) ->
     Msg = etorrent_peer_communication:recv_message(M),

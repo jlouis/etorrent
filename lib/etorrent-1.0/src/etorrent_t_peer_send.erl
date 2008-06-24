@@ -188,7 +188,6 @@ handle_cast({local_request, CList}, S) when is_list(CList) ->
 	ok ->
 	    {noreply, S, 0};
 	{error_closed} ->
-	    error_logger:info_report([remote_closed, S#state.torrent_id]),
 	    {stop, normal, S}
     end;
 handle_cast({remote_request, _Index, _Offset, _Len}, S)
@@ -213,7 +212,6 @@ handle_cast({cancel_piece, Index, OffSet, Len}, S) ->
 
 %% Terminating normally means we should inform our recv pair
 terminate(normal, S) ->
-    error_logger:info_report([peer_send_terminating_normally]),
     etorrent_t_peer_recv:stop(S#state.parent),
     ok;
 terminate(Reason, State) ->
@@ -234,7 +232,6 @@ send_piece_message(Msg, S, Timeout) ->
 	ok ->
 	    {noreply, S, Timeout};
 	{error, closed} ->
-	    error_logger:info_report([remote_closed, S#state.torrent_id]),
 	    {stop, normal, S}
     end.
 
@@ -277,7 +274,6 @@ send_message(Msg, S, Timeout) ->
 	ok ->
 	    {noreply, S, Timeout};
 	{error, closed} ->
-	    error_logger:info_report([remote_closed, S#state.torrent_id]),
 	    {stop, normal, S}
     end.
 

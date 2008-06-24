@@ -6,6 +6,9 @@
 --   Keep the style please. Can be read with emacs org-mode
 ----------------------------------------------------------------------
 
+* Push the state into the #piece tables idpn column or think about it
+   Currently, this manifests a bug in the code.
+
 * Use passive sockets [Milestone: 1.1]
    We need to use passive sockets at some point. The reason is that
    active sockets have no flow control, and the granularity of whole

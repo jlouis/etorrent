@@ -322,6 +322,7 @@ chunkify(ChunkSize, Offset, Left, Acc) ->
 %%   to the chunk table.
 %%--------------------------------------------------------------------
 chunkify_piece(Id, P) when is_record(P, piece) ->
+    error_logger:info_report([chunking, P#piece.id]),
     mnesia:transaction(
       fun () ->
 	      add_piece_chunks(P, etorrent_fs:size_of_ops(P#piece.files))
@@ -337,11 +338,13 @@ chunkify_piece(Id, P) when is_record(P, piece) ->
 find_new_piece(Id, Iterator) ->
     case gb_sets:next(Iterator) of
 	{PieceNumber, Next} ->
-	    case mnesia:dirty_read(piece, {Id, PieceNumber, not_fetched}) of
+	    case mnesia:dirty_read(piece, {Id, PieceNumber}) of
 		[] ->
 		    find_new_piece(Id, Next);
-		[P] ->
-		    P
+		[P] when P#piece.state =:= not_fetched ->
+		    P;
+		[_P] ->
+		    find_new_piece(Id, Next)
 	    end;
 	none ->
 	    none
