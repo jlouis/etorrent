@@ -65,25 +65,21 @@ pick_chunks(pick_chunked, {Pid, Id, PieceSet, SoFar, Remaining}) ->
 		  C = qlc:cursor(Q),
 		  Rows = qlc:next_answers(C, 1),
 		  ok = qlc:delete_cursor(C),
-		  case Rows of
-		      [] ->
-			  none;
-		      [PieceNum] ->
-			  {ok, Chunks, Remaining} =
-			      select_chunks_by_piecenum(Id, PieceNum,
-							Remaining, Pid),
-			  {ok, Chunks, Remaining, PieceNum}
-			 end
+		  Rows
 	  end),
     case Res of
-	none ->
+	[] ->
 	    pick_chunks(chunkify_piece, {Pid, Id, PieceSet, SoFar, Remaining});
-	{ok, Chunks, Remaining, PieceNum} ->
+	[PieceNum] ->
+	    {atomic, {ok, Chunks, Remaining}} =
+		select_chunks_by_piecenum(Id, PieceNum,
+					  Remaining, Pid),
 	    pick_chunks(pick_chunked, {Pid, Id,
 				       gb_sets:del_element(PieceNum, PieceSet),
 				       Chunks ++ SoFar,
 				       Remaining})
     end;
+
 %%
 %% Find a new piece to chunkify. Give up if no more pieces can be chunkified
 pick_chunks(chunkify_piece, {Pid, Id, PieceSet, SoFar, Remaining}) ->
@@ -251,34 +247,37 @@ chunkify_new_piece(Id, PieceSet) when is_integer(Id) ->
 %%  if it got some chunks and there is still Remain chunks left to pick.
 %%--------------------------------------------------------------------
 select_chunks_by_piecenum(Id, PieceNum, Num, Pid) ->
-    %% Pick up to Num chunks
-    [R] = mnesia:read(chunk, {Id, PieceNum, not_fetched}, write),
-    {Return, Rest} = etorrent_utils:gsplit(Num, R#chunk.chunks),
-    [_|_] = Return, % Assert the state of Return
+    mnesia:transaction(
+      fun () ->
+	      %% Pick up to Num chunks
+	      [R] = mnesia:read(chunk, {Id, PieceNum, not_fetched}, write),
+	      {Return, Rest} = etorrent_utils:gsplit(Num, R#chunk.chunks),
+	      [_|_] = Return, % Assert the state of Return
 
-    %% Explain to the tables we took some chunks
-    Q =
-	case mnesia:read(chunk, {Pid, PieceNum, {assigned, Pid}}, write) of
-	    [] ->
+	      %% Explain to the tables we took some chunks
+	      Q =
+		  case mnesia:read(chunk, {Pid, PieceNum, {assigned, Pid}}, write) of
+		      [] ->
 		#chunk { idt = {Id, PieceNum, {assigned, Pid}},
 			 chunks = [] };
-	    [C] when is_record(C, chunk) ->
-		C
-	end,
-    mnesia:write(Q#chunk { chunks = Q#chunk.chunks ++ Return}),
+		      [C] when is_record(C, chunk) ->
+			  C
+		  end,
+	      mnesia:write(Q#chunk { chunks = Q#chunk.chunks ++ Return}),
 
-    %% Based on how much is left, not_fetched, we should update correctly
-    case Rest of
-	[] ->
-	    %% Nothing left, we may not have got everything
-	    mnesia:delete_object(R),
-	    Remaining = Num - length(Return),
-	    {ok, Return, Remaining};
-	[_|_] ->
-	    %% More left, we got everything we wanted to get
-	    mnesia:write(R#chunk {chunks = Rest}),
-	    {ok, Return, 0}
-    end.
+	      %% Based on how much is left, not_fetched, we should update correctly
+	      case Rest of
+		  [] ->
+		      %% Nothing left, we may not have got everything
+		      mnesia:delete_object(R),
+		      Remaining = Num - length(Return),
+		      {ok, Return, Remaining};
+		  [_|_] ->
+		      %% More left, we got everything we wanted to get
+		      mnesia:write(R#chunk {chunks = Rest}),
+		      {ok, Return, 0}
+	      end
+      end).
 
 
 
