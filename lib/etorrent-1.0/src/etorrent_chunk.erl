@@ -71,13 +71,13 @@ pick_chunks(pick_chunked, {Pid, Id, PieceSet, SoFar, Remaining}) ->
 	[] ->
 	    pick_chunks(chunkify_piece, {Pid, Id, PieceSet, SoFar, Remaining});
 	[PieceNum] ->
-	    {atomic, {ok, Chunks, Remaining}} =
+	    {atomic, {ok, Chunks, Left}} =
 		select_chunks_by_piecenum(Id, PieceNum,
 					  Remaining, Pid),
 	    pick_chunks(pick_chunked, {Pid, Id,
 				       gb_sets:del_element(PieceNum, PieceSet),
 				       Chunks ++ SoFar,
-				       Remaining})
+				       Left})
     end;
 
 %%
