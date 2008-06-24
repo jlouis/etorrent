@@ -26,8 +26,8 @@
 	        bad_peers = none,
 		our_peer_id = none,
 		info_hash = none,
-	        peer_process_dict = none,
 
+		num_peers = 0,
 		timer_ref = none,
 		round = 0,
 
@@ -78,18 +78,17 @@ init([OurPeerId, PeerGroup, InfoHash,
 		 timer_ref = Tref,
 		 torrent_id = TorrentId,
 		 mode = TorrentState,
-		 file_system_pid = FileSystemPid,
-		 peer_process_dict = dict:new() }}.
+		 file_system_pid = FileSystemPid}}.
 
 handle_call({new_incoming_peer, IP, Port}, _From, S) ->
-    Reply = case is_bad_peer(IP, Port, S) of
-		{atomic, true} ->
-		    {bad_peer, S};
-		{atomic, false} ->
-		    start_new_incoming_peer(IP, Port, S)
-	    end,
-    {reply, Reply, S};
-handle_call(_Request, _From, State) ->
+    case is_bad_peer(IP, Port, S) of
+	{atomic, true} ->
+	    {reply, bad_peer, S};
+	{atomic, false} ->
+	    start_new_incoming_peer(IP, Port, S)
+    end;
+handle_call(Request, _From, State) ->
+    error_logger:error_report([unknown_peer_group_call, Request]),
     Reply = ok,
     {reply, Reply, State}.
 
@@ -103,6 +102,7 @@ handle_cast({broadcast_got_chunk, Chunk}, S) ->
     bcast_got_chunk(Chunk, S),
     {noreply, S};
 handle_cast(seed, S) ->
+    etorrent_torrent:statechange(S#state.torrent_id, seeding),
     {noreply, S#state{mode = seeding}};
 handle_cast(_Msg, State) ->
     {noreply, State}.
@@ -125,16 +125,17 @@ handle_info({'DOWN', _Ref, process, Pid, Reason}, S)
     % The peer shut down normally. Hence we just remove him and start up
     %  other peers. Eventually the tracker will re-add him to the peer list
     etorrent_peer:delete (Pid),
-    {ok, NS} = start_new_peers([], S),
+    {ok, NS} = start_new_peers([], S#state { num_peers = S#state.num_peers -1}),
     {noreply, NS};
 handle_info({'DOWN', _Ref, process, Pid, _Reason}, S) ->
     % The peer shut down unexpectedly re-add him to the queue in the *back*
     {IP, Port} = etorrent_peer:get_ip_port(Pid),
     etorrent_peer:delete(Pid),
     {noreply, S#state{available_peers =
-		      (S#state.available_peers ++ [{IP, Port}])}};
+		      (S#state.available_peers ++ [{IP, Port}]),
+		      num_peers = S#state.num_peers -1}};
 handle_info(Info, State) ->
-    io:format("Unknown info: ~p~n", [Info]),
+    error_logger:error_report([unknown_info_peer_group, Info]),
     {noreply, State}.
 
 terminate(_Reason, S) ->
@@ -148,10 +149,14 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 %%% Internal functions
 %%--------------------------------------------------------------------
+
+%% ------------------------------------------------------------
+%% XXX: Current line of review
+%% ------------------------------------------------------------
 start_new_incoming_peer(IP, Port, S) ->
-    case ?MAX_PEER_PROCESSES - dict:size(S#state.peer_process_dict) of
+    case ?MAX_PEER_PROCESSES - S#state.num_peers of
 	0 ->
-	    already_enough_connections;
+	    {reply, already_enough_connections, S};
 	N when is_integer(N), N > 0 ->
 	    {ok, Pid} = etorrent_t_peer_pool_sup:add_peer(
 			  S#state.peer_group_sup,
@@ -162,50 +167,52 @@ start_new_incoming_peer(IP, Port, S) ->
 			  S#state.torrent_id),
 	    erlang:monitor(process, Pid),
 	    etorrent_peer:new(IP, Port, S#state.torrent_id, Pid),
-	    {ok, Pid}
+	    {reply, {ok, Pid},
+	     S#state { num_peers = S#state.num_peers+1 }}
     end.
 
 %%
 %% Apply F to each Peer Pid
 foreach_pid(F, S) ->
-    Pids = dict:fetch_keys(S#state.peer_process_dict),
-    lists:foreach(F, Pids),
+    {atomic, Peers} = etorrent_peer:all_peers(S#state.torrent_id),
+    lists:foreach(F, Peers),
     ok.
 
 bcast_got_chunk(Chunk, S) ->
-    foreach_pid(fun (Pid) ->
-			etorrent_t_peer_recv:endgame_got_chunk(Pid, Chunk)
+    foreach_pid(fun (Peer) ->
+			etorrent_t_peer_recv:endgame_got_chunk(Peer#peer.pid, Chunk)
 		end,
 		S).
 
 broadcast_have_message(Index, S) ->
-    foreach_pid(fun (Pid) ->
-			etorrent_t_peer_recv:send_have_piece(Pid, Index)
+    foreach_pid(fun (Peer) ->
+			etorrent_t_peer_recv:send_have_piece(Peer#peer.pid, Index)
 		end,
 		S).
 
 select_optimistic_unchoker(DoNotTouchPids, S) ->
-    Size = dict:size(S#state.peer_process_dict),
-    List = dict:to_list(S#state.peer_process_dict),
+    Size = S#state.num_peers,
+    {atomic, Peers} = etorrent_peer:all_peers(S#state.torrent_id),
     % Guard such that we don't enter an infinite loop.
     %   There are multiple optimizations possible here...
+    %% XXX: This code looks infinitely wrong. Plzfx.
     case sets:size(DoNotTouchPids) >= Size of
 	true ->
 	    S;
 	false ->
-	    select_optimistic_unchoker(Size, List, DoNotTouchPids, S)
+	    select_optimistic_unchoker(Size, Peers, DoNotTouchPids, S)
     end.
 
-select_optimistic_unchoker(Size, List, DoNotTouchPids, S) ->
+select_optimistic_unchoker(Size, Peers, DoNotTouchPids, S) ->
     N = crypto:rand_uniform(1, Size+1),
-    {Pid, _PI} = lists:nth(N, List),
-    case sets:is_element(Pid, DoNotTouchPids) of
+    Peer = lists:nth(N, Peers),
+    case sets:is_element(Peer#peer.pid, DoNotTouchPids) of
 	true ->
-	    select_optimistic_unchoker(Size, List, DoNotTouchPids, S);
+	    select_optimistic_unchoker(Size, Peers, DoNotTouchPids, S);
 	false ->
 	    {atomic, _} =
-		etorrent_peer:statechange(Pid, {optimizations_unchoke, true}),
-	    etorrent_t_peer_recv:unchoke(Pid),
+		etorrent_peer:statechange(Peer, optimistic_unchoke),
+	    etorrent_t_peer_recv:unchoke(Peer#peer.pid),
 	    S
     end.
 
@@ -273,7 +280,7 @@ start_new_peers(IPList, State) ->
     S = State#state { available_peers = PeerList},
 
     %% Replenish the connected peers.
-    fill_peers(?MAX_PEER_PROCESSES - dict:size(S#state.peer_process_dict), S).
+    fill_peers(?MAX_PEER_PROCESSES - S#state.num_peers, S).
 
 %%% NOTE: fill_peers/2 and spawn_new_peer/5 tail calls each other.
 fill_peers(0, S) ->

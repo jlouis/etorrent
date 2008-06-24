@@ -317,16 +317,13 @@ handle_message({bitfield, BitField}, S) ->
 		etorrent_peer_communication:destruct_bitfield(Size, BitField),
 	    case etorrent_piece:check_interest(S#state.torrent_id, PieceSet) of
 		interested ->
-		    error_logger:info_report([interested, S#state.remote_peer_id]),
 		    etorrent_t_peer_send:interested(S#state.send_pid),
 		    {ok, S#state{piece_set = PieceSet,
 				 local_interested = true}};
 		not_interested ->
-		    error_logger:info_report([not_interested, S#state.remote_peer_id]),
-		    {ok, S#state{piece_set = PieceSet}}
-%%% XXX: We should check for piece validity.
-%		not_valid ->
-%		    {stop, invalid_pieces, S}
+		    {ok, S#state{piece_set = PieceSet}};
+		invalid_piece ->
+		    {stop, {invalid_pieces, S#state.remote_peer_id}, S}
 	    end;
 	N when is_integer(N) ->
 	    %% This is a bad peer. Kill him!

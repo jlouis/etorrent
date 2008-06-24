@@ -18,11 +18,6 @@
 %% API
 %%====================================================================
 %%--------------------------------------------------------------------
-%% Function: 
-%% Description:
-%%--------------------------------------------------------------------
-
-%%--------------------------------------------------------------------
 %% Function: new(IP, Port, InfoHash, Pid) -> transaction
 %% Description: Insert a row for the peer
 %%--------------------------------------------------------------------
@@ -67,6 +62,8 @@ statechange(Id, What) when is_integer(Id) ->
 %% Function: statechange(Pid, What) -> transaction
 %% Description: Alter peer identified by Pid by What
 %%--------------------------------------------------------------------
+statechange(Peer, What) when is_record(Peer, peer) ->
+    statechange(Peer#peer.pid, What);
 statechange(Pid, What) when is_pid(Pid) ->
     F = fun () ->
 		[Peer] = mnesia:read(peer, Pid, write),
@@ -107,8 +104,8 @@ reset_round(Id) ->
 partition_peers_by_interest(Id) when is_integer(Id) ->
     mnesia:transaction(
       fun () ->
-	      InterestedQuery = query_interested(true, Id),
-	      NotInterestedQuery = query_interested(false, Id),
+	      InterestedQuery = query_interested(interested, Id),
+	      NotInterestedQuery = query_interested(not_interested, Id),
 	      {qlc:e(InterestedQuery), qlc:e(NotInterestedQuery)}
       end).
 
@@ -125,7 +122,7 @@ partition_peers_by_interest(Id) when is_integer(Id) ->
 query_interested(IsInterested, Id) ->
     qlc:q([P || P <- mnesia:table(peer),
 		P#peer.torrent_id =:= Id,
-		P#peer.remote_interested =:= IsInterested]).
+		P#peer.remote_i_state =:= IsInterested]).
 
 %%--------------------------------------------------------------------
 %% Function: alter_state(Row, What) -> NewRow
@@ -134,18 +131,18 @@ query_interested(IsInterested, Id) ->
 %%--------------------------------------------------------------------
 alter_state(Peer, What) ->
     case What of
-	{optimistic_unchoke, Val} ->
-	    Peer#peer{ optimistic_unchoke = Val };
+	optimistic_unchoke ->
+	    Peer#peer{ optimistic_c_state = opt_unchoke };
 	remove_optimistic_unchoke ->
-	    Peer#peer{ optimistic_unchoke = false };
+	    Peer#peer{ optimistic_c_state = not_opt_unchoke };
 	remote_choking ->
-	    Peer#peer{ remote_choking = true};
+	    Peer#peer{ remote_c_state = choked};
 	remote_unchoking ->
-	    Peer#peer{ remote_choking = false};
+	    Peer#peer{ remote_c_state = unchoked};
 	interested ->
-	    Peer#peer{ remote_interested = true};
+	    Peer#peer{ remote_i_state = interested};
 	not_intersted ->
-	    Peer#peer{ remote_interested = false};
+	    Peer#peer{ remote_i_state = not_interested};
 	{uploaded, Amount} ->
 	    Uploaded = Peer#peer.uploaded,
 	    Peer#peer{ uploaded = Uploaded + Amount };
@@ -153,5 +150,7 @@ alter_state(Peer, What) ->
 	    Downloaded = Peer#peer.downloaded,
 	    Peer#peer{ downloaded = Downloaded + Amount };
 	reset_round ->
-	    Peer#peer { uploaded = 0, downloaded = 0}
+	    Peer#peer { uploaded = 0, downloaded = 0};
+	_ ->
+	    exit(wrong_alter_state_in_peer)
     end.
