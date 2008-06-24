@@ -291,7 +291,7 @@ add_piece_chunks(R, PieceSize) ->
     {ok, Chunks, NumChunks} = chunkify(PieceSize),
     mnesia:transaction(
       fun () ->
-	      [S] = mnesia:read(R),
+	      [S] = mnesia:read_object(R),
 	      case S#piece.state of
 		  not_fetched ->
 		      ok = mnesia:write(R#piece{ state = chunked,
