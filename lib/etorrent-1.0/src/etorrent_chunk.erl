@@ -251,7 +251,7 @@ select_chunks_by_piecenum(Id, PieceNum, Num, Pid) ->
 	      case mnesia:read(chunk, {Id, PieceNum, not_fetched}, write) of
 		  [] ->
 		      %% There are no such chunk anymore. Someone else exhausted it
-		      {ok, [], Num};
+		      {ok, {PieceNum, []}, Num};
 		  [R] ->
 		      %% Get up to the number of chunks we want
 		      {Return, Rest} = etorrent_utils:gsplit(Num, R#chunk.chunks),
