@@ -273,26 +273,6 @@ select_chunks_by_piecenum(Id, PieceNum, Num, Pid) ->
 	    {ok, Return, 0}
     end.
 
-%%--------------------------------------------------------------------
-%% Function: add_piece_chunks(R, PieceSize) -> {atomic, ok} | {aborted, Reason}
-%% Description: Add the chunks for a given piece to the #chunk table.
-%%--------------------------------------------------------------------
-add_piece_chunks(R, PieceSize) ->
-    {ok, Chunks, NumChunks} = chunkify(PieceSize),
-    mnesia:transaction(
-      fun () ->
-	      [S] = mnesia:read_object(R),
-	      case S#piece.state of
-		  not_fetched ->
-		      ok = mnesia:write(R#piece{ state = chunked,
-						 left = NumChunks}),
-		      ok = mnesia:write(#chunk { idt = {R#piece.id,
-							R#piece.piece_number, not_fetched},
-						 chunks = Chunks});
-		  _ ->
-		      ok
-	      end
-      end).
 
 
 %%--------------------------------------------------------------------
@@ -323,11 +303,29 @@ chunkify(ChunkSize, Offset, Left, Acc) ->
 %%--------------------------------------------------------------------
 chunkify_piece(Id, P) when is_record(P, piece) ->
     error_logger:info_report([chunking, P#piece.id]),
-    mnesia:transaction(
-      fun () ->
-	      add_piece_chunks(P, etorrent_fs:size_of_ops(P#piece.files))
-      end),
-    etorrent_torrent:decrease_not_fetched(Id), % endgames as side-eff.
+    {ok, Chunks, NumChunks} = chunkify(etorrent_fs:size_of_ops(P#piece.files)),
+    {atomic, Res} =
+	mnesia:transaction(
+	  fun () ->
+		  [S] = mnesia:read_object(P),
+		  case S#piece.state of
+		  not_fetched ->
+			  ok = mnesia:write(S#piece{ state = chunked,
+						     left = NumChunks}),
+			  ok = mnesia:write(#chunk { idt = {S#piece.id,
+							    S#piece.piece_number, not_fetched},
+						     chunks = Chunks}),
+			  ok;
+		  _ ->
+			  already_there
+		  end
+	  end),
+    case Res of
+	ok ->
+	    etorrent_torrent:decrease_not_fetched(Id); % endgames as side-eff.
+	already_there ->
+	    ok
+    end,
     ok.
 
 %%--------------------------------------------------------------------
