@@ -241,7 +241,7 @@ chunkify_new_piece(Id, PieceSet) when is_integer(Id) ->
 
 %%--------------------------------------------------------------------
 %% Function: select_chunks_by_piecenum(Id, PieceNum, Num, Pid) ->
-%%     {ok, [{Offset, Len}]} | {partial, [{Offset, Len}], Remain}
+%%     {ok, [{Offset, Len}], Remain}
 %% Description: Select up to Num chunks from PieceNum. Will return either
 %%  {ok, Chunks} if it got all chunks it wanted, or {partial, Chunks, Remain}
 %%  if it got some chunks and there is still Remain chunks left to pick.
@@ -249,37 +249,36 @@ chunkify_new_piece(Id, PieceSet) when is_integer(Id) ->
 select_chunks_by_piecenum(Id, PieceNum, Num, Pid) ->
     mnesia:transaction(
       fun () ->
-	      %% Pick up to Num chunks
-	      [R] = mnesia:read(chunk, {Id, PieceNum, not_fetched}, write),
-	      {Return, Rest} = etorrent_utils:gsplit(Num, R#chunk.chunks),
-	      [_|_] = Return, % Assert the state of Return
-
-	      %% Explain to the tables we took some chunks
-	      Q =
-		  case mnesia:read(chunk, {Pid, PieceNum, {assigned, Pid}}, write) of
-		      [] ->
-		#chunk { idt = {Id, PieceNum, {assigned, Pid}},
-			 chunks = [] };
-		      [C] when is_record(C, chunk) ->
-			  C
-		  end,
-	      mnesia:write(Q#chunk { chunks = Q#chunk.chunks ++ Return}),
-
-	      %% Based on how much is left, not_fetched, we should update correctly
-	      case Rest of
+	      case mnesia:read(chunk, {Id, PieceNum, not_fetched}, write) of
 		  [] ->
-		      %% Nothing left, we may not have got everything
-		      mnesia:delete_object(R),
+		      %% There are no such chunk anymore. Someone else exhausted it
+		      {ok, [], Num};
+		  [R] ->
+		      %% Get up to the number of chunks we want
+		      {Return, Rest} = etorrent_utils:gsplit(Num, R#chunk.chunks),
+		      [_|_] = Return, % Assert the state of Return
+		      %% Write back the missing ones
+		      case Rest of
+			  [] ->
+			      mnesia:delete_object(R);
+			  [_|_] ->
+			      mnesia:write(R#chunk {chunks = Rest})
+		      end,
+		      %% Assign chunk to us
+		      Q =
+			  case mnesia:read(chunk, {Pid, PieceNum, {assigned, Pid}}, write) of
+			      [] ->
+				  #chunk { idt = {Id, PieceNum, {assigned, Pid}},
+					   chunks = [] };
+			      [C] when is_record(C, chunk) ->
+				  C
+			  end,
+		      mnesia:write(Q#chunk { chunks = Q#chunk.chunks ++ Return}),
+		      %% Return remaining
 		      Remaining = Num - length(Return),
-		      {ok, Return, Remaining};
-		  [_|_] ->
-		      %% More left, we got everything we wanted to get
-		      mnesia:write(R#chunk {chunks = Rest}),
-		      {ok, Return, 0}
+		      {ok, Return, Remaining}
 	      end
       end).
-
-
 
 %%--------------------------------------------------------------------
 %% Function: chunkify(PieceSize) ->
