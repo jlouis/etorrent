@@ -48,8 +48,8 @@
 
 -define(DEFAULT_CONNECT_TIMEOUT, 120000). % Default timeout in ms
 -define(DEFAULT_CHUNK_SIZE, 16384). % Default size for a chunk. All clients use this.
--define(HIGH_WATERMARK, 50). % How many chunks to queue up to
--define(LOW_WATERMARK, 30).  % Requeue when there are less than this number of pieces in queue
+-define(HIGH_WATERMARK, 10). % How many chunks to queue up to
+-define(LOW_WATERMARK, 3).  % Requeue when there are less than this number of pieces in queue
 
 %%====================================================================
 %% API
@@ -449,8 +449,14 @@ try_to_queue_up_pieces(S) ->
 %%   also add these chunks to the piece request set.
 %%--------------------------------------------------------------------
 queue_items(ChunkList, S) ->
-    F = fun(Chunk) ->
-		etorrent_t_peer_send:local_request(S#state.send_pid, Chunk)
+    error_logger:info_report([queueing, ChunkList, S#state.remote_peer_id]),
+    F = fun({Pn, Chunks}) ->
+		lists:foreach(
+		  fun({Offset, Size}) ->
+			  etorrent_t_peer_send:local_request(S#state.send_pid,
+							     {Pn, Offset, Size})
+		  end,
+		  Chunks)
 	end,
     lists:foreach(F, ChunkList),
 
