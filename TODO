@@ -20,6 +20,10 @@
    is inside a column rather than the impossible to discern true/false
    atoms.
 
+* When peers die, putback it's assigned chunks [Milestone: 0.8]
+   Currently this does not happen properly. It should be handled by
+   the peer group process.
+
 * Add another state for #piece records [Milestone: 0.9]
    The state 'chunked_no_left' should indicate that the piece has been
    chunked, but there are no chunks left to pick from it. The state is
