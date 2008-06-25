@@ -171,7 +171,7 @@ start_new_incoming_peer(IP, Port, S) ->
 %%
 %% Apply F to each Peer Pid
 foreach_pid(F, S) ->
-    {atomic, Peers} = etorrent_peer:all_peers(S#state.torrent_id),
+    Peers = etorrent_peer:all(S#state.torrent_id),
     lists:foreach(F, Peers),
     ok.
 
@@ -189,7 +189,7 @@ broadcast_have_message(Index, S) ->
 
 select_optimistic_unchoker(DoNotTouchPids, S) ->
     Size = S#state.num_peers,
-    {atomic, Peers} = etorrent_peer:all_peers(S#state.torrent_id),
+    Peers = etorrent_peer:all(S#state.torrent_id),
     % Guard such that we don't enter an infinite loop.
     %   There are multiple optimizations possible here...
     %% XXX: This code looks infinitely wrong. Plzfx.

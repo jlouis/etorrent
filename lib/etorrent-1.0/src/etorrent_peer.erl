@@ -11,7 +11,7 @@
 -include("etorrent_mnesia_table.hrl").
 
 %% API
--export([new/4, delete/1, statechange/2, is_connected/3, reset_round/1,
+-export([new/4, all/1, delete/1, statechange/2, is_connected/3, reset_round/1,
 	 get_ip_port/1, partition_peers_by_interest/1]).
 
 %%====================================================================
@@ -95,6 +95,13 @@ is_connected(IP, Port, Id) when is_integer(Id) ->
 %%--------------------------------------------------------------------
 reset_round(Id) ->
     statechange(Id, reset_round).
+
+%%--------------------------------------------------------------------
+%% Function: all(Id) -> [#peer]
+%% Description: Return all peers with a given Id
+%%--------------------------------------------------------------------
+all(Id) ->
+    mnesia:dirty_index_read(peer, Id, #peer.torrent_id).
 
 %%--------------------------------------------------------------------
 %% Function: partition_peers_by_interest(Id) -> {Interested, NotInterested}
