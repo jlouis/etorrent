@@ -204,15 +204,7 @@ store_piece(Id, PieceNumber, FSPid, GroupPid) ->
 		R#chunk.chunks
 	end,
     {atomic, Offsets} = mnesia:transaction(F),
-    SOffsets = lists:usort(Offsets),
-    G = fun () ->
-		Q = qlc:q([{Offset, R#chunk_data.data} ||
-			      Offset <- SOffsets,
-			      R <- mnesia:table(piece_data),
-			      R#chunk_data.idt =:= {Id, PieceNumber, Offset}]),
-		qlc:e(qlc:keysort(Q, 2))
-	end,
-    {atomic, Chunks} = mnesia:transaction(G),
+    Chunks = read_delete_chunks(lists:usort(Offsets), Id, PieceNumber),
     Data = list_to_binary(lists:map(fun ({_Offset, Data}) -> Data end,
 				    Chunks)),
     DataSize = size(Data), % XXX: We can probably check this against #piece.
@@ -233,6 +225,7 @@ store_piece(Id, PieceNumber, FSPid, GroupPid) ->
 	    wrong_hash
     end.
 
+
 %%--------------------------------------------------------------------
 %% Function: get_num_fetched(Id) -> integer()
 %% Description: Return the number of not_fetched pieces for torrent Id.
@@ -251,6 +244,19 @@ get_num_not_fetched(Id) when is_integer(Id) ->
 %%====================================================================
 %% Internal functions
 %%====================================================================
+
+%%--------------------------------------------------------------------
+%% Function: read_delete_chunks(Chunks, Id, PieceNum) -> [{Offset, Chunk}]
+%% Description: Read and delete a number of chunks.
+%%--------------------------------------------------------------------
+read_delete_chunks([], _, _) ->
+    [];
+read_delete_chunks([Offset | Rest], Id, PieceNum) ->
+    %% Read the chunk
+    [C] = mnesia:dirty_read(chunk_data, {Id, PieceNum, Offset}),
+    %% And delete it
+    mnesia:dirty_delete_object(C),
+    [{Offset, C#chunk_data.data} | read_delete_chunks(Rest, Id, PieceNum)].
 
 
 get_fetched(Id) when is_integer(Id) ->
