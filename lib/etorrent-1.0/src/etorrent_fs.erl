@@ -90,8 +90,9 @@ handle_call({read_piece, PieceNum}, _From, S) ->
     {ok, Data, NS} = read_pieces_and_assemble(Operations, [], S),
     {reply, {ok, Data}, NS};
 handle_call({write_piece, PieceNum, Data}, _From, S) ->
-    {atomic, [#piece { hash = Hash, files = FilesToWrite }]} =
-	etorrent_piece:get_piece(S#state.torrent_id, PieceNum),
+    [#piece { hash = Hash,
+	      files = FilesToWrite }] = etorrent_piece:get_piece(S#state.torrent_id,
+								 PieceNum),
     D = iolist_to_binary(Data),
     case Hash == crypto:sha(D) of
 	true ->
