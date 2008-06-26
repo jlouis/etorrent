@@ -352,7 +352,12 @@ find_chunked_chunks(Id, {Pn, Next}) ->
     [P] = mnesia:dirty_read(piece, {Id, Pn}),
     case P#piece.state of
 	chunked ->
-	    P#piece.piece_number; %% Optimization: Pick the whole piece and pass it on
+	    case mnesia:dirty_read(chunk, {Id, Pn, not_fetched}) of
+		[] ->
+		    find_chunked_chunks(Id, gb_sets:next(Next));
+		_ ->
+		    P#piece.piece_number %% Optimization: Pick the whole piece and pass it on
+	    end;
 	_Other ->
 	    find_chunked_chunks(Id, gb_sets:next(Next))
     end.
