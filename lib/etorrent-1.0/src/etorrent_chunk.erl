@@ -55,24 +55,11 @@ pick_chunks(_Operation, {_Pid, _Id, _PieceSet, SoFar, 0}) ->
 pick_chunks(pick_chunked, {Pid, Id, PieceSet, SoFar, Remaining}) ->
     %%% XXX: The following idiom can be substituted with a gb_sets:iterator
     %%%   and optimized to run outside transaction context.
-    PieceList = gb_sets:to_list(PieceSet),
-    {atomic, Res} =
-	mnesia:transaction(
-	  fun () ->
-		  Q = qlc:q([R#piece.piece_number || R <- mnesia:table(piece),
-						     R#piece.id =:= Id,
-						     S <- PieceList,
-						     R#piece.piece_number =:= S,
-						     R#piece.state =:= chunked]),
-		  C = qlc:cursor(Q),
-		  Rows = qlc:next_answers(C, 1),
-		  ok = qlc:delete_cursor(C),
-		  Rows
-	  end),
-    case Res of
-	[] ->
+    Iterator = gb_sets:iterator(PieceSet),
+    case find_chunked_chunks(Id, gb_sets:next(Iterator)) of
+	none ->
 	    pick_chunks(chunkify_piece, {Pid, Id, PieceSet, SoFar, Remaining});
-	[PieceNum] ->
+	PieceNum when is_integer(PieceNum) ->
 	    {atomic, {ok, Chunks, Left}} =
 		select_chunks_by_piecenum(Id, PieceNum,
 					  Remaining, Pid),
@@ -354,3 +341,19 @@ find_new_piece(Id, Iterator) ->
 	none ->
 	    none
     end.
+
+%%--------------------------------------------------------------------
+%% Function: find_chunked_chunks(Id, iterator_result()) -> none | PieceNum
+%% Description: Search an iterator for a chunked piece.
+%%--------------------------------------------------------------------
+find_chunked_chunks(_Id, none) ->
+    none;
+find_chunked_chunks(Id, {Pn, Next}) ->
+    [P] = mnesia:dirty_read(piece, {Id, Pn}),
+    case P#piece.state of
+	chunked ->
+	    P#piece.piece_number; %% Optimization: Pick the whole piece and pass it on
+	_Other ->
+	    find_chunked_chunks(Id, gb_sets:next(Next))
+    end.
+
