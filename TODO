@@ -11,18 +11,12 @@
    there. There is a few that have been added when I find something
    disgusting in the code base.
 
-* Figure out the choking/unchoking code on mnesia [Milestone: 0.8]
-   Something is wrong. I am not at all recieving *anything* from any
-   peer at all. We should carefully read through the spec and figure
-   out exactly what is wrong.
-
-   Also, consider writing down explicitly in the #peer table what
-   is inside a column rather than the impossible to discern true/false
-   atoms.
-
 * When peers die, putback it's assigned chunks [Milestone: 0.8]
    Currently this does not happen properly. It should be handled by
    the peer group process.
+
+* Test endgame [Milestone 0.8]
+   The endgame has not been tested much. Do some more testing.
 
 * Add another state for #piece records [Milestone: 0.9]
    The state 'chunked_no_left' should indicate that the piece has been
