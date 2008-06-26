@@ -160,10 +160,12 @@ store_chunk(Id, PieceNum, {Offset, Len}, Data, Pid) ->
 		  [S] = mnesia:read(chunk,
 				    {Id, PieceNum, {assigned, Pid}},
 				    write),
-		  mnesia:write(S#chunk { chunks =
-					 lists:delete({Offset, Len},
-						      S#chunk.chunks) }),
-
+		  case lists:delete({Offset, Len}, S#chunk.chunks) of
+		      [] ->
+			  mnesia:delete_object(S);
+		      L when is_list(L) ->
+			  mnesia:write(S#chunk { chunks = L })
+		  end,
 		  %% Count down the number of missing chunks for the piece
 		  %% Next lines can be thrown into a seperate counter for speed.
 		  case DataState of
