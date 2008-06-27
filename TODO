@@ -11,10 +11,6 @@
    bad and it should use the #torrent state for checking the
    condition. Easily fixed, and then we seed correctly (I hope).
 
-* Eradicate XXX and TODO [Milestone 0.8]
-   Go through the code and remove all XXX and TODOs remaining
-   there. There are a few that have been added when I find something
-   disgusting in the code base.
 
 * When peers die, putback it's assigned chunks [Milestone: 0.8]
    Currently this does not happen properly. It should be handled by
@@ -59,6 +55,11 @@
 
 * Let the system start with +Ktrue and +A 256 [Milestone: 0.9]
    Will greatly enhance the performance of the application.
+
+* Eradicate XXX and TODO [Milestone 1.0]
+   Go through the code and remove all XXX and TODOs remaining
+   there. There are a few that have been added when I find something
+   disgusting in the code base.
 
 * What should we do about bad peers? [Milestone: 1.0]
    Currently bad peers are those which are already connected. We ought
