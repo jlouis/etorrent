@@ -25,6 +25,9 @@
    machine so it can be reached outside the network and do some
    incoming connection testing as well.
 
+   UPDATE: This is not yet implemented at all. We should reimplement
+   it.
+
 * Test endgame [Milestone 0.8]
    The endgame has not been tested much. Do some more testing.
 
@@ -35,6 +38,10 @@
 * What happens when 2 peers store the same piece at same time [Milestone: 0.9]
    This was an XXX inside the code. But it needs some serious thinking
    first as there is no easy fix for this.
+
+* When initializing the tracker, get it to start right away. [Milestone: 0.9]
+   We send it a 'start_now/0' message at the moment and that can
+   possibly be removed.
 
 * Find a way to cap the number of 'open' chunks [Milestone: 0.9]
    If we just allow the thing to open up chunks as it sees fit, we

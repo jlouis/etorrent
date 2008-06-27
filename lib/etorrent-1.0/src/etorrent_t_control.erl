@@ -164,7 +164,7 @@ initializing(timeout, S) ->
 		  etorrent_metainfo:get_infohash(Torrent),
 		  S#state.peer_id,
 		  S#state.id),
-	    %% TODO: We should make this call be part of the init of the tracker.
+
 	    etorrent_tracker_communication:start_now(TrackerPid),
 
 	    {next_state, started,
