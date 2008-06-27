@@ -43,7 +43,7 @@ new(Id, {{uploaded, U}, {downloaded, D}, {left, L}}, NPieces) ->
 %% Description: Return the current mode of the torrent.
 %%--------------------------------------------------------------------
 get_mode(Id) ->
-    #torrent { state = S} = mnesia:dirty_read(torrent, Id),
+    [#torrent { state = S}] = mnesia:dirty_read(torrent, Id),
     S.
 
 %%--------------------------------------------------------------------
