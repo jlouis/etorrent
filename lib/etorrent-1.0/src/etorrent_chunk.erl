@@ -105,7 +105,8 @@ putback_chunks(Pid) ->
 				mnesia:write(
 				  R#chunk { chunks =
 					    R#chunk.chunks ++ Chunks})
-			end
+			end,
+			mnesia:delete_object(C)
 		end,
 		Rows)
       end).
