@@ -26,12 +26,13 @@
 %%--------------------------------------------------------------------
 new(Id, {{uploaded, U}, {downloaded, D}, {left, L}}, NPieces) ->
     F = fun() ->
+		State = case L of 0 -> seeding; _ -> leeching end,
 		mnesia:write(#torrent { id = Id,
 					left = L,
 					uploaded = U,
 					downloaded = D,
 					pieces = NPieces,
-					state = unknown })
+					state = State })
 	end,
     mnesia:transaction(F),
     Missing = etorrent_piece:get_num_not_fetched(Id),
@@ -104,7 +105,13 @@ statechange(Id, What) when is_integer(Id) ->
 				  {add_upload, Amount} ->
 				      T#torrent{uploaded = T#torrent.uploaded + Amount};
 				  {subtract_left, Amount} ->
-				      T#torrent{left = T#torrent.left - Amount};
+				      Left = T#torrent.left - Amount,
+				      case Left of
+					  0 ->
+					      T#torrent { left = 0, state = seeding };
+					  N when is_integer(N) ->
+					      T#torrent { left = N }
+				      end;
 				  {tracker_report, Seeders, Leechers} ->
 				      T#torrent{seeders = Seeders, leechers = Leechers}
 			      end,
