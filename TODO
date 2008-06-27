@@ -18,6 +18,11 @@
 * Test endgame [Milestone 0.8]
    The endgame has not been tested much. Do some more testing.
 
+* Check that endgame is invoked at the right spot [Milestone: 0.8]
+   I am fairly sure the endgame can be invoked far before we really
+   should invoke it. Test and fix it such that it gets invoked at the
+   right spot. Make a nice implementation! Think!
+
 * Add another state for #piece records [Milestone: 0.9]
    The state 'chunked_no_left' should indicate that the piece has been
    chunked, but there are no chunks left to pick from it. The state is
