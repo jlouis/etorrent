@@ -13,7 +13,7 @@
 %% API
 -export([new/3, delete/1, get_by_id/1, statechange/2,
 	 get_num_pieces/1, decrease_not_fetched/1,
-	 is_endgame/1]).
+	 is_endgame/1, get_mode/1]).
 
 %%====================================================================
 %% API
@@ -37,6 +37,14 @@ new(Id, {{uploaded, U}, {downloaded, D}, {left, L}}, NPieces) ->
     mnesia:transaction(F),
     Missing = etorrent_piece:get_num_not_fetched(Id),
     mnesia:dirty_update_counter(torrent_c_pieces, Id, Missing).
+
+%%--------------------------------------------------------------------
+%% Function: get_mode(Id) -> seeding | endgame | leeching
+%% Description: Return the current mode of the torrent.
+%%--------------------------------------------------------------------
+get_mode(Id) ->
+    #torrent { state = S} = mnesia:dirty_read(torrent, Id),
+    S.
 
 %%--------------------------------------------------------------------
 %% Function: delete(Id) -> transaction

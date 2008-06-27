@@ -15,8 +15,8 @@
 -include("etorrent_mnesia_table.hrl").
 
 %% API
--export([start_link/6, add_peers/2, broadcast_have/2, new_incoming_peer/3,
-	seed/1, broadcast_got_chunk/2]).
+-export([start_link/5, add_peers/2, broadcast_have/2, new_incoming_peer/3,
+	 broadcast_got_chunk/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -33,9 +33,7 @@
 
 	        file_system_pid = none,
 		peer_group_sup = none,
-		torrent_id = none,
-
-	        mode = leeching}).
+		torrent_id = none}).
 
 -define(MAX_PEER_PROCESSES, 40).
 -define(ROUND_TIME, 10000).
@@ -45,9 +43,9 @@
 %% API
 %%====================================================================
 start_link(OurPeerId, PeerGroup, InfoHash,
-	   FileSystemPid, TorrentState, TorrentHandle) ->
+	   FileSystemPid, TorrentHandle) ->
     gen_server:start_link(?MODULE, [OurPeerId, PeerGroup, InfoHash,
-				    FileSystemPid, TorrentState, TorrentHandle], []).
+				    FileSystemPid, TorrentHandle], []).
 
 add_peers(Pid, IPList) ->
     gen_server:cast(Pid, {add_peers, IPList}).
@@ -61,15 +59,12 @@ broadcast_got_chunk(Pid, Chunk) ->
 new_incoming_peer(Pid, IP, Port) ->
     gen_server:call(Pid, {new_incoming_peer, IP, Port}).
 
-seed(Pid) ->
-    gen_server:cast(Pid, seed).
-
 %%====================================================================
 %% gen_server callbacks
 %%====================================================================
 
 init([OurPeerId, PeerGroup, InfoHash,
-      FileSystemPid, TorrentState, TorrentId]) when is_integer(TorrentId) ->
+      FileSystemPid, TorrentId]) when is_integer(TorrentId) ->
     {ok, Tref} = timer:send_interval(?ROUND_TIME, self(), round_tick),
     {ok, #state{ our_peer_id = OurPeerId,
 		 peer_group_sup = PeerGroup,
@@ -77,7 +72,6 @@ init([OurPeerId, PeerGroup, InfoHash,
 		 info_hash = InfoHash,
 		 timer_ref = Tref,
 		 torrent_id = TorrentId,
-		 mode = TorrentState,
 		 file_system_pid = FileSystemPid}}.
 
 handle_call({new_incoming_peer, IP, Port}, _From, S) ->
@@ -101,9 +95,6 @@ handle_cast({broadcast_have, Index}, S) ->
 handle_cast({broadcast_got_chunk, Chunk}, S) ->
     bcast_got_chunk(Chunk, S),
     {noreply, S};
-handle_cast(seed, S) ->
-    etorrent_torrent:statechange(S#state.torrent_id, seeding),
-    {noreply, S#state{mode = seeding}};
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
@@ -251,10 +242,15 @@ sort_fastest_uploaders(Peers) ->
       end,
       Peers).
 
-find_fastest_peers(N, Interested, S) when S#state.mode =:= leeching ->
-    etorrent_utils:gsplit(N, sort_fastest_downloaders(Interested));
-find_fastest_peers(N, Interested, S) when S#state.mode =:= seeding ->
-    etorrent_utils:gsplit(N, sort_fastest_uploaders(Interested)).
+find_fastest_peers(N, Interested, S) ->
+    case etorrent_torrent:get_mode(S#state.torrent_id) of
+	leeching ->
+	    etorrent_utils:gsplit(N, sort_fastest_downloaders(Interested));
+	seeding ->
+	    etorrent_utils:gsplit(N, sort_fastest_uploaders(Interested));
+	endgame ->
+	    etorrent_utils:gsplit(N, sort_fastest_downloaders(Interested))
+    end.
 
 unchoke_peers(Peers) ->
     lists:foreach(fun(P) ->

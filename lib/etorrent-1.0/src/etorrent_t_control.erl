@@ -181,7 +181,6 @@ started({tracker_error_report, Reason}, S) ->
     io:format("Got tracker error: ~s~n", [Reason]),
     {next_state, started, S};
 started(seed, S) ->
-    etorrent_t_peer_group:seed(S#state.peer_group_pid),
     etorrent_torrent:statechange(S#state.id, seeding),
     {ok, Name} = etorrent_metainfo:get_name(S#state.torrent),
     etorrent_event:completed_torrent(Name),
