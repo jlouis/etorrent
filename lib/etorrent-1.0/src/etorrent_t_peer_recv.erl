@@ -423,9 +423,7 @@ try_to_queue_up_pieces(S) ->
     case gb_sets:size(S#state.remote_request_set) of
 	N when N > ?LOW_WATERMARK ->
 	    {ok, S};
-	%% XXX: This case can be optimized since we don't have
-	%% to request pieces all the time. We can reduce it to every 5th, every 10th
-	%% Or maybe even statechange.
+	%% Optimization: Only replenish pieces modulo some N
 	N when is_integer(N) ->
 	    PiecesToQueue = ?HIGH_WATERMARK - N,
 	    case etorrent_chunk:pick_chunks(self(),

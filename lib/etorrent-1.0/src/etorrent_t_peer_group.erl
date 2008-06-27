@@ -318,8 +318,6 @@ spawn_new_peer(IP, Port, N, S) ->
 	    fill_peers(N-1, S#state { num_peers = S#state.num_peers +1})
     end.
 
-%% XXX: This is definitely wrong. But it is as the code is currently
-%%   implemented.
 is_bad_peer(IP, Port, S) ->
     etorrent_peer:is_connected(IP, Port, S#state.torrent_id).
 

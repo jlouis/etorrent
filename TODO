@@ -36,6 +36,10 @@
    I've seen a stray error where endgame mode got entered too
    quickly. Try to optimize it.
 
+* What happens when 2 peers store the same piece at same time [Milestone: 0.9]
+   This was an XXX inside the code. But it needs some serious thinking
+   first as there is no easy fix for this.
+
 * Find a way to cap the number of 'open' chunks [Milestone: 0.9]
    If we just allow the thing to open up chunks as it sees fit, we
    will use a lot of memory very quickly.
@@ -52,6 +56,11 @@
 
 * Let the system start with +Ktrue and +A 256 [Milestone: 0.9]
    Will greatly enhance the performance of the application.
+
+* What should we do about bad peers? [Milestone: 1.0]
+   Currently bad peers are those which are already connected. We ought
+   to keep a list of baddies and blacklist them for some time if we
+   don't like them anymore.
 
 * Profile and minimize the critical path [Milestone: 1.1]
    It looks like the critical path takes a wee bit too many clock

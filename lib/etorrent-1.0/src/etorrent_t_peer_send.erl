@@ -234,7 +234,6 @@ send_piece(Index, Offset, Len, S) ->
 	    etorrent_torrent:statechange(S#state.torrent_id,
 					 {add_upload, Len}),
 	    %% Track the amount uploaded by this peer.
-	    %% XXX: On slow lines, this won't do at all.
 	    etorrent_peer:statechange(S#state.parent, {uploaded, Len}),
 	    send_piece_message(Msg, S, 0);
 	%% Update cache and try again...

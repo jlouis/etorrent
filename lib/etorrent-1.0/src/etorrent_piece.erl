@@ -149,8 +149,6 @@ get_bitfield(Id) when is_integer(Id) ->
 %% Description: Given a set of pieces, return if we are interested in any of them.
 %%--------------------------------------------------------------------
 check_interest(Id, PieceSet) when is_integer(Id) ->
-    %%% XXX: This function could also check for validity and probably should
-    %%% XXX: This function does the wrong thing currently. It should be fixed!
     It = gb_sets:iterator(PieceSet),
     find_interest_piece(Id, gb_sets:next(It)).
 
@@ -193,9 +191,6 @@ torrent_size(Id) when is_integer(Id) ->
 %%   in the case that the piece does not Hash-match.
 %%
 %% Precondition: All chunks for PieceNumber must be downloaded in advance
-%%
-%% XXX: Update to a state 'storing' and check for this when calling here.
-%%   will avoid a little pesky problem that might occur.
 %%--------------------------------------------------------------------
 store_piece(Id, PieceNumber, FSPid, GroupPid) ->
     F = fun () ->
@@ -207,7 +202,7 @@ store_piece(Id, PieceNumber, FSPid, GroupPid) ->
     Chunks = read_delete_chunks(lists:usort(Offsets), Id, PieceNumber),
     Data = list_to_binary(lists:map(fun ({_Offset, Data}) -> Data end,
 				    Chunks)),
-    DataSize = size(Data), % XXX: We can probably check this against #piece.
+    DataSize = size(Data), % Optimization: We can probably check this against #piece.
     case etorrent_fs:write_piece(FSPid,
 				 PieceNumber,
 				 Data) of
