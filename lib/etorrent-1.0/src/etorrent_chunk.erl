@@ -188,7 +188,7 @@ endgame_remove_chunk(Pid, Id, {Index, Offset, Len}) ->
 find_remaning_chunks(Id, PieceSet) ->
     MatchHead = #chunk { idt = {Id, '$1', {assigned, '_'}}, chunks = '$2'},
     F = fun () ->
-		mnesia:select(chunk, [{MatchHead, [], [{'$1', '$2'}]}])
+		mnesia:select(chunk, [{MatchHead, [], ['$1', '$2']}])
 	end,
     {atomic, Rows} = mnesia:transaction(F),
 
