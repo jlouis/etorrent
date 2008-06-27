@@ -128,22 +128,20 @@ lookup_infohash(Socket, ReservedBytes, InfoHash, PeerId) ->
 	    ok
     end.
 
-start_peer(_Socket, Pid, _ReservedBytes, _PeerId) ->
-    _PeerGroupPid = etorrent_t_sup:get_peer_group_pid(Pid),
-    not_implemented.
+start_peer(Socket, Pid, ReservedBytes, PeerId) ->
+    PeerGroupPid = etorrent_t_sup:get_peer_group_pid(Pid),
+    {ok, {Address, Port}} = inet:peername(Socket),
+    case etorrent_t_peer_group:new_incoming_peer(PeerGroupPid, Address, Port) of
+	{ok, PeerProcessPid} ->
+	    ok = gen_tcp:controlling_process(Socket, PeerProcessPid),
+	    etorrent_t_peer_recv:complete_handshake(PeerProcessPid,
+						    ReservedBytes,
+						    Socket,
+						    PeerId),
+	    ok;
+	bad_peer ->
+	    error_logger:info_report([peer_id_is_bad, PeerId]),
+	    gen_tcp:close(Socket),
+	    ok
+    end.
 
-%% inform_peer_master(Socket, Pid, ReservedBytes, PeerId) ->
-%%     {ok, {Address, Port}} = inet:peername(Socket),
-%%     case etorrent_t_peer_group:new_incoming_peer(Pid, Address, Port) of
-%% 	{ok, PeerProcessPid} ->
-%% 	    ok = gen_tcp:controlling_process(Socket, PeerProcessPid),
-%% 	    etorrent_t_peer_recv:complete_handshake(PeerProcessPid,
-%% 						    ReservedBytes,
-%% 						    Socket,
-%% 						    PeerId),
-%% 	    ok;
-%% 	bad_peer ->
-%% 	    error_logger:info_report([peer_id_is_bad, PeerId]),
-%% 	    gen_tcp:close(Socket),
-%% 	    ok
-%%     end.
