@@ -451,13 +451,18 @@ try_to_queue_up_pieces(S) ->
 %%--------------------------------------------------------------------
 queue_items(ChunkList, S) ->
     error_logger:info_report([queueing, ChunkList, S#state.remote_peer_id]),
-    F = fun({Pn, Chunks}) ->
+    F = fun
+	    ({Pn, Chunks}) ->
 		lists:foreach(
-		  fun({Offset, Size}) ->
+		  fun
+		      ({Offset, Size}) ->
 			  etorrent_t_peer_send:local_request(S#state.send_pid,
 							     {Pn, Offset, Size})
 		  end,
-		  Chunks)
+		  Chunks);
+	    ({Pn, Offset, Size}) ->
+		etorrent_t_peer_send:local_request(S#state.send_pid,
+						   {Pn, Offset, Size})
 	end,
     lists:foreach(F, ChunkList),
 
