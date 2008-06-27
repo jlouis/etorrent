@@ -6,7 +6,7 @@
 --   Keep the style please. Can be read with emacs org-mode
 ----------------------------------------------------------------------
 
-* Get etorrent_t_peer_group to use the mnesia state for seeding
+* Get etorrent_t_peer_group to use the mnesia state (seeding) [Milestone: 0.8]
    Right now, t_peer_group uses it's own knowledge of seeding. This is
    bad and it should use the #torrent state for checking the
    condition. Easily fixed, and then we seed correctly (I hope).
