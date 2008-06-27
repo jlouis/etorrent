@@ -187,7 +187,7 @@ endgame_remove_chunk(Pid, Id, {Index, Offset, Len}) ->
 %%--------------------------------------------------------------------
 find_remaning_chunks(Id, PieceSet) ->
     MatchHead = #chunk { idt = {Id, '$1', {assigned, '_'}}, chunks = '$2'},
-    Rows = mnesia:dirty_select(chunk, [{MatchHead, [], ['$1', '$2']}]),
+    Rows = mnesia:dirty_select(chunk, [{MatchHead, [], [{{'$1', '$2'}}]}]),
     Res = lists:foldl(fun ({PN, Chunks}, Accum) ->
 			      case gb_sets:is_element(PN, PieceSet) of
 				  true ->
