@@ -53,8 +53,6 @@ pick_chunks(_Operation, {_Pid, _Id, _PieceSet, SoFar, 0}) ->
 %%
 %% Pick chunks from the already chunked pieces
 pick_chunks(pick_chunked, {Pid, Id, PieceSet, SoFar, Remaining}) ->
-    %%% XXX: The following idiom can be substituted with a gb_sets:iterator
-    %%%   and optimized to run outside transaction context.
     Iterator = gb_sets:iterator(PieceSet),
     case find_chunked_chunks(Id, gb_sets:next(Iterator)) of
 	none ->
@@ -221,7 +219,6 @@ find_remaning_chunks(Id, PieceSet) ->
 %%   so pick_chunks/2 can shortcut the selection.
 %%--------------------------------------------------------------------
 chunkify_new_piece(Id, PieceSet) when is_integer(Id) ->
-    % XXX: This can be run outside transaction context
     It = gb_sets:iterator(PieceSet),
     case find_new_piece(Id, It) of
 	none ->
