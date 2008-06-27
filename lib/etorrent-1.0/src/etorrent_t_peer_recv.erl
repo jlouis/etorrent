@@ -439,6 +439,7 @@ try_to_queue_up_pieces(S) ->
 		{ok, Items} ->
 		    queue_items(Items, S);
 		{endgame, Items} ->
+		    error_logger:info_report([entering_endgame]),
 		    queue_items(Items, S#state { endgame = true })
 	    end
     end.
