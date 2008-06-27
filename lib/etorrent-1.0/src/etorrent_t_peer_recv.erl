@@ -369,7 +369,6 @@ handle_endgame_got_chunk({Index, Offset, Len}, S) ->
 %%--------------------------------------------------------------------
 %% Func: handle_got_chunk(Index, Offset, Data, Len, S) -> {ok, State}
 %% Description: We just got some chunk data. Store it in the mnesia DB
-%%   TODO: This is one of the functions which is a candidate for optimization!
 %%--------------------------------------------------------------------
 handle_got_chunk(Index, Offset, Data, Len, S) ->
     case etorrent_chunk:store_chunk(S#state.torrent_id,
@@ -402,7 +401,6 @@ handle_got_chunk(Index, Offset, Data, Len, S) ->
 %% Description: Unqueue all queued pieces at the other end. We place
 %%   the earlier queued items at the end to compensate for quick
 %%   choke/unchoke problems and live data.
-%%   TODO: Optimization candidate!
 %%--------------------------------------------------------------------
 unqueue_all_pieces(S) ->
     etorrent_chunk:putback_chunks(self()),
@@ -411,7 +409,6 @@ unqueue_all_pieces(S) ->
 %%--------------------------------------------------------------------
 %% Function: try_to_queue_up_requests(state()) -> {ok, state()}
 %% Description: Try to queue up requests at the other end.
-%%   TODO: This function should use watermarks rather than this puny implementation.
 %%--------------------------------------------------------------------
 try_to_queue_up_pieces(S) when S#state.remote_choked == true ->
     {ok, S};

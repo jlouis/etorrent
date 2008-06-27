@@ -54,6 +54,9 @@
 
    It turns out to be an optimization, so put it into 0.9 for now.
 
+* Set a kernel parameter for timer:start() [Milestone: 0.9]
+   This is mentioned in timer(3erl), so better heed it.
+
 * Let the system start with +Ktrue and +A 256 [Milestone: 0.9]
    Will greatly enhance the performance of the application.
 

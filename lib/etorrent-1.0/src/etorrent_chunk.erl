@@ -29,7 +29,6 @@
 %%   This function is relying on tail-calls to itself with different
 %%   tags to return the needed data.
 %%
-%% TODO: Needs heavy changes for endgame support.
 %%--------------------------------------------------------------------
 pick_chunks(Pid, Id, PieceSet, Remaining) ->
     case pick_chunks(pick_chunked, {Pid, Id, PieceSet, [], Remaining}) of
@@ -215,8 +214,6 @@ find_remaning_chunks(Id, PieceSet) ->
 %%  yet and chunk it. Returns either ok if a piece was chunked or none_eligible
 %%  if we can't find anything to chunk up in the PieceSet.
 %%
-%% TODO: Optimization possible: return the piece number we chunked up,
-%%   so pick_chunks/2 can shortcut the selection.
 %%--------------------------------------------------------------------
 chunkify_new_piece(Id, PieceSet) when is_integer(Id) ->
     It = gb_sets:iterator(PieceSet),
