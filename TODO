@@ -6,6 +6,11 @@
 --   Keep the style please. Can be read with emacs org-mode
 ----------------------------------------------------------------------
 
+* Get etorrent_t_peer_group to use the mnesia state for seeding
+   Right now, t_peer_group uses it's own knowledge of seeding. This is
+   bad and it should use the #torrent state for checking the
+   condition. Easily fixed, and then we seed correctly (I hope).
+
 * Eradicate XXX and TODO [Milestone 0.8]
    Go through the code and remove all XXX and TODOs remaining
    there. There is a few that have been added when I find something
@@ -17,11 +22,6 @@
 
 * Test endgame [Milestone 0.8]
    The endgame has not been tested much. Do some more testing.
-
-* Check that endgame is invoked at the right spot [Milestone: 0.8]
-   I am fairly sure the endgame can be invoked far before we really
-   should invoke it. Test and fix it such that it gets invoked at the
-   right spot. Make a nice implementation! Think!
 
 * Add another state for #piece records [Milestone: 0.9]
    The state 'chunked_no_left' should indicate that the piece has been
