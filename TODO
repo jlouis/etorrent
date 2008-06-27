@@ -13,15 +13,32 @@
 
 * Eradicate XXX and TODO [Milestone 0.8]
    Go through the code and remove all XXX and TODOs remaining
-   there. There is a few that have been added when I find something
+   there. There are a few that have been added when I find something
    disgusting in the code base.
 
 * When peers die, putback it's assigned chunks [Milestone: 0.8]
    Currently this does not happen properly. It should be handled by
    the peer group process.
 
+* When a peer chokes update #chunk correctly [Milestone: 0.8]
+   Currently, when a peer chokes us, something goes very wrong. I
+   think this is the main reason as to why we see memory leaks.
+
+* Test incoming connections [Milestone: 0.8]
+   This code has seen very little traversal. Change the IP of the test
+   machine so it can be reached outside the network and do some
+   incoming connection testing as well.
+
 * Test endgame [Milestone 0.8]
    The endgame has not been tested much. Do some more testing.
+
+   Read really carefully about when we enter endgame mode. I think
+   I've seen a stray error where endgame mode got entered too
+   quickly. Try to optimize it.
+
+* Find a way to cap the number of 'open' chunks [Milestone: 0.9]
+   If we just allow the thing to open up chunks as it sees fit, we
+   will use a lot of memory very quickly.
 
 * Add another state for #piece records [Milestone: 0.9]
    The state 'chunked_no_left' should indicate that the piece has been
@@ -35,6 +52,14 @@
 
 * Let the system start with +Ktrue and +A 256 [Milestone: 0.9]
    Will greatly enhance the performance of the application.
+
+* Profile and minimize the critical path [Milestone: 1.1]
+   It looks like the critical path takes a wee bit too many clock
+   cycles. It might be possible to cut it down considerably by
+   profiling and optimizing that path.
+
+   I want to do something about it, but not right now. Hence in
+   Milestone 1.1.
 
 * Use passive sockets [Milestone: 1.1]
    We need to use passive sockets at some point. The reason is that
