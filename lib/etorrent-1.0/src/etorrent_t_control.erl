@@ -139,11 +139,6 @@ initializing(timeout, S) ->
 	    %% TODO: We can pre-add this in the supervisor I think.
 	    {ok, GroupPid} = etorrent_t_sup:add_peer_pool(S#state.parent_pid),
 
-	    %% Are we leeching or seeding this torrent?
-	    TorrentState = query_torrent_state(S#state.id),
-	    {atomic, _} =
-		etorrent_torrent:statechange(S#state.id, TorrentState),
-
 	    %% And a process for controlling the peers for this torrent.
 	    {ok, PeerGroupPid} =
 		etorrent_t_sup:add_peer_group(
@@ -152,7 +147,6 @@ initializing(timeout, S) ->
 		  S#state.peer_id,
 		  InfoHash,
 		  FSPid,
-		  TorrentState,
 		  S#state.id),
 
 	    %% Start the tracker
@@ -295,11 +289,3 @@ size_of_ops(Ops) ->
                        Size + Total end,
                0,
                Ops).
-
-query_torrent_state(Id) ->
-    case etorrent_piece:is_complete(Id) of
-	{atomic, true} ->
-	    seeding;
-	{atomic, false} ->
-	    leeching
-    end.
