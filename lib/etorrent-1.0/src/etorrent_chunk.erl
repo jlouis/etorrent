@@ -126,7 +126,7 @@ store_chunk(Id, PieceNum, {Offset, Len}, Data, Pid) ->
 		  %% Add the newly fetched data to the fetched list and add the
 		  %%   data itself to the #chunk_data table.
 		  DataState =
-		      case mnesia:dirty_read(chunk_data, {Id, PieceNum, Offset}) of
+		      case mnesia:read(chunk_data, {Id, PieceNum, Offset}, read) of
 			  [] ->
 			      mnesia:write(#chunk_data { idt = {Id, PieceNum, Offset},
 							 data = Data }),
@@ -144,14 +144,17 @@ store_chunk(Id, PieceNum, {Offset, Len}, Data, Pid) ->
 				      [Offset | R#chunk.chunks]})
 		  end,
 		  %% Update that the chunk is not anymore assigned to the Pid
-		  [S] = mnesia:read(chunk,
-				    {Id, PieceNum, {assigned, Pid}},
-				    write),
-		  case lists:delete({Offset, Len}, S#chunk.chunks) of
+		  case mnesia:read(chunk, {Id, PieceNum, {assigned, Pid}}, write) of
 		      [] ->
-			  mnesia:delete_object(S);
-		      L when is_list(L) ->
-			  mnesia:write(S#chunk { chunks = L })
+			  %% We stored a chunk that was not belonging to us, do nothing
+			  ok;
+		      [S] ->
+			  case lists:delete({Offset, Len}, S#chunk.chunks) of
+			      [] ->
+				  mnesia:delete_object(S);
+			      L when is_list(L) ->
+				  mnesia:write(S#chunk { chunks = L })
+			  end
 		  end,
 		  %% Count down the number of missing chunks for the piece
 		  %% Next lines can be thrown into a seperate counter for speed.
