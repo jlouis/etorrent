@@ -1,7 +1,15 @@
+2008-06-28  Jesper Louis Andersen  <jlouis@ogre.home>
+
+	* SRC: Etorrent now knows about seeding.
+
+	* SRC: Fix Issue-3: Implement endgame support
+
+	* SRC: Fix Issue-42: Peer Queue Watermarking
+
 2008-06-27  Jesper Louis Andersen  <jlouis@succubus.home>
 
-	* DOC: Added HACKING Document
+	* DOC: Added HACKING Document.
 
-	* DOC: Started Changelog
+	* DOC: Started Changelog.
 
 
