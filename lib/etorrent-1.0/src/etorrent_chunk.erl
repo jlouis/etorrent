@@ -202,7 +202,7 @@ find_remaning_chunks(Id, PieceSet) ->
 		      end,
 		      [],
 		      Rows),
-    {endgame, Res}.
+    Res.
 
 %%--------------------------------------------------------------------
 %% Function: chunkify_new_piece(Id, PieceSet) -> ok | none_eligible
