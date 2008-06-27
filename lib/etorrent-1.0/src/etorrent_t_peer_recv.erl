@@ -331,7 +331,6 @@ handle_message({bitfield, BitField}, S) ->
     end;
 handle_message({piece, Index, Offset, Data}, S) ->
     Len = size(Data),
-    error_logger:info_report([got_chunk, Index, Offset]),
     etorrent_peer:statechange(self(), {downloaded, Len}),
     case handle_got_chunk(Index, Offset, Data, Len, S) of
 	{ok, NS} ->
@@ -450,7 +449,6 @@ try_to_queue_up_pieces(S) ->
 %%   also add these chunks to the piece request set.
 %%--------------------------------------------------------------------
 queue_items(ChunkList, S) ->
-    error_logger:info_report([queueing, ChunkList, S#state.remote_peer_id]),
     F = fun
 	    ({Pn, Chunks}) ->
 		lists:foreach(
