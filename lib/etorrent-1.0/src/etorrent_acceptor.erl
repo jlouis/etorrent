@@ -118,7 +118,8 @@ handshake(Socket) ->
 
 lookup_infohash(Socket, _ReservedBytes, InfoHash, _PeerId) ->
     case etorrent_tracking_map:by_infohash(InfoHash) of
-	{atomic, [#tracking_map.id = _Id]} ->
+	{atomic, [#tracking_map {id = Id}]} ->
+	    error_logger:info_report([connection_on, Id]),
 	    not_implemented; % TODO: Figure out a way to reimplement accepts.
 	{atomic, []} ->
 	    error_logger:info_report([connection_on_unknown_infohash,
