@@ -116,17 +116,21 @@ handshake(Socket) ->
 	    ok
     end.
 
-lookup_infohash(Socket, _ReservedBytes, InfoHash, _PeerId) ->
+lookup_infohash(Socket, ReservedBytes, InfoHash, PeerId) ->
     case etorrent_tracking_map:by_infohash(InfoHash) of
-	{atomic, [#tracking_map {id = Id}]} ->
+	{atomic, [#tracking_map {id = Id, supervisor_pid = Pid}]} ->
 	    error_logger:info_report([connection_on, Id]),
-	    not_implemented; % TODO: Figure out a way to reimplement accepts.
+	    start_peer(Socket, Pid, ReservedBytes, PeerId);
 	{atomic, []} ->
 	    error_logger:info_report([connection_on_unknown_infohash,
 				      InfoHash]),
 	    gen_tcp:close(Socket),
 	    ok
     end.
+
+start_peer(_Socket, Pid, _ReservedBytes, _PeerId) ->
+    _PeerGroupPid = etorrent_t_sup:get_peer_group_pid(Pid),
+    not_implemented.
 
 %% inform_peer_master(Socket, Pid, ReservedBytes, PeerId) ->
 %%     {ok, {Address, Port}} = inet:peername(Socket),

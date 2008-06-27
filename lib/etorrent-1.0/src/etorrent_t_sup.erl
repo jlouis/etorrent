@@ -14,7 +14,8 @@
 %% API
 -export([start_link/3, add_file_system/3, add_peer_group/6,
 	 add_tracker/6, add_peer_pool/1,
-	 add_file_system_pool/1]).
+	 add_file_system_pool/1,
+	 get_peer_group_pid/1]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -24,6 +25,19 @@
 %%====================================================================
 start_link(File, Local_PeerId, Id) ->
     supervisor:start_link(?MODULE, [File, Local_PeerId, Id]).
+
+%%--------------------------------------------------------------------
+%% Func: get_peer_group_pid/1
+%% Description: Return the Pid of the peer group process.
+%%--------------------------------------------------------------------
+get_peer_group_pid(Pid) ->
+    Children = supervisor:which_children(Pid),
+    case lists:keysearch(peer_group, 1, Children) of
+	{value, {_Id, Child, _Type, _Modules}} ->
+	    Child;
+	false ->
+	    false
+    end.
 
 %%--------------------------------------------------------------------
 %% Func: add_filesystem/3
