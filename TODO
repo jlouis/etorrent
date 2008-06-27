@@ -6,21 +6,13 @@
 --   Keep the style please. Can be read with emacs org-mode
 ----------------------------------------------------------------------
 
-* When peers die, putback it's assigned chunks [Milestone: 0.8]
-   Currently this does not happen properly. It should be handled by
-   the peer group process.
-
-* When a peer chokes update #chunk correctly [Milestone: 0.8]
-   Currently, when a peer chokes us, something goes very wrong. I
-   think this is the main reason as to why we see memory leaks.
+* Write code for incoming connections [Milestone: 0.8]
+   This is not yet implemented, but it should be. Implement it!
 
 * Test incoming connections [Milestone: 0.8]
    This code has seen very little traversal. Change the IP of the test
    machine so it can be reached outside the network and do some
    incoming connection testing as well.
-
-   UPDATE: This is not yet implemented at all. We should reimplement
-   it.
 
 * Test endgame [Milestone 0.8]
    The endgame has not been tested much. Do some more testing.
@@ -69,6 +61,13 @@
    Currently bad peers are those which are already connected. We ought
    to keep a list of baddies and blacklist them for some time if we
    don't like them anymore.
+
+* It takes too much space to use #chunk_data [Milestone: 1.1]
+   To fix this we can move store_chunk down and make it into an FS
+   operation. That way we should be able to do it much much simpler
+   than now. We also get rid of the store_piece call in
+   etorrent_piece. All in all, the code will be much much simpler that
+   way and will not have to keep that much data in memory.
 
 * Profile and minimize the critical path [Milestone: 1.1]
    It looks like the critical path takes a wee bit too many clock

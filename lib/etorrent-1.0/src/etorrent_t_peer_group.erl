@@ -115,7 +115,7 @@ handle_info({'DOWN', _Ref, process, Pid, Reason}, S)
   when (Reason =:= normal) or (Reason =:= shutdown) ->
     % The peer shut down normally. Hence we just remove him and start up
     %  other peers. Eventually the tracker will re-add him to the peer list
-    etorrent_peer:delete (Pid),
+    etorrent_peer:delete(Pid),
     {ok, NS} = start_new_peers([], S#state { num_peers = S#state.num_peers -1}),
     {noreply, NS};
 handle_info({'DOWN', _Ref, process, Pid, _Reason}, S) ->

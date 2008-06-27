@@ -124,8 +124,10 @@ initializing(timeout, S) ->
 		  S#state.parent_pid,
 		  S#state.work_dir,
 		  S#state.path),
-	    %% Update the tracking map. This torrent has been started.
-	    etorrent_tracking_map:set_state(S#state.id, started),
+	    %% Update the tracking map. This torrent has been started, and we
+	    %%  know its infohash
+	    etorrent_tracking_map:statechange(S#state.id, {infohash, InfoHash}),
+	    etorrent_tracking_map:statechange(S#state.id, started),
 
 	    %% Add a torrent entry for this torrent.
 	    etorrent_torrent:new(

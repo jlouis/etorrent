@@ -11,7 +11,7 @@
 -include("etorrent_mnesia_table.hrl").
 
 %% API
--export([new/3, delete/1, by_file/1, by_infohash/1, set_state/2,
+-export([new/3, delete/1, by_file/1, by_infohash/1, statechange/2,
 	 is_ready_for_checking/1]).
 
 %%====================================================================
@@ -71,13 +71,14 @@ delete(Pid) ->
     mnesia:transaction(F).
 
 %%--------------------------------------------------------------------
-%% Function: set_state(Id, State) -> ok
-%% Description: Set the tracking map state to State for entry Id
+%% Function: statechange(Id, What) -> ok
+%% Description: Alter the state of the Tracking map identified by Id
+%%   by What (see alter_map/2).
 %%--------------------------------------------------------------------
-set_state(Id, State) ->
+statechange(Id, What) ->
     F = fun () ->
 		[TM] = mnesia:read(tracking_map, Id, write),
-		mnesia:write(TM#tracking_map { state = State })
+		mnesia:write(alter_map(TM, What))
 	end,
     {atomic, _} = mnesia:transaction(F),
     ok.
@@ -106,3 +107,13 @@ is_ready_for_checking(Id) ->
 %%====================================================================
 %% Internal functions
 %%====================================================================
+
+alter_map(TM, What) ->
+    case What of
+	{infohash, IH} ->
+	    TM#tracking_map { info_hash = IH };
+	started ->
+	    TM#tracking_map { state = started };
+	stopped ->
+	    TM#tracking_map { state = stopped }
+    end.
