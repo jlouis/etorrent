@@ -41,8 +41,8 @@ read_and_check_torrent(Id, SupervisorPid, WorkDir, Path) ->
 load_torrent(Workdir, Path) ->
     P = filename:join([Workdir, Path]),
     Torrent = etorrent_bcoding:parse(P),
-    {ok, Files} = etorrent_metainfo:get_files(Torrent),
-    {ok, Name} = etorrent_metainfo:get_name(Torrent),
+    Files = etorrent_metainfo:get_files(Torrent),
+    Name = etorrent_metainfo:get_name(Torrent),
     InfoHash = etorrent_metainfo:get_infohash(Torrent),
     FilesToCheck =
 	lists:map(fun ({Filename, Size}) ->

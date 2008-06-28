@@ -14,8 +14,7 @@
 %% API
 -export([get_piece_length/1, get_length/1, get_pieces/1, get_url/1,
 	 get_infohash/1, get_files/1, get_name/1, hexify/1,
-	 process_ips_dictionary/1,
-	 process_ips_binary/1]).
+	 process_ips/1]).
 
 %%====================================================================
 %% API
@@ -26,7 +25,9 @@
 %% Description: Search a torrent file, return the piece length
 %%--------------------------------------------------------------------
 get_piece_length(Torrent) ->
-    {integer, Size} = find_target(get_info(Torrent), "piece length"),
+    {integer, Size} =
+	etorrent_bcoding:search_dict({string, "piece length"},
+				     get_info(Torrent)),
     Size.
 
 %%--------------------------------------------------------------------
@@ -34,14 +35,13 @@ get_piece_length(Torrent) ->
 %% Description: Search a torrent, return pieces as a list
 %%--------------------------------------------------------------------
 get_pieces(Torrent) ->
-    case find_target(get_info(Torrent), "pieces") of
-	{string, Ps} ->
-	    lists:map(fun(Str) -> list_to_binary(Str) end,
-		      split_into_chunks(20, [], Ps))
-    end.
+    {string, Ps} = etorrent_bcoding:search_dict({string, "pieces"},
+						get_info(Torrent)),
+    [list_to_binary(S) || S <- split_into_chunks(20, Ps)].
 
 get_length(Torrent) ->
-    case etorrent_bcoding:search_dict("length", get_info(Torrent)) of
+    case etorrent_bcoding:search_dict({string, "length"},
+				      get_info(Torrent)) of
 	{ok, {integer, L}} ->
 	    L;
 	false ->
@@ -63,8 +63,7 @@ sum_files(Torrent) ->
 %%--------------------------------------------------------------------
 get_files(Torrent) ->
     {list, FilesEntries} = get_files_section(Torrent),
-    process_paths(FilesEntries, []).
-
+    [process_file_entry(Path) || Path <- FilesEntries].
 
 %%--------------------------------------------------------------------
 %% Function: get_name/1
@@ -73,22 +72,19 @@ get_files(Torrent) ->
 %%   that violates the security limitations.
 %%--------------------------------------------------------------------
 get_name(Torrent) ->
-    {string, N} = find_target(get_info(Torrent), "name"),
-    case valid_path(N) of
-	true ->
-	    {ok, N};
-	false ->
-	    {error, security_violation, N}
-    end.
+    {string, N} = etorrent_bcoding:search_dict({string, "name"},
+				      get_info(Torrent)),
+    true = valid_path(N),
+    N.
 
 %%--------------------------------------------------------------------
 %% Function: get_url/1
 %% Description: Return the URL of a torrent
 %%--------------------------------------------------------------------
 get_url(Torrent) ->
-    case find_target(Torrent, "announce") of
-	{string, U} -> U
-    end.
+    {string, U} = etorrent_bcoding:search_dict({string, "announce"},
+					       Torrent),
+    U.
 
 %%--------------------------------------------------------------------
 %% Function: get_infohash/1
@@ -101,70 +97,44 @@ get_infohash(Torrent) ->
 
 
 %%--------------------------------------------------------------------
-%% Function: process_ips_dictionary/1
+%% Function: process_ips/1
 %% Description: Convert an IP-list from a tracker in dictionary format
 %%   to a {IP, Port} list.
 %%--------------------------------------------------------------------
-process_ips_dictionary(D) ->
-    process_ips_dictionary(D, []).
-
-%%--------------------------------------------------------------------
-%% Function: process_ips_binary/1
-%% Description: Convert an IP-list from a tracker in binary format
-%%   to a {IP, Port} list.
-%%--------------------------------------------------------------------
-process_ips_binary(Ips) ->
-    process_ips_binary(Ips, []).
+process_ips([]) -> [];
+process_ips([{dict, D} | T]) ->
+    {string, IP} = etorrent_bcoding:search_dict({string, "ip"}, {dict, D}),
+    {integer, Port} = etorrent_bcoding:search_dict({string, "port"}, {dict, D}),
+    [{IP, Port} | process_ips(T)];
+process_ips(B) when is_list(B) ->
+    {Peer, Rest} = lists:split(6, B),
+    <<I1:8/integer, I2:8/integer, I3:8/integer, I4:8/integer,
+      Port:16/integer-big>> = list_to_binary(Peer),
+    [{{I1, I2, I3, I4}, Port} | process_ips(Rest)].
 
 %%====================================================================
 %% Internal functions
 %%====================================================================
-
-process_ips_binary([], Accum) ->
-    lists:reverse(Accum);
-process_ips_binary(Str, Accum) ->
-    {Peer, Rest} = lists:split(6, Str),
-    {IPList, PortList} = lists:split(4, Peer),
-    case {IPList, PortList} of
-	{[I1, I2, I3, I4], [P1, P2]} ->
-	    IP = {I1, I2, I3, I4},
-	    <<Port:16/integer-big>> = list_to_binary([P1, P2]),
-	    process_ips_binary(Rest, [{IP, Port} | Accum])
-    end.
-
-
-process_ips_dictionary([], Accum) ->
-    lists:reverse(Accum);
-process_ips_dictionary([IPDict | Rest], Accum) ->
-    {ok, {string, IP}} = etorrent_bcoding:search_dict({string, "ip"}, IPDict),
-    {ok, {integer, Port}} = etorrent_bcoding:search_dict({string, "port"},
-						   IPDict),
-    process_ips_dictionary(Rest, [{IP, Port} | Accum]).
-
-%% Find a target that can't fail
-find_target(D, Name) ->
-    case etorrent_bcoding:search_dict({string, Name}, D) of
-	{ok, X} ->
-	    X
-    end.
-
 get_info(Torrent) ->
-    find_target(Torrent, "info").
+    etorrent_bcoding:search_dict({string, "info"}, Torrent).
 
-
-split_into_chunks(_N, Accum, []) ->
-    lists:reverse(Accum);
-split_into_chunks(N, Accum, String) ->
+split_into_chunks(_N, []) ->
+    [];
+split_into_chunks(N, String) ->
     {Chunk, Rest} = lists:split(N, String),
-    split_into_chunks(N, [Chunk | Accum], Rest).
+    [Chunk | split_into_chunks(N, Rest)].
 
 hexify(Digest) ->
-    Characters = lists:map(fun(Item) ->
-				   lists:concat(io_lib:format("~.16B",
-							      [Item])) end,
-			   binary_to_list(Digest)),
-    lists:concat(Characters).
+    lists:concat(
+      [lists:concat(io_lib:format("~.16B", [C]))
+       || C <- binary_to_list(Digest)]).
 
+%%--------------------------------------------------------------------
+%% Function: valid_path(Path)
+%% Description: Predicate that tests the torrent only contains paths
+%%   which are not a security threat. Stolen from Bram Cohen's original
+%%   client.
+%%--------------------------------------------------------------------
 valid_path(Path) ->
     RE = "^[^/\\.~][^\\/]*$",
     case regexp:match(Path, RE) of
@@ -182,35 +152,18 @@ process_file_entry(Entry) ->
     {value, {{string, "length"},
 	     {integer, Size}}} =
 	lists:keysearch({string, "length"}, 1, Dict),
-    case lists:any(fun({string, P}) -> valid_path(P) end, Path) of
-	true ->
-	    Filename =
-		filename:join(lists:map(fun({string, X}) -> X end, Path)),
-	    {ok, {Filename, Size}};
-	false ->
-	    {error, security_violation, Path}
-    end.
-
-process_paths([], Accum) ->
-    {ok, lists:reverse(Accum)};
-process_paths([E | Rest], Accum) ->
-    case process_file_entry(E) of
-	{ok, NameSize} ->
-	    process_paths(Rest, [NameSize | Accum]);
-	{error, security_violation, Path} ->
-	    % Escape
-	    {error, security_violation, Path}
-    end.
+    true = lists:any(fun({string, P}) -> valid_path(P) end, Path),
+    Filename = filename:join(lists:map(fun({string, X}) -> X end, Path)),
+    {Filename, Size}.
 
 get_files_section(Torrent) ->
     case etorrent_bcoding:search_dict({string, "files"}, get_info(Torrent)) of
-	{ok, X} ->
-	    X;
 	false ->
 	    % Single value torrent, fake entry
-	    {ok, N} = get_name(Torrent),
+	    N = get_name(Torrent),
 	    L = get_length(Torrent),
 	    {list,[{dict,[{{string,"path"},
 			   {list,[{string,N}]}},
-			  {{string,"length"},{integer,L}}]}]}
+			  {{string,"length"},{integer,L}}]}]};
+	V -> V
     end.

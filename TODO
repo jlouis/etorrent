@@ -25,7 +25,6 @@
    For more succinct code we could use a list comprehension whenever
    we have a lists:map or a lists:filter. There are a few places where
    this can go in.
->>>>>>> Add comments sparked by Joe Armstrong.:TODO
 
 * What happens when 2 peers store the same piece at same time [Milestone: 0.9]
    This was an XXX inside the code. But it needs some serious thinking
