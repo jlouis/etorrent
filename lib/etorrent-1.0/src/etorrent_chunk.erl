@@ -91,7 +91,7 @@ putback_chunks(Pid) ->
     MatchHead = #chunk { idt = {'_', '_', {assigned, Pid}}, _='_'},
     mnesia:transaction(
       fun () ->
-	      [Rows] = mnesia:select(chunk, [{MatchHead, [], ['$_']}]),
+	      Rows = mnesia:select(chunk, [{MatchHead, [], ['$_']}]),
 	      lists:foreach(
 		fun(C) ->
 			{Id, PieceNum, _} = C#chunk.idt,
