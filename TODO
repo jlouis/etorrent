@@ -6,21 +6,6 @@
 --   Keep the style please. Can be read with emacs org-mode
 ----------------------------------------------------------------------
 
-* Write code for incoming connections [Milestone: 0.8]
-   This is not yet implemented, but it should be. Implement it!
-
-* Test incoming connections [Milestone: 0.8]
-   This code has seen very little traversal. Change the IP of the test
-   machine so it can be reached outside the network and do some
-   incoming connection testing as well.
-
-* Test endgame [Milestone 0.8]
-   The endgame has not been tested much. Do some more testing.
-
-   Read really carefully about when we enter endgame mode. I think
-   I've seen a stray error where endgame mode got entered too
-   quickly. Try to optimize it.
-
 * What happens when 2 peers store the same piece at same time [Milestone: 0.9]
    This was an XXX inside the code. But it needs some serious thinking
    first as there is no easy fix for this.

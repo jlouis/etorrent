@@ -9,9 +9,10 @@
 -export([start_link/0, start_torrent/1, stop_torrent/1]).
 -export([handle_cast/2, handle_call/3, init/1, terminate/2]).
 -export([handle_info/2, code_change/3]).
+-export([generate_peer_id/0]).
 
 -define(SERVER, ?MODULE).
--define(RANDOM_MAX_SIZE, 1000000000).
+-define(RANDOM_MAX_SIZE, 999999999999).
 
 -record(state, {local_peer_id,
 	        id_counter}).
@@ -82,4 +83,7 @@ stop_torrent(F, S) ->
 generate_peer_id() ->
     Number = crypto:rand_uniform(0, ?RANDOM_MAX_SIZE),
     Rand = io_lib:fwrite("~B----------", [Number]),
-    lists:flatten(io_lib:format("-ET~s-~12s", [?VERSION, Rand])).
+    PeerId = lists:flatten(io_lib:format("-ET~s-~12s", [?VERSION, Rand])),
+    error_logger:info_report([peer_id, PeerId]),
+    PeerId.
+
