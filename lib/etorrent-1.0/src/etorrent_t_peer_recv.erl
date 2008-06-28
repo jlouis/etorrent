@@ -277,7 +277,6 @@ handle_message(choke, S) ->
     NS = unqueue_all_pieces(S),
     {ok, NS#state { remote_choked = true }};
 handle_message(unchoke, S) ->
-    error_logger:info_report([peer_unchoked, S#state.remote_peer_id]),
     {atomic, ok} = etorrent_peer:statechange(self(), remote_unchoking),
     try_to_queue_up_pieces(S#state{remote_choked = false});
 handle_message(interested, S) ->
