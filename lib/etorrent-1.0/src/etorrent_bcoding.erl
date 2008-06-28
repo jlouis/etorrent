@@ -23,21 +23,10 @@
 %%--------------------------------------------------------------------
 encode(BString) ->
     case BString of
-	{string, String} ->
-	    {ok, encode_string(String)};
-	{integer, Integer} ->
-	    {ok, encode_integer(Integer)};
-	{list, Items} ->
-	    EncodedItems = lists:map(fun (I) ->
-					     {ok, Item} = encode(I),
-					     Item
-				     end, Items),
-	    {ok, encode_list(EncodedItems)};
-	{dict, Items} ->
-	    EncodedItems = encode_dict_items(Items),
-	    {ok, encode_dict(EncodedItems)};
-	_ ->
-	    {error, "Not a bencoded structure"}
+	{string, String} -> encode_string(String);
+	{integer, Integer} -> encode_integer(Integer);
+	{list, Items} -> encode_list([encode(I) || I <- Items]);
+	{dict, Items} -> encode_dict(encode_dict_items(Items))
     end.
 
 %%--------------------------------------------------------------------
@@ -45,37 +34,28 @@ encode(BString) ->
 %% Description: Decode a string to an erlang term.
 %%--------------------------------------------------------------------
 decode(String) ->
-    case decode_b(String) of
-	{Res, []} ->
-	    {ok, Res};
-	E ->
-	    {error, E}
-    end.
+    {Res, []} = decode_b(String),
+    Res.
 
 %%--------------------------------------------------------------------
 %% Function: search_dict/1
 %% Description: Search the dict for a key. Returns {ok, Val} or false.
 %%   if the bastard is not a dict, return not_a_dict.
 %%--------------------------------------------------------------------
-search_dict(Key, Dict) ->
-    case Dict of
-	{dict, Elems} ->
-	    case lists:keysearch(Key, 1, Elems) of
-		{value, {_, V}} ->
-		    {ok, V};
-		false ->
-		    false
-	    end;
-	_ ->
-	    not_a_dict
+search_dict(Key, {dict, Elems}) ->
+    case lists:keysearch(Key, 1, Elems) of
+	{value, {_, V}} ->
+	    V;
+	false ->
+	    false
     end.
 
 search_dict_default(Key, Dict, Default) ->
     case search_dict(Key, Dict) of
-	{ok, Val} ->
-	    Val;
-	_ ->
-	    Default
+	false ->
+	    Default;
+	X ->
+	    X
     end.
 
 %%--------------------------------------------------------------------
@@ -83,19 +63,10 @@ search_dict_default(Key, Dict, Default) ->
 %% Description: Parse a file into a Torrent structure.
 %%--------------------------------------------------------------------
 parse(File) ->
-    case file:open(File, [read]) of
-	{ok, IODev} ->
-	    Data = read_data(IODev),
-	    ok = file:close(IODev),
-	    case decode(Data) of
-		{ok, Torrent} ->
-		    {ok, Torrent};
-		{error, Reason} ->
-		    {not_a_torrent, Reason}
-	    end;
-	{error, Reason} ->
-	    {could_not_read_file, Reason}
-    end.
+    {ok, IODev} = file:open(File, [read]),
+    Data = read_data(IODev),
+    ok = file:close(IODev),
+    decode(Data).
 
 %%====================================================================
 %% Internal functions
@@ -118,8 +89,8 @@ encode_dict(Items) ->
 encode_dict_items([]) ->
     [];
 encode_dict_items([{I1, I2} | Rest]) ->
-    {ok, I} = encode(I1),
-    {ok, J} = encode(I2),
+    I = encode(I1),
+    J = encode(I2),
     [I, J | encode_dict_items(Rest)].
 
 decode_b([]) ->
@@ -152,20 +123,18 @@ attempt_string_decode(String) ->
 
 decode_integer(String) ->
     {IntegerPart, RestPart} = lists:splitwith(charPred($e), String),
-    case string:to_integer(IntegerPart) of
-	{Int, _} ->
-	    {{integer, Int}, tl(RestPart)}
-    end.
+    {Int, _} = string:to_integer(IntegerPart),
+    {{integer, Int}, tl(RestPart)}.
 
 decode_list(String) ->
     {ItemTree, Rest} = decode_list_items(String, []),
-    {{list, lists:reverse(ItemTree)}, Rest}.
+    {{list, ItemTree}, Rest}.
 
-decode_list_items([], Accum) -> {Accum, []};
+decode_list_items([], Accum) -> {lists:reverse(Accum), []};
 decode_list_items(Items, Accum) ->
     case decode_b(Items) of
 	{end_of_data, Rest} ->
-	    {Accum, Rest};
+	    {lists:reverse(Accum), Rest};
 	{I, Rest} -> decode_list_items(Rest, [I | Accum])
     end.
 
