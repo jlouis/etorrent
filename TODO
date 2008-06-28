@@ -6,9 +6,24 @@
 --   Keep the style please. Can be read with emacs org-mode
 ----------------------------------------------------------------------
 
+
 * Don't use the get_ prefix in mnesia table calls [Milestone: 0.9]
    It looks ugly and it is rather verbose. Just call it foo:by_id/1
    for instance.
+
+* For each module, go through it and think: Crash? [All milestones ;)]
+   For each module, go through it and think: Do we expect something to
+   happen here? If yes, assume it happens and code such that if it is
+   not the case, then the code crashes. Be aware that sometimes you
+   _do_ actually need to know that something went wrong.
+
+   For each case one must think.
+
+* lists:map can be eaten with list comprehensions [Milestone: 0.9]
+   For more succinct code we could use a list comprehension whenever
+   we have a lists:map or a lists:filter. There are a few places where
+   this can go in.
+>>>>>>> Add comments sparked by Joe Armstrong.:TODO
 
 * What happens when 2 peers store the same piece at same time [Milestone: 0.9]
    This was an XXX inside the code. But it needs some serious thinking
