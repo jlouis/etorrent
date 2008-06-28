@@ -211,6 +211,7 @@ store_piece(Id, PieceNumber, FSPid, GroupPid) ->
 							{subtract_left, DataSize}),
 	    {atomic, ok} = etorrent_torrent:statechange(Id,
 							{add_downloaded, DataSize}),
+	    {atomic, ok} = statechange(Id, PieceNumber, fetched),
 	    ok = etorrent_t_peer_group:broadcast_have(GroupPid, PieceNumber),
 	    ok;
 	wrong_hash ->
@@ -250,7 +251,7 @@ read_delete_chunks([Offset | Rest], Id, PieceNum) ->
     %% Read the chunk
     [C] = mnesia:dirty_read(chunk_data, {Id, PieceNum, Offset}),
     %% And delete it
-    mnesia:dirty_delete_object(C),
+    ok = mnesia:dirty_delete_object(C),
     [{Offset, C#chunk_data.data} | read_delete_chunks(Rest, Id, PieceNum)].
 
 
