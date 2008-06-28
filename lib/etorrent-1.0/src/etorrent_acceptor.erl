@@ -139,6 +139,8 @@ start_peer(Socket, Pid, ReservedBytes, PeerId) ->
 						    Socket,
 						    PeerId),
 	    ok;
+	already_enough_connections ->
+	    ok;
 	bad_peer ->
 	    error_logger:info_report([peer_id_is_bad, PeerId]),
 	    gen_tcp:close(Socket),
