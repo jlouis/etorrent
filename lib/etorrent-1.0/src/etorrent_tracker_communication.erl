@@ -107,7 +107,8 @@ handle_call(_Request, _From, State) ->
 handle_cast(start_now, S) ->
     case contact_tracker(S, "started") of
 	{ok, Body} ->
-	    {ok, NextRequestTime, NS} = decode_and_handle_body(Body, S),
+	    {ok, NextRequestTime, NS} =
+		handle_tracker_response(etorrent_bcoding:decode(Body), S),
 	    error_logger:info_msg("Will contact again in ~B seconds~n",
 				  [NextRequestTime]),
 	    {noreply, NS, timer:seconds(NextRequestTime)};
@@ -119,7 +120,8 @@ handle_cast(start_now, S) ->
 handle_cast(torrent_completed, S) ->
     case contact_tracker(S, "completed") of
 	{ok, Body} ->
-	    {ok, NextRequestTime, NS} = decode_and_handle_body(Body, S),
+	    {ok, NextRequestTime, NS} =
+		handle_tracker_response(etorrent_bcoding:decode(Body), S),
 	    error_logger:info_msg("Will contact again in ~B seconds~n",
 				  [NextRequestTime]),
 	    {noreply, NS, timer:seconds(NextRequestTime)};
@@ -138,7 +140,8 @@ handle_cast(torrent_completed, S) ->
 handle_info(timeout, S) ->
     case contact_tracker(S, S#state.queued_message) of
 	{ok, Body} ->
-	    {ok, NextRequestTime, NS} = decode_and_handle_body(Body, S),
+	    {ok, NextRequestTime, NS} =
+		handle_tracker_response(etorrent_bcoding:decode(Body), S),
 	    {noreply,
 	     NS#state{queued_message=none},
 	     timer:seconds(NextRequestTime)};
@@ -178,12 +181,6 @@ contact_tracker(S, Event) ->
 	    {ok, Body};
 	{error, E} ->
 	    {error, E}
-    end.
-
-decode_and_handle_body(Body, S) ->
-    case etorrent_bcoding:decode(Body) of
-	{ok, BC} ->
-	    handle_tracker_response(BC, S)
     end.
 
 handle_tracker_response(BC, S) ->
