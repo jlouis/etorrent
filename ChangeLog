@@ -1,10 +1,12 @@
 2008-06-28  Jesper Louis Andersen  <jlouis@ogre.home>
 
+	* SRC: Implement support for incoming connections.
+
 	* SRC: Etorrent now knows about seeding.
 
-	* SRC: Fix Issue-3: Implement endgame support
+	* SRC: Fix Issue-3: Implement endgame support.
 
-	* SRC: Fix Issue-42: Peer Queue Watermarking
+	* SRC: Fix Issue-42: Peer Queue Watermarking.
 
 2008-06-27  Jesper Louis Andersen  <jlouis@succubus.home>
 
