@@ -19,6 +19,8 @@
 
    For each case one must think.
 
+- True for etorrent_metainfo!
+
 * lists:map can be eaten with list comprehensions [Milestone: 0.9]
    For more succinct code we could use a list comprehension whenever
    we have a lists:map or a lists:filter. There are a few places where
