@@ -52,6 +52,12 @@
 * Let the system start with +Ktrue and +A 256 [Milestone: 0.9]
    Will greatly enhance the performance of the application.
 
+* Disconnect from seeders [Milestone 1.0]
+   Disconnect from seeders.
+
+   While here, also check that we remember to report we have all of
+   the torrent.
+
 * Eradicate XXX and TODO [Milestone 1.0]
    Go through the code and remove all XXX and TODOs remaining
    there. There are a few that have been added when I find something
