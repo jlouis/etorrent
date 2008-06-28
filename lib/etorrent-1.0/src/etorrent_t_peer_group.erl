@@ -76,9 +76,9 @@ init([OurPeerId, PeerGroup, InfoHash,
 
 handle_call({new_incoming_peer, IP, Port}, _From, S) ->
     case is_bad_peer(IP, Port, S) of
-	{atomic, true} ->
+	true ->
 	    {reply, bad_peer, S};
-	{atomic, false} ->
+	false ->
 	    start_new_incoming_peer(IP, Port, S)
     end;
 handle_call(Request, _From, State) ->
