@@ -402,7 +402,7 @@ handle_got_chunk(Index, Offset, Data, Len, S) ->
 %%   choke/unchoke problems and live data.
 %%--------------------------------------------------------------------
 unqueue_all_pieces(S) ->
-    etorrent_chunk:putback_chunks(self()),
+    {atomic, _} = etorrent_chunk:putback_chunks(self()),
     S#state{remote_request_set = gb_sets:new()}.
 
 %%--------------------------------------------------------------------
