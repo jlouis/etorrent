@@ -95,8 +95,8 @@ get_url(Torrent) ->
 %% Description: Return the infohash for a torrent
 %%--------------------------------------------------------------------
 get_infohash(Torrent) ->
-    {ok, InfoDict} = etorrent_bcoding:search_dict({string, "info"}, Torrent),
-    {ok, InfoString} = etorrent_bcoding:encode(InfoDict),
+    InfoDict = etorrent_bcoding:search_dict({string, "info"}, Torrent),
+    InfoString = etorrent_bcoding:encode(InfoDict),
     crypto:sha(list_to_binary(InfoString)).
 
 
