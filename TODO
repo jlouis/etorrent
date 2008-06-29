@@ -6,6 +6,10 @@
 --   Keep the style please. Can be read with emacs org-mode
 ----------------------------------------------------------------------
 
+* Don't use the get_ prefix in mnesia table calls [Milestone: 0.9]
+   It looks ugly and it is rather verbose. Just call it foo:by_id/1
+   for instance.
+
 * What happens when 2 peers store the same piece at same time [Milestone: 0.9]
    This was an XXX inside the code. But it needs some serious thinking
    first as there is no easy fix for this.

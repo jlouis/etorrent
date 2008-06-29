@@ -17,7 +17,7 @@ ETORRENT_1.0_EBINDIR = lib/etorrent-1.0/ebin
 
 ETORRENT_1.0_MODULES = etorrent_listener etorrent_t_pool_sup etorrent_acceptor \
 	etorrent_metainfo etorrent_tracker_communication etorrent_bcoding \
-	etorrent_app \
+	etorrent \
 	etorrent_dirwatcher etorrent_sup etorrent_t_sup \
 	etorrent_dirwatcher_sup \
 	etorrent_peer_communication etorrent_utils etorrent_fs_checker \

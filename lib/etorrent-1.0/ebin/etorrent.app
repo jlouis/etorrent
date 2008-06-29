@@ -1,7 +1,7 @@
 {application, etorrent,
 [{description, "BitTorrent client in Erlang"},
  {vsn, "1.0"},
- {modules, [etorrent_acceptor, etorrent_sup, etorrent_app, etorrent_t_control,
+ {modules, [etorrent_acceptor, etorrent_sup, etorrent, etorrent_t_control,
             etorrent_bcoding, etorrent_t_manager, etorrent_dirwatcher,
 	    etorrent_dirwatcher_sup, etorrent_t_peer_group,
 	    etorrent_fs_checker, etorrent_t_peer_recv, etorrent_fs,
@@ -16,7 +16,7 @@
                etorrent_t_manager, etorrent_dirwatcher_sup,
                etorrent_t_pool_sup, etorrent_listener]},
  {applications, [kernel, stdlib, inets, crypto, sasl, mnesia]},
- {mod, {etorrent_app,[]}},
+ {mod, {etorrent,[]}},
  {env, [{dir, "/home/jlouis/etorrent_test"},
         {port, 1729}]}]}.
 

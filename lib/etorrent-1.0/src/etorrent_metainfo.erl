@@ -12,8 +12,8 @@
 -vsn(1).
 
 %% API
--export([get_piece_length/1, get_pieces/1, get_url/1, get_infohash/1,
-	 get_files/1, get_name/1, hexify/1,
+-export([get_piece_length/1, get_length/1, get_pieces/1, get_url/1,
+	 get_infohash/1, get_files/1, get_name/1, hexify/1,
 	 process_ips_dictionary/1,
 	 process_ips_binary/1]).
 

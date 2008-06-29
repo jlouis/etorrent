@@ -44,7 +44,7 @@ BEP 23 - Tracker Returns Compact Peer Lists.
    error logs should exist (or things get nasty). Copy ../src/etorrent.app
    to the ebin dir as well.
 
-6. run "erl -pa . -config etorrent.config -sname etorrent -s etorrent_app"
+6. run "erl -pa . -config etorrent.config -sname etorrent -s etorrent"
 
 7. drop a .torrent file in the watched dir and see what happens.
 

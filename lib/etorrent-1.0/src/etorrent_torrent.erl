@@ -11,7 +11,7 @@
 -include("etorrent_mnesia_table.hrl").
 
 %% API
--export([new/3, delete/1, get_by_id/1, statechange/2,
+-export([new/3, delete/1, get_by_id/1, get_all/0, statechange/2,
 	 get_num_pieces/1, decrease_not_fetched/1,
 	 is_endgame/1, get_mode/1]).
 
@@ -24,17 +24,18 @@
 %%   state as given. Pieces is the number of pieces for this torrent.
 %% Precondition: The #piece table has been filled with the torrents pieces.
 %%--------------------------------------------------------------------
-new(Id, {{uploaded, U}, {downloaded, D}, {left, L}}, NPieces) ->
+new(Id, {{uploaded, U}, {downloaded, D}, {left, L}, {total, T}}, NPieces) ->
     F = fun() ->
 		State = case L of 0 -> seeding; _ -> leeching end,
 		mnesia:write(#torrent { id = Id,
 					left = L,
+					total = T,
 					uploaded = U,
 					downloaded = D,
 					pieces = NPieces,
 					state = State })
 	end,
-    mnesia:transaction(F),
+    {atomic, _} = mnesia:transaction(F),
     Missing = etorrent_piece:get_num_not_fetched(Id),
     mnesia:dirty_update_counter(torrent_c_pieces, Id, Missing).
 
@@ -55,10 +56,7 @@ delete(Id) when is_integer(Id) ->
     [R] = mnesia:dirty_read(torrent, Id),
     delete(R);
 delete(Torrent) when is_record(Torrent, torrent) ->
-    F = fun() ->
-		mnesia:delete_object(Torrent)
-	end,
-    mnesia:transaction(F).
+    mnesia:dirty_delete_object(Torrent).
 
 %%--------------------------------------------------------------------
 %% Function: get_by_id(Id, Pid) -> Rows
@@ -66,6 +64,18 @@ delete(Torrent) when is_record(Torrent, torrent) ->
 %%--------------------------------------------------------------------
 get_by_id(Id) ->
     mnesia:dirty_read(torrent, Id).
+
+%%--------------------------------------------------------------------
+%% Function: get_all() -> Rows
+%% Description: Return all torrents
+%%--------------------------------------------------------------------
+get_all() ->
+	mnesia:transaction(
+	  fun () ->
+			  Q = qlc:q([P || P <- mnesia:table(torrent)]),
+			  qlc:e(Q)
+	  end).
+
 
 %%--------------------------------------------------------------------
 %% Function: get_num_pieces(Id) -> integer()

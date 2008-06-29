@@ -19,7 +19,7 @@ CONFIGFILE=${SYSCONFDIR}/etorrent.config
 start () {
     echo ${BEAMDIR}
     erl -sname ${NODE}@${HOST} -pa ${BEAMDIR} \
-	-s etorrent_app -config ${CONFIGFILE}
+	-s etorrent -config ${CONFIGFILE}
 }
 
 debug () {

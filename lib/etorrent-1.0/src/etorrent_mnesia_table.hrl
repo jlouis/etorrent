@@ -7,7 +7,9 @@
 %% A single torrent is represented as the 'torrent' record
 -record(torrent, {id, % Unique identifier of torrent, monotonically increasing
 		      %   foreign keys to tracking_map.id
-		  left, % How many bytes are there left before we have the full torrent
+		  left, % How many bytes are there left before we have the
+		        % full torrent
+		  total, % How many bytes are there in total
 		  uploaded, % How many bytes have we uploaded
 		  downloaded, % How many bytes have we downloaded
 		  pieces = unknown, % Number of pieces this torrent has

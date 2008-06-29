@@ -134,7 +134,8 @@ initializing(timeout, S) ->
 	      S#state.id,
 	      {{uploaded, 0},
 	       {downloaded, 0},
-	       {left, calculate_amount_left(S#state.id)}},
+	       {left, calculate_amount_left(S#state.id)},
+	       {total, etorrent_metainfo:get_length(Torrent)}},
 	      NumberOfPieces),
 
 	    %% Add a peer pool
