@@ -13,8 +13,9 @@
 
 %% API
 -export([get_piece_length/1, get_length/1, get_pieces/1, get_url/1,
-	 get_infohash/1, get_files/1, get_name/1, hexify/1,
-	 process_ips/1]).
+	 get_infohash/1,
+	 get_files/1, get_name/1, hexify/1]).
+
 
 %%====================================================================
 %% API
@@ -95,22 +96,6 @@ get_infohash(Torrent) ->
     InfoString = etorrent_bcoding:encode(InfoDict),
     crypto:sha(list_to_binary(InfoString)).
 
-
-%%--------------------------------------------------------------------
-%% Function: process_ips/1
-%% Description: Convert an IP-list from a tracker in dictionary format
-%%   to a {IP, Port} list.
-%%--------------------------------------------------------------------
-process_ips([]) -> [];
-process_ips([{dict, D} | T]) ->
-    {string, IP} = etorrent_bcoding:search_dict({string, "ip"}, {dict, D}),
-    {integer, Port} = etorrent_bcoding:search_dict({string, "port"}, {dict, D}),
-    [{IP, Port} | process_ips(T)];
-process_ips(B) when is_list(B) ->
-    {Peer, Rest} = lists:split(6, B),
-    <<I1:8/integer, I2:8/integer, I3:8/integer, I4:8/integer,
-      Port:16/integer-big>> = list_to_binary(Peer),
-    [{{I1, I2, I3, I4}, Port} | process_ips(Rest)].
 
 %%====================================================================
 %% Internal functions
