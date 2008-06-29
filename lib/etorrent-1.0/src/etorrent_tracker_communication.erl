@@ -112,7 +112,7 @@ handle_cast(start_now, S) ->
 	    error_logger:info_msg("Will contact again in ~B seconds~n",
 				  [NextRequestTime]),
 	    {noreply, NS, timer:seconds(NextRequestTime)};
-	{error, etimedout} ->
+	timedout ->
 	    {noreply,
 	     S#state{queued_message = "started"},
 	     timer:seconds(?DEFAULT_CONNECTION_TIMEOUT_INTERVAL)}
@@ -125,7 +125,7 @@ handle_cast(torrent_completed, S) ->
 	    error_logger:info_msg("Will contact again in ~B seconds~n",
 				  [NextRequestTime]),
 	    {noreply, NS, timer:seconds(NextRequestTime)};
-	{error, etimedout} ->
+	timedout ->
 	    {noreply,
 	     S#state{queued_message = "completed"},
 	     timer:seconds(?DEFAULT_CONNECTION_TIMEOUT_INTERVAL)}
@@ -145,7 +145,7 @@ handle_info(timeout, S) ->
 	    {noreply,
 	     NS#state{queued_message=none},
 	     timer:seconds(NextRequestTime)};
-	{error, timedout} ->
+	timedout ->
 	    {noreply, S, timer:seconds(?DEFAULT_CONNECTION_TIMEOUT_INTERVAL)}
     end;
 handle_info(_Info, State) ->
@@ -179,8 +179,8 @@ contact_tracker(S, Event) ->
     case http_gzip:request(NewUrl) of
 	{ok, {{_, 200, _}, _, Body}} ->
 	    {ok, Body};
-	{error, E} ->
-	    {error, E}
+	{error, timedout} ->
+	    timedout
     end.
 
 handle_tracker_response(BC, S) ->
@@ -207,6 +207,7 @@ handle_tracker_response(BC, S) ->
 					 {tracker_report, Complete, Incomplete})
     end,
     {ok, RequestTime, S#state{trackerid = TrackerId}}.
+
 
 construct_headers([], HeaderLines) ->
     lists:concat(lists:reverse(HeaderLines));
@@ -254,8 +255,8 @@ decode_ips(D) ->
 decode_ips([], Accum) ->
     Accum;
 decode_ips([IPDict | Rest], Accum) ->
-    {ok, {string, IP}} = etorrent_bcoding:search_dict({string, "ip"}, IPDict),
-    {ok, {integer, Port}} = etorrent_bcoding:search_dict({string, "port"},
+    {string, IP} = etorrent_bcoding:search_dict({string, "ip"}, IPDict),
+    {integer, Port} = etorrent_bcoding:search_dict({string, "port"},
 						   IPDict),
     decode_ips(Rest, [{IP, Port} | Accum]);
 decode_ips(<<>>, Accum) ->
