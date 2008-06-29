@@ -275,20 +275,11 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 %%--------------------------------------------------------------------
 calculate_amount_left(Id) when is_integer(Id) ->
     {atomic, Pieces} = etorrent_piece:get_pieces(Id),
-    Sum = lists:foldl(fun(#piece{files = Files, state = State}, Sum) ->
-			      case State of
-				  fetched ->
-				      Sum;
-				  not_fetched ->
-				      Sum + size_of_ops(Files)
-			      end
-		      end,
-		      0,
-		      Pieces),
-    Sum.
+    lists:sum([size_piece(P) || P <- Pieces]).
 
-size_of_ops(Ops) ->
-    lists:foldl(fun ({_Path, _Offset, Size}, Total) ->
-                       Size + Total end,
-               0,
-               Ops).
+size_piece(#piece{state = fetched}) -> 0;
+size_piece(#piece{state = not_fetched, files = Files}) ->
+    lists:sum([Sz || {_F, _O, Sz} <- Files]).
+
+
+
