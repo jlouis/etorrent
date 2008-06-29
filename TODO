@@ -6,20 +6,53 @@
 --   Keep the style please. Can be read with emacs org-mode
 ----------------------------------------------------------------------
 
-
 * Don't use the get_ prefix in mnesia table calls [Milestone: 0.9]
    It looks ugly and it is rather verbose. Just call it foo:by_id/1
    for instance.
 
-* For each module, go through it and think: Crash? [All milestones ;)]
+* For each module, go through it and think: Crash? [All milestones]
    For each module, go through it and think: Do we expect something to
    happen here? If yes, assume it happens and code such that if it is
    not the case, then the code crashes. Be aware that sometimes you
    _do_ actually need to know that something went wrong.
 
-   For each case one must think.
+   For each case one must think. This is the 'let it crash' way of
+   programming. Sparked by comments from Joe Armstrong.
 
-- True for etorrent_metainfo!
+- Missing module to check:
+   lib/etorrent-1.0/src/etorrent_acceptor.erl
+   lib/etorrent-1.0/src/etorrent_acceptor_sup.erl
+   lib/etorrent-1.0/src/etorrent_app.erl
+
+   lib/etorrent-1.0/src/etorrent_chunk.erl
+   lib/etorrent-1.0/src/etorrent_dirwatcher.erl
+   lib/etorrent-1.0/src/etorrent_dirwatcher_sup.erl
+   lib/etorrent-1.0/src/etorrent_event.erl
+   lib/etorrent-1.0/src/etorrent_fs_checker.erl
+   lib/etorrent-1.0/src/etorrent_fs.erl
+   lib/etorrent-1.0/src/etorrent_fs_pool_sup.erl
+   lib/etorrent-1.0/src/etorrent_fs_process.erl
+   lib/etorrent-1.0/src/etorrent_listener.erl
+
+   lib/etorrent-1.0/src/etorrent_mnesia_init.erl
+   lib/etorrent-1.0/src/etorrent_peer_communication.erl
+   lib/etorrent-1.0/src/etorrent_peer.erl
+   lib/etorrent-1.0/src/etorrent_piece.erl
+   lib/etorrent-1.0/src/etorrent_sup.erl
+   lib/etorrent-1.0/src/etorrent_t_manager.erl
+   lib/etorrent-1.0/src/etorrent_torrent.erl
+   lib/etorrent-1.0/src/etorrent_t_peer_group.erl
+   lib/etorrent-1.0/src/etorrent_t_peer_pool_sup.erl
+   lib/etorrent-1.0/src/etorrent_t_peer_recv.erl
+   lib/etorrent-1.0/src/etorrent_t_peer_send.erl
+   lib/etorrent-1.0/src/etorrent_t_pool_sup.erl
+
+   lib/etorrent-1.0/src/etorrent_tracking_map.erl
+   lib/etorrent-1.0/src/etorrent_t_sup.erl
+   lib/etorrent-1.0/src/etorrent_utils.erl
+   lib/etorrent-1.0/src/http_gzip.erl
+   lib/etorrent-1.0/src/tracker_filter.erl
+   lib/etorrent-1.0/src/tr.erl
 
 * lists:map can be eaten with list comprehensions [Milestone: 0.9]
    For more succinct code we could use a list comprehension whenever
