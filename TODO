@@ -67,13 +67,6 @@
    We send it a 'start_now/0' message at the moment and that can
    possibly be removed.
 
-* Find a way to cap the number of 'open' chunks [Milestone: 0.9]
-   If we just allow the thing to open up chunks as it sees fit, we
-   will use a lot of memory very quickly.
-
-   UPDATE: Might be related to another bug. Check that it still occurs
-   at 0.9.
-
 * Add another state for #piece records [Milestone: 0.9]
    The state 'chunked_no_left' should indicate that the piece has been
    chunked, but there are no chunks left to pick from it. The state is
@@ -84,11 +77,17 @@
 
    It turns out to be an optimization, so put it into 0.9 for now.
 
-* Set a kernel parameter for timer:start() [Milestone: 0.9]
+* Installation and Build system [Milestone: 0.9]
+
+- Set a kernel parameter for timer:start() [Milestone: 0.9]
    This is mentioned in timer(3erl), so better heed it.
 
-* Let the system start with +Ktrue and +A 256 [Milestone: 0.9]
+- Let the system start with +Ktrue and +A 256 [Milestone: 0.9]
    Will greatly enhance the performance of the application.
+
+- Consider using EMakefile
+
+- Build proper installation target in makefile structure
 
 * Disconnect from seeders [Milestone 1.0]
    Disconnect from seeders.
