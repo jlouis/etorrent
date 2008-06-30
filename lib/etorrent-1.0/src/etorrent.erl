@@ -48,7 +48,15 @@ list() ->
 %% Description: Provide a simple help message for the commands supported.
 %%--------------------------------------------------------------------
 help() ->
-    implement_me_please.
+    io:format("Available commands:~n", []),
+
+    Commands = [{"list()", "List torrents in system"}],
+
+    lists:foreach(fun({Command, Desc}) ->
+			  io:format("~-12.s - ~s~n", [Command, Desc])
+		  end,
+		  Commands),
+    ok.
 
 %% --------------------------------------------------------------------
 %% Internal functions
