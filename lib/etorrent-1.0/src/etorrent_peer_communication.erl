@@ -113,20 +113,20 @@ recieve_handshake(Socket) ->
     Header = build_peer_protocol_header(),
     case gen_tcp:send(Socket, Header) of
 	ok ->
-	    receive_header(Socket);
+	    receive_header(Socket, await);
 	{error, X}  ->
 	    {error, X}
     end.
 
 %%--------------------------------------------------------------------
 %% Function: complete_handshake_header(socket(),
-%%   info_hash(), peer_id()) -> ok
+%%   info_hash(), peer_id()) -> ok | {error, Reason}
 %% Description: Complete the handshake with the peer in the other end.
 %%--------------------------------------------------------------------
 complete_handshake_header(Socket, InfoHash, LocalPeerId) ->
-    ok = gen_tcp:send(Socket, InfoHash),
-    ok = gen_tcp:send(Socket, LocalPeerId),
-    ok.
+    gen_tcp:send(Socket, InfoHash),
+    gen_tcp:send(Socket, LocalPeerId).
+
 
 %%--------------------------------------------------------------------
 %% Function: initiate_handshake(socket(), peer_id(), info_hash()) ->
@@ -139,22 +139,12 @@ complete_handshake_header(Socket, InfoHash, LocalPeerId) ->
 initiate_handshake(Socket, LocalPeerId, InfoHash) ->
     % Since we are the initiator, send out this handshake
     Header = build_peer_protocol_header(),
-    ok = gen_tcp:send(Socket, Header),
+    gen_tcp:send(Socket, Header),
     complete_handshake_header(Socket, InfoHash, LocalPeerId),
     % Now, we wait for his handshake to arrive on the socket
     % Since we are the initiator, he is requested to fire off everything
     % to us.
-    case receive_header(Socket) of
-	{ok, ReservedBytes, IH, PI} ->
-	    if
-		IH /= InfoHash ->
-		    {error, infohash_mismatch};
-		true ->
-		    {ok, ReservedBytes, PI}
-	    end;
-	{error, X} ->
-	    {error, X}
-    end.
+    receive_header(Socket, InfoHash).
 
 %%====================================================================
 %% Internal functions
@@ -170,7 +160,7 @@ build_peer_protocol_header() ->
 
 %%--------------------------------------------------------------------
 %% Function: receive_header(socket()) -> {ok, proto_version(),
-%%                                            info_hash(),
+%%                                            info_hash() | await,
 %%                                            remote_peer_id()} |
 %%                                       {error, Reason}
 %% Description: Recieve the full header from a peer. The function
@@ -178,23 +168,34 @@ build_peer_protocol_header() ->
 %% protocol_version string, the infohash the remote sent us and his
 %% peer_id.
 %% --------------------------------------------------------------------
-receive_header(Socket) ->
+receive_header(Socket, InfoHash) ->
+    %% Last thing we do on the socket, catch an error here.
     case gen_tcp:recv(Socket, ?HANDSHAKE_SIZE, ?DEFAULT_HANDSHAKE_TIMEOUT) of
-	{ok, Packet} ->
-	    case Packet of
-		<<PSL:8/integer, ?PROTOCOL_STRING, ReservedBytes:8/binary,
-		 IH:20/binary, PI:20/binary>> ->
-		    if
-			PSL /= length(?PROTOCOL_STRING) ->
-			    {error, packet_size_mismatch};
-			true ->
-			    {ok, ReservedBytes, IH, PI}
-		    end;
-		X when is_binary(X) ->
-		    {error, {bad_header, X}}
-	    end;
-	{error, X} ->
-	    {error, X}
+	%% Fail if the header length is wrong
+	{ok, <<PSL:8/integer, ?PROTOCOL_STRING, _:8/binary,
+	       _IH:20/binary, _PI:20/binary>>}
+	  when PSL /= length(?PROTOCOL_STRING) ->
+	    {error, packet_size_mismatch};
+	%% If the infohash is await, return the infohash along.
+	{ok, <<_PSL:8/integer, ?PROTOCOL_STRING, ReservedBytes:8/binary,
+	       IH:20/binary, PI:20/binary>>}
+	  when InfoHash =:= await ->
+	    {ok, ReservedBytes, IH, PI};
+	%% Infohash mismatches. Error it.
+	{ok, <<_PSL:8/integer, ?PROTOCOL_STRING, _ReservedBytes:8/binary,
+	       IH:20/binary, _PI:20/binary>>}
+	  when IH /= InfoHash ->
+	    {error, infohash_mismatch};
+	%% Everything ok
+	{ok, <<_PSL:8/integer, ?PROTOCOL_STRING, ReservedBytes:8/binary,
+	       _IH:20/binary, PI:20/binary>>} ->
+	    {ok, ReservedBytes, PI};
+	%% This is not even a header!
+	{ok, X} when is_binary(X) ->
+	    {error, {bad_header, X}};
+	%% Propagate errors upwards, most importantly, {error, closed}
+	{error, Reason} ->
+	    {error, Reason}
     end.
 
 %%--------------------------------------------------------------------
