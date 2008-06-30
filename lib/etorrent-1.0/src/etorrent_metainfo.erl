@@ -41,10 +41,21 @@ get_pieces(Torrent) ->
     end.
 
 get_length(Torrent) ->
-    case find_target(get_info(Torrent), "length") of
-	{integer, L} ->
-	    L
+    case etorrent_bcoding:search_dict("length", get_info(Torrent)) of
+	{ok, {integer, L}} ->
+	    L;
+	false ->
+	    %% Multifile torrent
+	    sum_files(Torrent)
     end.
+
+get_file_length(File) ->
+    {integer, N} = find_target(File, "length"),
+    N.
+
+sum_files(Torrent) ->
+    {list, Files} = find_target(get_info(Torrent), "files"),
+    lists:sum([get_file_length(F) || F <- Files]).
 
 %%--------------------------------------------------------------------
 %% Function: get_files/1
