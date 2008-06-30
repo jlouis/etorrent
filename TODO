@@ -89,6 +89,22 @@
 
 - Build proper installation target in makefile structure
 
+* Make shutdown strategies right [Milestone: 1.0]
+   Currently the shutdown strategies and cleanup strategies are wrong;
+   for an explanation, see
+
+   http://www.erlang.org/doc/design_principles/gen_server_concepts.html#2.6
+
+   This should be fixed. Also note the t_peer_recv and t_peer_send
+   might be living in an unhealthy relationship (send is a start_link
+   on recv) and that this ought to be cleaned up, eventually by
+   hooking both to a common ancestor supervisor (The overhead of doing
+   so is not measurable).
+
+* Who clean up what? [Milestone: 1.0]
+   Go through each table and decide who "owns" the right to clean it
+   up. It should definitely be checked.
+
 * Disconnect from seeders [Milestone 1.0]
    Disconnect from seeders.
 
