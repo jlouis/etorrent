@@ -58,16 +58,16 @@ o [tuncer] Consistently name by_ mnesia table calls. [Milestone: 0.9]
    lib/etorrent-1.0/src/tracker_filter.erl
    lib/etorrent-1.0/src/tr.erl
 
-* lists:map can be eaten with list comprehensions [Milestone: 0.9]
+o [jlouis] lists:map can be eaten with list comprehensions [Milestone: 0.9]
    For more succinct code we could use a list comprehension whenever
    we have a lists:map or a lists:filter. There are a few places where
    this can go in.
 
-* What happens when 2 peers store the same piece at same time [Milestone: 0.9]
+o [jlouis] What happens when 2 peers store the same piece at same time [Milestone: 0.9]
    This was an XXX inside the code. But it needs some serious thinking
    first as there is no easy fix for this.
 
-* When initializing the tracker, get it to start right away. [Milestone: 0.9]
+o [jlouis] When initializing the tracker, get it to start right away. [Milestone: 0.9]
    We send it a 'start_now/0' message at the moment and that can
    possibly be removed.
 
