@@ -67,14 +67,21 @@ get_by_id(Id) ->
 
 %%--------------------------------------------------------------------
 %% Function: get_all() -> Rows
-%% Description: Return all torrents
+%% Description: Return all torrents, sorted by Id
 %%--------------------------------------------------------------------
 get_all() ->
-	mnesia:transaction(
-	  fun () ->
-			  Q = qlc:q([P || P <- mnesia:table(torrent)]),
-			  qlc:e(Q)
-	  end).
+    get_all(#torrent.id).
+
+%%--------------------------------------------------------------------
+%% Function: get_all(Pos) -> Rows
+%% Description: Return all torrents, sorted by Pos
+%%--------------------------------------------------------------------
+get_all(Pos) ->
+    mnesia:transaction(
+      fun () ->
+	      Q = qlc:q([P || P <- mnesia:table(torrent)]),
+	      qlc:e(qlc:keysort(Pos, Q))
+      end).
 
 
 %%--------------------------------------------------------------------
