@@ -6,9 +6,13 @@
 --   Keep the style please. Can be read with emacs org-mode
 ----------------------------------------------------------------------
 
-* Don't use the get_ prefix in mnesia table calls [Milestone: 0.9]
+o [tuncer] Don't use the get_ prefix in mnesia table calls [Milestone: 0.9]
    It looks ugly and it is rather verbose. Just call it foo:by_id/1
    for instance.
+
+o [tuncer] Consistently name by_ mnesia table calls. [Milestone: 0.9]
+   The naming of calls in the mnesia manipulation tables are bad, they
+   should be updated for consistency.
 
 * For each module, go through it and think: Crash? [All milestones]
    For each module, go through it and think: Do we expect something to
