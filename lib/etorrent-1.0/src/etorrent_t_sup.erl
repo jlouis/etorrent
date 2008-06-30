@@ -32,7 +32,6 @@ start_link(File, Local_PeerId, Id) ->
 %%--------------------------------------------------------------------
 get_peer_group_pid(Pid) ->
     Children = supervisor:which_children(Pid),
-    error_logger:info_report([Children]),
     case lists:keysearch(peer_group, 1, Children) of
 	{value, {_Id, Child, _Type, _Modules}} ->
 	    Child;

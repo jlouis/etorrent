@@ -118,12 +118,9 @@ handshake(Socket) ->
 
 lookup_infohash(Socket, ReservedBytes, InfoHash, PeerId) ->
     case etorrent_tracking_map:by_infohash(InfoHash) of
-	{atomic, [#tracking_map {id = Id, supervisor_pid = Pid}]} ->
-	    error_logger:info_report([connection_on, Id]),
+	{atomic, [#tracking_map {supervisor_pid = Pid}]} ->
 	    start_peer(Socket, Pid, ReservedBytes, PeerId);
 	{atomic, []} ->
-	    error_logger:info_report([connection_on_unknown_infohash,
-				      InfoHash]),
 	    gen_tcp:close(Socket),
 	    ok
     end.
