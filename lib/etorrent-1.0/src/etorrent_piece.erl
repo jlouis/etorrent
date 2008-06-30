@@ -13,10 +13,10 @@
 
 %% API
 -export([new/2, statechange/3, is_complete/1,
-	 get_pieces/1, get_num_not_fetched/1,
-	 delete/1, get_piece/2, piece_valid/2,
+	 pieces/1, num_not_fetched/1,
+	 delete/1, piece/2, piece_valid/2,
 	 piece_interesting/2,
-	 torrent_size/1, get_bitfield/1, check_interest/2,
+	 torrent_size/1, bitfield/1, check_interest/2,
 	 store_piece/4]).
 
 %%====================================================================
@@ -89,10 +89,10 @@ is_complete(Id) when is_integer(Id) ->
       end).
 
 %%--------------------------------------------------------------------
-%% Function: get_pieces(Id) -> [#piece]
+%% Function: pieces(Id) -> [#piece]
 %% Description: Return the pieces for Id
 %%--------------------------------------------------------------------
-get_pieces(Id) when is_integer(Id) ->
+pieces(Id) when is_integer(Id) ->
     mnesia:transaction(
       fun () ->
 	      Q = qlc:q([R || R <- mnesia:table(piece),
@@ -101,10 +101,10 @@ get_pieces(Id) when is_integer(Id) ->
       end).
 
 %%--------------------------------------------------------------------
-%% Function: get_piece(Id, PieceNumber) -> [#piece]
+%% Function: piece(Id, PieceNumber) -> [#piece]
 %% Description: Return the piece PieceNumber for the Id torrent
 %%--------------------------------------------------------------------
-get_piece(Id, Pn) when is_integer(Id) ->
+piece(Id, Pn) when is_integer(Id) ->
     mnesia:dirty_read(piece, {Id, Pn}).
 
 %%--------------------------------------------------------------------
@@ -135,12 +135,12 @@ piece_interesting(Id, Pn) when is_integer(Id) ->
     end.
 
 %%--------------------------------------------------------------------
-%% Function: get_bitfield(Id) -> bitfield()
+%% Function: bitfield(Id) -> bitfield()
 %% Description: Return the bitfield we have for the given torrent
 %%--------------------------------------------------------------------
-get_bitfield(Id) when is_integer(Id) ->
-    NumPieces = etorrent_torrent:get_num_pieces(Id),
-    {atomic, Fetched}   = get_fetched(Id),
+bitfield(Id) when is_integer(Id) ->
+    NumPieces = etorrent_torrent:num_pieces(Id),
+    {atomic, Fetched}   = fetched(Id),
     etorrent_peer_communication:construct_bitfield(NumPieces,
 						   gb_sets:from_list(Fetched)).
 
@@ -223,10 +223,10 @@ store_piece(Id, PieceNumber, FSPid, GroupPid) ->
 
 
 %%--------------------------------------------------------------------
-%% Function: get_num_fetched(Id) -> integer()
+%% Function: num_fetched(Id) -> integer()
 %% Description: Return the number of not_fetched pieces for torrent Id.
 %%--------------------------------------------------------------------
-get_num_not_fetched(Id) when is_integer(Id) ->
+num_not_fetched(Id) when is_integer(Id) ->
     F = fun () ->
 		Q = qlc:q([R#piece.piece_number ||
 			      R <- mnesia:table(piece),
@@ -255,7 +255,7 @@ read_delete_chunks([Offset | Rest], Id, PieceNum) ->
     [{Offset, C#chunk_data.data} | read_delete_chunks(Rest, Id, PieceNum)].
 
 
-get_fetched(Id) when is_integer(Id) ->
+fetched(Id) when is_integer(Id) ->
     F = fun () ->
 		Q = qlc:q([R#piece.piece_number ||
 			      R <- mnesia:table(piece),

@@ -12,7 +12,7 @@
 
 %% API
 -export([new/4, all/1, delete/1, statechange/2, is_connected/3, reset_round/1,
-	 get_ip_port/1, partition_peers_by_interest/1]).
+	 ip_port/1, partition_peers_by_interest/1]).
 
 %%====================================================================
 %% API
@@ -28,10 +28,10 @@ new(IP, Port, TorrentId, Pid) ->
 			       torrent_id = TorrentId}).
 
 %%--------------------------------------------------------------------
-%% Function: get_ip_port(Pid) -> {IP, Port}
+%% Function: ip_port(Pid) -> {IP, Port}
 %% Description: Select the IP and Port pair of a Pid
 %%--------------------------------------------------------------------
-get_ip_port(Pid) ->
+ip_port(Pid) ->
     [R] = mnesia:dirty_read(peer, Pid),
     {R#peer.ip, R#peer.port}.
 
