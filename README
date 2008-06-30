@@ -14,7 +14,7 @@ Note that the code is not yet battle scarred. It has not stood up to the
 testing of time and as such, it will fail - sometimes in nasty ways and
 maybe as a bad p2p citizen. Hence, you should put restraint in using it
 unless you are able to fix eventual problems. If you've noticed any bad
-behaviour it is definitely a bug and should be reported as soon as possible
+behavior it is definitely a bug and should be reported as soon as possible
 so we can get it away.
 
 Currently supported BEPs:
@@ -48,7 +48,7 @@ BEP 23 - Tracker Returns Compact Peer Lists.
 
 7. drop a .torrent file in the watched dir and see what happens.
 
-8. call etorrent:help(). from the erlang CLI to get a list of available
+8. call etorrent:help(). from the Erlang CLI to get a list of available
    commands.
 
 -- GETTING STARTED WITH INSTALLING --
