@@ -104,7 +104,7 @@ handle_call(_Request, _From, State) ->
 %%                                      {noreply, State, Timeout} |
 %%                                      {stop, Reason, State}
 %% Description: Handling cast messages
-%%--------------------------------------------------------------------
+%%----------------------p----------------------------------------------
 handle_cast(start_now, S) ->
     case contact_tracker(S, "started") of
 	{ok, {{_, 200, _}, _, Body}} ->
@@ -113,7 +113,7 @@ handle_cast(start_now, S) ->
 	    error_logger:info_msg("Will contact again in ~B seconds~n",
 				  [NextRequestTime]),
 	    {noreply, NS, timer:seconds(NextRequestTime)};
-	{error, timedout} ->
+	{error, etimedout} ->
 	    {noreply,
 	     S#state{queued_message = "started"},
 	     timer:seconds(?DEFAULT_CONNECTION_TIMEOUT_INTERVAL)};
@@ -130,7 +130,7 @@ handle_cast(torrent_completed, S) ->
 	    error_logger:info_msg("Will contact again in ~B seconds~n",
 				  [NextRequestTime]),
 	    {noreply, NS, timer:seconds(NextRequestTime)};
-	{error, timedout} ->
+	{error, etimedout} ->
 	    {noreply,
 	     S#state{queued_message = "completed"},
 	     timer:seconds(?DEFAULT_CONNECTION_TIMEOUT_INTERVAL)};
@@ -154,7 +154,7 @@ handle_info(timeout, S) ->
 	    {noreply,
 	     NS#state{queued_message=none},
 	     timer:seconds(NextRequestTime)};
-	{error, timedout} ->
+	{error, etimedout} ->
 	    {noreply, S, timer:seconds(?DEFAULT_CONNECTION_TIMEOUT_INTERVAL)};
 	{error, session_remotly_closed} ->
 	    {noreply, S, timer:seconds(?DEFAULT_TRACKER_OVERLOAD_INTERVAL)}
