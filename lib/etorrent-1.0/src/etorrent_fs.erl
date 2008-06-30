@@ -86,12 +86,12 @@ init([IDHandle, FSPool]) when is_integer(IDHandle) ->
 
 handle_call({read_piece, PieceNum}, _From, S) ->
     [#piece { files = Operations}] =
-	etorrent_piece:get_piece(S#state.torrent_id, PieceNum),
+	etorrent_piece:piece(S#state.torrent_id, PieceNum),
     {ok, Data, NS} = read_pieces_and_assemble(Operations, [], S),
     {reply, {ok, Data}, NS};
 handle_call({write_piece, PieceNum, Data}, _From, S) ->
     [#piece { hash = Hash,
-	      files = FilesToWrite }] = etorrent_piece:get_piece(S#state.torrent_id,
+	      files = FilesToWrite }] = etorrent_piece:piece(S#state.torrent_id,
 								 PieceNum),
     D = iolist_to_binary(Data),
     case Hash == crypto:sha(D) of

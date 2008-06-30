@@ -311,7 +311,7 @@ handle_message({have, PieceNum}, S) ->
 handle_message({bitfield, BitField}, S) ->
     case gb_sets:size(S#state.piece_set) of
 	0 ->
-	    Size = etorrent_torrent:get_num_pieces(S#state.torrent_id),
+	    Size = etorrent_torrent:num_pieces(S#state.torrent_id),
 	    {ok, PieceSet} =
 		etorrent_peer_communication:destruct_bitfield(Size, BitField),
 	    case etorrent_piece:check_interest(S#state.torrent_id, PieceSet) of
@@ -486,7 +486,7 @@ complete_connection_setup(S) ->
 					S#state.file_system_pid,
 					S#state.torrent_id),
 
-    BF = etorrent_piece:get_bitfield(S#state.torrent_id),
+    BF = etorrent_piece:bitfield(S#state.torrent_id),
     etorrent_t_peer_send:bitfield(SendPid, BF),
 
     {noreply, S#state{send_pid = SendPid}}.

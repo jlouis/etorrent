@@ -34,7 +34,7 @@ db_initialize() ->
 %% Description: List currently active torrents.
 %%--------------------------------------------------------------------
 list() ->
-    {atomic, A} = etorrent_torrent:get_all(),
+    {atomic, A} = etorrent_torrent:all(),
     lists:foreach(fun (R) ->
 			  io:format("Id: ~3.B ~11.B total ~11.B left ~7.3f% ~n",
 				    [R#torrent.id,
