@@ -48,6 +48,9 @@ BEP 23 - Tracker Returns Compact Peer Lists.
 
 7. drop a .torrent file in the watched dir and see what happens.
 
+8. call etorrent:help(). from the erlang CLI to get a list of available
+   commands.
+
 -- GETTING STARTED WITH INSTALLING --
 
 NOTE: This method has not yet seen heavy testing. It can be made a lot
