@@ -56,6 +56,7 @@ delete(Id) when is_integer(Id) ->
     [R] = mnesia:dirty_read(torrent, Id),
     delete(R);
 delete(Torrent) when is_record(Torrent, torrent) ->
+    mnesia:dirty_delete(torrent_c_pieces, Torrent#torrent.id),
     mnesia:dirty_delete_object(Torrent).
 
 %%--------------------------------------------------------------------
