@@ -41,10 +41,10 @@ BEP 23 - Tracker Returns Compact Peer Lists.
 5. copy ../../../etc/etorrent.config into the ebin dir and edit it to your
    liking.
    Note that the directory for watching torrents and the directory for
-   error logs should exist (or things get nasty). Copy ../src/etorrent.app
-   to the ebin dir as well.
+   error logs should exist (or things get nasty).
 
 6. run "erl -pa . -config etorrent.config -sname etorrent -s etorrent"
+   you can add +Ktrue +A 128 for architectures that supports it.
 
 7. drop a .torrent file in the watched dir and see what happens.
 
