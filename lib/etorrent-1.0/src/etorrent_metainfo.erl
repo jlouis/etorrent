@@ -43,7 +43,7 @@ get_pieces(Torrent) ->
 get_length(Torrent) ->
     case etorrent_bcoding:search_dict({string, "length"},
 				      get_info(Torrent)) of
-	{ok, {integer, L}} ->
+	{integer, L} ->
 	    L;
 	false ->
 	    %% Multifile torrent
@@ -51,11 +51,13 @@ get_length(Torrent) ->
     end.
 
 get_file_length(File) ->
-    {integer, N} = find_target(File, "length"),
+    {integer, N} = etorrent_bcoding:search_dict({string, "length"},
+						File),
     N.
 
 sum_files(Torrent) ->
-    {list, Files} = find_target(get_info(Torrent), "files"),
+    {list, Files} = etorrent_bcoding:search_dict({string, "files"},
+					get_info(Torrent)),
     lists:sum([get_file_length(F) || F <- Files]).
 
 %%--------------------------------------------------------------------
