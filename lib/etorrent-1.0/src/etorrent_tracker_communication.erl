@@ -34,6 +34,7 @@
 
 -define(DEFAULT_REQUEST_TIMEOUT, 180).
 -define(DEFAULT_CONNECTION_TIMEOUT_INTERVAL, 1800).
+-define(DEFAULT_TRACKER_OVERLOAD_INTERVAL, 300).
 
 %%====================================================================
 %% API
@@ -106,29 +107,37 @@ handle_call(_Request, _From, State) ->
 %%--------------------------------------------------------------------
 handle_cast(start_now, S) ->
     case contact_tracker(S, "started") of
-	{ok, Body} ->
+	{ok, {{_, 200, _}, _, Body}} ->
 	    {ok, NextRequestTime, NS} =
 		handle_tracker_response(etorrent_bcoding:decode(Body), S),
 	    error_logger:info_msg("Will contact again in ~B seconds~n",
 				  [NextRequestTime]),
 	    {noreply, NS, timer:seconds(NextRequestTime)};
-	timedout ->
+	{error, timedout} ->
 	    {noreply,
 	     S#state{queued_message = "started"},
-	     timer:seconds(?DEFAULT_CONNECTION_TIMEOUT_INTERVAL)}
+	     timer:seconds(?DEFAULT_CONNECTION_TIMEOUT_INTERVAL)};
+	{error, session_remotly_closed} ->
+	    {noreply,
+	     S#state{queued_message = "started"},
+	     timer:seconds(?DEFAULT_TRACKER_OVERLOAD_INTERVAL)}
     end;
 handle_cast(torrent_completed, S) ->
     case contact_tracker(S, "completed") of
-	{ok, Body} ->
+	{ok, {{_, 200, _}, _, Body}} ->
 	    {ok, NextRequestTime, NS} =
 		handle_tracker_response(etorrent_bcoding:decode(Body), S),
 	    error_logger:info_msg("Will contact again in ~B seconds~n",
 				  [NextRequestTime]),
 	    {noreply, NS, timer:seconds(NextRequestTime)};
-	timedout ->
+	{error, timedout} ->
 	    {noreply,
 	     S#state{queued_message = "completed"},
-	     timer:seconds(?DEFAULT_CONNECTION_TIMEOUT_INTERVAL)}
+	     timer:seconds(?DEFAULT_CONNECTION_TIMEOUT_INTERVAL)};
+	{error, session_remotly_closed}  ->
+	    {noreply,
+	     S#state{queued_message = "completed"},
+	     timer:seconds(?DEFAULT_TRACKER_OVERLOAD_INTERVAL)}
     end.
 
 %%--------------------------------------------------------------------
@@ -139,14 +148,16 @@ handle_cast(torrent_completed, S) ->
 %%--------------------------------------------------------------------
 handle_info(timeout, S) ->
     case contact_tracker(S, S#state.queued_message) of
-	{ok, Body} ->
+	{ok, {{_, 200, _}, _, Body}} ->
 	    {ok, NextRequestTime, NS} =
 		handle_tracker_response(etorrent_bcoding:decode(Body), S),
 	    {noreply,
 	     NS#state{queued_message=none},
 	     timer:seconds(NextRequestTime)};
-	timedout ->
-	    {noreply, S, timer:seconds(?DEFAULT_CONNECTION_TIMEOUT_INTERVAL)}
+	{error, timedout} ->
+	    {noreply, S, timer:seconds(?DEFAULT_CONNECTION_TIMEOUT_INTERVAL)};
+	{error, session_remotly_closed} ->
+	    {noreply, S, timer:seconds(?DEFAULT_TRACKER_OVERLOAD_INTERVAL)}
     end;
 handle_info(_Info, State) ->
     {noreply, State}.
@@ -176,12 +187,7 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 contact_tracker(S, Event) ->
     NewUrl = build_tracker_url(S, Event),
-    case http_gzip:request(NewUrl) of
-	{ok, {{_, 200, _}, _, Body}} ->
-	    {ok, Body};
-	{error, timedout} ->
-	    timedout
-    end.
+    http_gzip:request(NewUrl).
 
 handle_tracker_response(BC, S) ->
     ControlPid = S#state.control_pid,
