@@ -72,8 +72,8 @@ torrent_completed(Pid) ->
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
 init([ControlPid, PeerGroupPid, Url, InfoHash, PeerId, TorrentId]) ->
-    dbg:p(self(), call),
-    tr:tr(etorrent_tracker_communication, build_tracker_url),
+    %dbg:p(self(), call),
+    %tr:tr(etorrent_tracker_communication, build_tracker_url),
     {ok, #state{should_contact_tracker = false,
 		peer_group_pid = PeerGroupPid,
 		control_pid = ControlPid,
