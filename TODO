@@ -6,10 +6,6 @@
 --   Keep the style please. Can be read with emacs org-mode
 ----------------------------------------------------------------------
 
-o [tuncer] Don't use the get_ prefix in mnesia table calls [Milestone: 0.9]
-   It looks ugly and it is rather verbose. Just call it foo:by_id/1
-   for instance.
-
 o [tuncer] Consistently name by_ mnesia table calls. [Milestone: 0.9]
    The naming of calls in the mnesia manipulation tables are bad, they
    should be updated for consistency.
@@ -65,10 +61,6 @@ o [jlouis] lists:map can be eaten with list comprehensions [Milestone: 0.9]
 o [jlouis] What happens when 2 peers store the same piece at same time [Milestone: 0.9]
    This was an XXX inside the code. But it needs some serious thinking
    first as there is no easy fix for this.
-
-o [jlouis] When initializing the tracker, get it to start right away. [Milestone: 0.9]
-   We send it a 'start_now/0' message at the moment and that can
-   possibly be removed.
 
 * Add another state for #piece records [Milestone: 0.9]
    The state 'chunked_no_left' should indicate that the piece has been
