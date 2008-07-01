@@ -77,7 +77,7 @@ add_tracker(Pid, PeerGroupPid, URL, InfoHash, Local_Peer_Id, TorrentId) ->
     Tracker = {tracker_communication,
 	       {etorrent_tracker_communication, start_link,
 		[self(), PeerGroupPid, URL, InfoHash, Local_Peer_Id, TorrentId]},
-	       temporary, 90000, worker, [etorrent_tracker_communication]},
+	       temporary, 15000, worker, [etorrent_tracker_communication]},
     supervisor:start_child(Pid, Tracker).
 
 add_peer_pool(Pid) ->
