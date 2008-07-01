@@ -35,8 +35,9 @@ db_initialize() ->
 %%--------------------------------------------------------------------
 list() ->
     {atomic, A} = etorrent_torrent:get_all(),
+    io:format("~3s ~11s ~11s ~7s~n", ["Id:", "total", "left", "Comp."]),
     lists:foreach(fun (R) ->
-			  io:format("Id: ~3.B ~11.B total ~11.B left ~7.3f% ~n",
+			  io:format("~3.B ~11.B ~11.B ~7.3f% ~n",
 				    [R#torrent.id,
 				     R#torrent.total,
 				     R#torrent.left,
