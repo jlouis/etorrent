@@ -3,8 +3,8 @@
 
 -include("etorrent_mnesia_table.hrl").
 
--export([db_initialize/0]).
--export([start/2, stop/1, start/0]).
+-export([db_initialize/0, stop/0, start/0]).
+-export([start/2, stop/1]).
 -export([help/0, list/0]).
 
 start() ->
@@ -21,6 +21,9 @@ start() ->
 
 start(_Type, _Args) ->
     etorrent_sup:start_link().
+
+stop() ->
+    application:stop(etorrent).
 
 stop(_State) ->
     ok.
