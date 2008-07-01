@@ -92,6 +92,10 @@ o [jlouis] When initializing the tracker, get it to start right away. [Milestone
 
 - Build proper installation target in makefile structure
 
+* Implement graceful stopping of the etorrent application [Milestone: 1.0]
+   The provisioning is there in OTP applications. We just need to
+   leverage and use it.
+
 * Make shutdown strategies right [Milestone: 1.0]
    Currently the shutdown strategies and cleanup strategies are wrong;
    for an explanation, see
