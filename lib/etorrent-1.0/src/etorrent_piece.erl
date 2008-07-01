@@ -16,8 +16,7 @@
 	 pieces/1, num_not_fetched/1,
 	 delete/1, piece/2, piece_valid/2,
 	 piece_interesting/2,
-	 torrent_size/1, bitfield/1, check_interest/2,
-	 store_piece/4]).
+	 torrent_size/1, bitfield/1, check_interest/2]).
 
 %%====================================================================
 %% API
@@ -185,44 +184,6 @@ torrent_size(Id) when is_integer(Id) ->
 		Res).
 
 %%--------------------------------------------------------------------
-%% Function: store_piece(Id, PieceNumber, FSPid, GroupPid)
-%%     -> ok | wrong_hash
-%% Description: Store the piece pair {Id, PieceNumber}. Return ok or wrong_hash
-%%   in the case that the piece does not Hash-match.
-%%
-%% Precondition: All chunks for PieceNumber must be downloaded in advance
-%%--------------------------------------------------------------------
-store_piece(Id, PieceNumber, FSPid, GroupPid) ->
-    F = fun () ->
-		[R] = mnesia:read(chunk, {Id, PieceNumber, fetched}, read),
-		mnesia:delete_object(R),
-		R#chunk.chunks
-	end,
-    {atomic, Offsets} = mnesia:transaction(F),
-    Chunks = read_delete_chunks(lists:usort(Offsets), Id, PieceNumber),
-    Data = list_to_binary(lists:map(fun ({_Offset, Data}) -> Data end,
-				    Chunks)),
-    DataSize = size(Data), % Optimization: We can probably check this against #piece.
-    case etorrent_fs:write_piece(FSPid,
-				 PieceNumber,
-				 Data) of
-	ok ->
-	    {atomic, ok} = etorrent_torrent:statechange(Id,
-							{subtract_left, DataSize}),
-	    {atomic, ok} = etorrent_torrent:statechange(Id,
-							{add_downloaded, DataSize}),
-	    {atomic, ok} = statechange(Id, PieceNumber, fetched),
-	    ok = etorrent_t_peer_group:broadcast_have(GroupPid, PieceNumber),
-	    ok;
-	wrong_hash ->
-	    %% Piece had wrong hash and its chunks have already been cleaned.
-	    %%   set the state to be not_fetched again.
-	    {atomic, ok} = etorrent_piece:statechange(Id, PieceNumber, not_fetched),
-	    wrong_hash
-    end.
-
-
-%%--------------------------------------------------------------------
 %% Function: num_fetched(Id) -> integer()
 %% Description: Return the number of not_fetched pieces for torrent Id.
 %%--------------------------------------------------------------------
@@ -240,21 +201,6 @@ num_not_fetched(Id) when is_integer(Id) ->
 %%====================================================================
 %% Internal functions
 %%====================================================================
-
-%%--------------------------------------------------------------------
-%% Function: read_delete_chunks(Chunks, Id, PieceNum) -> [{Offset, Chunk}]
-%% Description: Read and delete a number of chunks.
-%%--------------------------------------------------------------------
-read_delete_chunks([], _, _) ->
-    [];
-read_delete_chunks([Offset | Rest], Id, PieceNum) ->
-    %% Read the chunk
-    [C] = mnesia:dirty_read(chunk_data, {Id, PieceNum, Offset}),
-    %% And delete it
-    ok = mnesia:dirty_delete_object(C),
-    [{Offset, C#chunk_data.data} | read_delete_chunks(Rest, Id, PieceNum)].
-
-
 fetched(Id) when is_integer(Id) ->
     F = fun () ->
 		Q = qlc:q([R#piece.piece_number ||

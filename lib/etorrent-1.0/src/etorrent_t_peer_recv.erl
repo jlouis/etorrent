@@ -376,10 +376,9 @@ handle_got_chunk(Index, Offset, Data, Len, S) ->
 				    Data,
 				    self()) of
 	full ->
-	    etorrent_piece:store_piece(S#state.torrent_id,
-				       Index,
-				       S#state.file_system_pid,
-				       S#state.peer_group_pid);
+	    etorrent_fs:write_piece(S#state.file_system_pid,
+				    S#state.peer_group_pid,
+				    Index);
 	ok ->
 	    ok
     end,

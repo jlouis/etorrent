@@ -58,10 +58,6 @@ o [jlouis] lists:map can be eaten with list comprehensions [Milestone: 0.9]
    we have a lists:map or a lists:filter. There are a few places where
    this can go in.
 
-o [jlouis] What happens when 2 peers store the same piece at same time [Milestone: 0.9]
-   This was an XXX inside the code. But it needs some serious thinking
-   first as there is no easy fix for this.
-
 * Add another state for #piece records [Milestone: 0.9]
    The state 'chunked_no_left' should indicate that the piece has been
    chunked, but there are no chunks left to pick from it. The state is

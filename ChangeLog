@@ -1,5 +1,7 @@
 2008-07-01  Jesper Louis Andersen  <jlouis@ogre.home>
 
+	* SRC: Plug a piece storage race condition.
+
 	* SRC: Etorrent now understands 'min interval' tracker responses.
 
 	* SRC: Fix issues 45, 47.

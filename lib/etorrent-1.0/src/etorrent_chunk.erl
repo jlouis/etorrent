@@ -15,7 +15,7 @@
 
 %% API
 -export([pick_chunks/4, store_chunk/5, putback_chunks/1,
-	 endgame_remove_chunk/3]).
+	 endgame_remove_chunk/3, retrieve_chunks/2]).
 
 %%====================================================================
 %% API
@@ -173,6 +173,23 @@ store_chunk(Id, PieceNum, {Offset, Len}, Data, Pid) ->
 	  end),
     Res.
 
+%%--------------------------------------------------------------------
+%% Function: retrieve_chunks(Id, PieceNum) -> {ok, Data}
+%% Description: Return the Piece comprising of the chunks for it and
+%%   clean them away from the mnesia tables.
+%%--------------------------------------------------------------------
+retrieve_chunks(Id, PieceNum) ->
+    F = fun () ->
+		[R] = mnesia:read(chunk, {Id, PieceNum, fetched},
+				  write),
+		mnesia:delete_object(R),
+		R#chunk.chunks
+	end,
+    {atomic, Offsets} = mnesia:transaction(F),
+    Chunks = read_delete_chunks(lists:usort(Offsets), Id, PieceNum),
+    list_to_binary([Data || {_, Data} <- Chunks]).
+
+
 endgame_remove_chunk(Pid, Id, {Index, Offset, Len}) ->
     case mnesia:dirty_read(chunk, {Id, Index, {assigned, Pid}}) of
 	[] ->
@@ -185,6 +202,19 @@ endgame_remove_chunk(Pid, Id, {Index, Offset, Len}) ->
 %%====================================================================
 %% Internal functions
 %%====================================================================
+
+%%--------------------------------------------------------------------
+%% Function: read_delete_chunks(Chunks, Id, PieceNum) -> [{Offset, Chunk}]
+%% Description: Read and delete a number of chunks.
+%%--------------------------------------------------------------------
+read_delete_chunks([], _, _) ->
+    [];
+read_delete_chunks([Offset | Rest], Id, PieceNum) ->
+    %% Read the chunk
+    [C] = mnesia:dirty_read(chunk_data, {Id, PieceNum, Offset}),
+    %% And delete it
+    ok = mnesia:dirty_delete_object(C),
+    [{Offset, C#chunk_data.data} | read_delete_chunks(Rest, Id, PieceNum)].
 
 %%--------------------------------------------------------------------
 %% Function: find_remaining_chunks(Id, PieceSet) -> [Chunk]
