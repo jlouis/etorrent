@@ -11,7 +11,7 @@ all: libs
 libs:
 	cd lib && $(MAKE)
 
-dialyzer:
+dialyzer: libs
 	$(DIALYZER) -c $(ETORRENT_LIB)/ebin
 
 run: libs
