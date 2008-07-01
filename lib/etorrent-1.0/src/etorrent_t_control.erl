@@ -162,8 +162,6 @@ initializing(timeout, S) ->
 		  S#state.peer_id,
 		  S#state.id),
 
-	    etorrent_tracker_communication:start_now(TrackerPid),
-
 	    {next_state, started,
 	     S#state{file_system_pid = FSPid,
 		     tracker_pid = TrackerPid,
@@ -181,7 +179,7 @@ started(seed, S) ->
     etorrent_torrent:statechange(S#state.id, seeding),
     {ok, Name} = etorrent_metainfo:get_name(S#state.torrent),
     etorrent_event:completed_torrent(Name),
-    etorrent_tracker_communication:torrent_completed(S#state.tracker_pid),
+    etorrent_tracker_communication:completed(S#state.tracker_pid),
     {next_state, started, S}.
 
 stopped(start, S) ->

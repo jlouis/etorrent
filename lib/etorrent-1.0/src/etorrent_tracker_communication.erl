@@ -13,8 +13,7 @@
 -include("etorrent_mnesia_table.hrl").
 
 %% API
--export([start_link/6, contact_tracker_now/1, start_now/1, stop_now/1,
-	torrent_completed/1]).
+-export([start_link/6, contact/1, stopped/1, completed/1, started/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -22,18 +21,21 @@
 
 -record(state, {should_contact_tracker = false,
 		queued_message = none,
+		%% The hard timer is the time we *must* wait on the tracker.
+		%% soft timer may be overridden if we want to change state.
+		soft_timer = none,
+		hard_timer = none,
 		peer_group_pid = none,
 	        url = none,
 	        info_hash = none,
 	        peer_id = none,
 		trackerid = none,
-		time_left = 0,
-		timer = none,
 		control_pid = none,
 		torrent_id = none}).
 
 -define(DEFAULT_REQUEST_TIMEOUT, 180).
 -define(DEFAULT_CONNECTION_TIMEOUT_INTERVAL, 1800).
+-define(DEFAULT_CONNECTION_TIMEOUT_MIN_INTERVAL, 60).
 -define(DEFAULT_TRACKER_OVERLOAD_INTERVAL, 300).
 
 %%====================================================================
@@ -49,17 +51,34 @@ start_link(ControlPid, PeerGroupPid, Url, InfoHash, PeerId, TorrentId) ->
 			    Url, InfoHash, PeerId, TorrentId],
 			  []).
 
-contact_tracker_now(Pid) ->
-    gen_server:cast(Pid, contact_tracker_now).
+%%--------------------------------------------------------------------
+%% Function: contact(Pid)
+%% Description: Contact the tracker right now ignoring the soft timeout
+%%   it won't ignore the hard-timeout though.
+%%--------------------------------------------------------------------
+contact(Pid) ->
+    gen_server:cast(Pid, contact).
 
-start_now(Pid) ->
-    gen_server:cast(Pid, start_now).
+%%--------------------------------------------------------------------
+%% Function: stopped(Pid)
+%% Description: Tell the tracker that we stopped the torrent
+%%--------------------------------------------------------------------
+stopped(Pid) ->
+    gen_server:cast(Pid, stopped).
 
-stop_now(Pid) ->
-    gen_server:call(Pid, stop_now).
+%%--------------------------------------------------------------------
+%% Function: started(Pid)
+%% Description: Tell the tracker that we started the torrent
+%%--------------------------------------------------------------------
+started(Pid) ->
+    gen_server:cast(Pid, started).
 
-torrent_completed(Pid) ->
-    gen_server:cast(Pid, torrent_completed).
+%%--------------------------------------------------------------------
+%% Function: started(Pid)
+%% Description: Tell the tracker that we completed the torrent
+%%--------------------------------------------------------------------
+completed(Pid) ->
+    gen_server:cast(Pid, completed).
 
 %%====================================================================
 %% gen_server callbacks
@@ -74,14 +93,24 @@ torrent_completed(Pid) ->
 %%--------------------------------------------------------------------
 init([ControlPid, PeerGroupPid, Url, InfoHash, PeerId, TorrentId]) ->
     %dbg:p(self(), call),
-    %tr:tr(etorrent_tracker_communication, build_tracker_url),
+    %tr:tr(etorrent_tracker_communication, terminate),
+    %% Trap exits so we can tell the tracker that we stopped when closing down.
+    {ok, HardRef} = timer:send_after(0, hard_timeout),
+    {ok, SoftRef} = timer:send_after(timer:seconds(?DEFAULT_CONNECTION_TIMEOUT_INTERVAL),
+				     soft_timeout),
+
     {ok, #state{should_contact_tracker = false,
 		peer_group_pid = PeerGroupPid,
 		control_pid = ControlPid,
 		torrent_id = TorrentId,
 		url = Url,
 		info_hash = InfoHash,
-		peer_id = PeerId}}.
+		peer_id = PeerId,
+
+	        soft_timer = SoftRef,
+	        hard_timer = HardRef,
+
+	        queued_message = started}}.
 
 %%--------------------------------------------------------------------
 %% Function: %% handle_call(Request, From, State) -> {reply, Reply, State} |
@@ -92,9 +121,6 @@ init([ControlPid, PeerGroupPid, Url, InfoHash, PeerId, TorrentId]) ->
 %%                                      {stop, Reason, State}
 %% Description: Handling call messages
 %%--------------------------------------------------------------------
-handle_call(stop_now, _From, S) ->
-    contact_tracker(S, "stopped"),
-    {reply, ok, S};
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -105,40 +131,18 @@ handle_call(_Request, _From, State) ->
 %%                                      {stop, Reason, State}
 %% Description: Handling cast messages
 %%----------------------p----------------------------------------------
-handle_cast(start_now, S) ->
-    case contact_tracker(S, "started") of
-	{ok, {{_, 200, _}, _, Body}} ->
-	    {ok, NextRequestTime, NS} =
-		handle_tracker_response(etorrent_bcoding:decode(Body), S),
-	    error_logger:info_msg("Will contact again in ~B seconds~n",
-				  [NextRequestTime]),
-	    {noreply, NS, timer:seconds(NextRequestTime)};
-	{error, etimedout} ->
-	    {noreply,
-	     S#state{queued_message = "started"},
-	     timer:seconds(?DEFAULT_CONNECTION_TIMEOUT_INTERVAL)};
-	{error, session_remotly_closed} ->
-	    {noreply,
-	     S#state{queued_message = "started"},
-	     timer:seconds(?DEFAULT_TRACKER_OVERLOAD_INTERVAL)}
-    end;
-handle_cast(torrent_completed, S) ->
-    case contact_tracker(S, "completed") of
-	{ok, {{_, 200, _}, _, Body}} ->
-	    {ok, NextRequestTime, NS} =
-		handle_tracker_response(etorrent_bcoding:decode(Body), S),
-	    error_logger:info_msg("Will contact again in ~B seconds~n",
-				  [NextRequestTime]),
-	    {noreply, NS, timer:seconds(NextRequestTime)};
-	{error, etimedout} ->
-	    {noreply,
-	     S#state{queued_message = "completed"},
-	     timer:seconds(?DEFAULT_CONNECTION_TIMEOUT_INTERVAL)};
-	{error, session_remotly_closed}  ->
-	    {noreply,
-	     S#state{queued_message = "completed"},
-	     timer:seconds(?DEFAULT_TRACKER_OVERLOAD_INTERVAL)}
-    end.
+handle_cast(Msg, S) when S#state.hard_timer =:= none ->
+    NS = contact_tracker(Msg, S),
+    {noreply, NS};
+handle_cast(started, S) when S#state.queued_message =:= completed ->
+    {noreply, S};
+handle_cast(started, S) when S#state.queued_message =:= stopped ->
+    {noreply, S#state {queued_message = started }};
+handle_cast(stopped, S) ->
+    {noreply, S#state {queued_message = stopped }};
+handle_cast(completed, S) ->
+    {noreply, S#state {queued_message = completed }}.
+
 
 %%--------------------------------------------------------------------
 %% Function: handle_info(Info, State) -> {noreply, State} |
@@ -146,19 +150,16 @@ handle_cast(torrent_completed, S) ->
 %%                                       {stop, Reason, State}
 %% Description: Handling all non call/cast messages
 %%--------------------------------------------------------------------
-handle_info(timeout, S) ->
-    case contact_tracker(S, S#state.queued_message) of
-	{ok, {{_, 200, _}, _, Body}} ->
-	    {ok, NextRequestTime, NS} =
-		handle_tracker_response(etorrent_bcoding:decode(Body), S),
-	    {noreply,
-	     NS#state{queued_message=none},
-	     timer:seconds(NextRequestTime)};
-	{error, etimedout} ->
-	    {noreply, S, timer:seconds(?DEFAULT_CONNECTION_TIMEOUT_INTERVAL)};
-	{error, session_remotly_closed} ->
-	    {noreply, S, timer:seconds(?DEFAULT_TRACKER_OVERLOAD_INTERVAL)}
-    end;
+handle_info(hard_timeout, S) when S#state.queued_message =:= none ->
+    %% There is nothing to do with the hard_timer, just ignore this
+    {noreply, S#state { hard_timer = none }};
+handle_info(hard_timeout, S) ->
+    NS = contact_tracker(S#state.queued_message, S),
+    {noreply, NS#state { queued_message = none}};
+handle_info(soft_timeout, S) ->
+    %% Soft timeout
+    NS = contact_tracker(S),
+    {noreply, NS};
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -169,8 +170,9 @@ handle_info(_Info, State) ->
 %% cleaning up. When it returns, the gen_server terminates with Reason.
 %% The return value is ignored.
 %%--------------------------------------------------------------------
+%% XXX: Cancel timers for completeness.
 terminate(normal, S) ->
-    contact_tracker(S, "stopped"),
+    contact_tracker(stopped, S),
     ok;
 terminate(_Reason, _S) ->
     ok.
@@ -185,34 +187,93 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 %%% Internal functions
 %%--------------------------------------------------------------------
-contact_tracker(S, Event) ->
+
+contact_tracker(S) ->
+    contact_tracker(none, S).
+
+contact_tracker(Event, S) ->
+    error_logger:info_report([build_url]),
     NewUrl = build_tracker_url(S, Event),
-    http_gzip:request(NewUrl).
+    error_logger:info_report([requesting]),
+    case http_gzip:request(NewUrl) of
+	{ok, {{_, 200, _}, _, Body}} ->
+	    error_logger:info_report([request]),
+	    handle_tracker_response(etorrent_bcoding:decode(Body), S);
+	{error, etimedout} ->
+	    error_logger:info_report([timeout]),
+	    handle_timeout(S);
+	{error, session_remotly_closed} ->
+	    error_logger:info_report([session_remote_close]),
+	    handle_timeout(S)
+    end.
+
 
 handle_tracker_response(BC, S) ->
-    ControlPid = S#state.control_pid,
-    RequestTime = find_next_request_time(BC),
-    TrackerId = find_tracker_id(BC),
-    Complete = decode_integer("complete", BC),
-    Incomplete = decode_integer("incomplete", BC),
-    NewIPs = find_ips_in_tracker_response(BC),
-    ErrorMessage = fetch_error_message(BC),
-    WarningMessage = fetch_warning_message(BC),
-    if
-	ErrorMessage /= none ->
-	    {string, E} = ErrorMessage,
-	    etorrent_t_control:tracker_error_report(ControlPid, E);
-	WarningMessage /= none ->
-	    etorrent_t_control:tracker_warning_report(ControlPid, WarningMessage),
-	    etorrent_t_peer_group:add_peers(S#state.peer_group_pid, NewIPs),
-	    etorrent_torrent:statechange(S#state.torrent_id,
-					 {tracker_report, Complete, Incomplete});
-	true ->
-	    etorrent_t_peer_group:add_peers(S#state.peer_group_pid, NewIPs),
-	    etorrent_torrent:statechange(S#state.torrent_id,
-					 {tracker_report, Complete, Incomplete})
-    end,
-    {ok, RequestTime, S#state{trackerid = TrackerId}}.
+    handle_tracker_response(BC,
+			    fetch_error_message(BC),
+			    fetch_warning_message(BC),
+			    S).
+
+%%--------------------------------------------------------------------
+%% XXX: To here
+%%--------------------------------------------------------------------
+
+handle_tracker_response(BC, {string, E}, _WM, S) ->
+    etorrent_t_control:tracker_error_report(S#state.control_pid, E),
+    handle_timeout(BC, S);
+handle_tracker_response(BC, none, {string, W}, S) ->
+    etorrent_t_control:tracker_warning_report(S#state.control_pid, W),
+    handle_tracker_response(BC, none, none, S);
+handle_tracker_response(BC, none, none, S) ->
+    %% Add new peers
+    etorrent_t_peer_group:add_peers(S#state.peer_group_pid,
+				   response_ips(BC)),
+    %% Update the state of the torrent
+    etorrent_torrent:statechange(S#state.torrent_id,
+				 {tracker_report,
+				  decode_integer("complete", BC),
+				  decode_integer("incomplete", BC)}),
+    %% Timeout
+    TrackerId = tracker_id(BC),
+    handle_timeout(BC, S#state { trackerid = TrackerId }).
+
+handle_timeout(S) ->
+    Interval = timer:seconds(?DEFAULT_CONNECTION_TIMEOUT_INTERVAL),
+    MinInterval = timer:seconds(?DEFAULT_CONNECTION_TIMEOUT_MIN_INTERVAL),
+    handle_timeout(Interval, MinInterval, S).
+
+handle_timeout(BC, S) ->
+    Interval = response_interval(BC),
+    MinInterval = response_mininterval(BC),
+    handle_timeout(Interval, MinInterval, S).
+
+handle_timeout(Interval, MinInterval, S) ->
+    NS = cancel_timers(S),
+    NNS = case MinInterval of
+	      none ->
+		  NS;
+	      I when is_integer(I) ->
+		  {ok, TRef} = timer:send_after(timer:seconds(I), hard_timeout),
+		  NS#state { hard_timer = TRef }
+	  end,
+    {ok, TRef2} = timer:send_after(timer:seconds(Interval), soft_timeout),
+    NNS#state { soft_timer = TRef2 }.
+
+cancel_timers(S) ->
+    NS = case S#state.hard_timer of
+	     none ->
+		 S;
+	     TRef ->
+		 timer:cancel(TRef),
+		 S#state { hard_timer = none }
+	 end,
+    case NS#state.soft_timer of
+	none ->
+	    NS;
+	TRef2 ->
+	    timer:cancel(TRef2),
+	    NS#state { soft_timer = none }
+    end.
 
 
 construct_headers([], HeaderLines) ->
@@ -237,18 +298,25 @@ build_tracker_url(S, Event) ->
 	       {"port", Port},
 	       {"compact", 1}],
     EReq = case Event of
-	       none ->
-		   Request;
-	       X -> [{"event", X} | Request]
+	       none -> Request;
+	       started -> [{"event", "started"} | Request];
+	       stopped -> [{"event", "stopped"} | Request];
+	       completed -> [{"event", "completed"} | Request]
 	   end,
     lists:concat([S#state.url, "?", construct_headers(EReq, [])]).
 
 %%% Tracker response lookup functions
-find_next_request_time(BC) ->
+response_interval(BC) ->
     {integer, R} = etorrent_bcoding:search_dict_default({string, "interval"},
 						  BC,
 						  {integer,
 						   ?DEFAULT_REQUEST_TIMEOUT}),
+    R.
+
+response_mininterval(BC) ->
+    {integer, R} = etorrent_bcoding:search_dict_default({string, "min interval"},
+							BC,
+							none),
     R.
 
 %%--------------------------------------------------------------------
@@ -270,7 +338,7 @@ decode_ips(<<>>, Accum) ->
 decode_ips(<<B1:8, B2:8, B3:8, B4:8, Port:16/big, Rest/binary>>, Accum) ->
     decode_ips(Rest, [{{B1, B2, B3, B4}, Port} | Accum]).
 
-find_ips_in_tracker_response(BC) ->
+response_ips(BC) ->
     case etorrent_bcoding:search_dict_default({string, "peers"}, BC, none) of
 	{list, Ips} ->
 	    decode_ips(Ips);
@@ -280,7 +348,7 @@ find_ips_in_tracker_response(BC) ->
 	    []
     end.
 
-find_tracker_id(BC) ->
+tracker_id(BC) ->
     etorrent_bcoding:search_dict_default({string, "trackerid"},
 				BC,
 				tracker_id_not_given).
