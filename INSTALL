@@ -6,18 +6,4 @@ WOULD LIKE IT TO BE OVER TIME.
 DARK IN HERE, ISN'T IT?
 
 ------------------------------------------------------------
-Rather than a long GNU-version, here is the summary:
-
-./configure; make; make install
-
-** RUNNING **
-
-Edit the configuration file to suit your setup.
-
-run the bin/etorrent shell-script:
-
-${PREFIX}/bin/etorrentctl start
-
-** STOPPING **
-
-${PREFIX}/bin/etorrentctl stop
+Consult the README file for now.

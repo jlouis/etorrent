@@ -25,43 +25,21 @@ BEP 23 - Tracker Returns Compact Peer Lists.
 
 -- GETTING STARTED WITHOUT INSTALLING --
 
-1. run "./autogen.sh". This calls autoconf and friends. On non-GNU
-   systems, you need GNU Make and a call to 'gmake' or something such depending
-   on your platform.
+1. Check Makefile.config for the right configuration options
+2. run 'make'
+3. create 'lib/etorrent-1.0/priv/etorrent.config' there is an example
+   file in the same dir.
+4. run 'make run' which will spawn etorrent in a running
+   configuration.
 
-2. run "./configure"
-   Optionally: To run with debugging symbols, execute something along
-   the lines of "env ERLCFLAGS='+debug_info' ./configure". This is also
-   needed if you want to run the dialyzer on the source ("make dialyzer").
+5. drop a .torrent file in the watched dir and see what happens.
 
-3. run "make" (These steps are not necessary for the latter)
-
-4. cd into lib/etorrent-1.0/ebin.
-
-5. copy ../../../etc/etorrent.config into the ebin dir and edit it to your
-   liking.
-   Note that the directory for watching torrents and the directory for
-   error logs should exist (or things get nasty).
-
-6. run "erl -pa . -config etorrent.config -sname etorrent -s etorrent"
-   you can add +Ktrue +A 128 for architectures that supports it.
-
-7. drop a .torrent file in the watched dir and see what happens.
-
-8. call etorrent:help(). from the Erlang CLI to get a list of available
+6. call etorrent:help(). from the Erlang CLI to get a list of available
    commands.
 
 -- GETTING STARTED WITH INSTALLING --
 
-NOTE: This method has not yet seen heavy testing. It can be made a lot
-      better than it is.
-
-1. make -f Makefile.init
-2. ./configure
-3. make
-4. make install (as root)
-5. edit ${prefix}/etc/etorrent.config to your liking
-6. run ${bindir}/etorrentctl start
+NOTE: This method is not yet done.
 
 -- REPORTING BUGS --
 
