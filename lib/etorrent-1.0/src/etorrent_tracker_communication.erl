@@ -94,7 +94,6 @@ completed(Pid) ->
 init([ControlPid, PeerGroupPid, Url, InfoHash, PeerId, TorrentId]) ->
     %dbg:p(self(), call),
     %tr:tr(etorrent_tracker_communication, terminate),
-    %% Trap exits so we can tell the tracker that we stopped when closing down.
     {ok, HardRef} = timer:send_after(0, hard_timeout),
     {ok, SoftRef} = timer:send_after(timer:seconds(?DEFAULT_CONNECTION_TIMEOUT_INTERVAL),
 				     soft_timeout),
@@ -192,18 +191,13 @@ contact_tracker(S) ->
     contact_tracker(none, S).
 
 contact_tracker(Event, S) ->
-    error_logger:info_report([build_url]),
     NewUrl = build_tracker_url(S, Event),
-    error_logger:info_report([requesting]),
     case http_gzip:request(NewUrl) of
 	{ok, {{_, 200, _}, _, Body}} ->
-	    error_logger:info_report([request]),
 	    handle_tracker_response(etorrent_bcoding:decode(Body), S);
 	{error, etimedout} ->
-	    error_logger:info_report([timeout]),
 	    handle_timeout(S);
 	{error, session_remotly_closed} ->
-	    error_logger:info_report([session_remote_close]),
 	    handle_timeout(S)
     end.
 
