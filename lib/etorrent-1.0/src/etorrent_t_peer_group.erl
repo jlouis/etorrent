@@ -130,7 +130,7 @@ handle_info(Info, State) ->
     {noreply, State}.
 
 terminate(_Reason, S) ->
-    error_logger:info_report([peer_group_terminating]),
+    error_logger:info_report([peer_group_terminating, S]),
     ok.
 
 code_change(_OldVsn, State, _Extra) ->
