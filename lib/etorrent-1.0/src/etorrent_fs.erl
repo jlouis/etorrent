@@ -91,29 +91,40 @@ handle_call({read_piece, PieceNum}, _From, S) ->
     {reply, {ok, Data}, NS};
 %% XXX: This may probably be a cast for performance
 handle_call({write_piece, PeerGroupPid, Index}, _From, S) ->
-    Data = etorrent_chunk:retrieve_chunks(S#state.torrent_id, Index),
-    DataSize = size(Data),
-    [#piece { hash = Hash,
-	      files = FilesToWrite }] = etorrent_piece:piece(S#state.torrent_id,
-							     Index),
-    D = iolist_to_binary(Data),
-    case Hash == crypto:sha(D) of
-	true ->
-	    {ok, NS} = write_piece_data(D, FilesToWrite, S),
-	    {atomic, ok} = etorrent_torrent:statechange(S#state.torrent_id,
-							{subtract_left, DataSize}),
-	    {atomic, ok} = etorrent_torrent:statechange(S#state.torrent_id,
-							{add_downloaded, DataSize}),
-	    {atomic, ok} = etorrent_piece:statechange(S#state.torrent_id,
-						      Index,
-						      fetched),
-	    ok = etorrent_t_peer_group:broadcast_have(PeerGroupPid, Index),
-	    {reply, ok, NS};
-	false ->
-	    {atomic, ok} = etorrent_piece:statechange(S#state.torrent_id,
-						      Index,
-						      not_fetched),
-	    {reply, wrong_hash, S}
+    case etorrent_piece:piece(S#state.torrent_id, Index) of
+	[P] when P#piece.state =:= fetched ->
+	    {noreply, ok};
+	[_] ->
+	    Data = etorrent_chunk:retrieve_chunks(S#state.torrent_id, Index),
+	    DataSize = size(Data),
+	    [#piece { hash = Hash,
+		      files = FilesToWrite }] =
+		etorrent_piece:piece(S#state.torrent_id,
+				     Index),
+	    D = iolist_to_binary(Data),
+	    case Hash == crypto:sha(D) of
+		true ->
+		    {ok, NS} = write_piece_data(D, FilesToWrite, S),
+		    {atomic, ok} = etorrent_torrent:statechange(
+				     S#state.torrent_id,
+				     {subtract_left, DataSize}),
+		    {atomic, ok} = etorrent_torrent:statechange(
+				     S#state.torrent_id,
+				     {add_downloaded, DataSize}),
+		    {atomic, ok} = etorrent_piece:statechange(
+				     S#state.torrent_id,
+				     Index,
+				     fetched),
+		    ok = etorrent_t_peer_group:broadcast_have(PeerGroupPid,
+							      Index),
+		    {reply, ok, NS};
+		false ->
+		    {atomic, ok} =
+			etorrent_piece:statechange(S#state.torrent_id,
+						   Index,
+						   not_fetched),
+		    {reply, wrong_hash, S}
+	    end
     end.
 
 handle_cast(stop, S) ->
