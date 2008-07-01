@@ -11,7 +11,7 @@
 -include("etorrent_mnesia_table.hrl").
 
 %% API
--export([new/3, delete/1, by_file/1, by_infohash/1, statechange/2,
+-export([new/3, delete/1, select/1, statechange/2,
 	 is_ready_for_checking/1]).
 
 %%====================================================================
@@ -35,22 +35,22 @@ new(File, Supervisor, Id) ->
 				       state = awaiting}).
 
 %%--------------------------------------------------------------------
-%% Function: by_file(Filename) -> [SupervisorPid]
-%% Description: Find torrent specs matching the filename in question.
+%% Function: select({filename, Filename}) -> [#tracking_map]
+%% Description: Find tracking map matching the filename in question.
 %%--------------------------------------------------------------------
-by_file(Filename) ->
+select({filename,Filename}) ->
     mnesia:transaction(
       fun () ->
-	      Query = qlc:q([T#tracking_map.filename || T <- mnesia:table(tracking_map),
+	      Query = qlc:q([T || T <- mnesia:table(tracking_map),
 							T#tracking_map.filename == Filename]),
 	      qlc:e(Query)
-      end).
+      end);
 
 %%--------------------------------------------------------------------
-%% Function: by_infohash(Infohash) -> [#tracking_map]
+%% Function: select({infohash, Infohash}) -> [#tracking_map]
 %% Description: Find tracking map matching a given infohash.
 %%--------------------------------------------------------------------
-by_infohash(InfoHash) ->
+select({infohash, InfoHash}) ->
     mnesia:transaction(
       fun () ->
 	      Q = qlc:q([T || T <- mnesia:table(tracking_map),

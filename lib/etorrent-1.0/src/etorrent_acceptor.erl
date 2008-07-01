@@ -117,7 +117,7 @@ handshake(Socket) ->
     end.
 
 lookup_infohash(Socket, ReservedBytes, InfoHash, PeerId) ->
-    case etorrent_tracking_map:by_infohash(InfoHash) of
+    case etorrent_tracking_map:select({infohash, InfoHash}) of
 	{atomic, [#tracking_map {supervisor_pid = Pid}]} ->
 	    start_peer(Socket, Pid, ReservedBytes, PeerId);
 	{atomic, []} ->
