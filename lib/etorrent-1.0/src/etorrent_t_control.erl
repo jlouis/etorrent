@@ -275,7 +275,7 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 %%% Internal functions
 %%--------------------------------------------------------------------
 calculate_amount_left(Id) when is_integer(Id) ->
-    {atomic, Pieces} = etorrent_piece:get_pieces(Id),
+    {atomic, Pieces} = etorrent_piece:pieces(Id),
     lists:sum([size_piece(P) || P <- Pieces]).
 
 size_piece(#piece{state = fetched}) -> 0;

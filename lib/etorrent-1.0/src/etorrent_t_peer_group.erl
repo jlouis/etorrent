@@ -120,7 +120,7 @@ handle_info({'DOWN', _Ref, process, Pid, Reason}, S)
     {noreply, NS};
 handle_info({'DOWN', _Ref, process, Pid, _Reason}, S) ->
     % The peer shut down unexpectedly re-add him to the queue in the *back*
-    {IP, Port} = etorrent_peer:get_ip_port(Pid),
+    {IP, Port} = etorrent_peer:ip_port(Pid),
     etorrent_peer:delete(Pid),
     {noreply, S#state{available_peers =
 		      (S#state.available_peers ++ [{IP, Port}]),
@@ -242,7 +242,7 @@ sort_fastest_uploaders(Peers) ->
       Peers).
 
 find_fastest_peers(N, Interested, S) ->
-    case etorrent_torrent:get_mode(S#state.torrent_id) of
+    case etorrent_torrent:mode(S#state.torrent_id) of
 	leeching ->
 	    etorrent_utils:gsplit(N, sort_fastest_downloaders(Interested));
 	seeding ->

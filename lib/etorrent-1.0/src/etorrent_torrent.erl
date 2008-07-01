@@ -11,9 +11,9 @@
 -include("etorrent_mnesia_table.hrl").
 
 %% API
--export([new/3, delete/1, get_by_id/1, get_all/0, statechange/2,
-	 get_num_pieces/1, decrease_not_fetched/1,
-	 is_endgame/1, get_mode/1]).
+-export([new/3, delete/1, by_id/1, all/0, statechange/2,
+	 num_pieces/1, decrease_not_fetched/1,
+	 is_endgame/1, mode/1]).
 
 %%====================================================================
 %% API
@@ -36,14 +36,14 @@ new(Id, {{uploaded, U}, {downloaded, D}, {left, L}, {total, T}}, NPieces) ->
 					state = State })
 	end,
     {atomic, _} = mnesia:transaction(F),
-    Missing = etorrent_piece:get_num_not_fetched(Id),
+    Missing = etorrent_piece:num_not_fetched(Id),
     mnesia:dirty_update_counter(torrent_c_pieces, Id, Missing).
 
 %%--------------------------------------------------------------------
-%% Function: get_mode(Id) -> seeding | endgame | leeching
+%% Function: mode(Id) -> seeding | endgame | leeching
 %% Description: Return the current mode of the torrent.
 %%--------------------------------------------------------------------
-get_mode(Id) ->
+mode(Id) ->
     [#torrent { state = S}] = mnesia:dirty_read(torrent, Id),
     S.
 
@@ -60,24 +60,24 @@ delete(Torrent) when is_record(Torrent, torrent) ->
     mnesia:dirty_delete_object(Torrent).
 
 %%--------------------------------------------------------------------
-%% Function: get_by_id(Id, Pid) -> Rows
+%% Function: by_id(Id, Pid) -> Rows
 %% Description: Return the torrent identified by Id
 %%--------------------------------------------------------------------
-get_by_id(Id) ->
+by_id(Id) ->
     mnesia:dirty_read(torrent, Id).
 
 %%--------------------------------------------------------------------
-%% Function: get_all() -> Rows
+%% Function: all() -> Rows
 %% Description: Return all torrents, sorted by Id
 %%--------------------------------------------------------------------
-get_all() ->
-    get_all(#torrent.id).
+all() ->
+    all(#torrent.id).
 
 %%--------------------------------------------------------------------
-%% Function: get_all(Pos) -> Rows
+%% Function: all(Pos) -> Rows
 %% Description: Return all torrents, sorted by Pos
 %%--------------------------------------------------------------------
-get_all(Pos) ->
+all(Pos) ->
     mnesia:transaction(
       fun () ->
 	      Q = qlc:q([P || P <- mnesia:table(torrent)]),
@@ -86,10 +86,10 @@ get_all(Pos) ->
 
 
 %%--------------------------------------------------------------------
-%% Function: get_num_pieces(Id) -> integer()
+%% Function: num_pieces(Id) -> integer()
 %% Description: Return the number of pieces for torrent Id
 %%--------------------------------------------------------------------
-get_num_pieces(Id) ->
+num_pieces(Id) ->
     [R] = mnesia:dirty_read(torrent, Id),
     R#torrent.pieces.
 

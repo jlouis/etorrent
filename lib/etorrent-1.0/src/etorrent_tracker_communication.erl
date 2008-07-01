@@ -225,7 +225,7 @@ construct_headers([{Key, Value} | Rest], HeaderLines) ->
     construct_headers(Rest, [Data | HeaderLines]).
 
 build_tracker_url(S, Event) ->
-    [R] = etorrent_torrent:get_by_id(S#state.torrent_id),
+    [R] = etorrent_torrent:by_id(S#state.torrent_id),
     {ok, Port} = application:get_env(etorrent, port),
     Request = [{"info_hash",
 		etorrent_utils:build_encoded_form_rfc1738(S#state.info_hash)},
