@@ -15,7 +15,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/1, get_data/3, put_data/4]).
+-export([start_link/1, get_data/3, put_data/4, stop/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -43,18 +43,18 @@ get_data(Pid, OffSet, Size) ->
 put_data(Pid, Chunk, Offset, _Size) ->
     gen_server:call(Pid, {write_request, Offset, Chunk}).
 
+stop(Pid) ->
+    gen_server:cast(Pid, stop).
+
 %%====================================================================
 %% gen_server callbacks
 %%====================================================================
 init([Path]) ->
-    case file:open(Path, [read, write, binary, raw]) of
-	{ok, IODev} ->
-	    {ok, #state{iodev = IODev,
-		        path = Path}, ?REQUEST_TIMEOUT};
-	{error, Reason} ->
-	    {stop, Reason}
-    end.
-
+    %% We'll clean up file descriptors gracefully on termination.
+    process_flag(trap_exit, true),
+    {ok, IODev} = file:open(Path, [read, write, binary, raw]),
+    {ok, #state{iodev = IODev,
+		path = Path}, ?REQUEST_TIMEOUT}.
 
 %%--------------------------------------------------------------------
 %% Function: %% handle_call(Request, From, State) -> {reply, Reply, State} |
@@ -65,24 +65,12 @@ init([Path]) ->
 %%                                      {stop, Reason, State}
 %% Description: Handling call messages
 %%--------------------------------------------------------------------
-handle_call({read_request, OffSet, Size}, _From, State) ->
-    case read_request(OffSet, Size, State) of
-	{ok, Data} ->
-	    {reply, {ok, Data}, State, ?REQUEST_TIMEOUT};
-	{pos_error, E} ->
-	    {stop, E, error, State};
-	{read_error, E} ->
-	    {stop, E, error, State}
-    end;
-handle_call({write_request, OffSet, Data}, _From, S) ->
-    case write_request(OffSet, Data, S) of
-	ok ->
-	    {reply, ok, S, ?REQUEST_TIMEOUT};
-	{pos_error, E} ->
-	    {stop, E, error, S};
-	{write_error, E} ->
-	    {stop, E, error, S}
-    end.
+handle_call({read_request, Offset, Size}, _From, State) ->
+    Data = read_request(Offset, Size, State),
+    {reply, Data, State, ?REQUEST_TIMEOUT};
+handle_call({write_request, Offset, Data}, _From, S) ->
+    ok = write_request(Offset, Data, S),
+    {reply, ok, S, ?REQUEST_TIMEOUT}.
 
 %%--------------------------------------------------------------------
 %% Function: handle_cast(Msg, State) -> {noreply, State} |
@@ -90,17 +78,22 @@ handle_call({write_request, OffSet, Data}, _From, S) ->
 %%                                      {stop, Reason, State}
 %% Description: Handling cast messages
 %%--------------------------------------------------------------------
+handle_cast(stop, S) ->
+    {stop, normal, S};
 handle_cast(_Msg, State) ->
     {noreply, State, ?REQUEST_TIMEOUT}.
 
 handle_info(timeout, State) ->
     {stop, normal, State};
 handle_info(Info, State) ->
-    io:format("Unknown: ~w", [Info]),
+    error_logger:warning_report([unknown_fs_process, Info]),
     {noreply, State}.
 
-terminate(_Reason, State) ->
+terminate(Reason, State) when (Reason =:= normal) orelse (Reason =:= shutdown) ->
     file:close(State#state.iodev),
+    ok;
+terminate(Reason, _S) ->
+    error_logger:warning_report([fs_process_terminating, Reason]),
     ok.
 
 %%--------------------------------------------------------------------
@@ -123,20 +116,10 @@ code_change(_OldVsn, State, _Extra) ->
 %%  error message.
 %%--------------------------------------------------------------------
 read_request(Offset, Size, State) ->
-    case file:position(State#state.iodev, Offset) of
-	{error, PosixReason} ->
-	    {pos_error, PosixReason};
-	{ok, NP} ->
-	    Offset = NP,
-	    case file:read(State#state.iodev, Size) of
-		{error, Reason} ->
-		    {read_error, Reason};
-		eof ->
-		    {read_error, eof};
-		{ok, Data} ->
-		    {ok, Data}
-	    end
-    end.
+    {ok, NP} = file:position(State#state.iodev, Offset),
+    Offset = NP,
+    {ok, Data} = file:read(State#state.iodev, Size),
+    Data.
 
 %%--------------------------------------------------------------------
 %% Func: write_request(Offset, Bytes, State) -> ok
@@ -146,17 +129,9 @@ read_request(Offset, Size, State) ->
 %%   ok, or an error from positioning or writing which is posix().
 %%--------------------------------------------------------------------
 write_request(Offset, Bytes, State) ->
-    case file:position(State#state.iodev, Offset) of
-	{error, R} ->
-	    {pos_error, R};
-	{ok, _NP} ->
-	    case file:write(State#state.iodev, Bytes) of
-		{error, R} ->
-		    {write_error, R};
-		ok ->
-		    ok
-	    end
-    end.
+    {ok, NP} = file:position(State#state.iodev, Offset),
+    Offset = NP,
+    ok = file:write(State#state.iodev, Bytes).
 
 %%--------------------------------------------------------------------
 %% Func:

@@ -35,7 +35,6 @@ o [tuncer] Consistently name by_ mnesia table calls. [Milestone: 0.9]
    lib/etorrent-1.0/src/etorrent_fs_checker.erl
    lib/etorrent-1.0/src/etorrent_fs.erl
    lib/etorrent-1.0/src/etorrent_fs_pool_sup.erl
-   lib/etorrent-1.0/src/etorrent_fs_process.erl
    lib/etorrent-1.0/src/etorrent_listener.erl
 
    lib/etorrent-1.0/src/etorrent_mnesia_init.erl
@@ -180,5 +179,25 @@ o [jlouis] When initializing the tracker, get it to start right away. [Milestone
 - What happens if process X dies
   Go through all processes, and think about what happens if it
    dies. Ensure that the system is robust.
+- List of processes to check for it:
+   etorrent_acceptor.erl            etorrent_sup.erl
+   etorrent_acceptor_sup.erl        etorrent_t_control.erl
+   etorrent_bcoding.erl             etorrent_t_manager.erl
+   etorrent_chunk.erl               etorrent_torrent.erl
+   etorrent_dirwatcher.erl          etorrent_t_peer_group.erl
+   etorrent_dirwatcher_sup.erl      etorrent_t_peer_pool_sup.erl
+   etorrent.erl                     etorrent_t_peer_recv.erl
+   etorrent_event.erl               etorrent_t_peer_send.erl
+   etorrent_fs_checker.erl          etorrent_t_pool_sup.erl
+   etorrent_fs.erl                  etorrent_tracker_communication.erl
+   etorrent_fs_pool_sup.erl         etorrent_tracking_map.erl
+   etorrent_t_sup.erl
+   etorrent_listener.erl            etorrent_utils.erl
+   etorrent_metainfo.erl            etorrent_version.hrl
+   etorrent_mnesia_init.erl         http_gzip.erl
+   etorrent_mnesia_table.hrl
+   etorrent_peer_communication.erl
+   etorrent_peer.erl                tr.erl
+   etorrent_piece.erl
 
 

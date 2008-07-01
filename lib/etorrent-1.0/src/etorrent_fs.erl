@@ -127,7 +127,11 @@ handle_info(_Info, State) ->
 %% cleaning up. When it returns, the gen_server terminates with Reason.
 %% The return value is ignored.
 %%--------------------------------------------------------------------
-terminate(_Reason, _State) ->
+terminate(shutdown, S) ->
+    stop_all_fs_processes(S#state.file_process_dict),
+    ok;
+terminate(Reason, _State) ->
+    error_logger:warning_report([fs_process_terminate, Reason]),
     ok.
 
 %%--------------------------------------------------------------------
@@ -154,7 +158,7 @@ read_pieces_and_assemble([{Path, Offset, Size} | Rest], Done, S) ->
 	    Ref = make_ref(),
 	    case catch({Ref,
 			etorrent_fs_process:get_data(Pid, Offset, Size)}) of
-		{Ref, {ok, Data}} ->
+		{Ref, Data} ->
 		    read_pieces_and_assemble(Rest, [Data | Done], S);
 		{'EXIT', {noproc, _}} ->
 		    D = remove_file_process(Pid, S#state.file_process_dict),
@@ -164,7 +168,7 @@ read_pieces_and_assemble([{Path, Offset, Size} | Rest], Done, S) ->
 	    end;
 	error ->
 	    {ok, Pid, NS} = create_file_process(Path, S),
-	    {ok, Data} = etorrent_fs_process:get_data(Pid, Offset, Size),
+	    Data = etorrent_fs_process:get_data(Pid, Offset, Size),
 	    read_pieces_and_assemble(Rest, [Data | Done], NS)
     end.
 
@@ -192,13 +196,13 @@ write_piece_data(Data, [{Path, Offset, Size} | Rest], S) ->
     end.
 
 remove_file_process(Pid, Dict) ->
-    erase_value(Pid, Dict).
+    case dict:fetch_keys(dict:filter(fun (_K, V) -> V =:= Pid end, Dict)) of
+	[Key] ->
+	    dict:erase(Key, Dict);
+	[] ->
+	    ok
+    end.
 
-erase_value(Value, Dict) ->
-    Pred = fun(_K, V) ->
-		   Value == V
-	   end,
-    Victim = dict:filter(Pred, Dict),
-    [Key] = dict:fetch_keys(Victim),
-    dict:erase(Key, Dict).
+stop_all_fs_processes(Dict) ->
+    [etorrent_fs_process:stop(Pid) || {_, Pid} <- dict:to_list(Dict)].
 
