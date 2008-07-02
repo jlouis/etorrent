@@ -9,41 +9,13 @@
 -module(etorrent_utils).
 
 %% API
--export([read_all_of_file/1, list_tabulate/2, queue_remove/2,
-	 queue_remove_with_check/2, sets_is_empty/1,
+-export([queue_remove/2, queue_remove_with_check/2,
 	 build_encoded_form_rfc1738/1,
 	 shuffle/1, gsplit/2]).
 
 %%====================================================================
 %% API
 %%====================================================================
-%%--------------------------------------------------------------------
-%% Function: read_all_of_file: File -> {ok, Data} | {error, Reason}
-%% Description: Open and read all data from File.
-%%--------------------------------------------------------------------
-read_all_of_file(File) ->
-    case file:open(File, [read]) of
-	{ok, IODev} ->
-	    {ok, read_data(IODev)};
-	{error, Reason} ->
-	    {error, Reason}
-    end.
-
-
-list_tabulate(N, F) ->
-    list_tabulate(0, N, F, []).
-
-%%--------------------------------------------------------------------
-%% Function: sets_is_empty(set()) -> bool()
-%% Description: True if set() is empty, false otherwise
-%%--------------------------------------------------------------------
-sets_is_empty(Set) ->
-    case sets:size(Set) of
-	0 ->
-	    true;
-	_ ->
-	    false
-    end.
 
 %%--------------------------------------------------------------------
 %% Function: gsplit(N, L1) -> {L2, L3}
@@ -123,22 +95,6 @@ shuffle(List) ->
 %%====================================================================
 %% Internal functions
 %%====================================================================
-
-list_tabulate(N, K, _F, Acc) when N ==K ->
-    lists:reverse(Acc);
-list_tabulate(N, K, F, Acc) ->
-    list_tabulate(N+1, K, F, [F(N) | Acc]).
-
-read_data(IODev) ->
-    eat_lines(IODev, []).
-
-eat_lines(IODev, Accum) ->
-    case io:get_chars(IODev, ">", 8192) of
-	eof ->
-	    lists:concat(lists:reverse(Accum));
-	String ->
-	    eat_lines(IODev, [String | Accum])
-    end.
 
 rfc_3986_unreserved_characters() ->
     % jlouis: I deliberately killed ~ from the list as it seems the Mainline

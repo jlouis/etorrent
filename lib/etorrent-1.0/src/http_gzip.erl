@@ -43,10 +43,8 @@ request(URL) ->
 %% Internal functions
 %%====================================================================
 decode_content_encoding(Headers) ->
-    LowerCaseHeaderKeys = lists:map(fun({K, V}) ->
-					    {string:to_lower(K), V}
-				    end,
-				    Headers),
+    LowerCaseHeaderKeys =
+	[{string:to_lower(K), V} || {K, V} <- Headers],
     case lists:keysearch("content-encoding", 1, LowerCaseHeaderKeys) of
 	{value, {_, "gzip"}} ->
 	    gzip;
@@ -66,4 +64,3 @@ decode_host(URL) ->
 	N when is_integer(N) ->
 	    Host ++ ":" ++ integer_to_list(N)
     end.
-

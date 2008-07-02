@@ -16,38 +16,19 @@
    programming. Sparked by comments from Joe Armstrong.
 
 - Missing module to check:
-   lib/etorrent-1.0/src/etorrent_acceptor.erl
-   lib/etorrent-1.0/src/etorrent_acceptor_sup.erl
-   lib/etorrent-1.0/src/etorrent_app.erl
-
    lib/etorrent-1.0/src/etorrent_chunk.erl
-   lib/etorrent-1.0/src/etorrent_dirwatcher.erl
-   lib/etorrent-1.0/src/etorrent_dirwatcher_sup.erl
-   lib/etorrent-1.0/src/etorrent_event.erl
    lib/etorrent-1.0/src/etorrent_fs_checker.erl
    lib/etorrent-1.0/src/etorrent_fs.erl
    lib/etorrent-1.0/src/etorrent_fs_pool_sup.erl
    lib/etorrent-1.0/src/etorrent_listener.erl
 
-   lib/etorrent-1.0/src/etorrent_mnesia_init.erl
    lib/etorrent-1.0/src/etorrent_peer_communication.erl
    lib/etorrent-1.0/src/etorrent_peer.erl
    lib/etorrent-1.0/src/etorrent_piece.erl
-   lib/etorrent-1.0/src/etorrent_sup.erl
-   lib/etorrent-1.0/src/etorrent_t_manager.erl
    lib/etorrent-1.0/src/etorrent_torrent.erl
    lib/etorrent-1.0/src/etorrent_t_peer_group.erl
-   lib/etorrent-1.0/src/etorrent_t_peer_pool_sup.erl
    lib/etorrent-1.0/src/etorrent_t_peer_recv.erl
    lib/etorrent-1.0/src/etorrent_t_peer_send.erl
-   lib/etorrent-1.0/src/etorrent_t_pool_sup.erl
-
-   lib/etorrent-1.0/src/etorrent_tracking_map.erl
-   lib/etorrent-1.0/src/etorrent_t_sup.erl
-   lib/etorrent-1.0/src/etorrent_utils.erl
-   lib/etorrent-1.0/src/http_gzip.erl
-   lib/etorrent-1.0/src/tracker_filter.erl
-   lib/etorrent-1.0/src/tr.erl
 
 o [jlouis] lists:map can be eaten with list comprehensions [Milestone: 0.9]
    For more succinct code we could use a list comprehension whenever
@@ -107,6 +88,13 @@ o [jlouis] lists:map can be eaten with list comprehensions [Milestone: 0.9]
    Currently bad peers are those which are already connected. We ought
    to keep a list of baddies and blacklist them for some time if we
    don't like them anymore.
+
+* etorrent_t_sup: Just start everything right away? [Milestone: 1.1]
+   Rather than having the code start things one at a time from the
+   Control, it is much more robust just to have etorrent_t_sup start
+   everything right away.
+
+   Think about restarts!
 
 * It takes too much space to use #chunk_data [Milestone: 1.1]
    To fix this we can move store_chunk down and make it into an FS

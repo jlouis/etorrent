@@ -204,18 +204,14 @@ receive_header(Socket, InfoHash) ->
 %%--------------------------------------------------------------------
 construct_bitfield(Size, PieceSet) ->
     PadBits = 8 - (Size rem 8),
-    Bits = lists:append(
-	     [etorrent_utils:list_tabulate(
-		Size,
-		fun(N) ->
-			case gb_sets:is_element(N, PieceSet) of
-			    true -> 1;
-			    false -> 0
-			end
-		end),
-	      etorrent_utils:list_tabulate(
-	       PadBits,
-	       fun(_N) -> 0 end)]),
+    F = fun(N) ->
+		case gb_sets:is_element(N, PieceSet) of
+		    true -> 1;
+		    false -> 0
+		end
+	end,
+    Bits = lists:append([F(N) || N <- lists:seq(0, Size-1)],
+			[0 || _N <- lists:seq(1,PadBits)]),
     0 = length(Bits) rem 8,
     list_to_binary(build_bytes(Bits)).
 

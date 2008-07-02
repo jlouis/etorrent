@@ -18,11 +18,6 @@
 %% API
 %%====================================================================
 %%--------------------------------------------------------------------
-%% Function: 
-%% Description:
-%%--------------------------------------------------------------------
-
-%%--------------------------------------------------------------------
 %% Function: new(Filename, Supervisor) -> ok
 %% Description: Add a new torrent given by File with the Supervisor
 %%   pid as given to the database structure.
@@ -42,7 +37,7 @@ select({filename,Filename}) ->
     mnesia:transaction(
       fun () ->
 	      Query = qlc:q([T || T <- mnesia:table(tracking_map),
-							T#tracking_map.filename == Filename]),
+				  T#tracking_map.filename == Filename]),
 	      qlc:e(Query)
       end);
 

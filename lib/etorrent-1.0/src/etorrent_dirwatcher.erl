@@ -43,7 +43,7 @@ dir_watched() ->
 init([]) ->
     {ok, Dir} = application:get_env(etorrent, dir),
     % Provide a timeout in 100 ms to get up fast
-    {ok, #state{dir = Dir, fileset = empty_state()}, 100}.
+    {ok, #state{dir = Dir, fileset = sets:new()}, 100}.
 
 handle_call(report_on_files, _Who, S) ->
     {reply, sets:to_list(S#state.fileset), S, ?WATCH_WAIT_TIME};
@@ -84,12 +84,9 @@ watch_directories(S) ->
 		  sets:to_list(R)),
     N.
 
-empty_state() -> sets:new().
-
 scan_files_in_dir(S) ->
     Files = filelib:fold_files(S#state.dir, ".*\.torrent", false,
-			       fun(F, Accum) ->
-				       [F | Accum] end, []),
+			       fun(F, Accum) -> [F | Accum] end, []),
     FilesSet = sets:from_list(Files),
     Added = sets:subtract(FilesSet, S#state.fileset),
     Removed = sets:subtract(S#state.fileset, FilesSet),

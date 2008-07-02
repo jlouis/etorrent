@@ -43,7 +43,6 @@ handle_cast({stop_torrent, F}, S) ->
     stop_torrent(F, S),
     {noreply, S}.
 
-
 handle_call(_A, _B, S) ->
     {noreply, S}.
 
@@ -86,4 +85,3 @@ generate_peer_id() ->
     PeerId = lists:flatten(io_lib:format("-ET~s-~12s", [?VERSION, Rand])),
     error_logger:info_report([peer_id, PeerId]),
     PeerId.
-
