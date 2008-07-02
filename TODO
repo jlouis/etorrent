@@ -6,10 +6,6 @@
 --   Keep the style please. Can be read with emacs org-mode
 ----------------------------------------------------------------------
 
-o [tuncer] Consistently name by_ mnesia table calls. [Milestone: 0.9]
-   The naming of calls in the mnesia manipulation tables are bad, they
-   should be updated for consistency.
-
 * For each module, go through it and think: Crash? [All milestones]
    For each module, go through it and think: Do we expect something to
    happen here? If yes, assume it happens and code such that if it is
@@ -73,12 +69,8 @@ o [jlouis] lists:map can be eaten with list comprehensions [Milestone: 0.9]
 - Set a kernel parameter for timer:start() [Milestone: 0.9]
    This is mentioned in timer(3erl), so better heed it.
 
-- Let the system start with +Ktrue and +A 256 [Milestone: 0.9]
-   Will greatly enhance the performance of the application.
-
-- Consider using EMakefile
-
-- Build proper installation target in makefile structure
+* Write an etorrent_ctl.erl commander [Milestone: 0.9]
+   This can be stolen from ejabberd :>
 
 * Implement graceful stopping of the etorrent application [Milestone: 1.0]
    The provisioning is there in OTP applications. We just need to
