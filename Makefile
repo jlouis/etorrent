@@ -15,7 +15,8 @@ dialyzer: libs
 	$(DIALYZER) -c $(ETORRENT_LIB)/ebin
 
 run: libs
-	erl -pa $(ETORRENT_LIB)/ebin -config $(ETORRENT_LIB)/priv/etorrent.config \
+	erl $(ERL_FLAGS) -pa $(ETORRENT_LIB)/ebin \
+	-config $(ETORRENT_LIB)/priv/etorrent.config \
 	-sname etorrent -s etorrent
 
 clean:
