@@ -30,4 +30,9 @@ install:
 		cp -r $(ETORRENT_LIB)/$$i $(RELEASE_PREFIX)/lib/etorrent-$(VER) ; \
 	done
 
+	mkdir -p $(BIN_PREFIX)
+	sed -e "s|%%%BEAMDIR%%%|$(RELEASE_PREFIX)/lib/etorrent-$(VER)/ebin|;" \
+	    -e "s|%%%CONFIGFILE%%%|$(RELEASE_PREFIX)/lib/etorrent-$(VER)/priv/etorrent.config|;" \
+	    -e "s|%%%ERL_FLAGS%%%|\"$(ERL_FLAGS)\"|" < ./bin/etorrentctl.in > $(BIN_PREFIX)/etorrentctl
 
+	        
