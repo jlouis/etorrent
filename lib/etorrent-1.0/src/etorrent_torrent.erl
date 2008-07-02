@@ -135,7 +135,7 @@ statechange(Id, What) when is_integer(Id) ->
 				      case Left of
 					  0 ->
 					      T#torrent { left = 0, state = seeding };
-					  N when is_integer(N) ->
+					  N when N =< T#torrent.total ->
 					      T#torrent { left = N }
 				      end;
 				  {tracker_report, Seeders, Leechers} ->
