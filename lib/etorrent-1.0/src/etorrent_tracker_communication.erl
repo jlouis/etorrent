@@ -308,10 +308,13 @@ response_interval(BC) ->
     R.
 
 response_mininterval(BC) ->
-    {integer, R} = etorrent_bcoding:search_dict_default({string, "min interval"},
-							BC,
-							none),
-    R.
+    X = etorrent_bcoding:search_dict_default({string, "min interval"},
+					     BC,
+					     none),
+    case X of
+	{integer, R} -> R;
+	none -> none
+    end.
 
 %%--------------------------------------------------------------------
 %% Function: decode_ips(IpData) -> [{IP, Port}]
