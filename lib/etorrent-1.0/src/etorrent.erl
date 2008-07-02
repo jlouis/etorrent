@@ -13,7 +13,6 @@ start() ->
     application:start(inets),
     application:start(timer),
     application:start(sasl),
-    timer:start(),
     mnesia:start(),
     db_initialize(),
     application:start(etorrent).

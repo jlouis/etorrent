@@ -6,7 +6,7 @@
 --   Keep the style please. Can be read with emacs org-mode
 ----------------------------------------------------------------------
 
-* For each module, go through it and think: Crash? [All milestones]
+* For each module, go through it and think: Crash? [Milestone: 0.9]
    For each module, go through it and think: Do we expect something to
    happen here? If yes, assume it happens and code such that if it is
    not the case, then the code crashes. Be aware that sometimes you
@@ -39,11 +39,6 @@
    state.
 
    It turns out to be an optimization, so put it into 0.9 for now.
-
-* Installation and Build system [Milestone: 0.9]
-
-- Set a kernel parameter for timer:start() [Milestone: 0.9]
-   This is mentioned in timer(3erl), so better heed it.
 
 * Write an etorrent_ctl.erl commander [Milestone: 0.9]
    This can be stolen from ejabberd :>
