@@ -4,6 +4,8 @@
 
 -include Makefile.config
 
+VER=1.0
+
 SHELL=/bin/sh
 ETORRENT_LIB=./lib/etorrent-1.0
 all: libs
@@ -21,4 +23,11 @@ run: libs
 
 clean:
 	cd lib && $(MAKE) clean
+
+install:
+	mkdir -p $(RELEASE_PREFIX)/lib/etorrent-$(VER)
+	for i in src ebin include priv; do \
+		cp -r $(ETORRENT_LIB)/$$i $(RELEASE_PREFIX)/lib/etorrent-$(VER) ; \
+	done
+
 
