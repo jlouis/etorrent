@@ -30,16 +30,6 @@
    lib/etorrent-1.0/src/etorrent_t_peer_recv.erl
    lib/etorrent-1.0/src/etorrent_t_peer_send.erl
 
-* Add another state for #piece records [Milestone: 0.9]
-   The state 'chunked_no_left' should indicate that the piece has been
-   chunked, but there are no chunks left to pick from it. The state is
-   introduced when we empty the #chunk record with not_fetched for the
-   #piece and it is reintroduced in putback_chunks so we may again
-   pick from it. Also, in the endgame, we should pick off from this
-   state.
-
-   It turns out to be an optimization, so put it into 0.9 for now.
-
 * Write an etorrent_ctl.erl commander [Milestone: 0.9]
    This can be stolen from ejabberd :>
 
@@ -161,5 +151,16 @@
    etorrent_peer_communication.erl
    etorrent_peer.erl                tr.erl
    etorrent_piece.erl
+
+* Add another state for #piece records [Milestone: 1.2]
+   The state 'chunked_no_left' should indicate that the piece has been
+   chunked, but there are no chunks left to pick from it. The state is
+   introduced when we empty the #chunk record with not_fetched for the
+   #piece and it is reintroduced in putback_chunks so we may again
+   pick from it. Also, in the endgame, we should pick off from this
+   state.
+
+   It turns out to be an optimization, so put it into 1.2 for now. It
+   is not obvious that it will give anything.
 
 
