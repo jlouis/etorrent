@@ -5,6 +5,7 @@
 -behaviour(gen_server).
 
 -include("etorrent_version.hrl").
+-include("etorrent_mnesia_table.hrl").
 
 -export([start_link/0, start_torrent/1, stop_torrent/1]).
 -export([handle_cast/2, handle_call/3, init/1, terminate/2]).
@@ -70,7 +71,7 @@ spawn_new_torrent(F, S) ->
 stop_torrent(F, S) ->
     error_logger:info_msg("Stopping ~p~n", [F]),
     case etorrent_tracking_map:select({filename, F}) of
-	{atomic, [F]} ->
+	{atomic, [T]} when is_record(T, torrent) ->
 	    etorrent_t_pool_sup:stop_torrent(F),
 	    ok;
 	{atomic, []} ->
