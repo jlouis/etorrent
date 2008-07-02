@@ -30,11 +30,6 @@
    lib/etorrent-1.0/src/etorrent_t_peer_recv.erl
    lib/etorrent-1.0/src/etorrent_t_peer_send.erl
 
-o [jlouis] lists:map can be eaten with list comprehensions [Milestone: 0.9]
-   For more succinct code we could use a list comprehension whenever
-   we have a lists:map or a lists:filter. There are a few places where
-   this can go in.
-
 * Add another state for #piece records [Milestone: 0.9]
    The state 'chunked_no_left' should indicate that the piece has been
    chunked, but there are no chunks left to pick from it. The state is

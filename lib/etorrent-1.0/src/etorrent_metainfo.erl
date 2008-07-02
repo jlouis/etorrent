@@ -140,7 +140,7 @@ process_file_entry(Entry) ->
 	     {integer, Size}}} =
 	lists:keysearch({string, "length"}, 1, Dict),
     true = lists:any(fun({string, P}) -> valid_path(P) end, Path),
-    Filename = filename:join(lists:map(fun({string, X}) -> X end, Path)),
+    Filename = filename:join([X || {string, X} <- Path]),
     {Filename, Size}.
 
 get_files_section(Torrent) ->

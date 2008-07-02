@@ -71,17 +71,16 @@ queue_remove(Item, Q) ->
 %%--------------------------------------------------------------------
 build_encoded_form_rfc1738(List) when is_list(List) ->
     Unreserved = rfc_3986_unreserved_characters_set(),
-    lists:flatten(lists:map(
-		    fun (E) ->
-			    case sets:is_element(E, Unreserved) of
-				true ->
-				    E;
-				false ->
-				    lists:concat(
-				      ["%", io_lib:format("~2.16.0B", [E])])
-			    end
-		    end,
-		    List));
+    F = fun (E) ->
+		case sets:is_element(E, Unreserved) of
+		    true ->
+			E;
+		    false ->
+			lists:concat(
+			  ["%", io_lib:format("~2.16.0B", [E])])
+		end
+	end,
+    lists:flatten([F(E) || E <- List]);
 build_encoded_form_rfc1738(Binary) when is_binary(Binary) ->
     build_encoded_form_rfc1738(binary_to_list(Binary)).
 

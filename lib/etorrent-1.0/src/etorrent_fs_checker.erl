@@ -45,24 +45,23 @@ load_torrent(Workdir, Path) ->
     Name = etorrent_metainfo:get_name(Torrent),
     InfoHash = etorrent_metainfo:get_infohash(Torrent),
     FilesToCheck =
-	lists:map(fun ({Filename, Size}) ->
-			  {filename:join([Workdir, Name, Filename]), Size}
-		  end,
-		  Files),
+	[{filename:join([Workdir, Name, Filename]), Size} ||
+	    {Filename, Size} <- Files],
     {ok, Torrent, FilesToCheck, InfoHash}.
 
 ensure_file_sizes_correct(Files) ->
-    lists:map(fun ({Pth, ISz}) ->
-		      Sz = filelib:file_size(Pth),
-		      if
-			  (Sz /= ISz) ->
-			      Missing = ISz - Sz,
-			      fill_file_ensure_path(Pth, Missing);
-			  true ->
-			      ok
-		      end
-	      end,
-	      Files),
+    lists:foreach(
+      fun ({Pth, ISz}) ->
+	      Sz = filelib:file_size(Pth),
+	      if
+		  (Sz /= ISz) ->
+		      Missing = ISz - Sz,
+		      fill_file_ensure_path(Pth, Missing);
+		  true ->
+		      ok
+	      end
+      end,
+      Files),
     ok.
 
 check_torrent_contents(FS, Id) ->

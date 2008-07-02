@@ -223,20 +223,17 @@ read_delete_chunks([Offset | Rest], Id, PieceNum) ->
 find_remaning_chunks(Id, PieceSet) ->
     MatchHead = #chunk { idt = {Id, '$1', {assigned, '_'}}, chunks = '$2'},
     Rows = mnesia:dirty_select(chunk, [{MatchHead, [], [{{'$1', '$2'}}]}]),
-    Res = lists:foldl(fun ({PN, Chunks}, Accum) ->
-			      case gb_sets:is_element(PN, PieceSet) of
-				  true ->
-				      NewChunks = lists:map(fun ({Os, Sz}) ->
-								    {PN, Os, Sz}
-							    end,
-							    Chunks),
-				      NewChunks ++ Accum;
-				  false ->
-				      Accum
-			      end
-		      end,
-		      [],
-		      Rows),
+    Res = lists:foldl(
+	    fun ({PN, Chunks}, Accum) ->
+		    case gb_sets:is_element(PN, PieceSet) of
+			true ->
+			    [{PN, Os, Sz} || {Os, Sz} <- Chunks] ++ Accum;
+			false ->
+			    Accum
+		    end
+	    end,
+	    [],
+	    Rows),
     Res.
 
 %%--------------------------------------------------------------------

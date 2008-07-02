@@ -230,7 +230,7 @@ bytify([B1, B2, B3, B4, B5, B6, B7, B8]) ->
 
 destruct_bitfield(Size, BinaryLump) ->
     ByteList = binary_to_list(BinaryLump),
-    Numbers = decode_bytes(0, ByteList, []),
+    Numbers = decode_bytes(0, ByteList),
     PieceSet = gb_sets:from_list(lists:flatten(Numbers)),
     case max_element(PieceSet) < Size of
 	true ->
@@ -252,17 +252,12 @@ max_element(Set) ->
 decode_byte(B, Add) ->
     <<B1:1/integer, B2:1/integer, B3:1/integer, B4:1/integer,
       B5:1/integer, B6:1/integer, B7:1/integer, B8:1/integer>> = <<B>>,
-    Select = lists:filter(fun({1, _}) -> true;
-			     (_)      -> false
-			  end, [{B1, 0}, {B2, 1}, {B3, 2}, {B4, 3},
-				{B5, 4}, {B6, 5}, {B7, 6}, {B8, 7}]),
-    Res = lists:map(fun({_, N}) ->
-		      N + Add
-	      end, Select),
-    Res.
+    Bytes = [{B1, 0}, {B2, 1}, {B3, 2}, {B4, 3},
+	     {B5, 4}, {B6, 5}, {B7, 6}, {B8, 7}],
+    [N+Add || {K, N} <- Bytes, K =:= 1].
 
-decode_bytes(_SoFar, [], Numbers) ->
-    Numbers;
-decode_bytes(SoFar, [Byte | Rest], Numbers) ->
-    decode_bytes(SoFar + 8, Rest, [decode_byte(Byte, SoFar) | Numbers]).
+decode_bytes(_SoFar, []) -> [];
+decode_bytes(SoFar, [B | Rest]) ->
+    [decode_byte(B, SoFar) | decode_bytes(SoFar + 8, Rest)].
+
 
