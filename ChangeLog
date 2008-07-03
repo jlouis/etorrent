@@ -1,5 +1,10 @@
 2008-07-03  Jesper Louis Andersen  <jlouis@ogre.home>
 
+	* SRC: Wait 15 seconds on a new_incoming_peer before timeouting.
+
+	* SRC: etorrent will now fill a file via the OS. This is much
+	       faster than what we had earlier.
+
 	* SRC: Implement etorrent_ctl.erl.
 
 	* INFRA: Correct etorrentctl shell script.

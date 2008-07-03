@@ -57,7 +57,9 @@ broadcast_got_chunk(Pid, Chunk) ->
     gen_server:cast(Pid, {broadcast_got_chunk, Chunk}).
 
 new_incoming_peer(Pid, IP, Port) ->
-    gen_server:call(Pid, {new_incoming_peer, IP, Port}).
+    %% Set a pretty graceful timeout here as the peer_group can be pretty heavily
+    %%  loaded at times. We have 5 acceptors by default anyway.
+    gen_server:call(Pid, {new_incoming_peer, IP, Port}, 15000).
 
 %%====================================================================
 %% gen_server callbacks
