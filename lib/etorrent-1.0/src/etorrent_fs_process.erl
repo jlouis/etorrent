@@ -52,7 +52,7 @@ stop(Pid) ->
 init([Path]) ->
     %% We'll clean up file descriptors gracefully on termination.
     process_flag(trap_exit, true),
-    {ok, IODev} = file:open(Path, [read, write, binary, raw]),
+    {ok, IODev} = file:open(Path, [read, write, binary, raw, read_ahead]),
     {ok, #state{iodev = IODev,
 		path = Path}, ?REQUEST_TIMEOUT}.
 
