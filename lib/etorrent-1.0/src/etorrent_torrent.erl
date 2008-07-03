@@ -53,8 +53,8 @@ mode(Id) ->
 %%   an integer, or the Record itself we want to remove.
 %%--------------------------------------------------------------------
 delete(Id) when is_integer(Id) ->
-    [R] = mnesia:dirty_read(torrent, Id),
-    delete(R);
+    mnesia:dirty_delete(torrent, Id),
+    mnesia:dirty_delete(torrent_c_pieces, Id);
 delete(Torrent) when is_record(Torrent, torrent) ->
     mnesia:dirty_delete(torrent_c_pieces, Torrent#torrent.id),
     mnesia:dirty_delete_object(Torrent).

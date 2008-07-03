@@ -102,7 +102,7 @@ init([Path, PeerId, Id]) ->
     Control =
 	{control,
 	 {etorrent_t_control, start_link, [Id, Path, PeerId]},
-	 transient, 2000, worker, [etorrent_t_control]},
+	 permanent, 20000, worker, [etorrent_t_control]},
     {ok, {{one_for_all, 1, 60}, [Control]}}.
 
 %%====================================================================

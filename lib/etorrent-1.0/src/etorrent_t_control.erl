@@ -89,6 +89,7 @@ seed(Pid) ->
 %% initialize.
 %%--------------------------------------------------------------------
 init([Parent, Id, Path, PeerId]) ->
+    process_flag(trap_exit, true),
     {ok, WorkDir} = application:get_env(etorrent, dir),
     etorrent_tracking_map:new(Path, Parent, Id),
     {ok, initializing, #state{work_dir = WorkDir,
@@ -257,8 +258,9 @@ handle_info(Info, StateName, State) ->
 %% Reason. The return value is ignored.
 %%--------------------------------------------------------------------
 terminate(_Reason, _StateName, S) ->
-    {atomic, _} = etorrent_piece:delete(S#state.id),
-    {atomic, _} = etorrent_torrent:delete(S#state.id),
+    etorrent_piece:delete(S#state.id),
+    etorrent_torrent:delete(S#state.id),
+    etorrent_tracking_map:delete(S#state.id),
     ok.
 
 %%--------------------------------------------------------------------

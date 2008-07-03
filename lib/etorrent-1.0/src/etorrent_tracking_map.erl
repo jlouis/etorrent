@@ -54,16 +54,11 @@ select({infohash, InfoHash}) ->
       end).
 
 %%--------------------------------------------------------------------
-%% Function: delete(Pid) -> ok
+%% Function: delete(Id) -> ok
 %% Description: Clean out all references to torrents matching Pid
 %%--------------------------------------------------------------------
-delete(Pid) ->
-    F = fun() ->
-		Query = qlc:q([T#tracking_map.filename || T <- mnesia:table(tracking_map),
-							  T#tracking_map.supervisor_pid =:= Pid]),
-		lists:foreach(fun (F) -> mnesia:delete(tracking_map, F, write) end, qlc:e(Query))
-	end,
-    mnesia:transaction(F).
+delete(Id) when is_integer(Id) ->
+    mnesia:dirty_delete(tracking_map, Id).
 
 %%--------------------------------------------------------------------
 %% Function: statechange(Id, What) -> ok
