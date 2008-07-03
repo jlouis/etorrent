@@ -85,12 +85,12 @@ handle_call({read_piece, PieceNum}, _From, S) ->
     [#piece { files = Operations}] =
 	etorrent_piece:piece(S#state.torrent_id, PieceNum),
     {ok, Data, NS} = read_pieces_and_assemble(Operations, [], S),
-    {reply, {ok, Data}, NS};
-%% XXX: This may probably be a cast for performance
-handle_call({write_piece, PeerGroupPid, Index}, _From, S) ->
+    {reply, {ok, Data}, NS}.
+
+handle_cast({write_piece, PeerGroupPid, Index}, S) ->
     case etorrent_piece:piece(S#state.torrent_id, Index) of
 	[P] when P#piece.state =:= fetched ->
-	    {noreply, ok};
+	    {noreply, S};
 	[_] ->
 	    Data = etorrent_chunk:retrieve_chunks(S#state.torrent_id, Index),
 	    DataSize = size(Data),
