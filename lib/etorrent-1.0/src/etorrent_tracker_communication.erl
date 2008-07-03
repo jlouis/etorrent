@@ -92,7 +92,7 @@ completed(Pid) ->
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
 init([ControlPid, PeerGroupPid, Url, InfoHash, PeerId, TorrentId]) ->
-    %dbg:p(self(), call),
+    dbg:p(self(), call),
     %tr:tr(etorrent_tracker_communication, terminate),
     {ok, HardRef} = timer:send_after(0, hard_timeout),
     {ok, SoftRef} = timer:send_after(timer:seconds(?DEFAULT_CONNECTION_TIMEOUT_INTERVAL),
