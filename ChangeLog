@@ -1,5 +1,7 @@
 2008-07-03  Jesper Louis Andersen  <jlouis@ogre.home>
 
+	* SRC: Plug a bug when stopping torrents and matching on the wrong record.
+
 	* SRC: Improve the FS system a bit via some low-hanging fruit.
 
 	* SRC: Wait 15 seconds on a new_incoming_peer before timeouting.

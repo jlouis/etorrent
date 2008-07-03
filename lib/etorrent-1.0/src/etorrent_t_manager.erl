@@ -71,7 +71,7 @@ spawn_new_torrent(F, S) ->
 stop_torrent(F, S) ->
     error_logger:info_msg("Stopping ~p~n", [F]),
     case etorrent_tracking_map:select({filename, F}) of
-	{atomic, [T]} when is_record(T, torrent) ->
+	{atomic, [T]} when is_record(T, tracking_map) ->
 	    etorrent_t_pool_sup:stop_torrent(F),
 	    ok;
 	{atomic, []} ->
