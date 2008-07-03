@@ -14,6 +14,8 @@
 -export([read_and_check_torrent/4, load_torrent/2, ensure_file_sizes_correct/1,
 	build_dictionary_on_files/2, check_torrent_contents/2]).
 
+-define(DEFAULT_CHECK_SLEEP_TIME, 10).
+
 %%====================================================================
 %% API
 %%====================================================================
@@ -34,7 +36,7 @@ read_and_check_torrent(Id, SupervisorPid, WorkDir, Path) ->
     {ok, FS} = add_filesystem(Id, SupervisorPid, FileDict),
 
     %% Check the contents of the torrent, updates the state of the piecemap
-    ok = etorrent_fs_checker:check_torrent_contents(FS, Id),
+    ok = check_torrent_contents(FS, Id),
 
     {ok, Torrent, FS, Infohash, NumberOfPieces}.
 
@@ -76,7 +78,8 @@ check_torrent_contents(FS, Id) ->
 		      false ->
 			  not_fetched
 		  end,
-	      etorrent_piece:statechange(Id, PieceNum, State)
+	      etorrent_piece:statechange(Id, PieceNum, State),
+	      timer:sleep(?DEFAULT_CHECK_SLEEP_TIME)
       end,
       Pieces),
     ok.
