@@ -71,7 +71,7 @@ read_piece(Pid, Pn) when is_integer(Pn) ->
 %%   write it back to disk.
 %%--------------------------------------------------------------------
 write_piece(Pid, PeerGroupPid, Index) ->
-    gen_server:call(Pid, {write_piece, PeerGroupPid, Index}).
+    gen_server:cast(Pid, {write_piece, PeerGroupPid, Index}).
 
 %%====================================================================
 %% gen_server callbacks
@@ -114,16 +114,15 @@ handle_cast({write_piece, PeerGroupPid, Index}, S) ->
 				     fetched),
 		    ok = etorrent_t_peer_group:broadcast_have(PeerGroupPid,
 							      Index),
-		    {reply, ok, NS};
+		    {noreply, NS};
 		false ->
 		    {atomic, ok} =
 			etorrent_piece:statechange(S#state.torrent_id,
 						   Index,
 						   not_fetched),
-		    {reply, wrong_hash, S}
+		    {noreply, S}
 	    end
-    end.
-
+    end;
 handle_cast(stop, S) ->
     {stop, normal, S};
 handle_cast(_Msg, State) ->
