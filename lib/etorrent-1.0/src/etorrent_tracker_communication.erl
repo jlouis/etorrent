@@ -197,6 +197,8 @@ contact_tracker(Event, S) ->
 	    handle_tracker_response(etorrent_bcoding:decode(Body), S);
 	{error, etimedout} ->
 	    handle_timeout(S);
+	{error,econnrefused} ->
+	    handle_timeout(S);
 	{error, session_remotly_closed} ->
 	    handle_timeout(S)
     end.
