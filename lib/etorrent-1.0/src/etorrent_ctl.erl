@@ -22,20 +22,16 @@
 %% Description: This is the command which is run to control etorrent
 %%--------------------------------------------------------------------
 start (Args) ->
-    case parse_arguments(Args) of
-	{Node, Commands} ->
-	    Status = case rpc:call(Node, ?MODULE, process, [Commands]) of
-			 {badrpc, Reason} ->
-			     io:format("RPC failed on node ~p: ~p~n",
-				       [Node, Reason]),
-			     ?STATUS_BADRPC;
-			 S ->
-			     S
-		     end,
-	    halt(Status);
-	_ ->
-	    halt(?STATUS_USAGE)
-    end.
+    {Node, Commands} = parse_arguments(Args),
+    Status = case rpc:call(Node, ?MODULE, process, [Commands]) of
+		 {badrpc, Reason} ->
+		     io:format("RPC failed on node ~p: ~p~n",
+			       [Node, Reason]),
+		     ?STATUS_BADRPC;
+		 S ->
+		     S
+	     end,
+    halt(Status).
 
 %%====================================================================
 %% Internal functions
