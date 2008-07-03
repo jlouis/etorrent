@@ -34,5 +34,5 @@ install:
 	sed -e "s|%%%BEAMDIR%%%|$(RELEASE_PREFIX)/lib/etorrent-$(VER)/ebin|;" \
 	    -e "s|%%%CONFIGFILE%%%|$(RELEASE_PREFIX)/lib/etorrent-$(VER)/priv/etorrent.config|;" \
 	    -e "s|%%%ERL_FLAGS%%%|\"$(ERL_FLAGS)\"|" < ./bin/etorrentctl.in > $(BIN_PREFIX)/etorrentctl
+	chmod +x $(BIN_PREFIX)/etorrentctl
 
-	        

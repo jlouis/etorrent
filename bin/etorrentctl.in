@@ -11,9 +11,8 @@ CONFIGFILE=%%%CONFIGFILE%%%
 ERL_FLAGS=%%%ERL_FLAGS%%%
 
 start () {
-    # TODO: Add noshell and friends
     erl ${ERL_FLAGS} -sname ${NODE}@${HOST} -pa ${BEAMDIR} \
-	-config ${CONFIGFILE}
+	-config ${CONFIGFILE} -noshell -noinput -detached \
 	-s etorrent
 }
 
@@ -26,7 +25,7 @@ debug () {
 ctl () {
     erl -noinput -sname etorrentctl@${HOST} \
 	-pa ${BEAMDIR} \
-	-s etorrent_ctl -run start ${NODE}@${HOST} $@
+	-s etorrent_ctl start ${NODE}@${HOST} $@
 }
 
 usage () {

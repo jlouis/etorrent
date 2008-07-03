@@ -25,7 +25,7 @@ start (Args) ->
     case parse_arguments(Args) of
 	{Node, Commands} ->
 	    Status = case rpc:call(Node, ?MODULE, process, [Commands]) of
-			 {badprc, Reason} ->
+			 {badrpc, Reason} ->
 			     io:format("RPC failed on node ~p: ~p~n",
 				       [Node, Reason]),
 			     ?STATUS_BADRPC;
@@ -40,12 +40,21 @@ start (Args) ->
 %%====================================================================
 %% Internal functions
 %%====================================================================
-process(["stop"]) ->
+process([stop]) ->
     etorrent:stop(),
-    ?STATUS_OK.
+    ?STATUS_OK;
+process([list]) ->
+    etorrent:list(),
+    ?STATUS_OK;
+process([help]) ->
+    etorrent:help(),
+    ?STATUS_USAGE;
+process([_]) ->
+    etorrent:help(),
+    ?STATUS_USAGE.
+
 
 parse_arguments([Node | Cmds]) ->
-    {list_to_atom(Node),
+    {Node,
      Cmds}.
 
-    

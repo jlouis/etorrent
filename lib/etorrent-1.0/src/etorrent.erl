@@ -22,7 +22,8 @@ start(_Type, _Args) ->
     etorrent_sup:start_link().
 
 stop() ->
-    application:stop(etorrent).
+    application:stop(etorrent),
+    halt().
 
 stop(_State) ->
     ok.
@@ -55,7 +56,8 @@ list() ->
 help() ->
     io:format("Available commands:~n", []),
 
-    Commands = [{"list()", "List torrents in system"}],
+    Commands = [{"list", "List torrents in system"},
+	        {"stop", "Stop the system"}],
 
     lists:foreach(fun({Command, Desc}) ->
 			  io:format("~-12.s - ~s~n", [Command, Desc])
