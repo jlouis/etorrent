@@ -6,30 +6,6 @@
 --   Keep the style please. Can be read with emacs org-mode
 ----------------------------------------------------------------------
 
-* For each module, go through it and think: Crash? [Milestone: 0.9]
-   For each module, go through it and think: Do we expect something to
-   happen here? If yes, assume it happens and code such that if it is
-   not the case, then the code crashes. Be aware that sometimes you
-   _do_ actually need to know that something went wrong.
-
-   For each case one must think. This is the 'let it crash' way of
-   programming. Sparked by comments from Joe Armstrong.
-
-- Missing module to check:
-   lib/etorrent-1.0/src/etorrent_chunk.erl
-   lib/etorrent-1.0/src/etorrent_fs_checker.erl
-   lib/etorrent-1.0/src/etorrent_fs.erl
-   lib/etorrent-1.0/src/etorrent_fs_pool_sup.erl
-   lib/etorrent-1.0/src/etorrent_listener.erl
-
-   lib/etorrent-1.0/src/etorrent_peer_communication.erl
-   lib/etorrent-1.0/src/etorrent_peer.erl
-   lib/etorrent-1.0/src/etorrent_piece.erl
-   lib/etorrent-1.0/src/etorrent_torrent.erl
-   lib/etorrent-1.0/src/etorrent_t_peer_group.erl
-   lib/etorrent-1.0/src/etorrent_t_peer_recv.erl
-   lib/etorrent-1.0/src/etorrent_t_peer_send.erl
-
 * Implement graceful stopping of the etorrent application [Milestone: 1.0]
    The provisioning is there in OTP applications. We just need to
    leverage and use it.

@@ -115,7 +115,7 @@ putback_chunks(Pid) ->
 %% Function: store_chunk(Id, PieceNum, {Offset, Len},
 %%                       Data, FSPid, PeerGroupPid, Pid) -> ok
 %% Description: Workhorse function. Store a chunk in the chunk mnesia table.
-%%    If we have all chunks we need, then store the piece on disk.
+%%    If we have all chunks we need, then report the piece is full.
 %%--------------------------------------------------------------------
 store_chunk(Id, PieceNum, {Offset, Len}, Data, Pid) ->
     {atomic, Res} =

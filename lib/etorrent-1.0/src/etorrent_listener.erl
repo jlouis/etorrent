@@ -119,8 +119,6 @@ find_listen_socket(Port, N) ->
 	{ok, Socket} ->
 	    {ok, Socket};
 	{error, eaddrinuse} ->
-	    find_listen_socket(Port+1, N-1);
-	{error, X} ->
-	    {error, X}
+	    find_listen_socket(Port+1, N-1)
     end.
 

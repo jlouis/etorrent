@@ -252,16 +252,10 @@ find_fastest_peers(N, Interested, S) ->
     end.
 
 unchoke_peers(Peers) ->
-    lists:foreach(fun(P) ->
-			  etorrent_t_peer_recv:unchoke(P#peer.pid)
-		  end, Peers),
-    ok.
+    [etorrent_t_peer_recv:unchoke(P#peer.pid) || P <- Peers].
 
 choke_peers(Peers) ->
-    lists:foreach(fun(P) ->
-			  etorrent_t_peer_recv:choke(P#peer.pid)
-		  end, Peers),
-    ok.
+    [etorrent_t_peer_recv:choke(P#peer.pid) || P <- Peers].
 
 start_new_peers(IPList, State) ->
     %% Update the PeerList with the new incoming peers

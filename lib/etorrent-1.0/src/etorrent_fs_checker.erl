@@ -53,12 +53,12 @@ ensure_file_sizes_correct(Files) ->
     lists:foreach(
       fun ({Pth, ISz}) ->
 	      Sz = filelib:file_size(Pth),
-	      if
-		  (Sz /= ISz) ->
-		      Missing = ISz - Sz,
-		      fill_file_ensure_path(Pth, Missing);
+	      case Sz == ISz of
 		  true ->
-		      ok
+		      ok;
+		  false ->
+		      Missing = ISz - Sz,
+		      fill_file_ensure_path(Pth, Missing)
 	      end
       end,
       Files),
@@ -84,7 +84,7 @@ check_torrent_contents(FS, Id) ->
 build_dictionary_on_files(Torrent, Files) ->
     Pieces = etorrent_metainfo:get_pieces(Torrent),
     PSize = etorrent_metainfo:get_piece_length(Torrent),
-    LastPieceSize = torrent_size(Files) rem PSize,
+    LastPieceSize = lists:sum([S || {_F, S} <- Files]) rem PSize,
     construct_fpmap(Files,
 		    0,
 		    PSize,
@@ -108,14 +108,6 @@ add_filesystem(Id, SupervisorPid, FileDict) ->
 		  FSPool
 	  end,
     etorrent_t_sup:add_file_system(SupervisorPid, FSP, Id).
-
-torrent_size(Files) ->
-    lists:foldl(fun ({_F, S}, A) ->
-			S + A
-		end,
-		0,
-		Files).
-
 
 extract_piece(0, Fs, Offset, B) ->
     {ok, Fs, Offset, B};

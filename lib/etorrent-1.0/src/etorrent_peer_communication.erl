@@ -101,8 +101,10 @@ send_message(Socket, Message) ->
 
 %%--------------------------------------------------------------------
 %% Function: recieve_handshake(Socket) -> {ok, protocol_version,
-%%                                             info_hash(),
 %%                                             remote_peer_id()} |
+%%                                       {ok, proto_version(),
+%%                                            info_hash(),
+%%                                            remote_peer_id()} |
 %%                                        {error, Reason}
 %% Description: Recieve a handshake from another peer. In the recieve,
 %%  we don't send the info_hash, but expect the initiator to send what
@@ -160,7 +162,9 @@ build_peer_protocol_header() ->
 
 %%--------------------------------------------------------------------
 %% Function: receive_header(socket()) -> {ok, proto_version(),
-%%                                            info_hash() | await,
+%%                                            remote_peer_id()} |
+%%                                       {ok, proto_version(),
+%%                                            info_hash(),
 %%                                            remote_peer_id()} |
 %%                                       {error, Reason}
 %% Description: Recieve the full header from a peer. The function

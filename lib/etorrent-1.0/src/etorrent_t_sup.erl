@@ -46,7 +46,7 @@ get_peer_group_pid(Pid) ->
 add_file_system(Pid, FSPool, IDHandle) when is_integer(IDHandle) ->
     FS = {fs,
 	  {etorrent_fs, start_link, [IDHandle, FSPool]},
-	  temporary, 2000, worker, [etorrent_fs]},
+	  permanent, 2000, worker, [etorrent_fs]},
     case supervisor:start_child(Pid, FS) of
 	{ok, ChildPid} ->
 	    {ok, ChildPid};

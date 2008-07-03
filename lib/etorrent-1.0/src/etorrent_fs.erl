@@ -34,10 +34,7 @@
 %% Description: Return the file size of the given operations
 %%--------------------------------------------------------------------
 size_of_ops(Ops) ->
-    lists:foldl(fun ({_Path, _Offset, Size}, Total) ->
-                       Size + Total end,
-               0,
-               Ops).
+    lists:sum([Size || {_Path, _Offset, Size} <- Ops]).
 
 %%--------------------------------------------------------------------
 %% Function: start_link/0
