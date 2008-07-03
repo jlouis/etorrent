@@ -30,9 +30,6 @@
    lib/etorrent-1.0/src/etorrent_t_peer_recv.erl
    lib/etorrent-1.0/src/etorrent_t_peer_send.erl
 
-* Write an etorrent_ctl.erl commander [Milestone: 0.9]
-   This can be stolen from ejabberd :>
-
 * Implement graceful stopping of the etorrent application [Milestone: 1.0]
    The provisioning is there in OTP applications. We just need to
    leverage and use it.

@@ -1,3 +1,11 @@
+2008-07-03  Jesper Louis Andersen  <jlouis@ogre.home>
+
+	* SRC: Implement etorrent_ctl.erl.
+
+	* INFRA: Correct etorrentctl shell script.
+
+	* BUILD: Support installation some more.
+
 2008-07-01  Jesper Louis Andersen  <jlouis@ogre.home>
 
 	* BUILD: New build infrastructure, based on EMakefile and plain Make.
