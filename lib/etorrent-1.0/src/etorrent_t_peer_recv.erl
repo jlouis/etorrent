@@ -370,31 +370,38 @@ handle_endgame_got_chunk({Index, Offset, Len}, S) ->
 %% Description: We just got some chunk data. Store it in the mnesia DB
 %%--------------------------------------------------------------------
 handle_got_chunk(Index, Offset, Data, Len, S) ->
-    Ops = gb_trees:get({Index, Offset, Len}, S#state.remote_request_set),
-    ok = etorrent_fs:write_chunk(S#state.file_system_pid,
-				 {Index, Data, Ops}),
-    case etorrent_chunk:store_chunk(S#state.torrent_id,
-				    Index,
-				    {Offset, Len},
-				    self()) of
-	full ->
-	    etorrent_fs:check_piece(S#state.file_system_pid,
-				    S#state.peer_group_pid,
-				    Index);
-	ok ->
-	    ok
-    end,
-    %% Tell other peers we got the chunk if in endgame
-    case S#state.endgame of
-	true ->
-	    etorrent_t_peer_group:broadcast_got_chunk(
-	      S#state.peer_group_pid,
-	      {Index, Offset, Len});
-	false ->
-	    ok
-    end,
-    RS = gb_trees:delete_any({Index, Offset, Len}, S#state.remote_request_set),
-    {ok, S#state { remote_request_set = RS }}.
+    case gb_trees:lookup({Index, Offset, Len},
+			 S#state.remote_request_set) of
+	{value, Ops} ->
+	    ok = etorrent_fs:write_chunk(S#state.file_system_pid,
+					 {Index, Data, Ops}),
+	    case etorrent_chunk:store_chunk(S#state.torrent_id,
+					    Index,
+					    {Offset, Len},
+					    self()) of
+		full ->
+		    etorrent_fs:check_piece(S#state.file_system_pid,
+					    S#state.peer_group_pid,
+					    Index);
+		ok ->
+		    ok
+	    end,
+	    %% Tell other peers we got the chunk if in endgame
+	    case S#state.endgame of
+		true ->
+		    etorrent_t_peer_group:broadcast_got_chunk(
+		      S#state.peer_group_pid,
+		      {Index, Offset, Len});
+		false ->
+		    ok
+	    end,
+	    RS = gb_trees:delete_any({Index, Offset, Len}, S#state.remote_request_set),
+	    {ok, S#state { remote_request_set = RS }};
+	none ->
+	    %% Stray piece, we could try to get hold of it but for now we just
+	    %%   throw it on the floor.
+	    {ok, S}
+    end.
 
 %%--------------------------------------------------------------------
 %% Function: unqueue_all_pieces/1
