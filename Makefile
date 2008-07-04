@@ -14,7 +14,10 @@ libs:
 	cd lib && $(MAKE)
 
 dialyzer: libs
-	$(DIALYZER) -c $(ETORRENT_LIB)/ebin
+	$(DIALYZER) --verbose -I $(ETORRENT_LIB)/include -r $(ETORRENT_LIB)
+
+dialyzer-succ: libs
+	$(DIALYZER) --verbose --succ_typings -I $(ETORRENT_LIB)/include -r $(ETORRENT_LIB)
 
 run: libs
 	erl $(ERL_FLAGS) -pa $(ETORRENT_LIB)/ebin \
