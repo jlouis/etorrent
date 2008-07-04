@@ -163,6 +163,8 @@ initializing(timeout, S) ->
 		  S#state.peer_id,
 		  S#state.id),
 
+	    %% Since the process will now go to a hibernation state, GC it
+	    garbage_collect(),
 	    {next_state, started,
 	     S#state{file_system_pid = FSPid,
 		     tracker_pid = TrackerPid,
