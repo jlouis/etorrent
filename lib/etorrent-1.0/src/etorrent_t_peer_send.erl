@@ -160,7 +160,7 @@ handle_info(Msg, S) ->
 handle_cast(choke, S) when S#state.choke == true ->
     {noreply, S, 0};
 handle_cast(choke, S) when S#state.choke == false ->
-    send_message(choke, S#state{choke = true});
+    send_message(choke, S#state{choke = true, piece_cache = none});
 handle_cast(unchoke, S) when S#state.choke == false ->
     {noreply, S, 0};
 handle_cast(unchoke, S) when S#state.choke == true ->
