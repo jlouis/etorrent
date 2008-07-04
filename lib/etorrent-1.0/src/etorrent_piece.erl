@@ -12,11 +12,10 @@
 -include("etorrent_mnesia_table.hrl").
 
 %% API
--export([new/2, statechange/3, is_complete/1,
-	 pieces/1, num_not_fetched/1,
-	 delete/1, piece/2, piece_valid/2,
-	 piece_interesting/2,
-	 torrent_size/1, bitfield/1, check_interest/2]).
+-export([new/2, statechange/3, complete/1,
+	 select/1, select/2, num_not_fetched/1,
+	 delete/1, valid/2, interesting/2,
+	 bitfield/1, check_interest/2]).
 
 %%====================================================================
 %% API
@@ -74,10 +73,10 @@ statechange(Id, Pn, State) when is_integer(Id) ->
       end).
 
 %%--------------------------------------------------------------------
-%% Function: is_complete(Id) -> bool()
+%% Function: complete(Id) -> bool()
 %% Description: Is the torrent identified by Id complete?
 %%--------------------------------------------------------------------
-is_complete(Id) when is_integer(Id) ->
+complete(Id) when is_integer(Id) ->
     mnesia:transaction(
       fun () ->
 	      Q = qlc:q([R || R <- mnesia:table(piece),
@@ -88,10 +87,10 @@ is_complete(Id) when is_integer(Id) ->
       end).
 
 %%--------------------------------------------------------------------
-%% Function: pieces(Id) -> [#piece]
+%% Function: select(Id) -> [#piece]
 %% Description: Return the pieces for Id
 %%--------------------------------------------------------------------
-pieces(Id) when is_integer(Id) ->
+select(Id) when is_integer(Id) ->
     mnesia:transaction(
       fun () ->
 	      Q = qlc:q([R || R <- mnesia:table(piece),
@@ -100,17 +99,17 @@ pieces(Id) when is_integer(Id) ->
       end).
 
 %%--------------------------------------------------------------------
-%% Function: piece(Id, PieceNumber) -> [#piece]
+%% Function: select(Id, PieceNumber) -> [#piece]
 %% Description: Return the piece PieceNumber for the Id torrent
 %%--------------------------------------------------------------------
-piece(Id, Pn) when is_integer(Id) ->
+select(Id, Pn) when is_integer(Id) ->
     mnesia:dirty_read(piece, {Id, Pn}).
 
 %%--------------------------------------------------------------------
-%% Function: piece_valid(Id, PieceNumber) -> bool()
+%% Function: valid(Id, PieceNumber) -> bool()
 %% Description: Is the piece valid for this torrent?
 %%--------------------------------------------------------------------
-piece_valid(Id, Pn) when is_integer(Id) ->
+valid(Id, Pn) when is_integer(Id) ->
     case mnesia:dirty_read(piece, {Id, Pn}) of
 	[] ->
 	    false;
@@ -119,10 +118,10 @@ piece_valid(Id, Pn) when is_integer(Id) ->
     end.
 
 %%--------------------------------------------------------------------
-%% Function: piece_interesting(Id, Pn) -> bool()
+%% Function: interesting(Id, Pn) -> bool()
 %% Description: Is the piece interesting?
 %%--------------------------------------------------------------------
-piece_interesting(Id, Pn) when is_integer(Id) ->
+interesting(Id, Pn) when is_integer(Id) ->
     [P] = mnesia:dirty_read(piece, {Id, Pn}),
     case P#piece.state of
 	fetched ->
@@ -167,24 +166,7 @@ find_interest_piece(Id, {Pn, Next}) ->
     end.
 
 %%--------------------------------------------------------------------
-%% Function: torrent_size(Id) -> integer()
-%% Description: What is the total size of the torrent in question.
-%%--------------------------------------------------------------------
-torrent_size(Id) when is_integer(Id) ->
-    F = fun () ->
-		Query = qlc:q([F || F <- mnesia:table(piece),
-				    F#piece.id =:= Id]),
-		qlc:e(Query)
-	end,
-    {atomic, Res} = mnesia:transaction(F),
-    lists:foldl(fun(#piece{ files = {_, Ops, _}}, Sum) ->
-			Sum + etorrent_fs:size_of_ops(Ops)
-		end,
-		0,
-		Res).
-
-%%--------------------------------------------------------------------
-%% Function: num_fetched(Id) -> integer()
+%% Function: num_not_fetched(Id) -> integer()
 %% Description: Return the number of not_fetched pieces for torrent Id.
 %%--------------------------------------------------------------------
 num_not_fetched(Id) when is_integer(Id) ->

@@ -292,11 +292,11 @@ handle_message({cancel, Index, Offset, Len}, S) ->
     etorrent_t_peer_send:cancel(S#state.send_pid, Index, Offset, Len),
     {ok, S};
 handle_message({have, PieceNum}, S) ->
-    case etorrent_piece:piece_valid(S#state.torrent_id, PieceNum) of
+    case etorrent_piece:valid(S#state.torrent_id, PieceNum) of
 	true ->
 	    PieceSet = gb_sets:add_element(PieceNum, S#state.piece_set),
 	    NS = S#state{piece_set = PieceSet},
-	    case etorrent_piece:piece_interesting(S#state.torrent_id, PieceNum) of
+	    case etorrent_piece:interesting(S#state.torrent_id, PieceNum) of
 		true when S#state.local_interested =:= true ->
 		    {ok, NS};
 		true when S#state.local_interested =:= false ->

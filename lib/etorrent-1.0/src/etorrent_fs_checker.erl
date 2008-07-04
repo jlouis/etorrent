@@ -67,7 +67,7 @@ ensure_file_sizes_correct(Files) ->
     ok.
 
 check_torrent_contents(FS, Id) ->
-    {atomic, Pieces} = etorrent_piece:pieces(Id),
+    {atomic, Pieces} = etorrent_piece:select(Id),
     lists:foreach(
       fun(#piece{piece_number = PieceNum, hash = Hash}) ->
 	      {ok, Data} = etorrent_fs:read_piece(FS, PieceNum),

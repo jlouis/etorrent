@@ -83,12 +83,12 @@ init([IDHandle, FSPool]) when is_integer(IDHandle) ->
 
 handle_call({read_piece, PieceNum}, _From, S) ->
     [#piece { files = Operations}] =
-	etorrent_piece:piece(S#state.torrent_id, PieceNum),
+	etorrent_piece:select(S#state.torrent_id, PieceNum),
     {ok, Data, NS} = read_pieces_and_assemble(Operations, [], S),
     {reply, {ok, Data}, NS}.
 
 handle_cast({write_piece, PeerGroupPid, Index}, S) ->
-    case etorrent_piece:piece(S#state.torrent_id, Index) of
+    case etorrent_piece:select(S#state.torrent_id, Index) of
 	[P] when P#piece.state =:= fetched ->
 	    {noreply, S};
 	[_] ->
@@ -96,7 +96,7 @@ handle_cast({write_piece, PeerGroupPid, Index}, S) ->
 	    DataSize = size(Data),
 	    [#piece { hash = Hash,
 		      files = FilesToWrite }] =
-		etorrent_piece:piece(S#state.torrent_id,
+		etorrent_piece:select(S#state.torrent_id,
 				     Index),
 	    D = iolist_to_binary(Data),
 	    case Hash == crypto:sha(D) of
