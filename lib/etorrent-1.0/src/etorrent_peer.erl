@@ -40,8 +40,8 @@ ip_port(Pid) ->
 %% Description: Delete all references to the peer owned by Pid
 %%--------------------------------------------------------------------
 delete(Id) when is_integer(Id) ->
-    [mnesia:dirty_delete(Pid) ||
-	Pid <- mnesia:dirty_index_read(peer, Id, #peer.torrent_id)];
+    [mnesia:dirty_delete_object(Peer) ||
+	Peer <- mnesia:dirty_index_read(peer, Id, #peer.torrent_id)];
 delete(Pid) when is_pid(Pid) ->
     mnesia:dirty_delete(peer, Pid).
 
