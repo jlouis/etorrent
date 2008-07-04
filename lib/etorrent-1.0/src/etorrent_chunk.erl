@@ -166,12 +166,12 @@ store_chunk(Id, PieceNum, {Offset, Len}, Pid) ->
 	  end),
     Res.
 
-endgame_remove_chunk(Pid, Id, {Index, Offset, Len}) ->
+endgame_remove_chunk(Pid, Id, {Index, Offset, _Len}) ->
     case mnesia:dirty_read(chunk, {Id, Index, {assigned, Pid}}) of
 	[] ->
 	    ok;
 	[R] ->
-	    NC = lists:delete({Index, Offset, Len}, R#chunk.chunks),
+	    NC = lists:keydelete(Offset, 1, R#chunk.chunks),
 	    mnesia:dirty_write(R#chunk {chunks = NC})
     end.
 
