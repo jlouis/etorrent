@@ -14,7 +14,7 @@
 -define(DEFAULT_CHUNK_SIZE, 16384). % Default size for a chunk. All clients use this.
 
 %% API
--export([pick_chunks/4, store_chunk/5, putback_chunks/1,
+-export([pick_chunks/4, store_chunk/4, putback_chunks/1,
 	 endgame_remove_chunk/3, retrieve_chunks/2]).
 
 %%====================================================================
@@ -117,37 +117,30 @@ putback_chunks(Pid) ->
 %% Description: Workhorse function. Store a chunk in the chunk mnesia table.
 %%    If we have all chunks we need, then report the piece is full.
 %%--------------------------------------------------------------------
-store_chunk(Id, PieceNum, {Offset, Len}, Data, Pid) ->
+store_chunk(Id, PieceNum, {Offset, Len}, Pid) ->
     {atomic, Res} =
 	mnesia:transaction(
 	  fun () ->
-		  %% Add the newly fetched data to the fetched list and add the
-		  %%   data itself to the #chunk_data table.
-		  DataState =
-		      case mnesia:read(chunk_data, {Id, PieceNum, Offset}, read) of
+		  %% Add the newly fetched data to the fetched list
+		  Present =
+		      case mnesia:read(chunk, {Id, PieceNum, fetched}, write) of
 			  [] ->
-			      mnesia:write(#chunk_data { idt = {Id, PieceNum, Offset},
-							 data = Data }),
-			      ok;
-			  [_] ->
-			      already_downloaded
+			      mnesia:write(#chunk { idt = {Id, PieceNum, fetched},
+						    chunks = [Offset]}),
+			      false;
+			  [R] ->
+			      mnesia:write(
+				R#chunk { chunks =
+					  [Offset | R#chunk.chunks]}),
+			      lists:member(Offset, R#chunk.chunks)
 		      end,
-		  case mnesia:read(chunk, {Id, PieceNum, fetched}, write) of
-		      [] ->
-			  mnesia:write(#chunk { idt = {Id, PieceNum, fetched},
-						chunks = [Offset]});
-		      [R] ->
-			  mnesia:write(
-			    R#chunk { chunks =
-				      [Offset | R#chunk.chunks]})
-		  end,
 		  %% Update that the chunk is not anymore assigned to the Pid
 		  case mnesia:read(chunk, {Id, PieceNum, {assigned, Pid}}, write) of
 		      [] ->
 			  %% We stored a chunk that was not belonging to us, do nothing
 			  ok;
 		      [S] ->
-			  case lists:delete({Offset, Len}, S#chunk.chunks) of
+			  case lists:keydelete({Offset, Len}, 1, S#chunk.chunks) of
 			      [] ->
 				  mnesia:delete_object(S);
 			      L when is_list(L) ->
@@ -156,8 +149,8 @@ store_chunk(Id, PieceNum, {Offset, Len}, Data, Pid) ->
 		  end,
 		  %% Count down the number of missing chunks for the piece
 		  %% Next lines can be thrown into a seperate counter for speed.
-		  case DataState of
-		      ok ->
+		  case Present of
+		      false ->
 			  [P] = mnesia:read(piece, {Id, PieceNum}, write),
 			  NewP = P#piece { left = P#piece.left - 1 },
 			  mnesia:write(NewP),
@@ -167,7 +160,7 @@ store_chunk(Id, PieceNum, {Offset, Len}, Data, Pid) ->
 			      N when is_integer(N) ->
 				  ok
 			  end;
-		      already_downloaded ->
+		      true ->
 			  ok
 		  end
 	  end),
@@ -288,7 +281,7 @@ select_chunks_by_piecenum(Id, PieceNum, Num, Pid) ->
 			      [C] when is_record(C, chunk) ->
 				  C
 			  end,
-		      mnesia:write(Q#chunk { chunks = Q#chunk.chunks ++ Return}),
+		      mnesia:write(Q#chunk { chunks = Return ++ Q#chunk.chunks}),
 		      %% Return remaining
 		      Remaining = Num - length(Return),
 		      {ok, {PieceNum, Return}, Remaining}
@@ -296,25 +289,53 @@ select_chunks_by_piecenum(Id, PieceNum, Num, Pid) ->
       end).
 
 %%--------------------------------------------------------------------
-%% Function: chunkify(PieceSize) ->
-%%  {ok, list_of_chunk(), integer()}
-%% Description: From a Piece Size designation as an integer, construct
-%%   a list of chunks the piece will consist of.
+%% Function: chunkify(Operations) ->
+%%  [{Offset, Size, FileOperations}]
+%% Description: From a list of operations to read/write a piece, construct
+%%   a list of chunks given by Offset of the chunk, Size of the chunk and
+%%   how to read/write that chunk.
 %%--------------------------------------------------------------------
-chunkify(PieceSize) ->
-    chunkify(?DEFAULT_CHUNK_SIZE, 0, PieceSize, []).
 
-chunkify(_ChunkSize, _Offset, 0, Acc) ->
-    {ok, lists:reverse(Acc), length(Acc)};
+%% First, we call the version of the function doing the grunt work.
+chunkify(Operations) ->
+    chunkify(0, 0, [], Operations, ?DEFAULT_CHUNK_SIZE).
 
-chunkify(ChunkSize, Offset, Left, Acc) when ChunkSize =< Left ->
-    chunkify(ChunkSize, Offset+ChunkSize, Left-ChunkSize,
-	     [{Offset, ChunkSize} | Acc]);
+%% Suppose the next File operation on the piece has 0 bytes in size, then it
+%%  is exhausted and must be thrown away.
+chunkify(AtOffset, EatenBytes, Operations,
+	 [{_Path, _Offset, 0} | Rest], Left) ->
+    chunkify(AtOffset, EatenBytes, Operations, Rest, Left);
 
-chunkify(ChunkSize, Offset, Left, Acc) ->
-    chunkify(ChunkSize, Offset+Left, 0,
-	     [{Offset, Left} | Acc]).
+%% There are no more file operations to carry out. Hence we reached the end of
+%%   the piece and we just return the last chunk operation. Remember to reverse
+%%   the list of operations for that chunk as we build it in reverse.
+chunkify(AtOffset, EatenBytes, Operations, [], _Sz) ->
+    [{AtOffset, EatenBytes, lists:reverse(Operations)}];
 
+%% There are no more bytes left to add to this chunk. Recurse by calling
+%%   on the rest of the problem and add our chunk to the front when coming
+%%   back. Remember to reverse the Operations list built in reverse.
+chunkify(AtOffset, EatenBytes, Operations, OpsLeft, 0) ->
+    R = chunkify(AtOffset + EatenBytes, 0, [], OpsLeft, ?DEFAULT_CHUNK_SIZE),
+    [{AtOffset, EatenBytes, lists:reverse(Operations)} | R];
+
+%% The next file we are processing have a larger size than what is left for this
+%%   chunk. Hence we can just eat off that many bytes from the front file.
+chunkify(AtOffset, EatenBytes, Operations,
+	 [{Path, Offset, Size} | Rest], Left) when Left =< Size ->
+    chunkify(AtOffset, EatenBytes + Left,
+	     [{Path, Offset, Left} | Operations],
+	     [{Path, Offset+Left, Size - Left} | Rest],
+	     0);
+
+%% The next file does *not* have enough bytes left, so we eat all the bytes
+%%   we can get from it, and move on to the next file.
+chunkify(AtOffset, EatenBytes, Operations,
+	[{Path, Offset, Size} | Rest], Left) when Left > Size ->
+    chunkify(AtOffset, EatenBytes + Size,
+	     [{Path, Offset, Size} | Operations],
+	     Rest,
+	     Left - Size).
 
 %%--------------------------------------------------------------------
 %% Function: chunkify_piece(Id, PieceNum) -> {atomic, ok} | {aborted, Reason}
@@ -322,7 +343,8 @@ chunkify(ChunkSize, Offset, Left, Acc) ->
 %%   to the chunk table.
 %%--------------------------------------------------------------------
 chunkify_piece(Id, P) when is_record(P, piece) ->
-    {ok, Chunks, NumChunks} = chunkify(etorrent_fs:size_of_ops(P#piece.files)),
+    Chunks = chunkify(P#piece.files),
+    NumChunks = length(Chunks),
     {atomic, Res} =
 	mnesia:transaction(
 	  fun () ->

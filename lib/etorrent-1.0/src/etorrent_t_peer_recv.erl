@@ -136,7 +136,7 @@ stop(Pid) ->
 init([LocalPeerId, InfoHash, FilesystemPid, GroupPid, Id]) ->
     {ok, #state{ local_peer_id = LocalPeerId,
 		 piece_set = gb_sets:new(),
-		 remote_request_set = gb_sets:new(),
+		 remote_request_set = gb_trees:empty(),
 		 info_hash = InfoHash,
 		 peer_group_pid = GroupPid,
 		 torrent_id = Id,
@@ -345,10 +345,10 @@ handle_message(Unknown, S) ->
 %%   not to download it here if we can avoid it.
 %%--------------------------------------------------------------------
 handle_endgame_got_chunk({Index, Offset, Len}, S) ->
-    case gb_sets:is_element({Index, Offset, Len}, S#state.remote_request_set) of
+    case gb_trees:is_defined({Index, Offset, Len}, S#state.remote_request_set) of
 	true ->
 	    %% Delete the element from the request set.
-	    RS = gb_sets:del_element({Index, Offset, Len}, S#state.remote_request_set),
+	    RS = gb_trees:delete({Index, Offset, Len}, S#state.remote_request_set),
 	    etorrent_t_peer_send:cancel(S#state.send_pid,
 					Index,
 					Offset,
@@ -370,13 +370,15 @@ handle_endgame_got_chunk({Index, Offset, Len}, S) ->
 %% Description: We just got some chunk data. Store it in the mnesia DB
 %%--------------------------------------------------------------------
 handle_got_chunk(Index, Offset, Data, Len, S) ->
+    Ops = gb_trees:get({Index, Offset, Len}, S#state.remote_request_set),
+    ok = etorrent_fs:write_chunk(S#state.file_system_pid,
+				 {Index, Data, Ops}),
     case etorrent_chunk:store_chunk(S#state.torrent_id,
 				    Index,
 				    {Offset, Len},
-				    Data,
 				    self()) of
 	full ->
-	    etorrent_fs:write_piece(S#state.file_system_pid,
+	    etorrent_fs:check_piece(S#state.file_system_pid,
 				    S#state.peer_group_pid,
 				    Index);
 	ok ->
@@ -391,7 +393,7 @@ handle_got_chunk(Index, Offset, Data, Len, S) ->
 	false ->
 	    ok
     end,
-    RS = gb_sets:del_element({Index, Offset, Len}, S#state.remote_request_set),
+    RS = gb_trees:delete_any({Index, Offset, Len}, S#state.remote_request_set),
     {ok, S#state { remote_request_set = RS }}.
 
 %%--------------------------------------------------------------------
@@ -402,7 +404,7 @@ handle_got_chunk(Index, Offset, Data, Len, S) ->
 %%--------------------------------------------------------------------
 unqueue_all_pieces(S) ->
     {atomic, _} = etorrent_chunk:putback_chunks(self()),
-    S#state{remote_request_set = gb_sets:new()}.
+    S#state{remote_request_set = gb_trees:empty()}.
 
 %%--------------------------------------------------------------------
 %% Function: try_to_queue_up_requests(state()) -> {ok, state()}
@@ -415,7 +417,7 @@ try_to_queue_up_pieces(S) when S#state.remote_choked == true ->
 try_to_queue_up_pieces(S) when S#state.endgame =:= true ->
     {ok, S};
 try_to_queue_up_pieces(S) ->
-    case gb_sets:size(S#state.remote_request_set) of
+    case gb_trees:size(S#state.remote_request_set) of
 	N when N > ?LOW_WATERMARK ->
 	    {ok, S};
 	%% Optimization: Only replenish pieces modulo some N
@@ -445,12 +447,12 @@ queue_items(ChunkList, S) ->
 	    ({Pn, Chunks}) ->
 		lists:foreach(
 		  fun
-		      ({Offset, Size}) ->
+		      ({Offset, Size, _Ops}) ->
 			  etorrent_t_peer_send:local_request(S#state.send_pid,
 							     {Pn, Offset, Size})
 		  end,
 		  Chunks);
-	    ({Pn, Offset, Size}) ->
+	    ({Pn, Offset, Size, _Ops}) ->
 		etorrent_t_peer_send:local_request(S#state.send_pid,
 						   {Pn, Offset, Size})
 	end,
@@ -458,13 +460,13 @@ queue_items(ChunkList, S) ->
 
     G = fun
 	    ({Pn, Chunks}, RS) ->
-		lists:foldl(fun ({Offset, Size}, RRS) ->
-				      gb_sets:add_element({Pn, Offset, Size}, RRS)
+		lists:foldl(fun ({Offset, Size, Ops}, RRS) ->
+				      gb_trees:enter({Pn, Offset, Size}, Ops, RRS)
 			    end,
 			    RS,
 			    Chunks);
-	    ({Pn, Offset, Size}, RS) ->
-		gb_sets:add_element({Pn, Offset, Size}, RS)
+	    ({Pn, Offset, Size, Ops}, RS) ->
+		gb_trees:enter({Pn, Offset, Size}, Ops, RS)
 	end,
     RSet = lists:foldl(G, S#state.remote_request_set, ChunkList),
     {ok, S#state { remote_request_set = RSet }}.

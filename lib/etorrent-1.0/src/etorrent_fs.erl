@@ -15,7 +15,8 @@
 
 %% API
 -export([start_link/2, load_file_information/2,
-	 stop/1, read_piece/2, write_piece/3, size_of_ops/1]).
+	 stop/1, read_piece/2, size_of_ops/1,
+	 write_chunk/2, check_piece/3]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -70,8 +71,12 @@ read_piece(Pid, Pn) when is_integer(Pn) ->
 %% Description: Search the mnesia tables for the Piece with Index and
 %%   write it back to disk.
 %%--------------------------------------------------------------------
-write_piece(Pid, PeerGroupPid, Index) ->
-    gen_server:cast(Pid, {write_piece, PeerGroupPid, Index}).
+check_piece(Pid, PeerGroupPid, Index) ->
+    gen_server:cast(Pid, {check_piece, PeerGroupPid, Index}).
+
+%%% TODO: The PeerGroupPid could be obtained by the process itself.
+write_chunk(Pid, {Index, Data, Ops}) ->
+    gen_server:cast(Pid, {write_chunk, {Index, Data, Ops}}).
 
 %%====================================================================
 %% gen_server callbacks
@@ -87,41 +92,43 @@ handle_call({read_piece, PieceNum}, _From, S) ->
     {ok, Data, NS} = read_pieces_and_assemble(Operations, [], S),
     {reply, {ok, Data}, NS}.
 
-handle_cast({write_piece, PeerGroupPid, Index}, S) ->
+%% Can in principle be a cast!
+handle_cast({write_chunk, {Index, Data, Ops}}, S) ->
     case etorrent_piece:select(S#state.torrent_id, Index) of
 	[P] when P#piece.state =:= fetched ->
 	    {noreply, S};
 	[_] ->
-	    Data = etorrent_chunk:retrieve_chunks(S#state.torrent_id, Index),
-	    DataSize = size(Data),
-	    [#piece { hash = Hash,
-		      files = FilesToWrite }] =
-		etorrent_piece:select(S#state.torrent_id,
-				     Index),
-	    D = iolist_to_binary(Data),
-	    case Hash == crypto:sha(D) of
-		true ->
-		    {ok, NS} = write_piece_data(D, FilesToWrite, S),
-		    {atomic, ok} = etorrent_torrent:statechange(
-				     S#state.torrent_id,
-				     {subtract_left, DataSize}),
-		    {atomic, ok} = etorrent_torrent:statechange(
-				     S#state.torrent_id,
-				     {add_downloaded, DataSize}),
-		    {atomic, ok} = etorrent_piece:statechange(
-				     S#state.torrent_id,
-				     Index,
-				     fetched),
-		    ok = etorrent_t_peer_group:broadcast_have(PeerGroupPid,
-							      Index),
-		    {noreply, NS};
-		false ->
-		    {atomic, ok} =
-			etorrent_piece:statechange(S#state.torrent_id,
-						   Index,
-						   not_fetched),
-		    {noreply, S}
-	    end
+	    {ok, NS} = fs_write(Data, Ops, S),
+	    {noreply, NS}
+    end;
+handle_cast({check_piece, PeerGroupPid, Index}, S) ->
+    [#piece { hash = Hash, files = Operations}] =
+	etorrent_piece:select(S#state.torrent_id, Index),
+    {ok, Data, NS} = read_pieces_and_assemble(Operations, [], S),
+    DataSize = size(Data),
+    case Hash == crypto:sha(Data) of
+	true ->
+	    {atomic, ok} = etorrent_torrent:statechange(
+			     S#state.torrent_id,
+			     {subtract_left, DataSize}),
+	    {atomic, ok} = etorrent_torrent:statechange(
+			     S#state.torrent_id,
+			     {add_downloaded, DataSize}),
+	    {atomic, ok} = etorrent_piece:statechange(
+			     S#state.torrent_id,
+			     Index,
+			     fetched),
+	    ok = etorrent_t_peer_group:broadcast_have(PeerGroupPid,
+						      Index),
+	    {noreply, NS};
+	false ->
+	    {atomic, ok} =
+		etorrent_piece:statechange(S#state.torrent_id,
+					   Index,
+					   not_fetched),
+	    %% TODO: Kill the 'fetched' part in the chunk table.
+	    %% TODO: Update 'left' correctly for the piece.
+	    {noreply, NS}
     end;
 handle_cast(stop, S) ->
     {stop, normal, S};
@@ -192,9 +199,14 @@ read_pieces_and_assemble([{Path, Offset, Size} | Rest], Done, S) ->
 	    read_pieces_and_assemble(Rest, [Data | Done], NS)
     end.
 
-write_piece_data(<<>>, [], S) ->
+%%--------------------------------------------------------------------
+%% Func: fs_write(Data, Operations, State) -> {ok, State}
+%% Description: Write data defined by Operations. Returns new State
+%%   maintaining the file_process_dict.
+%%--------------------------------------------------------------------
+fs_write(<<>>, [], S) ->
     {ok, S};
-write_piece_data(Data, [{Path, Offset, Size} | Rest], S) ->
+fs_write(Data, [{Path, Offset, Size} | Rest], S) ->
     <<Chunk:Size/binary, Remaining/binary>> = Data,
     case dict:find(Path, S#state.file_process_dict) of
 	{ok, Pid} ->
@@ -203,16 +215,16 @@ write_piece_data(Data, [{Path, Offset, Size} | Rest], S) ->
 			etorrent_fs_process:put_data(Pid, Chunk,
 						     Offset, Size)}) of
 		{Ref, ok} ->
-		    write_piece_data(Remaining, Rest, S);
+		    fs_write(Remaining, Rest, S);
 		{'EXIT', {noproc, _}} ->
 		    D = remove_file_process(Pid, S#state.file_process_dict),
-		    write_piece_data(Data, [{Path, Offset, Size} | Rest],
+		    fs_write(Data, [{Path, Offset, Size} | Rest],
 				     S#state{file_process_dict = D})
 	    end;
 	error ->
 	    {ok, Pid, NS} = create_file_process(Path, S),
 	    ok = etorrent_fs_process:put_data(Pid, Chunk, Offset, Size),
-	    write_piece_data(Remaining, Rest, NS)
+	    fs_write(Remaining, Rest, NS)
     end.
 
 remove_file_process(Pid, Dict) ->
@@ -225,4 +237,5 @@ remove_file_process(Pid, Dict) ->
 
 stop_all_fs_processes(Dict) ->
     [etorrent_fs_process:stop(Pid) || {_, Pid} <- dict:to_list(Dict)].
+
 
