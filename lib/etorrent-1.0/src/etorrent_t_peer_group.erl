@@ -67,6 +67,7 @@ new_incoming_peer(Pid, IP, Port) ->
 
 init([OurPeerId, PeerGroup, InfoHash,
       FileSystemPid, TorrentId]) when is_integer(TorrentId) ->
+    process_flag(trap_exit, true),
     {ok, Tref} = timer:send_interval(?ROUND_TIME, self(), round_tick),
     {ok, #state{ our_peer_id = OurPeerId,
 		 peer_group_sup = PeerGroup,
@@ -132,7 +133,7 @@ handle_info(Info, State) ->
     {noreply, State}.
 
 terminate(_Reason, S) ->
-    error_logger:info_report([peer_group_terminating, S]),
+    etorrent_peer:delete(S#state.torrent_id),
     ok.
 
 code_change(_OldVsn, State, _Extra) ->
