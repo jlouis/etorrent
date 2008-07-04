@@ -19,7 +19,11 @@ dialyzer: libs
 run: libs
 	erl $(ERL_FLAGS) -pa $(ETORRENT_LIB)/ebin \
 	-config $(ETORRENT_LIB)/priv/etorrent.config \
-	-sname etorrent -s etorrent
+	-sname etorrent -s etorrent start_debug
+
+tracer:
+	erl -pa $(ETORRENT_LIB)/ebin -noinput \
+	-sname tracer -s tr client
 
 clean:
 	cd lib && $(MAKE) clean

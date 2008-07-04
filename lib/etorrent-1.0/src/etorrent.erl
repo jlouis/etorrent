@@ -3,12 +3,15 @@
 
 -include("etorrent_mnesia_table.hrl").
 
--export([db_initialize/0, stop/0, start/0]).
+-export([db_initialize/0, stop/0, start/0, start_debug/0]).
 -export([start/2, stop/1]).
 -export([help/0, list/0]).
 
+start_debug() ->
+    dbg:tracer(port, dbg:trace_port(ip, 4711)),
+    start().
+
 start() ->
-    dbg:tracer(),
     application:start(crypto),
     application:start(inets),
     application:start(timer),
