@@ -14,7 +14,7 @@
 -include("etorrent_mnesia_table.hrl").
 
 %% API
--export([start_link/3, token/1, start/1, stop/1, load_new_torrent/3,
+-export([start_link/3, token/1, start/1, stop/1,
 	torrent_checked/2, tracker_error_report/2, seed/1,
 	tracker_warning_report/2]).
 
@@ -26,7 +26,6 @@
 -record(state, {id = none,
 
 		path = none,
-		torrent = none,
 		peer_id = none,
 		work_dir = none,
 
@@ -60,9 +59,6 @@ stop(Pid) ->
 
 start(Pid) ->
     gen_fsm:send_event(Pid, start).
-
-load_new_torrent(Pid, File, PeerId) ->
-    gen_fsm:send_event(Pid, {load_new_torrent, File, PeerId}).
 
 torrent_checked(Pid, DiskState) ->
     gen_fsm:send_event(Pid, {torrent_checked, DiskState}).
@@ -168,7 +164,6 @@ initializing(timeout, S) ->
 	    {next_state, started,
 	     S#state{file_system_pid = FSPid,
 		     tracker_pid = TrackerPid,
-		     torrent = Torrent,
 		     peer_group_pid = PeerGroupPid}}
 
     end.
@@ -177,12 +172,6 @@ started(stop, S) ->
     {stop, argh, S};
 started({tracker_error_report, Reason}, S) ->
     io:format("Got tracker error: ~s~n", [Reason]),
-    {next_state, started, S};
-started(seed, S) ->
-    etorrent_torrent:statechange(S#state.id, seeding),
-    {ok, Name} = etorrent_metainfo:get_name(S#state.torrent),
-    etorrent_event:completed_torrent(Name),
-    etorrent_tracker_communication:completed(S#state.tracker_pid),
     {next_state, started, S}.
 
 stopped(start, S) ->
