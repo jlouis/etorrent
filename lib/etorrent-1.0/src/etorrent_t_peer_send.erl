@@ -143,6 +143,10 @@ handle_info(keep_alive_tick, S) ->
     %% a timer cancel.
     {ok, TRef} = timer:send_after(?DEFAULT_KEEP_ALIVE_INTERVAL, self(), keep_alive_tick),
     send_message(keep_alive, S#state { timer = TRef} , 0);
+handle_info(timeout, S)
+  when S#state.choke =:= true andalso S#state.piece_cache =:= none ->
+    garbage_collect(),
+    set_timer(S);
 handle_info(timeout, S) when S#state.choke =:= true ->
     set_timer(S);
 handle_info(timeout, S) when S#state.choke =:= false ->
