@@ -30,6 +30,7 @@
 %%   tags to return the needed data.
 %%
 %%--------------------------------------------------------------------
+%% TODO, not_interested here does not take chunked pieces into account!
 pick_chunks(Pid, Id, PieceSet, Remaining) ->
     case pick_chunks(pick_chunked, {Pid, Id, PieceSet, [], Remaining}) of
 	not_interested ->

@@ -143,7 +143,7 @@ bitfield(Id) when is_integer(Id) ->
 						   gb_sets:from_list(Fetched)).
 
 %%--------------------------------------------------------------------
-%% Function: check_interest(Id, PieceSet) -> interested | not_interested
+%% Function: check_interest(Id, PieceSet) -> interested | not_interested | invalid_piece
 %% Description: Given a set of pieces, return if we are interested in any of them.
 %%--------------------------------------------------------------------
 check_interest(Id, PieceSet) when is_integer(Id) ->
@@ -158,10 +158,10 @@ find_interest_piece(Id, {Pn, Next}) ->
 	    invalid_piece;
 	[P] when is_record(P, piece) ->
 	    case P#piece.state of
-		not_fetched ->
-		    interested;
+		fetched ->
+		    find_interest_piece(Id, gb_sets:next(Next));
 		_Other ->
-		    find_interest_piece(Id, gb_sets:next(Next))
+		    interested
 	    end
     end.
 
