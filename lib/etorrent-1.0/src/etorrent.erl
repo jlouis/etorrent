@@ -65,9 +65,13 @@ show() ->
 
 show(Item) when is_integer(Item) ->
     %{atomic, Torrent} = etorrent_torrent:select(Item),
-    {atomic, [R]} = etorrent_tracking_map:select(Item),
-
-    io:format("Id: ~3.B Name: ~s~n", [R#tracking_map.id, R#tracking_map.filename]);
+    case etorrent_tracking_map:select(Item) of
+	{atomic, [R]} ->
+	    io:format("Id: ~3.B Name: ~s~n",
+		      [R#tracking_map.id, R#tracking_map.filename]);
+	{atomic, []} ->
+	    io:format("No such torrent Id~n")
+    end;
 show(_) ->
     io:fromat("Item supplied is not an integer~n").
 
