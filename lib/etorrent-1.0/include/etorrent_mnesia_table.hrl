@@ -1,3 +1,7 @@
+%% Sequences, as in SQL SEQUENCES
+-record(sequence, {name, count}).
+
+%% The tracking map tracks torrent id's to filenames, etc. It is the high-level view
 -record(tracking_map, {id,  %% Unique identifier of torrent
 		       filename, %% The filename
 		       supervisor_pid,%% The Pid of who is supervising the torrent

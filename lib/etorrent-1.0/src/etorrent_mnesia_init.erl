@@ -6,6 +6,8 @@
 -export([init/0]).
 
 init() ->
+    mnesia:create_table(sequence,
+			[{attributes, record_info(fields, sequence)}]),
     mnesia:create_table(tracking_map,
 			[{attributes, record_info(fields, tracking_map)}]),
     mnesia:create_table(torrent,
