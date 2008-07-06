@@ -5,7 +5,7 @@
 
 -export([db_initialize/0, stop/0, start/0, start_debug/0]).
 -export([start/2, stop/1]).
--export([help/0, list/0, show/0, show/1]).
+-export([help/0, h/0, list/0, l/0, show/0, s/0, show/1, s/1]).
 
 start_debug() ->
     dbg:tracer(port, dbg:trace_port(ip, 4711)),
@@ -65,7 +65,7 @@ show() ->
 
 show(Item) when is_integer(Item) ->
     %{atomic, Torrent} = etorrent_torrent:select(Item),
-    {atomic, R} = etorrent_tracking_map:select(Item),
+    {atomic, [R]} = etorrent_tracking_map:select(Item),
 
     io:format("Id: ~3.B Name: ~s~n", [R#tracking_map.id, R#tracking_map.filename]);
 show(_) ->
@@ -78,8 +78,9 @@ show(_) ->
 help() ->
     io:format("Available commands:~n", []),
 
-    Commands = [{"list", "List torrents in system"},
-		{"show", "Show detailed information for a given torrent"},
+    Commands = [{"help, h", "This help"},
+		{"list, l", "List torrents in system"},
+		{"show, s", "Show detailed information for a given torrent"},
 	        {"stop", "Stop the system"}],
 
     lists:foreach(fun({Command, Desc}) ->
@@ -87,6 +88,14 @@ help() ->
 		  end,
 		  Commands),
     ok.
+
+%%--------------------------------------------------------------------
+%% Abbreviations
+%%--------------------------------------------------------------------
+h() -> help().
+l() -> list().
+s() -> show().
+s(Item) -> show(Item).
 
 %% --------------------------------------------------------------------
 %% Internal functions
