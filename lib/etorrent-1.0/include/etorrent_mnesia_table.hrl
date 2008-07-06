@@ -9,7 +9,7 @@
 		       state}). %% started | stopped | checking | awaiting_check
 
 %% The path map tracks file system paths and maps them to integers.
--record(path_map, {id,    % Unique Id of path
+-record(path_map, {id,    % Unique Id of pathmap: a pair {sequence.id, Torrent_id}
 		   path}). % (IDX) File system path minus work dir
 
 %% A single torrent is represented as the 'torrent' record
