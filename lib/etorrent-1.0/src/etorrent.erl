@@ -73,7 +73,7 @@ show(Item) when is_integer(Item) ->
 	    io:format("No such torrent Id~n")
     end;
 show(_) ->
-    io:fromat("Item supplied is not an integer~n").
+    io:format("Item supplied is not an integer~n").
 
 %%--------------------------------------------------------------------
 %% Function: help() -> io()
