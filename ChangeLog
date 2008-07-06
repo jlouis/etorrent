@@ -1,3 +1,11 @@
+2008-07-06  Jesper Louis Andersen  <jlouis@ogre.home>
+
+	* SRC: etorrent now uses much less memory
+
+	* SRC: Say hello to etorrent:show/1
+
+	* SRC: Abbreviations added to common etorrent: commands.
+
 2008-07-03  Jesper Louis Andersen  <jlouis@ogre.home>
 
 	* SRC: Plug a bug when stopping torrents and matching on the wrong record.
