@@ -5,7 +5,7 @@
 
 -export([db_initialize/0, stop/0, start/0, start_debug/0]).
 -export([start/2, stop/1]).
--export([help/0, list/0]).
+-export([help/0, list/0, show/0, show/1]).
 
 start_debug() ->
     dbg:tracer(port, dbg:trace_port(ip, 4711)),
@@ -57,6 +57,21 @@ list() ->
 		  end, A).
 
 %%--------------------------------------------------------------------
+%% Function: show(Item) -> io()
+%% Description: Show detailed information for Item
+%%--------------------------------------------------------------------
+show() ->
+    io:format("You must supply a torrent Id number~n").
+
+show(Item) when is_integer(Item) ->
+    %{atomic, Torrent} = etorrent_torrent:select(Item),
+    {atomic, R} = etorrent_tracking_map:select(Item),
+
+    io:format("Id: ~3.B Name: ~s~n", [R#tracking_map.id, R#tracking_map.filename]);
+show(_) ->
+    io:fromat("Item supplied is not an integer~n").
+
+%%--------------------------------------------------------------------
 %% Function: help() -> io()
 %% Description: Provide a simple help message for the commands supported.
 %%--------------------------------------------------------------------
@@ -64,6 +79,7 @@ help() ->
     io:format("Available commands:~n", []),
 
     Commands = [{"list", "List torrents in system"},
+		{"show", "Show detailed information for a given torrent"},
 	        {"stop", "Stop the system"}],
 
     lists:foreach(fun({Command, Desc}) ->

@@ -33,6 +33,11 @@ new(File, Supervisor, Id) ->
 %% Function: select({filename, Filename}) -> [#tracking_map]
 %% Description: Find tracking map matching the filename in question.
 %%--------------------------------------------------------------------
+select(Id) when is_integer(Id) ->
+    mnesia:transaction(
+      fun () ->
+	      mnesia:read(tracking_map, Id, read)
+      end);
 select({filename,Filename}) ->
     mnesia:transaction(
       fun () ->

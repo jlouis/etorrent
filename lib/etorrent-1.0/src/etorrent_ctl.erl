@@ -42,6 +42,12 @@ process([stop]) ->
 process([list]) ->
     etorrent:list(),
     ?STATUS_OK;
+process([show, Num]) ->
+    etorrent:show(Num),
+    ?STATUS_OK;
+process([show]) ->
+    etorrent:show(),
+    ?STATUS_OK;
 process([help]) ->
     etorrent:help(),
     ?STATUS_USAGE;
