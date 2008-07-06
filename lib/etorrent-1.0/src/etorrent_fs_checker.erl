@@ -12,7 +12,7 @@
 
 %% API
 -export([read_and_check_torrent/3, load_torrent/1, ensure_file_sizes_correct/1,
-	build_dictionary_on_files/2, check_torrent_contents/2]).
+	 check_torrent_contents/2]).
 
 -define(DEFAULT_CHECK_SLEEP_TIME, 10).
 
@@ -30,7 +30,7 @@ read_and_check_torrent(Id, SupervisorPid, Path) ->
 
     %% Build the dictionary mapping pieces to file operations
     {ok, FileDict, NumberOfPieces} =
-	build_dictionary_on_files(Torrent, Files),
+	build_dictionary_on_files(Id, Torrent, Files),
 
     %% Initialize the filesystem, initializes the piecemap
     {ok, FS} = add_filesystem(Id, SupervisorPid, FileDict),
@@ -87,24 +87,20 @@ check_torrent_contents(FS, Id) ->
       Pieces),
     ok.
 
-build_dictionary_on_files(Torrent, Files) ->
+build_dictionary_on_files(TorrentId, Torrent, Files) ->
     Pieces = etorrent_metainfo:get_pieces(Torrent),
     PSize = etorrent_metainfo:get_piece_length(Torrent),
     LastPieceSize = lists:sum([S || {_F, S} <- Files]) rem PSize,
-    construct_fpmap(Files,
-		    0,
-		    PSize,
-		    LastPieceSize,
-		    lists:zip(lists:seq(0, length(Pieces)-1), Pieces),
-		    [],
-		    0).
-
-
+    {ok, PieceList, N} = construct_fpmap(Files, 0, PSize, LastPieceSize,
+					 lists:zip(lists:seq(0, length(Pieces)-1), Pieces),
+					 [], 0),
+    MappedPieces = [{Num, {Hash, insert_into_piece_map(Ops, TorrentId), X}} ||
+		       {Num, {Hash, Ops, X}} <- PieceList],
+    {ok, dict:from_list(MappedPieces), N}.
 
 %%====================================================================
 %% Internal functions
 %%====================================================================
-
 add_filesystem(Id, SupervisorPid, FileDict) ->
     etorrent_piece:new(Id, FileDict),
     FSP = case etorrent_t_sup:add_file_system_pool(SupervisorPid) of
@@ -133,7 +129,7 @@ extract_piece(Left, [{Pth, Sz} | R], Offset, Building) ->
     end.
 
 construct_fpmap([], _Offset, _PieceSize, _LPS, [], Done, N) ->
-    {ok, dict:from_list(Done), N};
+    {ok, Done, N};
 construct_fpmap([], _O, _P, _LPS, _Pieces, _D, _N) ->
     error_more_pieces;
 construct_fpmap(FileList, Offset, PieceSize, LastPieceSize,
@@ -146,6 +142,10 @@ construct_fpmap(FileList, Offset, PieceSize, LastPieceSize,
     {ok, FL, OS, Ops} = extract_piece(PieceSize, FileList, Offset, []),
     construct_fpmap(FL, OS, PieceSize, LastPieceSize, Ps,
 		    [{Num, {Hash, lists:reverse(Ops), none}} | Done], N+1).
+
+insert_into_piece_map(Ops, TorrentId) ->
+    [{etorrent_path_map:select(Path, TorrentId), Offset, Size} ||
+	{Path, Offset, Size} <- Ops].
 
 fill_file_ensure_path(Path, Missing) ->
     case file:open(Path, [read, write, delayed_write, binary, raw]) of

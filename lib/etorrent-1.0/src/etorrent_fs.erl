@@ -170,16 +170,16 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 %%% Internal functions
 %%--------------------------------------------------------------------
-create_file_process(Path, S) ->
-    {ok, Pid} = etorrent_fs_pool_sup:add_file_process(S#state.file_pool, Path),
+create_file_process(Id, S) ->
+    {ok, Pid} = etorrent_fs_pool_sup:add_file_process(S#state.file_pool, S#state.torrent_id, Id),
     erlang:monitor(process, Pid),
-    NewDict = dict:store(Path, Pid, S#state.file_process_dict),
+    NewDict = dict:store(Id, Pid, S#state.file_process_dict),
     {ok, Pid, S#state{ file_process_dict = NewDict }}.
 
 read_pieces_and_assemble([], FileData, S) ->
     {ok, list_to_binary(lists:reverse(FileData)), S};
-read_pieces_and_assemble([{Path, Offset, Size} | Rest], Done, S) ->
-    case dict:find(Path, S#state.file_process_dict) of
+read_pieces_and_assemble([{Id, Offset, Size} | Rest], Done, S) ->
+    case dict:find(Id, S#state.file_process_dict) of
 	{ok, Pid} ->
 	    Ref = make_ref(),
 	    case catch({Ref,
@@ -188,12 +188,12 @@ read_pieces_and_assemble([{Path, Offset, Size} | Rest], Done, S) ->
 		    read_pieces_and_assemble(Rest, [Data | Done], S);
 		{'EXIT', {noproc, _}} ->
 		    D = remove_file_process(Pid, S#state.file_process_dict),
-		    read_pieces_and_assemble([{Path, Offset, Size} | Rest],
+		    read_pieces_and_assemble([{Id, Offset, Size} | Rest],
 					     Done,
 					     S#state{file_process_dict = D})
 	    end;
 	error ->
-	    {ok, Pid, NS} = create_file_process(Path, S),
+	    {ok, Pid, NS} = create_file_process(Id, S),
 	    Data = etorrent_fs_process:get_data(Pid, Offset, Size),
 	    read_pieces_and_assemble(Rest, [Data | Done], NS)
     end.
@@ -205,9 +205,9 @@ read_pieces_and_assemble([{Path, Offset, Size} | Rest], Done, S) ->
 %%--------------------------------------------------------------------
 fs_write(<<>>, [], S) ->
     {ok, S};
-fs_write(Data, [{Path, Offset, Size} | Rest], S) ->
+fs_write(Data, [{Id, Offset, Size} | Rest], S) ->
     <<Chunk:Size/binary, Remaining/binary>> = Data,
-    case dict:find(Path, S#state.file_process_dict) of
+    case dict:find(Id, S#state.file_process_dict) of
 	{ok, Pid} ->
 	    Ref = make_ref(),
 	    case catch({Ref,
@@ -217,11 +217,11 @@ fs_write(Data, [{Path, Offset, Size} | Rest], S) ->
 		    fs_write(Remaining, Rest, S);
 		{'EXIT', {noproc, _}} ->
 		    D = remove_file_process(Pid, S#state.file_process_dict),
-		    fs_write(Data, [{Path, Offset, Size} | Rest],
+		    fs_write(Data, [{Id, Offset, Size} | Rest],
 				     S#state{file_process_dict = D})
 	    end;
 	error ->
-	    {ok, Pid, NS} = create_file_process(Path, S),
+	    {ok, Pid, NS} = create_file_process(Id, S),
 	    ok = etorrent_fs_process:put_data(Pid, Chunk, Offset, Size),
 	    fs_write(Remaining, Rest, NS)
     end.

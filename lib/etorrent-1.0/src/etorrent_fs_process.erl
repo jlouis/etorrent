@@ -12,10 +12,12 @@
 %%%-------------------------------------------------------------------
 -module(etorrent_fs_process).
 
+-include("etorrent_mnesia_table.hrl").
+
 -behaviour(gen_server).
 
 %% API
--export([start_link/1, get_data/3, put_data/4, stop/1]).
+-export([start_link/2, get_data/3, put_data/4, stop/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -34,8 +36,8 @@
 %% Function: start_link() -> {ok,Pid} | ignore | {error,Error}
 %% Description: Starts the server
 %%--------------------------------------------------------------------
-start_link(Path) ->
-    gen_server:start_link(?MODULE, [Path], []).
+start_link(Path, Id) ->
+    gen_server:start_link(?MODULE, [Path, Id], []).
 
 get_data(Pid, OffSet, Size) ->
     gen_server:call(Pid, {read_request, OffSet, Size}).
@@ -49,9 +51,10 @@ stop(Pid) ->
 %%====================================================================
 %% gen_server callbacks
 %%====================================================================
-init([Path]) ->
+init([Id, TorrentId]) ->
     %% We'll clean up file descriptors gracefully on termination.
     process_flag(trap_exit, true),
+    #path_map { path = Path} = etorrent_path_map:select(Id, TorrentId),
     {ok, Workdir} = application:get_env(etorrent, dir),
     FullPath = filename:join([Workdir, Path]),
     {ok, IODev} = file:open(FullPath, [read, write, binary, raw, read_ahead]),

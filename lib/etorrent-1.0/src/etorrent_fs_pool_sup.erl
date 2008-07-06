@@ -10,7 +10,7 @@
 -behaviour(supervisor).
 
 %% API
--export([start_link/0, add_file_process/2]).
+-export([start_link/0, add_file_process/3]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -31,8 +31,8 @@ start_link() ->
 %% Function: add_file_process/2
 %% Description: Add a new process for maintaining a file.
 %%--------------------------------------------------------------------
-add_file_process(Pid, Path) ->
-    supervisor:start_child(Pid, [Path]).
+add_file_process(Pid, TorrentId, Path) ->
+    supervisor:start_child(Pid, [Path, TorrentId]).
 
 %%====================================================================
 %% Supervisor callbacks

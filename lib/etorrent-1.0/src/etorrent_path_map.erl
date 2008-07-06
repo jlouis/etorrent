@@ -43,7 +43,7 @@ select(Path, TorrentId) when is_list(Path) ->
 %%--------------------------------------------------------------------
 delete(TorrentId) when is_integer(TorrentId) ->
     MatchHead = #path_map { id = {'_', TorrentId}, _ = '_' },
-    [mnesia:delete_object(Obj) ||
+    [mnesia:dirty_delete_object(Obj) ||
 	Obj <- mnesia:dirty_select(path_map, [{MatchHead, [], ['$_']}])].
 
 %%====================================================================
