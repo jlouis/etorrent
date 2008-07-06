@@ -92,7 +92,6 @@ handle_call({read_piece, PieceNum}, _From, S) ->
     {ok, Data, NS} = read_pieces_and_assemble(Operations, [], S),
     {reply, {ok, Data}, NS}.
 
-%% Can in principle be a cast!
 handle_cast({write_chunk, {Index, Data, Ops}}, S) ->
     case etorrent_piece:select(S#state.torrent_id, Index) of
 	[P] when P#piece.state =:= fetched ->

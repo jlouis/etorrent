@@ -52,9 +52,11 @@ stop(Pid) ->
 init([Path]) ->
     %% We'll clean up file descriptors gracefully on termination.
     process_flag(trap_exit, true),
-    {ok, IODev} = file:open(Path, [read, write, binary, raw, read_ahead]),
+    {ok, Workdir} = application:get_env(etorrent, dir),
+    FullPath = filename:join([Workdir, Path]),
+    {ok, IODev} = file:open(FullPath, [read, write, binary, raw, read_ahead]),
     {ok, #state{iodev = IODev,
-		path = Path}, ?REQUEST_TIMEOUT}.
+		path = FullPath}, ?REQUEST_TIMEOUT}.
 
 %%--------------------------------------------------------------------
 %% Function: %% handle_call(Request, From, State) -> {reply, Reply, State} |

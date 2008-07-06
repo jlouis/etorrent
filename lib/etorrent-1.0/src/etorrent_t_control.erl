@@ -27,7 +27,6 @@
 
 		path = none,
 		peer_id = none,
-		work_dir = none,
 
 		parent_pid = none,
 		tracker_pid = none,
@@ -86,10 +85,8 @@ seed(Pid) ->
 %%--------------------------------------------------------------------
 init([Parent, Id, Path, PeerId]) ->
     process_flag(trap_exit, true),
-    {ok, WorkDir} = application:get_env(etorrent, dir),
     etorrent_tracking_map:new(Path, Parent, Id),
-    {ok, initializing, #state{work_dir = WorkDir,
-			      id = Id,
+    {ok, initializing, #state{id = Id,
 			      path = Path,
 			      peer_id = PeerId,
 			      parent_pid = Parent}, 0}. % Force timeout instantly.
@@ -119,7 +116,6 @@ initializing(timeout, S) ->
 		etorrent_fs_checker:read_and_check_torrent(
 		  S#state.id,
 		  S#state.parent_pid,
-		  S#state.work_dir,
 		  S#state.path),
 	    %% Update the tracking map. This torrent has been started, and we
 	    %%  know its infohash

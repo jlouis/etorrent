@@ -11,7 +11,7 @@
 -include("etorrent_mnesia_table.hrl").
 
 %% API
--export([read_and_check_torrent/4, load_torrent/2, ensure_file_sizes_correct/1,
+-export([read_and_check_torrent/3, load_torrent/1, ensure_file_sizes_correct/1,
 	build_dictionary_on_files/2, check_torrent_contents/2]).
 
 -define(DEFAULT_CHECK_SLEEP_TIME, 10).
@@ -20,10 +20,10 @@
 %% API
 %%====================================================================
 
-read_and_check_torrent(Id, SupervisorPid, WorkDir, Path) ->
+read_and_check_torrent(Id, SupervisorPid, Path) ->
     %% Load the torrent
     {ok, Torrent, Files, Infohash} =
-	load_torrent(WorkDir, Path),
+	load_torrent(Path),
 
     %% Ensure the files are filled up with garbage of correct size
     ok = ensure_file_sizes_correct(Files),
@@ -40,27 +40,30 @@ read_and_check_torrent(Id, SupervisorPid, WorkDir, Path) ->
 
     {ok, Torrent, FS, Infohash, NumberOfPieces}.
 
-load_torrent(Workdir, Path) ->
+load_torrent(Path) ->
+    {ok, Workdir} = application:get_env(etorrent, dir),
     P = filename:join([Workdir, Path]),
     Torrent = etorrent_bcoding:parse(P),
     Files = etorrent_metainfo:get_files(Torrent),
     Name = etorrent_metainfo:get_name(Torrent),
     InfoHash = etorrent_metainfo:get_infohash(Torrent),
     FilesToCheck =
-	[{filename:join([Workdir, Name, Filename]), Size} ||
+	[{filename:join([Name, Filename]), Size} ||
 	    {Filename, Size} <- Files],
     {ok, Torrent, FilesToCheck, InfoHash}.
 
 ensure_file_sizes_correct(Files) ->
+    {ok, Workdir} = application:get_env(etorrent, dir),
     lists:foreach(
       fun ({Pth, ISz}) ->
-	      Sz = filelib:file_size(Pth),
+	      F = filename:join([Workdir, Pth]),
+	      Sz = filelib:file_size(F),
 	      case Sz == ISz of
 		  true ->
 		      ok;
 		  false ->
 		      Missing = ISz - Sz,
-		      fill_file_ensure_path(Pth, Missing)
+		      fill_file_ensure_path(F, Missing)
 	      end
       end,
       Files),
