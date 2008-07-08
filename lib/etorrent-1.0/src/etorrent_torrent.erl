@@ -27,7 +27,7 @@
 new(Id, {{uploaded, U}, {downloaded, D}, {left, L}, {total, T}}, NPieces) ->
     State = case L of
 		0 ->
-		    etorrent_event:seeding_torrent(Id),
+		    etorrent_event_mgr:seeding_torrent(Id),
 		    seeding;
 		_ -> leeching
 	    end,
@@ -153,7 +153,7 @@ statechange(Id, What) when is_integer(Id) ->
     {atomic, New} = mnesia:transaction(F),
     case New#torrent.left of
 	0 ->
-	    etorrent_event:seeding_torrent(Id),
+	    etorrent_event_mgr:seeding_torrent(Id),
 	    ok;
 	_ ->
 	    ok

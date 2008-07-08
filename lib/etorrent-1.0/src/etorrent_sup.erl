@@ -29,8 +29,8 @@ start_link() ->
 %%====================================================================
 init([]) ->
     EventManager = {event_manager,
-		    {etorrent_event, start_link, []},
-		    permanent, 2000, worker, [etorrent_event]},
+		    {etorrent_event_mgr, start_link, []},
+		    permanent, 2000, worker, [etorrent_event_mgr]},
     Listener = {listener,
 		{etorrent_listener, start_link, []},
 		permanent, 2000, worker, [etorrent_listener]},
