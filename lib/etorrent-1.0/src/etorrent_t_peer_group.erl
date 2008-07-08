@@ -280,30 +280,29 @@ rechoke(S) ->
 	      endgame -> #peer.downloaded
 	  end,
     {atomic, Peers} = etorrent_peer:select_fastest(S#state.torrent_id, Key),
-    rechoke(Peers, calculate_num_downloaders(S)).
+    rechoke(Peers, calculate_num_downloaders(S), S).
 
-rechoke(Peers, 0) ->
-    [optimistic_unchoke_handler(P) || P <- Peers],
+rechoke(Peers, 0, S) ->
+    [optimistic_unchoke_handler(P, S) || P <- Peers],
     ok;
-rechoke([], _N) ->
+rechoke([], _N, _S) ->
     ok;
-rechoke([Peer | Rest], N) when is_record(Peer, peer) ->
+rechoke([Peer | Rest], N, S) when is_record(Peer, peer) ->
     case Peer#peer.remote_i_state of
 	interested ->
 	    etorrent_t_peer_recv:unchoke(Peer#peer.pid),
-	    rechoke(Rest, N-1);
+	    rechoke(Rest, N-1, S);
 	not_interested ->
 	    etorrent_t_peer_recv:unchoke(Peer#peer.pid),
-	    rechoke(Rest, N)
+	    rechoke(Rest, N, S)
     end.
 
-optimistic_unchoke_handler(P) ->
-    case P#peer.optimistic_c_state of
-	not_opt_unchoke ->
-	    etorrent_t_peer_recv:choke(P#peer.pid);
-	opt_unchoke ->
-	    %% Handled elsewhere!
-	    ok
+optimistic_unchoke_handler(P, S) ->
+    case P#peer.pid =:= S#state.optimistic_unchoke_pid of
+	true ->
+	    ok; % Handled elsewhere
+	false ->
+	    etorrent_t_peer_recv:choke(P#peer.pid)
     end.
 
 %% TODO: Make number of downloaders depend on current rate!
