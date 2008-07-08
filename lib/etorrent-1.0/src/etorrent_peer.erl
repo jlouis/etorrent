@@ -219,7 +219,5 @@ alter_state(Peer, What) ->
 	    Downloaded = Peer#peer.downloaded,
 	    Peer#peer{ downloaded = Downloaded + Amount };
 	reset_round ->
-	    Peer#peer { uploaded = 0, downloaded = 0};
-	_ ->
-	    exit(wrong_alter_state_in_peer)
+	    Peer#peer { uploaded = 0, downloaded = 0}
     end.
