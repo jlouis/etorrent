@@ -225,10 +225,10 @@ handle_tracker_response(BC, none, none, S) ->
     etorrent_t_peer_group:add_peers(S#state.peer_group_pid,
 				   response_ips(BC)),
     %% Update the state of the torrent
-    etorrent_torrent:statechange(S#state.torrent_id,
-				 {tracker_report,
-				  decode_integer("complete", BC),
-				  decode_integer("incomplete", BC)}),
+    ok = etorrent_torrent:statechange(S#state.torrent_id,
+				      {tracker_report,
+				       decode_integer("complete", BC),
+				       decode_integer("incomplete", BC)}),
     %% Timeout
     TrackerId = tracker_id(BC),
     handle_timeout(BC, S#state { trackerid = TrackerId }).

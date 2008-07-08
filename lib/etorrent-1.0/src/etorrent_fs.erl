@@ -107,12 +107,12 @@ handle_cast({check_piece, PeerGroupPid, Index}, S) ->
     DataSize = size(Data),
     case Hash == crypto:sha(Data) of
 	true ->
-	    {atomic, ok} = etorrent_torrent:statechange(
-			     S#state.torrent_id,
-			     {subtract_left, DataSize}),
-	    {atomic, ok} = etorrent_torrent:statechange(
-			     S#state.torrent_id,
-			     {add_downloaded, DataSize}),
+	    ok = etorrent_torrent:statechange(
+		   S#state.torrent_id,
+		   {subtract_left, DataSize}),
+	    ok = etorrent_torrent:statechange(
+		   S#state.torrent_id,
+		   {add_downloaded, DataSize}),
 	    {atomic, ok} = etorrent_piece:statechange(
 			     S#state.torrent_id,
 			     Index,

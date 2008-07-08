@@ -112,6 +112,7 @@ initializing(timeout, S) ->
 	    %% TODO: Try to coalesce some of these operations together.
 
 	    %% Read the torrent, check its contents for what we are missing
+	    etorrent_event:checking_torrent(S#state.id),
 	    {ok, Torrent, FSPid, InfoHash, NumberOfPieces} =
 		etorrent_fs_checker:read_and_check_torrent(
 		  S#state.id,
@@ -156,6 +157,7 @@ initializing(timeout, S) ->
 		  S#state.id),
 
 	    %% Since the process will now go to a hibernation state, GC it
+	    etorrent_event:started_torrent(S#state.id),
 	    garbage_collect(),
 	    {next_state, started,
 	     S#state{file_system_pid = FSPid,

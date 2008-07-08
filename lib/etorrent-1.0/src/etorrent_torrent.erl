@@ -25,8 +25,13 @@
 %% Precondition: The #piece table has been filled with the torrents pieces.
 %%--------------------------------------------------------------------
 new(Id, {{uploaded, U}, {downloaded, D}, {left, L}, {total, T}}, NPieces) ->
+    State = case L of
+		0 ->
+		    etorrent_event:seeding_torrent(Id),
+		    seeding;
+		_ -> leeching
+	    end,
     F = fun() ->
-		State = case L of 0 -> seeding; _ -> leeching end,
 		mnesia:write(#torrent { id = Id,
 					left = L,
 					total = T,
@@ -142,12 +147,17 @@ statechange(Id, What) when is_integer(Id) ->
 				      T#torrent{seeders = Seeders, leechers = Leechers}
 			      end,
 			mnesia:write(New),
-			ok;
-		    [] ->
-			not_found
+			New
 		end
 	end,
-    mnesia:transaction(F).
+    {atomic, New} = mnesia:transaction(F),
+    case New#torrent.left of
+	0 ->
+	    etorrent_event:seeding_torrent(Id),
+	    ok;
+	_ ->
+	    ok
+    end.
 
 %%--------------------------------------------------------------------
 %% Function: is_endgame(Id) -> bool()

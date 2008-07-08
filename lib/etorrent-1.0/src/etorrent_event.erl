@@ -10,7 +10,9 @@
 -behaviour(gen_event).
 %% API
 -export([start_link/0, add_handler/0,
-	 starting_torrent/1, stopping_torrent/1, completed_torrent/1]).
+	 started_torrent/1,
+	 checking_torrent/1,
+	 seeding_torrent/1]).
 
 %% gen_event callbacks
 -export([init/1, handle_event/2, handle_call/2,
@@ -37,14 +39,14 @@ start_link() ->
 add_handler() ->
     gen_event:add_handler(?SERVER, ?MODULE, []).
 
-starting_torrent(Name) ->
-    gen_event:notify(?SERVER, {starting_torrent, Name}).
+started_torrent(Id) ->
+    gen_event:notify(?SERVER, {started_torrent, Id}).
 
-stopping_torrent(Name) ->
-    gen_event:notify(?SERVER, {stopping_torrent, Name}).
+checking_torrent(Id) ->
+    gen_event:notify(?SERVER, {checking_torrent, Id}).
 
-completed_torrent(Name) ->
-    gen_event:notify(?SERVER, {completed_torrent, Name}).
+seeding_torrent(Id) ->
+    gen_event:notify(?SERVER, {seeding_torrent, Id}).
 
 %%====================================================================
 %% gen_event callbacks

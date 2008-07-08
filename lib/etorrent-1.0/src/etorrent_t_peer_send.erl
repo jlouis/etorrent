@@ -235,8 +235,8 @@ send_piece(Index, Offset, Len, S) ->
 	    <<_Skip:Offset/binary, Data:Len/binary, _R/binary>> = Binary,
 	    Msg = {piece, Index, Offset, Data},
 	    %% Track uploaded size for torrent (for the tracker)
-	    etorrent_torrent:statechange(S#state.torrent_id,
-					 {add_upload, Len}),
+	    ok = etorrent_torrent:statechange(S#state.torrent_id,
+					      {add_upload, Len}),
 	    %% Track the amount uploaded by this peer.
 	    etorrent_peer:statechange(S#state.parent, {uploaded, Len}),
 	    send_piece_message(Msg, S, 0);
