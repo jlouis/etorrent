@@ -16,7 +16,7 @@
 
 %% API
 -export([start_link/5, add_peers/2, broadcast_have/2, new_incoming_peer/3,
-	 broadcast_got_chunk/2]).
+	 broadcast_got_chunk/2, perform_rechoke/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -30,6 +30,9 @@
 		num_peers = 0,
 		timer_ref = none,
 		round = 0,
+
+		optimistic_unchoke_pid = none,
+		opt_unchoke_chain = [],
 
 	        file_system_pid = none,
 		peer_group_sup = none,
@@ -56,6 +59,9 @@ broadcast_have(Pid, Index) ->
 broadcast_got_chunk(Pid, Chunk) ->
     gen_server:cast(Pid, {broadcast_got_chunk, Chunk}).
 
+perform_rechoke(Pid) ->
+    gen_server:cast(Pid, rechoke).
+
 new_incoming_peer(Pid, IP, Port) ->
     %% Set a pretty graceful timeout here as the peer_group can be pretty heavily
     %%  loaded at times. We have 5 acceptors by default anyway.
@@ -68,6 +74,9 @@ new_incoming_peer(Pid, IP, Port) ->
 init([OurPeerId, PeerGroup, InfoHash,
       FileSystemPid, TorrentId]) when is_integer(TorrentId) ->
     process_flag(trap_exit, true),
+    dbg:p(self(), call),
+    tr:tr(etorrent_t_peer_group, sort_fastest_downloaders),
+
     {ok, Tref} = timer:send_interval(?ROUND_TIME, self(), round_tick),
     {ok, #state{ our_peer_id = OurPeerId,
 		 peer_group_sup = PeerGroup,
@@ -98,36 +107,55 @@ handle_cast({broadcast_have, Index}, S) ->
 handle_cast({broadcast_got_chunk, Chunk}, S) ->
     bcast_got_chunk(Chunk, S),
     {noreply, S};
+handle_cast(rechoke, S) ->
+    rechoke(S),
+    {noreply, S};
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
 handle_info(round_tick, S) ->
     case S#state.round of
 	0 ->
-	    etorrent_peer:statechange(S#state.torrent_id, remove_optimistic_unchoke),
-	    {NS, DoNotTouchPids} = perform_choking_unchoking(S),
-	    NNS = select_optimistic_unchoker(DoNotTouchPids, NS),
+	    NS = advance_optimistic_unchoke(S),
+	    rechoke(NS),
 	    {atomic, _} = etorrent_peer:reset_round(S#state.torrent_id),
-	    {noreply, NNS#state{round = 2}};
+	    {noreply, NS#state { round = 2}};
 	N when is_integer(N) ->
-	    {NS, _DoNotTouchPids} = perform_choking_unchoking(S),
+	    rechoke(S),
 	    {atomic, _} = etorrent_peer:reset_round(S#state.torrent_id),
-	    {noreply, NS#state{round = NS#state.round - 1}}
+	    {noreply, S#state{round = S#state.round - 1}}
     end;
 handle_info({'DOWN', _Ref, process, Pid, Reason}, S)
   when (Reason =:= normal) or (Reason =:= shutdown) ->
     % The peer shut down normally. Hence we just remove him and start up
     %  other peers. Eventually the tracker will re-add him to the peer list
+    Peer = etorrent_peer:select(Pid),
+    case {Peer#peer.remote_i_state, Peer#peer.local_c_state} of
+	{interested, choked} ->
+	    rechoke(S);
+	_ ->
+	    ok
+    end,
     etorrent_peer:delete(Pid),
-    {ok, NS} = start_new_peers([], S#state { num_peers = S#state.num_peers -1}),
+    NewChain = lists:delete(Pid, S#state.opt_unchoke_chain),
+    {ok, NS} = start_new_peers([], S#state { num_peers = S#state.num_peers -1,
+					     opt_unchoke_chain = NewChain }),
     {noreply, NS};
 handle_info({'DOWN', _Ref, process, Pid, _Reason}, S) ->
     % The peer shut down unexpectedly re-add him to the queue in the *back*
-    {IP, Port} = etorrent_peer:ip_port(Pid),
+    Peer = etorrent_peer:select(Pid),
+    {IP, Port} = {Peer#peer.ip, Peer#peer.port},
+    case {Peer#peer.remote_i_state, Peer#peer.local_c_state} of
+	{interested, choked} ->
+	    rechoke(S);
+	_ ->
+	    ok
+    end,
     etorrent_peer:delete(Pid),
-    {noreply, S#state{available_peers =
-		      (S#state.available_peers ++ [{IP, Port}]),
-		      num_peers = S#state.num_peers -1}};
+    NewChain = lists:delete(Pid, S#state.opt_unchoke_chain),
+    {noreply, S#state{available_peers = (S#state.available_peers ++ [{IP, Port}]),
+		      num_peers = S#state.num_peers -1,
+		      opt_unchoke_chain = NewChain}};
 handle_info(Info, State) ->
     error_logger:error_report([unknown_info_peer_group, Info]),
     {noreply, State}.
@@ -157,8 +185,11 @@ start_new_incoming_peer(IP, Port, S) ->
 			  S#state.torrent_id),
 	    erlang:monitor(process, Pid),
 	    etorrent_peer:new(IP, Port, S#state.torrent_id, Pid),
+	    NewChain = insert_new_peer_into_chain(Pid, S#state.opt_unchoke_chain),
+	    rechoke(S),
 	    {reply, {ok, Pid},
-	     S#state { num_peers = S#state.num_peers+1 }}
+	     S#state { num_peers = S#state.num_peers+1,
+		       opt_unchoke_chain = NewChain}}
     end.
 
 %%
@@ -179,86 +210,6 @@ broadcast_have_message(Index, S) ->
 			etorrent_t_peer_recv:send_have_piece(Peer#peer.pid, Index)
 		end,
 		S).
-
-select_optimistic_unchoker(DoNotTouchPids, S) ->
-    Size = S#state.num_peers,
-    Peers = etorrent_peer:all(S#state.torrent_id),
-    % Guard such that we don't enter an infinite loop.
-    %   There are multiple optimizations possible here...
-    %% XXX: This code looks infinitely wrong. Plzfx.
-    case sets:size(DoNotTouchPids) >= Size of
-	true ->
-	    S;
-	false ->
-	    select_optimistic_unchoker(Size, Peers, DoNotTouchPids, S)
-    end.
-
-select_optimistic_unchoker(Size, Peers, DoNotTouchPids, S) ->
-    N = crypto:rand_uniform(1, Size+1),
-    Peer = lists:nth(N, Peers),
-    case sets:is_element(Peer#peer.pid, DoNotTouchPids) of
-	true ->
-	    select_optimistic_unchoker(Size, Peers, DoNotTouchPids, S);
-	false ->
-	    {atomic, _} =
-		etorrent_peer:statechange(Peer, optimistic_unchoke),
-	    etorrent_t_peer_recv:unchoke(Peer#peer.pid),
-	    S
-    end.
-
-
-%%--------------------------------------------------------------------
-%% Function: perform_choking_unchoking(state()) -> state()
-%% Description: Peform choking and unchoking of peers according to the
-%%   specification.
-%%--------------------------------------------------------------------
-perform_choking_unchoking(S) ->
-    {atomic, {Interested, NotInterested}} =
-	etorrent_peer:partition_peers_by_interest(S#state.torrent_id),
-    % N fastest interesteds should be kept
-    {Downloaders, Rest} =
-	find_fastest_peers(?DEFAULT_NUM_DOWNLOADERS,
-			   Interested, S),
-    unchoke_peers(Downloaders),
-
-    % All peers not interested should be unchoked
-    unchoke_peers(NotInterested),
-
-    % Choke everyone else
-    choke_peers(Rest),
-
-    DoNotTouchPids = sets:from_list(Downloaders),
-    {S, DoNotTouchPids}.
-
-sort_fastest_downloaders(Peers) ->
-    lists:sort(
-      fun (P1, P2) ->
-	      P1#peer.downloaded > P2#peer.downloaded
-      end,
-      Peers).
-
-sort_fastest_uploaders(Peers) ->
-    lists:sort(
-      fun (P1, P2) ->
-	      P1#peer.uploaded > P2#peer.uploaded
-      end,
-      Peers).
-
-find_fastest_peers(N, Interested, S) ->
-    case etorrent_torrent:mode(S#state.torrent_id) of
-	leeching ->
-	    etorrent_utils:gsplit(N, sort_fastest_downloaders(Interested));
-	seeding ->
-	    etorrent_utils:gsplit(N, sort_fastest_uploaders(Interested));
-	endgame ->
-	    etorrent_utils:gsplit(N, sort_fastest_downloaders(Interested))
-    end.
-
-unchoke_peers(Peers) ->
-    [etorrent_t_peer_recv:unchoke(P#peer.pid) || P <- Peers].
-
-choke_peers(Peers) ->
-    [etorrent_t_peer_recv:choke(P#peer.pid) || P <- Peers].
 
 start_new_peers(IPList, State) ->
     %% Update the PeerList with the new incoming peers
@@ -293,7 +244,7 @@ fill_peers(N, S) ->
 %%   a new state to be put into the process.
 %%--------------------------------------------------------------------
 spawn_new_peer(IP, Port, N, S) ->
-    case etorrent_peer:is_connected(IP, Port, S#state.torrent_id) of
+    case etorrent_peer:connected(IP, Port, S#state.torrent_id) of
 	true ->
 	    fill_peers(N, S);
 	false ->
@@ -307,10 +258,90 @@ spawn_new_peer(IP, Port, N, S) ->
 	    erlang:monitor(process, Pid),
 	    etorrent_t_peer_recv:connect(Pid, IP, Port),
 	    ok = etorrent_peer:new(IP, Port, S#state.torrent_id, Pid),
-	    fill_peers(N-1, S#state { num_peers = S#state.num_peers +1})
+	    NewChain = insert_new_peer_into_chain(Pid, S#state.opt_unchoke_chain),
+	    rechoke(S),
+	    fill_peers(N-1, S#state { num_peers = S#state.num_peers +1,
+				      opt_unchoke_chain = NewChain})
     end.
 
 is_bad_peer(IP, Port, S) ->
-    etorrent_peer:is_connected(IP, Port, S#state.torrent_id).
+    etorrent_peer:connected(IP, Port, S#state.torrent_id).
+
+
+
+%%--------------------------------------------------------------------
+%% Function: rechoke(State) -> ok
+%% Description: Recalculate the choke/unchoke state of peers
+%%--------------------------------------------------------------------
+rechoke(S) ->
+    Key = case etorrent_torrent:mode(S#state.torrent_id) of
+	      seeding -> #peer.uploaded;
+	      leeching -> #peer.downloaded;
+	      endgame -> #peer.downloaded
+	  end,
+    {atomic, Peers} = etorrent_peer:select_fastest(S#state.torrent_id, Key),
+    rechoke(Peers, calculate_num_downloaders(S)).
+
+rechoke(Peers, 0) ->
+    [optimistic_unchoke_handler(P) || P <- Peers],
+    ok;
+rechoke([], _N) ->
+    ok;
+rechoke([Peer | Rest], N) when is_record(Peer, peer) ->
+    case Peer#peer.remote_i_state of
+	interested ->
+	    etorrent_t_peer_recv:unchoke(Peer#peer.pid),
+	    rechoke(Rest, N-1);
+	not_interested ->
+	    etorrent_t_peer_recv:unchoke(Peer#peer.pid),
+	    rechoke(Rest, N)
+    end.
+
+optimistic_unchoke_handler(P) ->
+    case P#peer.optimistic_c_state of
+	not_opt_unchoke ->
+	    etorrent_t_peer_recv:choke(P#peer.pid);
+	opt_unchoke ->
+	    %% Handled elsewhere!
+	    ok
+    end.
+
+%% TODO: Make number of downloaders depend on current rate!
+calculate_num_downloaders(S) ->
+    case etorrent_peer:interested(S#state.optimistic_unchoke_pid) of
+	true ->
+	    ?DEFAULT_NUM_DOWNLOADERS - 1;
+	false ->
+	    ?DEFAULT_NUM_DOWNLOADERS
+    end.
+
+advance_optimistic_unchoke(S) ->
+    NewChain = move_cyclic_chain(S#state.opt_unchoke_chain),
+    case NewChain of
+	[] ->
+	    S; %% No peers yet
+	[H | _T] ->
+	    etorrent_peer:statechange(S#state.optimistic_unchoke_pid,
+				      remove_optimistic_unchoke),
+	    %% Do not choke here, a later call to rechoke will do it.
+	    etorrent_peer:statechange(H, optimistic_unchoke),
+	    etorrent_t_peer_recv:unchoke(H),
+	    S#state { opt_unchoke_chain = NewChain,
+		      optimistic_unchoke_pid = H }
+    end.
+
+move_cyclic_chain([]) -> [];
+move_cyclic_chain(Chain) ->
+    {Front, Back} = lists:splitwith(fun etorrent_peer:local_unchoked/1, Chain),
+    %% Advance chain
+    Back ++ Front.
+
+insert_new_peer_into_chain(Pid, Chain) ->
+    Length = length(Chain),
+    Index = lists:max([0, crypto:rand_uniform(0, Length)]),
+    {Front, Back} = lists:split(Index, Chain),
+    Front ++ [Pid | Back].
+
+
 
 

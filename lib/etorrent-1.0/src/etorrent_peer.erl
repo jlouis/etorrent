@@ -11,8 +11,9 @@
 -include("etorrent_mnesia_table.hrl").
 
 %% API
--export([new/4, all/1, delete/1, statechange/2, is_connected/3, reset_round/1,
-	 ip_port/1, partition_peers_by_interest/1]).
+-export([new/4, all/1, delete/1, statechange/2, connected/3, reset_round/1,
+	 ip_port/1, partition_peers_by_interest/1, select_fastest/2,
+	 interested/1, local_unchoked/1, select/1]).
 
 %%====================================================================
 %% API
@@ -47,8 +48,11 @@ delete(Pid) when is_pid(Pid) ->
 
 %%--------------------------------------------------------------------
 %% Function: statechange(Id, What) -> transaction
-%% Description: Alter all peers matching torrent Id by What
+%%           Id ::= none | integer()
+%% Description: Alter all peers matching torrent Id by What. The 'none'
+%%   case allows us to gracefully handle some corner cases.
 %%--------------------------------------------------------------------
+statechange(none, _What) -> ok;
 statechange(Id, What) when is_integer(Id) ->
     mnesia:transaction(
       fun () ->
@@ -76,10 +80,10 @@ statechange(Pid, What) when is_pid(Pid) ->
     mnesia:transaction(F).
 
 %%--------------------------------------------------------------------
-%% Function: is_connected(IP, Port, Id) -> bool()
+%% Function: connected(IP, Port, Id) -> bool()
 %% Description: Returns true if we are already connected to this peer.
 %%--------------------------------------------------------------------
-is_connected(IP, Port, Id) when is_integer(Id) ->
+connected(IP, Port, Id) when is_integer(Id) ->
     F = fun () ->
 		Q = qlc:q([P || P <- mnesia:table(peer),
 				P#peer.ip =:= IP,
@@ -105,6 +109,57 @@ reset_round(Id) ->
 %%--------------------------------------------------------------------
 all(Id) ->
     mnesia:dirty_index_read(peer, Id, #peer.torrent_id).
+
+%%--------------------------------------------------------------------
+%% Function: select(P)
+%%           P ::= pid()
+%% Description: Select the peer matching pid P.
+%%--------------------------------------------------------------------
+select(Pid) when is_pid(Pid) ->
+    [Peer] = mnesia:dirty_read(peer, Pid),
+    Peer.
+
+%%--------------------------------------------------------------------
+%% Function: select_fastest(Id, Key) -> [#peer]
+%%           Interest ::= interested | not_interested
+%%           Key      ::= integer()
+%% Description: Select the fastest peers matching the query
+%%--------------------------------------------------------------------
+select_fastest(TorrentId, Key) ->
+    mnesia:transaction(
+      fun () ->
+	      QH = qlc:q([P || P <- mnesia:table(peer),
+			       P#peer.torrent_id =:= TorrentId]),
+	      qlc:e(qlc:keysort(Key, QH, {order, descending}))
+      end).
+
+%%--------------------------------------------------------------------
+%% Function: local_unchoked(P) -> bool()
+%%           P ::= pid()
+%% Description: Predicate: P is unchoked locally.
+%%--------------------------------------------------------------------
+local_unchoked(P) ->
+    [R] = mnesia:dirty_read(peer, P),
+    case R#peer.local_c_state of
+	choked ->
+	    false;
+	unchoked ->
+	    true
+    end.
+
+%%--------------------------------------------------------------------
+%% Function: interested(P) -> bool()
+%%           P ::= none | pid()
+%% Description: Query the remote interest state on P
+%%--------------------------------------------------------------------
+interested(none) -> false;
+interested(P) when is_pid(P) ->
+    case mnesia:dirty_read(peer, P) of
+	[] ->
+	    false;
+	[_] ->
+	    true
+    end.
 
 %%--------------------------------------------------------------------
 %% Function: partition_peers_by_interest(Id) -> {Interested, NotInterested}
@@ -149,6 +204,10 @@ alter_state(Peer, What) ->
 	    Peer#peer{ remote_c_state = choked};
 	remote_unchoking ->
 	    Peer#peer{ remote_c_state = unchoked};
+	local_choking ->
+	    Peer#peer { local_c_state = choked };
+	local_unchoking ->
+	    Peer#peer { local_c_state = unchoked };
 	interested ->
 	    Peer#peer{ remote_i_state = interested};
 	not_intersted ->

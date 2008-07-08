@@ -126,9 +126,7 @@ interesting(Id, Pn) when is_integer(Id) ->
     case P#piece.state of
 	fetched ->
 	    false;
-	chunked ->
-	    true;
-	not_fetched ->
+	_ ->
 	    true
     end.
 

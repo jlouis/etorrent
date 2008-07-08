@@ -194,9 +194,11 @@ handle_cast({complete_handshake, _ReservedBytes, Socket, RemotePeerId}, S) ->
     complete_connection_setup(S#state { tcp_socket = Socket,
 					remote_peer_id = RemotePeerId });
 handle_cast(choke, S) ->
+    etorrent_peer:statechange(self(), local_choking),
     etorrent_t_peer_send:choke(S#state.send_pid),
     {noreply, S};
 handle_cast(unchoke, S) ->
+    etorrent_peer:statechange(self(), local_unchoking),
     etorrent_t_peer_send:unchoke(S#state.send_pid),
     {noreply, S};
 handle_cast(interested, S) ->
@@ -281,9 +283,11 @@ handle_message(unchoke, S) ->
     try_to_queue_up_pieces(S#state{remote_choked = false});
 handle_message(interested, S) ->
     {atomic, ok} = etorrent_peer:statechange(self(), interested),
+    etorrent_t_peer_group:perform_rechoke(S#state.peer_group_pid),
     {ok, S#state { remote_interested = true}};
 handle_message(not_interested, S) ->
     etorrent_peer:statechange(self(), not_interested),
+    etorrent_t_peer_group:perform_rechoke(S#state.peer_group_pid),
     {ok, S#state { remote_interested = false}};
 handle_message({request, Index, Offset, Len}, S) ->
     etorrent_t_peer_send:remote_request(S#state.send_pid, Index, Offset, Len),

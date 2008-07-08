@@ -1,3 +1,7 @@
+2008-07-08  Jesper Louis Andersen  <jlouis@ogre.home>
+
+	* SRC: New choking/unchoking algorithm. Inspired by BitTornado.
+
 2008-07-06  Jesper Louis Andersen  <jlouis@ogre.home>
 
 	* SRC: etorrent now uses much less memory
