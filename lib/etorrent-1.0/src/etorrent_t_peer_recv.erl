@@ -29,7 +29,6 @@
 		 tcp_socket = none,
 
 		 remote_choked = true,
-		 remote_interested = false,
 
 		 local_interested = false,
 
@@ -202,8 +201,7 @@ handle_cast(unchoke, S) ->
     etorrent_t_peer_send:unchoke(S#state.send_pid),
     {noreply, S};
 handle_cast(interested, S) ->
-    etorrent_t_peer_send:interested(S#state.send_pid),
-    {noreply, S#state{local_interested = true}};
+    {noreply, statechange_interested(S, true)};
 handle_cast({send_have_piece, PieceNumber}, S) ->
     etorrent_t_peer_send:send_have_piece(S#state.send_pid, PieceNumber),
     {noreply, S};
@@ -284,11 +282,11 @@ handle_message(unchoke, S) ->
 handle_message(interested, S) ->
     {atomic, ok} = etorrent_peer:statechange(self(), interested),
     etorrent_t_peer_group:perform_rechoke(S#state.peer_group_pid),
-    {ok, S#state { remote_interested = true}};
+    {ok, S};
 handle_message(not_interested, S) ->
     etorrent_peer:statechange(self(), not_interested),
     etorrent_t_peer_group:perform_rechoke(S#state.peer_group_pid),
-    {ok, S#state { remote_interested = false}};
+    {ok, S};
 handle_message({request, Index, Offset, Len}, S) ->
     etorrent_t_peer_send:remote_request(S#state.send_pid, Index, Offset, Len),
     {ok, S};
@@ -304,8 +302,7 @@ handle_message({have, PieceNum}, S) ->
 		true when S#state.local_interested =:= true ->
 		    {ok, NS};
 		true when S#state.local_interested =:= false ->
-		    etorrent_t_peer_send:interested(S#state.send_pid),
-		    {ok, NS#state{local_interested = true}};
+		    {ok, statechange_interested(S, true)};
 		false ->
 		    {ok, NS}
 	    end;
@@ -320,9 +317,8 @@ handle_message({bitfield, BitField}, S) ->
 		etorrent_peer_communication:destruct_bitfield(Size, BitField),
 	    case etorrent_piece:check_interest(S#state.torrent_id, PieceSet) of
 		interested ->
-		    etorrent_t_peer_send:interested(S#state.send_pid),
-		    {ok, S#state{piece_set = PieceSet,
-				 local_interested = true}};
+		    {ok, statechange_interested(S#state {piece_set = PieceSet},
+						true)};
 		not_interested ->
 		    {ok, S#state{piece_set = PieceSet}};
 		invalid_piece ->
@@ -439,8 +435,7 @@ try_to_queue_up_pieces(S) ->
 					    S#state.piece_set,
 					    PiecesToQueue) of
 		not_interested ->
-		    etorrent_t_peer_send:not_interested(S#state.send_pid),
-		    {ok, S#state { local_interested = false}};
+		    {ok, statechange_interested(S, false)};
 		{ok, Items} ->
 		    queue_items(Items, S);
 		{endgame, Items} ->
@@ -502,3 +497,7 @@ complete_connection_setup(S) ->
     etorrent_t_peer_send:bitfield(SendPid, BF),
 
     {noreply, S#state{send_pid = SendPid}}.
+
+statechange_interested(S, What) ->
+    etorrent_t_peer_send:interested(S#state.send_pid),
+    S#state{local_interested = What}.
