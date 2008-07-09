@@ -1,3 +1,7 @@
+2008-07-09  Jesper Louis Andersen  <jlouis@ogre.home>
+
+	* SRC: Implement passive sockets. Preliminary for better rate measurement.
+
 2008-07-08  Jesper Louis Andersen  <jlouis@ogre.home>
 
 	* SRC: Implement the event manager for etorrent.

@@ -115,7 +115,7 @@
    etorrent_chunk.erl               etorrent_torrent.erl
    etorrent_dirwatcher.erl          etorrent_t_peer_group.erl
    etorrent_dirwatcher_sup.erl      etorrent_t_peer_pool_sup.erl
-   etorrent.erl                     etorrent_t_peer_recv.erl
+   etorrent.erl
    etorrent_event.erl               etorrent_t_peer_send.erl
    etorrent_fs_checker.erl          etorrent_t_pool_sup.erl
    etorrent_fs.erl                  etorrent_tracker_communication.erl

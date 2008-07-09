@@ -37,6 +37,9 @@
 		 piece_set = none,
 		 piece_request = [],
 
+		 packet_left = none,
+		 packet_iolist = [],
+
 		 endgame = false, % Are we in endgame mode?
 
 		 file_system_pid = none,
@@ -134,6 +137,7 @@ stop(Pid) ->
 %%--------------------------------------------------------------------
 init([LocalPeerId, InfoHash, FilesystemPid, GroupPid, Id]) ->
     process_flag(trap_exit, true),
+    dbg:p(self(), call),
     {ok, #state{ local_peer_id = LocalPeerId,
 		 piece_set = gb_sets:new(),
 		 remote_request_set = gb_trees:empty(),
@@ -153,7 +157,7 @@ init([LocalPeerId, InfoHash, FilesystemPid, GroupPid, Id]) ->
 %%--------------------------------------------------------------------
 handle_call(_Request, _From, State) ->
     Reply = ok,
-    {reply, Reply, State}.
+    {reply, Reply, State, 0}.
 
 %%--------------------------------------------------------------------
 %% Function: handle_cast(Msg, State) -> {noreply, State} |
@@ -186,7 +190,7 @@ handle_cast({connect, IP, Port}, S) ->
     end;
 handle_cast({uploaded_data, Amount}, S) ->
     etorrent_peer:statechange(self(), {uploaded, Amount}),
-    {noreply, S};
+    {noreply, S, 0};
 handle_cast({complete_handshake, _ReservedBytes, Socket, RemotePeerId}, S) ->
     etorrent_peer_communication:complete_handshake_header(Socket,
 						 S#state.info_hash,
@@ -196,21 +200,21 @@ handle_cast({complete_handshake, _ReservedBytes, Socket, RemotePeerId}, S) ->
 handle_cast(choke, S) ->
     etorrent_peer:statechange(self(), local_choking),
     etorrent_t_peer_send:choke(S#state.send_pid),
-    {noreply, S};
+    {noreply, S, 0};
 handle_cast(unchoke, S) ->
     etorrent_peer:statechange(self(), local_unchoking),
     etorrent_t_peer_send:unchoke(S#state.send_pid),
-    {noreply, S};
+    {noreply, S, 0};
 handle_cast(interested, S) ->
-    {noreply, statechange_interested(S, true)};
+    {noreply, statechange_interested(S, true), 0};
 handle_cast({send_have_piece, PieceNumber}, S) ->
     etorrent_t_peer_send:send_have_piece(S#state.send_pid, PieceNumber),
-    {noreply, S};
+    {noreply, S, 0};
 handle_cast({endgame_got_chunk, Chunk}, S) ->
     NS = handle_endgame_got_chunk(Chunk, S),
-    {noreply, NS};
+    {noreply, NS, 0};
 handle_cast(_Msg, State) ->
-    {noreply, State}.
+    {noreply, State, 0}.
 
 %%--------------------------------------------------------------------
 %% Function: handle_info(Info, State) -> {noreply, State} |
@@ -218,18 +222,27 @@ handle_cast(_Msg, State) ->
 %%                                       {stop, Reason, State}
 %% Description: Handling all non call/cast messages
 %%--------------------------------------------------------------------
+handle_info(timeout, S) ->
+    case gen_tcp:recv(S#state.tcp_socket, 0, 3000) of
+	{ok, Packet} ->
+	    handle_read_from_socket(S, Packet);
+	{error, closed} ->
+	    {stop, normal, S};
+	{error, timeout} ->
+	    {noreply, S, 0}
+    end;
 handle_info({tcp_closed, _P}, S) ->
     {stop, normal, S};
 handle_info({tcp, _Socket, M}, S) ->
     Msg = etorrent_peer_communication:recv_message(M),
     case handle_message(Msg, S) of
 	{ok, NS} ->
-	    {noreply, NS};
+	    {noreply, NS, 0};
 	{stop, Err, NS} ->
 	    {stop, Err, NS}
     end;
 handle_info(_Info, State) ->
-    {noreply, State}.
+    {noreply, State, 0}.
 
 %%--------------------------------------------------------------------
 %% Function: terminate(Reason, State) -> void()
@@ -248,6 +261,8 @@ terminate(Reason, S) ->
     end,
     case Reason of
 	normal ->
+	    ok;
+	shutdown ->
 	    ok;
 	_ ->
 	    error_logger:info_report([reason_for_termination, Reason])
@@ -494,8 +509,51 @@ complete_connection_setup(S) ->
     BF = etorrent_piece:bitfield(S#state.torrent_id),
     etorrent_t_peer_send:bitfield(SendPid, BF),
 
-    {noreply, S#state{send_pid = SendPid}}.
+    {noreply, S#state{send_pid = SendPid}, 0}.
 
 statechange_interested(S, What) ->
     etorrent_t_peer_send:interested(S#state.send_pid),
     S#state{local_interested = What}.
+
+
+%%--------------------------------------------------------------------
+%% Function: handle_read_from_socket(State, Packet) -> NewState
+%%             Packet ::= binary()
+%%             State  ::= #state()
+%% Description: Packet came in. Handle it.
+%% TODO: in R12B, this can probably utilize the fact that binary handling is
+%%   much better!
+%%--------------------------------------------------------------------
+handle_read_from_socket(S, <<>>) ->
+    {noreply, S, 0};
+handle_read_from_socket(S, <<0:32/big-integer, Rest/binary>>) when S#state.packet_left =:= none ->
+    handle_read_from_socket(S, Rest);
+handle_read_from_socket(S, <<Left:32/big-integer, Rest/binary>>) when S#state.packet_left =:= none ->
+    handle_read_from_socket(S#state { packet_left = Left,
+				      packet_iolist = []}, Rest);
+handle_read_from_socket(S, Packet) when is_binary(S#state.packet_left) ->
+    H = S#state.packet_left,
+    handle_read_from_socket(S#state { packet_left = none },
+			    <<H/binary, Packet/binary>>);
+handle_read_from_socket(S, Packet) when size(Packet) < 4, S#state.packet_left =:= none ->
+    {noreply, S#state { packet_left = Packet }};
+handle_read_from_socket(S, Packet)
+  when size(Packet) >= S#state.packet_left, is_integer(S#state.packet_left) ->
+    Left = S#state.packet_left,
+    <<Data:Left/binary, Rest/binary>> = Packet,
+    Left = size(Data),
+    P = iolist_to_binary(lists:reverse([Data | S#state.packet_iolist])),
+    Msg = etorrent_peer_communication:recv_message(P),
+    case handle_message(Msg, S) of
+	{ok, NS} ->
+	    handle_read_from_socket(NS#state { packet_left = none,
+					       packet_iolist = []},
+				    Rest);
+	{stop, Err, NS} ->
+	    {stop, Err, NS}
+    end;
+handle_read_from_socket(S, Packet)
+  when size(Packet) < S#state.packet_left, is_integer(S#state.packet_left) ->
+    {noreply, S#state { packet_iolist = [Packet | S#state.packet_iolist],
+		        packet_left = S#state.packet_left - size(Packet) }, 0}.
+
