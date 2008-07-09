@@ -12,7 +12,7 @@
 %% API
 -export([initiate_handshake/3, recieve_handshake/1,
 	 complete_handshake_header/3]).
--export([send_message/2, recv_message/1,
+-export([send_message/3, recv_message/2,
 	 construct_bitfield/2, destruct_bitfield/2]).
 
 -define(DEFAULT_HANDSHAKE_TIMEOUT, 120000).
@@ -40,7 +40,8 @@
 %%   interested | not_interested | {have, integer()} | ...
 %% Description: Receive a message from a peer and decode it
 %%--------------------------------------------------------------------
-recv_message(Message) ->
+recv_message(PeerPid, Message) ->
+    {atomic, _} = etorrent_peer:statechange(PeerPid, {downloaded, size(Message)}),
     case Message of
 	<<>> ->
 	    keep_alive;
@@ -70,7 +71,7 @@ recv_message(Message) ->
 %% Function: send_message(Socket, Message)
 %% Description: Send a message on a socket
 %%--------------------------------------------------------------------
-send_message(Socket, Message) ->
+send_message(PeerPid, Socket, Message) ->
     Datagram =
 	case Message of
 	    keep_alive ->
@@ -98,6 +99,7 @@ send_message(Socket, Message) ->
 		<<?PORT, PortNum:16/big>>
         end,
     Sz = size(Datagram),
+    {atomic, _} = etorrent_peer:statechange(PeerPid, {uploaded, Sz}),
     gen_tcp:send(Socket, <<Sz:32/big, Datagram/binary>>).
 
 %%--------------------------------------------------------------------

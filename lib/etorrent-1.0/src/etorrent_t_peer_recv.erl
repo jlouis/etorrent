@@ -235,8 +235,7 @@ handle_info(timeout, S) ->
 handle_info({tcp_closed, _P}, S) ->
     {stop, normal, S};
 handle_info({tcp, _Socket, M}, S) ->
-    etorrent_peer:statechange(self(), {downloaded, size(M)}),
-    Msg = etorrent_peer_communication:recv_message(M),
+    Msg = etorrent_peer_communication:recv_message(self(), M),
     case handle_message(Msg, S) of
 	{ok, NS} ->
 	    {noreply, NS, 0};
@@ -543,7 +542,7 @@ handle_read_from_socket(S, Packet)
     <<Data:Left/binary, Rest/binary>> = Packet,
     Left = size(Data),
     P = iolist_to_binary(lists:reverse([Data | S#state.packet_iolist])),
-    Msg = etorrent_peer_communication:recv_message(P),
+    Msg = etorrent_peer_communication:recv_message(self(), P),
     case handle_message(Msg, S) of
 	{ok, NS} ->
 	    handle_read_from_socket(NS#state { packet_left = none,

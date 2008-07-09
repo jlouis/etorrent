@@ -222,7 +222,7 @@ terminate(Reason, State) ->
 %%   close gracefully.
 %%--------------------------------------------------------------------
 send_piece_message(Msg, S, Timeout) ->
-    case etorrent_peer_communication:send_message(S#state.socket, Msg) of
+    case etorrent_peer_communication:send_message(S#state.parent, S#state.socket, Msg) of
 	ok ->
 	    {noreply, S, Timeout};
 	{error, closed} ->
@@ -238,7 +238,7 @@ send_piece(Index, Offset, Len, S) ->
 	    ok = etorrent_torrent:statechange(S#state.torrent_id,
 					      {add_upload, Len}),
 	    %% Track the amount uploaded by this peer.
-	    etorrent_peer:statechange(S#state.parent, {uploaded, Len}),
+
 	    send_piece_message(Msg, S, 0);
 	%% Update cache and try again...
 	{I, _Binary} when I /= Index ->
@@ -263,7 +263,7 @@ send_message(Msg, S) ->
     send_message(Msg, S, 0).
 
 send_message(Msg, S, Timeout) ->
-    case etorrent_peer_communication:send_message(S#state.socket, Msg) of
+    case etorrent_peer_communication:send_message(S#state.parent, S#state.socket, Msg) of
 	ok ->
 	    {noreply, S, Timeout};
 	{error, closed} ->
