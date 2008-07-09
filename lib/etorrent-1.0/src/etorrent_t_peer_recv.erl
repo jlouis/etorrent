@@ -133,6 +133,7 @@ stop(Pid) ->
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
 init([LocalPeerId, InfoHash, FilesystemPid, GroupPid, Id]) ->
+    process_flag(trap_exit, true),
     {ok, #state{ local_peer_id = LocalPeerId,
 		 piece_set = gb_sets:new(),
 		 remote_request_set = gb_trees:empty(),
@@ -485,9 +486,6 @@ queue_items(ChunkList, S) ->
 %%    * Send off the bitfield
 %%--------------------------------------------------------------------
 complete_connection_setup(S) ->
-    ok = inet:setopts(S#state.tcp_socket,
-		      [binary, {active, true}, {packet, 4}]),
-
     {ok, SendPid} =
 	etorrent_t_peer_send:start_link(S#state.tcp_socket,
 					S#state.file_system_pid,

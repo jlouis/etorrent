@@ -97,7 +97,8 @@ send_message(Socket, Message) ->
 	    {port, PortNum} ->
 		<<?PORT, PortNum:16/big>>
         end,
-    gen_tcp:send(Socket, Datagram).
+    Sz = size(Datagram),
+    gen_tcp:send(Socket, <<Sz:32/big, Datagram/binary>>).
 
 %%--------------------------------------------------------------------
 %% Function: recieve_handshake(Socket) -> {ok, protocol_version,
