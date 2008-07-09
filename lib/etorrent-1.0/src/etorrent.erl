@@ -8,7 +8,7 @@
 -export([help/0, h/0, list/0, l/0, show/0, s/0, show/1, s/1]).
 
 start_debug() ->
-    dbg:tracer(port, dbg:trace_port(ip, 4711)),
+    dbg:tracer(port, dbg:trace_port(file, "tracer.log")),
     start().
 
 start() ->

@@ -8,7 +8,7 @@
 -module(tr).
 
 %% API
--export([tr/2, flush/0, client/0]).
+-export([tr/1, tr/2, flush/0, client/0]).
 
 %%====================================================================
 %% API
@@ -20,11 +20,15 @@
 tr(Module, Function) ->
     dbg:tpl(Module, Function, [{'_',[],[{return_trace}]}]).
 
+tr(Module) ->
+    dbg:tpl(Module, [{'_',[],[{return_trace}]}]).
+
 flush() ->
     dbg:flush_trace_port().
 
 client() ->
-    dbg:trace_client(ip, {"localhost", 4711}).
+    dbg:trace_client(file, "tracer.log"),
+    halt().
 
 %%====================================================================
 %% Internal functions
