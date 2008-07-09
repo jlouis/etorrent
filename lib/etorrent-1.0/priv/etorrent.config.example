@@ -2,8 +2,7 @@
 	[{port, 1729},
 	 {dir, "/var/tmp/etorrent"}]},
 	 {logger_dir, "/var/log/etorrent"},
-	 {logger_max_bytes, 64000},
-	 {logger_max_files, 10}]},
+	 {logger_frame, "etorrent.log"}]},
 
  {kernel,
 	[{start_timer, true}]}

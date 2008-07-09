@@ -1,5 +1,7 @@
 2008-07-09  Jesper Louis Andersen  <jlouis@ogre.home>
 
+	* SRC: Implement a primitive file logger for the event manager.
+
 	* SRC: Implement passive sockets. Preliminary for better rate measurement.
 
 2008-07-08  Jesper Louis Andersen  <jlouis@ogre.home>

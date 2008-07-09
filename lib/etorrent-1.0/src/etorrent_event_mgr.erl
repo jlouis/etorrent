@@ -26,10 +26,9 @@
 start_link() ->
     {ok, Pid} = gen_event:start_link({local, ?SERVER}),
     {ok, Dir} = application:get_env(etorrent, logger_dir),
-    {ok, MaxBytes} = application:get_env(etorrent, logger_max_bytes),
-    {ok, MaxFiles} = application:get_env(etorrent, logger_max_files),
-    Args = log_mf_h:init(Dir, MaxBytes, MaxFiles),
-    gen_event:add_handler(?SERVER, log_mf_h, Args),
+    {ok, Fname} = application:get_env(etorrent, logger_fname),
+    Args = etorrent_file_logger:init(Dir, Fname),
+    gen_event:add_handler(?SERVER, etorrent_file_logger, Args),
     {ok, Pid}.
 
 started_torrent(Id) ->
