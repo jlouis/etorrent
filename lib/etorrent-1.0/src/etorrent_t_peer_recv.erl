@@ -225,6 +225,7 @@ handle_cast(_Msg, State) ->
 handle_info(timeout, S) ->
     case gen_tcp:recv(S#state.tcp_socket, 0, 3000) of
 	{ok, Packet} ->
+	    etorrent_peer:statechange(self(), {downloaded, size(Packet)}),
 	    handle_read_from_socket(S, Packet);
 	{error, closed} ->
 	    {stop, normal, S};
@@ -234,6 +235,7 @@ handle_info(timeout, S) ->
 handle_info({tcp_closed, _P}, S) ->
     {stop, normal, S};
 handle_info({tcp, _Socket, M}, S) ->
+    etorrent_peer:statechange(self(), {downloaded, size(M)}),
     Msg = etorrent_peer_communication:recv_message(M),
     case handle_message(Msg, S) of
 	{ok, NS} ->
@@ -345,9 +347,7 @@ handle_message({bitfield, BitField}, S) ->
 	    {stop, normal, S}
     end;
 handle_message({piece, Index, Offset, Data}, S) ->
-    Len = size(Data),
-    etorrent_peer:statechange(self(), {downloaded, Len}),
-    case handle_got_chunk(Index, Offset, Data, Len, S) of
+    case handle_got_chunk(Index, Offset, Data, size(Data), S) of
 	{ok, NS} ->
 	    try_to_queue_up_pieces(NS)
     end;
