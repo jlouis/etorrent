@@ -27,8 +27,7 @@ flush() ->
     dbg:flush_trace_port().
 
 client() ->
-    dbg:trace_client(file, "tracer.log"),
-    halt().
+    dbg:trace_client(file, "tracer.log").
 
 %%====================================================================
 %% Internal functions
