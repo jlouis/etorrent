@@ -147,12 +147,12 @@ statechange(Id, What) when is_integer(Id) ->
 				      T#torrent{seeders = Seeders, leechers = Leechers}
 			      end,
 			mnesia:write(New),
-			New
+			{T#torrent.state, New#torrent.state}
 		end
 	end,
-    {atomic, New} = mnesia:transaction(F),
-    case New#torrent.left of
-	0 ->
+    {atomic, Res} = mnesia:transaction(F),
+    case Res of
+	{leeching, seeding} ->
 	    etorrent_event_mgr:seeding_torrent(Id),
 	    ok;
 	_ ->
