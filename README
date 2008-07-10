@@ -39,7 +39,14 @@ BEP 23 - Tracker Returns Compact Peer Lists.
 
 -- GETTING STARTED WITH INSTALLING --
 
-NOTE: This method is not yet done.
+1. edit 'Makefile.config' to suit your liking.
+
+2. run 'make'
+
+3. run 'make install' (with proper privileges)
+
+4. There is an etorrentctl shell script dropped in $PREFIX/bin that can
+   be used for manipulating the running etorrent instance.
 
 -- REPORTING BUGS --
 
