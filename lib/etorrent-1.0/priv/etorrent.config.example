@@ -2,7 +2,7 @@
 	[{port, 1729},
 	 {dir, "/var/tmp/etorrent"}]},
 	 {logger_dir, "/var/log/etorrent"},
-	 {logger_frame, "etorrent.log"}]},
+	 {logger_fname, "etorrent.log"}]},
 
  {kernel,
 	[{start_timer, true}]}

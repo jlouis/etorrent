@@ -1,0 +1,21 @@
+This document describes the various configuration options of
+etorrent.
+
+* port: This is the port which etorrent should listen on for incoming
+  connections. By default it is the taxicab number 1729, but it can of
+  course be changed. We don't need a range of ports because we will
+  find out what torrent we are transferring in the handshake.
+
+* dir: The directory to place .torrent files in and the directory to
+  which torrent files will be downloaded.
+
+* logger_dir: The directory of the etorrent log file
+* logger_fname: The name of the log file. It is *not* currently
+  rotated and it is appended upon. The format is a simple term-log.
+
+You don't need to touch the kernel parameters.
+
+The SASL parameters can be uncommented to give you a SASL error
+log. For development this is good because you can leave the client on
+for a while and then come back to see if it has produced any kind of
+errors.
