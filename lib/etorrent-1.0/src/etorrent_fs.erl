@@ -14,7 +14,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/2, load_file_information/2,
+-export([start_link/2,
 	 stop/1, read_piece/2, size_of_ops/1,
 	 write_chunk/2, check_piece/3]).
 
@@ -24,6 +24,7 @@
 
 -record(state, { torrent_id = none, %% id of torrent we are serving
 		 file_pool = none,
+		 supervisor = none,
 		 file_process_dict = none}).
 
 %%====================================================================
@@ -41,8 +42,8 @@ size_of_ops(Ops) ->
 %% Function: start_link/0
 %% Description: Spawn and link a new file_system process
 %%--------------------------------------------------------------------
-start_link(IDHandle, FSPool) ->
-    gen_server:start_link(?MODULE, [IDHandle, FSPool], []).
+start_link(IDHandle, SPid) ->
+    gen_server:start_link(?MODULE, [IDHandle, SPid], []).
 
 %%--------------------------------------------------------------------
 %% Function: stop(Pid) -> ok
@@ -50,14 +51,6 @@ start_link(IDHandle, FSPool) ->
 %%--------------------------------------------------------------------
 stop(Pid) ->
     gen_server:cast(Pid, stop).
-
-%%--------------------------------------------------------------------
-%% Function: load_file_information(Pid, FileDict) -> ok
-%% Description: Load the FileDict into the process and ask it to
-%%   process requests from this filedict.
-%%--------------------------------------------------------------------
-load_file_information(Pid, FileDict) ->
-    gen_server:cast(Pid, {load_filedict, FileDict}).
 
 %%--------------------------------------------------------------------
 %% Function: read_piece(Pid, N) -> {ok, Binary}
@@ -81,17 +74,24 @@ write_chunk(Pid, {Index, Data, Ops}) ->
 %%====================================================================
 %% gen_server callbacks
 %%====================================================================
-init([IDHandle, FSPool]) when is_integer(IDHandle) ->
+init([IDHandle, SPid]) when is_integer(IDHandle) ->
     {ok, #state{file_process_dict = dict:new(),
-		file_pool = FSPool,
+		file_pool = none,
+		supervisor = SPid,
 		torrent_id = IDHandle}}.
 
+handle_call(Msg, _From, S) when S#state.file_pool =:= none ->
+    FSPool = etorrent_t_sup:get_pid(S#state.supervisor, fs_pool),
+    handle_call(Msg, _From, S#state { file_pool = FSPool });
 handle_call({read_piece, PieceNum}, _From, S) ->
     [#piece { files = Operations}] =
 	etorrent_piece:select(S#state.torrent_id, PieceNum),
     {ok, Data, NS} = read_pieces_and_assemble(Operations, [], S),
     {reply, {ok, Data}, NS}.
 
+handle_cast(Msg, S) when S#state.file_pool =:= none ->
+    FSPool = etorrent_t_sup:get_pid(S#state.supervisor, fs_pool),
+    handle_cast(Msg, S#state { file_pool = FSPool });
 handle_cast({write_chunk, {Index, Data, Ops}}, S) ->
     case etorrent_piece:select(S#state.torrent_id, Index) of
 	[P] when P#piece.state =:= fetched ->

@@ -32,10 +32,11 @@ read_and_check_torrent(Id, SupervisorPid, Path) ->
     {ok, FileDict, NumberOfPieces} =
 	build_dictionary_on_files(Id, Torrent, Files),
 
-    %% Initialize the filesystem, initializes the piecemap
-    {ok, FS} = add_filesystem(Id, SupervisorPid, FileDict),
+    %% Initialize piecemap
+    etorrent_piece:new(Id, FileDict),
 
     %% Check the contents of the torrent, updates the state of the piecemap
+    FS = etorrent_t_sup:get_pid(SupervisorPid, fs),
     ok = check_torrent_contents(FS, Id),
 
     {ok, Torrent, FS, Infohash, NumberOfPieces}.
@@ -101,9 +102,6 @@ build_dictionary_on_files(TorrentId, Torrent, Files) ->
 %%====================================================================
 %% Internal functions
 %%====================================================================
-add_filesystem(Id, SupervisorPid, FileDict) ->
-    etorrent_piece:new(Id, FileDict),
-    etorrent_t_sup:add_file_system(SupervisorPid, Id).
 
 extract_piece(0, Fs, Offset, B) ->
     {ok, Fs, Offset, B};

@@ -12,8 +12,7 @@
 -behaviour(supervisor).
 
 %% API
--export([start_link/3, add_peer_group/4, add_file_system/2,
-	 add_tracker/6, get_pid/2]).
+-export([start_link/3, add_peer_group/4, add_tracker/6, get_pid/2]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -39,12 +38,6 @@ get_pid(Pid, Name) ->
 %% Func: add_filesystem/3
 %% Description: Add a filesystem process to the torrent.
 %%--------------------------------------------------------------------
-add_file_system(Pid, IDHandle) when is_integer(IDHandle) ->
-    FSPool = get_pid(Pid, fs_pool),
-    FS = {fs,
-	  {etorrent_fs, start_link, [IDHandle, FSPool]},
-	  permanent, 2000, worker, [etorrent_fs]},
-    supervisor:start_child(Pid, FS).
 
 %%--------------------------------------------------------------------
 %% Func: add_file_system_pool/1
@@ -87,10 +80,13 @@ init([Path, PeerId, Id]) ->
     FSPool = {fs_pool,
 	      {etorrent_fs_pool_sup, start_link, []},
 	      transient, infinity, supervisor, [etorrent_fs_pool_sup]},
+    FS = {fs,
+	  {etorrent_fs, start_link, [Id, self()]},
+	  permanent, 2000, worker, [etorrent_fs]},
     PeerPool = {peer_pool_sup,
 		{etorrent_t_peer_pool_sup, start_link, []},
 		transient, infinity, supervisor, [etorrent_t_peer_pool_sup]},
-    {ok, {{one_for_all, 1, 60}, [FSPool, PeerPool, Control]}}.
+    {ok, {{one_for_all, 1, 60}, [FSPool, PeerPool, Control, FS]}}.
 
 %%====================================================================
 %% Internal functions
