@@ -14,7 +14,7 @@
 -include("etorrent_mnesia_table.hrl").
 
 %% API
--export([start_link/5, connect/3, choke/1, unchoke/1, interested/1,
+-export([start_link/6, connect/3, choke/1, unchoke/1, interested/1,
 	 send_have_piece/2, complete_handshake/4,
 	 stop/1, endgame_got_chunk/2]).
 
@@ -42,6 +42,8 @@
 
 		 endgame = false, % Are we in endgame mode?
 
+		 parent = none,
+
 		 file_system_pid = none,
 		 peer_group_pid = none,
 		 send_pid = none,
@@ -60,9 +62,9 @@
 %% Function: start_link() -> {ok,Pid} | ignore | {error,Error}
 %% Description: Starts the server
 %%--------------------------------------------------------------------
-start_link(LocalPeerId, InfoHash, FilesystemPid, GroupPid, Id) ->
+start_link(LocalPeerId, InfoHash, FilesystemPid, GroupPid, Id, Parent) ->
     gen_server:start_link(?MODULE, [LocalPeerId, InfoHash,
-				    FilesystemPid, GroupPid, Id], []).
+				    FilesystemPid, GroupPid, Id, Parent], []).
 
 %%--------------------------------------------------------------------
 %% Function: connect(Pid, IP, Port)
@@ -135,16 +137,18 @@ stop(Pid) ->
 %%                         {stop, Reason}
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
-init([LocalPeerId, InfoHash, FilesystemPid, GroupPid, Id]) ->
+init([LocalPeerId, InfoHash, FilesystemPid, GroupPid, Id, Parent]) ->
     process_flag(trap_exit, true),
     dbg:p(self(), call),
-    {ok, #state{ local_peer_id = LocalPeerId,
-		 piece_set = gb_sets:new(),
-		 remote_request_set = gb_trees:empty(),
-		 info_hash = InfoHash,
-		 peer_group_pid = GroupPid,
-		 torrent_id = Id,
-		 file_system_pid = FilesystemPid}}.
+    {ok, #state{
+       parent = Parent,
+       local_peer_id = LocalPeerId,
+       piece_set = gb_sets:new(),
+       remote_request_set = gb_trees:empty(),
+       info_hash = InfoHash,
+       peer_group_pid = GroupPid,
+       torrent_id = Id,
+       file_system_pid = FilesystemPid}}.
 
 %%--------------------------------------------------------------------
 %% Function: %% handle_call(Request, From, State) -> {reply, Reply, State} |
@@ -502,11 +506,11 @@ queue_items(ChunkList, S) ->
 %%    * Send off the bitfield
 %%--------------------------------------------------------------------
 complete_connection_setup(S) ->
-    {ok, SendPid} =
-	etorrent_t_peer_send:start_link(S#state.tcp_socket,
-					S#state.file_system_pid,
-					S#state.torrent_id),
-
+    {ok, SendPid} = etorrent_t_peer_sup:add_sender(S#state.parent,
+						   S#state.tcp_socket,
+						   S#state.file_system_pid,
+						   S#state.torrent_id,
+						   self()),
     BF = etorrent_piece:bitfield(S#state.torrent_id),
     etorrent_t_peer_send:bitfield(SendPid, BF),
 

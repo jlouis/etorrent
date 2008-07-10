@@ -14,7 +14,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/3, remote_request/4, cancel/4, choke/1, unchoke/1,
+-export([start_link/4, remote_request/4, cancel/4, choke/1, unchoke/1,
 	 local_request/2, not_interested/1, send_have_piece/2, stop/1,
 	 bitfield/2, interested/1]).
 
@@ -38,9 +38,9 @@
 %%====================================================================
 %% API
 %%====================================================================
-start_link(Socket, FilesystemPid, TorrentId) ->
+start_link(Socket, FilesystemPid, TorrentId, RecvPid) ->
     gen_server:start_link(?MODULE,
-			  [Socket, FilesystemPid, TorrentId, self()], []).
+			  [Socket, FilesystemPid, TorrentId, RecvPid], []).
 
 %%--------------------------------------------------------------------
 %% Func: remote_request(Pid, Index, Offset, Len)

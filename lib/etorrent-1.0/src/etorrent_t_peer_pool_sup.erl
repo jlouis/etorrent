@@ -27,16 +27,24 @@
 start_link() ->
     supervisor:start_link(?MODULE, []).
 
+%%--------------------------------------------------------------------
+%% Function: add_peer/6
+%% Description: Add a peer to the supervisor pool. Returns the reciever
+%%  process hooked on the supervisor.
+%%--------------------------------------------------------------------
 add_peer(GroupPid, LocalPeerId, InfoHash, FilesystemPid, Parent, Id) ->
-    supervisor:start_child(GroupPid, [LocalPeerId, InfoHash,
-				     FilesystemPid, Parent, Id]).
+    {ok, Pid} = supervisor:start_child(GroupPid, [LocalPeerId, InfoHash,
+						  FilesystemPid, Parent, Id]),
+    Children = supervisor:which_children(Pid),
+    {value, {_, Child, _, _}} = lists:keysearch(reciever, 1, Children),
+    {ok, Child}.
 
 %%====================================================================
 %% Supervisor callbacks
 %%====================================================================
 init([]) ->
     PeerRecvs = {peer_recv,
-		 {etorrent_t_peer_recv, start_link, []},
+		 {etorrent_t_peer_sup, start_link, []},
 		 transient, 10000, supervisor, [etorrent_t_peer_recv]},
     {ok, {{simple_one_for_one, 5, 60}, [PeerRecvs]}}.
 
