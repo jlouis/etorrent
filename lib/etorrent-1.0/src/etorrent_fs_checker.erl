@@ -103,13 +103,7 @@ build_dictionary_on_files(TorrentId, Torrent, Files) ->
 %%====================================================================
 add_filesystem(Id, SupervisorPid, FileDict) ->
     etorrent_piece:new(Id, FileDict),
-    FSP = case etorrent_t_sup:add_file_system_pool(SupervisorPid) of
-	      {ok, FSPool} ->
-		  FSPool;
-	      {error, {already_started, FSPool}} ->
-		  FSPool
-	  end,
-    etorrent_t_sup:add_file_system(SupervisorPid, FSP, Id).
+    etorrent_t_sup:add_file_system(SupervisorPid, Id).
 
 extract_piece(0, Fs, Offset, B) ->
     {ok, Fs, Offset, B};

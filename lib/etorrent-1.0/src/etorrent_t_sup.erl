@@ -12,10 +12,8 @@
 -behaviour(supervisor).
 
 %% API
--export([start_link/3, add_file_system/3, add_peer_group/6,
-	 add_tracker/6, add_peer_pool/1,
-	 add_file_system_pool/1,
-	 get_peer_group_pid/1]).
+-export([start_link/3, add_peer_group/4, add_file_system/2,
+	 add_tracker/6, get_pid/2]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -27,64 +25,48 @@ start_link(File, Local_PeerId, Id) ->
     supervisor:start_link(?MODULE, [File, Local_PeerId, Id]).
 
 %%--------------------------------------------------------------------
-%% Func: get_peer_group_pid/1
+%% Func: get_pid/2
+%% Args: Pid ::= pid() - Pid of the supervisor
+%%       Name ::= atom() - the atom the pid is identified by
 %% Description: Return the Pid of the peer group process.
 %%--------------------------------------------------------------------
-get_peer_group_pid(Pid) ->
-    Children = supervisor:which_children(Pid),
-    case lists:keysearch(peer_group, 1, Children) of
-	{value, {_Id, Child, _Type, _Modules}} ->
-	    Child;
-	false ->
-	    false
-    end.
+get_pid(Pid, Name) ->
+    {value, {_, Child, _, _}} =
+	lists:keysearch(Name, 1, supervisor:which_children(Pid)),
+    Child.
 
 %%--------------------------------------------------------------------
 %% Func: add_filesystem/3
 %% Description: Add a filesystem process to the torrent.
 %%--------------------------------------------------------------------
-add_file_system(Pid, FSPool, IDHandle) when is_integer(IDHandle) ->
+add_file_system(Pid, IDHandle) when is_integer(IDHandle) ->
+    FSPool = get_pid(Pid, fs_pool),
     FS = {fs,
 	  {etorrent_fs, start_link, [IDHandle, FSPool]},
 	  permanent, 2000, worker, [etorrent_fs]},
-    case supervisor:start_child(Pid, FS) of
-	{ok, ChildPid} ->
-	    {ok, ChildPid};
-	{error, {already_started, ChildPid}} -> % Could be copied to other add_X calls.
-	    {ok, ChildPid}
-    end.
+    supervisor:start_child(Pid, FS).
 
 %%--------------------------------------------------------------------
 %% Func: add_file_system_pool/1
 %% Description: Add a filesystem process to the torrent.
 %%--------------------------------------------------------------------
-add_file_system_pool(Pid) ->
-    FSPool = {fs_pool,
-	      {etorrent_fs_pool_sup, start_link, []},
-	      transient, infinity, supervisor, [etorrent_fs_pool_sup]},
-    supervisor:start_child(Pid, FSPool).
 
-add_peer_group(Pid, GroupPid, Local_Peer_Id,
-		InfoHash, FileSystemPid, TorrentId) ->
+add_peer_group(Pid, Local_Peer_Id, InfoHash, TorrentId) ->
+    GroupPid = get_pid(Pid, peer_pool_sup),
+    FSPid = get_pid(Pid, fs),
     PeerGroup = {peer_group,
 		  {etorrent_t_peer_group_mgr, start_link,
 		   [Local_Peer_Id, GroupPid,
-		    InfoHash, FileSystemPid, TorrentId]},
-		  temporary, 2000, worker, [etorrent_t_peer_group]},
+		    InfoHash, FSPid, TorrentId]},
+		  permanent, 2000, worker, [etorrent_t_peer_group]},
     supervisor:start_child(Pid, PeerGroup).
 
 add_tracker(Pid, PeerGroupPid, URL, InfoHash, Local_Peer_Id, TorrentId) ->
     Tracker = {tracker_communication,
 	       {etorrent_tracker_communication, start_link,
 		[self(), PeerGroupPid, URL, InfoHash, Local_Peer_Id, TorrentId]},
-	       temporary, 15000, worker, [etorrent_tracker_communication]},
+	       permanent, 15000, worker, [etorrent_tracker_communication]},
     supervisor:start_child(Pid, Tracker).
-
-add_peer_pool(Pid) ->
-    Group = {peer_pool_sup,
-	     {etorrent_t_peer_pool_sup, start_link, []},
-	     transient, infinity, supervisor, [etorrent_t_peer_pool_sup]},
-    supervisor:start_child(Pid, Group).
 
 %%====================================================================
 %% Supervisor callbacks
@@ -99,11 +81,16 @@ add_peer_pool(Pid) ->
 %% specifications.
 %%--------------------------------------------------------------------
 init([Path, PeerId, Id]) ->
-    Control =
-	{control,
-	 {etorrent_t_control, start_link, [Id, Path, PeerId]},
-	 permanent, 20000, worker, [etorrent_t_control]},
-    {ok, {{one_for_all, 1, 60}, [Control]}}.
+    Control = {control,
+	       {etorrent_t_control, start_link, [Id, Path, PeerId]},
+	       permanent, 20000, worker, [etorrent_t_control]},
+    FSPool = {fs_pool,
+	      {etorrent_fs_pool_sup, start_link, []},
+	      transient, infinity, supervisor, [etorrent_fs_pool_sup]},
+    PeerPool = {peer_pool_sup,
+		{etorrent_t_peer_pool_sup, start_link, []},
+		transient, infinity, supervisor, [etorrent_t_peer_pool_sup]},
+    {ok, {{one_for_all, 1, 60}, [FSPool, PeerPool, Control]}}.
 
 %%====================================================================
 %% Internal functions

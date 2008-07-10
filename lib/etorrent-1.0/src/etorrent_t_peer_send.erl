@@ -256,6 +256,9 @@ send_message(Msg, S, Timeout) ->
     case etorrent_peer_communication:send_message(S#state.parent, S#state.socket, Msg) of
 	ok ->
 	    {noreply, S, Timeout};
+	{error, ebadf} ->
+	    error_logger:info_report([caught_ebadf, S#state.socket]),
+	    {stop, normal, S};
 	{error, closed} ->
 	    {stop, normal, S}
     end.

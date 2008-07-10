@@ -132,18 +132,12 @@ initializing(timeout, S) ->
 	       {total, etorrent_metainfo:get_length(Torrent)}},
 	      NumberOfPieces),
 
-	    %% Add a peer pool
-	    %% TODO: We can pre-add this in the supervisor I think.
-	    {ok, GroupPid} = etorrent_t_sup:add_peer_pool(S#state.parent_pid),
-
 	    %% And a process for controlling the peers for this torrent.
 	    {ok, PeerGroupPid} =
 		etorrent_t_sup:add_peer_group(
 		  S#state.parent_pid,
-		  GroupPid,
 		  S#state.peer_id,
 		  InfoHash,
-		  FSPid,
 		  S#state.id),
 
 	    %% Start the tracker
