@@ -12,6 +12,7 @@
 -behaviour(gen_server).
 
 -include("etorrent_mnesia_table.hrl").
+-include("etorrent_rate.hrl").
 
 %% API
 -export([start_link/6, connect/3, choke/1, unchoke/1, interested/1,
@@ -47,13 +48,16 @@
 		 peer_group_pid = none,
 		 send_pid = none,
 
+		 rate = none,
+		 rate_timer = none,
 		 torrent_id = none}).
 
 -define(DEFAULT_CONNECT_TIMEOUT, 120000). % Default timeout in ms
 -define(DEFAULT_CHUNK_SIZE, 16384). % Default size for a chunk. All clients use this.
 -define(HIGH_WATERMARK, 15). % How many chunks to queue up to
 -define(LOW_WATERMARK, 5).  % Requeue when there are less than this number of pieces in queue
-
+-define(RATE_FUDGE, 5).
+-define(RATE_UPDATE, 5 * 1000).
 %%====================================================================
 %% API
 %%====================================================================
@@ -132,6 +136,7 @@ complete_handshake(Pid, ReservedBytes, Socket, PeerId) ->
 init([LocalPeerId, InfoHash, FilesystemPid, GroupPid, Id, Parent]) ->
     process_flag(trap_exit, true),
     dbg:p(self(), call),
+    {ok, TRef} = timer:send_interval(?RATE_UPDATE, self(), rate_update),
     {ok, #state{
        parent = Parent,
        local_peer_id = LocalPeerId,
@@ -140,6 +145,8 @@ init([LocalPeerId, InfoHash, FilesystemPid, GroupPid, Id, Parent]) ->
        info_hash = InfoHash,
        peer_group_pid = GroupPid,
        torrent_id = Id,
+       rate = etorrent_rate:init(?RATE_FUDGE),
+       rate_timer = TRef,
        file_system_pid = FilesystemPid}}.
 
 %%--------------------------------------------------------------------
@@ -181,9 +188,6 @@ handle_cast({connect, IP, Port}, S) ->
 	{error, _Reason} ->
 	    {stop, normal, S}
     end;
-handle_cast({uploaded_data, Amount}, S) ->
-    etorrent_peer:statechange(self(), {uploaded, Amount}),
-    {noreply, S, 0};
 handle_cast({complete_handshake, _ReservedBytes, Socket, RemotePeerId}, S) ->
     etorrent_peer_communication:complete_handshake_header(Socket,
 						 S#state.info_hash,
@@ -218,7 +222,6 @@ handle_cast(_Msg, State) ->
 handle_info(timeout, S) ->
     case gen_tcp:recv(S#state.tcp_socket, 0, 3000) of
 	{ok, Packet} ->
-	    etorrent_peer:statechange(self(), {downloaded, size(Packet)}),
 	    handle_read_from_socket(S, Packet);
 	{error, closed} ->
 	    {stop, normal, S};
@@ -227,16 +230,10 @@ handle_info(timeout, S) ->
 	{error, timeout} ->
 	    {noreply, S, 0}
     end;
-handle_info({tcp_closed, _P}, S) ->
-    {stop, normal, S};
-handle_info({tcp, _Socket, M}, S) ->
-    Msg = etorrent_peer_communication:recv_message(self(), M),
-    case handle_message(Msg, S) of
-	{ok, NS} ->
-	    {noreply, NS, 0};
-	{stop, Err, NS} ->
-	    {stop, Err, NS}
-    end;
+handle_info(rate_update, S) ->
+    Rate = etorrent_rate:update(S#state.rate, 0),
+    {atomic, _} = etorrent_peer:statechange(self(), {download_rate, Rate#peer_rate.rate}),
+    {noreply, S#state { rate = Rate}, 0};
 handle_info(_Info, State) ->
     {noreply, State, 0}.
 
@@ -537,8 +534,9 @@ handle_read_from_socket(S, Packet)
     <<Data:Left/binary, Rest/binary>> = Packet,
     Left = size(Data),
     P = iolist_to_binary(lists:reverse([Data | S#state.packet_iolist])),
-    Msg = etorrent_peer_communication:recv_message(self(), P),
-    case handle_message(Msg, S) of
+    {Msg, Rate} = etorrent_peer_communication:recv_message(S#state.rate, P),
+    {atomic, _} = etorrent_peer:statechange(self(), {download_rate, Rate#peer_rate.rate}),
+    case handle_message(Msg, S#state {rate = Rate}) of
 	{ok, NS} ->
 	    handle_read_from_socket(NS#state { packet_left = none,
 					       packet_iolist = []},

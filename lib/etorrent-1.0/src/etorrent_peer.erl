@@ -11,9 +11,9 @@
 -include("etorrent_mnesia_table.hrl").
 
 %% API
--export([new/4, all/1, delete/1, statechange/2, connected/3, reset_round/1,
-	 ip_port/1, partition_peers_by_interest/1, select_fastest/2,
-	 interested/1, local_unchoked/1, select/1]).
+-export([new/4, all/1, delete/1, statechange/2, connected/3,
+	 ip_port/1, select_fastest/2, interested/1, local_unchoked/1,
+	 select/1]).
 
 %%====================================================================
 %% API
@@ -94,15 +94,6 @@ connected(IP, Port, Id) when is_integer(Id) ->
     {atomic, B} = mnesia:transaction(F),
     B.
 
-
-%%--------------------------------------------------------------------
-%% Function: reset_round(Id) -> transaction
-%% Description: Set Uploaded and Downloaded to 0 for all peers running
-%%   on torrent Id.
-%%--------------------------------------------------------------------
-reset_round(Id) ->
-    statechange(Id, reset_round).
-
 %%--------------------------------------------------------------------
 %% Function: all(Id) -> [#peer]
 %% Description: Return all peers with a given Id
@@ -161,33 +152,9 @@ interested(P) when is_pid(P) ->
 	    true
     end.
 
-%%--------------------------------------------------------------------
-%% Function: partition_peers_by_interest(Id) -> {Interested, NotInterested}
-%% Description: Consider peers for torrent Id. Return them in 2 blocks: The
-%%   interested and the not interested peers.
-%%--------------------------------------------------------------------
-partition_peers_by_interest(Id) when is_integer(Id) ->
-    mnesia:transaction(
-      fun () ->
-	      InterestedQuery = query_interested(interested, Id),
-	      NotInterestedQuery = query_interested(not_interested, Id),
-	      {qlc:e(InterestedQuery), qlc:e(NotInterestedQuery)}
-      end).
-
 %%====================================================================
 %% Internal functions
 %%====================================================================
-
-%%--------------------------------------------------------------------
-%% Function: query_interested(IsInterested, Id) -> QlcQuery
-%% Description: Construct a query selecting all peers with IsInterested.
-%%   It is the case that IsInterested should be a bool(). Constrain to
-%%   torrent identified by Id
-%%--------------------------------------------------------------------
-query_interested(IsInterested, Id) ->
-    qlc:q([P || P <- mnesia:table(peer),
-		P#peer.torrent_id =:= Id,
-		P#peer.remote_i_state =:= IsInterested]).
 
 %%--------------------------------------------------------------------
 %% Function: alter_state(Row, What) -> NewRow
@@ -212,12 +179,8 @@ alter_state(Peer, What) ->
 	    Peer#peer{ remote_i_state = interested};
 	not_intersted ->
 	    Peer#peer{ remote_i_state = not_interested};
-	{uploaded, Amount} ->
-	    Uploaded = Peer#peer.uploaded,
-	    Peer#peer{ uploaded = Uploaded + Amount };
-	{downloaded, Amount} ->
-	    Downloaded = Peer#peer.downloaded,
-	    Peer#peer{ downloaded = Downloaded + Amount };
-	reset_round ->
-	    Peer#peer { uploaded = 0, downloaded = 0}
+	{download_rate, Rate} ->
+	    Peer#peer { download_rate = Rate };
+	{upload_rate, Rate} ->
+	    Peer#peer { upload_rate = Rate }
     end.

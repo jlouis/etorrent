@@ -115,11 +115,9 @@ handle_info(round_tick, S) ->
 	0 ->
 	    NS = advance_optimistic_unchoke(S),
 	    rechoke(NS),
-	    {atomic, _} = etorrent_peer:reset_round(S#state.torrent_id),
 	    {noreply, NS#state { round = 2}};
 	N when is_integer(N) ->
 	    rechoke(S),
-	    {atomic, _} = etorrent_peer:reset_round(S#state.torrent_id),
 	    {noreply, S#state{round = S#state.round - 1}}
     end;
 handle_info({'DOWN', _Ref, process, Pid, Reason}, S)
@@ -272,9 +270,9 @@ is_bad_peer(IP, Port, S) ->
 %%--------------------------------------------------------------------
 rechoke(S) ->
     Key = case etorrent_torrent:mode(S#state.torrent_id) of
-	      seeding -> #peer.uploaded;
-	      leeching -> #peer.downloaded;
-	      endgame -> #peer.downloaded
+	      seeding -> #peer.upload_rate;
+	      leeching -> #peer.download_rate;
+	      endgame -> #peer.download_rate
 	  end,
     {atomic, Peers} = etorrent_peer:select_fastest(S#state.torrent_id, Key),
     rechoke(Peers, calculate_num_downloaders(S), S).

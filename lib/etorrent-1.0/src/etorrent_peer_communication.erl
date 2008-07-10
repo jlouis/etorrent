@@ -40,9 +40,8 @@
 %%   interested | not_interested | {have, integer()} | ...
 %% Description: Receive a message from a peer and decode it
 %%--------------------------------------------------------------------
-recv_message(PeerPid, Message) ->
-    {atomic, _} = etorrent_peer:statechange(PeerPid, {downloaded, size(Message)}),
-    case Message of
+recv_message(Rate, Message) ->
+    Decoded = case Message of
 	<<>> ->
 	    keep_alive;
 	<<?CHOKE>> ->
@@ -65,13 +64,14 @@ recv_message(PeerPid, Message) ->
 	    {cancel, Index, Begin, Len};
 	<<?PORT, Port:16/big>> ->
 	    {port, Port}
-    end.
+    end,
+    {Decoded, etorrent_rate:update(Rate, size(Message))}.
 
 %%--------------------------------------------------------------------
 %% Function: send_message(Socket, Message)
 %% Description: Send a message on a socket
 %%--------------------------------------------------------------------
-send_message(PeerPid, Socket, Message) ->
+send_message(Rate, Socket, Message) ->
     Datagram =
 	case Message of
 	    keep_alive ->
@@ -99,8 +99,8 @@ send_message(PeerPid, Socket, Message) ->
 		<<?PORT, PortNum:16/big>>
         end,
     Sz = size(Datagram),
-    {atomic, _} = etorrent_peer:statechange(PeerPid, {uploaded, Sz}),
-    gen_tcp:send(Socket, <<Sz:32/big, Datagram/binary>>).
+    Res = gen_tcp:send(Socket, <<Sz:32/big, Datagram/binary>>),
+    {Res, etorrent_rate:update(Rate, Sz)}.
 
 %%--------------------------------------------------------------------
 %% Function: recieve_handshake(Socket) -> {ok, protocol_version,

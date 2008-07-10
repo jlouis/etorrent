@@ -10,6 +10,7 @@
 -module(etorrent_t_peer_send).
 
 -include("etorrent_mnesia_table.hrl").
+-include("etorrent_rate.hrl").
 
 -behaviour(gen_server).
 
@@ -25,9 +26,11 @@
 -record(state, {socket = none,
 	        request_queue = none,
 
+		rate = none,
 		choke = true,
 		interested = false, % Are we interested in the peer?
 		timer = none,
+		rate_timer = none,
 		parent = none,
 	        piece_cache = none,
 		torrent_id = none,
@@ -35,6 +38,8 @@
 
 -define(DEFAULT_KEEP_ALIVE_INTERVAL, 120*1000). % From proto. spec.
 -define(MAX_REQUESTS, 1024). % Maximal number of requests a peer may make.
+-define(RATE_FUDGE, 5). %% Consider moving to etorrent_rate.hrl
+-define(RATE_UPDATE, 5 * 1000).
 %%====================================================================
 %% API
 %%====================================================================
@@ -112,10 +117,13 @@ stop(Pid) ->
 init([Socket, FilesystemPid, TorrentId, Parent]) ->
     process_flag(trap_exit, true),
     {ok, TRef} = timer:send_interval(?DEFAULT_KEEP_ALIVE_INTERVAL, self(), keep_alive_tick),
+    {ok, Tref2} = timer:send_interval(?RATE_UPDATE, self(), rate_update),
     {ok,
      #state{socket = Socket,
 	    timer = TRef,
+	    rate_timer = Tref2,
 	    request_queue = queue:new(),
+	    rate = etorrent_rate:init(?RATE_FUDGE),
 	    parent = Parent,
 	    torrent_id = TorrentId,
 	    file_system_pid = FilesystemPid},
@@ -143,6 +151,12 @@ code_change(_OldVsn, State, _Extra) ->
 
 handle_info(keep_alive_tick, S) ->
     send_message(keep_alive, S, 0);
+handle_info(rate_update, S) ->
+    Rate = etorrent_rate:update(S#state.rate, 0),
+    {atomic, _} = etorrent_peer:statechange(S#state.parent,
+					    {upload_rate,
+					     Rate#peer_rate.rate}),
+    {noreply, S#state { rate = Rate }};
 handle_info(timeout, S)
   when S#state.choke =:= true andalso S#state.piece_cache =:= none ->
     garbage_collect(),
@@ -206,6 +220,7 @@ handle_cast(stop, S) ->
 %% Terminating normally means we should inform our recv pair
 terminate(_Reason, S) ->
     timer:cancel(S#state.timer),
+    timer:cancel(S#state.rate_timer),
     ok.
 
 %%--------------------------------------------------------------------
@@ -218,11 +233,14 @@ terminate(_Reason, S) ->
 %%   close gracefully.
 %%--------------------------------------------------------------------
 send_piece_message(Msg, S, Timeout) ->
-    case etorrent_peer_communication:send_message(S#state.parent, S#state.socket, Msg) of
-	ok ->
-	    {noreply, S, Timeout};
-	{error, closed} ->
-	    {stop, normal, S}
+    case etorrent_peer_communication:send_message(S#state.rate, S#state.socket, Msg) of
+	{ok, R} ->
+	    {atomic, _} = etorrent_peer:statechange(S#state.parent,
+						    {upload_rate,
+						     R#peer_rate.rate}),
+	    {noreply, S#state { rate = R }, Timeout};
+	{{error, closed}, R} ->
+	    {stop, normal, S#state { rate = R}}
     end.
 
 send_piece(Index, Offset, Len, S) ->
@@ -253,12 +271,13 @@ send_message(Msg, S) ->
     send_message(Msg, S, 0).
 
 send_message(Msg, S, Timeout) ->
-    case etorrent_peer_communication:send_message(S#state.parent, S#state.socket, Msg) of
-	ok ->
-	    {noreply, S, Timeout};
-	{error, ebadf} ->
+    case etorrent_peer_communication:send_message(S#state.rate, S#state.socket, Msg) of
+	{ok, Rate} ->
+	    {atomic, _} = etorrent_peer:statechange(S#state.parent, {upload_rate, Rate#peer_rate.rate}),
+	    {noreply, S#state { rate = Rate}, Timeout};
+	{{error, ebadf}, R} ->
 	    error_logger:info_report([caught_ebadf, S#state.socket]),
-	    {stop, normal, S};
-	{error, closed} ->
-	    {stop, normal, S}
+	    {stop, normal, S#state { rate = R}};
+	{{error, closed}, R} ->
+	    {stop, normal, S#state { rate = R}}
     end.
