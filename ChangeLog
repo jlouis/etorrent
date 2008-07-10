@@ -1,5 +1,7 @@
 2008-07-10  Jesper Louis Andersen  <jlouis@ogre.home>
 
+	* SRC: Improve the rate calculation.
+
 	* SRC: Robustify the supervisor tree.
 
 2008-07-09  Jesper Louis Andersen  <jlouis@ogre.home>
