@@ -117,8 +117,8 @@ handle_cast({check_piece, PeerGroupPid, Index}, S) ->
 			     S#state.torrent_id,
 			     Index,
 			     fetched),
-	    ok = etorrent_t_peer_group:broadcast_have(PeerGroupPid,
-						      Index),
+	    ok = etorrent_t_peer_group_mgr:broadcast_have(PeerGroupPid,
+							  Index),
 	    {noreply, NS};
 	false ->
 	    {atomic, ok} =

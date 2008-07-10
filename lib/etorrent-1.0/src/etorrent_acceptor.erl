@@ -128,7 +128,7 @@ lookup_infohash(Socket, ReservedBytes, InfoHash, PeerId) ->
 start_peer(Socket, Pid, ReservedBytes, PeerId) ->
     PeerGroupPid = etorrent_t_sup:get_peer_group_pid(Pid),
     {ok, {Address, Port}} = inet:peername(Socket),
-    case etorrent_t_peer_group:new_incoming_peer(PeerGroupPid, Address, Port) of
+    case etorrent_t_peer_group_mgr:new_incoming_peer(PeerGroupPid, Address, Port) of
 	{ok, PeerProcessPid} ->
 	    ok = gen_tcp:controlling_process(Socket, PeerProcessPid),
 	    etorrent_t_peer_recv:complete_handshake(PeerProcessPid,

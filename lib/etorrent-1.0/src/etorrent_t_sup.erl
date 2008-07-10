@@ -67,7 +67,7 @@ add_file_system_pool(Pid) ->
 add_peer_group(Pid, GroupPid, Local_Peer_Id,
 		InfoHash, FileSystemPid, TorrentId) ->
     PeerGroup = {peer_group,
-		  {etorrent_t_peer_group, start_link,
+		  {etorrent_t_peer_group_mgr, start_link,
 		   [Local_Peer_Id, GroupPid,
 		    InfoHash, FileSystemPid, TorrentId]},
 		  temporary, 2000, worker, [etorrent_t_peer_group]},

@@ -300,11 +300,11 @@ handle_message(unchoke, S) ->
     try_to_queue_up_pieces(S#state{remote_choked = false});
 handle_message(interested, S) ->
     {atomic, ok} = etorrent_peer:statechange(self(), interested),
-    etorrent_t_peer_group:perform_rechoke(S#state.peer_group_pid),
+    etorrent_t_peer_group_mgr:perform_rechoke(S#state.peer_group_pid),
     {ok, S};
 handle_message(not_interested, S) ->
     etorrent_peer:statechange(self(), not_interested),
-    etorrent_t_peer_group:perform_rechoke(S#state.peer_group_pid),
+    etorrent_t_peer_group_mgr:perform_rechoke(S#state.peer_group_pid),
     {ok, S};
 handle_message({request, Index, Offset, Len}, S) ->
     etorrent_t_peer_send:remote_request(S#state.send_pid, Index, Offset, Len),
@@ -406,7 +406,7 @@ handle_got_chunk(Index, Offset, Data, Len, S) ->
 	    %% Tell other peers we got the chunk if in endgame
 	    case S#state.endgame of
 		true ->
-		    etorrent_t_peer_group:broadcast_got_chunk(
+		    etorrent_t_peer_group_mgr:broadcast_got_chunk(
 		      S#state.peer_group_pid,
 		      {Index, Offset, Len});
 		false ->

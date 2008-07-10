@@ -8,7 +8,7 @@
 %%%      Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
 %%%-------------------------------------------------------------------
 
--module(etorrent_t_peer_group).
+-module(etorrent_t_peer_group_mgr).
 
 -behaviour(gen_server).
 

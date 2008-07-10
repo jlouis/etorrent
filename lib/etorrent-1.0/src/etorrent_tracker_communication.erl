@@ -222,8 +222,8 @@ handle_tracker_response(BC, none, {string, W}, S) ->
     handle_tracker_response(BC, none, none, S);
 handle_tracker_response(BC, none, none, S) ->
     %% Add new peers
-    etorrent_t_peer_group:add_peers(S#state.peer_group_pid,
-				   response_ips(BC)),
+    etorrent_t_peer_group_mgr:add_peers(S#state.peer_group_pid,
+					response_ips(BC)),
     %% Update the state of the torrent
     ok = etorrent_torrent:statechange(S#state.torrent_id,
 				      {tracker_report,
