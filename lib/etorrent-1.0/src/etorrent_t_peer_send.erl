@@ -110,8 +110,11 @@ stop(Pid) ->
 %% gen_server callbacks
 %%====================================================================
 init([Socket, FilesystemPid, TorrentId, Parent]) ->
+    process_flag(trap_exit, true),
+    {ok, TRef} = timer:send_interval(?DEFAULT_KEEP_ALIVE_INTERVAL, self(), keep_alive_tick),
     {ok,
      #state{socket = Socket,
+	    timer = TRef,
 	    request_queue = queue:new(),
 	    parent = Parent,
 	    torrent_id = TorrentId,
@@ -139,27 +142,23 @@ code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 handle_info(keep_alive_tick, S) ->
-    %% Special case. Set the timer and call send_message with a Timout so it avoids
-    %% a timer cancel.
-    {ok, TRef} = timer:send_after(?DEFAULT_KEEP_ALIVE_INTERVAL, self(), keep_alive_tick),
-    send_message(keep_alive, S#state { timer = TRef} , 0);
+    send_message(keep_alive, S, 0);
 handle_info(timeout, S)
   when S#state.choke =:= true andalso S#state.piece_cache =:= none ->
     garbage_collect(),
-    set_timer(S);
+    {noreply, S};
 handle_info(timeout, S) when S#state.choke =:= true ->
-    set_timer(S);
+    {noreply, S};
 handle_info(timeout, S) when S#state.choke =:= false ->
     case queue:out(S#state.request_queue) of
 	{empty, _} ->
-	    set_timer(S);
+	    {noreply, S};
 	{{value, {Index, Offset, Len}}, NewQ} ->
 	    send_piece(Index, Offset, Len, S#state { request_queue = NewQ } )
     end;
 handle_info(Msg, S) ->
     error_logger:info_report([got_unknown_message, Msg, S]),
     {stop, {unknown_msg, Msg}}.
-
 
 handle_cast(choke, S) when S#state.choke == true ->
     {noreply, S, 0};
@@ -205,11 +204,8 @@ handle_cast(stop, S) ->
 
 
 %% Terminating normally means we should inform our recv pair
-terminate(normal, S) ->
-    etorrent_t_peer_recv:stop(S#state.parent),
-    ok;
-terminate(Reason, State) ->
-    error_logger:info_report([peer_send_terminating, Reason, State]),
+terminate(_Reason, S) ->
+    timer:cancel(S#state.timer),
     ok.
 
 %%--------------------------------------------------------------------
@@ -254,12 +250,6 @@ load_piece(Index, S) ->
     S#state{piece_cache = {Index, Piece}}.
 
 send_message(Msg, S) ->
-    case S#state.timer of
-	none ->
-	    ok;
-	TRef ->
-	    timer:cancel(TRef)
-    end,
     send_message(Msg, S, 0).
 
 send_message(Msg, S, Timeout) ->
@@ -268,13 +258,4 @@ send_message(Msg, S, Timeout) ->
 	    {noreply, S, Timeout};
 	{error, closed} ->
 	    {stop, normal, S}
-    end.
-
-set_timer(S) ->
-    case S#state.timer of
-	none ->
-	    {ok, TRef} = timer:send_after(?DEFAULT_KEEP_ALIVE_INTERVAL, self(), keep_alive_tick),
-	    {noreply, S#state { timer = TRef }};
-	_ ->
-	    {noreply, S}
     end.

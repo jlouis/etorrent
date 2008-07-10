@@ -15,8 +15,7 @@
 
 %% API
 -export([start_link/6, connect/3, choke/1, unchoke/1, interested/1,
-	 send_have_piece/2, complete_handshake/4,
-	 stop/1, endgame_got_chunk/2]).
+	 send_have_piece/2, complete_handshake/4, endgame_got_chunk/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -119,13 +118,6 @@ endgame_got_chunk(Pid, Chunk) ->
 complete_handshake(Pid, ReservedBytes, Socket, PeerId) ->
     gen_server:cast(Pid, {complete_handshake, ReservedBytes, Socket, PeerId}).
 
-%%--------------------------------------------------------------------
-%% Function: stop(Pid)
-%% Description: Stop this peer.
-%%--------------------------------------------------------------------
-stop(Pid) ->
-    gen_server:cast(Pid, stop).
-
 %%====================================================================
 %% gen_server callbacks
 %%====================================================================
@@ -169,9 +161,6 @@ handle_call(_Request, _From, State) ->
 %%                                      {stop, Reason, State}
 %% Description: Handling cast messages
 %%--------------------------------------------------------------------
-handle_cast(stop, S) ->
-    {stop, normal, S};
-
 handle_cast({connect, IP, Port}, S) ->
     case gen_tcp:connect(IP, Port, [binary, {active, false}],
 			 ?DEFAULT_CONNECT_TIMEOUT) of
