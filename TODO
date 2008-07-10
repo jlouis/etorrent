@@ -6,10 +6,6 @@
 --   Keep the style please. Can be read with emacs org-mode
 ----------------------------------------------------------------------
 
-* pick_chunks to do the right thing with interest [Milestone: 0.9]
-   Currently, we do not take chunked pieces into account. And we
-   should!
-
 * Implement graceful stopping of the etorrent application [Milestone: 1.0]
    The provisioning is there in OTP applications. We just need to
    leverage and use it.
