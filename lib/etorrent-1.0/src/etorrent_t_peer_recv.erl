@@ -424,7 +424,11 @@ handle_got_chunk(Index, Offset, Data, Len, S) ->
 %%   choke/unchoke problems and live data.
 %%--------------------------------------------------------------------
 unqueue_all_pieces(S) ->
+    %% Put chunks back
     {atomic, _} = etorrent_chunk:putback_chunks(self()),
+    %% Tell other peers that there is 0xf00d!
+    etorrent_t_peer_group_mgr:broadcast_queue_pieces(S#state.peer_group_pid),
+    %% Clean up the request set.
     S#state{remote_request_set = gb_trees:empty()}.
 
 %%--------------------------------------------------------------------
