@@ -16,7 +16,8 @@
 
 %% API
 -export([start_link/5, add_peers/2, broadcast_have/2, new_incoming_peer/3,
-	 broadcast_got_chunk/2, perform_rechoke/1]).
+	 broadcast_got_chunk/2, perform_rechoke/1,
+	 broadcast_queue_pieces/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -58,6 +59,9 @@ broadcast_have(Pid, Index) ->
 
 broadcast_got_chunk(Pid, Chunk) ->
     gen_server:cast(Pid, {broadcast_got_chunk, Chunk}).
+
+broadcast_queue_pieces(Pid) ->
+    gen_server:cast(Pid, broadcast_queue_pieces).
 
 perform_rechoke(Pid) ->
     gen_server:cast(Pid, rechoke).
@@ -106,6 +110,9 @@ handle_cast({broadcast_got_chunk, Chunk}, S) ->
     {noreply, S};
 handle_cast(rechoke, S) ->
     rechoke(S),
+    {noreply, S};
+handle_cast(broadcast_queue_pieces, S) ->
+    bcast_queue_pieces(S),
     {noreply, S};
 handle_cast(_Msg, State) ->
     {noreply, State}.
@@ -197,6 +204,12 @@ foreach_pid(F, S) ->
 bcast_got_chunk(Chunk, S) ->
     foreach_pid(fun (Peer) ->
 			etorrent_t_peer_recv:endgame_got_chunk(Peer#peer.pid, Chunk)
+		end,
+		S).
+
+bcast_queue_pieces(S) ->
+    foreach_pid(fun (P) ->
+			etorrent_t_peer_recv:queue_pieces(P#peer.pid)
 		end,
 		S).
 
