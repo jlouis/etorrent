@@ -309,9 +309,9 @@ handle_message({have, PieceNum}, S) ->
 	    NS = S#state{piece_set = PieceSet},
 	    case etorrent_piece:interesting(S#state.torrent_id, PieceNum) of
 		true when S#state.local_interested =:= true ->
-		    {ok, NS};
+		    try_to_queue_up_pieces(S);
 		true when S#state.local_interested =:= false ->
-		    {ok, statechange_interested(S, true)};
+		    try_to_queue_up_pieces(statechange_interested(S, true));
 		false ->
 		    {ok, NS}
 	    end;
@@ -466,7 +466,6 @@ queue_items(ChunkList, S) ->
 						   {Pn, Offset, Size})
 	end,
     lists:foreach(F, ChunkList),
-
     G = fun
 	    ({Pn, Chunks}, RS) ->
 		lists:foldl(fun ({Offset, Size, Ops}, RRS) ->

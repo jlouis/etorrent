@@ -32,7 +32,7 @@
 %%--------------------------------------------------------------------
 %% TODO, not_interested here does not take chunked pieces into account!
 pick_chunks(Pid, Id, PieceSet, Remaining) ->
-    case pick_chunks(pick_chunked, {Pid, Id, PieceSet, [], Remaining}) of
+    case pick_chunks(pick_chunked, {Pid, Id, PieceSet, [], Remaining, none}) of
 	not_interested ->
 	    %% Do the endgame mode handling
 	    case etorrent_torrent:is_endgame(Id) of
@@ -48,15 +48,17 @@ pick_chunks(Pid, Id, PieceSet, Remaining) ->
 
 %%
 %% There are 0 remaining chunks to be desired, return the chunks so far
-pick_chunks(_Operation, {_Pid, _Id, _PieceSet, SoFar, 0}) ->
+pick_chunks(_Operation, {_Pid, _Id, _PieceSet, SoFar, 0, _Res}) ->
     {ok, SoFar};
 %%
 %% Pick chunks from the already chunked pieces
-pick_chunks(pick_chunked, {Pid, Id, PieceSet, SoFar, Remaining}) ->
+pick_chunks(pick_chunked, {Pid, Id, PieceSet, SoFar, Remaining, Res}) ->
     Iterator = gb_sets:iterator(PieceSet),
-    case find_chunked_chunks(Id, gb_sets:next(Iterator)) of
+    case find_chunked_chunks(Id, gb_sets:next(Iterator), Res) of
 	none ->
-	    pick_chunks(chunkify_piece, {Pid, Id, PieceSet, SoFar, Remaining});
+	    pick_chunks(chunkify_piece, {Pid, Id, PieceSet, SoFar, Remaining, none});
+	found_chunked ->
+	    pick_chunks(chunkify_piece, {Pid, Id, PieceSet, SoFar, Remaining, found_chunked});
 	PieceNum when is_integer(PieceNum) ->
 	    {atomic, {ok, Chunks, Left}} =
 		select_chunks_by_piecenum(Id, PieceNum,
@@ -64,17 +66,19 @@ pick_chunks(pick_chunked, {Pid, Id, PieceSet, SoFar, Remaining}) ->
 	    pick_chunks(pick_chunked, {Pid, Id,
 				       gb_sets:del_element(PieceNum, PieceSet),
 				       [Chunks | SoFar],
-				       Left})
+				       Left, Res})
     end;
 
 %%
 %% Find a new piece to chunkify. Give up if no more pieces can be chunkified
-pick_chunks(chunkify_piece, {Pid, Id, PieceSet, SoFar, Remaining}) ->
+pick_chunks(chunkify_piece, {Pid, Id, PieceSet, SoFar, Remaining, Res}) ->
     case chunkify_new_piece(Id, PieceSet) of
 	ok ->
-	    pick_chunks(pick_chunked, {Pid, Id, PieceSet, SoFar, Remaining});
-	none_eligible when SoFar =:= [] ->
+	    pick_chunks(pick_chunked, {Pid, Id, PieceSet, SoFar, Remaining, Res});
+	none_eligible when SoFar =:= [], Res =:= none ->
 	    not_interested;
+	none_eligible when SoFar =:= [], Res =:= found_chunked ->
+	    {ok, []};
 	none_eligible ->
 	    {ok, SoFar}
     end;
@@ -365,19 +369,19 @@ find_new_piece(Id, Iterator) ->
 %% Function: find_chunked_chunks(Id, iterator_result()) -> none | PieceNum
 %% Description: Search an iterator for a chunked piece.
 %%--------------------------------------------------------------------
-find_chunked_chunks(_Id, none) ->
-    none;
-find_chunked_chunks(Id, {Pn, Next}) ->
+find_chunked_chunks(_Id, none, Res) ->
+    Res;
+find_chunked_chunks(Id, {Pn, Next}, Res) ->
     [P] = mnesia:dirty_read(piece, {Id, Pn}),
     case P#piece.state of
 	chunked ->
 	    case mnesia:dirty_read(chunk, {Id, Pn, not_fetched}) of
 		[] ->
-		    find_chunked_chunks(Id, gb_sets:next(Next));
+		    find_chunked_chunks(Id, gb_sets:next(Next), found_chunked);
 		_ ->
 		    P#piece.piece_number %% Optimization: Pick the whole piece and pass it on
 	    end;
 	_Other ->
-	    find_chunked_chunks(Id, gb_sets:next(Next))
+	    find_chunked_chunks(Id, gb_sets:next(Next), Res)
     end.
 
