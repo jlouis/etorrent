@@ -8,7 +8,7 @@
 -module(etorrent_rate).
 
 %% API
--export([get_rate/1, init/1, update/2]).
+-export([init/1, update/2]).
 
 -include("etorrent_rate.hrl").
 
@@ -67,15 +67,6 @@ update(#peer_rate {rate = Rate,
 			 %% ?MAX_RATE_PERIOD
 			 rate_since = lists:max([RateSince, T - ?MAX_RATE_PERIOD])}
     end.
-
-%%--------------------------------------------------------------------
-%% Function: get_rate/1
-%% Args: RT     ::= rate_tuple()
-%% Description: Get the rate, and update it if too old.
-%%--------------------------------------------------------------------
-get_rate(RT) ->
-    update(0, RT).
-
 
 %%====================================================================
 %% Internal functions
