@@ -10,12 +10,12 @@
 
 -behaviour(gen_event).
 
--export([init/2]).
+-export([init/3, init/2]).
 
 -export([init/1, handle_event/2, handle_info/2, terminate/2]).
 -export([handle_call/2, code_change/3]).
 
--record(state, {dir, fname, cur_fd}).
+-record(state, {dir, fname, cur_fd, pred}).
 
 %%%-----------------------------------------------------------------
 %%% This module implements an event handler that writes events
@@ -24,38 +24,40 @@
 %% Func: init/2
 %% Args: EventMgr = pid() | atom()
 %%       Dir  = string()
-%%       MaxB = integer()
-%%       MaxF = byte()
+%%       Filename  = string()
 %%       Pred = fun(Event) -> boolean()
 %% Purpose: An event handler.  Writes binary events
-%%          to files in the directory Dir.  Each file is called
-%%          1, 2, 3, ..., MaxF.  Writes MaxB bytes on each
-%%          file.  Creates a file called 'index' in the Dir.  This
-%%          file contains the last written FileName.
-%%          On startup, this file is read, and the next available
-%%          filename is used as first logfile.
+%%          to file Filename in the directory Dir.
+%%          file.
 %%          Each event is filtered with the predicate function Pred.
 %%          Reports can be browsed with Report Browser Tool (rb).
 %% Returns: Args = term()
 %%          The Args term should be used in a call to
 %%          gen_event:add_handler(EventMgr, log_mf_h, Args).
 %%-----------------------------------------------------------------
-init(Dir, Filename) -> {Dir, Filename}.
+init(Dir, Filename) -> init(Dir, Filename, fun(_) -> true end).
+init(Dir, Filename, Pred) -> {Dir, Filename, Pred}.
 
 %%-----------------------------------------------------------------
 %% Call-back functions from gen_event
 %%-----------------------------------------------------------------
-init({Dir, Filename}) ->
+init({Dir, Filename, Pred}) ->
     case catch file_open(Dir, Filename) of
 	{ok, Fd} -> {ok, #state { dir = Dir, fname = Filename,
-				  cur_fd = Fd }};
+				  cur_fd = Fd, pred = Pred }};
 	Error -> Error
     end.
 
 handle_event(Event, S) ->
     Date = date_str(erlang:localtime()),
-    io:format(S#state.cur_fd, "~s : ~p~n", [Date, Event]),
-    {ok, S}.
+	#state{dir = _Dir, fname = _Fname, cur_fd = _CurFd, pred = Pred} = S,
+	case catch Pred(Event) of
+	true ->
+    	io:format(S#state.cur_fd, "~s : ~p~n", [Date, Event]),
+		{ok, S};
+	_ ->
+    	{ok, S}
+	end.
 
 handle_info(_, State) ->
     {ok, State}.
