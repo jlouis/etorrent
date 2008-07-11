@@ -426,10 +426,6 @@ unqueue_all_pieces(S) ->
 %%--------------------------------------------------------------------
 try_to_queue_up_pieces(S) when S#state.remote_choked == true ->
     {ok, S};
-%%
-%% If we are in endgame, then we can just skip stuff
-try_to_queue_up_pieces(S) when S#state.endgame =:= true ->
-    {ok, S};
 try_to_queue_up_pieces(S) ->
     case gb_trees:size(S#state.remote_request_set) of
 	N when N > ?LOW_WATERMARK ->

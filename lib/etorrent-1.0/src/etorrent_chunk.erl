@@ -40,7 +40,7 @@ pick_chunks(Pid, Id, PieceSet, Remaining) ->
 		    %% No endgame yet, just return
 		    not_interested;
 		true ->
-		    pick_chunks(endgame, {Id, PieceSet})
+		    pick_chunks(endgame, {Id, PieceSet, Remaining})
 	    end;
 	Other ->
 	    Other
@@ -80,9 +80,10 @@ pick_chunks(chunkify_piece, {Pid, Id, PieceSet, SoFar, Remaining}) ->
     end;
 %%
 %% Handle the endgame for a torrent gracefully
-pick_chunks(endgame, {Id, PieceSet}) ->
+pick_chunks(endgame, {Id, PieceSet, N}) ->
     Remaining = find_remaning_chunks(Id, PieceSet),
-    {endgame, etorrent_utils:shuffle(Remaining)}.
+    Shuffled = etorrent_utils:shuffle(Remaining),
+    {endgame, lists:sublist(Shuffled, N)}.
 
 %%--------------------------------------------------------------------
 %% Function: putback_chunks(Pid) -> transaction
