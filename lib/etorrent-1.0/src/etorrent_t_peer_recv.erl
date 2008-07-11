@@ -16,7 +16,8 @@
 
 %% API
 -export([start_link/6, connect/3, choke/1, unchoke/1, interested/1,
-	 send_have_piece/2, complete_handshake/4, endgame_got_chunk/2]).
+	 send_have_piece/2, complete_handshake/4, endgame_got_chunk/2,
+	 queue_pieces/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -122,6 +123,9 @@ endgame_got_chunk(Pid, Chunk) ->
 complete_handshake(Pid, ReservedBytes, Socket, PeerId) ->
     gen_server:cast(Pid, {complete_handshake, ReservedBytes, Socket, PeerId}).
 
+queue_pieces(Pid) ->
+    gen_server:cast(Pid, queue_pieces).
+
 %%====================================================================
 %% gen_server callbacks
 %%====================================================================
@@ -209,6 +213,9 @@ handle_cast({send_have_piece, PieceNumber}, S) ->
     {noreply, S, 0};
 handle_cast({endgame_got_chunk, Chunk}, S) ->
     NS = handle_endgame_got_chunk(Chunk, S),
+    {noreply, NS, 0};
+handle_cast(queue_pieces, S) ->
+    {ok, NS} = try_to_queue_up_pieces(S),
     {noreply, NS, 0};
 handle_cast(_Msg, State) ->
     {noreply, State, 0}.
