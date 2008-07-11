@@ -28,7 +28,6 @@
 %%       Pred = fun(Event) -> boolean()
 %% Purpose: An event handler.  Writes binary events
 %%          to file Filename in the directory Dir.
-%%          file.
 %%          Each event is filtered with the predicate function Pred.
 %%          Reports can be browsed with Report Browser Tool (rb).
 %% Returns: Args = term()
