@@ -404,8 +404,7 @@ handle_got_chunk(Index, Offset, Data, Len, S) ->
 	    %% Tell other peers we got the chunk if in endgame
 	    case S#state.endgame of
 		true ->
-		    case etorrent_chunk:mark_fetched(self(),
-S#state.torrent_id,
+		    case etorrent_chunk:mark_fetched(S#state.torrent_id,
 						     {Index, Offset, Len}) of
 			found ->
 			    ok;
