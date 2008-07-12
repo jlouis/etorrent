@@ -39,8 +39,7 @@ decode(String) ->
 
 %%--------------------------------------------------------------------
 %% Function: search_dict/1
-%% Description: Search the dict for a key. Returns {ok, Val} or false.
-%%   if the bastard is not a dict, return not_a_dict.
+%% Description: Search the dict for a key. Returns the value or crashes.
 %%--------------------------------------------------------------------
 search_dict(Key, {dict, Elems}) ->
     case lists:keysearch(Key, 1, Elems) of
