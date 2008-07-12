@@ -14,7 +14,7 @@ libs:
 	cd lib && $(MAKE)
 
 dialyzer: libs
-	$(DIALYZER) --verbose -I $(ETORRENT_LIB)/include -r $(ETORRENT_LIB)
+	$(DIALYZER) $(DIALYZER_OPTS) --verbose -I $(ETORRENT_LIB)/include -r $(ETORRENT_LIB)/ebin
 
 dialyzer-succ: libs
 	$(DIALYZER) --verbose --succ_typings -I $(ETORRENT_LIB)/include -r $(ETORRENT_LIB)
