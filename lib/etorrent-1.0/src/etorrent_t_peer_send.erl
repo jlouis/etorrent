@@ -153,9 +153,9 @@ handle_info(keep_alive_tick, S) ->
     send_message(keep_alive, S, 0);
 handle_info(rate_update, S) ->
     Rate = etorrent_rate:update(S#state.rate, 0),
-    {atomic, _} = etorrent_peer:statechange(S#state.parent,
-					    {upload_rate,
-					     Rate#peer_rate.rate}),
+    etorrent_peer:statechange(S#state.parent,
+			      {upload_rate,
+			       Rate#peer_rate.rate}),
     {noreply, S#state { rate = Rate }};
 handle_info(timeout, S)
   when S#state.choke =:= true andalso S#state.piece_cache =:= none ->

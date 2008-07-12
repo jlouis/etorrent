@@ -241,7 +241,7 @@ handle_info(timeout, S) ->
     end;
 handle_info(rate_update, S) ->
     Rate = etorrent_rate:update(S#state.rate, 0),
-    {atomic, _} = etorrent_peer:statechange(self(), {download_rate, Rate#peer_rate.rate}),
+    etorrent_peer:statechange(self(), {download_rate, Rate#peer_rate.rate}),
     {noreply, S#state { rate = Rate}, 0};
 handle_info(_Info, State) ->
     {noreply, State, 0}.
