@@ -266,7 +266,6 @@ terminate(Reason, S) ->
 	_ ->
 	    error_logger:info_report([reason_for_termination, Reason])
     end,
-    etorrent_t_peer_send:stop(S#state.send_pid),
     ok.
 
 %%--------------------------------------------------------------------

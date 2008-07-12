@@ -273,8 +273,16 @@ send_message(Msg, S) ->
 send_message(Msg, S, Timeout) ->
     case etorrent_peer_communication:send_message(S#state.rate, S#state.socket, Msg) of
 	{ok, Rate} ->
-	    {atomic, _} = etorrent_peer:statechange(S#state.parent, {upload_rate, Rate#peer_rate.rate}),
-	    {noreply, S#state { rate = Rate}, Timeout};
+	    case etorrent_peer:statechange(S#state.parent,
+					   {upload_rate, Rate#peer_rate.rate}) of
+		{atomic, _} ->
+		    {noreply, S#state { rate = Rate}, Timeout};
+		{aborted, _} ->
+		    %% May seem odd, but this may fail if we are about to stop,
+		    %%  and then the stop command is right next in the message
+		    %%  queue.
+		    {noreply, S#state { rate = Rate}, Timeout}
+	    end;
 	{{error, ebadf}, R} ->
 	    error_logger:info_report([caught_ebadf, S#state.socket]),
 	    {stop, normal, S#state { rate = R}};
