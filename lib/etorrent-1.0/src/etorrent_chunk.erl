@@ -136,10 +136,15 @@ store_chunk(Id, PieceNum, {Offset, Len}, Pid) ->
 						    chunks = [Offset]}),
 			      false;
 			  [R] ->
-			      mnesia:write(
-				R#chunk { chunks =
-					  [Offset | R#chunk.chunks]}),
-			      lists:member(Offset, R#chunk.chunks)
+			      case lists:member(Offset, R#chunk.chunks) of
+				  true ->
+				      true;
+				  false ->
+				      mnesia:write(
+					R#chunk { chunks =
+						  [Offset | R#chunk.chunks]}),
+				      false
+			      end
 		      end,
 		  %% Update that the chunk is not anymore assigned to the Pid
 		  case mnesia:read(chunk, {Id, PieceNum, {assigned, Pid}}, write) of
