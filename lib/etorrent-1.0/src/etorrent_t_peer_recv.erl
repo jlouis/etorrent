@@ -233,8 +233,11 @@ handle_info(timeout, S) ->
 	    {stop, normal, S};
 	{error, etimedout} ->
 	    {noreply, S, 0};
-	{error, timeout} ->
-	    {noreply, S, 0}
+	{error, timeout} when S#state.remote_choked =:= true ->
+	    {noreply, S, 0};
+	{error, timeout} when S#state.remote_choked =:= false ->
+	    {ok, NS} = try_to_queue_up_pieces(S),
+	    {noreply, NS, 0}
     end;
 handle_info(rate_update, S) ->
     Rate = etorrent_rate:update(S#state.rate, 0),
