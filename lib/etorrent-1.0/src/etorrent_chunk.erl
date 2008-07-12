@@ -15,7 +15,8 @@
 
 %% API
 -export([pick_chunks/4, store_chunk/4, putback_chunks/1,
-	 endgame_remove_chunk/3]).
+	 endgame_remove_chunk/3, mark_fetched/2,
+	 remove_chunks/2]).
 
 %%====================================================================
 %% API
@@ -180,6 +181,40 @@ endgame_remove_chunk(Pid, Id, {Index, Offset, _Len}) ->
 	    NC = lists:keydelete(Offset, 1, R#chunk.chunks),
 	    mnesia:dirty_write(R#chunk {chunks = NC})
     end.
+
+%%--------------------------------------------------------------------
+%% Function: mark_fetched/2
+%% Args:  Id  ::= integer() - torrent id
+%%        IOL ::= {integer(), integer(), integer()} - {Index, Offs, Len}
+%% Description: Mark a given chunk as fetched.
+%%--------------------------------------------------------------------
+mark_fetched(Id, {Index, Offset, _Len}) ->
+    F =	fun () ->
+		case mnesia:read(chunk, {Id, Index, not_fetched}, write) of
+		    [] ->
+			assigned;
+		    [R] ->
+			case lists:keymember(Offset, 1, R#chunk.chunks) of
+			    true ->
+				NC = lists:keydelete(Offset, 1, R#chunk.chunks),
+				mnesia:write(R#chunk { chunks = NC }),
+				found;
+			    false ->
+				assigned
+			end
+		end
+	end,
+    {atomic, Res} = mnesia:transaction(F),
+    Res.
+
+%%--------------------------------------------------------------------
+%% Function: remove_chunks/2
+%% Args:  Id  ::= integer() - torrent id
+%%        Idx ::= integer() - Index of Piece
+%% Description: Oblitterate all chunks for Index in the torrent Id.
+%%--------------------------------------------------------------------
+remove_chunks(_Id, _Idx) ->
+    todo.
 
 %%====================================================================
 %% Internal functions

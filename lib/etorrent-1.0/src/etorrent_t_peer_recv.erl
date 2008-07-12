@@ -404,9 +404,16 @@ handle_got_chunk(Index, Offset, Data, Len, S) ->
 	    %% Tell other peers we got the chunk if in endgame
 	    case S#state.endgame of
 		true ->
-		    etorrent_t_peer_group_mgr:broadcast_got_chunk(
-		      S#state.peer_group_pid,
-		      {Index, Offset, Len});
+		    case etorrent_chunk:mark_fetched(self(),
+S#state.torrent_id,
+						     {Index, Offset, Len}) of
+			found ->
+			    ok;
+			assigned ->
+			    etorrent_t_peer_group_mgr:broadcast_got_chunk(
+			      S#state.peer_group_pid,
+			      {Index, Offset, Len})
+		    end;
 		false ->
 		    ok
 	    end,
