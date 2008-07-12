@@ -451,6 +451,8 @@ try_to_queue_up_pieces(S) ->
 					    PiecesToQueue) of
 		not_interested ->
 		    {ok, statechange_interested(S, false)};
+		none_eligible ->
+		    {ok, S};
 		{ok, Items} ->
 		    queue_items(Items, S);
 		{endgame, Items} ->

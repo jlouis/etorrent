@@ -33,17 +33,17 @@
 %% TODO, not_interested here does not take chunked pieces into account!
 pick_chunks(Pid, Id, PieceSet, Remaining) ->
     case pick_chunks(pick_chunked, {Pid, Id, PieceSet, [], Remaining, none}) of
-	not_interested ->
-	    %% Do the endgame mode handling
-	    case etorrent_torrent:is_endgame(Id) of
-		false ->
-		    %% No endgame yet, just return
-		    not_interested;
-		true ->
-		    pick_chunks(endgame, {Id, PieceSet, Remaining})
-	    end;
-	Other ->
-	    Other
+	not_interested -> pick_chunks_endgame(Id, PieceSet, Remaining,
+					      not_interested);
+	{ok, []}       -> pick_chunks_endgame(Id, PieceSet, Remaining,
+					      none_eligible);
+	{ok, Items}    -> {ok, Items}
+    end.
+
+pick_chunks_endgame(Id, PieceSet, Remaining, Ret) ->
+    case etorrent_torrent:is_endgame(Id) of
+	false -> Ret; %% No endgame yet
+	true -> pick_chunks(endgame, {Id, PieceSet, Remaining})
     end.
 
 %%
@@ -85,7 +85,7 @@ pick_chunks(chunkify_piece, {Pid, Id, PieceSet, SoFar, Remaining, Res}) ->
 %%
 %% Handle the endgame for a torrent gracefully
 pick_chunks(endgame, {Id, PieceSet, N}) ->
-    Remaining = find_remaning_chunks(Id, PieceSet),
+    Remaining = find_remaining_chunks(Id, PieceSet),
     Shuffled = etorrent_utils:shuffle(Remaining),
     {endgame, lists:sublist(Shuffled, N)}.
 
@@ -189,21 +189,15 @@ endgame_remove_chunk(Pid, Id, {Index, Offset, _Len}) ->
 %% Function: find_remaining_chunks(Id, PieceSet) -> [Chunk]
 %% Description: Find all remaining chunks for a torrent matching PieceSet
 %%--------------------------------------------------------------------
-find_remaning_chunks(Id, PieceSet) ->
-    MatchHead = #chunk { idt = {Id, '$1', {assigned, '_'}}, chunks = '$2'},
-    Rows = mnesia:dirty_select(chunk, [{MatchHead, [], [{{'$1', '$2'}}]}]),
-    Res = lists:foldl(
-	    fun ({PN, Chunks}, Accum) ->
-		    case gb_sets:is_element(PN, PieceSet) of
-			true ->
-			    [{PN, Os, Sz} || {Os, Sz} <- Chunks] ++ Accum;
-			false ->
-			    Accum
-		    end
-	    end,
-	    [],
-	    Rows),
-    Res.
+find_remaining_chunks(Id, PieceSet) ->
+    MatchHeadAssign = #chunk { idt = {Id, '$1', {assigned, '_'}}, chunks = '$2'},
+    MatchHeadNotFetch = #chunk { idt = {Id, '$1', not_fetched}, chunks = '$2'},
+    RowsA = mnesia:dirty_select(chunk, [{MatchHeadAssign, [], [{{'$1', '$2'}}]}]),
+    RowsN = mnesia:dirty_select(chunk, [{MatchHeadNotFetch, [], [{{'$1', '$2'}}]}]),
+    Eligible = [{PN, Chunks} || {PN, Chunks} <- (RowsA ++ RowsN),
+				gb_sets:is_element(PN, PieceSet)],
+    error_logger:info_report([eligible_find_remaining, Eligible]),
+    [{PN, Os, Sz} || {PN, Chunks} <- Eligible, {Os, Sz} <- Chunks].
 
 %%--------------------------------------------------------------------
 %% Function: chunkify_new_piece(Id, PieceSet) -> ok | none_eligible
