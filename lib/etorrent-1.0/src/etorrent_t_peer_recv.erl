@@ -139,7 +139,6 @@ queue_pieces(Pid) ->
 %%--------------------------------------------------------------------
 init([LocalPeerId, InfoHash, FilesystemPid, GroupPid, Id, Parent]) ->
     process_flag(trap_exit, true),
-    dbg:p(self(), call),
     {ok, TRef} = timer:send_interval(?RATE_UPDATE, self(), rate_update),
     {ok, #state{
        parent = Parent,
