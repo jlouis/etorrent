@@ -60,7 +60,7 @@ read_piece(Pid, Pn) when is_integer(Pn) ->
     gen_server:call(Pid, {read_piece, Pn}).
 
 %%--------------------------------------------------------------------
-%% Function: write_piece(Pid, PeerGroupPid, Index) -> ok | wrong_hash
+%% Function: check_piece(Pid, PeerGroupPid, Index) -> ok | wrong_hash
 %% Description: Search the mnesia tables for the Piece with Index and
 %%   write it back to disk.
 %%--------------------------------------------------------------------
@@ -117,6 +117,7 @@ handle_cast({check_piece, PeerGroupPid, Index}, S) ->
 			     S#state.torrent_id,
 			     Index,
 			     fetched),
+	    ok = etorrent_chunk:remove_chunks(S#state.torrent_id, Index),
 	    ok = etorrent_t_peer_group_mgr:broadcast_have(PeerGroupPid,
 							  Index),
 	    {noreply, NS};

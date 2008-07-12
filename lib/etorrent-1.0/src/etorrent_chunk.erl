@@ -227,7 +227,8 @@ mark_fetched(Id, {Index, Offset, _Len}) ->
 %% Description: Oblitterate all chunks for Index in the torrent Id.
 %%--------------------------------------------------------------------
 remove_chunks(_Id, _Idx) ->
-    todo.
+    %% Fake it!
+    ok.
 
 %%====================================================================
 %% Internal functions
