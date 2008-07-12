@@ -356,7 +356,7 @@ handle_message(Unknown, S) ->
 
 %%--------------------------------------------------------------------
 %% Func: handle_endgame_got_chunk(Index, Offset, S) -> State
-%% Description: Some other peer just downloaded {Index, Offset} so try
+%% Description: Some other peer just downloaded {Index, Offset, Len} so try
 %%   not to download it here if we can avoid it.
 %%--------------------------------------------------------------------
 handle_endgame_got_chunk({Index, Offset, Len}, S) ->

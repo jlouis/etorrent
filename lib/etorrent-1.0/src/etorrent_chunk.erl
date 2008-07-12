@@ -173,6 +173,14 @@ store_chunk(Id, PieceNum, {Offset, Len}, Pid) ->
 	  end),
     Res.
 
+%%--------------------------------------------------------------------
+%% Function: endgame_remove_chunk/3
+%% Args:  Pid ::= pid()     - pid of caller
+%%        Id  ::= integer() - torrent id
+%%        IOL ::= {integer(), integer(), integer()} - {Index, Offs, Len}
+%% Description: Remove a chunk in the endgame from its assignment to a
+%%   given pid
+%%--------------------------------------------------------------------
 endgame_remove_chunk(Pid, Id, {Index, Offset, _Len}) ->
     case mnesia:dirty_read(chunk, {Id, Index, {assigned, Pid}}) of
 	[] ->
