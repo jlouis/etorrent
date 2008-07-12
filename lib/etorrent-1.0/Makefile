@@ -4,6 +4,9 @@
 
 all: etorrent-1.0
 
+tags:
+	cd src && $(MAKE) tags
+
 etorrent-1.0:
 	$(ERL) -make
 

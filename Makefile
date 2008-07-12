@@ -19,6 +19,9 @@ dialyzer: libs
 dialyzer-succ: libs
 	$(DIALYZER) --verbose --succ_typings -I $(ETORRENT_LIB)/include -r $(ETORRENT_LIB)
 
+tags:
+	cd lib && $(MAKE) tags
+
 run: libs
 	erl $(ERL_FLAGS) -pa $(ETORRENT_LIB)/ebin \
 	-config $(ETORRENT_LIB)/priv/etorrent.config \
