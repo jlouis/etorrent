@@ -196,8 +196,8 @@ find_remaining_chunks(Id, PieceSet) ->
     RowsN = mnesia:dirty_select(chunk, [{MatchHeadNotFetch, [], [{{'$1', '$2'}}]}]),
     Eligible = [{PN, Chunks} || {PN, Chunks} <- (RowsA ++ RowsN),
 				gb_sets:is_element(PN, PieceSet)],
-    error_logger:info_report([eligible_find_remaining, Eligible]),
-    [{PN, Os, Sz} || {PN, Chunks} <- Eligible, {Os, Sz} <- Chunks].
+    [{PN, Os, Sz, Ops} || {PN, Chunks} <- Eligible, {Os, Sz, Ops} <- Chunks].
+
 
 %%--------------------------------------------------------------------
 %% Function: chunkify_new_piece(Id, PieceSet) -> ok | none_eligible
