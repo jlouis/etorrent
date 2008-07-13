@@ -226,8 +226,13 @@ mark_fetched(Id, {Index, Offset, _Len}) ->
 %%        Idx ::= integer() - Index of Piece
 %% Description: Oblitterate all chunks for Index in the torrent Id.
 %%--------------------------------------------------------------------
-remove_chunks(_Id, _Idx) ->
-    %% Fake it!
+remove_chunks(Id, Idx) ->
+    MatchHead = #chunk { idt = {Id, Idx, '_'}, _ = '_' },
+    F = fun () ->
+		Rows = mnesia:select(chunk, [{MatchHead, [], ['$_']}]),
+		[mnesia:delete_object(Row) || Row <- Rows]
+	end,
+    {atomic, _} = mnesia:transaction(F),
     ok.
 
 %%====================================================================

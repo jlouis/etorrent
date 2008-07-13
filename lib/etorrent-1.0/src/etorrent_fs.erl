@@ -117,6 +117,7 @@ handle_cast({check_piece, PeerGroupPid, Index}, S) ->
 			     S#state.torrent_id,
 			     Index,
 			     fetched),
+	    %% Make sure there is no chunks left for this piece.
 	    ok = etorrent_chunk:remove_chunks(S#state.torrent_id, Index),
 	    ok = etorrent_t_peer_group_mgr:broadcast_have(PeerGroupPid,
 							  Index),
