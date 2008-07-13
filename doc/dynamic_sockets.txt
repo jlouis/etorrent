@@ -1,0 +1,50 @@
+Dynamic Active/Passive sockets for etorrent.
+
+***
+
+Introduction:
+
+When I originally built the socket system for etorrent I opted for the
+simple solution. This was to use active sockets and use the socket
+option {packet, 4} on the wire-protocol. This is extremely fast an
+simple, yet it gave rather bad speeds. The reason for this is that we
+need to do rate calculations to choose the fastest peers and when a
+peer sends 16k packets he may not even get a rate calculation in the
+interval of 10 seconds due to this.
+
+So I opted for using passive sockets and queue the data myself. This
+gives many more rate calculations but it also uses a lot of CPU-time.
+
+The next thing that was the rate calculation itself. It used a simple
+scheme where we counted bytes for 10 seconds and then resat all
+counters. This is very unfair to some peers that enters late in the
+cycle (ie, gets unchoked late in the 10 second cycle) even if they
+produce really good speeds. So we now use a running average over an
+interval which periodically gets updated. This is much more fair since
+a peer which has only moved data for 3 seconds but has a good rate
+will get unchoked.
+
+But the problem with passive sockets remain in the code, even with
+this change.
+
+Goal:
+
+Minimize CPU usage.
+
+Methodology:
+
+It is clear that if a socket has a rate beyond a certain limit, we
+should just use [active, {packet, 4}] encoding on the socket. For
+slower sockets, you will have to do some measurements and
+thinking. Maybe [active, {packet, 4}] is best. Or you can use [active]
+only or maybe keep running with the passive socket. It depends on how
+much it hurts the rate calculation on slower lines.
+
+The idea is to dynamically shift between 2 modes, should it prove to
+be most efficient. When the speed jumps over a hi-mark then it goes
+[active, {packet, 4}] and when the speed falls below a certain lo-mark
+it changes to a more precise measurement that may eat more CPU-power.
+
+It is probably best if you measure what is best. You can also profile
+the rating code (think Amdahls law) and see if an improvement of that
+will yield significant speedup.
