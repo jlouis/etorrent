@@ -11,10 +11,9 @@ start() ->
     ok = application:start(crypto),
     ok = application:start(inets),
     ok = application:start(sasl),
-    ok = mnesia:start(),
+    ok = application:start(mnesia),
     db_initialize(),
     application:start(etorrent).
-
 
 start(_Type, _Args) ->
     etorrent_sup:start_link().
@@ -27,7 +26,8 @@ stop(_State) ->
     ok.
 
 db_initialize() ->
-    ok = mnesia:create_schema([node()]),
+    %% May already exist, we do not care at the moment.
+    _R = mnesia:create_schema([]),
     etorrent_mnesia_init:init().
 
 %%--------------------------------------------------------------------
