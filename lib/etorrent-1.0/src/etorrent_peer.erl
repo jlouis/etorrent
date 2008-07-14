@@ -52,7 +52,7 @@ delete(Pid) when is_pid(Pid) ->
 %% Description: Alter all peers matching torrent Id by What. The 'none'
 %%   case allows us to gracefully handle some corner cases.
 %%--------------------------------------------------------------------
-statechange(none, _What) -> ok;
+statechange(none, _What) -> {atomic, ok};
 statechange(Id, What) when is_integer(Id) ->
     mnesia:transaction(
       fun () ->
