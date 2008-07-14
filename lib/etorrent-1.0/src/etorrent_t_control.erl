@@ -124,13 +124,13 @@ initializing(timeout, S) ->
 	    etorrent_tracking_map:statechange(S#state.id, started),
 
 	    %% Add a torrent entry for this torrent.
-	    etorrent_torrent:new(
-	      S#state.id,
-	      {{uploaded, 0},
-	       {downloaded, 0},
-	       {left, calculate_amount_left(S#state.id)},
-	       {total, etorrent_metainfo:get_length(Torrent)}},
-	      NumberOfPieces),
+	    ok = etorrent_torrent:new(
+		   S#state.id,
+		   {{uploaded, 0},
+		    {downloaded, 0},
+		    {left, calculate_amount_left(S#state.id)},
+		    {total, etorrent_metainfo:get_length(Torrent)}},
+		   NumberOfPieces),
 
 	    %% And a process for controlling the peers for this torrent.
 	    {ok, PeerGroupPid} =

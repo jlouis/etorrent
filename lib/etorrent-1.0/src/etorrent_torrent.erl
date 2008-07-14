@@ -11,7 +11,7 @@
 -include("etorrent_mnesia_table.hrl").
 
 %% API
--export([new/3, delete/1, by_id/1, all/0, statechange/2,
+-export([new/3, delete/1, select/1, all/0, statechange/2,
 	 num_pieces/1, decrease_not_fetched/1,
 	 is_endgame/1, mode/1]).
 
@@ -42,7 +42,8 @@ new(Id, {{uploaded, U}, {downloaded, D}, {left, L}, {total, T}}, NPieces) ->
 	end,
     {atomic, _} = mnesia:transaction(F),
     Missing = etorrent_piece:num_not_fetched(Id),
-    mnesia:dirty_update_counter(torrent_c_pieces, Id, Missing).
+    mnesia:dirty_update_counter(torrent_c_pieces, Id, Missing),
+    ok.
 
 %%--------------------------------------------------------------------
 %% Function: mode(Id) -> seeding | endgame | leeching
@@ -59,16 +60,13 @@ mode(Id) ->
 %%--------------------------------------------------------------------
 delete(Id) when is_integer(Id) ->
     mnesia:dirty_delete(torrent, Id),
-    mnesia:dirty_delete(torrent_c_pieces, Id);
-delete(Torrent) when is_record(Torrent, torrent) ->
-    mnesia:dirty_delete(torrent_c_pieces, Torrent#torrent.id),
-    mnesia:dirty_delete_object(Torrent).
+    mnesia:dirty_delete(torrent_c_pieces, Id).
 
 %%--------------------------------------------------------------------
-%% Function: by_id(Id, Pid) -> Rows
+%% Function: select(Id, Pid) -> Rows
 %% Description: Return the torrent identified by Id
 %%--------------------------------------------------------------------
-by_id(Id) ->
+select(Id) ->
     mnesia:dirty_read(torrent, Id).
 
 %%--------------------------------------------------------------------
