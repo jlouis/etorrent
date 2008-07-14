@@ -11,7 +11,7 @@
 -include("etorrent_mnesia_table.hrl").
 
 %% API
--export([new/3, delete/1, by_id/1, all/0, statechange/2,
+-export([new/3, delete/1, select/1, all/0, statechange/2,
 	 num_pieces/1, decrease_not_fetched/1,
 	 is_endgame/1, mode/1]).
 
@@ -68,7 +68,7 @@ delete(Torrent) when is_record(Torrent, torrent) ->
 %% Function: by_id(Id, Pid) -> Rows
 %% Description: Return the torrent identified by Id
 %%--------------------------------------------------------------------
-by_id(Id) ->
+select(Id) ->
     mnesia:dirty_read(torrent, Id).
 
 %%--------------------------------------------------------------------
