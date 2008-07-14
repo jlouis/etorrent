@@ -6,10 +6,7 @@
 
 -author('Mats Cronqvist').
 
+%% Simplified into oblivion.
 -define(log(T),	error_logger:info_report(
-		  [process_info(self(),current_function),{line,?LINE}|
-		   try is_integer(lists:nth(1,T)) of
-		     true -> [T];
-		     false-> T
-		   catch error:_ -> [T]
-		   end])).
+		  [process_info(self(),current_function),{line,?LINE}|T])).
+
