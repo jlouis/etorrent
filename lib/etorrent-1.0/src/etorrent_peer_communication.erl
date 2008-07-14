@@ -129,9 +129,10 @@ recieve_handshake(Socket) ->
 %% Description: Complete the handshake with the peer in the other end.
 %%--------------------------------------------------------------------
 complete_handshake_header(Socket, InfoHash, LocalPeerId) ->
-    gen_tcp:send(Socket, InfoHash),
-    gen_tcp:send(Socket, LocalPeerId).
-
+    case gen_tcp:send(Socket, InfoHash) of
+	ok -> gen_tcp:send(Socket, LocalPeerId);
+	{error, Reason} -> {error, Reason}
+    end.
 
 %%--------------------------------------------------------------------
 %% Function: initiate_handshake(socket(), peer_id(), info_hash()) ->
@@ -144,12 +145,13 @@ complete_handshake_header(Socket, InfoHash, LocalPeerId) ->
 initiate_handshake(Socket, LocalPeerId, InfoHash) ->
     % Since we are the initiator, send out this handshake
     Header = build_peer_protocol_header(),
-    gen_tcp:send(Socket, Header),
-    complete_handshake_header(Socket, InfoHash, LocalPeerId),
-    % Now, we wait for his handshake to arrive on the socket
-    % Since we are the initiator, he is requested to fire off everything
-    % to us.
-    receive_header(Socket, InfoHash).
+    case gen_tcp:send(Socket, Header) of
+	ok -> case complete_handshake_header(Socket, InfoHash, LocalPeerId) of
+		  ok -> receive_header(Socket, InfoHash);
+		  {error, Reason} -> {error, Reason}
+	      end;
+	{error, Reason} -> {error, Reason}
+    end.
 
 %%====================================================================
 %% Internal functions
