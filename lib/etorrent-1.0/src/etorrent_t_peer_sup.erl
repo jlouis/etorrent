@@ -34,7 +34,7 @@ start_link(LocalPeerId, InfoHash, FilesystemPid, GroupPid, Id) ->
 add_sender(Pid, Socket, FileSystemPid, Id, RecvPid) ->
     Sender   = {sender, {etorrent_t_peer_send, start_link,
 			 [Socket, FileSystemPid, Id, RecvPid]},
-		permanent, 2000, worker, [etorrent_t_peer_send]},
+		permanent, 15000, worker, [etorrent_t_peer_send]},
     supervisor:start_child(Pid, Sender).
 
 %%====================================================================
@@ -52,7 +52,7 @@ add_sender(Pid, Socket, FileSystemPid, Id, RecvPid) ->
 init([LocalPeerId, InfoHash, FilesystemPid, GroupPid, Id]) ->
     Reciever = {reciever, {etorrent_t_peer_recv, start_link,
 			  [LocalPeerId, InfoHash, FilesystemPid, GroupPid, Id, self()]},
-		permanent, 2000, worker, [etorrent_t_peer_recv]},
+		permanent, 15000, worker, [etorrent_t_peer_recv]},
     {ok, {{one_for_all, 0, 1}, [Reciever]}}.
 
 %%====================================================================
