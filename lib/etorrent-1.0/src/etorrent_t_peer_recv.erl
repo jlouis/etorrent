@@ -238,6 +238,8 @@ handle_info(timeout, S) ->
 	    handle_read_from_socket(S, Packet);
 	{error, closed} ->
 	    {stop, normal, S};
+	{error, ebadf} ->
+	    {stop, normal, S};
 	{error, etimedout} ->
 	    {noreply, S, 0};
 	{error, timeout} when S#state.remote_choked =:= true ->
