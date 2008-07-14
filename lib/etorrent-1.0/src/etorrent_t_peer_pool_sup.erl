@@ -45,7 +45,7 @@ add_peer(GroupPid, LocalPeerId, InfoHash, FilesystemPid, Parent, Id) ->
 init([]) ->
     PeerRecvs = {peer_recv,
 		 {etorrent_t_peer_sup, start_link, []},
-		 transient, 10000, supervisor, [etorrent_t_peer_recv]},
+		 transient, infinity, supervisor, [etorrent_t_peer_recv]},
     {ok, {{simple_one_for_one, 5, 60}, [PeerRecvs]}}.
 
 %%====================================================================
