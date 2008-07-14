@@ -120,10 +120,9 @@ handle_cast(_Msg, State) ->
 handle_info(round_tick, S) ->
     case S#state.round of
 	0 ->
-	    case advance_optimistic_unchoke(S) of
-		{ok, NS} -> rechoke(NS), {noreply, NS#state { round = 2}};
-		stop -> {stop, normal, S}
-	    end;
+	    {ok, NS} = advance_optimistic_unchoke(S),
+	    rechoke(NS),
+	    {noreply, NS#state { round = 2}};
 	N when is_integer(N) ->
 	    rechoke(S),
 	    {noreply, S#state{round = S#state.round - 1}}
@@ -329,18 +328,13 @@ advance_optimistic_unchoke(S) ->
 	[] ->
 	    {ok, S}; %% No peers yet
 	[H | _T] ->
-	    R1 = etorrent_peer:statechange(S#state.optimistic_unchoke_pid,
+	    _R1 = etorrent_peer:statechange(S#state.optimistic_unchoke_pid,
 					   remove_optimistic_unchoke),
 	    %% Do not choke here, a later call to rechoke will do it.
-	    R2 = etorrent_peer:statechange(H, optimistic_unchoke),
+	    _R2 = etorrent_peer:statechange(H, optimistic_unchoke),
 	    etorrent_t_peer_recv:unchoke(H),
-	    case {R1, R2} of
-		{{atomic, _}, {atomic, _}} ->
-		    {ok, S#state { opt_unchoke_chain = NewChain,
-				   optimistic_unchoke_pid = H }};
-		_ ->
-		    stop
-	    end
+	    {ok, S#state { opt_unchoke_chain = NewChain,
+			   optimistic_unchoke_pid = H }}
     end.
 
 move_cyclic_chain([]) -> [];
