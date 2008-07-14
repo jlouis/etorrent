@@ -237,7 +237,8 @@ remove_file_process(Pid, Dict) ->
     end.
 
 stop_all_fs_processes(Dict) ->
-    [etorrent_fs_process:stop(Pid) || {_, Pid} <- dict:to_list(Dict)],
+    lists:foreach(fun({_, Pid}) -> etorrent_fs_process:stop(Pid) end,
+		  dict:to_list(Dict)),
     ok.
 
 
