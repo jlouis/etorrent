@@ -33,7 +33,7 @@ read_and_check_torrent(Id, SupervisorPid, Path) ->
 	build_dictionary_on_files(Id, Torrent, Files),
 
     %% Initialize piecemap
-    etorrent_piece:new(Id, FileDict),
+    _Dict = etorrent_piece:new(Id, FileDict),
 
     %% Check the contents of the torrent, updates the state of the piecemap
     FS = etorrent_t_sup:get_pid(SupervisorPid, fs),
@@ -82,7 +82,7 @@ check_torrent_contents(FS, Id) ->
 		      false ->
 			  not_fetched
 		  end,
-	      etorrent_piece:statechange(Id, PieceNum, State),
+	      {atomic, _} = etorrent_piece:statechange(Id, PieceNum, State),
 	      timer:sleep(?DEFAULT_CHECK_SLEEP_TIME)
       end,
       Pieces),

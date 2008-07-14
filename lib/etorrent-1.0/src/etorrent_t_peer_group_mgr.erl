@@ -291,7 +291,7 @@ rechoke(S) ->
     rechoke(Peers, calculate_num_downloaders(S), S).
 
 rechoke(Peers, 0, S) ->
-    [optimistic_unchoke_handler(P, S) || P <- Peers],
+    lists:foreach(fun(P) -> optimistic_unchoke_handler(P, S) end, Peers),
     ok;
 rechoke([], _N, _S) ->
     ok;

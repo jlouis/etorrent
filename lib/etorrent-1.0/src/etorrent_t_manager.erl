@@ -40,8 +40,7 @@ handle_cast({start_torrent, F}, S) ->
 	etorrent_t_pool_sup:add_torrent(F, S#state.local_peer_id, etorrent_sequence:next(torrent)),
     {noreply, S};
 handle_cast({stop_torrent, F}, S) ->
-    stop_torrent(F, S),
-    {noreply, S}.
+    stop_torrent(F, S).
 
 handle_call(_A, _B, S) ->
     {noreply, S}.
