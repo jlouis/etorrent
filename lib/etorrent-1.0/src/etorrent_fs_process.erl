@@ -13,6 +13,7 @@
 -module(etorrent_fs_process).
 
 -include("etorrent_mnesia_table.hrl").
+-include("log.hrl").
 
 -behaviour(gen_server).
 
@@ -94,12 +95,11 @@ handle_info(Info, State) ->
     error_logger:warning_report([unknown_fs_process, Info]),
     {noreply, State}.
 
-terminate(Reason, State) when (Reason =:= normal) orelse (Reason =:= shutdown) ->
-    file:close(State#state.iodev),
-    ok;
-terminate(Reason, _S) ->
-    error_logger:warning_report([fs_process_terminating, Reason]),
-    ok.
+terminate(_Reason, State) ->
+    case file:close(State#state.iodev) of
+	ok -> ok;
+	E -> ?log([cant_close_file, E]), ok
+    end.
 
 %%--------------------------------------------------------------------
 %% Func: code_change(OldVsn, State, Extra) -> {ok, NewState}

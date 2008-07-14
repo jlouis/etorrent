@@ -169,7 +169,7 @@ handle_info(_Info, State) ->
 %%--------------------------------------------------------------------
 %% XXX: Cancel timers for completeness.
 terminate(normal, S) ->
-    contact_tracker(stopped, S),
+    _NS = contact_tracker(stopped, S),
     ok;
 terminate(_Reason, _S) ->
     ok.
@@ -207,10 +207,6 @@ handle_tracker_response(BC, S) ->
 			    fetch_error_message(BC),
 			    fetch_warning_message(BC),
 			    S).
-
-%%--------------------------------------------------------------------
-%% XXX: To here
-%%--------------------------------------------------------------------
 
 handle_tracker_response(BC, {string, E}, _WM, S) ->
     etorrent_t_control:tracker_error_report(S#state.control_pid, E),
