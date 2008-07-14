@@ -177,7 +177,7 @@ alter_state(Peer, What) ->
 	    Peer#peer { local_c_state = unchoked };
 	interested ->
 	    Peer#peer{ remote_i_state = interested};
-	not_intersted ->
+	not_interested ->
 	    Peer#peer{ remote_i_state = not_interested};
 	{download_rate, Rate} ->
 	    Peer#peer { download_rate = Rate };
