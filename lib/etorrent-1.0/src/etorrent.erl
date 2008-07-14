@@ -27,7 +27,10 @@ stop(_State) ->
 
 db_initialize() ->
     %% May already exist, we do not care at the moment.
-    _R = mnesia:create_schema([]),
+    case mnesia:create_schema([]) of
+	ok -> error_logger:info_report([schema, created]);
+	E -> error_logger:info_report([schema, E])
+    end,
     etorrent_mnesia_init:init().
 
 %%--------------------------------------------------------------------
