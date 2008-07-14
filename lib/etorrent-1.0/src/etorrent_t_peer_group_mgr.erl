@@ -131,39 +131,47 @@ handle_info({'DOWN', _Ref, process, Pid, Reason}, S)
   when (Reason =:= normal) or (Reason =:= shutdown) ->
     % The peer shut down normally. Hence we just remove him and start up
     %  other peers. Eventually the tracker will re-add him to the peer list
-    Peer = etorrent_peer:select(Pid),
-    case {Peer#peer.remote_i_state, Peer#peer.local_c_state} of
-	{interested, choked} ->
-	    rechoke(S);
-	_ ->
+    case etorrent_peer:select(Pid) of
+	[Peer] ->
+	    case {Peer#peer.remote_i_state, Peer#peer.local_c_state} of
+		{interested, choked} ->
+		    rechoke(S);
+		_ ->
+		    ok
+	    end,
+	    ok;
+	[] ->
 	    ok
     end,
-    etorrent_peer:delete(Pid),
+
     NewChain = lists:delete(Pid, S#state.opt_unchoke_chain),
     {ok, NS} = start_new_peers([], S#state { num_peers = S#state.num_peers -1,
 					     opt_unchoke_chain = NewChain }),
     {noreply, NS};
 handle_info({'DOWN', _Ref, process, Pid, _Reason}, S) ->
     % The peer shut down unexpectedly re-add him to the queue in the *back*
-    Peer = etorrent_peer:select(Pid),
-    {IP, Port} = {Peer#peer.ip, Peer#peer.port},
-    case {Peer#peer.remote_i_state, Peer#peer.local_c_state} of
-	{interested, choked} ->
-	    rechoke(S);
-	_ ->
-	    ok
-    end,
-    etorrent_peer:delete(Pid),
-    NewChain = lists:delete(Pid, S#state.opt_unchoke_chain),
-    {noreply, S#state{available_peers = (S#state.available_peers ++ [{IP, Port}]),
-		      num_peers = S#state.num_peers -1,
+    NS = case etorrent_peer:select(Pid) of
+	     [Peer] ->
+		 {IP, Port} = {Peer#peer.ip, Peer#peer.port},
+		 case {Peer#peer.remote_i_state, Peer#peer.local_c_state} of
+		     {interested, choked} ->
+			 rechoke(S);
+		     _ ->
+			 ok
+		 end,
+		 S#state { available_peers  = S#state.available_peers ++ [{IP, Port}]};
+	     [] -> S
+	 end,
+
+    NewChain = lists:delete(Pid, NS#state.opt_unchoke_chain),
+    {noreply, NS#state{num_peers = NS#state.num_peers -1,
 		      opt_unchoke_chain = NewChain}};
 handle_info(Info, State) ->
     error_logger:error_report([unknown_info_peer_group, Info]),
     {noreply, State}.
 
-terminate(_Reason, S) ->
-    etorrent_peer:delete(S#state.torrent_id),
+terminate(Reason, _S) ->
+    error_logger:info_report([peer_group_mgr_term, Reason]),
     ok.
 
 code_change(_OldVsn, State, _Extra) ->
@@ -184,9 +192,9 @@ start_new_incoming_peer(IP, Port, S) ->
 			  S#state.info_hash,
 			  S#state.file_system_pid,
 			  self(),
-			  S#state.torrent_id),
+			  S#state.torrent_id,
+			  {IP, Port}),
 	    erlang:monitor(process, Pid),
-	    etorrent_peer:new(IP, Port, S#state.torrent_id, Pid),
 	    NewChain = insert_new_peer_into_chain(Pid, S#state.opt_unchoke_chain),
 	    rechoke(S),
 	    {reply, {ok, Pid},
@@ -262,10 +270,10 @@ spawn_new_peer(IP, Port, N, S) ->
 			  S#state.info_hash,
 			  S#state.file_system_pid,
 			  self(),
-			  S#state.torrent_id),
+			  S#state.torrent_id,
+			  {IP, Port}),
 	    erlang:monitor(process, Pid),
 	    etorrent_t_peer_recv:connect(Pid, IP, Port),
-	    ok = etorrent_peer:new(IP, Port, S#state.torrent_id, Pid),
 	    NewChain = insert_new_peer_into_chain(Pid, S#state.opt_unchoke_chain),
 	    rechoke(S),
 	    fill_peers(N-1, S#state { num_peers = S#state.num_peers +1,

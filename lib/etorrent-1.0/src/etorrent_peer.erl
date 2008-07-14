@@ -107,8 +107,7 @@ all(Id) ->
 %% Description: Select the peer matching pid P.
 %%--------------------------------------------------------------------
 select(Pid) when is_pid(Pid) ->
-    [Peer] = mnesia:dirty_read(peer, Pid),
-    Peer.
+    mnesia:dirty_read(peer, Pid).
 
 %%--------------------------------------------------------------------
 %% Function: select_fastest(Id, Key) -> [#peer]
