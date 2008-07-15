@@ -174,8 +174,10 @@ mark_fetched(Id, {Index, Offset, _Len}) ->
 		    [R] ->
 			case lists:keymember(Offset, 1, R#chunk.chunks) of
 			    true ->
-				NC = lists:keydelete(Offset, 1, R#chunk.chunks),
-				mnesia:write(R#chunk { chunks = NC }),
+				case lists:keydelete(Offset, 1, R#chunk.chunks) of
+				    [] -> mnesia:delete_object(R);
+				    NC -> mnesia:write(R#chunk { chunks = NC })
+				end,
 				found;
 			    false ->
 				assigned
