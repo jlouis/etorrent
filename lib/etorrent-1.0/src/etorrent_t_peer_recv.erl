@@ -192,19 +192,23 @@ handle_cast({connect, IP, Port}, S) ->
 	    {stop, normal, S}
     end;
 handle_cast({complete_handshake, _ReservedBytes, Socket, RemotePeerId}, S) ->
-    etorrent_peer_communication:complete_handshake_header(Socket,
-						 S#state.info_hash,
-						 S#state.local_peer_id),
-    complete_connection_setup(S#state { tcp_socket = Socket,
-					remote_peer_id = RemotePeerId });
+    case etorrent_peer_communication:complete_handshake(Socket,
+							S#state.info_hash,
+							S#state.local_peer_id) of
+	ok -> complete_connection_setup(S#state { tcp_socket = Socket,
+						  remote_peer_id = RemotePeerId });
+	{error, stop} -> {stop, normal, S}
+    end;
 handle_cast(choke, S) ->
-    etorrent_peer:statechange(self(), local_choking),
+    {atomic, _} = etorrent_peer:statechange(self(), local_choking),
     etorrent_t_peer_send:choke(S#state.send_pid),
     {noreply, S, 0};
 handle_cast(unchoke, S) ->
-    etorrent_peer:statechange(self(), local_unchoking),
-    etorrent_t_peer_send:unchoke(S#state.send_pid),
-    {noreply, S, 0};
+    case etorrent_peer:statechange(self(), local_unchoking) of
+	{atomic, _} -> etorrent_t_peer_send:unchoke(S#state.send_pid),
+		       {noreply, S, 0};
+	{aborted, _} -> {stop, normal, S}
+    end;
 handle_cast(interested, S) ->
     {noreply, statechange_interested(S, true), 0};
 handle_cast({send_have_piece, PieceNumber}, S) ->
@@ -241,8 +245,10 @@ handle_info(timeout, S) ->
     end;
 handle_info(rate_update, S) ->
     Rate = etorrent_rate:update(S#state.rate, 0),
-    etorrent_peer:statechange(self(), {download_rate, Rate#peer_rate.rate}),
-    {noreply, S#state { rate = Rate}, 0};
+    case etorrent_peer:statechange(self(), {download_rate, Rate#peer_rate.rate}) of
+	{atomic, _} -> {noreply, S#state { rate = Rate}, 0};
+	{aborted, _} -> {stop, normal, S}
+    end;
 handle_info(_Info, State) ->
     {noreply, State, 0}.
 
@@ -254,7 +260,7 @@ handle_info(_Info, State) ->
 %% The return value is ignored.
 %%--------------------------------------------------------------------
 terminate(Reason, S) ->
-    unqueue_all_pieces(S),
+    _NS = unqueue_all_pieces(S),
     case S#state.tcp_socket of
 	none ->
 	    ok;
@@ -301,7 +307,7 @@ handle_message(interested, S) ->
     etorrent_t_peer_group_mgr:perform_rechoke(S#state.peer_group_pid),
     {ok, S};
 handle_message(not_interested, S) ->
-    etorrent_peer:statechange(self(), not_interested),
+    {atomic, _} = etorrent_peer:statechange(self(), not_interested),
     etorrent_t_peer_group_mgr:perform_rechoke(S#state.peer_group_pid),
     {ok, S};
 handle_message({request, Index, Offset, Len}, S) ->
@@ -550,7 +556,7 @@ handle_read_from_socket(S, Packet)
     Left = size(Data),
     P = iolist_to_binary(lists:reverse([Data | S#state.packet_iolist])),
     {Msg, Rate} = etorrent_peer_communication:recv_message(S#state.rate, P),
-    etorrent_peer:statechange(self(), {download_rate, Rate#peer_rate.rate}),
+    {atomic, _} = etorrent_peer:statechange(self(), {download_rate, Rate#peer_rate.rate}),
     case handle_message(Msg, S#state {rate = Rate}) of
 	{ok, NS} ->
 	    handle_read_from_socket(NS#state { packet_left = none,

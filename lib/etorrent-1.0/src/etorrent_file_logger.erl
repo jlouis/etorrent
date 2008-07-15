@@ -8,6 +8,8 @@
 %%%-------------------------------------------------------------------
 -module(etorrent_file_logger).
 
+-include("log.hrl").
+
 -behaviour(gen_event).
 
 -export([init/3, init/2]).
@@ -62,8 +64,10 @@ handle_info(_, State) ->
     {ok, State}.
 
 terminate(_, State) ->
-    file:close(State#state.cur_fd),
-    State.
+    case file:close(State#state.cur_fd) of
+	ok -> State;
+	{error, R} -> ?log([cant_close_file,{reason, R}]), State
+    end.
 
 handle_call(null, State) ->
     {ok, null, State}.

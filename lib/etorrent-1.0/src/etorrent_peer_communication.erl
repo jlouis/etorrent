@@ -11,7 +11,7 @@
 
 %% API
 -export([initiate_handshake/3, recieve_handshake/1,
-	 complete_handshake_header/3]).
+	 complete_handshake/3]).
 -export([send_message/3, recv_message/2,
 	 construct_bitfield/2, destruct_bitfield/2]).
 
@@ -124,16 +124,6 @@ recieve_handshake(Socket) ->
     end.
 
 %%--------------------------------------------------------------------
-%% Function: complete_handshake_header(socket(),
-%%   info_hash(), peer_id()) -> ok | {error, Reason}
-%% Description: Complete the handshake with the peer in the other end.
-%%--------------------------------------------------------------------
-complete_handshake_header(Socket, InfoHash, LocalPeerId) ->
-    gen_tcp:send(Socket, InfoHash),
-    gen_tcp:send(Socket, LocalPeerId).
-
-
-%%--------------------------------------------------------------------
 %% Function: initiate_handshake(socket(), peer_id(), info_hash()) ->
 %%                                         {ok, protocol_version()} |
 %%                                              {error, Reason}
@@ -144,12 +134,33 @@ complete_handshake_header(Socket, InfoHash, LocalPeerId) ->
 initiate_handshake(Socket, LocalPeerId, InfoHash) ->
     % Since we are the initiator, send out this handshake
     Header = build_peer_protocol_header(),
-    gen_tcp:send(Socket, Header),
-    complete_handshake_header(Socket, InfoHash, LocalPeerId),
-    % Now, we wait for his handshake to arrive on the socket
-    % Since we are the initiator, he is requested to fire off everything
-    % to us.
-    receive_header(Socket, InfoHash).
+    try
+	ok = gen_tcp:send(Socket, Header),
+	ok = gen_tcp:send(Socket, InfoHash),
+	ok = gen_tcp:send(Socket, LocalPeerId),
+	receive_header(Socket, InfoHash)
+    catch
+	error:_ -> {error, stop}
+    end.
+
+%%--------------------------------------------------------------------
+%% Function: complete_handshake/3
+%% Args: Socket ::= socket()
+%%       InfoHash ::= binary()
+%%       LocalPeerId ::= binary()
+%% Description: Complete a handshake.
+%%--------------------------------------------------------------------
+complete_handshake(Socket, InfoHash, LocalPeerId) ->
+    Header = build_peer_protocol_header(),
+    try
+	ok = gen_tcp:send(Socket, Header),
+	ok = gen_tcp:send(Socket, InfoHash),
+	ok = gen_tcp:send(Socket, LocalPeerId),
+	ok
+    catch
+	error:_ -> {error, stop}
+    end.
+
 
 %%====================================================================
 %% Internal functions

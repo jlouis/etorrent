@@ -8,27 +8,29 @@
 -export([help/0, h/0, list/0, l/0, show/0, s/0, show/1, s/1]).
 
 start() ->
-    application:start(crypto),
-    application:start(inets),
-    application:start(timer),
-    application:start(sasl),
-    mnesia:start(),
+    ok = application:start(crypto),
+    ok = application:start(inets),
+    ok = application:start(sasl),
+    ok = application:start(mnesia),
     db_initialize(),
     application:start(etorrent).
-
 
 start(_Type, _Args) ->
     etorrent_sup:start_link().
 
 stop() ->
-    application:stop(etorrent),
+    ok = application:stop(etorrent),
     halt().
 
 stop(_State) ->
     ok.
 
 db_initialize() ->
-    mnesia:create_schema([node()]),
+    %% May already exist, we do not care at the moment.
+    case mnesia:create_schema([]) of
+	ok -> error_logger:info_report([schema, created]);
+	E -> error_logger:info_report([schema, E])
+    end,
     etorrent_mnesia_init:init().
 
 %%--------------------------------------------------------------------
