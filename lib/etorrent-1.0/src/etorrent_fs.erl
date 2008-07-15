@@ -109,10 +109,8 @@ handle_cast({check_piece, PeerGroupPid, Index}, S) ->
 	true ->
 	    ok = etorrent_torrent:statechange(
 		   S#state.torrent_id,
-		   {subtract_left, DataSize}),
-	    ok = etorrent_torrent:statechange(
-		   S#state.torrent_id,
-		   {add_downloaded, DataSize}),
+		   [{subtract_left, DataSize},
+		   {add_downloaded, DataSize}]),
 	    {atomic, ok} = etorrent_piece:statechange(
 			     S#state.torrent_id,
 			     Index,
