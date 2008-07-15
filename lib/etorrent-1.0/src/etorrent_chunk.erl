@@ -135,7 +135,11 @@ store_chunk(Id, PieceNum, {Offset, Len}, Pid) ->
 					    {Offset, Len}),
 		  %% Count down the number of missing chunks for the piece
 		  %% Next lines can be thrown into a seperate counter for speed.
-		  t_decrease_missing_chunks(Present, Id, PieceNum)
+		  case Present of
+		      fetched -> ok;
+		      true    -> ok;
+		      false   -> t_decrease_missing_chunks(Id, PieceNum)
+		  end
 	  end),
     Res.
 
@@ -395,20 +399,24 @@ find_chunked_chunks(Id, {Pn, Next}, Res) ->
     end.
 
 t_update_fetched(Id, PieceNum, {Offset, _Len}) ->
-    case mnesia:read(chunk, {Id, PieceNum, fetched}, write) of
-	[] ->
-	    mnesia:write(#chunk { idt = {Id, PieceNum, fetched},
-				  chunks = [Offset]}),
-	    false;
-	[R] ->
-	    case lists:member(Offset, R#chunk.chunks) of
-		true ->
-		    true;
-		false ->
-		    mnesia:write(
-		      R#chunk { chunks =
-				[Offset | R#chunk.chunks]}),
-		    false
+    case etorrent_piece:t_fetched(Id, PieceNum) of
+	true -> fetched;
+	false ->
+	    case mnesia:read(chunk, {Id, PieceNum, fetched}, write) of
+		[] ->
+		    mnesia:write(#chunk { idt = {Id, PieceNum, fetched},
+					  chunks = [Offset]}),
+		    false;
+		[R] ->
+		    case lists:member(Offset, R#chunk.chunks) of
+			true ->
+			    true;
+			false ->
+			    mnesia:write(
+			      R#chunk { chunks =
+					[Offset | R#chunk.chunks]}),
+			    false
+		    end
 	    end
     end.
 
@@ -427,18 +435,13 @@ t_update_chunk_assignment(Id, PieceNum, Pid,
 	    end
     end.
 
-t_decrease_missing_chunks(Present, Id, PieceNum) ->
-    case Present of
-	false ->
-	    [P] = mnesia:read(piece, {Id, PieceNum}, write),
-	    NewP = P#piece { left = P#piece.left - 1 },
-	    mnesia:write(NewP),
-	    case NewP#piece.left of
-		0 ->
-		    full;
-		N when is_integer(N) ->
-		    ok
-	    end;
-	true ->
+t_decrease_missing_chunks(Id, PieceNum) ->
+    [P] = mnesia:read(piece, {Id, PieceNum}, write),
+    NewP = P#piece { left = P#piece.left - 1 },
+    mnesia:write(NewP),
+    case NewP#piece.left of
+	0 ->
+	    full;
+	N when is_integer(N) ->
 	    ok
     end.

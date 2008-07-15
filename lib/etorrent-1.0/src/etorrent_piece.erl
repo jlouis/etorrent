@@ -17,6 +17,8 @@
 	 delete/1, valid/2, interesting/2,
 	 bitfield/1, check_interest/2]).
 
+-export([t_fetched/2]).
+
 %%====================================================================
 %% API
 %%====================================================================
@@ -162,6 +164,16 @@ find_interest_piece(Id, {Pn, Next}) ->
 		    interested
 	    end
     end.
+
+%%--------------------------------------------------------------------
+%% Function: t_fetched/2
+%% Args:     Id ::= integer() - torrent id
+%%           PieceNum ::= integer() - piece index.
+%% Description: predicate. True if piece is fetched.
+%%--------------------------------------------------------------------
+t_fetched(Id, PieceNum) ->
+    [P] = mnesia:read(piece, {Id, PieceNum}, read),
+    P#piece.state =:= fetched.
 
 %%--------------------------------------------------------------------
 %% Function: num_not_fetched(Id) -> integer()
