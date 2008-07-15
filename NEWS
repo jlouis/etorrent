@@ -1,3 +1,57 @@
+Version 0.9:
+
+  This is yet another Tech. Preview release. The torrent client works
+  to the point where it can be used to download things, but it have
+  not seen much testing yet and there are numerous places it can be
+  improved still. Yet, there are so many changes, that it warrants a
+  new release.
+
+  Changes:
+
+  - There is a set of new commands for viewing what is currently
+  cooking in the torrent client. etorrent:l/0, etorrent:s/1,
+  etorrent:h/0. Implemented with help from Tuncer Ayaz.
+
+  - Changed build infrastructure. No more autoconf. It simplifies the
+  build structure considerably. Introduce the use of EMakefile for
+  building the erlang parts of the system. Reinstate all make targets
+  and add a 'tags' target for building a TAGS file.
+
+  - etorrent now correctly handles the 'min_interval' tracker response
+  parameter. It is not strictly part of the spec, but everybody uses
+  it.
+
+  - Add support for installing etorrent. A shell-script, etorrentctl,
+  is provided to control the etorrent daemon.
+
+  - etorrent no longer pre-fills files it want to download with
+  junk. It uses the semantics of fseek() to make a file of the right
+  size initially.
+
+  - several ETS restructurings has brought the memory use
+  down. Before, etorrent would take some 660 megabytes of memory
+  running 20 torrents. Now it is more like 50-80 megabytes for 20
+  torrents. More can be shaved but this is a good start.
+
+  - New choking/unchoking algorithm, based on a combination of
+  BitTornado/BitTorrent/Transmission. This is not the smartest one can
+  do, but it follows the spec more or less precisely.
+
+  - Event Publisher. A gen_event OTP behaviour one can subscribe to and
+  get information about the system. A logfile subscriber is there by
+  default.
+
+  - Rate calculation optimizations. etorrent now uses a running
+  average over a period of up to 20 seconds to measure the rate of a
+  peer. This yields a more fair measurement of individual peers so we
+  claim the best peers. While here, change the sockets to be passive
+  for now. It bumps the CPU-usage, but makes the rate calculation more
+  precise.
+
+  - Robustize the supervisor tree. etorrent is now less likely to die
+  due to a crash somewhere in the tree. It is not entirely safe yet,
+  but it will be during the next releases.
+
 Version 0.8:
 
   First Techonology Preview.
