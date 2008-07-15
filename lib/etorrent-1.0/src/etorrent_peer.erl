@@ -124,17 +124,18 @@ select_fastest(TorrentId, Key) ->
       end).
 
 %%--------------------------------------------------------------------
-%% Function: local_unchoked(P) -> bool()
+%% Function: local_unchoked(P) -> bool() | none
 %%           P ::= pid()
-%% Description: Predicate: P is unchoked locally.
+%% Description: Predicate: P is unchoked locally. If the peer can't be
+%%   found, true is returned.
 %%--------------------------------------------------------------------
 local_unchoked(P) ->
-    [R] = mnesia:dirty_read(peer, P),
-    case R#peer.local_c_state of
-	choked ->
-	    false;
-	unchoked ->
-	    true
+    case mnesia:dirty_read(peer, P) of
+	[] -> true;
+	[R] -> case R#peer.local_c_state of
+		   choked -> false;
+		   unchoked -> true
+	       end
     end.
 
 %%--------------------------------------------------------------------
