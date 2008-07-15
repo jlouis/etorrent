@@ -126,21 +126,27 @@ lookup_infohash(Socket, ReservedBytes, InfoHash, PeerId) ->
     end.
 
 start_peer(Socket, Pid, ReservedBytes, PeerId) ->
-    PeerGroupPid = etorrent_t_sup:get_pid(Pid, peer_group),
-    {ok, {Address, Port}} = inet:peername(Socket),
-    case etorrent_t_peer_group_mgr:new_incoming_peer(PeerGroupPid, Address, Port) of
-	{ok, PeerProcessPid} ->
-	    ok = gen_tcp:controlling_process(Socket, PeerProcessPid),
-	    etorrent_t_peer_recv:complete_handshake(PeerProcessPid,
-						    ReservedBytes,
-						    Socket,
-						    PeerId),
-	    ok;
-	already_enough_connections ->
-	    ok;
-	bad_peer ->
-	    error_logger:info_report([peer_id_is_bad, PeerId]),
-	    gen_tcp:close(Socket),
+    case etorrent_t_sup:get_pid(Pid, peer_group) of
+	PeerGroupPid when is_pid(PeerGroupPid) ->
+	    {ok, {Address, Port}} = inet:peername(Socket),
+	    case etorrent_t_peer_group_mgr:new_incoming_peer(PeerGroupPid, Address, Port) of
+		{ok, PeerProcessPid} ->
+		    ok = gen_tcp:controlling_process(Socket, PeerProcessPid),
+		    etorrent_t_peer_recv:complete_handshake(PeerProcessPid,
+							    ReservedBytes,
+							    Socket,
+							    PeerId),
+		    ok;
+		already_enough_connections ->
+		    ok;
+		bad_peer ->
+		    error_logger:info_report([peer_id_is_bad, PeerId]),
+		    gen_tcp:close(Socket),
+		    ok
+	    end;
+	false ->
+	    %% The peer is not yet ready!
 	    ok
     end.
+
 

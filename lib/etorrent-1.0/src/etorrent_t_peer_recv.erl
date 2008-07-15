@@ -15,7 +15,7 @@
 -include("etorrent_rate.hrl").
 
 %% API
--export([start_link/6, connect/3, choke/1, unchoke/1, interested/1,
+-export([start_link/7, connect/3, choke/1, unchoke/1, interested/1,
 	 send_have_piece/2, complete_handshake/4, endgame_got_chunk/2,
 	 queue_pieces/1]).
 
@@ -66,9 +66,11 @@
 %% Function: start_link() -> {ok,Pid} | ignore | {error,Error}
 %% Description: Starts the server
 %%--------------------------------------------------------------------
-start_link(LocalPeerId, InfoHash, FilesystemPid, GroupPid, Id, Parent) ->
+start_link(LocalPeerId, InfoHash, FilesystemPid, GroupPid, Id, Parent,
+	  {IP, Port}) ->
     gen_server:start_link(?MODULE, [LocalPeerId, InfoHash,
-				    FilesystemPid, GroupPid, Id, Parent], []).
+				    FilesystemPid, GroupPid, Id, Parent,
+				    {IP, Port}], []).
 
 %%--------------------------------------------------------------------
 %% Function: connect(Pid, IP, Port)
@@ -137,9 +139,10 @@ queue_pieces(Pid) ->
 %%                         {stop, Reason}
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
-init([LocalPeerId, InfoHash, FilesystemPid, GroupPid, Id, Parent]) ->
+init([LocalPeerId, InfoHash, FilesystemPid, GroupPid, Id, Parent, {IP, Port}]) ->
     process_flag(trap_exit, true),
     {ok, TRef} = timer:send_interval(?RATE_UPDATE, self(), rate_update),
+    ok = etorrent_peer:new(IP, Port, Id, self()),
     {ok, #state{
        parent = Parent,
        local_peer_id = LocalPeerId,
@@ -235,6 +238,8 @@ handle_info(timeout, S) ->
 	    handle_read_from_socket(S, Packet);
 	{error, closed} ->
 	    {stop, normal, S};
+	{error, ebadf} ->
+	    {stop, normal, S};
 	{error, etimedout} ->
 	    {noreply, S, 0};
 	{error, timeout} when S#state.remote_choked =:= true ->
@@ -260,6 +265,7 @@ handle_info(_Info, State) ->
 %% The return value is ignored.
 %%--------------------------------------------------------------------
 terminate(Reason, S) ->
+    etorrent_peer:delete(self()),
     _NS = unqueue_all_pieces(S),
     case S#state.tcp_socket of
 	none ->
@@ -268,12 +274,9 @@ terminate(Reason, S) ->
 	    gen_tcp:close(Sock)
     end,
     case Reason of
-	normal ->
-	    ok;
-	shutdown ->
-	    ok;
-	_ ->
-	    error_logger:info_report([reason_for_termination, Reason])
+	normal -> ok;
+	shutdown -> ok;
+	_ -> error_logger:info_report([reason_for_termination, Reason])
     end,
     ok.
 
