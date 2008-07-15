@@ -116,7 +116,9 @@ decrease_not_fetched(Id) ->
 %% Function: statechange(InfoHash, State) -> ok | not_found
 %% Description: Set the state of an info hash.
 %%--------------------------------------------------------------------
-statechange(Id, What) when is_integer(Id) ->
+statechange(_Id, []) ->
+    ok;
+statechange(Id, [What | Rest]) ->
     F = fun() ->
 		case mnesia:read(torrent, Id, write) of
 		    [T] ->
@@ -155,7 +157,10 @@ statechange(Id, What) when is_integer(Id) ->
 	    ok;
 	_ ->
 	    ok
-    end.
+    end,
+    statechange(Id, Rest);
+statechange(Id, What) when is_integer(Id) ->
+    statechange(Id, [What]).
 
 %%--------------------------------------------------------------------
 %% Function: is_endgame(Id) -> bool()
