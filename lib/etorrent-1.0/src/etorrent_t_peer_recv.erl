@@ -476,37 +476,47 @@ try_to_queue_up_pieces(S) ->
     end.
 
 %%--------------------------------------------------------------------
-%% Function: queue_chunks([Chunk], State) -> {ok, State}
+%% Function: queue_items/2
+%% Args:     ChunkList ::= [CompactChunk | ExplicitChunk]
+%%           S         ::= #state
+%%           CompactChunk ::= {PieceNumber, ChunkList}
+%%           ExplicitChunk ::= {PieceNumber, Offset, Size, Ops}
+%%           ChunkList ::= [{Offset, Size, Ops}]
+%%           PieceNumber, Offset, Size ::= integer()
+%%           Ops ::= file_operations - described elsewhere.
 %% Description: Send chunk messages for each chunk we decided to queue.
 %%   also add these chunks to the piece request set.
 %%--------------------------------------------------------------------
 queue_items(ChunkList, S) ->
-    F = fun
-	    ({Pn, Chunks}) ->
-		lists:foreach(
-		  fun
-		      ({Offset, Size, _Ops}) ->
-			  etorrent_t_peer_send:local_request(S#state.send_pid,
-							     {Pn, Offset, Size})
-		  end,
-		  Chunks);
-	    ({Pn, Offset, Size, _Ops}) ->
-		etorrent_t_peer_send:local_request(S#state.send_pid,
-						   {Pn, Offset, Size})
-	end,
-    lists:foreach(F, ChunkList),
-    G = fun
-	    ({Pn, Chunks}, RS) ->
-		lists:foldl(fun ({Offset, Size, Ops}, RRS) ->
-				      gb_trees:enter({Pn, Offset, Size}, Ops, RRS)
-			    end,
-			    RS,
-			    Chunks);
-	    ({Pn, Offset, Size, Ops}, RS) ->
-		gb_trees:enter({Pn, Offset, Size}, Ops, RS)
-	end,
-    RSet = lists:foldl(G, S#state.remote_request_set, ChunkList),
+    RSet = queue_items(ChunkList, S#state.send_pid, S#state.remote_request_set),
     {ok, S#state { remote_request_set = RSet }}.
+
+queue_items([], _SendPid, Tree) -> Tree;
+queue_items([{Pn, Chunks} | Rest], SendPid, Tree) ->
+    NT = lists:foldl(
+      fun ({Offset, Size, Ops}, T) ->
+	      case gb_trees:is_defined({Pn, Offset, Size}, T) of
+		  true ->
+		      Tree;
+		  false ->
+		      etorrent_t_peer_send:local_request(SendPid,
+							 {Pn, Offset, Size}),
+		      gb_trees:enter({Pn, Offset, Size}, Ops, T)
+	      end
+      end,
+      Tree,
+      Chunks),
+    queue_items(Rest, SendPid, NT);
+queue_items([{Pn, Offset, Size, Ops} | Rest], SendPid, Tree) ->
+    NT = case gb_trees:is_defined({Pn, Offset, Size}, Tree) of
+	     true ->
+		 Tree;
+	     false ->
+		 etorrent_t_peer_send:local_request(SendPid,
+						    {Pn, Offset, Size}),
+		 gb_trees:enter({Pn, Offset, Size}, Ops, Tree)
+	 end,
+    queue_items(Rest, SendPid, NT).
 
 %%--------------------------------------------------------------------
 %% Function: complete_connection_setup() -> gen_server_reply()}
