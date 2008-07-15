@@ -129,52 +129,13 @@ store_chunk(Id, PieceNum, {Offset, Len}, Pid) ->
 	mnesia:transaction(
 	  fun () ->
 		  %% Add the newly fetched data to the fetched list
-		  Present =
-		      case mnesia:read(chunk, {Id, PieceNum, fetched}, write) of
-			  [] ->
-			      mnesia:write(#chunk { idt = {Id, PieceNum, fetched},
-						    chunks = [Offset]}),
-			      false;
-			  [R] ->
-			      case lists:member(Offset, R#chunk.chunks) of
-				  true ->
-				      true;
-				  false ->
-				      mnesia:write(
-					R#chunk { chunks =
-						  [Offset | R#chunk.chunks]}),
-				      false
-			      end
-		      end,
+		  Present = t_update_fetched(Id, PieceNum, {Offset, Len}),
 		  %% Update that the chunk is not anymore assigned to the Pid
-		  case mnesia:read(chunk, {Id, PieceNum, {assigned, Pid}}, write) of
-		      [] ->
-			  %% We stored a chunk that was not belonging to us, do nothing
-			  ok;
-		      [S] ->
-			  case lists:keydelete({Offset, Len}, 1, S#chunk.chunks) of
-			      [] ->
-				  mnesia:delete_object(S);
-			      L when is_list(L) ->
-				  mnesia:write(S#chunk { chunks = L })
-			  end
-		  end,
+		  t_update_chunk_assignment(Id, PieceNum, Pid,
+					    {Offset, Len}),
 		  %% Count down the number of missing chunks for the piece
 		  %% Next lines can be thrown into a seperate counter for speed.
-		  case Present of
-		      false ->
-			  [P] = mnesia:read(piece, {Id, PieceNum}, write),
-			  NewP = P#piece { left = P#piece.left - 1 },
-			  mnesia:write(NewP),
-			  case NewP#piece.left of
-			      0 ->
-				  full;
-			      N when is_integer(N) ->
-				  ok
-			  end;
-		      true ->
-			  ok
-		  end
+		  t_decrease_missing_chunks(Present, Id, PieceNum)
 	  end),
     Res.
 
@@ -433,3 +394,51 @@ find_chunked_chunks(Id, {Pn, Next}, Res) ->
 	    find_chunked_chunks(Id, gb_sets:next(Next), Res)
     end.
 
+t_update_fetched(Id, PieceNum, {Offset, _Len}) ->
+    case mnesia:read(chunk, {Id, PieceNum, fetched}, write) of
+	[] ->
+	    mnesia:write(#chunk { idt = {Id, PieceNum, fetched},
+				  chunks = [Offset]}),
+	    false;
+	[R] ->
+	    case lists:member(Offset, R#chunk.chunks) of
+		true ->
+		    true;
+		false ->
+		    mnesia:write(
+		      R#chunk { chunks =
+				[Offset | R#chunk.chunks]}),
+		    false
+	    end
+    end.
+
+t_update_chunk_assignment(Id, PieceNum, Pid,
+			  {Offset, Len}) ->
+    case mnesia:read(chunk, {Id, PieceNum, {assigned, Pid}}, write) of
+	[] ->
+	    %% We stored a chunk that was not belonging to us, do nothing
+	    ok;
+	[S] ->
+	    case lists:keydelete({Offset, Len}, 1, S#chunk.chunks) of
+		[] ->
+		    mnesia:delete_object(S);
+		L when is_list(L) ->
+		    mnesia:write(S#chunk { chunks = L })
+	    end
+    end.
+
+t_decrease_missing_chunks(Present, Id, PieceNum) ->
+    case Present of
+	false ->
+	    [P] = mnesia:read(piece, {Id, PieceNum}, write),
+	    NewP = P#piece { left = P#piece.left - 1 },
+	    mnesia:write(NewP),
+	    case NewP#piece.left of
+		0 ->
+		    full;
+		N when is_integer(N) ->
+		    ok
+	    end;
+	true ->
+	    ok
+    end.
