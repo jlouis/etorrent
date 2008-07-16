@@ -65,7 +65,7 @@ init([]) ->
 %% Description: Handling call messages
 %%--------------------------------------------------------------------
 handle_call({query_state, Id}, _From, S) ->
-    {atomic, TM} = etorrent_tracking_map:select(Id),
+    {atomic, [TM]} = etorrent_tracking_map:select(Id),
     case etorrent_piece_diskstate:select(TM#tracking_map.filename) of
 	[] -> {reply, unknown, S};
 	[R] -> {reply, R#piece_diskstate.state, S}

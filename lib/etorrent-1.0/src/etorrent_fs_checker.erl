@@ -37,7 +37,13 @@ read_and_check_torrent(Id, SupervisorPid, Path) ->
 
     %% Check the contents of the torrent, updates the state of the piecemap
     FS = etorrent_t_sup:get_pid(SupervisorPid, fs),
-    ok = check_torrent_contents(FS, Id),
+    case etorrent_fast_resume:query_state(Id) of
+	seeding -> check_torrent_contents_seed(Id);
+	{bitfield, BF} -> check_torrent_contents_bitfield(Id, BF, NumberOfPieces);
+	leeching -> ok = check_torrent_contents(FS, Id);
+	%% XXX: The next one here could initialize with not_fetched all over
+	unknown -> ok = check_torrent_contents(FS, Id)
+    end,
 
     {ok, Torrent, FS, Infohash, NumberOfPieces}.
 
@@ -68,6 +74,29 @@ ensure_file_sizes_correct(Files) ->
 	      end
       end,
       Files),
+    ok.
+
+check_torrent_contents_seed(Id) ->
+    {atomic, Pieces} = etorrent_piece:select(Id),
+    lists:foreach(
+      fun(#piece { piece_number = PN }) ->
+	      {atomic, _} = etorrent_piece:statechange(Id, PN, fetched)
+      end,
+      Pieces),
+    ok.
+
+check_torrent_contents_bitfield(Id, BitField, NumPieces) ->
+    {atomic, Pieces} = etorrent_piece:select(Id),
+    {ok, Set} = etorrent_peer_communication:destruct_bitfield(NumPieces, BitField),
+    lists:foreach(
+      fun(#piece { piece_number = PN }) ->
+	      State = case gb_sets:is_element(PN, Set) of
+			  true -> fetched;
+			  false -> not_fetched
+		      end,
+	      {atomic, _} = etorrent_piece:statechange(Id, PN, State)
+      end,
+      Pieces),
     ok.
 
 check_torrent_contents(FS, Id) ->
