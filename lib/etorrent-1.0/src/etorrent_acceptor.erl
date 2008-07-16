@@ -75,15 +75,12 @@ handle_cast(_Msg, State) ->
 %%--------------------------------------------------------------------
 handle_info(timeout, S) ->
     case gen_tcp:accept(S#state.listen_socket) of
-	{ok, Socket} ->
-	    handshake(Socket),
-	    {noreply, S, 0};
-	{error, closed} ->
-	    {noreply, S, 0};
-	{error, econnaborted} ->
-	    {noreply, S, 0};
-	{error, E} ->
-	    {stop, E, S}
+	{ok, Socket} -> handshake(Socket),
+			{noreply, S, 0};
+	{error, closed}       -> {noreply, S, 0};
+	{error, econnaborted} -> {noreply, S, 0};
+	{error, enotconn}     -> {noreply, S, 0};
+	{error, E}            -> {stop, E, S}
     end.
 
 %%--------------------------------------------------------------------
