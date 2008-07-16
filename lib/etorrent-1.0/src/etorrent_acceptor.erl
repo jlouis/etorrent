@@ -128,12 +128,16 @@ start_peer(Socket, Pid, ReservedBytes, PeerId) ->
 	    {ok, {Address, Port}} = inet:peername(Socket),
 	    case etorrent_t_peer_group_mgr:new_incoming_peer(PeerGroupPid, Address, Port) of
 		{ok, PeerProcessPid} ->
-		    ok = gen_tcp:controlling_process(Socket, PeerProcessPid),
-		    etorrent_t_peer_recv:complete_handshake(PeerProcessPid,
-							    ReservedBytes,
-							    Socket,
-							    PeerId),
-		    ok;
+		    case gen_tcp:controlling_process(Socket, PeerProcessPid) of
+			ok -> etorrent_t_peer_recv:complete_handshake(PeerProcessPid,
+								      ReservedBytes,
+								      Socket,
+								      PeerId),
+			      ok;
+			{error, enotconn} ->
+			    etorrent_t_peer_recv:stop(PeerProcessPid),
+			    ok
+		    end;
 		already_enough_connections ->
 		    ok;
 		bad_peer ->
