@@ -6,6 +6,20 @@ Version 0.9:
   improved still. Yet, there are so many changes, that it warrants a
   new release.
 
+  The current regressions revolve around a high CPU usage at times. We
+  expect to tackle this problem next with some profiling. We also
+  expect to tackle fast resume support as the main "new thing". And
+  some 10 things in the issue tracker and the TODO lists for the
+  next release. I don't expect it to follow as fast as this one.
+
+  One development methodology change worth mentioning: the git
+  repository now uses several branches laid out as described in
+  doc/git.txt. Tracking the 'master' branch ought to provide you with
+  a system that is stable at all times, while tracking the 'next'
+  branch gives you the 'cooking pot' of new things that ought to be
+  tested. We'll try to keep 'next' stable, though it may have problems
+  at times.
+
   Changes:
 
   - There is a set of new commands for viewing what is currently
@@ -22,7 +36,9 @@ Version 0.9:
   it.
 
   - Add support for installing etorrent. A shell-script, etorrentctl,
-  is provided to control the etorrent daemon.
+  is provided to control the etorrent daemon. The installer, while
+  overly simple, has not seen much testing as of yet and may not
+  work. It will be tested before v1.0.
 
   - etorrent no longer pre-fills files it want to download with
   junk. It uses the semantics of fseek() to make a file of the right
@@ -31,7 +47,9 @@ Version 0.9:
   - several ETS restructurings has brought the memory use
   down. Before, etorrent would take some 660 megabytes of memory
   running 20 torrents. Now it is more like 50-80 megabytes for 20
-  torrents. More can be shaved but this is a good start.
+  torrents. More can be shaved but this is a good start. Also, memory
+  usage still occasionally spikes because we are doing nothing in certain
+  situations to limit it.
 
   - New choking/unchoking algorithm, based on a combination of
   BitTornado/BitTorrent/Transmission. This is not the smartest one can
@@ -46,7 +64,8 @@ Version 0.9:
   peer. This yields a more fair measurement of individual peers so we
   claim the best peers. While here, change the sockets to be passive
   for now. It bumps the CPU-usage, but makes the rate calculation more
-  precise.
+  precise. There are several optimizations possible revolving around
+  passive/active sockets.
 
   - Robustize the supervisor tree. etorrent is now less likely to die
   due to a crash somewhere in the tree. It is not entirely safe yet,
@@ -54,5 +73,5 @@ Version 0.9:
 
 Version 0.8:
 
-  First Techonology Preview.
+  First Technology Preview.
 
