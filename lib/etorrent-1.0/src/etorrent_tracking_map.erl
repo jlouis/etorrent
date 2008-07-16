@@ -11,7 +11,7 @@
 -include("etorrent_mnesia_table.hrl").
 
 %% API
--export([new/3, delete/1, select/1, statechange/2,
+-export([all/0, new/3, delete/1, select/1, statechange/2,
 	 is_ready_for_checking/1]).
 
 %%====================================================================
@@ -28,6 +28,16 @@ new(File, Supervisor, Id) ->
 				       supervisor_pid = Supervisor,
 				       info_hash = unknown,
 				       state = awaiting}).
+
+%%--------------------------------------------------------------------
+%% Function: all/0
+%% Description: Return everything we are currently tracking
+%%--------------------------------------------------------------------
+all() ->
+    mnesia:transaction(
+      fun () ->
+	      qlc:e(qlc:q([T || T <- mnesia:table(tracking_map)]))
+      end).
 
 %%--------------------------------------------------------------------
 %% Function: select({filename, Filename}) -> [#tracking_map]

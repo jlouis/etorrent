@@ -9,6 +9,8 @@
 
 -behaviour(gen_server).
 
+-include("etorrent_mnesia_table.hrl").
+
 %% API
 -export([start_link/0]).
 
@@ -76,6 +78,10 @@ handle_cast(_Msg, State) ->
 %%--------------------------------------------------------------------
 handle_info(persist, S) ->
     error_logger:info_report([persist_to_disk]),
+    {atomic, Torrents} = etorrent_tracking_map:all(),
+    prune_disk_state(Torrents),
+    persist_disk_state(Torrents),
+    etorrent_event_mgr:persisted_state_to_disk(),
     {noreply, S};
 handle_info(_Info, State) ->
     {noreply, State}.
@@ -100,3 +106,21 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 %%% Internal functions
 %%--------------------------------------------------------------------
+
+%%--------------------------------------------------------------------
+%% Func: prune_disk_state(Tracking) -> ok
+%% Description: Prune the persistent disk state for anything we are
+%%   not tracking.
+%%--------------------------------------------------------------------
+prune_disk_state(Tracking) ->
+    TrackedSet = sets:from_list(
+		   [T#tracking_map.filename || T <- Tracking]),
+    ok = etorrent_piece_diskstate:prune(TrackedSet).
+
+%%--------------------------------------------------------------------
+%% Func: persist_disk_state(Tracking) -> ok
+%% Description: Persist state on disk
+%%--------------------------------------------------------------------
+persist_disk_state(_Tracking) ->
+    todo.
+
