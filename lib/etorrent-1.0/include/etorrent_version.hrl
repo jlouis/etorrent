@@ -1,2 +1,2 @@
--define(VERSION, "0090").
--define(AGENT_TRACKER_STRING, "etorrent/0.9dev").
+-define(VERSION, "d010").
+-define(AGENT_TRACKER_STRING, "etorrent/1.0dev").

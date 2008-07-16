@@ -1,0 +1,21 @@
+How to get a new version of etorrent out:
+
+- Make sure the master branch has everything you want it to have
+
+- Edit version.hrl
+
+- Write NEWS if not already up-to-date
+
+- git tag -s -u <key> v0.9
+  Tag the master branch with the version
+
+- git checkout maint
+  git reset --hard v0.9
+  Reset the maint branch to the new point
+
+- git push -f origin
+  Update origin
+
+- git push --tag origin
+  Push the tag
+
