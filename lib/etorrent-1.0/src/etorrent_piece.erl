@@ -12,10 +12,9 @@
 -include("etorrent_mnesia_table.hrl").
 
 %% API
--export([new/2, statechange/3, complete/1,
-	 select/1, select/2, num_not_fetched/1,
-	 delete/1, valid/2, interesting/2,
-	 bitfield/1, check_interest/2]).
+-export([new/2, statechange/3, dirty_statechange/3, complete/1,
+	 select/1, select/2, num_not_fetched/1, delete/1, valid/2,
+	 interesting/2, bitfield/1, check_interest/2]).
 
 -export([t_fetched/2]).
 
@@ -73,6 +72,14 @@ statechange(Id, Pn, State) when is_integer(Id) ->
 	      [R] = mnesia:read(piece, {Id, Pn}, write),
 	      mnesia:write(R#piece{state = State})
       end).
+
+%%--------------------------------------------------------------------
+%% Function: dirty_statechange(Id, PieceNumber, S) -> ok
+%% Description: As statechange, just dirty.
+%%--------------------------------------------------------------------
+dirty_statechange(Id, Pn, State) when is_integer(Id) ->
+    [R] = mnesia:dirty_read(piece, {Id, Pn}),
+    mnesia:dirty_write(R#piece{state = State}).
 
 %%--------------------------------------------------------------------
 %% Function: complete(Id) -> bool()
@@ -195,6 +202,7 @@ num_not_fetched(Id) when is_integer(Id) ->
 %%====================================================================
 fetched(Id) when is_integer(Id) ->
     F = fun () ->
+		[_] = mnesia:read(torrent, Id, read),
 		Q = qlc:q([R#piece.piece_number ||
 			      R <- mnesia:table(piece),
 			      R#piece.id =:= Id,
