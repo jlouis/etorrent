@@ -27,7 +27,7 @@ stop(_State) ->
 
 db_create_schema() ->
     ok = mnesia:create_schema([node()]),
-    application:start(mnesia),
+    ok = application:start(mnesia),
     etorrent_mnesia_init:init(),
     mnesia:info(),
     halt().
