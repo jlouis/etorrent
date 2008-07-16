@@ -19,3 +19,10 @@ How to get a new version of etorrent out:
 - git push --tag origin
   Push the tag
 
+---
+
+Create an archive:
+
+git archive --format=tar --prefix=etorrent-0.9/ v0.9 \
+    | gzip > etorrent-0.9.tar.gz
+
