@@ -50,6 +50,10 @@
 		left = unknown, % Number of chunks left...
 		state}). % (IDX) state is: fetched | not_fetched | chunked
 
+%% Piece state on disk for persistence
+-record(piece_diskstate, {torrent, % Name of torrent
+			  bitfield}). % Bitfield of the torrent
+
 %% A mapping containing the chunks tracking
 -record(chunk, {idt, % {id, piece_number, state} tuple
 		     % state is fetched | {assigned, Pid} | not_fetched,
