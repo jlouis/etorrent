@@ -40,7 +40,11 @@ all() ->
       end).
 
 %%--------------------------------------------------------------------
-%% Function: select({filename, Filename}) -> [#tracking_map]
+%% Function: select(Id) -> [#tracking_map]
+%% Args:    Id ::= integer() | {filename, FN} | {infohash, IH}
+%%
+%%          FN ::= string()
+%%          IH ::= binary()
 %% Description: Find tracking map matching the filename in question.
 %%--------------------------------------------------------------------
 select(Id) when is_integer(Id) ->
@@ -55,11 +59,6 @@ select({filename,Filename}) ->
 				  T#tracking_map.filename == Filename]),
 	      qlc:e(Query)
       end);
-
-%%--------------------------------------------------------------------
-%% Function: select({infohash, Infohash}) -> [#tracking_map]
-%% Description: Find tracking map matching a given infohash.
-%%--------------------------------------------------------------------
 select({infohash, InfoHash}) ->
     mnesia:transaction(
       fun () ->

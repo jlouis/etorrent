@@ -195,6 +195,7 @@ num_not_fetched(Id) when is_integer(Id) ->
 %%====================================================================
 fetched(Id) when is_integer(Id) ->
     F = fun () ->
+		[_] = mnesia:read(torrent, Id, read),
 		Q = qlc:q([R#piece.piece_number ||
 			      R <- mnesia:table(piece),
 			      R#piece.id =:= Id,
