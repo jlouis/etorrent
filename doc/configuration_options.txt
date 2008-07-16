@@ -1,6 +1,8 @@
 This document describes the various configuration options of
 etorrent.
 
+Etorrent:
+
 * port: This is the port which etorrent should listen on for incoming
   connections. By default it is the taxicab number 1729, but it can of
   course be changed. We don't need a range of ports because we will
@@ -12,6 +14,11 @@ etorrent.
 * logger_dir: The directory of the etorrent log file
 * logger_fname: The name of the log file. It is *not* currently
   rotated and it is appended upon. The format is a simple term-log.
+
+Mnesia:
+
+* dir: The directory in which to store the database state. The
+  database is used for fast-resume data among other things.
 
 You don't need to touch the kernel parameters.
 

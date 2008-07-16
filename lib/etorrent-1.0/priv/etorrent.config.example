@@ -3,7 +3,8 @@
 	 {dir, "/var/tmp/etorrent"},
 	 {logger_dir, "/var/log/etorrent"},
 	 {logger_fname, "etorrent.log"}]},
-
+ {mnesia,
+        [{dir, "/var/tmp/etorrent_session"}]},
  {kernel,
 	[{start_timer, true}]}
 #  {sasl,
