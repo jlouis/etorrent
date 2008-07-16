@@ -32,21 +32,22 @@
 %%   been downloaded already.
 %%--------------------------------------------------------------------
 new(Id, Dict) when is_integer(Id) ->
-    dict:map(fun (PN, {Hash, Files, Done}) ->
-		     State = case Done of
-				 ok -> fetched;
-				 not_ok -> not_fetched;
-				 none -> not_fetched
-			     end,
-		     mnesia:dirty_write(
-		       #piece {idpn = {Id, PN},
-			       id = Id,
-			       piece_number = PN,
-			       hash = Hash,
-			       files = Files,
-			       state = State })
-		       end,
-		       Dict).
+    dict:fold(fun (PN, {Hash, Files, Done}, _Acc) ->
+		      State = case Done of
+				  ok -> fetched;
+				  not_ok -> not_fetched;
+				  none -> not_fetched
+			      end,
+		      mnesia:dirty_write(
+			#piece {idpn = {Id, PN},
+				id = Id,
+				piece_number = PN,
+				hash = Hash,
+				files = Files,
+				state = State })
+	      end,
+	      ok,
+	      Dict).
 
 %%--------------------------------------------------------------------
 %% Function: delete(Id) -> ok
