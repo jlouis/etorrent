@@ -80,7 +80,7 @@ check_torrent_contents_seed(Id) ->
     {atomic, Pieces} = etorrent_piece:select(Id),
     lists:foreach(
       fun(#piece { piece_number = PN }) ->
-	      {atomic, _} = etorrent_piece:statechange(Id, PN, fetched)
+	      ok = etorrent_piece:dirty_statechange(Id, PN, fetched)
       end,
       Pieces),
     ok.
@@ -94,7 +94,7 @@ check_torrent_contents_bitfield(Id, BitField, NumPieces) ->
 			  true -> fetched;
 			  false -> not_fetched
 		      end,
-	      {atomic, _} = etorrent_piece:statechange(Id, PN, State)
+	      ok = etorrent_piece:dirty_statechange(Id, PN, State)
       end,
       Pieces),
     ok.
@@ -111,7 +111,7 @@ check_torrent_contents(FS, Id) ->
 		      false ->
 			  not_fetched
 		  end,
-	      {atomic, _} = etorrent_piece:statechange(Id, PieceNum, State),
+	      ok = etorrent_piece:dirty_statechange(Id, PieceNum, State),
 	      timer:sleep(?DEFAULT_CHECK_SLEEP_TIME)
       end,
       Pieces),
