@@ -27,7 +27,7 @@ init() ->
 
     mnesia:create_table(piece,
 			[{attributes, record_info(fields, piece)},
-			 {index, [state, id]}]),
+			 {index, [id]}]),
 
     mnesia:create_table(chunk,
 			[{attributes, record_info(fields, chunk)}]),
