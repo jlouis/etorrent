@@ -297,7 +297,8 @@ rechoke([], _N, _S) ->
 rechoke([Peer | Rest], N, S) when is_record(Peer, rate_mgr) ->
     case ets:lookup(etorrent_peer_state, Peer#rate_mgr.pid) of
 	[] ->
-	    etorrent_t_peer_recv:unchoke(Peer#rate_mgr.pid),
+	    {_Id, Pid} = Peer#rate_mgr.pid,
+	    etorrent_t_peer_recv:unchoke(Pid),
 	    rechoke(Rest, N, S);
 	[#peer_state { interest_state = I, pid = {_Id, Pid}}] ->
 	    case I of
