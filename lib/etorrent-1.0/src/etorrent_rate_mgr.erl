@@ -158,7 +158,7 @@ alter_record(What, R) ->
     case What of
 	choked ->
 	    R#peer_state { choke_state = choked };
-	unchok ->
+	unchoke ->
 	    R#peer_state { choke_state = unchoked };
 	interested ->
 	    R#peer_state { interest_state = interested };
