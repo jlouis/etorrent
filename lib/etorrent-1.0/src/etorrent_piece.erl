@@ -12,7 +12,7 @@
 -include("etorrent_mnesia_table.hrl").
 
 %% API
--export([new/2, statechange/3, dirty_statechange/3, complete/1,
+-export([new/2, new/5, statechange/3, dirty_statechange/3, complete/1,
 	 select/1, select/2, num_not_fetched/1, delete/1, valid/2,
 	 interesting/2, bitfield/1, check_interest/2]).
 
@@ -22,30 +22,32 @@
 %% API
 %%====================================================================
 %%--------------------------------------------------------------------
-%% Function: new(Id, Dict) -> void()
-%% Description: Add a dictionary of pieces to the database.
-%%   Dict is a map from PieceNumber -> {Hash, Files, Done} where
-%%   Hash is the infohash,
-%%   Files is the read operations for this piece,
-%%   Done is either 'ok', 'not_ok' or 'none' saying if the piece has
-%%   been downloaded already.
+%% Function: new(Id, FPList) -> void()
+%% Args:  Id ::= integer() - torrent id
+%%        FPList ::= [{Hash, Files, Done}]
+%% Description: Add a list of pieces to the database.
 %%--------------------------------------------------------------------
-new(Id, Dict) when is_integer(Id) ->
-    dict:map(fun (PN, {Hash, Files, Done}) ->
-		     State = case Done of
-				 ok -> fetched;
-				 not_ok -> not_fetched;
-				 none -> not_fetched
-			     end,
-		     mnesia:dirty_write(
-		       #piece {idpn = {Id, PN},
-			       id = Id,
-			       piece_number = PN,
-			       hash = Hash,
-			       files = Files,
-			       state = State })
-		       end,
-		       Dict).
+new(Id, PN, Hash, Files, State) when is_integer(Id) ->
+    mnesia:dirty_write(
+      #piece {idpn = {Id, PN},
+	      id = Id,
+	      piece_number = PN,
+	      hash = Hash,
+	      files = Files,
+	      state = State}).
+
+new(Id, FPList) when is_integer(Id) ->
+    lists:foreach(
+      fun ({PN, {Hash, Files}}) ->
+		      mnesia:dirty_write(
+			#piece {idpn = {Id, PN},
+				id = Id,
+				piece_number = PN,
+				hash = Hash,
+				files = Files,
+				state = not_fetched })
+       end,
+       FPList).
 
 %%--------------------------------------------------------------------
 %% Function: delete(Id) -> ok
