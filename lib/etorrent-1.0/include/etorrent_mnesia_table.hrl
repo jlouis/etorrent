@@ -23,7 +23,7 @@
 		  pieces = unknown, % Number of pieces this torrent has
 		  seeders = 0, % How many people have a completed file?
 		  leechers = 0, % How many people are downloaded
-		  state}). % What is our state: leecher | unknown | seeder
+		  state}). % What is our state: leecher | unknown | seeder | endgame
 
 %% Counter for how many pieces is missing from this torrent
 -record(torrent_c_pieces, {id, % Torrent id
@@ -49,6 +49,10 @@
 		files, % File operations to manipulate piece
 		left = unknown, % Number of chunks left...
 		state}). % (IDX) state is: fetched | not_fetched | chunked
+
+%% Piece state on disk for persistence
+-record(piece_diskstate, {filename, % Name of torrent
+			  state}). % state | {bitfield, BF}
 
 %% A mapping containing the chunks tracking
 -record(chunk, {idt, % {id, piece_number, state} tuple

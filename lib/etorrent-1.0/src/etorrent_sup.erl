@@ -31,6 +31,9 @@ init([]) ->
     EventManager = {event_manager,
 		    {etorrent_event_mgr, start_link, []},
 		    permanent, 2000, worker, [etorrent_event_mgr]},
+    FastResume = {fast_resume,
+		  {etorrent_fast_resume, start_link, []},
+		  permanent, 5000, worker, [etorrent_fast_resume]},
     Listener = {listener,
 		{etorrent_listener, start_link, []},
 		permanent, 2000, worker, [etorrent_listener]},
@@ -46,9 +49,10 @@ init([]) ->
     TorrentPool = {torrent_pool_sup,
 		   {etorrent_t_pool_sup, start_link, []},
 		   transient, infinity, supervisor, [etorrent_t_pool_sup]},
+
     {ok, {{one_for_all, 1, 60},
 	  [EventManager, Listener, AcceptorSup,
-	   DirWatcherSup, TorrentMgr, TorrentPool]}}.
+	   DirWatcherSup, TorrentMgr, TorrentPool, FastResume]}}.
 
 %%====================================================================
 %% Internal functions

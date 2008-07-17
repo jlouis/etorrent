@@ -3,7 +3,7 @@
 -include_lib("stdlib/include/qlc.hrl").
 -include("etorrent_mnesia_table.hrl").
 
--export([init/0]).
+-export([init/0, wait/0]).
 
 init() ->
     mnesia:create_table(sequence,
@@ -29,10 +29,17 @@ init() ->
 			[{attributes, record_info(fields, piece)},
 			 {index, [id]}]),
 
+    mnesia:create_table(piece_diskstate,
+			[{attributes, record_info(fields, piece_diskstate)},
+			 {disc_copies, [node()]}]),
+
     mnesia:create_table(chunk,
 			[{attributes, record_info(fields, chunk)}]),
-    BaseTables = [sequence, tracking_map, path_map,
-		  torrent, torrent_c_pieces, peer, piece, chunk],
+    wait().
+
+wait() ->
+    BaseTables = [sequence, tracking_map, path_map, torrent,
+		  torrent_c_pieces, peer, piece, piece_diskstate, chunk],
     mnesia:wait_for_tables(BaseTables, 5000).
 
 
