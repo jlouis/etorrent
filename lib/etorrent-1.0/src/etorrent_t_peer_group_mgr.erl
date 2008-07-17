@@ -12,6 +12,9 @@
 
 -behaviour(gen_server).
 
+-include("rate_mgr.hrl").
+-include("peer_state.hrl").
+
 -include("etorrent_mnesia_table.hrl").
 
 %% API
@@ -131,18 +134,9 @@ handle_info({'DOWN', _Ref, process, Pid, Reason}, S)
   when (Reason =:= normal) or (Reason =:= shutdown) ->
     % The peer shut down normally. Hence we just remove him and start up
     %  other peers. Eventually the tracker will re-add him to the peer list
-    case etorrent_peer:select(Pid) of
-	[Peer] ->
-	    case {Peer#peer.remote_i_state, Peer#peer.local_c_state} of
-		{interested, choked} ->
-		    rechoke(S);
-		_ ->
-		    ok
-	    end,
-	    ok;
-	[] ->
-	    ok
-    end,
+
+    % XXX: We might have to do something else
+    rechoke(S),
 
     NewChain = lists:delete(Pid, S#state.opt_unchoke_chain),
     {ok, NS} = start_new_peers([], S#state { num_peers = S#state.num_peers -1,
@@ -153,12 +147,9 @@ handle_info({'DOWN', _Ref, process, Pid, _Reason}, S) ->
     NS = case etorrent_peer:select(Pid) of
 	     [Peer] ->
 		 {IP, Port} = {Peer#peer.ip, Peer#peer.port},
-		 case {Peer#peer.remote_i_state, Peer#peer.local_c_state} of
-		     {interested, choked} ->
-			 rechoke(S);
-		     _ ->
-			 ok
-		 end,
+
+		 % XXX: We might have to check that remote is intersted and we were choking
+		 rechoke(S),
 		 S#state { available_peers  = S#state.available_peers ++ [{IP, Port}]};
 	     [] -> S
 	 end,
@@ -290,12 +281,12 @@ is_bad_peer(IP, Port, S) ->
 %% Description: Recalculate the choke/unchoke state of peers
 %%--------------------------------------------------------------------
 rechoke(S) ->
-    Key = case etorrent_torrent:mode(S#state.torrent_id) of
-	      seeding -> #peer.upload_rate;
-	      leeching -> #peer.download_rate;
-	      endgame -> #peer.download_rate
+    Table = case etorrent_torrent:mode(S#state.torrent_id) of
+	      seeding -> etorrent_send_state;
+	      leeching -> etorrent_recv_state;
+	      endgame -> etorrent_recv_state
 	  end,
-    {atomic, Peers} = etorrent_peer:select_fastest(S#state.torrent_id, Key),
+    Peers = select_fastest(S#state.torrent_id, Table),
     rechoke(Peers, calculate_num_downloaders(S), S).
 
 rechoke(Peers, 0, S) ->
@@ -303,31 +294,42 @@ rechoke(Peers, 0, S) ->
     ok;
 rechoke([], _N, _S) ->
     ok;
-rechoke([Peer | Rest], N, S) when is_record(Peer, peer) ->
-    case Peer#peer.remote_i_state of
-	interested ->
-	    etorrent_t_peer_recv:unchoke(Peer#peer.pid),
-	    rechoke(Rest, N-1, S);
-	not_interested ->
-	    etorrent_t_peer_recv:unchoke(Peer#peer.pid),
-	    rechoke(Rest, N, S)
+rechoke([Peer | Rest], N, S) when is_record(Peer, rate_mgr) ->
+    case ets:lookup(etorrent_peer_state, Peer#rate_mgr.pid) of
+	[] ->
+	    rechoke(Rest, N, S);
+	[#peer_state { interest_state = I, pid = {_Id, Pid}}] ->
+	    case I of
+		interested ->
+		    etorrent_t_peer_recv:unchoke(Pid),
+		    rechoke(Rest, N-1, S);
+		not_interested ->
+		    etorrent_t_peer_recv:unchoke(Pid),
+		    rechoke(Rest, N, S)
+	    end
     end.
 
-optimistic_unchoke_handler(P, S) ->
-    case P#peer.pid =:= S#state.optimistic_unchoke_pid of
+optimistic_unchoke_handler(#rate_mgr { pid = {_Id, Pid} }, S) ->
+    case Pid =:= S#state.optimistic_unchoke_pid of
 	true ->
 	    ok; % Handled elsewhere
 	false ->
-	    etorrent_t_peer_recv:choke(P#peer.pid)
+	    etorrent_t_peer_recv:choke(Pid)
     end.
 
 %% TODO: Make number of downloaders depend on current rate!
 calculate_num_downloaders(S) ->
-    case etorrent_peer:interested(S#state.optimistic_unchoke_pid) of
-	true ->
-	    ?DEFAULT_NUM_DOWNLOADERS - 1;
-	false ->
-	    ?DEFAULT_NUM_DOWNLOADERS
+    case ets:lookup(etorrent_peer_state, {S#state.torrent_id,
+					  S#state.optimistic_unchoke_pid}) of
+	[] ->
+	    ?DEFAULT_NUM_DOWNLOADERS;
+	[P] ->
+	    case P#peer_state.interest_state of
+		interested ->
+		    ?DEFAULT_NUM_DOWNLOADERS - 1;
+		not_interested ->
+		    ?DEFAULT_NUM_DOWNLOADERS
+	    end
     end.
 
 advance_optimistic_unchoke(S) ->
@@ -336,10 +338,6 @@ advance_optimistic_unchoke(S) ->
 	[] ->
 	    {ok, S}; %% No peers yet
 	[H | _T] ->
-	    _R1 = etorrent_peer:statechange(S#state.optimistic_unchoke_pid,
-					   remove_optimistic_unchoke),
-	    %% Do not choke here, a later call to rechoke will do it.
-	    _R2 = etorrent_peer:statechange(H, optimistic_unchoke),
 	    etorrent_t_peer_recv:unchoke(H),
 	    {ok, S#state { opt_unchoke_chain = NewChain,
 			   optimistic_unchoke_pid = H }}
@@ -356,6 +354,10 @@ insert_new_peer_into_chain(Pid, Chain) ->
     Index = lists:max([0, crypto:rand_uniform(0, Length)]),
     {Front, Back} = lists:split(Index, Chain),
     Front ++ [Pid | Back].
+
+select_fastest(Id, Table) ->
+    Rows = ets:select(Table, [{{rate_mgr,{Id,'_'},'_'},[],['$_']}]),
+    lists:reverse(lists:keysort(#rate_mgr.rate, Rows)).
 
 
 

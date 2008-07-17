@@ -7,25 +7,25 @@
 %%%-------------------------------------------------------------------
 -module(etorrent_rate_mgr).
 
+-include("peer_state.hrl").
+-include("rate_mgr.hrl").
+
 -behaviour(gen_server).
+
 
 %% API
 -export([start_link/0,
 
-	choke/1, unchoke/1, interested/1, not_interested/1,
-	recv_rate/2, send_rate/2]).
+	choke/2, unchoke/2, interested/2, not_interested/2,
+	recv_rate/3, send_rate/3]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3]).
 
 -record(state, { recv,
-		 send}).
-
--record(rate, {pid, % Pid of receiver
-	       rate, % Rate
-	       choke_state,
-	       interest_state }).
+		 send,
+		 state}).
 
 -define(SERVER, ?MODULE).
 
@@ -40,16 +40,16 @@ start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
 %% Send state information
-choke(Pid) -> gen_server:cast(?SERVER, {choke, Pid}).
-unchoke(Pid) -> gen_server:cast(?SERVER, {unchoke, Pid}).
-interested(Pid) -> gen_server:cast(?SERVER, {interested, Pid}).
-not_interested(Pid) -> gen_server:cast(?SERVER, {not_interested, Pid}).
+choke(Id, Pid) -> gen_server:cast(?SERVER, {choke, Id, Pid}).
+unchoke(Id, Pid) -> gen_server:cast(?SERVER, {unchoke, Id, Pid}).
+interested(Id, Pid) -> gen_server:cast(?SERVER, {interested, Id, Pid}).
+not_interested(Id, Pid) -> gen_server:cast(?SERVER, {not_interested, Id, Pid}).
 
-recv_rate(Pid, Rate) ->
-    gen_server:cast(?SERVER, {recv_rate, Pid, Rate}).
+recv_rate(Id, Pid, Rate) ->
+    gen_server:cast(?SERVER, {recv_rate, Id, Pid, Rate}).
 
-send_rate(Pid, Rate) ->
-    gen_server:cast(?SERVER, {send_rate, Pid, Rate}).
+send_rate(Id, Pid, Rate) ->
+    gen_server:cast(?SERVER, {send_rate, Id, Pid, Rate}).
 
 %%====================================================================
 %% gen_server callbacks
@@ -64,9 +64,13 @@ send_rate(Pid, Rate) ->
 %%--------------------------------------------------------------------
 init([]) ->
     process_flag(trap_exit, true),
-    RTid = ets:new(etorrent_recv_state, [set, protected, named_table]),
-    STid = ets:new(etorrent_send_state, [set, protected, named_table]),
-    {ok, #state{ recv = RTid, send = STid}}.
+    RTid = ets:new(etorrent_recv_state, [set, protected, named_table,
+					 {keypos, #rate_mgr.pid}]),
+    STid = ets:new(etorrent_send_state, [set, protected, named_table,
+					 {keypos, #rate_mgr.pid}]),
+    StTid = ets:new(etorrent_peer_state, [set, protected, named_table,
+					 {keypos, #peer_state.pid}]),
+    {ok, #state{ recv = RTid, send = STid, state = StTid}}.
 
 %%--------------------------------------------------------------------
 %% Function: %% handle_call(Request, From, State) -> {reply, Reply, State} |
@@ -87,11 +91,11 @@ handle_call(_Request, _From, State) ->
 %%                                      {stop, Reason, State}
 %% Description: Handling cast messages
 %%--------------------------------------------------------------------
-handle_cast({What, Pid}, S) ->
-    alter_state(What, Pid),
+handle_cast({What, Id, Pid}, S) ->
+    ok = alter_state(What, Id, Pid),
     {noreply, S};
-handle_cast({What, Who, Rate}, S) ->
-    alter_state(What, Who, Rate),
+handle_cast({What, Id, Who, Rate}, S) ->
+    ok = alter_state(What, Id, Who, Rate),
     {noreply, S};
 handle_cast(_Msg, State) ->
     {noreply, State}.
@@ -103,8 +107,9 @@ handle_cast(_Msg, State) ->
 %% Description: Handling all non call/cast messages
 %%--------------------------------------------------------------------
 handle_info({'DOWN', _Ref, process, Pid, _Reason}, S) ->
-    true = ets:delete(etorrent_recv_state, Pid),
-    true = ets:delete(etorrent_send_state, Pid),
+    true = ets:match_delete(etorrent_recv_state, #rate_mgr { pid = {'_', Pid}, _='_'}),
+    true = ets:match_delete(etorrent_send_state, #rate_mgr { pid = {'_', Pid}, _='_'}),
+    true = ets:match_delete(etorrent_peer_state, #peer_state { pid = {'_', Pid}, _='_'}),
     {noreply, S};
 handle_info(_Info, State) ->
     {noreply, State}.
@@ -119,6 +124,7 @@ handle_info(_Info, State) ->
 terminate(_Reason, S) ->
     true = ets:delete(S#state.recv),
     true = ets:delete(S#state.send),
+    true = ets:delete(S#state.state),
     ok.
 
 
@@ -133,46 +139,46 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%--------------------------------------------------------------------
 
-alter_state(What, Pid) ->
-    case ets:lookup(etorrent_recv_state, Pid) of
+alter_state(What, Id, Pid) ->
+    _R = case ets:lookup(etorrent_peer_state, {Id, Pid}) of
 	[] ->
-	    ets:insert(
+	    ets:insert(etorrent_peer_state,
 	      alter_record(What,
-			   #rate { pid = Pid,
-				   rate = 0.0,
-				   choke_state = choked,
-				   interest_state = not_intersted})),
-	    erlang:monitor(Pid);
+			   #peer_state { pid = {Id, Pid},
+					 choke_state = choked,
+					 interest_state = not_intersted})),
+	    erlang:monitor(process, Pid);
 	[R] ->
-	    ets:insert(alter_record(What, R))
-    end.
+	    ets:insert(etorrent_peer_state,
+		       alter_record(What, R))
+    end,
+    ok.
 
 alter_record(What, R) ->
     case What of
 	choked ->
-	    R#rate { choke_state = choked };
-	unchoked ->
-	    R#rate { choke_state = unchoked };
+	    R#peer_state { choke_state = choked };
+	unchok ->
+	    R#peer_state { choke_state = unchoked };
 	interested ->
-	    R#rate { interest_state = interested };
+	    R#peer_state { interest_state = interested };
 	not_interested ->
-	    R#rate { interest_state = not_intersted }
+	    R#peer_state { interest_state = not_intersted }
     end.
 
-alter_state(What, Who, Rate) ->
+alter_state(What, Id, Who, Rate) ->
     T = case What of
 	    recv_rate -> etorrent_recv_state;
 	    send_rate -> etorrent_send_state
 	end,
-    case ets:lookup(T, Who) of
+    _R = case ets:lookup(T, {Id, Who}) of
 	[] ->
-	    ets:insert(
-	      #rate { pid = Who,
-		      rate = Rate,
-		      choke_state = choked,
-		      interest_state = not_intersted}),
-	    erlang:monitor(Who);
+	    ets:insert(T,
+	      #rate_mgr { pid = {Id, Who},
+			  rate = Rate }),
+	    erlang:monitor(process, Who);
 	[R] ->
-	    ets:insert(R#rate { rate = Rate })
-    end.
+	    ets:insert(T, R#rate_mgr { rate = Rate })
+    end,
+    ok.
 

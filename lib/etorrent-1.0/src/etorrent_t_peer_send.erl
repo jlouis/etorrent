@@ -153,7 +153,8 @@ handle_info(keep_alive_tick, S) ->
     send_message(keep_alive, S, 0);
 handle_info(rate_update, S) ->
     Rate = etorrent_rate:update(S#state.rate, 0),
-    ok = etorrent_rate_mgr:send_rate(S#state.parent,
+    ok = etorrent_rate_mgr:send_rate(S#state.torrent_id,
+				     S#state.parent,
 				     Rate#peer_rate.rate),
     {noreply, S#state { rate = Rate }};
 handle_info(timeout, S)
@@ -234,7 +235,8 @@ terminate(_Reason, S) ->
 send_piece_message(Msg, S, Timeout) ->
     case etorrent_peer_communication:send_message(S#state.rate, S#state.socket, Msg) of
 	{ok, R} ->
-	    ok = etorrent_rate_mgr:send_rate(S#state.parent,
+	    ok = etorrent_rate_mgr:send_rate(S#state.torrent_id,
+					     S#state.parent,
 					     R#peer_rate.rate),
 	    {noreply, S#state { rate = R }, Timeout};
 	{{error, closed}, R} ->
@@ -271,8 +273,10 @@ send_message(Msg, S) ->
 send_message(Msg, S, Timeout) ->
     case etorrent_peer_communication:send_message(S#state.rate, S#state.socket, Msg) of
 	{ok, Rate} ->
-	    ok = etorrent_rate_mgr:send_rate(S#state.parent,
-					     Rate#peer_rate.rate),
+	    ok = etorrent_rate_mgr:send_rate(
+		   S#state.torrent_id,
+		   S#state.parent,
+		   Rate#peer_rate.rate),
 	    {noreply, S#state { rate = Rate}, Timeout};
 	{{error, ebadf}, R} ->
 	    error_logger:info_report([caught_ebadf, S#state.socket]),

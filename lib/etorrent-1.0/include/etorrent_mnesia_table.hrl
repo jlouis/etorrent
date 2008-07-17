@@ -34,12 +34,7 @@
 	       ip,  % Ip of peer in question
 	       port, % Port of peer in question
 	       torrent_id, % (IDX) Torrent Id this peer belongs to
-	       upload_rate = 0.0, % Amount of uploaded bytes this round
-	       download_rate = 0.0, % Amount of downloaded bytes this round
-	       remote_i_state = not_interested, % Is this peer interested in us?
-	       local_c_state = choked, % true if we are choking remote
-	       remote_c_state = choked, % true if the remote is choking us.
-	       optimistic_c_state = not_opt_unchoke}). % true if we have selected this peer for opt. unchoke
+	       local_c_state = choked}). % true if we are choking remote
 
 %% Individual pieces are represented via the piece record
 -record(piece, {idpn, % {Id, PieceNumber} pair identifying the piece
