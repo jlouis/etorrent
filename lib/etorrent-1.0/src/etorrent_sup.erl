@@ -34,6 +34,9 @@ init([]) ->
     FastResume = {fast_resume,
 		  {etorrent_fast_resume, start_link, []},
 		  permanent, 5000, worker, [etorrent_fast_resume]},
+    RateManager = {rate_manager,
+		   {etorrent_rate_mgr, start_link, []},
+		   permanent, 5000, worker, [etorrent_rate_mgr]},
     Listener = {listener,
 		{etorrent_listener, start_link, []},
 		permanent, 2000, worker, [etorrent_listener]},
@@ -51,8 +54,8 @@ init([]) ->
 		   transient, infinity, supervisor, [etorrent_t_pool_sup]},
 
     {ok, {{one_for_all, 1, 60},
-	  [EventManager, Listener, AcceptorSup,
-	   DirWatcherSup, TorrentMgr, TorrentPool, FastResume]}}.
+	  [EventManager, FastResume, RateManager, Listener, AcceptorSup,
+	   DirWatcherSup, TorrentMgr, TorrentPool]}}.
 
 %%====================================================================
 %% Internal functions
