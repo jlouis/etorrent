@@ -23,31 +23,23 @@
 %% API
 %%====================================================================
 %%--------------------------------------------------------------------
-%% Function: new(Id, Dict) -> void()
-%% Description: Add a dictionary of pieces to the database.
-%%   Dict is a map from PieceNumber -> {Hash, Files, Done} where
-%%   Hash is the infohash,
-%%   Files is the read operations for this piece,
-%%   Done is either 'ok', 'not_ok' or 'none' saying if the piece has
-%%   been downloaded already.
+%% Function: new(Id, FPList) -> void()
+%% Args:  Id ::= integer() - torrent id
+%%        FPList ::= [{Hash, Files, Done}]
+%% Description: Add a list of pieces to the database.
 %%--------------------------------------------------------------------
-new(Id, Dict) when is_integer(Id) ->
-    dict:fold(fun (PN, {Hash, Files, Done}, _Acc) ->
-		      State = case Done of
-				  ok -> fetched;
-				  not_ok -> not_fetched;
-				  none -> not_fetched
-			      end,
+new(Id, FPList) when is_integer(Id) ->
+    lists:foreach(
+      fun ({PN, {Hash, Files}}) ->
 		      mnesia:dirty_write(
 			#piece {idpn = {Id, PN},
 				id = Id,
 				piece_number = PN,
 				hash = Hash,
 				files = Files,
-				state = State })
-	      end,
-	      ok,
-	      Dict).
+				state = not_fetched })
+       end,
+       FPList).
 
 %%--------------------------------------------------------------------
 %% Function: delete(Id) -> ok

@@ -29,11 +29,11 @@ read_and_check_torrent(Id, SupervisorPid, Path) ->
     ok = ensure_file_sizes_correct(Files),
 
     %% Build the dictionary mapping pieces to file operations
-    {ok, FileDict, NumberOfPieces} =
+    {ok, FilePieceList, NumberOfPieces} =
 	build_dictionary_on_files(Id, Torrent, Files),
 
     %% Initialize piecemap
-    _Dict = etorrent_piece:new(Id, FileDict),
+    etorrent_piece:new(Id, FilePieceList),
 
     %% Check the contents of the torrent, updates the state of the piecemap
     FS = etorrent_t_sup:get_pid(SupervisorPid, fs),
@@ -95,9 +95,9 @@ build_dictionary_on_files(TorrentId, Torrent, Files) ->
     {ok, PieceList, N} = construct_fpmap(Files, 0, PSize, LastPieceSize,
 					 lists:zip(lists:seq(0, length(Pieces)-1), Pieces),
 					 [], 0),
-    MappedPieces = [{Num, {Hash, insert_into_piece_map(Ops, TorrentId), X}} ||
-		       {Num, {Hash, Ops, X}} <- PieceList],
-    {ok, dict:from_list(MappedPieces), N}.
+    MappedPieces = [{Num, {Hash, insert_into_path_map(Ops, TorrentId)}} ||
+		       {Num, {Hash, Ops}} <- PieceList],
+    {ok, MappedPieces, N}.
 
 %%====================================================================
 %% Internal functions
@@ -128,14 +128,14 @@ construct_fpmap(FileList, Offset, PieceSize, LastPieceSize,
 		[{Num, Hash}], Done, N) -> % Last piece
     {ok, FL, OS, Ops} = extract_piece(LastPieceSize, FileList, Offset, []),
     construct_fpmap(FL, OS, PieceSize, LastPieceSize, [],
-		    [{Num, {Hash, lists:reverse(Ops), none}} | Done], N+1);
+		    [{Num, {Hash, lists:reverse(Ops)}} | Done], N+1);
 construct_fpmap(FileList, Offset, PieceSize, LastPieceSize,
 		[{Num, Hash} | Ps], Done, N) ->
     {ok, FL, OS, Ops} = extract_piece(PieceSize, FileList, Offset, []),
     construct_fpmap(FL, OS, PieceSize, LastPieceSize, Ps,
-		    [{Num, {Hash, lists:reverse(Ops), none}} | Done], N+1).
+		    [{Num, {Hash, lists:reverse(Ops)}} | Done], N+1).
 
-insert_into_piece_map(Ops, TorrentId) ->
+insert_into_path_map(Ops, TorrentId) ->
     [{etorrent_path_map:select(Path, TorrentId), Offset, Size} ||
 	{Path, Offset, Size} <- Ops].
 
