@@ -12,7 +12,7 @@
 -include("etorrent_mnesia_table.hrl").
 
 %% API
--export([new/2, statechange/3, dirty_statechange/3, complete/1,
+-export([new/2, new/5, statechange/3, dirty_statechange/3, complete/1,
 	 select/1, select/2, num_not_fetched/1, delete/1, valid/2,
 	 interesting/2, bitfield/1, check_interest/2]).
 
@@ -27,6 +27,15 @@
 %%        FPList ::= [{Hash, Files, Done}]
 %% Description: Add a list of pieces to the database.
 %%--------------------------------------------------------------------
+new(Id, PN, Hash, Files, State) when is_integer(Id) ->
+    mnesia:dirty_write(
+      #piece {idpn = {Id, PN},
+	      id = Id,
+	      piece_number = PN,
+	      hash = Hash,
+	      files = Files,
+	      state = State}).
+
 new(Id, FPList) when is_integer(Id) ->
     lists:foreach(
       fun ({PN, {Hash, Files}}) ->
