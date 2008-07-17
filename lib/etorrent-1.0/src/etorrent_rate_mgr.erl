@@ -146,7 +146,7 @@ alter_state(What, Id, Pid) ->
 	      alter_record(What,
 			   #peer_state { pid = {Id, Pid},
 					 choke_state = choked,
-					 interest_state = not_intersted})),
+					 interest_state = not_interested})),
 	    erlang:monitor(process, Pid);
 	[R] ->
 	    ets:insert(etorrent_peer_state,
@@ -163,7 +163,7 @@ alter_record(What, R) ->
 	interested ->
 	    R#peer_state { interest_state = interested };
 	not_interested ->
-	    R#peer_state { interest_state = not_intersted }
+	    R#peer_state { interest_state = not_interested }
     end.
 
 alter_state(What, Id, Who, Rate) ->
