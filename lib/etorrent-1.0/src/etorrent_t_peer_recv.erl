@@ -17,7 +17,7 @@
 %% API
 -export([start_link/7, connect/3, choke/1, unchoke/1, interested/1,
 	 send_have_piece/2, complete_handshake/4, endgame_got_chunk/2,
-	 queue_pieces/1]).
+	 queue_pieces/1, stop/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -71,6 +71,14 @@ start_link(LocalPeerId, InfoHash, FilesystemPid, GroupPid, Id, Parent,
     gen_server:start_link(?MODULE, [LocalPeerId, InfoHash,
 				    FilesystemPid, GroupPid, Id, Parent,
 				    {IP, Port}], []).
+
+%%--------------------------------------------------------------------
+%% Function: stop/1
+%% Args: Pid ::= pid()
+%% Description: Gracefully ask the server to stop.
+%%--------------------------------------------------------------------
+stop(Pid) ->
+    gen_server:cast(Pid, stop).
 
 %%--------------------------------------------------------------------
 %% Function: connect(Pid, IP, Port)
@@ -223,6 +231,8 @@ handle_cast({endgame_got_chunk, Chunk}, S) ->
 handle_cast(queue_pieces, S) ->
     {ok, NS} = try_to_queue_up_pieces(S),
     {noreply, NS, 0};
+handle_cast(stop, S) ->
+    {stop, normal, S};
 handle_cast(_Msg, State) ->
     {noreply, State, 0}.
 
