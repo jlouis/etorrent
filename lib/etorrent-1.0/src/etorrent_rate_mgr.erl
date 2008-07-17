@@ -102,6 +102,10 @@ handle_cast(_Msg, State) ->
 %%                                       {stop, Reason, State}
 %% Description: Handling all non call/cast messages
 %%--------------------------------------------------------------------
+handle_info({'DOWN', _Ref, process, Pid, _Reason}, S) ->
+    true = ets:delete(etorrent_recv_state, Pid),
+    true = ets:delete(etorrent_send_state, Pid),
+    {noreply, S};
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -137,7 +141,8 @@ alter_state(What, Pid) ->
 			   #rate { pid = Pid,
 				   rate = 0.0,
 				   choke_state = choked,
-				   interest_state = not_intersted}));
+				   interest_state = not_intersted})),
+	    erlang:monitor(Pid);
 	[R] ->
 	    ets:insert(alter_record(What, R))
     end.
@@ -165,7 +170,8 @@ alter_state(What, Who, Rate) ->
 	      #rate { pid = Who,
 		      rate = Rate,
 		      choke_state = choked,
-		      interest_state = not_intersted});
+		      interest_state = not_intersted}),
+	    erlang:monitor(Who);
 	[R] ->
 	    ets:insert(R#rate { rate = Rate })
     end.
