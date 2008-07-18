@@ -11,10 +11,7 @@
 -include("etorrent_mnesia_table.hrl").
 
 %% API
--export([read_and_check_torrent/3, load_torrent/1, ensure_file_sizes_correct/1,
-	 check_torrent_contents/2]).
-
--define(DEFAULT_CHECK_SLEEP_TIME, 10).
+-export([read_and_check_torrent/3, load_torrent/1, ensure_file_sizes_correct/1]).
 
 %%====================================================================
 %% API
@@ -29,20 +26,20 @@ read_and_check_torrent(Id, SupervisorPid, Path) ->
     ok = ensure_file_sizes_correct(Files),
 
     %% Build the dictionary mapping pieces to file operations
-    {ok, FileDict, NumberOfPieces} =
+    {ok, FilePieceList, NumberOfPieces} =
 	build_dictionary_on_files(Id, Torrent, Files),
 
     %% Initialize piecemap
-    _Dict = etorrent_piece:new(Id, FileDict),
+    etorrent_piece:new(Id, FilePieceList),
 
     %% Check the contents of the torrent, updates the state of the piecemap
     FS = etorrent_t_sup:get_pid(SupervisorPid, fs),
     case etorrent_fast_resume:query_state(Id) of
-	seeding -> check_torrent_contents_seed(Id);
-	{bitfield, BF} -> check_torrent_contents_bitfield(Id, BF, NumberOfPieces);
-	leeching -> ok = check_torrent_contents(FS, Id);
+	seeding -> initialize_pieces_seed(Id, FilePieceList);
+	{bitfield, BF} -> initialize_pieces_from_bitfield(Id, BF, NumberOfPieces, FilePieceList);
+	leeching -> ok = initialize_pieces_from_disk(FS, Id, FilePieceList);
 	%% XXX: The next one here could initialize with not_fetched all over
-	unknown -> ok = check_torrent_contents(FS, Id)
+	unknown -> ok = initialize_pieces_from_disk(FS, Id, FilePieceList)
     end,
 
     {ok, Torrent, FS, Infohash, NumberOfPieces}.
@@ -76,46 +73,37 @@ ensure_file_sizes_correct(Files) ->
       Files),
     ok.
 
-check_torrent_contents_seed(Id) ->
-    {atomic, Pieces} = etorrent_piece:select(Id),
+initialize_pieces_seed(Id, FilePieceList) ->
     lists:foreach(
-      fun(#piece { piece_number = PN }) ->
-	      ok = etorrent_piece:dirty_statechange(Id, PN, fetched)
+      fun ({PN, {Hash, Files}}) ->
+	      ok = etorrent_piece:new(Id, PN, Hash, Files, fetched)
       end,
-      Pieces),
-    ok.
+      FilePieceList).
 
-check_torrent_contents_bitfield(Id, BitField, NumPieces) ->
-    {atomic, Pieces} = etorrent_piece:select(Id),
+initialize_pieces_from_bitfield(Id, BitField, NumPieces, FilePieceList) ->
     {ok, Set} = etorrent_peer_communication:destruct_bitfield(NumPieces, BitField),
     lists:foreach(
-      fun(#piece { piece_number = PN }) ->
-	      State = case gb_sets:is_element(PN, Set) of
+      fun ({PN, {Hash, Files}}) ->
+	      ok = etorrent_piece:new(Id, PN, Hash, Files,
+				      case gb_sets:is_element(PN, Set) of
+					  true -> fetched;
+					  false -> not_fetched
+				      end)
+      end,
+      FilePieceList).
+
+
+initialize_pieces_from_disk(FS, Id, FilePieceList) ->
+    lists:foreach(
+      fun ({PN, {Hash, Files}}) ->
+	      {ok, Data} = etorrent_fs:read_piece(FS, PN),
+	      State = case Hash =:= crypto:sha(Data) of
 			  true -> fetched;
 			  false -> not_fetched
 		      end,
-	      ok = etorrent_piece:dirty_statechange(Id, PN, State)
+	      ok = etorrent_piece:new(Id, PN, Hash, Files, State)
       end,
-      Pieces),
-    ok.
-
-check_torrent_contents(FS, Id) ->
-    {atomic, Pieces} = etorrent_piece:select(Id),
-    lists:foreach(
-      fun(#piece{piece_number = PieceNum, hash = Hash}) ->
-	      {ok, Data} = etorrent_fs:read_piece(FS, PieceNum),
-	      State =
-		  case Hash =:= crypto:sha(Data) of
-		      true ->
-			  fetched;
-		      false ->
-			  not_fetched
-		  end,
-	      ok = etorrent_piece:dirty_statechange(Id, PieceNum, State),
-	      timer:sleep(?DEFAULT_CHECK_SLEEP_TIME)
-      end,
-      Pieces),
-    ok.
+      FilePieceList).
 
 build_dictionary_on_files(TorrentId, Torrent, Files) ->
     Pieces = etorrent_metainfo:get_pieces(Torrent),
@@ -124,9 +112,9 @@ build_dictionary_on_files(TorrentId, Torrent, Files) ->
     {ok, PieceList, N} = construct_fpmap(Files, 0, PSize, LastPieceSize,
 					 lists:zip(lists:seq(0, length(Pieces)-1), Pieces),
 					 [], 0),
-    MappedPieces = [{Num, {Hash, insert_into_piece_map(Ops, TorrentId), X}} ||
-		       {Num, {Hash, Ops, X}} <- PieceList],
-    {ok, dict:from_list(MappedPieces), N}.
+    MappedPieces = [{Num, {Hash, insert_into_path_map(Ops, TorrentId)}} ||
+		       {Num, {Hash, Ops}} <- PieceList],
+    {ok, MappedPieces, N}.
 
 %%====================================================================
 %% Internal functions
@@ -157,16 +145,23 @@ construct_fpmap(FileList, Offset, PieceSize, LastPieceSize,
 		[{Num, Hash}], Done, N) -> % Last piece
     {ok, FL, OS, Ops} = extract_piece(LastPieceSize, FileList, Offset, []),
     construct_fpmap(FL, OS, PieceSize, LastPieceSize, [],
-		    [{Num, {Hash, lists:reverse(Ops), none}} | Done], N+1);
+		    [{Num, {Hash, lists:reverse(Ops)}} | Done], N+1);
 construct_fpmap(FileList, Offset, PieceSize, LastPieceSize,
 		[{Num, Hash} | Ps], Done, N) ->
     {ok, FL, OS, Ops} = extract_piece(PieceSize, FileList, Offset, []),
     construct_fpmap(FL, OS, PieceSize, LastPieceSize, Ps,
-		    [{Num, {Hash, lists:reverse(Ops), none}} | Done], N+1).
+		    [{Num, {Hash, lists:reverse(Ops)}} | Done], N+1).
 
-insert_into_piece_map(Ops, TorrentId) ->
-    [{etorrent_path_map:select(Path, TorrentId), Offset, Size} ||
-	{Path, Offset, Size} <- Ops].
+insert_into_path_map(Ops, TorrentId) ->
+    insert_into_path_map(Ops, TorrentId, none, none).
+
+insert_into_path_map([], _, _, _) -> [];
+insert_into_path_map([{Path, Offset, Size} | Next], TorrentId, Path, Keyval) ->
+    [{Keyval, Offset, Size} | insert_into_path_map(Next, TorrentId, Path, Keyval)];
+insert_into_path_map([{Path, Offset, Size} | Next], TorrentId, _Key, _KeyVal) ->
+    KeyVal = etorrent_path_map:select(Path, TorrentId),
+    [{KeyVal, Offset, Size} | insert_into_path_map(Next, TorrentId, Path, KeyVal)].
+
 
 fill_file_ensure_path(Path, Missing) ->
     case file:open(Path, [read, write, delayed_write, binary, raw]) of
