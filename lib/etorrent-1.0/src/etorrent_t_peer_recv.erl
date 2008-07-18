@@ -260,10 +260,8 @@ handle_info(timeout, S) ->
     end;
 handle_info(rate_update, S) ->
     Rate = etorrent_rate:update(S#state.rate, 0),
-    case etorrent_peer:statechange(self(), {download_rate, Rate#peer_rate.rate}) of
-	{atomic, _} -> {noreply, S#state { rate = Rate}, 0};
-	{aborted, _} -> {stop, normal, S}
-    end;
+    ok = etorrent_rate_mgr:recv_rate(S#state.torrent_id, self(), Rate#peer_rate.rate),
+    {noreply, S#state { rate = Rate}, 0};
 handle_info(_Info, State) ->
     {noreply, State, 0}.
 
@@ -309,18 +307,18 @@ code_change(_OldVsn, State, _Extra) ->
 handle_message(keep_alive, S) ->
     {ok, S};
 handle_message(choke, S) ->
-    {atomic, ok} = etorrent_peer:statechange(self(), remote_choking),
+    ok = etorrent_rate_mgr:choke(S#state.torrent_id, self()),
     NS = unqueue_all_pieces(S),
     {ok, NS#state { remote_choked = true }};
 handle_message(unchoke, S) ->
-    {atomic, ok} = etorrent_peer:statechange(self(), remote_unchoking),
+    ok = etorrent_rate_mgr:unchoke(S#state.torrent_id, self()),
     try_to_queue_up_pieces(S#state{remote_choked = false});
 handle_message(interested, S) ->
-    {atomic, ok} = etorrent_peer:statechange(self(), interested),
+    ok = etorrent_rate_mgr:interested(S#state.torrent_id, self()),
     etorrent_t_peer_group_mgr:perform_rechoke(S#state.peer_group_pid),
     {ok, S};
 handle_message(not_interested, S) ->
-    {atomic, _} = etorrent_peer:statechange(self(), not_interested),
+    ok = etorrent_rate_mgr:not_interested(S#state.torrent_id, self()),
     etorrent_t_peer_group_mgr:perform_rechoke(S#state.peer_group_pid),
     {ok, S};
 handle_message({request, Index, Offset, Len}, S) ->
@@ -579,7 +577,8 @@ handle_read_from_socket(S, Packet)
     Left = size(Data),
     P = iolist_to_binary(lists:reverse([Data | S#state.packet_iolist])),
     {Msg, Rate} = etorrent_peer_communication:recv_message(S#state.rate, P),
-    {atomic, _} = etorrent_peer:statechange(self(), {download_rate, Rate#peer_rate.rate}),
+    ok = etorrent_rate_mgr:recv_rate(S#state.torrent_id,
+				     self(), Rate#peer_rate.rate),
     case handle_message(Msg, S#state {rate = Rate}) of
 	{ok, NS} ->
 	    handle_read_from_socket(NS#state { packet_left = none,

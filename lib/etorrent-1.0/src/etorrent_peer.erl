@@ -12,8 +12,7 @@
 
 %% API
 -export([new/4, all/1, delete/1, statechange/2, connected/3,
-	 ip_port/1, select_fastest/2, interested/1, local_unchoked/1,
-	 select/1]).
+	 ip_port/1, local_unchoked/1, select/1]).
 
 %%====================================================================
 %% API
@@ -110,20 +109,6 @@ select(Pid) when is_pid(Pid) ->
     mnesia:dirty_read(peer, Pid).
 
 %%--------------------------------------------------------------------
-%% Function: select_fastest(Id, Key) -> [#peer]
-%%           Interest ::= interested | not_interested
-%%           Key      ::= integer()
-%% Description: Select the fastest peers matching the query
-%%--------------------------------------------------------------------
-select_fastest(TorrentId, Key) ->
-    mnesia:transaction(
-      fun () ->
-	      QH = qlc:q([P || P <- mnesia:table(peer),
-			       P#peer.torrent_id =:= TorrentId]),
-	      qlc:e(qlc:keysort(Key, QH, {order, descending}))
-      end).
-
-%%--------------------------------------------------------------------
 %% Function: local_unchoked(P) -> bool() | none
 %%           P ::= pid()
 %% Description: Predicate: P is unchoked locally. If the peer can't be
@@ -138,20 +123,6 @@ local_unchoked(P) ->
 	       end
     end.
 
-%%--------------------------------------------------------------------
-%% Function: interested(P) -> bool()
-%%           P ::= none | pid()
-%% Description: Query the remote interest state on P
-%%--------------------------------------------------------------------
-interested(none) -> false;
-interested(P) when is_pid(P) ->
-    case mnesia:dirty_read(peer, P) of
-	[] ->
-	    false;
-	[_] ->
-	    true
-    end.
-
 %%====================================================================
 %% Internal functions
 %%====================================================================
@@ -163,24 +134,8 @@ interested(P) when is_pid(P) ->
 %%--------------------------------------------------------------------
 alter_state(Peer, What) ->
     case What of
-	optimistic_unchoke ->
-	    Peer#peer{ optimistic_c_state = opt_unchoke };
-	remove_optimistic_unchoke ->
-	    Peer#peer{ optimistic_c_state = not_opt_unchoke };
-	remote_choking ->
-	    Peer#peer{ remote_c_state = choked};
-	remote_unchoking ->
-	    Peer#peer{ remote_c_state = unchoked};
 	local_choking ->
 	    Peer#peer { local_c_state = choked };
 	local_unchoking ->
-	    Peer#peer { local_c_state = unchoked };
-	interested ->
-	    Peer#peer{ remote_i_state = interested};
-	not_interested ->
-	    Peer#peer{ remote_i_state = not_interested};
-	{download_rate, Rate} ->
-	    Peer#peer { download_rate = Rate };
-	{upload_rate, Rate} ->
-	    Peer#peer { upload_rate = Rate }
+	    Peer#peer { local_c_state = unchoked }
     end.
