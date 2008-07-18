@@ -43,16 +43,20 @@ list() ->
 	      ["Id:", "total", "left", "uploaded", "downloaded",
 	       "I", "C", "Comp."]),
 
-    lists:foreach(fun (R) ->
-			  io:format("~3.B ~11.B ~11.B ~11.B ~11.B ~3.B ~3.B ~7.3f% ~n",
-				    [R#torrent.id,
-				     R#torrent.total,
-				     R#torrent.left,
-				     R#torrent.uploaded,
-				     R#torrent.downloaded,
-				     R#torrent.leechers,
-				     R#torrent.seeders,
-				     percent_complete(R)])
+    lists:foreach(
+      fun (R) ->
+	      {atomic, [#tracking_map { filename = FN, _=_}]} =
+		  etorrent_tracking_map:select(R#torrent.id),
+	      io:format("~3.B ~11.B ~11.B ~11.B ~11.B ~3.B ~3.B ~7.3f% ~n",
+			[R#torrent.id,
+			 R#torrent.total,
+			 R#torrent.left,
+			 R#torrent.uploaded,
+			 R#torrent.downloaded,
+			 R#torrent.leechers,
+			 R#torrent.seeders,
+			 percent_complete(R)]),
+	      io:format("    ~s~n", [FN])
 		  end, A),
     %io:format("Rate Up/Down: ~e / ~e~n", [UploadRate, DownloadRate]).
     io:format("Rate Up/Down: ~8.2f / ~8.2f~n", [UploadRate / 1024.0,
