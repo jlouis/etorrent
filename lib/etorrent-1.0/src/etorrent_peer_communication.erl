@@ -41,6 +41,7 @@
 %% Description: Receive a message from a peer and decode it
 %%--------------------------------------------------------------------
 recv_message(Rate, Message) ->
+    MSize = size(Message),
     Decoded = case Message of
 	<<>> ->
 	    keep_alive;
@@ -65,7 +66,7 @@ recv_message(Rate, Message) ->
 	<<?PORT, Port:16/big>> ->
 	    {port, Port}
     end,
-    {Decoded, etorrent_rate:update(Rate, size(Message))}.
+    {Decoded, etorrent_rate:update(Rate, MSize), MSize}.
 
 %%--------------------------------------------------------------------
 %% Function: send_message(Socket, Message)
@@ -100,7 +101,7 @@ send_message(Rate, Socket, Message) ->
         end,
     Sz = size(Datagram),
     Res = gen_tcp:send(Socket, <<Sz:32/big, Datagram/binary>>),
-    {Res, etorrent_rate:update(Rate, Sz)}.
+    {Res, etorrent_rate:update(Rate, Sz), Sz}.
 
 %%--------------------------------------------------------------------
 %% Function: recieve_handshake(Socket) -> {ok, protocol_version,

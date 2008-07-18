@@ -38,8 +38,6 @@
 
 -define(DEFAULT_KEEP_ALIVE_INTERVAL, 120*1000). % From proto. spec.
 -define(MAX_REQUESTS, 1024). % Maximal number of requests a peer may make.
--define(RATE_FUDGE, 5). %% Consider moving to etorrent_rate.hrl
--define(RATE_UPDATE, 5 * 1000).
 %%====================================================================
 %% API
 %%====================================================================
@@ -155,7 +153,8 @@ handle_info(rate_update, S) ->
     Rate = etorrent_rate:update(S#state.rate, 0),
     ok = etorrent_rate_mgr:send_rate(S#state.torrent_id,
 				     S#state.parent,
-				     Rate#peer_rate.rate),
+				     Rate#peer_rate.rate,
+				     0),
     {noreply, S#state { rate = Rate }};
 handle_info(timeout, S)
   when S#state.choke =:= true andalso S#state.piece_cache =:= none ->
@@ -234,12 +233,13 @@ terminate(_Reason, S) ->
 %%--------------------------------------------------------------------
 send_piece_message(Msg, S, Timeout) ->
     case etorrent_peer_communication:send_message(S#state.rate, S#state.socket, Msg) of
-	{ok, R} ->
+	{ok, R, Amount} ->
 	    ok = etorrent_rate_mgr:send_rate(S#state.torrent_id,
 					     S#state.parent,
-					     R#peer_rate.rate),
+					     R#peer_rate.rate,
+					     Amount),
 	    {noreply, S#state { rate = R }, Timeout};
-	{{error, closed}, R} ->
+	{{error, closed}, R, _Amount} ->
 	    {stop, normal, S#state { rate = R}}
     end.
 
@@ -272,15 +272,16 @@ send_message(Msg, S) ->
 
 send_message(Msg, S, Timeout) ->
     case etorrent_peer_communication:send_message(S#state.rate, S#state.socket, Msg) of
-	{ok, Rate} ->
+	{ok, Rate, Amount} ->
 	    ok = etorrent_rate_mgr:send_rate(
 		   S#state.torrent_id,
 		   S#state.parent,
-		   Rate#peer_rate.rate),
+		   Rate#peer_rate.rate,
+		   Amount),
 	    {noreply, S#state { rate = Rate}, Timeout};
-	{{error, ebadf}, R} ->
+	{{error, ebadf}, R, _Amount} ->
 	    error_logger:info_report([caught_ebadf, S#state.socket]),
 	    {stop, normal, S#state { rate = R}};
-	{{error, closed}, R} ->
+	{{error, closed}, R, _Amount} ->
 	    {stop, normal, S#state { rate = R}}
     end.

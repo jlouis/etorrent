@@ -57,8 +57,6 @@
 -define(DEFAULT_CHUNK_SIZE, 16384). % Default size for a chunk. All clients use this.
 -define(HIGH_WATERMARK, 15). % How many chunks to queue up to
 -define(LOW_WATERMARK, 5).  % Requeue when there are less than this number of pieces in queue
--define(RATE_FUDGE, 5).
--define(RATE_UPDATE, 5 * 1000).
 %%====================================================================
 %% API
 %%====================================================================
@@ -260,7 +258,7 @@ handle_info(timeout, S) ->
     end;
 handle_info(rate_update, S) ->
     Rate = etorrent_rate:update(S#state.rate, 0),
-    ok = etorrent_rate_mgr:recv_rate(S#state.torrent_id, self(), Rate#peer_rate.rate),
+    ok = etorrent_rate_mgr:recv_rate(S#state.torrent_id, self(), Rate#peer_rate.rate, 0),
     {noreply, S#state { rate = Rate}, 0};
 handle_info(_Info, State) ->
     {noreply, State, 0}.
@@ -576,9 +574,10 @@ handle_read_from_socket(S, Packet)
     <<Data:Left/binary, Rest/binary>> = Packet,
     Left = size(Data),
     P = iolist_to_binary(lists:reverse([Data | S#state.packet_iolist])),
-    {Msg, Rate} = etorrent_peer_communication:recv_message(S#state.rate, P),
+    {Msg, Rate, Amount} = etorrent_peer_communication:recv_message(S#state.rate, P),
     ok = etorrent_rate_mgr:recv_rate(S#state.torrent_id,
-				     self(), Rate#peer_rate.rate),
+				     self(), Rate#peer_rate.rate,
+				     Amount),
     case handle_message(Msg, S#state {rate = Rate}) of
 	{ok, NS} ->
 	    handle_read_from_socket(NS#state { packet_left = none,

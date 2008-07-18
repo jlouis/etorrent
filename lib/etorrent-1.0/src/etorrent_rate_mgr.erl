@@ -9,6 +9,7 @@
 
 -include("peer_state.hrl").
 -include("rate_mgr.hrl").
+-include("etorrent_rate.hrl").
 
 -behaviour(gen_server).
 
@@ -17,7 +18,9 @@
 -export([start_link/0,
 
 	choke/2, unchoke/2, interested/2, not_interested/2,
-	recv_rate/3, send_rate/3]).
+	recv_rate/4, send_rate/4,
+
+	global_rate/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -25,7 +28,10 @@
 
 -record(state, { recv,
 		 send,
-		 state}).
+		 state,
+
+		 global_recv,
+		 global_send}).
 
 -define(SERVER, ?MODULE).
 
@@ -45,11 +51,14 @@ unchoke(Id, Pid) -> gen_server:cast(?SERVER, {unchoke, Id, Pid}).
 interested(Id, Pid) -> gen_server:cast(?SERVER, {interested, Id, Pid}).
 not_interested(Id, Pid) -> gen_server:cast(?SERVER, {not_interested, Id, Pid}).
 
-recv_rate(Id, Pid, Rate) ->
-    gen_server:cast(?SERVER, {recv_rate, Id, Pid, Rate}).
+recv_rate(Id, Pid, Rate, Amount) ->
+    gen_server:cast(?SERVER, {recv_rate, Id, Pid, Rate, Amount}).
 
-send_rate(Id, Pid, Rate) ->
-    gen_server:cast(?SERVER, {send_rate, Id, Pid, Rate}).
+send_rate(Id, Pid, Rate, Amount) ->
+    gen_server:cast(?SERVER, {send_rate, Id, Pid, Rate, Amount}).
+
+global_rate() ->
+    gen_server:call(?SERVER, global_rate).
 
 %%====================================================================
 %% gen_server callbacks
@@ -70,7 +79,9 @@ init([]) ->
 					 {keypos, #rate_mgr.pid}]),
     StTid = ets:new(etorrent_peer_state, [set, protected, named_table,
 					 {keypos, #peer_state.pid}]),
-    {ok, #state{ recv = RTid, send = STid, state = StTid}}.
+    {ok, #state{ recv = RTid, send = STid, state = StTid,
+		 global_recv = etorrent_rate:init(?RATE_FUDGE),
+		 global_send = etorrent_rate:init(?RATE_FUDGE)}}.
 
 %%--------------------------------------------------------------------
 %% Function: %% handle_call(Request, From, State) -> {reply, Reply, State} |
@@ -81,6 +92,10 @@ init([]) ->
 %%                                      {stop, Reason, State}
 %% Description: Handling call messages
 %%--------------------------------------------------------------------
+handle_call(global_rate, _From, S) ->
+    #state { global_recv = GR, global_send = GS } = S,
+    Reply = { GR#peer_rate.rate, GS#peer_rate.rate },
+    {reply, Reply, S};
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -94,9 +109,9 @@ handle_call(_Request, _From, State) ->
 handle_cast({What, Id, Pid}, S) ->
     ok = alter_state(What, Id, Pid),
     {noreply, S};
-handle_cast({What, Id, Who, Rate}, S) ->
-    ok = alter_state(What, Id, Who, Rate),
-    {noreply, S};
+handle_cast({What, Id, Who, Rate, Amount}, S) ->
+    NS = alter_state(What, Id, Who, Rate, Amount, S),
+    {noreply, NS};
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
@@ -166,11 +181,19 @@ alter_record(What, R) ->
 	    R#peer_state { interest_state = not_interested }
     end.
 
-alter_state(What, Id, Who, Rate) ->
-    T = case What of
-	    recv_rate -> etorrent_recv_state;
-	    send_rate -> etorrent_send_state
-	end,
+alter_state(What, Id, Who, Rate, Amount, S) ->
+    {T, NS} = case What of
+		  recv_rate -> NR = etorrent_rate:update(
+				      S#state.global_recv,
+				      Amount),
+			       { etorrent_recv_state,
+				 S#state { global_recv = NR }};
+		  send_rate -> NR = etorrent_rate:update(
+				      S#state.global_send,
+				      Amount),
+			       { etorrent_send_state,
+				 S#state { global_send = NR }}
+	      end,
     _R = case ets:lookup(T, {Id, Who}) of
 	[] ->
 	    ets:insert(T,
@@ -180,5 +203,5 @@ alter_state(What, Id, Who, Rate) ->
 	[R] ->
 	    ets:insert(T, R#rate_mgr { rate = Rate })
     end,
-    ok.
+    NS.
 
