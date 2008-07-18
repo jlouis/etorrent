@@ -156,7 +156,7 @@ alter_state(What, Id, Pid) ->
 
 alter_record(What, R) ->
     case What of
-	choked ->
+	choke ->
 	    R#peer_state { choke_state = choked };
 	unchoke ->
 	    R#peer_state { choke_state = unchoked };
