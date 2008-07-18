@@ -6,41 +6,9 @@
 --   Keep the style please. Can be read with emacs org-mode
 ----------------------------------------------------------------------
 
-* Implement graceful stopping of the etorrent application [Milestone: 1.0]
-   The provisioning is there in OTP applications. We just need to
-   leverage and use it.
-
-* Make shutdown strategies right [Milestone: 1.0]
-   Currently the shutdown strategies and cleanup strategies are wrong;
-   for an explanation, see
-
-   http://www.erlang.org/doc/design_principles/gen_server_concepts.html#2.6
-
-   This should be fixed. Also note the t_peer_recv and t_peer_send
-   might be living in an unhealthy relationship (send is a start_link
-   on recv) and that this ought to be cleaned up, eventually by
-   hooking both to a common ancestor supervisor (The overhead of doing
-   so is not measurable).
-
 * Who clean up what? [Milestone: 1.0]
    Go through each table and decide who "owns" the right to clean it
    up. It should definitely be checked.
-
-* Disconnect from seeders [Milestone 1.0]
-   Disconnect from seeders.
-
-   While here, also check that we remember to report we have all of
-   the torrent.
-
-* Eradicate XXX and TODO [Milestone 1.0]
-   Go through the code and remove all XXX and TODOs remaining
-   there. There are a few that have been added when I find something
-   disgusting in the code base.
-
-* What should we do about bad peers? [Milestone: 1.0]
-   Currently bad peers are those which are already connected. We ought
-   to keep a list of baddies and blacklist them for some time if we
-   don't like them anymore.
 
 * etorrent_t_sup: Just start everything right away? [Milestone: 1.1]
    Rather than having the code start things one at a time from the
