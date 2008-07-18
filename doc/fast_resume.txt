@@ -1,0 +1,21 @@
+Fast resume support for etorrent:
+
+* First, we should get etorrent to understand that there are mnesia
+  tables which are being disk-logged rather than being in RAM.
+
+* Then we should construct a process which periodically checks the
+  current state of torrents, builds their bitfields and adds them to
+  the table that is disk-logged.
+
+  - Every 5 minute we go through the #piece/#torrent/#tracking_map.
+
+  - Build a bitfield for each.
+
+  - Store the bitfield together with what torrent that bitfield is
+    for.
+
+  - Prune bitfields which has no torrents.
+
+* Finally, the fs_checker should use this information when starting.
+
+* And then, everything should be checked for odd errors.

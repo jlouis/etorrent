@@ -358,7 +358,7 @@ handle_message({bitfield, BitField}, S) ->
 		not_interested ->
 		    {ok, S#state{piece_set = PieceSet}};
 		invalid_piece ->
-		    {stop, {invalid_pieces, S#state.remote_peer_id}, S}
+		    {stop, {invalid_piece_2, S#state.remote_peer_id}, S}
 	    end;
 	N when is_integer(N) ->
 	    %% This is a bad peer. Kill him!
