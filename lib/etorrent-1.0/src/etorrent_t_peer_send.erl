@@ -176,10 +176,12 @@ handle_info(Msg, S) ->
 handle_cast(choke, S) when S#state.choke == true ->
     {noreply, S, 0};
 handle_cast(choke, S) when S#state.choke == false ->
+    ok = etorrent_rate_mgr:local_choke(S#state.torrent_id, S#state.parent),
     send_message(choke, S#state{choke = true, piece_cache = none});
 handle_cast(unchoke, S) when S#state.choke == false ->
     {noreply, S, 0};
 handle_cast(unchoke, S) when S#state.choke == true ->
+    ok = etorrent_rate_mgr:local_unchoke(S#state.torrent_id, S#state.parent),
     send_message(unchoke, S#state{choke = false,
 				  request_queue = queue:new()});
 handle_cast({bitfield, BF}, S) ->
