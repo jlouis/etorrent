@@ -91,7 +91,7 @@ init([OurPeerId, PeerGroup, InfoHash,
 		 file_system_pid = FileSystemPid}}.
 
 handle_call({new_incoming_peer, IP, Port}, _From, S) ->
-    case is_bad_peer(IP, Port, S) of
+    case etorrent_bad_peer_mgr:is_bad_peer(IP, Port, S#state.torrent_id) of
 	true ->
 	    {reply, bad_peer, S};
 	false ->
@@ -236,7 +236,7 @@ fill_peers(N, S) ->
 	    {ok, S};
 	[{IP, Port} | R] ->
 	    % Possible peer. Check it.
-	    case is_bad_peer(IP, Port, S) of
+	    case etorrent_bad_peer_mgr:is_bad_peer(IP, Port, S#state.torrent_id) of
 		true ->
 		    fill_peers(N, S#state{available_peers = R});
 		false ->
@@ -270,11 +270,6 @@ spawn_new_peer(IP, Port, N, S) ->
 	    fill_peers(N-1, S#state { num_peers = S#state.num_peers +1,
 				      opt_unchoke_chain = NewChain})
     end.
-
-is_bad_peer(IP, Port, S) ->
-    etorrent_peer:connected(IP, Port, S#state.torrent_id).
-
-
 
 %%--------------------------------------------------------------------
 %% Function: rechoke(State) -> ok
