@@ -17,10 +17,12 @@
 %% API
 -export([start_link/0,
 
-	choke/2, unchoke/2, interested/2, not_interested/2,
-	recv_rate/4, send_rate/4,
+	 choke/2, unchoke/2, interested/2, not_interested/2,
+	 local_choke/2, local_unchoke/2,
 
-	global_rate/0]).
+	 recv_rate/4, send_rate/4,
+
+	 global_rate/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -50,6 +52,8 @@ choke(Id, Pid) -> gen_server:cast(?SERVER, {choke, Id, Pid}).
 unchoke(Id, Pid) -> gen_server:cast(?SERVER, {unchoke, Id, Pid}).
 interested(Id, Pid) -> gen_server:cast(?SERVER, {interested, Id, Pid}).
 not_interested(Id, Pid) -> gen_server:cast(?SERVER, {not_interested, Id, Pid}).
+local_choke(Id, Pid) -> gen_server:cast(?SERVER, {local_choke, Id, Pid}).
+local_unchoke(Id, Pid) -> gen_server:cast(?SERVER, {local_unchoke, Id, Pid}).
 
 recv_rate(Id, Pid, Rate, Amount) ->
     gen_server:cast(?SERVER, {recv_rate, Id, Pid, Rate, Amount}).
@@ -161,7 +165,8 @@ alter_state(What, Id, Pid) ->
 	      alter_record(What,
 			   #peer_state { pid = {Id, Pid},
 					 choke_state = choked,
-					 interest_state = not_interested})),
+					 interest_state = not_interested,
+					 local_choke = true})),
 	    erlang:monitor(process, Pid);
 	[R] ->
 	    ets:insert(etorrent_peer_state,
@@ -178,7 +183,11 @@ alter_record(What, R) ->
 	interested ->
 	    R#peer_state { interest_state = interested };
 	not_interested ->
-	    R#peer_state { interest_state = not_interested }
+	    R#peer_state { interest_state = not_interested };
+	local_choke ->
+	    R#peer_state { local_choke = true };
+	local_unchoke ->
+	    R#peer_state { local_choke = false}
     end.
 
 alter_state(What, Id, Who, Rate, Amount, S) ->

@@ -209,15 +209,11 @@ handle_cast({complete_handshake, _ReservedBytes, Socket, RemotePeerId}, S) ->
 	{error, stop} -> {stop, normal, S}
     end;
 handle_cast(choke, S) ->
-    {atomic, _} = etorrent_peer:statechange(self(), local_choking),
     etorrent_t_peer_send:choke(S#state.send_pid),
     {noreply, S, 0};
 handle_cast(unchoke, S) ->
-    case etorrent_peer:statechange(self(), local_unchoking) of
-	{atomic, _} -> etorrent_t_peer_send:unchoke(S#state.send_pid),
-		       {noreply, S, 0};
-	{aborted, _} -> {stop, normal, S}
-    end;
+    etorrent_t_peer_send:unchoke(S#state.send_pid),
+    {noreply, S, 0};
 handle_cast(interested, S) ->
     {noreply, statechange_interested(S, true), 0};
 handle_cast({send_have_piece, PieceNumber}, S) ->

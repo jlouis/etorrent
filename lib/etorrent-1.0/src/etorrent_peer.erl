@@ -11,8 +11,7 @@
 -include("etorrent_mnesia_table.hrl").
 
 %% API
--export([new/4, all/1, delete/1, statechange/2, connected/3,
-	 ip_port/1, local_unchoked/1, select/1]).
+-export([new/4, all/1, delete/1, connected/3, ip_port/1, select/1]).
 
 %%====================================================================
 %% API
@@ -46,39 +45,6 @@ delete(Pid) when is_pid(Pid) ->
     mnesia:dirty_delete(peer, Pid).
 
 %%--------------------------------------------------------------------
-%% Function: statechange(Id, What) -> transaction
-%%           Id ::= none | integer()
-%% Description: Alter all peers matching torrent Id by What. The 'none'
-%%   case allows us to gracefully handle some corner cases.
-%%--------------------------------------------------------------------
-statechange(none, _What) -> {atomic, ok};
-statechange(Id, What) when is_integer(Id) ->
-    mnesia:transaction(
-      fun () ->
-	      Q = qlc:q([P || P <- mnesia:table(peer),
-			      P#peer.torrent_id =:= Id]),
-	      lists:foreach(fun (R) ->
-				    NR = alter_state(R, What),
-				    mnesia:write(NR)
-			    end,
-			    qlc:e(Q))
-      end);
-
-%%--------------------------------------------------------------------
-%% Function: statechange(Pid, What) -> transaction
-%% Description: Alter peer identified by Pid by What
-%%--------------------------------------------------------------------
-statechange(Peer, What) when is_record(Peer, peer) ->
-    statechange(Peer#peer.pid, What);
-statechange(Pid, What) when is_pid(Pid) ->
-    F = fun () ->
-		[Peer] = mnesia:read(peer, Pid, write),
-		NP = alter_state(Peer, What),
-		mnesia:write(NP)
-	end,
-    mnesia:transaction(F).
-
-%%--------------------------------------------------------------------
 %% Function: connected(IP, Port, Id) -> bool()
 %% Description: Returns true if we are already connected to this peer.
 %%--------------------------------------------------------------------
@@ -108,34 +74,6 @@ all(Id) ->
 select(Pid) when is_pid(Pid) ->
     mnesia:dirty_read(peer, Pid).
 
-%%--------------------------------------------------------------------
-%% Function: local_unchoked(P) -> bool() | none
-%%           P ::= pid()
-%% Description: Predicate: P is unchoked locally. If the peer can't be
-%%   found, true is returned.
-%%--------------------------------------------------------------------
-local_unchoked(P) ->
-    case mnesia:dirty_read(peer, P) of
-	[] -> true;
-	[R] -> case R#peer.local_c_state of
-		   choked -> false;
-		   unchoked -> true
-	       end
-    end.
-
 %%====================================================================
 %% Internal functions
 %%====================================================================
-
-%%--------------------------------------------------------------------
-%% Function: alter_state(Row, What) -> NewRow
-%% Description: Process Row and change it according to a set of valid
-%%   transmutations.
-%%--------------------------------------------------------------------
-alter_state(Peer, What) ->
-    case What of
-	local_choking ->
-	    Peer#peer { local_c_state = choked };
-	local_unchoking ->
-	    Peer#peer { local_c_state = unchoked }
-    end.

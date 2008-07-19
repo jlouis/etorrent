@@ -335,7 +335,7 @@ calculate_num_downloaders(S) ->
     end.
 
 advance_optimistic_unchoke(S) ->
-    NewChain = move_cyclic_chain(S#state.opt_unchoke_chain),
+    NewChain = move_cyclic_chain(S#state.opt_unchoke_chain, S),
     case NewChain of
 	[] ->
 	    {ok, S}; %% No peers yet
@@ -345,11 +345,18 @@ advance_optimistic_unchoke(S) ->
 			   optimistic_unchoke_pid = H }}
     end.
 
-move_cyclic_chain([]) -> [];
-move_cyclic_chain(Chain) ->
-    {Front, Back} = lists:splitwith(fun etorrent_peer:local_unchoked/1, Chain),
+move_cyclic_chain([], _S) -> [];
+move_cyclic_chain(Chain, S) ->
+    F = fun (P) -> local_unchoked(P, S#state.torrent_id) end,
+    {Front, Back} = lists:splitwith(F, Chain),
     %% Advance chain
     Back ++ Front.
+
+local_unchoked(Pid, TorrentId) ->
+    case ets:lookup(etorrent_peer_state, {TorrentId, Pid}) of
+	[] -> true;
+	[P] -> P#peer_state.local_choke =:= true
+    end.
 
 insert_new_peer_into_chain(Pid, Chain) ->
     Length = length(Chain),

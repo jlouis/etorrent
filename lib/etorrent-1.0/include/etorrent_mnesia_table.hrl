@@ -33,8 +33,7 @@
 -record(peer, {pid, % We identify each peer with it's pid.
 	       ip,  % Ip of peer in question
 	       port, % Port of peer in question
-	       torrent_id, % (IDX) Torrent Id this peer belongs to
-	       local_c_state = choked}). % true if we are choking remote
+	       torrent_id}). % (IDX) Torrent Id this peer belongs to
 
 %% Individual pieces are represented via the piece record
 -record(piece, {idpn, % {Id, PieceNumber} pair identifying the piece
