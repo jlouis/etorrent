@@ -8,9 +8,7 @@
 -module(etorrent_date).
 
 %% API
--export([
-	 now_add/2, now_add_seconds/2,
-	 now_subtract/2]).
+-export([now_subtract_seconds/2]).
 
 %%====================================================================
 %% API
@@ -21,34 +19,13 @@
 %%          Megasecs = Secs = Millisecs = integer()
 %% Description: Subtract a time delta in millsecs from a now() triple
 %%--------------------------------------------------------------------
-now_subtract({_Megasecs, _Secs, _Millsecs}, _Sub) ->
-    todo.
-
-%%--------------------------------------------------------------------
-%% Function: now_add(NT, Millisecs) -> NT
-%% Args:    NT ::= {Megasecs, Secs, Millisecs}
-%%          Megasecs = Secs = Millisecs = integer()
-%% Description: Add a time delta in millsecs from a now() triple
-%%--------------------------------------------------------------------
-now_add({Megasecs, Secs, Millisecs}, Add) ->
-    case Millisecs + Add of
-	N when N < 1000 ->
-	    {Megasecs, Secs, Millisecs + Add};
+now_subtract_seconds({Megasecs, Secs, Ms}, Subsecs) ->
+    case Secs - Subsecs of
+	N when N >= 0 ->
+	    {Megasecs, N, Ms};
 	N ->
-	    case Secs + (N div 1000) of
-		K when K < 1000000 ->
-		    {Megasecs, K, N rem 1000};
-		K ->
-		    {Megasecs + (K div 1000000), (K rem 1000000), N rem 1000}
-	    end
-    end.
-
-now_add_seconds({Megasecs, Secs, Millisecs}, Add) ->
-    case Secs + Add of
-	K when K < 1000000 ->
-	    {Megasecs, K, Millisecs};
-	K ->
-	    {Megasecs + (K div 1000000), K rem 1000000, Millisecs}
+	    Needed = abs(N) div 1000000 + 1,
+	    {Megasecs - Needed, N + (Needed * 1000000), Ms}
     end.
 
 %%====================================================================
