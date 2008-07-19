@@ -112,9 +112,9 @@ handle_cast(_Msg, State) ->
 handle_info(cleanup_table, S) ->
     Bound = etorrent_time:now_subtract_seconds(now(), ?GRACE_TIME),
     _N = ets:select_delete(etorrent_bad_peer,
-			   [{#bad_peer { last_offense='$1', _='_'},
-			     [{'<','$1',Bound}],
-			     []}]),
+			   [{#bad_peer { last_offense = '$1', _='_'},
+			     [{'<','$1',{Bound}}],
+			     ['$_']}]),
     {noreply, S};
 handle_info(_Info, State) ->
     {noreply, State}.
