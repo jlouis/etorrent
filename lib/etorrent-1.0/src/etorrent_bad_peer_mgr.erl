@@ -22,7 +22,8 @@
 
 -define(SERVER, ?MODULE).
 -define(DEFAULT_BAD_COUNT, 2).
--define(GRACE_TIME, timer:seconds(900)).
+-define(GRACE_TIME, 900).
+-define(CHECK_TIME, timer:seconds(300)).
 
 %%====================================================================
 %% API
@@ -53,7 +54,7 @@ enter_peer(IP, Port) ->
 %%--------------------------------------------------------------------
 init([]) ->
     process_flag(trap_exit, true),
-    _Tref = timer:send_interval(?GRACE_TIME, self(), cleanup_table),
+    _Tref = timer:send_interval(?CHECK_TIME, self(), cleanup_table),
     _Tid = ets:new(etorrent_bad_peer, [set, protected, named_table,
 				       {keypos, #bad_peer.ipport}]),
     {ok, #state{}}.
@@ -109,7 +110,9 @@ handle_cast(_Msg, State) ->
 %% Description: Handling all non call/cast messages
 %%--------------------------------------------------------------------
 handle_info(cleanup_table, S) ->
-    %% TODO: Dig old offenders up and free them from the prison.
+    Bound = etorrent_time:subtract_now_seconds(now(), ?GRACE_TIME),
+    true = ets:match_select(etorrent_bad_peer,
+			    [{{bad_peer,'_','_','$1'},[{'<','$1',Bound}],[]}]),
     {noreply, S};
 handle_info(_Info, State) ->
     {noreply, State}.
