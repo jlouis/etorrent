@@ -40,6 +40,9 @@ init([]) ->
     RateManager = {rate_manager,
 		   {etorrent_rate_mgr, start_link, []},
 		   permanent, 5000, worker, [etorrent_rate_mgr]},
+    PieceManager = {etorrent_piece_mgr,
+		    {etorrent_piece_mgr, start_link, []},
+		    permanent, 15000, worker, [etorrent_piece_mgr]},
     Listener = {listener,
 		{etorrent_listener, start_link, []},
 		permanent, 2000, worker, [etorrent_listener]},
@@ -57,8 +60,9 @@ init([]) ->
 		   transient, infinity, supervisor, [etorrent_t_pool_sup]},
 
     {ok, {{one_for_all, 1, 60},
-	  [EventManager, BadPeerMgr, FastResume, RateManager, Listener,
-	   AcceptorSup, DirWatcherSup, TorrentMgr, TorrentPool]}}.
+	  [EventManager, BadPeerMgr, FastResume, PieceManager,
+	   RateManager, Listener, AcceptorSup, DirWatcherSup, TorrentMgr,
+	   TorrentPool]}}.
 
 %%====================================================================
 %% Internal functions
