@@ -379,15 +379,15 @@ handle_endgame_got_chunk({Index, Offset, Len}, S) ->
 					Index,
 					Offset,
 					Len),
-	    etorrent_chunk:endgame_remove_chunk(S#state.send_pid,
-						S#state.torrent_id,
-						{Index, Offset, Len}),
+	    etorrent_chunk_mgr:endgame_remove_chunk(S#state.send_pid,
+						    S#state.torrent_id,
+						    {Index, Offset, Len}),
 	    S#state { remote_request_set = RS };
 	false ->
 	    %% Not an element in the request queue, ignore
-	    etorrent_chunk:endgame_remove_chunk(S#state.send_pid,
-						S#state.torrent_id,
-						{Index, Offset, Len}),
+	    etorrent_chunk_mgr:endgame_remove_chunk(S#state.send_pid,
+						    S#state.torrent_id,
+						    {Index, Offset, Len}),
 	    S
     end.
 
@@ -401,10 +401,10 @@ handle_got_chunk(Index, Offset, Data, Len, S) ->
 	{value, Ops} ->
 	    ok = etorrent_fs:write_chunk(S#state.file_system_pid,
 					 {Index, Data, Ops}),
-	    case etorrent_chunk:store_chunk(S#state.torrent_id,
-					    Index,
-					    {Offset, Len},
-					    self()) of
+	    case etorrent_chunk_mgr:store_chunk(S#state.torrent_id,
+						Index,
+						{Offset, Len},
+						self()) of
 		full ->
 		    etorrent_fs:check_piece(S#state.file_system_pid,
 					    S#state.peer_group_pid,
@@ -415,7 +415,7 @@ handle_got_chunk(Index, Offset, Data, Len, S) ->
 	    %% Tell other peers we got the chunk if in endgame
 	    case S#state.endgame of
 		true ->
-		    case etorrent_chunk:mark_fetched(S#state.torrent_id,
+		    case etorrent_chunk_mgr:mark_fetched(S#state.torrent_id,
 						     {Index, Offset, Len}) of
 			found ->
 			    ok;
@@ -443,7 +443,7 @@ handle_got_chunk(Index, Offset, Data, Len, S) ->
 %%--------------------------------------------------------------------
 unqueue_all_pieces(S) ->
     %% Put chunks back
-    {atomic, _} = etorrent_chunk:putback_chunks(self()),
+    ok = etorrent_chunk_mgr:putback_chunks(self()),
     %% Tell other peers that there is 0xf00d!
     etorrent_t_peer_group_mgr:broadcast_queue_pieces(S#state.peer_group_pid),
     %% Clean up the request set.
@@ -462,10 +462,10 @@ try_to_queue_up_pieces(S) ->
 	%% Optimization: Only replenish pieces modulo some N
 	N when is_integer(N) ->
 	    PiecesToQueue = ?HIGH_WATERMARK - N,
-	    case etorrent_chunk:pick_chunks(self(),
-					    S#state.torrent_id,
-					    S#state.piece_set,
-					    PiecesToQueue) of
+	    case etorrent_chunk_mgr:pick_chunks(self(),
+						S#state.torrent_id,
+						S#state.piece_set,
+						PiecesToQueue) of
 		not_interested ->
 		    {ok, statechange_interested(S, false)};
 		none_eligible ->
