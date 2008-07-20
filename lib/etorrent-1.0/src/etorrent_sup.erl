@@ -43,6 +43,9 @@ init([]) ->
     PieceManager = {etorrent_piece_mgr,
 		    {etorrent_piece_mgr, start_link, []},
 		    permanent, 15000, worker, [etorrent_piece_mgr]},
+    ChunkManager = {etorrent_chunk_mgr,
+		    {etorrent_chunk_mgr, start_link, []},
+		    permanent, 15000, worker, [etorrent_chunk_mgr]},
     Listener = {listener,
 		{etorrent_listener, start_link, []},
 		permanent, 2000, worker, [etorrent_listener]},
@@ -61,7 +64,7 @@ init([]) ->
 
     {ok, {{one_for_all, 1, 60},
 	  [EventManager, BadPeerMgr, FastResume, PieceManager,
-	   RateManager, Listener, AcceptorSup, DirWatcherSup, TorrentMgr,
+	   ChunkManager, RateManager, Listener, AcceptorSup, DirWatcherSup, TorrentMgr,
 	   TorrentPool]}}.
 
 %%====================================================================
