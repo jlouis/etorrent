@@ -137,7 +137,8 @@ store_chunk(Id, PieceNum, {Offset, Len}, Pid) ->
 		  case Present of
 		      fetched -> ok;
 		      true    -> ok;
-		      false   -> t_decrease_missing_chunks(Id, PieceNum)
+		      false   ->
+			  etorrent_piece:t_decrease_missing_chunks(Id, PieceNum)
 		  end
 	  end),
     Res.
@@ -436,13 +437,3 @@ t_update_chunk_assignment(Id, PieceNum, Pid,
 	    end
     end.
 
-t_decrease_missing_chunks(Id, PieceNum) ->
-    [P] = mnesia:read(piece, {Id, PieceNum}, write),
-    NewP = P#piece { left = P#piece.left - 1 },
-    mnesia:write(NewP),
-    case NewP#piece.left of
-	0 ->
-	    full;
-	N when is_integer(N) ->
-	    ok
-    end.

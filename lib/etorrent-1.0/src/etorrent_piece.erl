@@ -16,6 +16,8 @@
 	 select/1, select/2, num_not_fetched/1, delete/1, valid/2,
 	 interesting/2, bitfield/1, check_interest/2]).
 
+-export([t_decrease_missing_chunks/2]).
+
 -export([t_fetched/2]).
 
 %%====================================================================
@@ -198,6 +200,23 @@ num_not_fetched(Id) when is_integer(Id) ->
 	end,
     {atomic, N} = mnesia:transaction(F),
     N.
+
+%%--------------------------------------------------------------------
+%% Function: t_decrease_missing_chunks/2
+%% Args:       Id ::= integer() - torrent id
+%%             PieceNum ::= integer() - piece index
+%% Description: Decrease missing chunks for the {Id, PieceNum} pair.
+%%--------------------------------------------------------------------
+t_decrease_missing_chunks(Id, PieceNum) ->
+    [P] = mnesia:read(piece, {Id, PieceNum}, write),
+    NewP = P#piece { left = P#piece.left - 1 },
+    mnesia:write(NewP),
+    case NewP#piece.left of
+	0 ->
+	    full;
+	N when is_integer(N) ->
+	    ok
+    end.
 
 %%====================================================================
 %% Internal functions
