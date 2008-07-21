@@ -48,9 +48,3 @@
 -record(piece_diskstate, {filename, % Name of torrent
 			  state}). % state | {bitfield, BF}
 
-%% A mapping containing the chunks tracking
--record(chunk, {idt, % {id, piece_number, state} tuple
-		     % state is fetched | {assigned, Pid} | not_fetched,
-		chunks}). % {offset, size}
-
-

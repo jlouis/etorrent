@@ -18,7 +18,7 @@
 
 -export([t_decrease_missing_chunks/2]).
 
--export([t_fetched/2]).
+-export([dirty_fetched/2]).
 
 %%====================================================================
 %% API
@@ -177,13 +177,13 @@ find_interest_piece(Id, {Pn, Next}) ->
     end.
 
 %%--------------------------------------------------------------------
-%% Function: t_fetched/2
+%% Function: dirty_fetched/2
 %% Args:     Id ::= integer() - torrent id
 %%           PieceNum ::= integer() - piece index.
 %% Description: predicate. True if piece is fetched.
 %%--------------------------------------------------------------------
-t_fetched(Id, PieceNum) ->
-    [P] = mnesia:read(piece, {Id, PieceNum}, read),
+dirty_fetched(Id, PieceNum) ->
+    [P] = mnesia:dirty_read(piece, {Id, PieceNum}),
     P#piece.state =:= fetched.
 
 %%--------------------------------------------------------------------
