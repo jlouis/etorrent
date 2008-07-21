@@ -144,11 +144,11 @@ persist_disk_state([#tracking_map { id = Id,
 		   seeding ->
 		       etorrent_piece_diskstate:new(FName, seeding);
 		   leeching ->
-		       BitField = etorrent_piece:bitfield(Id),
+		       BitField = etorrent_piece_mgr:bitfield(Id),
 		       etorrent_piece_diskstate:new(FName, {bitfield, BitField});
 		   endgame ->
-		       BitField = etorrent_piece:bitfield(Id),
-	    etorrent_piece_diskstate:new(FName, {bitfield, BitField});
+		       BitField = etorrent_piece_mgr:bitfield(Id),
+		       etorrent_piece_diskstate:new(FName, {bitfield, BitField});
 		   unknown ->
 		       ok
 	       end,

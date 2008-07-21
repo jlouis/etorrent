@@ -40,6 +40,9 @@ init([]) ->
     RateManager = {rate_manager,
 		   {etorrent_rate_mgr, start_link, []},
 		   permanent, 5000, worker, [etorrent_rate_mgr]},
+    PieceManager = {etorrent_piece_mgr,
+		    {etorrent_piece_mgr, start_link, []},
+		    permanent, 15000, worker, [etorrent_piece_mgr]},
     ChunkManager = {etorrent_chunk_mgr,
 		    {etorrent_chunk_mgr, start_link, []},
 		    permanent, 15000, worker, [etorrent_chunk_mgr]},
@@ -60,7 +63,7 @@ init([]) ->
 		   transient, infinity, supervisor, [etorrent_t_pool_sup]},
 
     {ok, {{one_for_all, 1, 60},
-	  [EventManager, BadPeerMgr, FastResume,
+	  [EventManager, BadPeerMgr, FastResume, PieceManager,
 	   ChunkManager, RateManager, Listener, AcceptorSup, DirWatcherSup, TorrentMgr,
 	   TorrentPool]}}.
 

@@ -7,7 +7,7 @@
 %%%-------------------------------------------------------------------
 -module(etorrent_chunk_mgr).
 
--include("etorrent_mnesia_table.hrl").
+-include("etorrent_piece.hrl").
 -include("etorrent_chunk.hrl").
 
 -behaviour(gen_server).
@@ -48,7 +48,7 @@ mark_fetched(Id, {Index, Offset, Len}) ->
 %%--------------------------------------------------------------------
 %% Function: store_chunk(Id, PieceNum, {Offset, Len},
 %%                       Data, FSPid, PeerGroupPid, Pid) -> ok
-%% Description: Workhorse function. Store a chunk in the chunk mnesia table.
+%% Description: Workhorse function. Store a chunk in the chunk table.
 %%    If we have all chunks we need, then report the piece is full.
 %%--------------------------------------------------------------------
 store_chunk(Id, Index, {Offset, Len}, Pid) ->
@@ -135,7 +135,7 @@ handle_call({mark_fetched, Id, Index, Offset, _Len}, _From, S) ->
 	end,
     {reply, Res, S};
 handle_call({endgame_remove_chunk, Pid, Id, {Index, Offset, _Len}}, _From, S) ->
-    Res = case ets:lookup(etorrent_chuknk_table, {Id, Index, {assigned, Pid}}) of
+    Res = case ets:lookup(etorrent_chunk_tbl, {Id, Index, {assigned, Pid}}) of
 	      [] -> ok;
 	      [R] -> case lists:keydelete(Offset, 1, R#chunk.chunks) of
 			 [] -> ets:delete_object(etorrent_chunk_tbl, R);
@@ -150,18 +150,12 @@ handle_call({store_chunk, Id, Index, {Offset, Len}, Pid}, _From, S) ->
     %% Update chunk assignment
     update_chunk_assignment(Id, Index, Pid, {Offset, Len}),
     %% Countdown number of missing chunks
-    case Present of
-	fetched -> ok;
-	true    -> ok;
-	false   ->
-	    {atomic, _} =
-		mnesia:transaction(
-		  fun () ->
-			  etorrent_piece:t_decrease_missing_chunks(Id, Index)
-		  end),
-	    ok
-    end,
-    {reply, ok, S};
+    R = case Present of
+	    fetched -> ok;
+	    true    -> ok;
+	    false   -> etorrent_piece_mgr:decrease_missing_chunks(Id, Index)
+	end,
+    {reply, R, S};
 handle_call({pick_chunks, Pid, Id, Set, Remaining}, _From, S) ->
     R = case pick_chunks(pick_chunked, {Pid, Id, Set, [], Remaining, none}) of
 	    not_interested -> pick_chunks_endgame(Id, Set, Remaining, not_interested);
@@ -205,7 +199,7 @@ handle_cast({putback_chunks, Pid}, S) ->
 handle_cast({remove_chunks, Id, Idx}, S) ->
     MatchHead = #chunk { idt = {Id, Idx, '_'}, _ = '_'},
     ets:select_delete(etorrent_chunk_tbl,
-		      [{MatchHead, [], []}]),
+		      [{MatchHead, [], [true]}]),
     {noreply, S};
 handle_cast(_Msg, State) ->
     {noreply, State}.
@@ -354,33 +348,20 @@ chunkify(AtOffset, EatenBytes, Operations,
 	     Left - Size).
 
 %%--------------------------------------------------------------------
-%% Function: chunkify_piece(Id, PieceNum) -> {atomic, ok} | {aborted, Reason}
+%% Function: chunkify_piece(Id, PieceNum) -> ok
 %% Description: Given a PieceNumber, cut it up into chunks and add those
 %%   to the chunk table.
 %%--------------------------------------------------------------------
 chunkify_piece(Id, P) when is_record(P, piece) ->
     Chunks = chunkify(P#piece.files),
     NumChunks = length(Chunks),
-    {atomic, Res} = mnesia:transaction(
-		      fun () ->
-			      [S] = mnesia:read(piece, P#piece.idpn, write),
-			      case S#piece.state of
-				  not_fetched ->
-				      ok = mnesia:write(S#piece { state = chunked,
-								  left = NumChunks }),
-				      {ok, S#piece.id, S#piece.piece_number};
-				  _ -> already_there
-			      end
-		      end),
-    case Res of
-	{ok, Id, Index} ->
-	    ets:insert(etorrent_chunk_tbl,
-		       #chunk { idt = {Id, Index, not_fetched},
-				chunks = Chunks}),
-	    etorrent_torrent:decrease_not_fetched(Id);
-	already_there ->
-	    ok
-    end,
+    not_fetched = P#piece.state,
+    {Id, Idx} = P#piece.idpn,
+    ok = etorrent_piece_mgr:chunk(Id, Idx, NumChunks),
+    ets:insert(etorrent_chunk_tbl,
+	       #chunk { idt = {Id, Idx, not_fetched},
+			chunks = Chunks}),
+    etorrent_torrent:decrease_not_fetched(Id),
     ok.
 
 %%--------------------------------------------------------------------
@@ -390,7 +371,7 @@ chunkify_piece(Id, P) when is_record(P, piece) ->
 %%--------------------------------------------------------------------
 find_new_piece(_Id, none) -> none;
 find_new_piece(Id, {PN, Next}) ->
-    case mnesia:dirty_read(piece, {Id, PN}) of
+    case ets:lookup(etorrent_piece_tbl, {Id, PN}) of
 	[] ->
 	    find_new_piece(Id, gb_sets:next(Next));
 	[P] when P#piece.state =:= not_fetched ->
@@ -405,7 +386,7 @@ find_new_piece(Id, {PN, Next}) ->
 find_chunked_chunks(_Id, none, Res) ->
     Res;
 find_chunked_chunks(Id, {Pn, Next}, Res) ->
-    [P] = mnesia:dirty_read(piece, {Id, Pn}),
+    [P] = ets:lookup(etorrent_piece_tbl, {Id, Pn}),
     case P#piece.state of
 	chunked ->
 	    case ets:lookup(etorrent_chunk_tbl, {Id, Pn, not_fetched}) of
@@ -419,15 +400,16 @@ find_chunked_chunks(Id, {Pn, Next}, Res) ->
     end.
 
 update_fetched(Id, Index, {Offset, _Len}) ->
-    case etorrent_piece:dirty_fetched(Id, Index) of
+    case etorrent_piece_mgr:fetched(Id, Index) of
 	true -> fetched;
 	false ->
 	    case ets:lookup(etorrent_chunk_tbl,
-			    {Id, Index, fetchde}) of
+			    {Id, Index, fetched}) of
 		[] ->
 		    ets:insert(etorrent_chunk_tbl,
 			       #chunk { idt = {Id, Index, fetched},
-					chunks = [Offset]});
+					chunks = [Offset]}),
+		    false;
 		[R] ->
 		    case lists:member(Offset, R#chunk.chunks) of
 			true -> true;

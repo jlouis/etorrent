@@ -114,7 +114,7 @@ handle_info(cleanup_table, S) ->
     _N = ets:select_delete(etorrent_bad_peer,
 			   [{#bad_peer { last_offense = '$1', _='_'},
 			     [{'<','$1',{Bound}}],
-			     ['$_']}]),
+			     [true]}]),
     {noreply, S};
 handle_info(_Info, State) ->
     {noreply, State}.

@@ -41,7 +41,7 @@ new(Id, {{uploaded, U}, {downloaded, D}, {left, L}, {total, T}}, NPieces) ->
 					state = State })
 	end,
     {atomic, _} = mnesia:transaction(F),
-    Missing = etorrent_piece:num_not_fetched(Id),
+    Missing = etorrent_piece_mgr:num_not_fetched(Id),
     mnesia:dirty_update_counter(torrent_c_pieces, Id, Missing),
     ok.
 

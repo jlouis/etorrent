@@ -322,11 +322,11 @@ handle_message({cancel, Index, Offset, Len}, S) ->
     etorrent_t_peer_send:cancel(S#state.send_pid, Index, Offset, Len),
     {ok, S};
 handle_message({have, PieceNum}, S) ->
-    case etorrent_piece:valid(S#state.torrent_id, PieceNum) of
+    case etorrent_piece_mgr:valid(S#state.torrent_id, PieceNum) of
 	true ->
 	    PieceSet = gb_sets:add_element(PieceNum, S#state.piece_set),
 	    NS = S#state{piece_set = PieceSet},
-	    case etorrent_piece:interesting(S#state.torrent_id, PieceNum) of
+	    case etorrent_piece_mgr:interesting(S#state.torrent_id, PieceNum) of
 		true when S#state.local_interested =:= true ->
 		    try_to_queue_up_pieces(S);
 		true when S#state.local_interested =:= false ->
@@ -343,7 +343,7 @@ handle_message({bitfield, BitField}, S) ->
 	    Size = etorrent_torrent:num_pieces(S#state.torrent_id),
 	    {ok, PieceSet} =
 		etorrent_peer_communication:destruct_bitfield(Size, BitField),
-	    case etorrent_piece:check_interest(S#state.torrent_id, PieceSet) of
+	    case etorrent_piece_mgr:check_interest(S#state.torrent_id, PieceSet) of
 		interested ->
 		    {ok, statechange_interested(S#state {piece_set = PieceSet},
 						true)};
@@ -533,7 +533,7 @@ complete_connection_setup(S) ->
 						   S#state.file_system_pid,
 						   S#state.torrent_id,
 						   self()),
-    BF = etorrent_piece:bitfield(S#state.torrent_id),
+    BF = etorrent_piece_mgr:bitfield(S#state.torrent_id),
     etorrent_t_peer_send:bitfield(SendPid, BF),
 
     {noreply, S#state{send_pid = SendPid}, 0}.

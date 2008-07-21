@@ -35,14 +35,6 @@
 	       port, % Port of peer in question
 	       torrent_id}). % (IDX) Torrent Id this peer belongs to
 
-%% Individual pieces are represented via the piece record
--record(piece, {idpn, % {Id, PieceNumber} pair identifying the piece
-	        hash, % Hash of piece
-		id, % (IDX) Id of this piece owning this piece, again for an index
-		piece_number, % Piece Number of piece, replicated for fast qlc access
-		files, % File operations to manipulate piece
-		left = unknown, % Number of chunks left...
-		state}). % (IDX) state is: fetched | not_fetched | chunked
 
 %% Piece state on disk for persistence
 -record(piece_diskstate, {filename, % Name of torrent

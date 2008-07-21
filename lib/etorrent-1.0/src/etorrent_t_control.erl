@@ -11,7 +11,7 @@
 
 -behaviour(gen_fsm).
 
--include("etorrent_mnesia_table.hrl").
+-include("etorrent_piece.hrl").
 
 %% API
 -export([start_link/3, token/1, start/1, stop/1,
@@ -241,7 +241,7 @@ handle_info(Info, StateName, State) ->
 %% Reason. The return value is ignored.
 %%--------------------------------------------------------------------
 terminate(_Reason, _StateName, S) ->
-    {atomic, _} = etorrent_piece:delete(S#state.id),
+    ok = etorrent_piece_mgr:delete(S#state.id),
     etorrent_torrent:delete(S#state.id),
     ok = etorrent_path_map:delete(S#state.id),
     etorrent_tracking_map:delete(S#state.id),
@@ -259,7 +259,7 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 %%% Internal functions
 %%--------------------------------------------------------------------
 calculate_amount_left(Id) when is_integer(Id) ->
-    {atomic, Pieces} = etorrent_piece:select(Id),
+    Pieces = etorrent_piece_mgr:select(Id),
     lists:sum([size_piece(P) || P <- Pieces]).
 
 size_piece(#piece{state = fetched}) -> 0;

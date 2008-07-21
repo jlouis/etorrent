@@ -29,17 +29,22 @@ read_and_check_torrent(Id, SupervisorPid, Path) ->
     {ok, FilePieceList, NumberOfPieces} =
 	build_dictionary_on_files(Id, Torrent, Files),
 
-    %% Initialize piecemap
-    etorrent_piece:new(Id, FilePieceList),
-
     %% Check the contents of the torrent, updates the state of the piecemap
     FS = etorrent_t_sup:get_pid(SupervisorPid, fs),
     case etorrent_fast_resume:query_state(Id) of
 	seeding -> initialize_pieces_seed(Id, FilePieceList);
 	{bitfield, BF} -> initialize_pieces_from_bitfield(Id, BF, NumberOfPieces, FilePieceList);
-	leeching -> ok = initialize_pieces_from_disk(FS, Id, FilePieceList);
+	leeching ->
+	    ok = etorrent_piece_mgr:add_pieces(
+		   Id,
+		  [{PN, Hash, Fls, not_fetched} || {PN, {Hash, Fls}} <- FilePieceList]),
+	    ok = initialize_pieces_from_disk(FS, Id, FilePieceList);
 	%% XXX: The next one here could initialize with not_fetched all over
-	unknown -> ok = initialize_pieces_from_disk(FS, Id, FilePieceList)
+	unknown ->
+	    ok = etorrent_piece_mgr:add_pieces(
+		   Id,
+		  [{PN, Hash, Fls, not_fetched} || {PN, {Hash, Fls}} <- FilePieceList]),
+	    ok = initialize_pieces_from_disk(FS, Id, FilePieceList)
     end,
 
     {ok, Torrent, FS, Infohash, NumberOfPieces}.
@@ -74,36 +79,33 @@ ensure_file_sizes_correct(Files) ->
     ok.
 
 initialize_pieces_seed(Id, FilePieceList) ->
-    lists:foreach(
-      fun ({PN, {Hash, Files}}) ->
-	      ok = etorrent_piece:new(Id, PN, Hash, Files, fetched)
-      end,
-      FilePieceList).
+    etorrent_piece_mgr:add_pieces(
+      Id,
+      [{PN, Hash, Files, fetched} || {PN, {Hash, Files}} <- FilePieceList]).
 
 initialize_pieces_from_bitfield(Id, BitField, NumPieces, FilePieceList) ->
     {ok, Set} = etorrent_peer_communication:destruct_bitfield(NumPieces, BitField),
-    lists:foreach(
-      fun ({PN, {Hash, Files}}) ->
-	      ok = etorrent_piece:new(Id, PN, Hash, Files,
-				      case gb_sets:is_element(PN, Set) of
-					  true -> fetched;
-					  false -> not_fetched
-				      end)
-      end,
-      FilePieceList).
-
+    F = fun (PN) ->
+		case gb_sets:is_element(PN, Set) of
+		    true -> fetched;
+		    false -> not_fetched
+		end
+	end,
+    Pieces = [{PN, Hash, Files, F(PN)} || {PN, {Hash, Files}} <- FilePieceList],
+    etorrent_piece_mgr:add_pieces(Id, Pieces).
 
 initialize_pieces_from_disk(FS, Id, FilePieceList) ->
-    lists:foreach(
-      fun ({PN, {Hash, Files}}) ->
-	      {ok, Data} = etorrent_fs:read_piece(FS, PN),
-	      State = case Hash =:= crypto:sha(Data) of
-			  true -> fetched;
-			  false -> not_fetched
-		      end,
-	      ok = etorrent_piece:new(Id, PN, Hash, Files, State)
-      end,
-      FilePieceList).
+    F = fun(PN, Hash, Files) ->
+		{ok, Data} = etorrent_fs:read_piece(FS, PN),
+		State = case Hash =:= crypto:sha(Data) of
+			    true -> fetched;
+			    false -> not_fetched
+			end,
+		{PN, Hash, Files, State}
+	end,
+    etorrent_piece_mgr:add_pieces(
+      Id,
+      [F(PN, Hash, Files) || {PN, {Hash, Files}} <- FilePieceList]).
 
 build_dictionary_on_files(TorrentId, Torrent, Files) ->
     Pieces = etorrent_metainfo:get_pieces(Torrent),

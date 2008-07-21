@@ -9,6 +9,7 @@
 %%%-------------------------------------------------------------------
 -module(etorrent_fs).
 
+-include("etorrent_piece.hrl").
 -include("etorrent_mnesia_table.hrl").
 
 -behaviour(gen_server).
@@ -85,7 +86,7 @@ handle_call(Msg, _From, S) when S#state.file_pool =:= none ->
     handle_call(Msg, _From, S#state { file_pool = FSPool });
 handle_call({read_piece, PieceNum}, _From, S) ->
     [#piece { files = Operations}] =
-	etorrent_piece:select(S#state.torrent_id, PieceNum),
+	etorrent_piece_mgr:select(S#state.torrent_id, PieceNum),
     {ok, Data, NS} = read_pieces_and_assemble(Operations, [], S),
     {reply, {ok, Data}, NS}.
 
@@ -93,7 +94,7 @@ handle_cast(Msg, S) when S#state.file_pool =:= none ->
     FSPool = etorrent_t_sup:get_pid(S#state.supervisor, fs_pool),
     handle_cast(Msg, S#state { file_pool = FSPool });
 handle_cast({write_chunk, {Index, Data, Ops}}, S) ->
-    case etorrent_piece:select(S#state.torrent_id, Index) of
+    case etorrent_piece_mgr:select(S#state.torrent_id, Index) of
 	[P] when P#piece.state =:= fetched ->
 	    {noreply, S};
 	[_] ->
@@ -102,7 +103,7 @@ handle_cast({write_chunk, {Index, Data, Ops}}, S) ->
     end;
 handle_cast({check_piece, PeerGroupPid, Index}, S) ->
     [#piece { hash = Hash, files = Operations}] =
-	etorrent_piece:select(S#state.torrent_id, Index),
+	etorrent_piece_mgr:select(S#state.torrent_id, Index),
     {ok, Data, NS} = read_pieces_and_assemble(Operations, [], S),
     DataSize = size(Data),
     case Hash == crypto:sha(Data) of
@@ -111,20 +112,20 @@ handle_cast({check_piece, PeerGroupPid, Index}, S) ->
 		   S#state.torrent_id,
 		   [{subtract_left, DataSize},
 		   {add_downloaded, DataSize}]),
-	    {atomic, ok} = etorrent_piece:statechange(
-			     S#state.torrent_id,
-			     Index,
-			     fetched),
+	    ok = etorrent_piece_mgr:statechange(
+		   S#state.torrent_id,
+		   Index,
+		   fetched),
 	    %% Make sure there is no chunks left for this piece.
 	    ok = etorrent_chunk_mgr:remove_chunks(S#state.torrent_id, Index),
 	    ok = etorrent_t_peer_group_mgr:broadcast_have(PeerGroupPid,
 							  Index),
 	    {noreply, NS};
 	false ->
-	    {atomic, ok} =
-		etorrent_piece:statechange(S#state.torrent_id,
-					   Index,
-					   not_fetched),
+	    ok =
+		etorrent_piece_mgr:statechange(S#state.torrent_id,
+					       Index,
+					       not_fetched),
 	    %% TODO: Kill the 'fetched' part in the chunk table.
 	    %% TODO: Update 'left' correctly for the piece.
 	    {noreply, NS}
