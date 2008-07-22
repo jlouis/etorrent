@@ -5,7 +5,7 @@
 
 -export([stop/0, start/0, db_create_schema/0]).
 -export([start/2, stop/1]).
--export([help/0, h/0, list/0, l/0, show/0, s/0, show/1, s/1]).
+-export([help/0, h/0, list/0, l/0, show/0, s/0, show/1, s/1, check/1]).
 
 start() ->
     ok = application:start(crypto),
@@ -80,6 +80,13 @@ show(Item) when is_integer(Item) ->
     end;
 show(_) ->
     io:format("Item supplied is not an integer~n").
+
+%%--------------------------------------------------------------------
+%% Function: check(Item) -> io()
+%% Description: Check a torrents contents. For debugging.
+%%--------------------------------------------------------------------
+check(Id) ->
+    etorrent_t_manager:check_torrent(Id).
 
 %%--------------------------------------------------------------------
 %% Function: help() -> io()

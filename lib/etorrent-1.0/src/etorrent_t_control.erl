@@ -14,9 +14,11 @@
 -include("etorrent_piece.hrl").
 
 %% API
--export([start_link/3, token/1, start/1, stop/1,
+-export([start_link/3, start/1, stop/1,
 	torrent_checked/2, tracker_error_report/2, seed/1,
-	tracker_warning_report/2]).
+	tracker_warning_report/2,
+
+	check_torrent/1]).
 
 %% gen_fsm callbacks
 -export([init/1, handle_event/3, initializing/2, started/2,
@@ -50,14 +52,14 @@
 start_link(Id, Path, PeerId) ->
     gen_fsm:start_link(?MODULE, [self(), Id, Path, PeerId], []).
 
-token(Pid) ->
-    gen_fsm:send_event(Pid, token).
-
 stop(Pid) ->
     gen_fsm:send_event(Pid, stop).
 
 start(Pid) ->
     gen_fsm:send_event(Pid, start).
+
+check_torrent(Pid) ->
+    gen_fsm:send_event(Pid, check_torrent).
 
 torrent_checked(Pid, DiskState) ->
     gen_fsm:send_event(Pid, {torrent_checked, DiskState}).
@@ -162,6 +164,14 @@ initializing(timeout, S) ->
 
 started(stop, S) ->
     {stop, argh, S};
+started(check_torrent, S) ->
+    case etorrent_fs_checker:check_torrent(S#state.file_system_pid,
+					   S#state.id) of
+	[] -> {next_state, started, S};
+	Errors ->
+	    error_logger:info_report([errornous_pieces, {Errors}]),
+	    {next_state, started, S}
+    end;
 started({tracker_error_report, Reason}, S) ->
     io:format("Got tracker error: ~s~n", [Reason]),
     {next_state, started, S}.

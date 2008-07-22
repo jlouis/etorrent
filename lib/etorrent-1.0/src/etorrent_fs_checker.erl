@@ -8,14 +8,27 @@
 %%%-------------------------------------------------------------------
 -module(etorrent_fs_checker).
 
--include("etorrent_mnesia_table.hrl").
+-include("etorrent_piece.hrl").
 
 %% API
--export([read_and_check_torrent/3, load_torrent/1, ensure_file_sizes_correct/1]).
+-export([read_and_check_torrent/3, load_torrent/1, ensure_file_sizes_correct/1,
+	 check_torrent/2]).
 
 %%====================================================================
 %% API
 %%====================================================================
+
+%% Check the contents of torrent Id, backed by filesystem FS and report a
+%%   list of bad pieces.
+check_torrent(FS, Id) ->
+    Pieces = etorrent_piece_mgr:select(Id),
+    PieceCheck =
+	fun (#piece { idpn = {_, PN}, hash = Hash}) ->
+		{ok, Data} = etorrent_fs:read_piece(FS, PN),
+		Hash =/= crypto:sha(Data)
+	end,
+    [P#piece.idpn || P <- Pieces,
+		     PieceCheck(P)].
 
 read_and_check_torrent(Id, SupervisorPid, Path) ->
     %% Load the torrent
