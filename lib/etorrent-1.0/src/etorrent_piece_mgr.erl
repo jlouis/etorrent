@@ -187,11 +187,8 @@ handle_call({chunk, Id, Idx, N}, _From, S) ->
     ets:insert(etorrent_piece_tbl, P#piece { state = chunked, left = N}),
     {reply, ok, S};
 handle_call({decrease_missing, Id, Idx}, _From, S) ->
-    %% TODO: There are faster ets: functions for this
-    [P] = ets:lookup(etorrent_piece_tbl, {Id, Idx}),
-    NewP = P#piece { left = P#piece.left - 1},
-    ets:insert(etorrent_piece_tbl, NewP),
-    case NewP#piece.left of
+    case ets:update_counter(etorrent_piece_tbl, {Id, Idx},
+			    {#piece.left, -1}) of
 	0 -> {reply, full, S};
 	N when is_integer(N) -> {reply, ok, S}
     end;
