@@ -38,8 +38,8 @@ start_link() ->
 is_bad_peer(IP, Port, TorrentId) ->
     gen_server:call(?SERVER, {is_bad_peer, IP, Port, TorrentId}).
 
-enter_peer(IP, Port) ->
-    gen_server:cast(?SERVER, {enter_peer, IP, Port}).
+enter_peer(IP, Port, PeerId) ->
+    gen_server:cast(?SERVER, {enter_peer, IP, Port, PeerId}).
 
 %%====================================================================
 %% gen_server callbacks
@@ -87,16 +87,18 @@ handle_call(_Request, _From, State) ->
 %%                                      {stop, Reason, State}
 %% Description: Handling cast messages
 %%--------------------------------------------------------------------
-handle_cast({enter_peer, IP, Port}, S) ->
+handle_cast({enter_peer, IP, Port, PeerId}, S) ->
     case ets:lookup(etorrent_bad_peer, {IP, Port}) of
 	[] ->
 	    ets:insert(etorrent_bad_peer,
 		       #bad_peer { ipport = {IP, Port},
+				   peerid = PeerId,
 				   offenses = 1,
 				   last_offense = now() });
 	[P] ->
 	    ets:insert(etorrent_bad_peer,
 		       P#bad_peer { offenses = P#bad_peer.offenses + 1,
+				    peerid = PeerId,
 				    last_offense = now() })
     end,
     {noreply, S};
