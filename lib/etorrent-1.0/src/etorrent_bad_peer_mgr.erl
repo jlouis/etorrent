@@ -12,7 +12,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0, is_bad_peer/3, enter_peer/3]).
+-export([start_link/0, is_bad_peer/3, enter_peer/3, bad_peer_list/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -40,6 +40,9 @@ is_bad_peer(IP, Port, TorrentId) ->
 
 enter_peer(IP, Port, PeerId) ->
     gen_server:cast(?SERVER, {enter_peer, IP, Port, PeerId}).
+
+bad_peer_list() ->
+    ets:match(etorrent_bad_peer, '_').
 
 %%====================================================================
 %% gen_server callbacks
