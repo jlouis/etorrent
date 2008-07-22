@@ -18,7 +18,7 @@
 -include("etorrent_mnesia_table.hrl").
 
 %% API
--export([start_link/5, add_peers/2, broadcast_have/2, new_incoming_peer/3,
+-export([start_link/5, add_peers/2, broadcast_have/2, new_incoming_peer/4,
 	 broadcast_got_chunk/2, perform_rechoke/1,
 	 broadcast_queue_pieces/1]).
 
@@ -69,10 +69,10 @@ broadcast_queue_pieces(Pid) ->
 perform_rechoke(Pid) ->
     gen_server:cast(Pid, rechoke).
 
-new_incoming_peer(Pid, IP, Port) ->
+new_incoming_peer(Pid, IP, Port, PeerId) ->
     %% Set a pretty graceful timeout here as the peer_group can be pretty heavily
     %%  loaded at times. We have 5 acceptors by default anyway.
-    gen_server:call(Pid, {new_incoming_peer, IP, Port}, 15000).
+    gen_server:call(Pid, {new_incoming_peer, IP, Port, PeerId}, 15000).
 
 %%====================================================================
 %% gen_server callbacks
@@ -90,7 +90,10 @@ init([OurPeerId, PeerGroup, InfoHash,
 		 torrent_id = TorrentId,
 		 file_system_pid = FileSystemPid}}.
 
-handle_call({new_incoming_peer, IP, Port}, _From, S) ->
+handle_call({new_incoming_peer, _IP, _Port, PeerId}, _From, S)
+  when S#state.our_peer_id =:= PeerId ->
+    {reply, connect_to_ourselves, S};
+handle_call({new_incoming_peer, IP, Port, _PeerId}, _From, S) ->
     case is_bad_peer(IP, Port, S) of
 	true ->
 	    {reply, bad_peer, S};
