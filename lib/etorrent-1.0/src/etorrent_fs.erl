@@ -127,8 +127,8 @@ handle_cast({check_piece, PeerGroupPid, Index}, S) ->
 		etorrent_piece_mgr:statechange(S#state.torrent_id,
 					       Index,
 					       not_fetched),
-	    %% TODO: Kill the 'fetched' part in the chunk table.
-	    %% TODO: Update 'left' correctly for the piece.
+	    etorrent_chunk_mgr:remove_chunks(S#state.torrent_id, Index),
+	    %% 'left' will be updated when the piece is chunked again.
 	    {noreply, NS}
     end;
 handle_cast(stop, S) ->
