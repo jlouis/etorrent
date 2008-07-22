@@ -548,8 +548,6 @@ statechange_interested(S, What) ->
 %%             Packet ::= binary()
 %%             State  ::= #state()
 %% Description: Packet came in. Handle it.
-%% TODO: in R12B, this can probably utilize the fact that binary handling is
-%%   much better!
 %%--------------------------------------------------------------------
 handle_read_from_socket(S, <<>>) ->
     {noreply, S, 0};

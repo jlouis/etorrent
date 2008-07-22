@@ -1,4 +1,4 @@
->%%%-------------------------------------------------------------------
+%%%-------------------------------------------------------------------
 %%% File    : etorrent_t_peer_group.erl
 %%% Author  : Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
 %%% License : See COPYING

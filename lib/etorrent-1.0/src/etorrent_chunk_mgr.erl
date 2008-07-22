@@ -173,7 +173,6 @@ handle_call(_Request, _From, State) ->
 %%                                      {stop, Reason, State}
 %% Description: Handling cast messages
 %%--------------------------------------------------------------------
-%% TODO: call?
 handle_cast({putback_chunks, Pid}, S) ->
     MatchHead = #chunk { idt = {'_', '_', {assigned, Pid}}, _ = '_'},
     Rows = ets:select(etorrent_chunk_tbl, [{MatchHead, [], ['$_']}]),
@@ -195,7 +194,6 @@ handle_cast({putback_chunks, Pid}, S) ->
       end,
       Rows),
     {noreply, S};
-%% TODO: call?
 handle_cast({remove_chunks, Id, Idx}, S) ->
     MatchHead = #chunk { idt = {Id, Idx, '_'}, _ = '_'},
     ets:select_delete(etorrent_chunk_tbl,

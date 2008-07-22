@@ -38,7 +38,6 @@ init(Fudge) ->
 %%       RateSince ::= time() - Point in time where the rate has its
 %%                              basis
 %% Description: Update the rate by Amount.
-%% TODO: Fix timer units (microseconds/seconds/millisecs/etc).
 %%--------------------------------------------------------------------
 update(#peer_rate {rate = Rate,
 		   total = Total,

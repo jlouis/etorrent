@@ -65,10 +65,11 @@ read_piece(Pid, Pn) when is_integer(Pn) ->
 %% Description: Search the mnesia tables for the Piece with Index and
 %%   write it back to disk.
 %%--------------------------------------------------------------------
+%%% TODO: The PeerGroupPid could be obtained by the process itself.
 check_piece(Pid, PeerGroupPid, Index) ->
     gen_server:cast(Pid, {check_piece, PeerGroupPid, Index}).
 
-%%% TODO: The PeerGroupPid could be obtained by the process itself.
+
 write_chunk(Pid, {Index, Data, Ops}) ->
     gen_server:cast(Pid, {write_chunk, {Index, Data, Ops}}).
 
