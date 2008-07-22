@@ -86,7 +86,7 @@ init([Path, PeerId, Id]) ->
     PeerPool = {peer_pool_sup,
 		{etorrent_t_peer_pool_sup, start_link, []},
 		transient, infinity, supervisor, [etorrent_t_peer_pool_sup]},
-    {ok, {{one_for_all, 1, 60}, [FSPool, PeerPool, Control, FS]}}.
+    {ok, {{one_for_all, 1, 60}, [Control, FSPool, FS, PeerPool]}}.
 
 %%====================================================================
 %% Internal functions
