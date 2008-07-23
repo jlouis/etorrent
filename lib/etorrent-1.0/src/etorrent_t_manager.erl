@@ -94,5 +94,8 @@ generate_peer_id() ->
     PeerId.
 
 torrent_duplicate(F) ->
-    {atomic, [T]} = etorrent_tracking_map:select({filename, F}),
-    duplicate =:= T#tracking_map.state.
+    case etorrent_tracking_map:select({filename, F}) of
+	{atomic, []} -> false;
+	{atomic, [T]} -> duplicate =:= T#tracking_map.state
+    end.
+
