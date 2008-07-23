@@ -1,3 +1,5 @@
--record(rate_mgr, {pid,   % Pid of receiver
-		   rate}). % Rate
+-record(rate_mgr, {pid :: tuple(),   % Pid of receiver
+		   last_got :: integer() | 'unknown' | '_',
+		   rate :: float() | '_'}). % Rate
+
 
