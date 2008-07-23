@@ -22,7 +22,7 @@
 %% Description: Add a new torrent given by File with the Supervisor
 %%   pid as given to the database structure.
 %%--------------------------------------------------------------------
-new(File, Supervisor, Id) ->
+new(File, Supervisor, Id) when is_integer(Id), is_pid(Supervisor), is_list(File) ->
     mnesia:dirty_write(#tracking_map { id = Id,
 				       filename = File,
 				       supervisor_pid = Supervisor,
