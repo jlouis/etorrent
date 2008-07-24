@@ -308,13 +308,11 @@ handle_message(unchoke, S) ->
     try_to_queue_up_pieces(S#state{remote_choked = false});
 handle_message(interested, S) ->
     ok = etorrent_rate_mgr:interested(S#state.torrent_id, self()),
-    %%TODO: Only call this if the guy is *not* choked by us
-    etorrent_choker:perform_rechoke(),
+    ok = etorrent_t_peer_send:check_choke(S#state.send_pid),
     {ok, S};
 handle_message(not_interested, S) ->
     ok = etorrent_rate_mgr:not_interested(S#state.torrent_id, self()),
-    %%TODO: Only call this if the guy is *not* choked by us
-    etorrent_choker:perform_rechoke(),
+    ok = etorrent_t_peer_send:check_choke(S#state.send_pid),
     {ok, S};
 handle_message({request, Index, Offset, Len}, S) ->
     etorrent_t_peer_send:remote_request(S#state.send_pid, Index, Offset, Len),

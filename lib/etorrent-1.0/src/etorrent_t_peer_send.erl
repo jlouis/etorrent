@@ -15,9 +15,16 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/4, remote_request/4, cancel/4, choke/1, unchoke/1,
-	 local_request/2, not_interested/1, send_have_piece/2, stop/1,
-	 bitfield/2, interested/1]).
+-export([start_link/4,
+	 stop/1,
+	 check_choke/1,
+
+	 local_request/2, remote_request/4, cancel/4,
+	 choke/1, unchoke/1,
+
+	 not_interested/1, interested/1,
+	 send_have_piece/2,
+	 bitfield/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_info/2, terminate/2, code_change/3,
@@ -80,6 +87,8 @@ choke(Pid) ->
 %%--------------------------------------------------------------------
 unchoke(Pid) ->
     gen_server:cast(Pid, unchoke).
+
+check_choke(Pid) -> gen_server:cast(Pid, check_choke).
 
 %%--------------------------------------------------------------------
 %% Func: not_interested(Pid)
@@ -184,6 +193,11 @@ handle_cast(unchoke, S) when S#state.choke == true ->
     ok = etorrent_rate_mgr:local_unchoke(S#state.torrent_id, S#state.parent),
     send_message(unchoke, S#state{choke = false,
 				  request_queue = queue:new()});
+handle_cast(check_choke, S) when S#state.choke =:= true ->
+    {noreply, S, 0};
+handle_cast(check_choke, S) when S#state.choke =:= false ->
+    ok = etorrent_choker:perform_rechoke(),
+    {noreply, S, 0};
 handle_cast({bitfield, BF}, S) ->
     send_message({bitfield, BF}, S);
 handle_cast(not_interested, S) when S#state.interested =:= false ->
