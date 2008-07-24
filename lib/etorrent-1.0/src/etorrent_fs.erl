@@ -17,7 +17,7 @@
 %% API
 -export([start_link/2,
 	 stop/1, read_piece/2, size_of_ops/1,
-	 write_chunk/2, check_piece/3]).
+	 write_chunk/2, check_piece/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -65,9 +65,8 @@ read_piece(Pid, Pn) when is_integer(Pn) ->
 %% Description: Search the mnesia tables for the Piece with Index and
 %%   write it back to disk.
 %%--------------------------------------------------------------------
-%%% TODO: The PeerGroupPid could be obtained by the process itself.
-check_piece(Pid, PeerGroupPid, Index) ->
-    gen_server:cast(Pid, {check_piece, PeerGroupPid, Index}).
+check_piece(Pid, Index) ->
+    gen_server:cast(Pid, {check_piece, Index}).
 
 
 write_chunk(Pid, {Index, Data, Ops}) ->
@@ -102,7 +101,7 @@ handle_cast({write_chunk, {Index, Data, Ops}}, S) ->
 	    {ok, NS} = fs_write(Data, Ops, S),
 	    {noreply, NS}
     end;
-handle_cast({check_piece, PeerGroupPid, Index}, S) ->
+handle_cast({check_piece, Index}, S) ->
     [#piece { hash = Hash, files = Operations}] =
 	etorrent_piece_mgr:select(S#state.torrent_id, Index),
     {ok, Data, NS} = read_pieces_and_assemble(Operations, [], S),
@@ -119,8 +118,7 @@ handle_cast({check_piece, PeerGroupPid, Index}, S) ->
 		   fetched),
 	    %% Make sure there is no chunks left for this piece.
 	    ok = etorrent_chunk_mgr:remove_chunks(S#state.torrent_id, Index),
-	    ok = etorrent_t_peer_group_mgr:broadcast_have(PeerGroupPid,
-							  Index),
+	    broadcast_have_message(Index, S#state.torrent_id),
 	    {noreply, NS};
 	false ->
 	    ok =
@@ -241,5 +239,11 @@ stop_all_fs_processes(Dict) ->
 		  dict:to_list(Dict)),
     ok.
 
+broadcast_have_message(Index, TorrentId) ->
+    Peers = etorrent_peer:all(TorrentId),
+    lists:foreach(fun (Peer) ->
+			  etorrent_t_peer_recv:send_have_piece(Peer#peer.pid, Index)
+		  end,
+		  Peers).
 
 

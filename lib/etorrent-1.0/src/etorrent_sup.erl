@@ -11,7 +11,7 @@
 -behaviour(supervisor).
 
 %% API
--export([start_link/0]).
+-export([start_link/1]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -21,13 +21,14 @@
 %%====================================================================
 %% API functions
 %%====================================================================
-start_link() ->
-    supervisor:start_link({local, ?MODULE}, ?MODULE, []).
+start_link(PeerId) ->
+    supervisor:start_link({local, ?MODULE}, ?MODULE, [PeerId]).
 
 %%====================================================================
 %% Supervisor callbacks
 %%====================================================================
-init([]) ->
+init([PeerId]) ->
+    error_logger:info_report([etorrent_supervisor_starting, PeerId]),
     EventManager = {event_manager,
 		    {etorrent_event_mgr, start_link, []},
 		    permanent, 2000, worker, [etorrent_event_mgr]},
@@ -46,6 +47,9 @@ init([]) ->
     ChunkManager = {etorrent_chunk_mgr,
 		    {etorrent_chunk_mgr, start_link, []},
 		    permanent, 15000, worker, [etorrent_chunk_mgr]},
+    Choker = {choker,
+	      {etorrent_choker, start_link, [PeerId]},
+	      permanent, 5000, worker, [etorrent_choker]},
     Listener = {listener,
 		{etorrent_listener, start_link, []},
 		permanent, 2000, worker, [etorrent_listener]},
@@ -56,15 +60,15 @@ init([]) ->
 		  {etorrent_dirwatcher_sup, start_link, []},
 		  transient, infinity, supervisor, [etorrent_dirwatcher_sup]},
     TorrentMgr = {manager,
-		  {etorrent_t_manager, start_link, []},
+		  {etorrent_t_manager, start_link, [PeerId]},
 		  permanent, 2000, worker, [etorrent_t_manager]},
     TorrentPool = {torrent_pool_sup,
 		   {etorrent_t_pool_sup, start_link, []},
 		   transient, infinity, supervisor, [etorrent_t_pool_sup]},
 
     {ok, {{one_for_all, 1, 60},
-	  [EventManager, BadPeerMgr, FastResume, PieceManager,
-	   ChunkManager, RateManager, Listener, AcceptorSup, DirWatcherSup, TorrentMgr,
+	  [EventManager, BadPeerMgr, FastResume, RateManager, PieceManager,
+	   ChunkManager, Choker, Listener, AcceptorSup, DirWatcherSup, TorrentMgr,
 	   TorrentPool]}}.
 
 %%====================================================================

@@ -10,7 +10,7 @@
 -behaviour(supervisor).
 
 %% API
--export([start_link/6, add_sender/5]).
+-export([start_link/5, add_sender/5]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -24,11 +24,10 @@
 %% Function: start_link() -> {ok,Pid} | ignore | {error,Error}
 %% Description: Starts the supervisor
 %%--------------------------------------------------------------------
-start_link(LocalPeerId, InfoHash, FilesystemPid, GroupPid, Id, {IP, Port}) ->
+start_link(LocalPeerId, InfoHash, FilesystemPid, Id, {IP, Port}) ->
     supervisor:start_link(?MODULE, [LocalPeerId,
 				    InfoHash,
 				    FilesystemPid,
-				    GroupPid,
 				    Id,
 				    {IP, Port}]).
 
@@ -50,9 +49,9 @@ add_sender(Pid, Socket, FileSystemPid, Id, RecvPid) ->
 %% to find out about restart strategy, maximum restart frequency and child
 %% specifications.
 %%--------------------------------------------------------------------
-init([LocalPeerId, InfoHash, FilesystemPid, GroupPid, Id, {IP, Port}]) ->
+init([LocalPeerId, InfoHash, FilesystemPid, Id, {IP, Port}]) ->
     Reciever = {reciever, {etorrent_t_peer_recv, start_link,
-			  [LocalPeerId, InfoHash, FilesystemPid, GroupPid, Id, self(),
+			  [LocalPeerId, InfoHash, FilesystemPid, Id, self(),
 			   {IP, Port}]},
 		permanent, 15000, worker, [etorrent_t_peer_recv]},
     {ok, {{one_for_all, 0, 1}, [Reciever]}}.

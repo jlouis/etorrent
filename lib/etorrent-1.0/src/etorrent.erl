@@ -1,11 +1,14 @@
 -module(etorrent).
 -behaviour(application).
 
+-include("etorrent_version.hrl").
 -include("etorrent_mnesia_table.hrl").
 
 -export([stop/0, start/0, db_create_schema/0]).
 -export([start/2, stop/1]).
 -export([help/0, h/0, list/0, l/0, show/0, s/0, show/1, s/1, check/1]).
+
+-define(RANDOM_MAX_SIZE, 999999999999).
 
 start() ->
     ok = application:start(crypto),
@@ -16,7 +19,9 @@ start() ->
     application:start(etorrent).
 
 start(_Type, _Args) ->
-    etorrent_sup:start_link().
+    PeerId = generate_peer_id(),
+    {ok, Pid} = etorrent_sup:start_link(PeerId),
+    {ok, Pid}.
 
 stop() ->
     ok = application:stop(etorrent),
@@ -121,3 +126,7 @@ percent_complete(R) ->
     %% left / complete * 100 = % done
     (R#torrent.total - R#torrent.left) / R#torrent.total * 100.
 
+generate_peer_id() ->
+    Number = crypto:rand_uniform(0, ?RANDOM_MAX_SIZE),
+    Rand = io_lib:fwrite("~B----------", [Number]),
+    lists:flatten(io_lib:format("-ET~s-~12s", [?VERSION, Rand])).

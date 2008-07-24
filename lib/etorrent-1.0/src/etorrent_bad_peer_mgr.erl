@@ -73,12 +73,7 @@ init([]) ->
 %%--------------------------------------------------------------------
 %% A peer is bad if it has offended us or if it is already connected.
 handle_call({is_bad_peer, IP, Port, TorrentId}, _From, S) ->
-    Reply = case ets:lookup(etorrent_bad_peer, {IP, Port}) of
-	[] ->
-	    etorrent_peer:connected(IP, Port, TorrentId);
-	[P] ->
-	    P#bad_peer.offenses > ?DEFAULT_BAD_COUNT
-    end,
+    Reply = bad_peer(IP, Port, TorrentId),
     {reply, Reply, S};
 handle_call(_Request, _From, State) ->
     Reply = ok,
@@ -145,3 +140,11 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 %%% Internal functions
 %%--------------------------------------------------------------------
+
+bad_peer(IP, Port, TorrentId) ->
+    case ets:lookup(etorrent_bad_peer, {IP, Port}) of
+	[] ->
+	    etorrent_peer:connected(IP, Port, TorrentId);
+	[P] ->
+	    P#bad_peer.offenses > ?DEFAULT_BAD_COUNT
+    end.

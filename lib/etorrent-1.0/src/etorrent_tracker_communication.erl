@@ -13,7 +13,7 @@
 -include("etorrent_mnesia_table.hrl").
 
 %% API
--export([start_link/6, contact/1, stopped/1, completed/1, started/1]).
+-export([start_link/5, contact/1, stopped/1, completed/1, started/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -25,7 +25,6 @@
 		%% soft timer may be overridden if we want to change state.
 		soft_timer = none,
 		hard_timer = none,
-		peer_group_pid = none,
 	        url = none,
 	        info_hash = none,
 	        peer_id = none,
@@ -45,9 +44,9 @@
 %% Function: start_link() -> {ok,Pid} | ignore | {error,Error}
 %% Description: Starts the server
 %%--------------------------------------------------------------------
-start_link(ControlPid, PeerGroupPid, Url, InfoHash, PeerId, TorrentId) ->
+start_link(ControlPid, Url, InfoHash, PeerId, TorrentId) ->
     gen_server:start_link(?MODULE,
-			  [ControlPid, PeerGroupPid,
+			  [ControlPid,
 			    Url, InfoHash, PeerId, TorrentId],
 			  []).
 
@@ -91,13 +90,12 @@ completed(Pid) ->
 %%                         {stop, Reason}
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
-init([ControlPid, PeerGroupPid, Url, InfoHash, PeerId, TorrentId]) ->
+init([ControlPid, Url, InfoHash, PeerId, TorrentId]) ->
     {ok, HardRef} = timer:send_after(0, hard_timeout),
     {ok, SoftRef} = timer:send_after(timer:seconds(?DEFAULT_CONNECTION_TIMEOUT_INTERVAL),
 				     soft_timeout),
 
     {ok, #state{should_contact_tracker = false,
-		peer_group_pid = PeerGroupPid,
 		control_pid = ControlPid,
 		torrent_id = TorrentId,
 		url = Url,
@@ -216,8 +214,8 @@ handle_tracker_response(BC, none, {string, W}, S) ->
     handle_tracker_response(BC, none, none, S);
 handle_tracker_response(BC, none, none, S) ->
     %% Add new peers
-    etorrent_t_peer_group_mgr:add_peers(S#state.peer_group_pid,
-					response_ips(BC)),
+    etorrent_choker:add_peers(S#state.torrent_id,
+			      response_ips(BC)),
     %% Update the state of the torrent
     ok = etorrent_torrent:statechange(S#state.torrent_id,
 				      {tracker_report,
