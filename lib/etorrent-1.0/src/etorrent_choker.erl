@@ -41,6 +41,7 @@
 		       snubbed :: bool(),
 		       r_interest_state :: 'interested' | 'not_interested',
 		       r_choke_state :: 'choked' | 'unchoked' ,
+		       l_choke :: bool(),
 		       rate :: float() }).
 
 -define(SERVER, ?MODULE).
@@ -265,6 +266,8 @@ build_rechoke_info(Seeding, [Pid | Next]) ->
 					       PeerState#peer_state.interest_state,
 					     r_choke_state =
 					       PeerState#peer_state.choke_state,
+					     l_choke =
+					       PeerState#peer_state.local_choke,
 					     snubbed = Snubbed } |
 			     build_rechoke_info(Seeding, Next)]
 		    end;
@@ -295,19 +298,21 @@ advance_optimistic_unchoke(S) ->
 			   optimistic_unchoke_pid = H }}
     end.
 
-%%TODO: Fix cyclic chain move!
 move_cyclic_chain([]) -> [];
 move_cyclic_chain(Chain) ->
-    F = fun (P) -> local_unchoked(P, todo_move_cyclic_chain_all) end,
+    F = fun (Pid) ->
+		case etorrent_peer:select(Pid) of
+		    [] -> true;
+		    [P] -> T = etorrent_rate_mgr:select_state(
+				 P#peer.torrent_id,
+				 Pid),
+			   T#peer_state.interest_state =:= interested
+			       andalso T#peer_state.choke_state =:= choked
+		end
+	end,
     {Front, Back} = lists:splitwith(F, Chain),
     %% Advance chain
     Back ++ Front.
-
-local_unchoked(Pid, TorrentId) ->
-    case ets:lookup(etorrent_peer_state, {TorrentId, Pid}) of
-	[] -> true;
-	[P] -> P#peer_state.local_choke =:= true
-    end.
 
 insert_new_peer_into_chain(Pid, Chain) ->
     Length = length(Chain),
