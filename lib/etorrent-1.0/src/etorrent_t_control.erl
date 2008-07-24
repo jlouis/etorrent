@@ -33,7 +33,6 @@
 		parent_pid = none,
 		tracker_pid = none,
 		file_system_pid = none,
-		peer_group_pid = none,
 
 		disk_state = none,
 		available_peers = []}).
@@ -134,19 +133,10 @@ initializing(timeout, S) ->
 		    {total, etorrent_metainfo:get_length(Torrent)}},
 		   NumberOfPieces),
 
-	    %% And a process for controlling the peers for this torrent.
-	    {ok, PeerGroupPid} =
-		etorrent_t_sup:add_peer_group(
-		  S#state.parent_pid,
-		  S#state.peer_id,
-		  InfoHash,
-		  S#state.id),
-
 	    %% Start the tracker
 	    {ok, TrackerPid} =
 		etorrent_t_sup:add_tracker(
 		  S#state.parent_pid,
-		  PeerGroupPid,
 		  etorrent_metainfo:get_url(Torrent),
 		  etorrent_metainfo:get_infohash(Torrent),
 		  S#state.peer_id,
@@ -157,8 +147,7 @@ initializing(timeout, S) ->
 	    garbage_collect(),
 	    {next_state, started,
 	     S#state{file_system_pid = FSPid,
-		     tracker_pid = TrackerPid,
-		     peer_group_pid = PeerGroupPid}}
+		     tracker_pid = TrackerPid}}
 
     end.
 

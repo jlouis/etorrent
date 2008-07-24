@@ -15,7 +15,7 @@
 -include("etorrent_rate.hrl").
 
 %% API
--export([start_link/7, connect/3, choke/1, unchoke/1, interested/1,
+-export([start_link/6, connect/3, choke/1, unchoke/1, interested/1,
 	 send_have_piece/2, complete_handshake/4, endgame_got_chunk/2,
 	 queue_pieces/1, stop/1]).
 
@@ -46,7 +46,6 @@
 		 parent = none,
 
 		 file_system_pid = none,
-		 peer_group_pid = none,
 		 send_pid = none,
 
 		 rate = none,
@@ -64,10 +63,10 @@
 %% Function: start_link() -> {ok,Pid} | ignore | {error,Error}
 %% Description: Starts the server
 %%--------------------------------------------------------------------
-start_link(LocalPeerId, InfoHash, FilesystemPid, GroupPid, Id, Parent,
+start_link(LocalPeerId, InfoHash, FilesystemPid, Id, Parent,
 	  {IP, Port}) ->
     gen_server:start_link(?MODULE, [LocalPeerId, InfoHash,
-				    FilesystemPid, GroupPid, Id, Parent,
+				    FilesystemPid, Id, Parent,
 				    {IP, Port}], []).
 
 %%--------------------------------------------------------------------
@@ -145,7 +144,7 @@ queue_pieces(Pid) ->
 %%                         {stop, Reason}
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
-init([LocalPeerId, InfoHash, FilesystemPid, GroupPid, Id, Parent, {IP, Port}]) ->
+init([LocalPeerId, InfoHash, FilesystemPid, Id, Parent, {IP, Port}]) ->
     process_flag(trap_exit, true),
     {ok, TRef} = timer:send_interval(?RATE_UPDATE, self(), rate_update),
     ok = etorrent_peer:new(IP, Port, Id, self()),
@@ -155,7 +154,6 @@ init([LocalPeerId, InfoHash, FilesystemPid, GroupPid, Id, Parent, {IP, Port}]) -
        piece_set = gb_sets:new(),
        remote_request_set = gb_trees:empty(),
        info_hash = InfoHash,
-       peer_group_pid = GroupPid,
        torrent_id = Id,
        rate = etorrent_rate:init(?RATE_FUDGE),
        rate_timer = TRef,
@@ -309,11 +307,13 @@ handle_message(unchoke, S) ->
     try_to_queue_up_pieces(S#state{remote_choked = false});
 handle_message(interested, S) ->
     ok = etorrent_rate_mgr:interested(S#state.torrent_id, self()),
-    etorrent_t_peer_group_mgr:perform_rechoke(S#state.peer_group_pid),
+    %%TODO: Only call this if the guy is *not* choked by us
+    etorrent_choker:perform_rechoke(),
     {ok, S};
 handle_message(not_interested, S) ->
     ok = etorrent_rate_mgr:not_interested(S#state.torrent_id, self()),
-    etorrent_t_peer_group_mgr:perform_rechoke(S#state.peer_group_pid),
+    %%TODO: Only call this if the guy is *not* choked by us
+    etorrent_choker:perform_rechoke(),
     {ok, S};
 handle_message({request, Index, Offset, Len}, S) ->
     etorrent_t_peer_send:remote_request(S#state.send_pid, Index, Offset, Len),
@@ -410,9 +410,7 @@ handle_got_chunk(Index, Offset, Data, Len, S) ->
 						{Offset, Len},
 						self()) of
 		full ->
-		    etorrent_fs:check_piece(S#state.file_system_pid,
-					    S#state.peer_group_pid,
-					    Index);
+		    etorrent_fs:check_piece(S#state.file_system_pid, Index);
 		ok ->
 		    ok
 	    end,
@@ -424,9 +422,7 @@ handle_got_chunk(Index, Offset, Data, Len, S) ->
 			found ->
 			    ok;
 			assigned ->
-			    etorrent_t_peer_group_mgr:broadcast_got_chunk(
-			      S#state.peer_group_pid,
-			      {Index, Offset, Len})
+			    broadcast_got_chunk({Index, Offset, Len}, S#state.torrent_id)
 		    end;
 		false ->
 		    ok
@@ -449,7 +445,7 @@ unqueue_all_pieces(S) ->
     %% Put chunks back
     ok = etorrent_chunk_mgr:putback_chunks(self()),
     %% Tell other peers that there is 0xf00d!
-    etorrent_t_peer_group_mgr:broadcast_queue_pieces(S#state.peer_group_pid),
+    broadcast_queue_pieces(S#state.torrent_id),
     %% Clean up the request set.
     S#state{remote_request_set = gb_trees:empty()}.
 
@@ -595,4 +591,18 @@ handle_read_from_socket(S, Packet)
   when size(Packet) < S#state.packet_left, is_integer(S#state.packet_left) ->
     {noreply, S#state { packet_iolist = [Packet | S#state.packet_iolist],
 		        packet_left = S#state.packet_left - size(Packet) }, 0}.
+
+broadcast_queue_pieces(TorrentId) ->
+    Peers = etorrent_peer:all(TorrentId),
+    lists:foreach(fun (P) ->
+			  etorrent_t_peer_recv:queue_pieces(P#peer.pid)
+		  end,
+		  Peers).
+
+broadcast_got_chunk(Chunk, TorrentId) ->
+    Peers = etorrent_peer:all(TorrentId),
+    lists:foreach(fun (Peer) ->
+			  etorrent_t_peer_recv:endgame_got_chunk(Peer#peer.pid, Chunk)
+		  end,
+		  Peers).
 
