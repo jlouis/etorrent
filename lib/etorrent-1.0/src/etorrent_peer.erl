@@ -11,7 +11,9 @@
 -include("etorrent_mnesia_table.hrl").
 
 %% API
--export([new/5, all/1, delete/1, connected/3, ip_port/1, select/1]).
+-export([new/5, all/1, delete/1, connected/3, ip_port/1, select/1,
+
+	 statechange/2]).
 
 %%====================================================================
 %% API
@@ -26,6 +28,18 @@ new(IP, Port, TorrentId, Pid, State) ->
 			       port = Port,
 			       torrent_id = TorrentId,
 			       state = State}).
+
+%%--------------------------------------------------------------------
+%% Function: statechange(Pid, seeder) -> transaction
+%% Description: Change the peer to a seeder
+%%--------------------------------------------------------------------
+statechange(Pid, seeder) ->
+    {atomic, _} = mnesia:transaction(
+		    fun () ->
+			    [Row] = mnesia:read(peer, Pid, write),
+			    mnesia:write(Row#peer { state = seeding })
+		    end),
+    ok.
 
 %%--------------------------------------------------------------------
 %% Function: ip_port(Pid) -> {IP, Port}

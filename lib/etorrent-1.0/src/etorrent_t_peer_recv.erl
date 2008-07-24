@@ -27,6 +27,8 @@
 		 local_peer_id = none,
 		 info_hash = none,
 
+		 pieces_left,
+		 seeder = false,
 		 tcp_socket = none,
 
 		 remote_choked = true,
@@ -149,7 +151,9 @@ init([LocalPeerId, InfoHash, FilesystemPid, Id, Parent, {IP, Port}]) ->
     {ok, TRef} = timer:send_interval(?RATE_UPDATE, self(), rate_update),
     %% TODO: Update the leeching state to seeding when peer finished torrent.
     ok = etorrent_peer:new(IP, Port, Id, self(), leeching),
+    [T] = etorrent_torrent:select(Id),
     {ok, #state{
+       pieces_left = T#torrent.pieces,
        parent = Parent,
        local_peer_id = LocalPeerId,
        piece_set = gb_sets:new(),
@@ -324,7 +328,14 @@ handle_message({have, PieceNum}, S) ->
     case etorrent_piece_mgr:valid(S#state.torrent_id, PieceNum) of
 	true ->
 	    PieceSet = gb_sets:add_element(PieceNum, S#state.piece_set),
-	    NS = S#state{piece_set = PieceSet},
+	    Left = S#state.pieces_left - 1,
+	    case Left of
+		0 -> ok = etorrent_peer:statechange(self(), seeder);
+		_N -> ok
+	    end,
+	    NS = S#state{piece_set = PieceSet,
+			 pieces_left = Left,
+			 seeder = Left == 0},
 	    case etorrent_piece_mgr:interesting(S#state.torrent_id, PieceNum) of
 		true when S#state.local_interested =:= true ->
 		    try_to_queue_up_pieces(S);
@@ -344,12 +355,20 @@ handle_message({bitfield, BitField}, S) ->
 	    Size = etorrent_torrent:num_pieces(S#state.torrent_id),
 	    {ok, PieceSet} =
 		etorrent_peer_communication:destruct_bitfield(Size, BitField),
+	    Left = S#state.pieces_left - gb_sets:size(PieceSet),
+	    case Left of
+		0  -> ok = etorrent_peer:statechange(self(), seeder);
+		_N -> ok
+	    end,
 	    case etorrent_piece_mgr:check_interest(S#state.torrent_id, PieceSet) of
 		interested ->
-		    {ok, statechange_interested(S#state {piece_set = PieceSet},
+		    {ok, statechange_interested(S#state {piece_set = PieceSet,
+							 pieces_left = Left,
+							 seeder = Left == 0},
 						true)};
 		not_interested ->
-		    {ok, S#state{piece_set = PieceSet}};
+		    {ok, S#state{piece_set = PieceSet, pieces_left = Left,
+				 seeder = Left == 0}};
 		invalid_piece ->
 		    {stop, {invalid_piece_2, S#state.remote_peer_id}, S}
 	    end;
