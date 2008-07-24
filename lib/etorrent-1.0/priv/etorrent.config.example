@@ -4,9 +4,11 @@
 	 {logger_dir, "/var/log/etorrent"},
 	 {logger_fname, "etorrent.log"},
 
-	 {max_peers, 40},
+	 {max_peers, 400},
 	 {max_upload_slots, auto},
-	 {max_upload_rate, 175}]},
+	 {max_upload_rate, 175},
+
+	 {min_uploads, 2}]},
  {mnesia,
         [{dir, "/var/tmp/etorrent_session"}]},
  {kernel,

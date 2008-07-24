@@ -35,6 +35,14 @@
 		optimistic_unchoke_pid = none,
 		opt_unchoke_chain = []}).
 
+-record(rechoke_info, {pid :: pid(),
+		       kind :: 'seeding' | 'leeching',
+		       state :: 'seeding' | 'leeching' ,
+		       snubbed :: bool(),
+		       r_interest_state :: 'interested' | 'not_interested',
+		       r_choke_state :: 'choked' | 'unchoked' ,
+		       rate :: float() }).
+
 -define(SERVER, ?MODULE).
 -define(MAX_PEER_PROCESSES, 40).
 -define(ROUND_TIME, 10000).
@@ -223,52 +231,56 @@ spawn_new_peer(IP, Port, TorrentId, N, S) ->
 %% Description: Recalculate the choke/unchoke state of peers
 %%--------------------------------------------------------------------
 rechoke(S) ->
-    Table = etorrent_recv_state,
-    Peers = select_fastest(todo_rewrite_choking_algo, Table),
-    rechoke(Peers, calculate_num_downloaders(S), S).
+    Peers = build_rechoke_info(S#state.opt_unchoke_chain),
+    {PreferredDown, PreferredSeed} = split_preferred(Peers),
+    PreferredSet = prune_preferred_peers(PreferredDown, PreferredSeed),
+    {N, ToChoke} = rechoke_unchoke(Peers, PreferredSet, 0, []),
+    rechoke_choke(ToChoke, N, optimistics(PreferredSet)).
 
-rechoke(Peers, 0, S) ->
-    lists:foreach(fun(P) -> optimistic_unchoke_handler(P, S) end, Peers),
-    ok;
-rechoke([], _N, _S) ->
-    ok;
-rechoke([Peer | Rest], N, S) when is_record(Peer, rate_mgr) ->
-    case ets:lookup(etorrent_peer_state, Peer#rate_mgr.pid) of
-	[] ->
-	    {_Id, Pid} = Peer#rate_mgr.pid,
-	    etorrent_t_peer_recv:unchoke(Pid),
-	    rechoke(Rest, N, S);
-	[#peer_state { interest_state = I, pid = {_Id, Pid}}] ->
-	    case I of
-		interested ->
-		    etorrent_t_peer_recv:unchoke(Pid),
-		    rechoke(Rest, N-1, S);
-		not_interested ->
-		    etorrent_t_peer_recv:unchoke(Pid),
-		    rechoke(Rest, N, S)
-	    end
-    end.
+build_rechoke_info(Peers) ->
+    SeederSet = sets:from_list(seeding_torrents()),
+    build_rechoke_info(SeederSet, Peers).
 
-optimistic_unchoke_handler(#rate_mgr { pid = {_Id, Pid} }, S) ->
-    case Pid =:= S#state.optimistic_unchoke_pid of
-	true ->
-	    ok; % Handled elsewhere
-	false ->
-	    etorrent_t_peer_recv:choke(Pid)
-    end.
-
-%% TODO: Make number of downloaders depend on current rate!
-calculate_num_downloaders(S) ->
-    case ets:lookup(etorrent_peer_state, {todo_redefine_optimistics,
-					  S#state.optimistic_unchoke_pid}) of
-	[] ->
-	    upload_slots();
-	[P] ->
-	    case P#peer_state.interest_state of
-		interested ->
-		    upload_slots() -1;
-		not_interested ->
-		    upload_slots()
+build_rechoke_info(_Seeding, []) ->
+    [];
+build_rechoke_info(Seeding, [Pid | Next]) ->
+    case etorrent_peer:select(Pid) of
+	[] -> build_rechoke_info(Seeding, Next);
+	[Peer] ->
+	    Kind = Peer#peer.state,
+	    Snubbed = etorrent_rate_mgr:snubbed(Peer#peer.torrent_id, Pid),
+	    PeerState = etorrent_rate_mgr:select_state(Peer#peer.torrent_id, Pid),
+	    case sets:is_element(Peer#peer.torrent_id, Seeding) of
+		true ->
+		    case etorrent_rate_mgr:fetch_send_rate(
+			   Peer#peer.torrent_id,
+			   Pid) of
+			none -> build_rechoke_info(Seeding, Next);
+			Rate ->
+			    [#rechoke_info { pid = Pid,
+					     kind = Kind,
+					     state = seeding,
+					     rate = Rate,
+					     r_interest_state =
+					       PeerState#peer_state.interest_state,
+					     r_choke_state =
+					       PeerState#peer_state.choke_state,
+					     snubbed = Snubbed } |
+			     build_rechoke_info(Seeding, Next)]
+		    end;
+		false ->
+		    case etorrent_rate_mgr:fetch_recv_rate(
+			   Peer#peer.torrent_id,
+			   Pid) of
+			none -> build_rechoke_info(Seeding, Next);
+			Rate ->
+			    [#rechoke_info { pid = Pid,
+					     kind = Kind,
+					     state = leeching,
+					     rate = -Rate, % Inverted for later sorting!
+					     snubbed = Snubbed } |
+			     build_rechoke_info(Seeding, Next)]
+		    end
 	    end
     end.
 
@@ -283,6 +295,7 @@ advance_optimistic_unchoke(S) ->
 			   optimistic_unchoke_pid = H }}
     end.
 
+%%TODO: Fix cyclic chain move!
 move_cyclic_chain([]) -> [];
 move_cyclic_chain(Chain) ->
     F = fun (P) -> local_unchoked(P, todo_move_cyclic_chain_all) end,
@@ -301,11 +314,6 @@ insert_new_peer_into_chain(Pid, Chain) ->
     Index = lists:max([0, crypto:rand_uniform(0, Length)]),
     {Front, Back} = lists:split(Index, Chain),
     Front ++ [Pid | Back].
-
-select_fastest(Id, Table) ->
-    Rows = ets:select(Table, [{{rate_mgr,{Id,'_'},'_'},[],['$_']}]),
-    lists:reverse(lists:keysort(#rate_mgr.rate, Rows)).
-
 
 max_peer_processes() ->
     case application:get_env(etorrent, max_peers) of
@@ -331,3 +339,84 @@ upload_slots() ->
 	    N
     end.
 
+split_preferred(Peers) ->
+    {Downs, Leechs} = split_preferred_peers(Peers, [], []),
+    {lists:keysort(#rechoke_info.rate, Downs),
+     lists:keysort(#rechoke_info.rate, Leechs)}.
+
+prune_preferred_peers(SDowns, SLeechs) ->
+    MaxUploads = upload_slots(),
+    DUploads = lists:max([1, round(MaxUploads * 0.7)]),
+    SUploads = lists:max([1, round(MaxUploads * 0.3)]),
+    {SUP2, DUP2} =
+	case lists:max([0, DUploads - length(SDowns)]) of
+	    0 -> {SUploads, DUploads};
+	    N -> {SUploads + N, DUploads - N}
+	end,
+    {SUP3, DUP3} =
+	case lists:max([0, SUP2 - length(SLeechs)]) of
+	    0 -> {SUP2, DUP2};
+	    K ->
+		{SUP2 - K, lists:min([DUP2 + K, length(SDowns)])}
+	end,
+    {TSDowns, TSLeechs} = {lists:sublist(SDowns, DUP3),
+			   lists:sublist(SLeechs, SUP3)},
+    sets:union(sets:from_list(TSDowns), sets:from_list(TSLeechs)).
+
+rechoke_unchoke([], _PS, Count, ToChoke) ->
+    {Count, ToChoke};
+rechoke_unchoke([P | Next], PSet, Count, ToChoke) ->
+    case sets:is_element(P, PSet) of
+	true ->
+	    etorrent_t_peer_recv:unchoke(P#rechoke_info.pid),
+	    rechoke_unchoke(Next, PSet, Count+1, ToChoke);
+	false ->
+	    rechoke_unchoke(Next, PSet, Count+1, [P | ToChoke])
+    end.
+
+optimistics(PSet) ->
+    MinUp = case application:get_env(etorrent, min_uploads) of
+		{ok, N} -> N;
+		undefined -> 1
+	    end,
+    lists:max([MinUp, upload_slots() - sets:size(PSet)]).
+
+rechoke_choke([], _Count, _Optimistics) ->
+    ok;
+rechoke_choke([P | Next], Count, Optimistics) when Count >= Optimistics ->
+    etorrent_t_peer_recv:choke(P#rechoke_info.pid),
+    rechoke_choke(Next, Count, Optimistics);
+rechoke_choke([P | Next], Count, Optimistics) ->
+    case P#rechoke_info.kind =:= seeding of
+	true ->
+	    etorrent_t_peer_recv:choke(P#rechoke_info.pid),
+	    rechoke_choke(Next, Count, Optimistics);
+	false ->
+	    etorrent_t_peer_recv:unchoke(P#rechoke_info.pid),
+	    case P#rechoke_info.r_interest_state =:= interested of
+		true ->
+		    rechoke_choke(Next, Count+1, Optimistics);
+		false ->
+		    rechoke_choke(Next, Count, Optimistics)
+	    end
+    end.
+
+split_preferred_peers([], Downs, Leechs) ->
+    {Downs, Leechs};
+split_preferred_peers([P | Next], Downs, Leechs) ->
+    case P#rechoke_info.state =:= seeding
+	  orelse P#rechoke_info.r_interest_state =:= not_interested of
+	true ->
+	    split_preferred_peers(Next, Downs, Leechs);
+	false when P#rechoke_info.state =:= seeding ->
+	    split_preferred_peers(Next, Downs, [P | Leechs]);
+	false when P#rechoke_info.snubbed =:= true ->
+	    split_preferred_peers(Next, Downs, Leechs);
+	false ->
+	    split_preferred_peers(Next, [P | Downs], Leechs)
+    end.
+
+seeding_torrents() ->
+    {atomic, Torrents} = etorrent_torrent:all(),
+    [T || T <- Torrents,
+	  T#torrent.state =:= seeding].

@@ -11,7 +11,7 @@
 -include("etorrent_mnesia_table.hrl").
 
 %% API
--export([new/4, all/1, delete/1, connected/3, ip_port/1, select/1]).
+-export([new/5, all/1, delete/1, connected/3, ip_port/1, select/1]).
 
 %%====================================================================
 %% API
@@ -20,11 +20,12 @@
 %% Function: new(IP, Port, InfoHash, Pid) -> transaction
 %% Description: Insert a row for the peer
 %%--------------------------------------------------------------------
-new(IP, Port, TorrentId, Pid) ->
+new(IP, Port, TorrentId, Pid, State) ->
     mnesia:dirty_write(#peer { pid = Pid,
 			       ip = IP,
 			       port = Port,
-			       torrent_id = TorrentId}).
+			       torrent_id = TorrentId,
+			       state = State}).
 
 %%--------------------------------------------------------------------
 %% Function: ip_port(Pid) -> {IP, Port}
