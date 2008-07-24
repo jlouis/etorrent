@@ -37,7 +37,8 @@
 -record(peer, {pid :: pid(), % We identify each peer with it's pid.
 	       ip,  % Ip of peer in question
 	       port :: non_neg_integer(), % Port of peer in question
-	       torrent_id :: non_neg_integer()}). % (IDX) Torrent Id this peer belongs to
+	       torrent_id :: non_neg_integer(), % (IDX) Torrent Id this peer belongs to
+	       state :: 'seeding' | 'leeching'}).
 
 -type(diskstate_state() :: 'seeding' | {'bitfield', binary()}).
 %% Piece state on disk for persistence

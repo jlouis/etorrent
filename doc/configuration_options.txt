@@ -27,6 +27,8 @@ Etorrent:
     bandwidth available for etorrent. Is currently only used for
     calculation of the number of upload slots.
 
+* min_uploads: The number of optimistic unchokers running.
+
 Mnesia:
 
 * dir: The directory in which to store the database state. The

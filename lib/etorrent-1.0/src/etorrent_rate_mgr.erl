@@ -25,6 +25,10 @@
 
 	 snubbed/2,
 
+	 fetch_recv_rate/2,
+	 fetch_send_rate/2,
+	 select_state/2,
+
 	 global_rate/0]).
 
 %% gen_server callbacks
@@ -58,9 +62,19 @@ not_interested(Id, Pid) -> gen_server:cast(?SERVER, {not_interested, Id, Pid}).
 local_choke(Id, Pid) -> gen_server:cast(?SERVER, {local_choke, Id, Pid}).
 local_unchoke(Id, Pid) -> gen_server:cast(?SERVER, {local_unchoke, Id, Pid}).
 
+select_state(Id, Who) ->
+    case ets:lookup(etorrent_peer_state, {Id, Who}) of
+	[] ->
+	    #peer_state { interest_state = not_interested,
+			  choke_state = choked,
+			  local_choke = true };
+	[P] ->
+	    P
+    end.
+
 snubbed(Id, Who) ->
     T = etorrent_rate:now_secs(),
-    case ets:lookup(recv_rate, {Id, Who}) of
+    case ets:lookup(etorrent_recv_state, {Id, Who}) of
 	[] ->
 	    false;
 	[#rate_mgr { last_got = unknown }] ->
@@ -68,6 +82,10 @@ snubbed(Id, Who) ->
 	[#rate_mgr { last_got = U}] ->
 	    T - U > ?DEFAULT_SNUB_TIME
     end.
+
+
+fetch_recv_rate(Id, Pid) -> fetch_rate(etorrent_recv_state, Id, Pid).
+fetch_send_rate(Id, Pid) -> fetch_rate(etorrent_send_state, Id, Pid).
 
 recv_rate(Id, Pid, Rate, Amount) ->
     recv_rate(Id, Pid, Rate, Amount, normal).
@@ -234,4 +252,11 @@ alter_state(What, Id, Who, Rate, Amount, Update, S) ->
 	    ets:insert(T, R#rate_mgr { rate = Rate })
     end,
     NS.
+
+fetch_rate(Where, Id, Pid) ->
+    case ets:lookup(Where, {Id, Pid}) of
+	[] ->
+	    none;
+	[R] -> R#rate_mgr.rate
+    end.
 

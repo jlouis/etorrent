@@ -147,7 +147,8 @@ queue_pieces(Pid) ->
 init([LocalPeerId, InfoHash, FilesystemPid, Id, Parent, {IP, Port}]) ->
     process_flag(trap_exit, true),
     {ok, TRef} = timer:send_interval(?RATE_UPDATE, self(), rate_update),
-    ok = etorrent_peer:new(IP, Port, Id, self()),
+    %% TODO: Update the leeching state to seeding when peer finished torrent.
+    ok = etorrent_peer:new(IP, Port, Id, self(), leeching),
     {ok, #state{
        parent = Parent,
        local_peer_id = LocalPeerId,
