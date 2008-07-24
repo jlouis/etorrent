@@ -2,7 +2,11 @@
 	[{port, 1729},
 	 {dir, "/var/tmp/etorrent"},
 	 {logger_dir, "/var/log/etorrent"},
-	 {logger_fname, "etorrent.log"}]},
+	 {logger_fname, "etorrent.log"},
+
+	 {max_peers, 40},
+	 {max_upload_slots, auto},
+	 {max_upload_rate, 175}]},
  {mnesia,
         [{dir, "/var/tmp/etorrent_session"}]},
  {kernel,

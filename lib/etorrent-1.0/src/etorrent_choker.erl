@@ -38,7 +38,6 @@
 -define(SERVER, ?MODULE).
 -define(MAX_PEER_PROCESSES, 40).
 -define(ROUND_TIME, 10000).
--define(DEFAULT_NUM_DOWNLOADERS, 4).
 
 %%====================================================================
 %% API
@@ -147,7 +146,7 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 
 start_new_incoming_peer(IP, Port, InfoHash, S) ->
-    case ?MAX_PEER_PROCESSES - S#state.num_peers of
+    case max_peer_processes() - S#state.num_peers of
 	N when N =< 0 ->
 	    {reply, already_enough_connections, S};
 	N when is_integer(N), N > 0 ->
@@ -173,7 +172,7 @@ start_new_peers(IPList, State) ->
     S = State#state { available_peers = PeerList},
 
     %% Replenish the connected peers.
-    fill_peers(?MAX_PEER_PROCESSES - S#state.num_peers, S).
+    fill_peers(max_peer_processes() - S#state.num_peers, S).
 
 %%% NOTE: fill_peers/2 and spawn_new_peer/5 tail calls each other.
 fill_peers(0, S) ->
@@ -263,13 +262,13 @@ calculate_num_downloaders(S) ->
     case ets:lookup(etorrent_peer_state, {todo_redefine_optimistics,
 					  S#state.optimistic_unchoke_pid}) of
 	[] ->
-	    ?DEFAULT_NUM_DOWNLOADERS;
+	    upload_slots();
 	[P] ->
 	    case P#peer_state.interest_state of
 		interested ->
-		    ?DEFAULT_NUM_DOWNLOADERS - 1;
+		    upload_slots() -1;
 		not_interested ->
-		    ?DEFAULT_NUM_DOWNLOADERS
+		    upload_slots()
 	    end
     end.
 
@@ -308,5 +307,27 @@ select_fastest(Id, Table) ->
     lists:reverse(lists:keysort(#rate_mgr.rate, Rows)).
 
 
+max_peer_processes() ->
+    case application:get_env(etorrent, max_peers) of
+	{ok, N} when is_integer(N) ->
+	    N;
+	undefined ->
+	    ?MAX_PEER_PROCESSES
+    end.
 
+upload_slots() ->
+    case application:get_env(etorrent, max_upload_slots) of
+	{ok, auto} ->
+	    {ok, Rate} = application:get_env(etorrent, max_upload_rate),
+	    case Rate of
+		N when N =<  0 -> 7; %% Educated guess
+		N when N  <  9 -> 2;
+		N when N  < 15 -> 3;
+		N when N  < 42 -> 4;
+		N ->
+		    round(math:sqrt(N * 0.6))
+	    end;
+	{ok, N} when is_integer(N) ->
+	    N
+    end.
 
