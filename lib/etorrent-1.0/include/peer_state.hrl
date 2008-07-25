@@ -1,4 +1,4 @@
 -record(peer_state, {pid,
-		     choke_state,
-		     interest_state,
-		     local_choke}).
+		     choke_state = choked,
+		     interest_state = not_interested,
+		     local_choke = true}).
