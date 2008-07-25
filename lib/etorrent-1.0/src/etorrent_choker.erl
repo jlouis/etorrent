@@ -281,6 +281,12 @@ build_rechoke_info(Seeding, [Pid | Next]) ->
 					     kind = Kind,
 					     state = leeching,
 					     rate = -Rate, % Inverted for later sorting!
+					     r_interest_state =
+					       PeerState#peer_state.interest_state,
+					     r_choke_state =
+					       PeerState#peer_state.choke_state,
+					     l_choke =
+					       PeerState#peer_state.local_choke,
 					     snubbed = Snubbed } |
 			     build_rechoke_info(Seeding, Next)]
 		    end
