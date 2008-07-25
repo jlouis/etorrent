@@ -65,9 +65,7 @@ local_unchoke(Id, Pid) -> gen_server:cast(?SERVER, {local_unchoke, Id, Pid}).
 select_state(Id, Who) ->
     case ets:lookup(etorrent_peer_state, {Id, Who}) of
 	[] ->
-	    #peer_state { interest_state = not_interested,
-			  choke_state = choked,
-			  local_choke = true };
+	    #peer_state { }; % Pick defaults
 	[P] ->
 	    P
     end.
