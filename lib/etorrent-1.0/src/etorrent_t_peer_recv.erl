@@ -239,6 +239,9 @@ handle_cast(_Msg, State) ->
 %%                                       {stop, Reason, State}
 %% Description: Handling all non call/cast messages
 %%--------------------------------------------------------------------
+handle_info(timeout, S) when S#state.tcp_socket =:= none ->
+    %% Haven't started up yet
+    {noreply, S, 3000};
 handle_info(timeout, S) ->
     case gen_tcp:recv(S#state.tcp_socket, 0, 3000) of
 	{ok, Packet} ->
