@@ -306,8 +306,8 @@ move_cyclic_chain(Chain) ->
 		    [P] -> T = etorrent_rate_mgr:select_state(
 				 P#peer.torrent_id,
 				 Pid),
-			   T#peer_state.interest_state =:= interested
-			       andalso T#peer_state.choke_state =:= choked
+			   not (T#peer_state.interest_state =:= interested
+				andalso T#peer_state.choke_state =:= choked)
 		end
 	end,
     {Front, Back} = lists:splitwith(F, Chain),
