@@ -415,7 +415,7 @@ rechoke_choke([P | Next], Count, Optimistics) ->
 split_preferred_peers([], Downs, Leechs) ->
     {Downs, Leechs};
 split_preferred_peers([P | Next], Downs, Leechs) ->
-    case P#rechoke_info.state =:= seeding
+    case P#rechoke_info.kind =:= seeding
 	  orelse P#rechoke_info.r_interest_state =:= not_interested of
 	true ->
 	    split_preferred_peers(Next, Downs, Leechs);
