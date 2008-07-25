@@ -429,5 +429,6 @@ split_preferred_peers([P | Next], Downs, Leechs) ->
 
 seeding_torrents() ->
     {atomic, Torrents} = etorrent_torrent:all(),
-    [T || T <- Torrents,
-	  T#torrent.state =:= seeding].
+    [T#torrent.id || T <- Torrents,
+		     T#torrent.state =:= seeding].
+
