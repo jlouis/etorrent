@@ -13,6 +13,7 @@
 
 -behaviour(gen_server).
 
+-define(DEFAULT_SNUB_TIME, 30).
 
 %% API
 -export([start_link/0,
@@ -20,7 +21,9 @@
 	 choke/2, unchoke/2, interested/2, not_interested/2,
 	 local_choke/2, local_unchoke/2,
 
-	 recv_rate/4, send_rate/4,
+	 recv_rate/5, recv_rate/4, send_rate/4,
+
+	 snubbed/2,
 
 	 global_rate/0]).
 
@@ -55,11 +58,25 @@ not_interested(Id, Pid) -> gen_server:cast(?SERVER, {not_interested, Id, Pid}).
 local_choke(Id, Pid) -> gen_server:cast(?SERVER, {local_choke, Id, Pid}).
 local_unchoke(Id, Pid) -> gen_server:cast(?SERVER, {local_unchoke, Id, Pid}).
 
+snubbed(Id, Who) ->
+    T = etorrent_rate:now_secs(),
+    case ets:lookup(recv_rate, {Id, Who}) of
+	[] ->
+	    false;
+	[#rate_mgr { last_got = unknown }] ->
+	    false;
+	[#rate_mgr { last_got = U}] ->
+	    T - U > ?DEFAULT_SNUB_TIME
+    end.
+
 recv_rate(Id, Pid, Rate, Amount) ->
-    gen_server:cast(?SERVER, {recv_rate, Id, Pid, Rate, Amount}).
+    recv_rate(Id, Pid, Rate, Amount, normal).
+
+recv_rate(Id, Pid, Rate, Amount, Update) ->
+    gen_server:cast(?SERVER, {recv_rate, Id, Pid, Rate, Amount, Update}).
 
 send_rate(Id, Pid, Rate, Amount) ->
-    gen_server:cast(?SERVER, {send_rate, Id, Pid, Rate, Amount}).
+    gen_server:cast(?SERVER, {send_rate, Id, Pid, Rate, Amount, normal}).
 
 global_rate() ->
     gen_server:call(?SERVER, global_rate).
@@ -113,8 +130,8 @@ handle_call(_Request, _From, State) ->
 handle_cast({What, Id, Pid}, S) ->
     ok = alter_state(What, Id, Pid),
     {noreply, S};
-handle_cast({What, Id, Who, Rate, Amount}, S) ->
-    NS = alter_state(What, Id, Who, Rate, Amount, S),
+handle_cast({What, Id, Who, Rate, Amount, Update}, S) ->
+    NS = alter_state(What, Id, Who, Rate, Amount, Update, S),
     {noreply, NS};
 handle_cast(_Msg, State) ->
     {noreply, State}.
@@ -190,7 +207,7 @@ alter_record(What, R) ->
 	    R#peer_state { local_choke = false}
     end.
 
-alter_state(What, Id, Who, Rate, Amount, S) ->
+alter_state(What, Id, Who, Rate, Amount, Update, S) ->
     {T, NS} = case What of
 		  recv_rate -> NR = etorrent_rate:update(
 				      S#state.global_recv,
@@ -207,6 +224,10 @@ alter_state(What, Id, Who, Rate, Amount, S) ->
 	[] ->
 	    ets:insert(T,
 	      #rate_mgr { pid = {Id, Who},
+			  last_got = case Update of
+					 normal -> unknown;
+					 last_update -> etorrent_rate:now_secs()
+				     end,
 			  rate = Rate }),
 	    erlang:monitor(process, Who);
 	[R] ->

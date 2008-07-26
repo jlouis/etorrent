@@ -8,7 +8,7 @@
 -module(etorrent_rate).
 
 %% API
--export([init/1, update/2]).
+-export([init/1, update/2, now_secs/0]).
 
 -include("etorrent_rate.hrl").
 

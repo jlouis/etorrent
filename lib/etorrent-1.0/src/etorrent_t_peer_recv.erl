@@ -573,9 +573,16 @@ handle_read_from_socket(S, Packet)
     Left = size(Data),
     P = iolist_to_binary(lists:reverse([Data | S#state.packet_iolist])),
     {Msg, Rate, Amount} = etorrent_peer_communication:recv_message(S#state.rate, P),
-    ok = etorrent_rate_mgr:recv_rate(S#state.torrent_id,
-				     self(), Rate#peer_rate.rate,
-				     Amount),
+    case Msg of
+	{piece, _, _ ,_} ->
+	    ok = etorrent_rate_mgr:recv_rate(S#state.torrent_id,
+					     self(), Rate#peer_rate.rate,
+					     Amount, last_update);
+	_Msg ->
+	    ok = etorrent_rate_mgr:recv_rate(S#state.torrent_id,
+					     self(), Rate#peer_rate.rate,
+					     Amount, normal)
+    end,
     case handle_message(Msg, S#state {rate = Rate}) of
 	{ok, NS} ->
 	    handle_read_from_socket(NS#state { packet_left = none,
