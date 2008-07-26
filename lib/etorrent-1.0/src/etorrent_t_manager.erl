@@ -41,9 +41,16 @@ init(_Args) ->
     {ok, #state { local_peer_id = generate_peer_id()}}.
 
 handle_cast({start_torrent, F}, S) ->
-    {ok, _} =
-	etorrent_t_pool_sup:add_torrent(F, S#state.local_peer_id, etorrent_sequence:next(torrent)),
-    {noreply, S};
+    case torrent_duplicate(F) of
+	true -> {noreply, S};
+	false ->
+	    {ok, _} =
+		etorrent_t_pool_sup:add_torrent(
+		  F,
+		  S#state.local_peer_id,
+		  etorrent_sequence:next(torrent)),
+	    {noreply, S}
+    end;
 handle_cast({check_torrent, Id}, S) ->
     {atomic, [T]} = etorrent_tracking_map:select(Id),
     SPid = T#tracking_map.supervisor_pid,
@@ -85,3 +92,10 @@ generate_peer_id() ->
     PeerId = lists:flatten(io_lib:format("-ET~s-~12s", [?VERSION, Rand])),
     error_logger:info_report([peer_id, PeerId]),
     PeerId.
+
+torrent_duplicate(F) ->
+    case etorrent_tracking_map:select({filename, F}) of
+	{atomic, []} -> false;
+	{atomic, [T]} -> duplicate =:= T#tracking_map.state
+    end.
+
