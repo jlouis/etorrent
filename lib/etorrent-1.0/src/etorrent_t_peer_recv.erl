@@ -335,7 +335,9 @@ handle_message({have, PieceNum}, S) ->
 		    {ok, NS}
 	    end;
 	false ->
-	    {stop, {invalid_piece, S#state.remote_peer_id}, S}
+	    {ok, {IP, Port}} = inet:peername(S#state.tcp_socket),
+	    etorrent_bad_peer_mgr:enter_peer(IP, Port, S#state.remote_peer_id),
+	    {stop, normal, S}
     end;
 handle_message({bitfield, BitField}, S) ->
     case gb_sets:size(S#state.piece_set) of
@@ -354,6 +356,8 @@ handle_message({bitfield, BitField}, S) ->
 	    end;
 	N when is_integer(N) ->
 	    %% This is a bad peer. Kill him!
+	    {ok, {IP, Port}} = inet:peername(S#state.tcp_socket),
+	    etorrent_bad_peer_mgr:enter_peer(IP, Port, S#state.remote_peer_id),
 	    {stop, normal, S}
     end;
 handle_message({piece, Index, Offset, Data}, S) ->
