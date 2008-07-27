@@ -382,7 +382,7 @@ rechoke_unchoke([P | Next], PSet, Count, ToChoke) ->
 	    etorrent_t_peer_recv:unchoke(P#rechoke_info.pid),
 	    rechoke_unchoke(Next, PSet, Count+1, ToChoke);
 	false ->
-	    rechoke_unchoke(Next, PSet, Count+1, [P | ToChoke])
+	    rechoke_unchoke(Next, PSet, Count, [P | ToChoke])
     end.
 
 optimistics(PSet) ->
