@@ -328,30 +328,7 @@ handle_message({cancel, Index, Offset, Len}, S) ->
     etorrent_t_peer_send:cancel(S#state.send_pid, Index, Offset, Len),
     {ok, S};
 handle_message({have, PieceNum}, S) ->
-    case etorrent_piece_mgr:valid(S#state.torrent_id, PieceNum) of
-	true ->
-	    PieceSet = gb_sets:add_element(PieceNum, S#state.piece_set),
-	    Left = S#state.pieces_left - 1,
-	    case Left of
-		0 -> ok = etorrent_peer:statechange(self(), seeder);
-		_N -> ok
-	    end,
-	    NS = S#state{piece_set = PieceSet,
-			 pieces_left = Left,
-			 seeder = Left == 0},
-	    case etorrent_piece_mgr:interesting(S#state.torrent_id, PieceNum) of
-		true when S#state.local_interested =:= true ->
-		    try_to_queue_up_pieces(S);
-		true when S#state.local_interested =:= false ->
-		    try_to_queue_up_pieces(statechange_interested(S, true));
-		false ->
-		    {ok, NS}
-	    end;
-	false ->
-	    {ok, {IP, Port}} = inet:peername(S#state.tcp_socket),
-	    etorrent_bad_peer_mgr:enter_peer(IP, Port, S#state.remote_peer_id),
-	    {stop, normal, S}
-    end;
+    peer_have(PieceNum, S);
 handle_message({bitfield, BitField}, S) ->
     case gb_sets:size(S#state.piece_set) of
 	0 ->
@@ -620,10 +597,46 @@ broadcast_queue_pieces(TorrentId) ->
 		  end,
 		  Peers).
 
+
 broadcast_got_chunk(Chunk, TorrentId) ->
     Peers = etorrent_peer:all(TorrentId),
     lists:foreach(fun (Peer) ->
 			  etorrent_t_peer_recv:endgame_got_chunk(Peer#peer.pid, Chunk)
 		  end,
 		  Peers).
+
+peer_have(PN, S) ->
+    case etorrent_piece_mgr:valid(S#state.torrent_id, PN) of
+	true ->
+	    Left = S#state.pieces_left - 1,
+	    case peer_seeds(S#state.torrent_id, Left) of
+		ok ->
+		    PieceSet = gb_sets:add_element(PN, S#state.piece_set),
+		    NS = S#state{piece_set = PieceSet,
+				 pieces_left = Left,
+				 seeder = Left == 0},
+		    case etorrent_piece_mgr:interesting(S#state.torrent_id, PN) of
+			true when S#state.local_interested =:= true ->
+			    try_to_queue_up_pieces(S);
+			true when S#state.local_interested =:= false ->
+			    try_to_queue_up_pieces(statechange_interested(S, true));
+			false ->
+			    {ok, NS}
+		    end;
+		{stop, R} -> {stop, R, S}
+	    end;
+	false ->
+	    {ok, {IP, Port}} = inet:peername(S#state.tcp_socket),
+	    etorrent_bad_peer_mgr:enter_peer(IP, Port, S#state.remote_peer_id),
+	    {stop, normal, S}
+    end.
+
+peer_seeds(Id, 0) ->
+    ok = etorrent_peer:statechange(self(), seeder),
+    [T] = etorrent_torrent:select(Id),
+    case T#torrent.state of
+	seeding -> {stop, normal};
+	_ -> ok
+    end;
+peer_seeds(_Id, _N) -> ok.
 
