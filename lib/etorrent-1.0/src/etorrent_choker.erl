@@ -235,8 +235,8 @@ rechoke(S) ->
     Peers = build_rechoke_info(S#state.opt_unchoke_chain),
     {PreferredDown, PreferredSeed} = split_preferred(Peers),
     PreferredSet = prune_preferred_peers(PreferredDown, PreferredSeed),
-    {N, ToChoke} = rechoke_unchoke(Peers, PreferredSet, 0, []),
-    rechoke_choke(ToChoke, N, optimistics(PreferredSet)).
+    ToChoke = rechoke_unchoke(Peers, PreferredSet),
+    rechoke_choke(ToChoke, 0, optimistics(PreferredSet)).
 
 build_rechoke_info(Peers) ->
     SeederSet = sets:from_list(seeding_torrents()),
@@ -374,15 +374,15 @@ prune_preferred_peers(SDowns, SLeechs) ->
 			   lists:sublist(SLeechs, SUP3)},
     sets:union(sets:from_list(TSDowns), sets:from_list(TSLeechs)).
 
-rechoke_unchoke([], _PS, Count, ToChoke) ->
-    {Count, ToChoke};
-rechoke_unchoke([P | Next], PSet, Count, ToChoke) ->
+rechoke_unchoke([], _PS) ->
+    [];
+rechoke_unchoke([P | Next], PSet) ->
     case sets:is_element(P, PSet) of
 	true ->
 	    etorrent_t_peer_recv:unchoke(P#rechoke_info.pid),
-	    rechoke_unchoke(Next, PSet, Count+1, ToChoke);
+	    rechoke_unchoke(Next, PSet);
 	false ->
-	    rechoke_unchoke(Next, PSet, Count, [P | ToChoke])
+	    [P | rechoke_unchoke(Next, PSet)]
     end.
 
 optimistics(PSet) ->
