@@ -5,7 +5,7 @@
 -include("etorrent_mnesia_table.hrl").
 
 -export([stop/0, start/0, db_create_schema/0]).
--export([start/2, stop/1]).
+-export([start/2, stop/1, prep_stop/1]).
 -export([help/0, h/0, list/0, l/0, show/0, s/0, show/1, s/1, check/1]).
 
 -define(RANDOM_MAX_SIZE, 999999999999).
@@ -24,8 +24,10 @@ start(_Type, _Args) ->
     {ok, Pid}.
 
 stop() ->
-    ok = application:stop(etorrent),
-    halt().
+    ok = application:stop(etorrent).
+
+prep_stop(_S) ->
+    io:format("Shutting down etorrent~n").
 
 stop(_State) ->
     ok.

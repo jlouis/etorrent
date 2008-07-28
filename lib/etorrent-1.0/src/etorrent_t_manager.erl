@@ -9,7 +9,10 @@
 -export([start_link/1,
 
 	 start_torrent/1, stop_torrent/1,
-	 check_torrent/1]).
+	 check_torrent/1,
+
+	 stop_all_torrents/0]).
+
 -export([handle_cast/2, handle_call/3, init/1, terminate/2]).
 -export([handle_info/2, code_change/3]).
 
@@ -36,6 +39,9 @@ check_torrent(Id) ->
 stop_torrent(File) ->
     gen_server:cast(?SERVER, {stop_torrent, File}).
 
+stop_all_torrents() ->
+    gen_server:call(?SERVER, stop_all_torrents, 120000).
+
 %% Callbacks
 init([PeerId]) ->
     {ok, #state { local_peer_id = PeerId}}.
@@ -60,6 +66,14 @@ handle_cast({check_torrent, Id}, S) ->
 handle_cast({stop_torrent, F}, S) ->
     stop_torrent(F, S).
 
+handle_call(stop_all_torrents, _From, S) ->
+    {atomic, Torrents} = etorrent_tracking_map:all(),
+    lists:foreach(fun(#tracking_map { filename = F }) ->
+			  etorrent_t_pool_sup:stop_torrent(F),
+			  ok
+		  end,
+		  Torrents),
+    {reply, ok, S};
 handle_call(_A, _B, S) ->
     {noreply, S}.
 

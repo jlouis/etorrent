@@ -91,10 +91,10 @@ completed(Pid) ->
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
 init([ControlPid, Url, InfoHash, PeerId, TorrentId]) ->
+    process_flag(trap_exit, true),
     {ok, HardRef} = timer:send_after(0, hard_timeout),
     {ok, SoftRef} = timer:send_after(timer:seconds(?DEFAULT_CONNECTION_TIMEOUT_INTERVAL),
 				     soft_timeout),
-
     {ok, #state{should_contact_tracker = false,
 		control_pid = ControlPid,
 		torrent_id = TorrentId,
@@ -166,10 +166,8 @@ handle_info(_Info, State) ->
 %% The return value is ignored.
 %%--------------------------------------------------------------------
 %% XXX: Cancel timers for completeness.
-terminate(normal, S) ->
+terminate(_Reason, S) ->
     _NS = contact_tracker(stopped, S),
-    ok;
-terminate(_Reason, _S) ->
     ok.
 
 %%--------------------------------------------------------------------
