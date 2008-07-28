@@ -186,6 +186,7 @@ contact_tracker(S) ->
 
 contact_tracker(Event, S) ->
     NewUrl = build_tracker_url(S, Event),
+    error_logger:info_report([{contacting_tracker, NewUrl}]),
     case http_gzip:request(NewUrl) of
 	{ok, {{_, 200, _}, _, Body}} ->
 	    handle_tracker_response(etorrent_bcoding:decode(Body), S);
