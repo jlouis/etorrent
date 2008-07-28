@@ -158,7 +158,11 @@ construct_fpmap([], _O, _P, _LPS, _Pieces, _D, _N) ->
     error_more_pieces;
 construct_fpmap(FileList, Offset, PieceSize, LastPieceSize,
 		[{Num, Hash}], Done, N) -> % Last piece
-    {ok, FL, OS, Ops} = extract_piece(LastPieceSize, FileList, Offset, []),
+    {ok, FL, OS, Ops} = extract_piece(case LastPieceSize of
+					  0 -> PieceSize;
+					  K -> K
+				      end,
+				      FileList, Offset, []),
     construct_fpmap(FL, OS, PieceSize, LastPieceSize, [],
 		    [{Num, {Hash, lists:reverse(Ops)}} | Done], N+1);
 construct_fpmap(FileList, Offset, PieceSize, LastPieceSize,
