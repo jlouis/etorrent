@@ -220,7 +220,13 @@ handle_cast(unchoke, S) ->
 handle_cast(interested, S) ->
     {noreply, statechange_interested(S, true), 0};
 handle_cast({send_have_piece, PieceNumber}, S) ->
-    etorrent_t_peer_send:send_have_piece(S#state.send_pid, PieceNumber),
+    case gb_sets:is_element(PieceNumber, S#state.piece_set) of
+	true ->
+	    % Remote already has the piece, ignore telling him
+	    ok;
+	false ->
+	    ok = etorrent_t_peer_send:send_have_piece(S#state.send_pid, PieceNumber)
+    end,
     {noreply, S, 0};
 handle_cast({endgame_got_chunk, Chunk}, S) ->
     NS = handle_endgame_got_chunk(Chunk, S),
