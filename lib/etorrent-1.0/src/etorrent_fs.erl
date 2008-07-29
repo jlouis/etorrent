@@ -231,7 +231,7 @@ remove_file_process(Pid, Dict) ->
 	[Key] ->
 	    dict:erase(Key, Dict);
 	[] ->
-	    ok
+	    Dict
     end.
 
 stop_all_fs_processes(Dict) ->
