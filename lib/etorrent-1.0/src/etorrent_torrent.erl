@@ -167,8 +167,10 @@ statechange(Id, What) when is_integer(Id) ->
 %% Description: Returns true if the torrent is in endgame mode
 %%--------------------------------------------------------------------
 is_endgame(Id) ->
-    [T] = mnesia:dirty_read(torrent, Id),
-    T#torrent.state =:= endgame.
+    case mnesia:dirty_read(torrent, Id) of
+	[T] -> T#torrent.state =:= endgame;
+	[] -> false % The torrent isn't there anymore.
+    end.
 
 %%====================================================================
 %% Internal functions
