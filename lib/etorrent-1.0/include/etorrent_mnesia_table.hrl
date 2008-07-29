@@ -1,7 +1,3 @@
-%% Sequences, as in SQL SEQUENCES
--record(sequence, {name :: atom(),
-		   count :: non_neg_integer()}).
-
 -type(tracking_map_state() :: 'started' | 'stopped' | 'checking' | 'awaiting' | 'duplicate').
 
 %% The tracking map tracks torrent id's to filenames, etc. It is the high-level view

@@ -151,6 +151,7 @@ init([LocalPeerId, InfoHash, FilesystemPid, Id, Parent, {IP, Port}]) ->
     {ok, TRef} = timer:send_interval(?RATE_UPDATE, self(), rate_update),
     %% TODO: Update the leeching state to seeding when peer finished torrent.
     ok = etorrent_peer:new(IP, Port, Id, self(), leeching),
+    ok = etorrent_choker:monitor(self()),
     [T] = etorrent_torrent:select(Id),
     {ok, #state{
        pieces_left = T#torrent.pieces,
@@ -280,6 +281,7 @@ handle_info(_Info, State) ->
 %%--------------------------------------------------------------------
 terminate(Reason, S) ->
     etorrent_peer:delete(self()),
+    etorrent_counters:release_peer_slot(),
     _NS = unqueue_all_pieces(S),
     case S#state.tcp_socket of
 	none ->
@@ -361,7 +363,7 @@ handle_message({bitfield, BitField}, S) ->
 	N when is_integer(N) ->
 	    %% This is a bad peer. Kill him!
 	    {ok, {IP, Port}} = inet:peername(S#state.tcp_socket),
-	    etorrent_bad_peer_mgr:enter_peer(IP, Port, S#state.remote_peer_id),
+	    etorrent_peer_mgr:enter_bad_peer(IP, Port, S#state.remote_peer_id),
 	    {stop, normal, S}
     end;
 handle_message({piece, Index, Offset, Data}, S) ->
@@ -633,7 +635,7 @@ peer_have(PN, S) ->
 	    end;
 	false ->
 	    {ok, {IP, Port}} = inet:peername(S#state.tcp_socket),
-	    etorrent_bad_peer_mgr:enter_peer(IP, Port, S#state.remote_peer_id),
+	    etorrent_peer_mgr:enter_bad_peer(IP, Port, S#state.remote_peer_id),
 	    {stop, normal, S}
     end.
 

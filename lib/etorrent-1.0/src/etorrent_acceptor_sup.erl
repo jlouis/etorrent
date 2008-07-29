@@ -10,7 +10,7 @@
 -behaviour(supervisor).
 
 %% API
--export([start_link/0]).
+-export([start_link/1]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -22,11 +22,11 @@
 %% API functions
 %%====================================================================
 %%--------------------------------------------------------------------
-%% Function: start_link() -> {ok,Pid} | ignore | {error,Error}
+%% Function: start_link(PeerId) -> {ok,Pid} | ignore | {error,Error}
 %% Description: Starts the supervisor
 %%--------------------------------------------------------------------
-start_link() ->
-    supervisor:start_link({local, ?SERVER}, ?MODULE, []).
+start_link(PeerId) ->
+    supervisor:start_link({local, ?SERVER}, ?MODULE, [PeerId]).
 
 %%====================================================================
 %% Supervisor callbacks
@@ -40,22 +40,18 @@ start_link() ->
 %% to find out about restart strategy, maximum restart frequency and child
 %% specifications.
 %%--------------------------------------------------------------------
-init([]) ->
-    Children = build_children(?DEFAULT_AMOUNT_OF_ACCEPTORS),
+init([PeerId]) ->
+    Children = build_children(PeerId, ?DEFAULT_AMOUNT_OF_ACCEPTORS),
     {ok, {{one_for_one, 1, 60}, Children}}.
 
 %%====================================================================
 %% Internal functions
 %%====================================================================
 
-build_children(N) ->
-    build_children(N, []).
-
-build_children(0, Acc) ->
-    Acc;
-build_children(N, Acc) ->
-    ID = {acceptor, N},
-    ChildSpec = {ID,
-		 {etorrent_acceptor, start_link, []},
+build_children(_PeerId, 0) -> [];
+build_children(PeerId, N) ->
+    Id = {acceptor, N},
+    ChildSpec = {Id,
+		 {etorrent_acceptor, start_link, [PeerId]},
 		 permanent, 2000, worker, [etorrent_acceptor]},
-    build_children(N-1, [ChildSpec | Acc]).
+    [ChildSpec | build_children(PeerId, N-1)].

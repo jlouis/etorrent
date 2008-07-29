@@ -54,7 +54,7 @@ handle_cast({start_torrent, F}, S) ->
 		etorrent_t_pool_sup:add_torrent(
 		  F,
 		  S#state.local_peer_id,
-		  etorrent_sequence:next(torrent)),
+		  etorrent_counters:next(torrent)),
 	    {noreply, S}
     end;
 handle_cast({check_torrent, Id}, S) ->
