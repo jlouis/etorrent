@@ -75,12 +75,9 @@ code_change(_OldVsn, State, _Extra) ->
 %% Operations
 watch_directories(S) ->
     {ok, A, R, N} = scan_files_in_dir(S),
-    lists:foreach(fun(F) ->
-			  etorrent_mgr:start_torrent(F)
-		  end,
+    lists:foreach(fun(F) -> etorrent_mgr:start(F) end,
 		  sets:to_list(A)),
-    lists:foreach(fun(F) ->
-			  etorrent_mgr:stop_torrent(F) end,
+    lists:foreach(fun(F) -> etorrent_mgr:stop(F) end,
 		  sets:to_list(R)),
     N.
 
