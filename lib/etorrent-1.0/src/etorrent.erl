@@ -11,11 +11,17 @@
 -define(RANDOM_MAX_SIZE, 999999999999).
 
 start() ->
-    ok = application:start(crypto),
-    ok = application:start(inets),
-    ok = application:start(sasl),
-    ok = application:start(mnesia),
+    %% Start dependent applications
+    Fun = fun(Application) ->
+	    case application:start(Application) of
+		ok -> ok;
+		{error, {already_started, Application}} -> ok
+	    end
+	  end,
+    lists:foreach(Fun, [crypto, inets, mnesia, sasl]),
+    %% DB
     etorrent_mnesia_init:wait(),
+    %% Etorrent
     application:start(etorrent).
 
 start(_Type, _Args) ->
