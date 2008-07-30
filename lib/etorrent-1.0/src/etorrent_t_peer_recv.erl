@@ -226,7 +226,7 @@ handle_cast({send_have_piece, PieceNumber}, S) ->
 	    % Remote already has the piece, ignore telling him
 	    ok;
 	false ->
-	    ok = etorrent_t_peer_send:send_have_piece(S#state.send_pid, PieceNumber)
+	    ok = etorrent_t_peer_send:have(S#state.send_pid, PieceNumber)
     end,
     {noreply, S, 0};
 handle_cast({endgame_got_chunk, Chunk}, S) ->
