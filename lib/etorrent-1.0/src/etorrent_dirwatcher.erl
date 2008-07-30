@@ -72,12 +72,9 @@ code_change(_OldVsn, State, _Extra) ->
 %% Operations
 watch_directories(S) ->
     reset_marks(ets:first(etorrent_dirwatcher)),
-    F = fun(F, ok) ->
-		process_file(F),
-		ok
-	end,
-    ok = filelib:fold_files(S#state.dir, ".*\.torrent", false,
-				F, ok),
+    lists:foreach(fun process_file/1,
+		  filelib:wildcard("*.torrent", S#state.dir)),
+
     ets:safe_fixtable(etorrent_dirwatcher, true),
     start_stop(ets:first(etorrent_dirwatcher)),
     ets:safe_fixtable(etorrent_dirwatcher, false),
