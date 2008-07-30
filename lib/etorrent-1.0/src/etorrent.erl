@@ -99,7 +99,7 @@ show(_) ->
 %% Description: Check a torrents contents. For debugging.
 %%--------------------------------------------------------------------
 check(Id) ->
-    etorrent_t_manager:check_torrent(Id).
+    etorrent_mgr:check_torrent(Id).
 
 %%--------------------------------------------------------------------
 %% Function: help() -> io()

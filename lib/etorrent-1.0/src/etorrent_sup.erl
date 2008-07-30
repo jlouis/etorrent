@@ -59,19 +59,19 @@ init([PeerId]) ->
     AcceptorSup = {acceptor_sup,
 		   {etorrent_acceptor_sup, start_link, [PeerId]},
 		   permanent, infinity, supervisor, [etorrent_acceptor_sup]},
+    TorrentMgr = {manager,
+		  {etorrent_mgr, start_link, [PeerId]},
+		  permanent, 2000, worker, [etorrent_mgr]},
     DirWatcherSup = {dirwatcher_sup,
 		  {etorrent_dirwatcher_sup, start_link, []},
 		  transient, infinity, supervisor, [etorrent_dirwatcher_sup]},
-    TorrentMgr = {manager,
-		  {etorrent_t_manager, start_link, [PeerId]},
-		  permanent, 2000, worker, [etorrent_t_manager]},
     TorrentPool = {torrent_pool_sup,
 		   {etorrent_t_pool_sup, start_link, []},
 		   transient, infinity, supervisor, [etorrent_t_pool_sup]},
 
     {ok, {{one_for_all, 1, 60},
 	  [Counters, EventManager, PeerMgr, FastResume, RateManager, PieceManager,
-	   ChunkManager, Choker, Listener, AcceptorSup, DirWatcherSup, TorrentMgr,
+	   ChunkManager, Choker, Listener, AcceptorSup, TorrentMgr, DirWatcherSup,
 	   TorrentPool]}}.
 
 %%====================================================================
