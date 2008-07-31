@@ -76,6 +76,7 @@ write_chunk(Pid, {Index, Data, Ops}) ->
 %% gen_server callbacks
 %%====================================================================
 init([IDHandle, SPid]) when is_integer(IDHandle) ->
+    process_flag(trap_exit, true),
     {ok, #state{file_process_dict = dict:new(),
 		file_pool = none,
 		supervisor = SPid,
@@ -153,11 +154,9 @@ handle_info(_Info, State) ->
 %% cleaning up. When it returns, the gen_server terminates with Reason.
 %% The return value is ignored.
 %%--------------------------------------------------------------------
-terminate(shutdown, S) ->
+terminate(_Reason, S) ->
     ok = stop_all_fs_processes(S#state.file_process_dict),
-    ok;
-terminate(Reason, _State) ->
-    error_logger:warning_report([fs_process_terminate, Reason]),
+    ok = etorrent_path_map:delete(S#state.torrent_id),
     ok.
 
 %%--------------------------------------------------------------------
