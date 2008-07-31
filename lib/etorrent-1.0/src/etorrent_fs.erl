@@ -178,14 +178,16 @@ create_file_process(Id, S) ->
 read_pieces_and_assemble([], FileData, S) ->
     {ok, list_to_binary(lists:reverse(FileData)), S};
 read_pieces_and_assemble([{Id, Offset, Size} | Rest], Done, S) ->
+    %% 2 Notes: This can't be tail recursive due to catch-handler on stack.
+    %%          I've seen exit:{timeout, ...}. We should probably just warn
+    %%          And try again ;)
     case dict:find(Id, S#state.file_process_dict) of
 	{ok, Pid} ->
-	    Ref = make_ref(),
-	    case catch({Ref,
-			etorrent_fs_process:get_data(Pid, Offset, Size)}) of
-		{Ref, Data} ->
-		    read_pieces_and_assemble(Rest, [Data | Done], S);
-		{'EXIT', {noproc, _}} ->
+	    try
+		Data = etorrent_fs_process:get_data(Pid, Offset, Size),
+		read_pieces_and_assemble(Rest, [Data | Done], S)
+	    catch
+		exit:{noproc, _} ->
 		    D = remove_file_process(Pid, S#state.file_process_dict),
 		    read_pieces_and_assemble([{Id, Offset, Size} | Rest],
 					     Done,
