@@ -1,24 +1,29 @@
 %%%-------------------------------------------------------------------
 %%% File    : etorrent_bad_peer_mgr.erl
 %%% Author  : Jesper Louis Andersen <jlouis@ogre.home>
-%%% Description : Bad peer management server
+%%% Description : Peer management server
 %%%
 %%% Created : 19 Jul 2008 by Jesper Louis Andersen <jlouis@ogre.home>
 %%%-------------------------------------------------------------------
--module(etorrent_bad_peer_mgr).
 
+%%% TODO: Monitor peers and retry them. In general, we need peer management here.
+-module(etorrent_peer_mgr).
+
+-include("etorrent_mnesia_table.hrl").
 -include("etorrent_bad_peer.hrl").
 
 -behaviour(gen_server).
 
 %% API
--export([start_link/0, is_bad_peer/3, enter_peer/3, bad_peer_list/0]).
+-export([start_link/1, enter_bad_peer/3, bad_peer_list/0, add_peers/2,
+	 bad_peer/3]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3]).
 
--record(state, {}).
+-record(state, { our_peer_id,
+		 available_peers = []}).
 
 -define(SERVER, ?MODULE).
 -define(DEFAULT_BAD_COUNT, 2).
@@ -32,14 +37,23 @@
 %% Function: start_link() -> {ok,Pid} | ignore | {error,Error}
 %% Description: Starts the server
 %%--------------------------------------------------------------------
-start_link() ->
-    gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
+start_link(OurPeerId) ->
+    gen_server:start_link({local, ?SERVER}, ?MODULE, [OurPeerId], []).
 
-is_bad_peer(IP, Port, TorrentId) ->
-    gen_server:call(?SERVER, {is_bad_peer, IP, Port, TorrentId}).
+enter_bad_peer(IP, Port, PeerId) ->
+    gen_server:cast(?SERVER, {enter_bad_peer, IP, Port, PeerId}).
 
-enter_peer(IP, Port, PeerId) ->
-    gen_server:cast(?SERVER, {enter_peer, IP, Port, PeerId}).
+add_peers(TorrentId, IPList) ->
+    gen_server:cast(?SERVER, {add_peers,
+			      [{TorrentId, {IP, Port}} || {IP, Port} <- IPList]}).
+
+bad_peer(IP, Port, TorrentId) ->
+    case ets:lookup(etorrent_bad_peer, {IP, Port}) of
+	[] ->
+	    etorrent_peer:connected(IP, Port, TorrentId);
+	[P] ->
+	    P#bad_peer.offenses > ?DEFAULT_BAD_COUNT
+    end.
 
 bad_peer_list() ->
     ets:match(etorrent_bad_peer, '_').
@@ -55,12 +69,12 @@ bad_peer_list() ->
 %%                         {stop, Reason}
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
-init([]) ->
+init([OurPeerId]) ->
     process_flag(trap_exit, true),
     _Tref = timer:send_interval(?CHECK_TIME, self(), cleanup_table),
     _Tid = ets:new(etorrent_bad_peer, [set, protected, named_table,
 				       {keypos, #bad_peer.ipport}]),
-    {ok, #state{}}.
+    {ok, #state{ our_peer_id = OurPeerId }}.
 
 %%--------------------------------------------------------------------
 %% Function: %% handle_call(Request, From, State) -> {reply, Reply, State} |
@@ -85,7 +99,10 @@ handle_call(_Request, _From, State) ->
 %%                                      {stop, Reason, State}
 %% Description: Handling cast messages
 %%--------------------------------------------------------------------
-handle_cast({enter_peer, IP, Port, PeerId}, S) ->
+handle_cast({add_peers, IPList}, S) ->
+    NS = start_new_peers(IPList, S),
+    {noreply, NS};
+handle_cast({enter_bad_peer, IP, Port, PeerId}, S) ->
     case ets:lookup(etorrent_bad_peer, {IP, Port}) of
 	[] ->
 	    ets:insert(etorrent_bad_peer,
@@ -141,10 +158,63 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%--------------------------------------------------------------------
 
-bad_peer(IP, Port, TorrentId) ->
-    case ets:lookup(etorrent_bad_peer, {IP, Port}) of
+
+start_new_peers(IPList, State) ->
+    %% Update the PeerList with the new incoming peers
+    PeerList = lists:usort(IPList ++ State#state.available_peers),
+    S = State#state { available_peers = PeerList},
+
+    %% Replenish the connected peers.
+    fill_peers(S).
+
+%%% NOTE: fill_peers/2 and spawn_new_peer/5 tail calls each other.
+fill_peers(S) ->
+    case S#state.available_peers of
 	[] ->
-	    etorrent_peer:connected(IP, Port, TorrentId);
-	[P] ->
-	    P#bad_peer.offenses > ?DEFAULT_BAD_COUNT
+	    % No peers available, just stop trying to fill peers
+	    S;
+	[{TorrentId, {IP, Port}} | R] ->
+	    % Possible peer. Check it.
+	    case bad_peer(IP, Port, TorrentId) of
+		true ->
+		    fill_peers(S#state{available_peers = R});
+		false ->
+		    error_logger:info_report([spawning, {ip, IP},
+					      {port, Port}, {tid, TorrentId}]),
+		    spawn_new_peer(IP, Port, TorrentId,
+				   S#state{available_peers = R})
+	    end
     end.
+
+%%--------------------------------------------------------------------
+%% Function: spawn_new_peer(IP, Port, S) -> S
+%%  Args:   IP ::= ip_address()
+%%          Port ::= integer() (16-bit)
+%%          S :: #state()
+%% Description: Attempt to spawn the peer at IP/Port. Returns modified state.
+%%--------------------------------------------------------------------
+spawn_new_peer(IP, Port, TorrentId, S) ->
+    case etorrent_peer:connected(IP, Port, TorrentId) of
+	true ->
+	    fill_peers(S);
+	false ->
+	    {atomic, [TM]} = etorrent_tracking_map:select(TorrentId),
+	    case etorrent_counters:obtain_peer_slot() of
+		ok ->
+		    try
+			{ok, Pid} = etorrent_t_sup:add_peer(
+				      TM#tracking_map.supervisor_pid,
+				      S#state.our_peer_id,
+				      TM#tracking_map.info_hash,
+				      TorrentId,
+				      {IP, Port}),
+			ok = etorrent_t_peer_recv:connect(Pid, IP, Port)
+		    catch
+			_ -> etorrent_counters:release_peer_slot()
+		    end,
+		    fill_peers(S);
+		full ->
+		    S
+	    end
+    end.
+

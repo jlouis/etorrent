@@ -28,7 +28,7 @@ select(Id, TorrentId) when is_integer(Id) ->
 select(Path, TorrentId) when is_list(Path) ->
     case mnesia:dirty_index_read(path_map, Path, #path_map.path) of
 	[] ->
-	    Id = etorrent_sequence:next(path_map),
+	    Id = etorrent_counters:next(path_map),
 	    ok = mnesia:dirty_write(#path_map{ id = {Id, TorrentId},
 					       path = Path}),
 	    Id;

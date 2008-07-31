@@ -6,9 +6,6 @@
 -export([init/0, wait/0]).
 
 init() ->
-    mnesia:create_table(sequence,
-			[{attributes, record_info(fields, sequence)}]),
-
     mnesia:create_table(tracking_map,
 			[{attributes, record_info(fields, tracking_map)}]),
 
@@ -31,7 +28,7 @@ init() ->
     wait().
 
 wait() ->
-    BaseTables = [sequence, tracking_map, path_map, torrent,
+    BaseTables = [tracking_map, path_map, torrent,
 		  torrent_c_pieces, peer, piece_diskstate],
     mnesia:wait_for_tables(BaseTables, 5000).
 

@@ -29,12 +29,15 @@ start_link(PeerId) ->
 %%====================================================================
 init([PeerId]) ->
     error_logger:info_report([etorrent_supervisor_starting, PeerId]),
+    Counters = {counters,
+		{etorrent_counters, start_link, []},
+		permanent, 2000, worker, [etorrent_counters]},
     EventManager = {event_manager,
 		    {etorrent_event_mgr, start_link, []},
 		    permanent, 2000, worker, [etorrent_event_mgr]},
-    BadPeerMgr = {bad_peer_mgr,
-		  {etorrent_bad_peer_mgr, start_link, []},
-		  permanent, 5000, worker, [etorrent_bad_peer_mgr]},
+    PeerMgr = {peer_mgr,
+		  {etorrent_peer_mgr, start_link, [PeerId]},
+		  permanent, 5000, worker, [etorrent_peer_mgr]},
     FastResume = {fast_resume,
 		  {etorrent_fast_resume, start_link, []},
 		  permanent, 5000, worker, [etorrent_fast_resume]},
@@ -54,7 +57,7 @@ init([PeerId]) ->
 		{etorrent_listener, start_link, []},
 		permanent, 2000, worker, [etorrent_listener]},
     AcceptorSup = {acceptor_sup,
-		   {etorrent_acceptor_sup, start_link, []},
+		   {etorrent_acceptor_sup, start_link, [PeerId]},
 		   permanent, infinity, supervisor, [etorrent_acceptor_sup]},
     DirWatcherSup = {dirwatcher_sup,
 		  {etorrent_dirwatcher_sup, start_link, []},
@@ -67,7 +70,7 @@ init([PeerId]) ->
 		   transient, infinity, supervisor, [etorrent_t_pool_sup]},
 
     {ok, {{one_for_all, 1, 60},
-	  [EventManager, BadPeerMgr, FastResume, RateManager, PieceManager,
+	  [Counters, EventManager, PeerMgr, FastResume, RateManager, PieceManager,
 	   ChunkManager, Choker, Listener, AcceptorSup, DirWatcherSup, TorrentMgr,
 	   TorrentPool]}}.
 

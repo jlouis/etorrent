@@ -213,8 +213,8 @@ handle_tracker_response(BC, none, {string, W}, S) ->
     handle_tracker_response(BC, none, none, S);
 handle_tracker_response(BC, none, none, S) ->
     %% Add new peers
-    etorrent_choker:add_peers(S#state.torrent_id,
-			      response_ips(BC)),
+    etorrent_peer_mgr:add_peers(S#state.torrent_id,
+				response_ips(BC)),
     %% Update the state of the torrent
     ok = etorrent_torrent:statechange(S#state.torrent_id,
 				      {tracker_report,

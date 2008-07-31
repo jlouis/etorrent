@@ -17,18 +17,15 @@
 -include("etorrent_mnesia_table.hrl").
 
 %% API
--export([start_link/1, add_peers/2, new_incoming_peer/4, perform_rechoke/0]).
+-export([start_link/1, perform_rechoke/0, monitor/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3]).
 
--record(state, {available_peers = [],
-	        bad_peers = none,
-		our_peer_id = none,
+-record(state, {our_peer_id = none,
 		info_hash = none,
 
-		num_peers = 0,
 		timer_ref = none,
 		round = 0,
 
@@ -45,7 +42,7 @@
 		       rate :: float() }).
 
 -define(SERVER, ?MODULE).
--define(MAX_PEER_PROCESSES, 40).
+
 -define(ROUND_TIME, 10000).
 
 %%====================================================================
@@ -54,16 +51,11 @@
 start_link(OurPeerId) ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [OurPeerId], []).
 
-add_peers(TorrentId, IPList) ->
-    gen_server:cast(?SERVER, {add_peers, [{TorrentId, IPP} || IPP <- IPList]}).
-
 perform_rechoke() ->
     gen_server:cast(?SERVER, rechoke).
 
-new_incoming_peer(IP, Port, PeerId, InfoHash) ->
-    %% Set a pretty graceful timeout here as the peer_group can be pretty heavily
-    %%  loaded at times. We have 5 acceptors by default anyway.
-    gen_server:call(?SERVER, {new_incoming_peer, IP, Port, PeerId, InfoHash}, 15000).
+monitor(Pid) ->
+    gen_server:call(?SERVER, {monitor, Pid}).
 
 %%====================================================================
 %% gen_server callbacks
@@ -73,29 +65,17 @@ init([OurPeerId]) ->
     process_flag(trap_exit, true),
     {ok, Tref} = timer:send_interval(?ROUND_TIME, self(), round_tick),
     {ok, #state{ our_peer_id = OurPeerId,
-		     bad_peers = dict:new(),
 		     timer_ref = Tref}}.
 
-
-handle_call({new_incoming_peer, _IP, _Port, PeerId, _InfoHash}, _From, S)
-  when S#state.our_peer_id =:= PeerId ->
-    {reply, connect_to_ourselves, S};
-handle_call({new_incoming_peer, IP, Port, _PeerId, InfoHash}, _From, S) ->
-    {atomic, [TM]} = etorrent_tracking_map:select({infohash, InfoHash}),
-    case etorrent_bad_peer_mgr:is_bad_peer(IP, Port, TM#tracking_map.id) of
-	true ->
-	    {reply, bad_peer, S};
-	false ->
-	    start_new_incoming_peer(IP, Port, InfoHash, S)
-    end;
+handle_call({monitor, Pid}, _From, S) ->
+    _Tref = erlang:monitor(process, Pid),
+    NewChain = insert_new_peer_into_chain(Pid, S#state.opt_unchoke_chain),
+    perform_rechoke(),
+    {reply, ok, S#state { opt_unchoke_chain = NewChain }};
 handle_call(Request, _From, State) ->
     error_logger:error_report([unknown_peer_group_call, Request]),
     Reply = ok,
     {reply, Reply, State}.
-
-handle_cast({add_peers, IPList}, S) ->
-    {ok, NS} = start_new_peers(IPList, S),
-    {noreply, NS};
 handle_cast(rechoke, S) ->
     rechoke(S),
     {noreply, S};
@@ -121,24 +101,18 @@ handle_info({'DOWN', _Ref, process, Pid, Reason}, S)
     rechoke(S),
 
     NewChain = lists:delete(Pid, S#state.opt_unchoke_chain),
-    {ok, NS} = start_new_peers([], S#state { num_peers = S#state.num_peers -1,
-					     opt_unchoke_chain = NewChain }),
-    {noreply, NS};
+    {noreply, S#state { opt_unchoke_chain = NewChain }};
 handle_info({'DOWN', _Ref, process, Pid, _Reason}, S) ->
     % The peer shut down unexpectedly re-add him to the queue in the *back*
     NS = case etorrent_peer:select(Pid) of
-	     [Peer] ->
-		 {IP, Port} = {Peer#peer.ip, Peer#peer.port},
-
+	     [_Peer] ->
 		 % XXX: We might have to check that remote is intersted and we were choking
-		 rechoke(S),
-		 S#state { available_peers  = S#state.available_peers ++ [{IP, Port}]};
+		 rechoke(S);
 	     [] -> S
 	 end,
 
     NewChain = lists:delete(Pid, NS#state.opt_unchoke_chain),
-    {noreply, NS#state{num_peers = NS#state.num_peers -1,
-		      opt_unchoke_chain = NewChain}};
+    {noreply, NS#state{opt_unchoke_chain = NewChain}};
 handle_info(Info, State) ->
     error_logger:error_report([unknown_info_peer_group, Info]),
     {noreply, State}.
@@ -153,79 +127,6 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 %%% Internal functions
 %%--------------------------------------------------------------------
-
-start_new_incoming_peer(IP, Port, InfoHash, S) ->
-    case max_peer_processes() - S#state.num_peers of
-	N when N =< 0 ->
-	    {reply, already_enough_connections, S};
-	N when is_integer(N), N > 0 ->
-	    {atomic, [T]} = etorrent_tracking_map:select({infohash, InfoHash}),
-	    {ok, Pid} = etorrent_t_sup:add_peer(
-			  T#tracking_map.supervisor_pid,
-			  S#state.our_peer_id,
-			  InfoHash,
-			  T#tracking_map.id,
-			  {IP, Port}),
-	    erlang:monitor(process, Pid),
-	    NewChain = insert_new_peer_into_chain(Pid, S#state.opt_unchoke_chain),
-	    rechoke(S),
-	    {reply, {ok, Pid},
-	     S#state { num_peers = S#state.num_peers+1,
-		       opt_unchoke_chain = NewChain}}
-    end.
-
-
-start_new_peers(IPList, State) ->
-    %% Update the PeerList with the new incoming peers
-    PeerList = lists:usort(IPList ++ State#state.available_peers),
-    S = State#state { available_peers = PeerList},
-
-    %% Replenish the connected peers.
-    fill_peers(max_peer_processes() - S#state.num_peers, S).
-
-%%% NOTE: fill_peers/2 and spawn_new_peer/5 tail calls each other.
-fill_peers(0, S) ->
-    {ok, S};
-fill_peers(N, S) ->
-    case S#state.available_peers of
-	[] ->
-	    % No peers available, just stop trying to fill peers
-	    {ok, S};
-	[{TorrentId, {IP, Port}} | R] ->
-	    % Possible peer. Check it.
-	    case etorrent_bad_peer_mgr:is_bad_peer(IP, Port, TorrentId) of
-		true ->
-		    fill_peers(N, S#state{available_peers = R});
-		false ->
-		    spawn_new_peer(IP, Port, TorrentId, N, S#state{available_peers = R})
-	    end
-    end.
-
-%%--------------------------------------------------------------------
-%% Function: spawn_new_peer(IP, Port, N, S) -> {ok, State}
-%% Description: Attempt to spawn the peer at IP/Port. N is the number of
-%%   peers we still need to spawn and S is the current state. Returns
-%%   a new state to be put into the process.
-%%--------------------------------------------------------------------
-spawn_new_peer(IP, Port, TorrentId, N, S) ->
-    case etorrent_peer:connected(IP, Port, TorrentId) of
-	true ->
-	    fill_peers(N, S);
-	false ->
-	    {atomic, [TM]} = etorrent_tracking_map:select(TorrentId),
-	    {ok, Pid} = etorrent_t_sup:add_peer(
-			  TM#tracking_map.supervisor_pid,
-			  S#state.our_peer_id,
-			  TM#tracking_map.info_hash,
-			  TorrentId,
-			  {IP, Port}),
-	    erlang:monitor(process, Pid),
-	    etorrent_t_peer_recv:connect(Pid, IP, Port),
-	    NewChain = insert_new_peer_into_chain(Pid, S#state.opt_unchoke_chain),
-	    rechoke(S),
-	    fill_peers(N-1, S#state { num_peers = S#state.num_peers +1,
-				      opt_unchoke_chain = NewChain})
-    end.
 
 %%--------------------------------------------------------------------
 %% Function: rechoke(State) -> ok
@@ -325,14 +226,6 @@ insert_new_peer_into_chain(Pid, Chain) ->
     Index = lists:max([0, crypto:rand_uniform(0, Length)]),
     {Front, Back} = lists:split(Index, Chain),
     Front ++ [Pid | Back].
-
-max_peer_processes() ->
-    case application:get_env(etorrent, max_peers) of
-	{ok, N} when is_integer(N) ->
-	    N;
-	undefined ->
-	    ?MAX_PEER_PROCESSES
-    end.
 
 upload_slots() ->
     case application:get_env(etorrent, max_upload_slots) of
