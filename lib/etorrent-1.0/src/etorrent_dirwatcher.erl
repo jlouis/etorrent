@@ -19,9 +19,8 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3]).
 
--record(state, {dir = none,
-	        fileset = none}).
--define(WATCH_WAIT_TIME, 5000).
+-record(state, {dir = none}).
+-define(WATCH_WAIT_TIME, timer:seconds(20)).
 -define(SERVER, ?MODULE).
 
 %%====================================================================
@@ -42,11 +41,9 @@ dir_watched() ->
 %%====================================================================
 init([]) ->
     {ok, Dir} = application:get_env(etorrent, dir),
-    % Provide a timeout in 100 ms to get up fast
-    {ok, #state{dir = Dir, fileset = sets:new()}, 100}.
+    _Tid = ets:new(etorrent_dirwatcher, [named_table, protected]),
+    {ok, #state{dir = Dir}, 0}.
 
-handle_call(report_on_files, _Who, S) ->
-    {reply, sets:to_list(S#state.fileset), S, ?WATCH_WAIT_TIME};
 handle_call(dir_watched, _Who, S) ->
     {reply, S#state.dir, S, ?WATCH_WAIT_TIME};
 handle_call(_Request, _From, State) ->
@@ -57,8 +54,8 @@ handle_cast(_Request, S) ->
     {noreply, S, ?WATCH_WAIT_TIME}.
 
 handle_info(timeout, S) ->
-    N = watch_directories(S),
-    {noreply, N, ?WATCH_WAIT_TIME};
+    watch_directories(S),
+    {noreply, S, ?WATCH_WAIT_TIME};
 handle_info(_Info, State) ->
     {noreply, State, ?WATCH_WAIT_TIME}.
 
@@ -74,18 +71,35 @@ code_change(_OldVsn, State, _Extra) ->
 
 %% Operations
 watch_directories(S) ->
-    {ok, A, R, N} = scan_files_in_dir(S),
-    lists:foreach(fun(F) -> etorrent_mgr:start(F) end,
-		  sets:to_list(A)),
-    lists:foreach(fun(F) -> etorrent_mgr:stop(F) end,
-		  sets:to_list(R)),
-    N.
+    reset_marks(ets:first(etorrent_dirwatcher)),
+    lists:foreach(fun process_file/1,
+		  filelib:wildcard("*.torrent", S#state.dir)),
 
-scan_files_in_dir(S) ->
-    Files = filelib:fold_files(S#state.dir, ".*\.torrent", false,
-			       fun(F, Accum) -> [F | Accum] end, []),
-    FilesSet = sets:from_list(Files),
-    Added = sets:subtract(FilesSet, S#state.fileset),
-    Removed = sets:subtract(S#state.fileset, FilesSet),
-    NewState = S#state{fileset = FilesSet},
-    {ok, Added, Removed, NewState}.
+    ets:safe_fixtable(etorrent_dirwatcher, true),
+    start_stop(ets:first(etorrent_dirwatcher)),
+    ets:safe_fixtable(etorrent_dirwatcher, false),
+    ok.
+
+process_file(F) ->
+    case ets:lookup(etorrent_dirwatcher, F) of
+	[] ->
+	    ets:insert(etorrent_dirwatcher, {F, new});
+	[_] ->
+	    ets:insert(etorrent_dirwatcher, {F, marked})
+    end.
+
+reset_marks('$end_of_table') -> ok;
+reset_marks(Key) ->
+    ets:insert(etorrent_dirwatcher, {Key, unmarked}),
+    reset_marks(ets:next(etorrent_dirwatcher, Key)).
+
+start_stop('$end_of_table') -> ok;
+start_stop(Key) ->
+    [{Key, S}] = ets:lookup(etorrent_dirwatcher, Key),
+    case S of
+	new -> etorrent_mgr:start(Key);
+	marked -> ok;
+	unmarked -> etorrent_mgr:stop(Key),
+		    ets:delete(etorrent_dirwatcher, Key)
+    end,
+    start_stop(ets:next(etorrent_dirwatcher, Key)).
