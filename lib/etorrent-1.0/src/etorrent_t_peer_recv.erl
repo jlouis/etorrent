@@ -16,7 +16,7 @@
 
 %% API
 -export([start_link/6, connect/3, choke/1, unchoke/1, interested/1,
-	 send_have_piece/2, complete_handshake/4, endgame_got_chunk/2,
+	 have/2, complete_handshake/4, endgame_got_chunk/2,
 	 queue_pieces/1, stop/1]).
 
 %% gen_server callbacks
@@ -112,11 +112,11 @@ interested(Pid) ->
     gen_server:cast(Pid, interested).
 
 %%--------------------------------------------------------------------
-%% Function: send_have_piece(Pid, PieceNumber)
+%% Function: have(Pid, PieceNumber)
 %% Description: Tell the peer we have just recieved piece PieceNumber.
 %%--------------------------------------------------------------------
-send_have_piece(Pid, PieceNumber) ->
-    gen_server:cast(Pid, {send_have_piece, PieceNumber}).
+have(Pid, PieceNumber) ->
+    gen_server:cast(Pid, {have, PieceNumber}).
 
 %%--------------------------------------------------------------------
 %% Function: endgame_got_chunk(Pid, Index, Offset) -> ok
@@ -220,13 +220,13 @@ handle_cast(unchoke, S) ->
     {noreply, S, 0};
 handle_cast(interested, S) ->
     {noreply, statechange_interested(S, true), 0};
-handle_cast({send_have_piece, PieceNumber}, S) ->
+handle_cast({have, PieceNumber}, S) ->
     case gb_sets:is_element(PieceNumber, S#state.piece_set) of
 	true ->
 	    % Remote already has the piece, ignore telling him
 	    ok;
 	false ->
-	    ok = etorrent_t_peer_send:send_have_piece(S#state.send_pid, PieceNumber)
+	    ok = etorrent_t_peer_send:have(S#state.send_pid, PieceNumber)
     end,
     {noreply, S, 0};
 handle_cast({endgame_got_chunk, Chunk}, S) ->

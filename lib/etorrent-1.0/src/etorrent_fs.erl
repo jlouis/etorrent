@@ -242,7 +242,7 @@ stop_all_fs_processes(Dict) ->
 broadcast_have_message(Index, TorrentId) ->
     Peers = etorrent_peer:all(TorrentId),
     lists:foreach(fun (Peer) ->
-			  etorrent_t_peer_recv:send_have_piece(Peer#peer.pid, Index)
+			  etorrent_t_peer_recv:have(Peer#peer.pid, Index)
 		  end,
 		  Peers).
 

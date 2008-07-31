@@ -20,10 +20,9 @@
 	 check_choke/1,
 
 	 local_request/2, remote_request/4, cancel/4,
-	 choke/1, unchoke/1,
+	 choke/1, unchoke/1, have/2,
 
 	 not_interested/1, interested/1,
-	 send_have_piece/2,
 	 bitfield/2]).
 
 %% gen_server callbacks
@@ -101,10 +100,10 @@ interested(Pid) ->
     gen_server:cast(Pid, interested).
 
 %%--------------------------------------------------------------------
-%% Func: send_have_piece(Pid, PieceNumber)
+%% Func: have(Pid, PieceNumber)
 %% Description: Tell the peer we have the piece PieceNumber
 %%--------------------------------------------------------------------
-send_have_piece(Pid, PieceNumber) ->
+have(Pid, PieceNumber) ->
     gen_server:cast(Pid, {have, PieceNumber}).
 
 bitfield(Pid, BitField) ->
