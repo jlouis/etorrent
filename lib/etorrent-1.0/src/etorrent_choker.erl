@@ -117,8 +117,7 @@ handle_info(Info, State) ->
     error_logger:error_report([unknown_info_peer_group, Info]),
     {noreply, State}.
 
-terminate(Reason, _S) ->
-    error_logger:info_report([peer_group_mgr_term, Reason]),
+terminate(_Reason, _S) ->
     ok.
 
 code_change(_OldVsn, State, _Extra) ->
