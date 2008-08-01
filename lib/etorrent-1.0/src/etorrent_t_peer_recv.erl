@@ -257,6 +257,8 @@ handle_info(timeout, S) ->
 	    {stop, normal, S};
 	{error, ebadf} ->
 	    {stop, normal, S};
+	{error, ehostunreach} ->
+	    {stop, normal, S};
 	{error, etimedout} ->
 	    {noreply, S, 0};
 	{error, timeout} when S#state.remote_choked =:= true ->

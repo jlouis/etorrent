@@ -210,7 +210,8 @@ spawn_new_peer(IP, Port, TorrentId, S) ->
 				      {IP, Port}),
 			ok = etorrent_t_peer_recv:connect(Pid, IP, Port)
 		    catch
-			_ -> etorrent_counters:release_peer_slot()
+			throw:_ -> etorrent_counters:release_peer_slot();
+			exit:_ ->  etorrent_counters:release_peer_slot()
 		    end,
 		    fill_peers(S);
 		full ->

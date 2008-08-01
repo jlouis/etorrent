@@ -242,7 +242,7 @@ handle_info(Info, StateName, State) ->
 terminate(_Reason, _StateName, S) ->
     ok = etorrent_piece_mgr:delete(S#state.id),
     etorrent_torrent:delete(S#state.id),
-    ok = etorrent_path_map:delete(S#state.id),
+
     etorrent_tracking_map:delete(S#state.id),
     ok.
 

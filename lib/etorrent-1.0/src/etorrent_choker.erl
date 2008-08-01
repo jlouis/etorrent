@@ -104,21 +104,18 @@ handle_info({'DOWN', _Ref, process, Pid, Reason}, S)
     {noreply, S#state { opt_unchoke_chain = NewChain }};
 handle_info({'DOWN', _Ref, process, Pid, _Reason}, S) ->
     % The peer shut down unexpectedly re-add him to the queue in the *back*
-    NS = case etorrent_peer:select(Pid) of
-	     [_Peer] ->
-		 % XXX: We might have to check that remote is intersted and we were choking
-		 rechoke(S);
-	     [] -> S
-	 end,
+    case etorrent_peer:select(Pid) of
+	[_Peer] -> ok = rechoke(S);
+	     [] -> ok
+    end,
 
-    NewChain = lists:delete(Pid, NS#state.opt_unchoke_chain),
-    {noreply, NS#state{opt_unchoke_chain = NewChain}};
+    NewChain = lists:delete(Pid, S#state.opt_unchoke_chain),
+    {noreply, S#state{opt_unchoke_chain = NewChain}};
 handle_info(Info, State) ->
     error_logger:error_report([unknown_info_peer_group, Info]),
     {noreply, State}.
 
-terminate(Reason, _S) ->
-    error_logger:info_report([peer_group_mgr_term, Reason]),
+terminate(_Reason, _S) ->
     ok.
 
 code_change(_OldVsn, State, _Extra) ->

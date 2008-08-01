@@ -76,8 +76,11 @@ watch_directories(S) ->
 		  filelib:wildcard("*.torrent", S#state.dir)),
 
     ets:safe_fixtable(etorrent_dirwatcher, true),
-    start_stop(ets:first(etorrent_dirwatcher)),
-    ets:safe_fixtable(etorrent_dirwatcher, false),
+    try
+	start_stop(ets:first(etorrent_dirwatcher))
+    after
+	ets:safe_fixtable(etorrent_dirwatcher, false)
+    end,
     ok.
 
 process_file(F) ->
