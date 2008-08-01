@@ -12,7 +12,7 @@
 -include("etorrent_mnesia_table.hrl").
 
 %% API
--export([start_link/0, query_state/1]).
+-export([start_link/0, query_state/1, stop/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -33,12 +33,19 @@
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
+
 %%--------------------------------------------------------------------
 %% Function: query(Id) -> seeding | {bitfield, BitField} | unknown
 %% Description: Query for the state of TorrentId, Id.
 %%--------------------------------------------------------------------
 query_state(Id) ->
 	gen_server:call(?SERVER, {query_state, Id}).
+
+%%--------------------------------------------------------------------
+%% Function: stop()
+%% Description: Stop the fast-resume server.
+%%--------------------------------------------------------------------
+stop() -> gen_server:call(?SERVER, stop).
 
 %%====================================================================
 %% gen_server callbacks
@@ -52,6 +59,7 @@ query_state(Id) ->
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
 init([]) ->
+    process_flag(trap_exit, true),
     {ok, TRef} = timer:send_interval(timer:seconds(?PERSIST_TIME), self(), persist),
     {ok, #state{ timer = TRef}}.
 
@@ -70,6 +78,8 @@ handle_call({query_state, Id}, _From, S) ->
 	[] -> {reply, unknown, S};
 	[R] -> {reply, R#piece_diskstate.state, S}
     end;
+handle_call(stop, _From, S) ->
+    {stop, normal, ok, S};
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -91,13 +101,11 @@ handle_cast(_Msg, State) ->
 %%--------------------------------------------------------------------
 handle_info(persist, S) ->
     error_logger:info_report([persist_to_disk]),
-    {atomic, Torrents} = etorrent_tracking_map:all(),
-    prune_disk_state(Torrents),
-    persist_disk_state(Torrents),
-    etorrent_event_mgr:persisted_state_to_disk(),
+    persist_to_disk(),
     {noreply, S};
 handle_info(_Info, State) ->
     {noreply, State}.
+
 
 %%--------------------------------------------------------------------
 %% Function: terminate(Reason, State) -> void()
@@ -106,8 +114,12 @@ handle_info(_Info, State) ->
 %% cleaning up. When it returns, the gen_server terminates with Reason.
 %% The return value is ignored.
 %%--------------------------------------------------------------------
+terminate(normal, _State) ->
+    persist_to_disk(),
+    ok;
 terminate(_Reason, _State) ->
     ok.
+
 
 %%--------------------------------------------------------------------
 %% Func: code_change(OldVsn, State, Extra) -> {ok, NewState}
@@ -155,5 +167,11 @@ persist_disk_state([#tracking_map { id = Id,
 	       persist_disk_state(Next)
     end.
 
+persist_to_disk() ->
+    {atomic, Torrents} = etorrent_tracking_map:all(),
+    prune_disk_state(Torrents),
+    persist_disk_state(Torrents),
+    etorrent_event_mgr:persisted_state_to_disk(),
+    ok.
 
 

@@ -33,7 +33,9 @@ stop() ->
     ok = application:stop(etorrent).
 
 prep_stop(_S) ->
-    io:format("Shutting down etorrent~n").
+    io:format("Shutting down etorrent~n"),
+    ok = etorrent_fast_resume:stop(),
+    ok.
 
 stop(_State) ->
     ok.

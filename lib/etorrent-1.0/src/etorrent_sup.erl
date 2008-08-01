@@ -40,7 +40,7 @@ init([PeerId]) ->
 		  permanent, 5000, worker, [etorrent_peer_mgr]},
     FastResume = {fast_resume,
 		  {etorrent_fast_resume, start_link, []},
-		  permanent, 5000, worker, [etorrent_fast_resume]},
+		  transient, 5000, worker, [etorrent_fast_resume]},
     RateManager = {rate_manager,
 		   {etorrent_rate_mgr, start_link, []},
 		   permanent, 5000, worker, [etorrent_rate_mgr]},
