@@ -347,6 +347,10 @@ handle_message({cancel, Index, Offset, Len}, S) ->
     {ok, S};
 handle_message({have, PieceNum}, S) ->
     peer_have(PieceNum, S);
+handle_message({suggest, Idx}, S) ->
+    error_logger:info_report([{peer_id, S#state.remote_peer_id},
+			      {suggest, Idx}]),
+    {ok, S};
 handle_message(have_none, S) when S#state.piece_set =/= unknown ->
     {stop, normal, S};
 handle_message(have_none, S) when S#state.fast_extension =:= true ->
