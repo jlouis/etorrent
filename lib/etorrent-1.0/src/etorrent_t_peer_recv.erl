@@ -27,6 +27,8 @@
 		 local_peer_id = none,
 		 info_hash = none,
 
+		 fast_extension = false, % Peer uses fast extension
+
 		 pieces_left,
 		 seeder = false,
 		 tcp_socket = none,
@@ -126,11 +128,11 @@ endgame_got_chunk(Pid, Chunk) ->
     gen_server:cast(Pid, {endgame_got_chunk, Chunk}).
 
 %%--------------------------------------------------------------------
-%% Function: complete_handshake(Pid, ReservedBytes, Socket, PeerId)
+%% Function: complete_handshake(Pid, Capabilities, Socket, PeerId)
 %% Description: Complete the handshake initiated by another client.
 %%--------------------------------------------------------------------
-complete_handshake(Pid, ReservedBytes, Socket, PeerId) ->
-    gen_server:cast(Pid, {complete_handshake, ReservedBytes, Socket, PeerId}).
+complete_handshake(Pid, Capabilities, Socket, PeerId) ->
+    gen_server:cast(Pid, {complete_handshake, Capabilities, Socket, PeerId}).
 
 queue_pieces(Pid) ->
     gen_server:cast(Pid, queue_pieces).
@@ -192,25 +194,28 @@ handle_cast({connect, IP, Port}, S) ->
 		   Socket,
 		   S#state.local_peer_id,
 		   S#state.info_hash) of
-		{ok, _ReservedBytes, PeerId}
+		{ok, _Capabilities, PeerId}
 		  when PeerId == S#state.local_peer_id ->
 		    {stop, normal, S};
-		{ok, _ReservedBytes, PeerId} ->
+		{ok, Capabilities, PeerId} ->
+		    FastExtension = lists:member(fast_extension, Capabilities),
 		    complete_connection_setup(S#state { tcp_socket = Socket,
-						        remote_peer_id = PeerId});
+						        remote_peer_id = PeerId,
+						        fast_extension = FastExtension});
 		{error, _} ->
 		    {stop, normal, S}
 	    end;
 	{error, _Reason} ->
 	    {stop, normal, S}
     end;
-handle_cast({complete_handshake, ReservedBytes, Socket, RemotePeerId}, S) ->
-    ReservedBytes = [],
+handle_cast({complete_handshake, Capabilities, Socket, RemotePeerId}, S) ->
+    FastExtension = lists:member(fast_extension, Capabilities),
     case etorrent_peer_communication:complete_handshake(Socket,
 							S#state.info_hash,
 							S#state.local_peer_id) of
 	ok -> complete_connection_setup(S#state { tcp_socket = Socket,
-						  remote_peer_id = RemotePeerId });
+						  remote_peer_id = RemotePeerId,
+						  fast_extension = FastExtension});
 	{error, stop} -> {stop, normal, S}
     end;
 handle_cast(choke, S) ->
