@@ -131,7 +131,7 @@ send_message(Rate, Socket, Message) ->
 		<<?REJECT_REQUEST, Index, Offset, Len>>;
 	    {allowed_fast, FastSet} ->
 		BinFastSet = encode_fastset(FastSet),
-		<<?ALLOWED_FAST, BinFastSet>>
+		<<?ALLOWED_FAST, BinFastSet/binary>>
         end,
     Sz = size(Datagram),
     Res = gen_tcp:send(Socket, <<Sz:32/big, Datagram/binary>>),
