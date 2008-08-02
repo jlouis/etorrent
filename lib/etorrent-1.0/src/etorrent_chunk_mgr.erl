@@ -14,7 +14,8 @@
 
 %% API
 -export([start_link/0, remove_chunks/2, store_chunk/4, putback_chunks/1,
-	 mark_fetched/2, pick_chunks/4, endgame_remove_chunk/3]).
+	 putback_chunk/2, mark_fetched/2, pick_chunks/4,
+	 endgame_remove_chunk/3]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -61,6 +62,9 @@ store_chunk(Id, Index, {Offset, Len}, Pid) ->
 %%--------------------------------------------------------------------
 putback_chunks(Pid) ->
     gen_server:cast(?SERVER, {putback_chunks, Pid}).
+
+putback_chunk(Pid, {Idx, Offset, Len}) ->
+    gen_server:cast(?SERVER, {putback_chunk, Pid, {Idx, Offset, Len}}).
 
 %%--------------------------------------------------------------------
 %% Function: remove_chunks/2
@@ -173,10 +177,33 @@ handle_call(_Request, _From, State) ->
 %%                                      {stop, Reason, State}
 %% Description: Handling cast messages
 %%--------------------------------------------------------------------
+handle_cast({putback_chunk, Pid, {Idx, Offset, Len}}, S) ->
+    for_each_chunk(
+      Pid, Idx,
+      fun (C) ->
+	      {Id, _, _} = C#chunk.idt,
+	      Chunks = C#chunk.chunks,
+	      NotFetchIdt = {Id, Idx, not_fetched},
+	      case ets:lookup(etorrent_chunk_tbl, NotFetchIdt) of
+		  [] ->
+		      ets:insert(etorrent_chunk_tbl,
+				 #chunk { idt = NotFetchIdt,
+					  chunks = [{Idx, Offset, Len}]});
+		  [R] ->
+		      ets:insert(etorrent_chunk_tbl,
+				 R#chunk { chunks = [{Idx, Offset, Len} |
+						     R#chunk.chunks]})
+	      end,
+	      case lists:delete({Idx, Offset, Len}, Chunks) of
+		  [] -> ets:delete_object(etorrent_chunk_tbl, C);
+		  NewList -> ets:insert(etorrent_chunk_tbl,
+					C#chunk { chunks = NewList })
+	      end
+      end),
+    {noreply, S};
 handle_cast({putback_chunks, Pid}, S) ->
-    MatchHead = #chunk { idt = {'_', '_', {assigned, Pid}}, _ = '_'},
-    Rows = ets:select(etorrent_chunk_tbl, [{MatchHead, [], ['$_']}]),
-    lists:foreach(
+    for_each_chunk(
+      Pid,
       fun(C) ->
 	      {Id, Idx, _} = C#chunk.idt,
 	      Chunks = C#chunk.chunks,
@@ -191,8 +218,7 @@ handle_cast({putback_chunks, Pid}, S) ->
 				 R#chunk { chunks = R#chunk.chunks ++ Chunks})
 	      end,
 	      ets:delete_object(etorrent_chunk_tbl, C)
-      end,
-      Rows),
+      end),
     {noreply, S};
 handle_cast({remove_chunks, Id, Idx}, S) ->
     MatchHead = #chunk { idt = {Id, Idx, '_'}, _ = '_'},
@@ -485,3 +511,16 @@ pick_chunks_endgame(Id, Set, Remaining, Ret) ->
 	false -> Ret; %% No endgame yet
 	true -> pick_chunks(endgame, {Id, Set, Remaining})
     end.
+
+for_each_chunk(Pid, F) when is_pid(Pid) ->
+    MatchHead = #chunk { idt = {'_', '_', {assigned, Pid}}, _ = '_'},
+    for_each_chunk(MatchHead, F);
+for_each_chunk(MatchHead, F) ->
+    Rows = ets:select(etorrent_chunk_tbl, [{MatchHead, [], ['$_']}]),
+    lists:foreach(F, Rows),
+    ok.
+
+for_each_chunk(Pid, Idx, F) when is_integer(Idx) ->
+    MatchHead = #chunk { idt = {'_', Idx, {assigned, Pid}}, _ = '_'},
+    for_each_chunk(MatchHead, F).
+

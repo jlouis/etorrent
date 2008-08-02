@@ -391,6 +391,8 @@ handle_message({bitfield, BitField}, S) ->
 	invalid_piece ->
 	    {stop, {invalid_piece_2, S#state.remote_peer_id}, S}
     end;
+handle_message({reject_request, Idx, Offset, Len}, S) when S#state.fast_extension =:= true ->
+    unqueue_piece({Idx, Offset, Len}, S);
 handle_message({piece, Index, Offset, Data}, S) ->
     case handle_got_chunk(Index, Offset, Data, size(Data), S) of
 	{ok, NS} ->
@@ -464,6 +466,21 @@ handle_got_chunk(Index, Offset, Data, Len, S) ->
 	    %% Stray piece, we could try to get hold of it but for now we just
 	    %%   throw it on the floor.
 	    {ok, S}
+    end.
+
+
+
+%% TODO: This will probably get pretty expensive fast. We'll just hope it doesn't
+%%   kill us.
+unqueue_piece({Idx, Offset, Len}, S) ->
+    case gb_trees:is_defined({Idx, Offset, Len}, S#state.remote_request_set) of
+	false ->
+	    {stop, normal, S};
+	true ->
+	    ReqSet = gb_sets:delete({Idx, Offset, Len}, S#state.remote_request_set),
+	    ok = etorrent_chunk_mgr:putback_chunk(self(), {Idx, Offset, Len}),
+	    broadcast_queue_pieces(S#state.torrent_id),
+	    {noreply, S#state { remote_request_set = ReqSet }}
     end.
 
 %%--------------------------------------------------------------------
