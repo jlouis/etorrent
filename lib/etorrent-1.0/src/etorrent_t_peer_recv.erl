@@ -323,7 +323,10 @@ handle_message(keep_alive, S) ->
     {ok, S};
 handle_message(choke, S) ->
     ok = etorrent_rate_mgr:choke(S#state.torrent_id, self()),
-    NS = unqueue_all_pieces(S),
+    NS = case S#state.fast_extension of
+	     true -> S;
+	     false -> unqueue_all_pieces(S)
+	 end,
     {ok, NS#state { remote_choked = true }};
 handle_message(unchoke, S) ->
     ok = etorrent_rate_mgr:unchoke(S#state.torrent_id, self()),
