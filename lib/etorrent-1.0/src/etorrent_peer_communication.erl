@@ -18,7 +18,10 @@
 -define(DEFAULT_HANDSHAKE_TIMEOUT, 120000).
 -define(HANDSHAKE_SIZE, 68).
 -define(PROTOCOL_STRING, "BitTorrent protocol").
--define(RESERVED_BYTES, 0:64/big).
+
+%% Extensions
+-define(EXT_BASIS, 0). % The protocol basis
+-define(EXT_FAST,  4). % The Fast Extension
 
 %% Packet types
 -define(CHOKE, 0:8).
@@ -204,7 +207,13 @@ complete_handshake(Socket, InfoHash, LocalPeerId) ->
 %%--------------------------------------------------------------------
 build_peer_protocol_header() ->
     PSSize = length(?PROTOCOL_STRING),
-    <<PSSize:8, ?PROTOCOL_STRING, ?RESERVED_BYTES>>.
+    ReservedBytes = protocol_capabilities(),
+    <<PSSize:8, ?PROTOCOL_STRING, ReservedBytes/binary>>.
+
+protocol_capabilities() ->
+    ProtoSpec = lists:sum([%?EXT_FAST,
+			   ?EXT_BASIS]),
+    <<ProtoSpec:64/big>>.
 
 %%--------------------------------------------------------------------
 %% Function: receive_header(socket()) -> {ok, proto_version(),
