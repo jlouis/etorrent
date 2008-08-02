@@ -32,6 +32,13 @@
 -define(CANCEL, 8:8).
 -define(PORT, 9:8).
 
+%% FAST EXTENSION Packet types
+-define(SUGGEST, 13:8).
+-define(HAVE_ALL, 14:8).
+-define(HAVE_NONE, 15:8).
+-define(REJECT_REQUEST, 16:8).
+-define(ALLOWED_FAST, 17:8).
+
 %%====================================================================
 %% API
 %%====================================================================
@@ -42,30 +49,42 @@
 %%--------------------------------------------------------------------
 recv_message(Rate, Message) ->
     MSize = size(Message),
-    Decoded = case Message of
-	<<>> ->
-	    keep_alive;
-	<<?CHOKE>> ->
-	    choke;
-	<<?UNCHOKE>> ->
-	    unchoke;
-	<<?INTERESTED>> ->
-	    interested;
-	<<?NOT_INTERESTED>> ->
-	    not_interested;
-	<<?HAVE, PieceNum:32/big>> ->
-	    {have, PieceNum};
-	<<?BITFIELD, BitField/binary>> ->
-	    {bitfield, BitField};
-	<<?REQUEST, Index:32/big, Begin:32/big, Len:32/big>> ->
-	    {request, Index, Begin, Len};
-	<<?PIECE, Index:32/big, Begin:32/big, Data/binary>> ->
-	    {piece, Index, Begin, Data};
-	<<?CANCEL, Index:32/big, Begin:32/big, Len:32/big>> ->
-	    {cancel, Index, Begin, Len};
-	<<?PORT, Port:16/big>> ->
-	    {port, Port}
-    end,
+    Decoded =
+	case Message of
+	    <<>> ->
+		keep_alive;
+	    <<?CHOKE>> ->
+		choke;
+	    <<?UNCHOKE>> ->
+		unchoke;
+	    <<?INTERESTED>> ->
+		interested;
+	    <<?NOT_INTERESTED>> ->
+		not_interested;
+	    <<?HAVE, PieceNum:32/big>> ->
+		{have, PieceNum};
+	    <<?BITFIELD, BitField/binary>> ->
+		{bitfield, BitField};
+	    <<?REQUEST, Index:32/big, Begin:32/big, Len:32/big>> ->
+		{request, Index, Begin, Len};
+	    <<?PIECE, Index:32/big, Begin:32/big, Data/binary>> ->
+		{piece, Index, Begin, Data};
+	    <<?CANCEL, Index:32/big, Begin:32/big, Len:32/big>> ->
+		{cancel, Index, Begin, Len};
+	    <<?PORT, Port:16/big>> ->
+		{port, Port};
+	    %% FAST EXTENSION MESSAGES
+	    <<?SUGGEST, Index:32/big>> ->
+		{suggest, Index};
+	    <<?HAVE_ALL>> ->
+		have_all;
+	    <<?HAVE_NONE>> ->
+		have_none;
+	    <<?REJECT_REQUEST, Index:32, Offset:32, Len:32>> ->
+		{reject_request, Index, Offset, Len};
+	    <<?ALLOWED_FAST, FastSet/binary>> ->
+		{allowed_fast, decode_allowed_fast(FastSet)}
+	end,
     {Decoded, etorrent_rate:update(Rate, MSize), MSize}.
 
 %%--------------------------------------------------------------------
@@ -97,7 +116,19 @@ send_message(Rate, Socket, Message) ->
 	    {cancel, Index, Begin, Len} ->
 		<<?CANCEL, Index:32/big, Begin:32/big, Len:32/big>>;
 	    {port, PortNum} ->
-		<<?PORT, PortNum:16/big>>
+		<<?PORT, PortNum:16/big>>;
+	    %% FAST EXTENSION
+	    {suggest, Index} ->
+		<<?SUGGEST, Index:32>>;
+	    have_all ->
+		<<?HAVE_ALL>>;
+	    have_none ->
+		<<?HAVE_NONE>>;
+	    {reject_request, Index, Offset, Len} ->
+		<<?REJECT_REQUEST, Index, Offset, Len>>;
+	    {allowed_fast, FastSet} ->
+		BinFastSet = encode_fastset(FastSet),
+		<<?ALLOWED_FAST, BinFastSet>>
         end,
     Sz = size(Datagram),
     Res = gen_tcp:send(Socket, <<Sz:32/big, Datagram/binary>>),
@@ -280,3 +311,11 @@ decode_bytes(SoFar, [B | Rest]) ->
     [decode_byte(B, SoFar) | decode_bytes(SoFar + 8, Rest)].
 
 
+decode_allowed_fast(<<>>) -> [];
+decode_allowed_fast(<<Index:32, Rest/binary>>) ->
+    [Index | decode_allowed_fast(Rest)].
+
+encode_fastset([]) -> <<>>;
+encode_fastset([Idx | Rest]) ->
+    R = encode_fastset(Rest),
+    <<R/binary, Idx:32>>.
