@@ -15,7 +15,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/4,
+-export([start_link/5,
 	 stop/1,
 	 check_choke/1,
 
@@ -32,6 +32,8 @@
 -record(state, {socket = none,
 	        request_queue = none,
 
+		fast_extension = false,
+
 		rate = none,
 		choke = true,
 		interested = false, % Are we interested in the peer?
@@ -47,9 +49,10 @@
 %%====================================================================
 %% API
 %%====================================================================
-start_link(Socket, FilesystemPid, TorrentId, RecvPid) ->
+start_link(Socket, FilesystemPid, TorrentId, FastExtension, RecvPid) ->
     gen_server:start_link(?MODULE,
-			  [Socket, FilesystemPid, TorrentId, RecvPid], []).
+			  [Socket, FilesystemPid, TorrentId, FastExtension,
+			   RecvPid], []).
 
 %%--------------------------------------------------------------------
 %% Func: remote_request(Pid, Index, Offset, Len)
@@ -120,7 +123,7 @@ stop(Pid) ->
 %%====================================================================
 %% gen_server callbacks
 %%====================================================================
-init([Socket, FilesystemPid, TorrentId, Parent]) ->
+init([Socket, FilesystemPid, TorrentId, FastExtension, Parent]) ->
     process_flag(trap_exit, true),
     {ok, TRef} = timer:send_interval(?DEFAULT_KEEP_ALIVE_INTERVAL, self(), keep_alive_tick),
     {ok, Tref2} = timer:send_interval(?RATE_UPDATE, self(), rate_update),
@@ -132,6 +135,7 @@ init([Socket, FilesystemPid, TorrentId, Parent]) ->
 	    rate = etorrent_rate:init(?RATE_FUDGE),
 	    parent = Parent,
 	    torrent_id = TorrentId,
+	    fast_extension = FastExtension,
 	    file_system_pid = FilesystemPid},
      0}.
 

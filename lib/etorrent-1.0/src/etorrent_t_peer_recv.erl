@@ -559,6 +559,7 @@ complete_connection_setup(S) ->
 						   S#state.tcp_socket,
 						   S#state.file_system_pid,
 						   S#state.torrent_id,
+						   S#state.fast_extension,
 						   self()),
     BF = etorrent_piece_mgr:bitfield(S#state.torrent_id),
     etorrent_t_peer_send:bitfield(SendPid, BF),
