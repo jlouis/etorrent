@@ -236,19 +236,19 @@ receive_header(Socket, InfoHash) ->
 	  when PSL /= length(?PROTOCOL_STRING) ->
 	    {error, packet_size_mismatch};
 	%% If the infohash is await, return the infohash along.
-	{ok, <<_PSL:8/integer, ?PROTOCOL_STRING, ReservedBytes:8/binary,
+	{ok, <<_PSL:8/integer, ?PROTOCOL_STRING, ReservedBytes:64/big,
 	       IH:20/binary, PI:20/binary>>}
 	  when InfoHash =:= await ->
-	    {ok, ReservedBytes, IH, PI};
+	    {ok, decode_protocol_capabilities(ReservedBytes), IH, PI};
 	%% Infohash mismatches. Error it.
-	{ok, <<_PSL:8/integer, ?PROTOCOL_STRING, _ReservedBytes:8/binary,
+	{ok, <<_PSL:8/integer, ?PROTOCOL_STRING, _ReservedBytes:64/big,
 	       IH:20/binary, _PI:20/binary>>}
 	  when IH /= InfoHash ->
 	    {error, infohash_mismatch};
 	%% Everything ok
-	{ok, <<_PSL:8/integer, ?PROTOCOL_STRING, ReservedBytes:8/binary,
+	{ok, <<_PSL:8/integer, ?PROTOCOL_STRING, ReservedBytes:64/big,
 	       _IH:20/binary, PI:20/binary>>} ->
-	    {ok, ReservedBytes, PI};
+	    {ok, decode_protocol_capabilities(ReservedBytes), PI};
 	%% This is not even a header!
 	{ok, X} when is_binary(X) ->
 	    {error, {bad_header, X}};
@@ -256,6 +256,20 @@ receive_header(Socket, InfoHash) ->
 	{error, Reason} ->
 	    {error, Reason}
     end.
+
+%%--------------------------------------------------------------------
+%% Function: decode_protocol_capabilities(Integer)
+%% Description: Decode the capabilities of the protocol
+%%--------------------------------------------------------------------
+decode_protocol_capabilities(N) ->
+    Capabilities = [{?EXT_FAST,  fast_extension}],
+    lists:foldl(
+      fun
+	  ({M, Cap}, Acc) when (M band N) > 0 -> [Cap | Acc];
+	  (_Capability, Acc) -> Acc
+      end,
+      Capabilities,
+      []).
 
 %%--------------------------------------------------------------------
 %% Function: construct_bitfield

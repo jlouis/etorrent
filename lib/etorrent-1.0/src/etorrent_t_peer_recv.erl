@@ -204,7 +204,8 @@ handle_cast({connect, IP, Port}, S) ->
 	{error, _Reason} ->
 	    {stop, normal, S}
     end;
-handle_cast({complete_handshake, _ReservedBytes, Socket, RemotePeerId}, S) ->
+handle_cast({complete_handshake, ReservedBytes, Socket, RemotePeerId}, S) ->
+    ReservedBytes = [],
     case etorrent_peer_communication:complete_handshake(Socket,
 							S#state.info_hash,
 							S#state.local_peer_id) of
