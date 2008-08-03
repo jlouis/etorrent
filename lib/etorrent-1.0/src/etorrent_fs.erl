@@ -88,7 +88,7 @@ handle_call(Msg, _From, S) when S#state.file_pool =:= none ->
 handle_call({read_piece, PieceNum}, _From, S) ->
     [#piece { files = Operations}] =
 	etorrent_piece_mgr:select(S#state.torrent_id, PieceNum),
-    {ok, Data, NS} = read_pieces_and_assemble(Operations, [], S),
+    {Data, NS} = read_pieces_and_assemble(Operations, S),
     {reply, {ok, Data}, NS}.
 
 handle_cast(Msg, S) when S#state.file_pool =:= none ->
@@ -99,13 +99,13 @@ handle_cast({write_chunk, {Index, Data, Ops}}, S) ->
 	[P] when P#piece.state =:= fetched ->
 	    {noreply, S};
 	[_] ->
-	    {ok, NS} = fs_write(Data, Ops, S),
+	    NS = fs_write(Data, Ops, S),
 	    {noreply, NS}
     end;
 handle_cast({check_piece, Index}, S) ->
     [#piece { hash = Hash, files = Operations}] =
 	etorrent_piece_mgr:select(S#state.torrent_id, Index),
-    {ok, Data, NS} = read_pieces_and_assemble(Operations, [], S),
+    {Data, NS} = read_pieces_and_assemble(Operations, S),
     DataSize = size(Data),
     case Hash == crypto:sha(Data) of
 	true ->
@@ -127,7 +127,6 @@ handle_cast({check_piece, Index}, S) ->
 					       Index,
 					       not_fetched),
 	    etorrent_chunk_mgr:remove_chunks(S#state.torrent_id, Index),
-	    %% 'left' will be updated when the piece is chunked again.
 	    {noreply, NS}
     end;
 handle_cast(stop, S) ->
@@ -170,61 +169,61 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%--------------------------------------------------------------------
 create_file_process(Id, S) ->
-    {ok, Pid} = etorrent_fs_pool_sup:add_file_process(S#state.file_pool, S#state.torrent_id, Id),
+    {ok, Pid} = etorrent_fs_pool_sup:add_file_process(S#state.file_pool,
+						      S#state.torrent_id, Id),
     erlang:monitor(process, Pid),
     NewDict = dict:store(Id, Pid, S#state.file_process_dict),
     {ok, Pid, S#state{ file_process_dict = NewDict }}.
 
-read_pieces_and_assemble([], FileData, S) ->
-    {ok, list_to_binary(lists:reverse(FileData)), S};
-read_pieces_and_assemble([{Id, Offset, Size} | Rest], Done, S) ->
+read_pieces_and_assemble(Ops, S) ->
+    read_pieces_and_assemble(Ops, <<>>, S).
+
+read_pieces_and_assemble([], Done, S) -> {Done, S};
+read_pieces_and_assemble([{Id, Offset, Size} | Rest], SoFar, S) ->
     %% 2 Notes: This can't be tail recursive due to catch-handler on stack.
     %%          I've seen exit:{timeout, ...}. We should probably just warn
     %%          And try again ;)
     case dict:find(Id, S#state.file_process_dict) of
 	{ok, Pid} ->
 	    try
-		Data = etorrent_fs_process:get_data(Pid, Offset, Size),
-		read_pieces_and_assemble(Rest, [Data | Done], S)
+		Data = etorrent_fs_process:read(Pid, Offset, Size),
+		read_pieces_and_assemble(Rest, <<SoFar/binary, Data/binary>>, S)
 	    catch
 		exit:{noproc, _} ->
 		    D = remove_file_process(Pid, S#state.file_process_dict),
 		    read_pieces_and_assemble([{Id, Offset, Size} | Rest],
-					     Done,
+					     SoFar,
 					     S#state{file_process_dict = D})
 	    end;
 	error ->
-	    {ok, Pid, NS} = create_file_process(Id, S),
-	    Data = etorrent_fs_process:get_data(Pid, Offset, Size),
-	    read_pieces_and_assemble(Rest, [Data | Done], NS)
+	    {ok, _Pid, NS} = create_file_process(Id, S),
+	    read_pieces_and_assemble([{Id, Offset, Size} | Rest],
+				     SoFar,
+				     NS)
     end.
-
+    
 %%--------------------------------------------------------------------
 %% Func: fs_write(Data, Operations, State) -> {ok, State}
 %% Description: Write data defined by Operations. Returns new State
 %%   maintaining the file_process_dict.
 %%--------------------------------------------------------------------
-fs_write(<<>>, [], S) ->
-    {ok, S};
+fs_write(<<>>, [], S) -> S;
 fs_write(Data, [{Id, Offset, Size} | Rest], S) ->
     <<Chunk:Size/binary, Remaining/binary>> = Data,
     case dict:find(Id, S#state.file_process_dict) of
 	{ok, Pid} ->
-	    Ref = make_ref(),
-	    case catch({Ref,
-			etorrent_fs_process:put_data(Pid, Chunk,
-						     Offset, Size)}) of
-		{Ref, ok} ->
-		    fs_write(Remaining, Rest, S);
-		{'EXIT', {noproc, _}} ->
+	    try
+		ok = etorrent_fs_process:write(Pid, Chunk, Offset, Size),
+		fs_write(Remaining, Rest, S)
+	    catch
+		exit:{noproc, _} ->
 		    D = remove_file_process(Pid, S#state.file_process_dict),
 		    fs_write(Data, [{Id, Offset, Size} | Rest],
-				     S#state{file_process_dict = D})
+			     S#state {file_process_dict = D})
 	    end;
 	error ->
-	    {ok, Pid, NS} = create_file_process(Id, S),
-	    ok = etorrent_fs_process:put_data(Pid, Chunk, Offset, Size),
-	    fs_write(Remaining, Rest, NS)
+	    {ok, _Pid, NS} = create_file_process(Id, S),
+	    fs_write(Data, [{Id, Offset, Size} | Rest], NS)
     end.
 
 remove_file_process(Pid, Dict) ->
