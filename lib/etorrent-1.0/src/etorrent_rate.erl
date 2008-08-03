@@ -8,7 +8,7 @@
 -module(etorrent_rate).
 
 %% API
--export([init/1, update/2, now_secs/0]).
+-export([init/0, init/1, update/2, now_secs/0]).
 
 -include("etorrent_rate.hrl").
 
@@ -22,6 +22,8 @@
 %% Args: Fudge ::= integer() - The fudge skew to start out with
 %% Description: Return an initialized rate tuple.
 %%--------------------------------------------------------------------
+init() -> init(?RATE_FUDGE).
+
 init(Fudge) ->
     T = now_secs(),
     #peer_rate { next_expected = T + Fudge,
