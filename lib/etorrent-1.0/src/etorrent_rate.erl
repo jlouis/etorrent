@@ -8,7 +8,7 @@
 -module(etorrent_rate).
 
 %% API
--export([init/1, update/2, now_secs/0]).
+-export([init/1, update/2, now_secs/0, eta/2]).
 
 -include("etorrent_rate.hrl").
 
@@ -66,6 +66,17 @@ update(#peer_rate {rate = Rate,
 			 %% ?MAX_RATE_PERIOD
 			 rate_since = lists:max([RateSince, T - ?MAX_RATE_PERIOD])}
     end.
+
+
+%%--------------------------------------------------------------------
+%% Function: eta/2
+%% Args: Left  ::= integer() - Number of bytes left to download
+%%       DownloadRate   ::= double()  - Download rate
+%% Description: Calculate estimated time of arrival.
+%% Returns: {Days, {Hours, Minutes, Seconds}}
+%%--------------------------------------------------------------------
+eta(Left, DownloadRate) ->
+	calendar:seconds_to_daystime(round(Left / DownloadRate)).
 
 %%====================================================================
 %% Internal functions
