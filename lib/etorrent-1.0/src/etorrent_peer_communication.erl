@@ -10,7 +10,7 @@
 -module(etorrent_peer_communication).
 
 %% API
--export([initiate_handshake/3, recieve_handshake/1,
+-export([initiate_handshake/3, receive_handshake/1,
 	 complete_handshake/3]).
 -export([send_message/3, recv_message/2,
 	 construct_bitfield/2, destruct_bitfield/2]).
@@ -104,18 +104,18 @@ send_message(Rate, Socket, Message) ->
     {Res, etorrent_rate:update(Rate, Sz), Sz}.
 
 %%--------------------------------------------------------------------
-%% Function: recieve_handshake(Socket) -> {ok, protocol_version,
+%% Function: receive_handshake(Socket) -> {ok, protocol_version,
 %%                                             remote_peer_id()} |
 %%                                       {ok, proto_version(),
 %%                                            info_hash(),
 %%                                            remote_peer_id()} |
 %%                                        {error, Reason}
-%% Description: Recieve a handshake from another peer. In the recieve,
+%% Description: Receive a handshake from another peer. In the receive,
 %%  we don't send the info_hash, but expect the initiator to send what
 %%  he thinks is the correct hash. For the return value, see the
-%%  function recieve_header()
+%%  function receive_header()
 %%--------------------------------------------------------------------
-recieve_handshake(Socket) ->
+receive_handshake(Socket) ->
     Header = build_peer_protocol_header(),
     case gen_tcp:send(Socket, Header) of
 	ok ->
@@ -182,7 +182,7 @@ build_peer_protocol_header() ->
 %%                                            info_hash(),
 %%                                            remote_peer_id()} |
 %%                                       {error, Reason}
-%% Description: Recieve the full header from a peer. The function
+%% Description: Receive the full header from a peer. The function
 %% returns either with an error or successfully with a
 %% protocol_version string, the infohash the remote sent us and his
 %% peer_id.

@@ -6,7 +6,7 @@
 %%%  file. It is possible to carry out the wished operations on the file
 %%%  in question for operating in a Torrent Client. The implementation has
 %%%  an automatic handler for file descriptors: If no request has been
-%%%  recieved in a given timeout, then the file is closed.
+%%%  received in a given timeout, then the file is closed.
 %%%
 %%% Created : 18 Jun 2007 by User Jlouis <jesper.louis.andersen@gmail.com>
 %%%-------------------------------------------------------------------
@@ -27,7 +27,7 @@
 -record(state, {path = none,
 		iodev = none}).
 
-% If no request has been recieved in this interval, close the server.
+% If no request has been received in this interval, close the server.
 -define(REQUEST_TIMEOUT, 60000).
 
 %%====================================================================

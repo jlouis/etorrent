@@ -50,11 +50,11 @@ add_sender(Pid, Socket, FileSystemPid, Id, RecvPid) ->
 %% specifications.
 %%--------------------------------------------------------------------
 init([LocalPeerId, InfoHash, FilesystemPid, Id, {IP, Port}]) ->
-    Reciever = {reciever, {etorrent_t_peer_recv, start_link,
+    Receiver = {receiver, {etorrent_t_peer_recv, start_link,
 			  [LocalPeerId, InfoHash, FilesystemPid, Id, self(),
 			   {IP, Port}]},
 		permanent, 15000, worker, [etorrent_t_peer_recv]},
-    {ok, {{one_for_all, 0, 1}, [Reciever]}}.
+    {ok, {{one_for_all, 0, 1}, [Receiver]}}.
 
 %%====================================================================
 %% Internal functions

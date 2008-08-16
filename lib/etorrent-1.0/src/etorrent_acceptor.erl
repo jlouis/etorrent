@@ -107,7 +107,7 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 
 handshake(Socket, S) ->
-    case etorrent_peer_communication:recieve_handshake(Socket) of
+    case etorrent_peer_communication:receive_handshake(Socket) of
 	{ok, ReservedBytes, InfoHash, PeerId} ->
 	    lookup_infohash(Socket, ReservedBytes, InfoHash, PeerId, S);
 	{error, _Reason} ->

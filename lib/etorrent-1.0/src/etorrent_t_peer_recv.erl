@@ -113,7 +113,7 @@ interested(Pid) ->
 
 %%--------------------------------------------------------------------
 %% Function: have(Pid, PieceNumber)
-%% Description: Tell the peer we have just recieved piece PieceNumber.
+%% Description: Tell the peer we have just received piece PieceNumber.
 %%--------------------------------------------------------------------
 have(Pid, PieceNumber) ->
     gen_server:cast(Pid, {have, PieceNumber}).
