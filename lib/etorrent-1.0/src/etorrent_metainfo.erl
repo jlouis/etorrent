@@ -37,7 +37,7 @@ get_piece_length(Torrent) ->
 get_pieces(Torrent) ->
     {string, Ps} = etorrent_bcoding:search_dict({string, "pieces"},
                                                 get_info(Torrent)),
-    [list_to_binary(S) || S <- split_into_chunks(20, Ps)].
+    [list_to_binary(S) || S <- split_into_chunks(Ps)].
 
 get_length(Torrent) ->
     case etorrent_bcoding:search_dict({string, "length"},
@@ -104,8 +104,9 @@ get_infohash(Torrent) ->
 get_info(Torrent) ->
     etorrent_bcoding:search_dict({string, "info"}, Torrent).
 
-split_into_chunks(_N, []) ->
-    [];
+split_into_chunks(L) -> split_into_chunks(20, L);
+
+split_into_chunks(_N, []) -> [];
 split_into_chunks(N, String) ->
     {Chunk, Rest} = lists:split(N, String),
     [Chunk | split_into_chunks(N, Rest)].
