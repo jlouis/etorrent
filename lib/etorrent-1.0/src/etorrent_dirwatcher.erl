@@ -39,6 +39,7 @@ dir_watched() ->
 %% gen_server callbacks
 %%====================================================================
 init([]) ->
+    process_flag(trap_exit, true),
     {ok, Dir} = application:get_env(etorrent, dir),
     _Tid = ets:new(etorrent_dirwatcher, [named_table, protected]),
     {ok, #state{dir = Dir}, 0}.
@@ -59,6 +60,7 @@ handle_info(_Info, State) ->
     {noreply, State, ?WATCH_WAIT_TIME}.
 
 terminate(_Reason, _State) ->
+    true = ets:delete(etorrent_dirwatcher),
     ok.
 
 code_change(_OldVsn, State, _Extra) ->
