@@ -9,7 +9,6 @@
 
 -module(etorrent_metainfo).
 -author("Jesper Louis Andersen <jesper.louis.andersen@gmail.com>").
--vsn(1).
 
 %% API
 -export([get_piece_length/1, get_length/1, get_pieces/1, get_url/1,
