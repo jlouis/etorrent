@@ -69,15 +69,24 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%--------------------------------------------------------------------
 
-%% Operations
+%% Watch directories will look through the directory we are watching
+%%  and will start and stop torrents according to what is inside the
+%%  directory.
+%%
+%% The process used is a mark & sweep strategy: First all entries in
+%%  the ETS table is made unmarked. Then we process through the files
+%%  adding new keys or marking keys as we go along with process_file/1.
+%%
+%% Finally, a Sweep is used to start and stop torrents according to
+%% their markings.
 watch_directories(S) ->
     reset_marks(ets:first(etorrent_dirwatcher)),
-    lists:foreach(fun process_file/1,
+    lists:foreach(fun mark/1,
                   filelib:wildcard("*.torrent", S#state.dir)),
-    start_stop(ets:first(etorrent_dirwatcher)),
+    sweep(ets:first(etorrent_dirwatcher)),
     ok.
 
-process_file(F) ->
+mark(F) ->
     case ets:lookup(etorrent_dirwatcher, F) of
         [] ->
             ets:insert(etorrent_dirwatcher, {F, new});
@@ -90,8 +99,8 @@ reset_marks(Key) ->
     ets:insert(etorrent_dirwatcher, {Key, unmarked}),
     reset_marks(ets:next(etorrent_dirwatcher, Key)).
 
-start_stop('$end_of_table') -> ok;
-start_stop(Key) ->
+sweep('$end_of_table') -> ok;
+sweep(Key) ->
     [{Key, S}] = ets:lookup(etorrent_dirwatcher, Key),
     case S of
         new -> etorrent_mgr:start(Key);
@@ -99,4 +108,4 @@ start_stop(Key) ->
         unmarked -> etorrent_mgr:stop(Key),
                     ets:delete(etorrent_dirwatcher, Key)
     end,
-    start_stop(ets:next(etorrent_dirwatcher, Key)).
+    sweep(ets:next(etorrent_dirwatcher, Key)).
