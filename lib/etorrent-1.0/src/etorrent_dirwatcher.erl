@@ -33,7 +33,7 @@ start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
 dir_watched() ->
-    gen_server:call(dirwatcher, dir_watched).
+    gen_server:call(?SERVER, dir_watched).
 
 %%====================================================================
 %% gen_server callbacks
@@ -41,7 +41,7 @@ dir_watched() ->
 init([]) ->
     process_flag(trap_exit, true),
     {ok, Dir} = application:get_env(etorrent, dir),
-    _Tid = ets:new(etorrent_dirwatcher, [named_table, protected]),
+    _Tid = ets:new(etorrent_dirwatcher, [named_table, private]),
     {ok, #state{dir = Dir}, 0}.
 
 handle_call(dir_watched, _Who, S) ->
@@ -75,13 +75,7 @@ watch_directories(S) ->
     reset_marks(ets:first(etorrent_dirwatcher)),
     lists:foreach(fun process_file/1,
                   filelib:wildcard("*.torrent", S#state.dir)),
-
-    ets:safe_fixtable(etorrent_dirwatcher, true),
-    try
-        start_stop(ets:first(etorrent_dirwatcher))
-    after
-        ets:safe_fixtable(etorrent_dirwatcher, false)
-    end,
+    start_stop(ets:first(etorrent_dirwatcher)),
     ok.
 
 process_file(F) ->
