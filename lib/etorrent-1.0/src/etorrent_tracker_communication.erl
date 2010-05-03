@@ -251,14 +251,14 @@ cancel_timers(S) ->
              none ->
                  S;
              TRef ->
-                 timer:cancel(TRef),
+                 {ok, cancel} = timer:cancel(TRef),
                  S#state { hard_timer = none }
          end,
     case NS#state.soft_timer of
         none ->
             NS;
         TRef2 ->
-            timer:cancel(TRef2),
+            {ok, cancel} = timer:cancel(TRef2),
             NS#state { soft_timer = none }
     end.
 

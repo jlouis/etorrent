@@ -245,8 +245,8 @@ handle_cast(stop, S) ->
 
 %% Terminating normally means we should inform our recv pair
 terminate(_Reason, S) ->
-    timer:cancel(S#state.timer),
-    timer:cancel(S#state.rate_timer),
+    _ = timer:cancel(S#state.timer),
+    _ = timer:cancel(S#state.rate_timer),
     ok.
 
 %%--------------------------------------------------------------------
