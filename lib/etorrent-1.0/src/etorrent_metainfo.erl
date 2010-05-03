@@ -123,12 +123,10 @@ hexify(Digest) ->
 %%   client.
 %%--------------------------------------------------------------------
 valid_path(Path) ->
-    RE = "^[^/\\.~][^\\/]*$",
-    case regexp:match(Path, RE) of
-        {match, _S, _E} ->
-            true;
-        nomatch ->
-            false
+    {ok, RM} = re:compile("^[^/\\.~][^\\/]*$"),
+    case re:run(Path, RM) of
+        {match, _} -> true;
+        nomatch    -> false
     end.
 
 process_file_entry(Entry) ->
