@@ -104,7 +104,7 @@ get_infohash(Torrent) ->
 get_info(Torrent) ->
     etorrent_bcoding:search_dict({string, "info"}, Torrent).
 
-split_into_chunks(L) -> split_into_chunks(20, L);
+split_into_chunks(L) -> split_into_chunks(20, L).
 
 split_into_chunks(_N, []) -> [];
 split_into_chunks(N, String) ->
