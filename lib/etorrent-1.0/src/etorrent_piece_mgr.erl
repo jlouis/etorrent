@@ -14,14 +14,14 @@
 
 %% API
 -export([start_link/0, delete/1, decrease_missing_chunks/2, statechange/3,
-	 fetched/2, bitfield/1, select/1, select/2, valid/2, interesting/2,
-	 num_not_fetched/1, check_interest/2, add_pieces/2, chunk/3]).
+         fetched/2, bitfield/1, select/1, select/2, valid/2, interesting/2,
+         num_not_fetched/1, check_interest/2, add_pieces/2, chunk/3]).
 
 -export([fetched/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
-	 terminate/2, code_change/3]).
+         terminate/2, code_change/3]).
 
 -record(state, {}).
 -define(SERVER, ?MODULE).
@@ -77,7 +77,7 @@ fetched(Id, Idx) ->
 fetched(Id) ->
     MH = #piece { state = fetched, idpn = {Id, '$1'}, _ = '_'},
     ets:select(etorrent_piece_tbl,
-	       [{MH, [], ['$1']}]).
+               [{MH, [], ['$1']}]).
 
 bitfield(Id) when is_integer(Id) ->
     NP = etorrent_torrent:num_pieces(Id),
@@ -92,9 +92,9 @@ bitfield(Id) when is_integer(Id) ->
 %%--------------------------------------------------------------------
 num_not_fetched(Id) when is_integer(Id) ->
     Q = qlc:q([R#piece.piece_number ||
-		  R <- ets:table(etorrent_piece_tbl),
-		  R#piece.id =:= Id,
-		  R#piece.state =:= not_fetched]),
+                  R <- ets:table(etorrent_piece_tbl),
+                  R#piece.id =:= Id,
+                  R#piece.state =:= not_fetched]),
     length(qlc:e(Q)).
 
 %%--------------------------------------------------------------------
@@ -126,8 +126,8 @@ select(Id, PN) ->
 %%--------------------------------------------------------------------
 valid(Id, Pn) when is_integer(Id) ->
     case ets:lookup(etorrent_piece_tbl, {Id, Pn}) of
-	[] -> false;
-	[_] -> true
+        [] -> false;
+        [_] -> true
     end.
 
 %%--------------------------------------------------------------------
@@ -137,10 +137,10 @@ valid(Id, Pn) when is_integer(Id) ->
 interesting(Id, Pn) when is_integer(Id) ->
     [P] = ets:lookup(etorrent_piece_tbl, {Id, Pn}),
     case P#piece.state of
-	fetched ->
-	    false;
-	_ ->
-	    true
+        fetched ->
+            false;
+        _ ->
+            true
     end.
 
 %%====================================================================
@@ -157,7 +157,7 @@ interesting(Id, Pn) when is_integer(Id) ->
 init([]) ->
     process_flag(trap_exit, true),
     _Tid = ets:new(etorrent_piece_tbl, [set, protected, named_table,
-					{keypos, #piece.idpn}]),
+                                        {keypos, #piece.idpn}]),
     {ok, #state{}}.
 
 %%--------------------------------------------------------------------
@@ -172,13 +172,13 @@ init([]) ->
 handle_call({add_pieces, Id, Pieces}, _From, S) ->
     lists:foreach(
       fun({PN, Hash, Files, State}) ->
-	      ets:insert(etorrent_piece_tbl,
-			 #piece { idpn = {Id, PN},
-				  id = Id,
-				  piece_number = PN,
-				  hash = Hash,
-				  files = Files,
-				  state = State})
+              ets:insert(etorrent_piece_tbl,
+                         #piece { idpn = {Id, PN},
+                                  id = Id,
+                                  piece_number = PN,
+                                  hash = Hash,
+                                  files = Files,
+                                  state = State})
       end,
       Pieces),
     {reply, ok, S};
@@ -188,9 +188,9 @@ handle_call({chunk, Id, Idx, N}, _From, S) ->
     {reply, ok, S};
 handle_call({decrease_missing, Id, Idx}, _From, S) ->
     case ets:update_counter(etorrent_piece_tbl, {Id, Idx},
-			    {#piece.left, -1}) of
-	0 -> {reply, full, S};
-	N when is_integer(N) -> {reply, ok, S}
+                            {#piece.left, -1}) of
+        0 -> {reply, full, S};
+        N when is_integer(N) -> {reply, ok, S}
     end;
 handle_call({statechange, Id, Idx, State}, _From, S) ->
     [P] = ets:lookup(etorrent_piece_tbl, {Id, Idx}),
@@ -247,13 +247,13 @@ find_interest_piece(_Id, none) ->
     not_interested;
 find_interest_piece(Id, {Pn, Next}) ->
     case ets:lookup(etorrent_piece_tbl, {Id, Pn}) of
-	[] ->
-	    invalid_piece;
-	[P] when is_record(P, piece) ->
-	    case P#piece.state of
-		fetched ->
-		    find_interest_piece(Id, gb_sets:next(Next));
-		_Other ->
-		    interested
-	    end
+        [] ->
+            invalid_piece;
+        [P] when is_record(P, piece) ->
+            case P#piece.state of
+                fetched ->
+                    find_interest_piece(Id, gb_sets:next(Next));
+                _Other ->
+                    interested
+            end
     end.

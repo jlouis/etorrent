@@ -16,33 +16,33 @@
 
 %% API
 -export([start_link/5,
-	 stop/1,
-	 check_choke/1,
+         stop/1,
+         check_choke/1,
 
-	 local_request/2, remote_request/4, cancel/4,
-	 choke/1, unchoke/1, have/2,
+         local_request/2, remote_request/4, cancel/4,
+         choke/1, unchoke/1, have/2,
 
-	 not_interested/1, interested/1,
-	 bitfield/2]).
+         not_interested/1, interested/1,
+         bitfield/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_info/2, terminate/2, code_change/3,
-	 handle_call/3, handle_cast/2]).
+         handle_call/3, handle_cast/2]).
 
 -record(state, {socket = none,
-	        requests = none,
+                requests = none,
 
-		fast_extension = false,
+                fast_extension = false,
 
-		rate = none,
-		choke = true,
-		interested = false, % Are we interested in the peer?
-		timer = none,
-		rate_timer = none,
-		parent = none,
-	        piece_cache = none,
-		torrent_id = none,
-	        file_system_pid = none}).
+                rate = none,
+                choke = true,
+                interested = false, % Are we interested in the peer?
+                timer = none,
+                rate_timer = none,
+                parent = none,
+                piece_cache = none,
+                torrent_id = none,
+                file_system_pid = none}).
 
 -define(DEFAULT_KEEP_ALIVE_INTERVAL, 120*1000). % From proto. spec.
 -define(MAX_REQUESTS, 1024). % Maximal number of requests a peer may make.
@@ -51,8 +51,8 @@
 %%====================================================================
 start_link(Socket, FilesystemPid, TorrentId, FastExtension, RecvPid) ->
     gen_server:start_link(?MODULE,
-			  [Socket, FilesystemPid, TorrentId, FastExtension,
-			   RecvPid], []).
+                          [Socket, FilesystemPid, TorrentId, FastExtension,
+                           RecvPid], []).
 
 %%--------------------------------------------------------------------
 %% Func: remote_request(Pid, Index, Offset, Len)
@@ -129,14 +129,14 @@ init([Socket, FilesystemPid, TorrentId, FastExtension, Parent]) ->
     {ok, Tref2} = timer:send_interval(?RATE_UPDATE, self(), rate_update),
     {ok,
      #state{socket = Socket,
-	    timer = TRef,
-	    rate_timer = Tref2,
-	    requests = queue:new(),
-	    rate = etorrent_rate:init(),
-	    parent = Parent,
-	    torrent_id = TorrentId,
-	    fast_extension = FastExtension,
-	    file_system_pid = FilesystemPid},
+            timer = TRef,
+            rate_timer = Tref2,
+            requests = queue:new(),
+            rate = etorrent_rate:init(),
+            parent = Parent,
+            torrent_id = TorrentId,
+            fast_extension = FastExtension,
+            file_system_pid = FilesystemPid},
      0}.
 
 %%--------------------------------------------------------------------
@@ -164,9 +164,9 @@ handle_info(tick, S) ->
 handle_info(rate_update, S) ->
     Rate = etorrent_rate:update(S#state.rate, 0),
     ok = etorrent_rate_mgr:send_rate(S#state.torrent_id,
-				     S#state.parent,
-				     Rate#peer_rate.rate,
-				     0),
+                                     S#state.parent,
+                                     Rate#peer_rate.rate,
+                                     0),
     {noreply, S#state { rate = Rate }};
 handle_info(timeout, S)
   when S#state.choke =:= true andalso S#state.piece_cache =:= none ->
@@ -176,10 +176,10 @@ handle_info(timeout, S) when S#state.choke =:= true ->
     {noreply, S};
 handle_info(timeout, S) when S#state.choke =:= false ->
     case queue:out(S#state.requests) of
-	{empty, _} ->
-	    {noreply, S};
-	{{value, {Index, Offset, Len}}, NewQ} ->
-	    send_piece(Index, Offset, Len, S#state { requests = NewQ } )
+        {empty, _} ->
+            {noreply, S};
+        {{value, {Index, Offset, Len}}, NewQ} ->
+            send_piece(Index, Offset, Len, S#state { requests = NewQ } )
     end;
 handle_info(Msg, S) ->
     error_logger:info_report([got_unknown_message, Msg, S]),
@@ -220,21 +220,21 @@ handle_cast({remote_request, _Index, _Offset, _Len}, S)
 handle_cast({remote_request, Index, Offset, Len}, S)
   when S#state.choke == false ->
     case queue:len(S#state.requests) > ?MAX_REQUESTS of
-	true when S#state.fast_extension =:= true ->
-	    send_message({reject_request, Index, Offset, Len}, S, 0);
-	true ->
-	    {stop, max_queue_len_exceeded, S};
-	false ->
-	    NQ = queue:in({Index, Offset, Len}, S#state.requests),
-	    {noreply, S#state{requests = NQ}, 0}
+        true when S#state.fast_extension =:= true ->
+            send_message({reject_request, Index, Offset, Len}, S, 0);
+        true ->
+            {stop, max_queue_len_exceeded, S};
+        false ->
+            NQ = queue:in({Index, Offset, Len}, S#state.requests),
+            {noreply, S#state{requests = NQ}, 0}
     end;
 handle_cast({cancel, Idx, Offset, Len}, S) when S#state.fast_extension =:= true ->
     try
-	NQ = etorrent_utils:queue_remove_check({Idx, Offset, Len},
-					       S#state.requests),
-	{noreply, S#state { requests = NQ}, 0}
+        NQ = etorrent_utils:queue_remove_check({Idx, Offset, Len},
+                                               S#state.requests),
+        {noreply, S#state { requests = NQ}, 0}
     catch
-	exit:badmatch -> {stop, normal, S}
+        exit:badmatch -> {stop, normal, S}
     end;
 handle_cast({cancel, Index, OffSet, Len}, S) ->
     NQ = etorrent_utils:queue_remove({Index, OffSet, Len}, S#state.requests),
@@ -260,34 +260,34 @@ terminate(_Reason, S) ->
 %%--------------------------------------------------------------------
 send_piece_message(Msg, S, Timeout) ->
     case etorrent_peer_communication:send_message(S#state.rate, S#state.socket, Msg) of
-	{ok, R, Amount} ->
-	    ok = etorrent_rate_mgr:send_rate(S#state.torrent_id,
-					     S#state.parent,
-					     R#peer_rate.rate,
-					     Amount),
-	    {noreply, S#state { rate = R }, Timeout};
-	{{error, closed}, R, _Amount} ->
-	    {stop, normal, S#state { rate = R}}
+        {ok, R, Amount} ->
+            ok = etorrent_rate_mgr:send_rate(S#state.torrent_id,
+                                             S#state.parent,
+                                             R#peer_rate.rate,
+                                             Amount),
+            {noreply, S#state { rate = R }, Timeout};
+        {{error, closed}, R, _Amount} ->
+            {stop, normal, S#state { rate = R}}
     end.
 
 send_piece(Index, Offset, Len, S) ->
     case S#state.piece_cache of
-	{I, Binary} when I == Index ->
-	    <<_Skip:Offset/binary, Data:Len/binary, _R/binary>> = Binary,
-	    Msg = {piece, Index, Offset, Data},
-	    %% Track uploaded size for torrent (for the tracker)
-	    ok = etorrent_torrent:statechange(S#state.torrent_id,
-					      {add_upload, Len}),
-	    %% Track the amount uploaded by this peer.
+        {I, Binary} when I == Index ->
+            <<_Skip:Offset/binary, Data:Len/binary, _R/binary>> = Binary,
+            Msg = {piece, Index, Offset, Data},
+            %% Track uploaded size for torrent (for the tracker)
+            ok = etorrent_torrent:statechange(S#state.torrent_id,
+                                              {add_upload, Len}),
+            %% Track the amount uploaded by this peer.
 
-	    send_piece_message(Msg, S, 0);
-	%% Update cache and try again...
-	{I, _Binary} when I /= Index ->
-	    NS = load_piece(Index, S),
-	    send_piece(Index, Offset, Len, NS);
-	none ->
-	    NS = load_piece(Index, S),
-	    send_piece(Index, Offset, Len, NS)
+            send_piece_message(Msg, S, 0);
+        %% Update cache and try again...
+        {I, _Binary} when I /= Index ->
+            NS = load_piece(Index, S),
+            send_piece(Index, Offset, Len, NS);
+        none ->
+            NS = load_piece(Index, S),
+            send_piece(Index, Offset, Len, NS)
     end.
 
 load_piece(Index, S) ->
@@ -299,38 +299,38 @@ send_message(Msg, S) ->
 
 send_message(Msg, S, Timeout) ->
     case send(Msg, S) of
-	{ok, NS} -> {noreply, NS, Timeout};
-	{error, closed, NS} -> {stop, normal, NS};
-	{error, ebadf, NS} -> {stop, normal, NS}
+        {ok, NS} -> {noreply, NS, Timeout};
+        {error, closed, NS} -> {stop, normal, NS};
+        {error, ebadf, NS} -> {stop, normal, NS}
     end.
 
 send(Msg, S) ->
     case etorrent_peer_communication:send_message(S#state.rate, S#state.socket, Msg) of
-	{ok, Rate, Amount} ->
-	    ok = etorrent_rate_mgr:send_rate(
-		   S#state.torrent_id,
-		   S#state.parent,
-		   Rate#peer_rate.rate,
-		   Amount),
-	    {ok, S#state { rate = Rate}};
-	{{error, E}, R, _Amount} ->
-	    {error, E, S#state { rate = R }}
+        {ok, Rate, Amount} ->
+            ok = etorrent_rate_mgr:send_rate(
+                   S#state.torrent_id,
+                   S#state.parent,
+                   Rate#peer_rate.rate,
+                   Amount),
+            {ok, S#state { rate = Rate}};
+        {{error, E}, R, _Amount} ->
+            {error, E, S#state { rate = R }}
     end.
 
 
 perform_choke(S = #state { fast_extension = FX, choke = C}) ->
     case {FX, C} of
-	{false, true} -> {noreply, S, 0};
-	{false, false} ->
-	    ok = local_choke(S),
-	    send_message(choke, S#state{choke = true, requests = queue:new(),
-				        piece_cache = none});
-	{true, true} -> {noreply, S, 0};
-	{true, false} ->
-	    local_choke(S),
-	    {ok, NS} = send(choke, S),
-	    FS = empty_requests(NS),
-	    {noreply, FS, 0}
+        {false, true} -> {noreply, S, 0};
+        {false, false} ->
+            ok = local_choke(S),
+            send_message(choke, S#state{choke = true, requests = queue:new(),
+                                        piece_cache = none});
+        {true, true} -> {noreply, S, 0};
+        {true, false} ->
+            local_choke(S),
+            {ok, NS} = send(choke, S),
+            FS = empty_requests(NS),
+            {noreply, FS, 0}
     end.
 
 empty_requests(S) ->
@@ -344,4 +344,4 @@ empty_requests({{value, {Index, Offset, Len}}, Next}, S) ->
 
 local_choke(S) ->
     etorrent_rate_mgr:local_choke(S#state.torrent_id,
-				  S#state.parent).
+                                  S#state.parent).

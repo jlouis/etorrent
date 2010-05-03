@@ -12,8 +12,8 @@
 
 %% API
 -export([new/3, delete/1, select/1, all/0, statechange/2,
-	 num_pieces/1, decrease_not_fetched/1,
-	 is_endgame/1, mode/1]).
+         num_pieces/1, decrease_not_fetched/1,
+         is_endgame/1, mode/1]).
 
 %%====================================================================
 %% API
@@ -26,20 +26,20 @@
 %%--------------------------------------------------------------------
 new(Id, {{uploaded, U}, {downloaded, D}, {left, L}, {total, T}}, NPieces) ->
     State = case L of
-		0 ->
-		    etorrent_event_mgr:seeding_torrent(Id),
-		    seeding;
-		_ -> leeching
-	    end,
+                0 ->
+                    etorrent_event_mgr:seeding_torrent(Id),
+                    seeding;
+                _ -> leeching
+            end,
     F = fun() ->
-		mnesia:write(#torrent { id = Id,
-					left = L,
-					total = T,
-					uploaded = U,
-					downloaded = D,
-					pieces = NPieces,
-					state = State })
-	end,
+                mnesia:write(#torrent { id = Id,
+                                        left = L,
+                                        total = T,
+                                        uploaded = U,
+                                        downloaded = D,
+                                        pieces = NPieces,
+                                        state = State })
+        end,
     {atomic, _} = mnesia:transaction(F),
     Missing = etorrent_piece_mgr:num_not_fetched(Id),
     mnesia:dirty_update_counter(torrent_c_pieces, Id, Missing),
@@ -83,8 +83,8 @@ all() ->
 all(Pos) ->
     mnesia:transaction(
       fun () ->
-	      Q = qlc:q([P || P <- mnesia:table(torrent)]),
-	      qlc:e(qlc:keysort(Pos, Q))
+              Q = qlc:q([P || P <- mnesia:table(torrent)]),
+              qlc:e(qlc:keysort(Pos, Q))
       end).
 
 
@@ -105,11 +105,11 @@ num_pieces(Id) ->
 decrease_not_fetched(Id) ->
     N = mnesia:dirty_update_counter(torrent_c_pieces, Id, -1),
     case N of
-	0 ->
-	    statechange(Id, endgame),
-	    endgame;
-	N when is_integer(N) ->
-	    ok
+        0 ->
+            statechange(Id, endgame),
+            endgame;
+        N when is_integer(N) ->
+            ok
     end.
 
 %%--------------------------------------------------------------------
@@ -120,43 +120,43 @@ statechange(_Id, []) ->
     ok;
 statechange(Id, [What | Rest]) ->
     F = fun() ->
-		case mnesia:read(torrent, Id, write) of
-		    [T] ->
-			New = case What of
-				  unknown ->
-				      T#torrent{state = unknown};
-				  leeching ->
-				      T#torrent{state = leeching};
-				  seeding ->
-				      T#torrent{state = seeding};
-				  endgame ->
-				      T#torrent{state = endgame};
-				  {add_downloaded, Amount} ->
-				      T#torrent{downloaded = T#torrent.downloaded + Amount};
-				  {add_upload, Amount} ->
-				      T#torrent{uploaded = T#torrent.uploaded + Amount};
-				  {subtract_left, Amount} ->
-				      Left = T#torrent.left - Amount,
-				      case Left of
-					  0 ->
-					      T#torrent { left = 0, state = seeding };
-					  N when N =< T#torrent.total ->
-					      T#torrent { left = N }
-				      end;
-				  {tracker_report, Seeders, Leechers} ->
-				      T#torrent{seeders = Seeders, leechers = Leechers}
-			      end,
-			mnesia:write(New),
-			{T#torrent.state, New#torrent.state}
-		end
-	end,
+                case mnesia:read(torrent, Id, write) of
+                    [T] ->
+                        New = case What of
+                                  unknown ->
+                                      T#torrent{state = unknown};
+                                  leeching ->
+                                      T#torrent{state = leeching};
+                                  seeding ->
+                                      T#torrent{state = seeding};
+                                  endgame ->
+                                      T#torrent{state = endgame};
+                                  {add_downloaded, Amount} ->
+                                      T#torrent{downloaded = T#torrent.downloaded + Amount};
+                                  {add_upload, Amount} ->
+                                      T#torrent{uploaded = T#torrent.uploaded + Amount};
+                                  {subtract_left, Amount} ->
+                                      Left = T#torrent.left - Amount,
+                                      case Left of
+                                          0 ->
+                                              T#torrent { left = 0, state = seeding };
+                                          N when N =< T#torrent.total ->
+                                              T#torrent { left = N }
+                                      end;
+                                  {tracker_report, Seeders, Leechers} ->
+                                      T#torrent{seeders = Seeders, leechers = Leechers}
+                              end,
+                        mnesia:write(New),
+                        {T#torrent.state, New#torrent.state}
+                end
+        end,
     {atomic, Res} = mnesia:transaction(F),
     case Res of
-	{leeching, seeding} ->
-	    etorrent_event_mgr:seeding_torrent(Id),
-	    ok;
-	_ ->
-	    ok
+        {leeching, seeding} ->
+            etorrent_event_mgr:seeding_torrent(Id),
+            ok;
+        _ ->
+            ok
     end,
     statechange(Id, Rest);
 statechange(Id, What) when is_integer(Id) ->
@@ -168,8 +168,8 @@ statechange(Id, What) when is_integer(Id) ->
 %%--------------------------------------------------------------------
 is_endgame(Id) ->
     case mnesia:dirty_read(torrent, Id) of
-	[T] -> T#torrent.state =:= endgame;
-	[] -> false % The torrent isn't there anymore.
+        [T] -> T#torrent.state =:= endgame;
+        [] -> false % The torrent isn't there anymore.
     end.
 
 %%====================================================================

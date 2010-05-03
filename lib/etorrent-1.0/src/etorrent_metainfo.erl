@@ -13,8 +13,8 @@
 
 %% API
 -export([get_piece_length/1, get_length/1, get_pieces/1, get_url/1,
-	 get_infohash/1,
-	 get_files/1, get_name/1, hexify/1]).
+         get_infohash/1,
+         get_files/1, get_name/1, hexify/1]).
 
 
 %%====================================================================
@@ -27,8 +27,8 @@
 %%--------------------------------------------------------------------
 get_piece_length(Torrent) ->
     {integer, Size} =
-	etorrent_bcoding:search_dict({string, "piece length"},
-				     get_info(Torrent)),
+        etorrent_bcoding:search_dict({string, "piece length"},
+                                     get_info(Torrent)),
     Size.
 
 %%--------------------------------------------------------------------
@@ -37,27 +37,27 @@ get_piece_length(Torrent) ->
 %%--------------------------------------------------------------------
 get_pieces(Torrent) ->
     {string, Ps} = etorrent_bcoding:search_dict({string, "pieces"},
-						get_info(Torrent)),
+                                                get_info(Torrent)),
     [list_to_binary(S) || S <- split_into_chunks(20, Ps)].
 
 get_length(Torrent) ->
     case etorrent_bcoding:search_dict({string, "length"},
-				      get_info(Torrent)) of
-	{integer, L} ->
-	    L;
-	false ->
-	    %% Multifile torrent
-	    sum_files(Torrent)
+                                      get_info(Torrent)) of
+        {integer, L} ->
+            L;
+        false ->
+            %% Multifile torrent
+            sum_files(Torrent)
     end.
 
 get_file_length(File) ->
     {integer, N} = etorrent_bcoding:search_dict({string, "length"},
-						File),
+                                                File),
     N.
 
 sum_files(Torrent) ->
     {list, Files} = etorrent_bcoding:search_dict({string, "files"},
-					get_info(Torrent)),
+                                        get_info(Torrent)),
     lists:sum([get_file_length(F) || F <- Files]).
 
 %%--------------------------------------------------------------------
@@ -76,7 +76,7 @@ get_files(Torrent) ->
 %%--------------------------------------------------------------------
 get_name(Torrent) ->
     {string, N} = etorrent_bcoding:search_dict({string, "name"},
-				      get_info(Torrent)),
+                                      get_info(Torrent)),
     true = valid_path(N),
     N.
 
@@ -86,7 +86,7 @@ get_name(Torrent) ->
 %%--------------------------------------------------------------------
 get_url(Torrent) ->
     {string, U} = etorrent_bcoding:search_dict({string, "announce"},
-					       Torrent),
+                                               Torrent),
     U.
 
 %%--------------------------------------------------------------------
@@ -125,32 +125,32 @@ hexify(Digest) ->
 valid_path(Path) ->
     RE = "^[^/\\.~][^\\/]*$",
     case regexp:match(Path, RE) of
-	{match, _S, _E} ->
-	    true;
-	nomatch ->
-	    false
+        {match, _S, _E} ->
+            true;
+        nomatch ->
+            false
     end.
 
 process_file_entry(Entry) ->
     {dict, Dict} = Entry,
     {value, {{string, "path"},
-	     {list, Path}}} =
-	lists:keysearch({string, "path"}, 1, Dict),
+             {list, Path}}} =
+        lists:keysearch({string, "path"}, 1, Dict),
     {value, {{string, "length"},
-	     {integer, Size}}} =
-	lists:keysearch({string, "length"}, 1, Dict),
+             {integer, Size}}} =
+        lists:keysearch({string, "length"}, 1, Dict),
     true = lists:any(fun({string, P}) -> valid_path(P) end, Path),
     Filename = filename:join([X || {string, X} <- Path]),
     {Filename, Size}.
 
 get_files_section(Torrent) ->
     case etorrent_bcoding:search_dict({string, "files"}, get_info(Torrent)) of
-	false ->
-	    % Single value torrent, fake entry
-	    N = get_name(Torrent),
-	    L = get_length(Torrent),
-	    {list,[{dict,[{{string,"path"},
-			   {list,[{string,N}]}},
-			  {{string,"length"},{integer,L}}]}]};
-	V -> V
+        false ->
+            % Single value torrent, fake entry
+            N = get_name(Torrent),
+            L = get_length(Torrent),
+            {list,[{dict,[{{string,"path"},
+                           {list,[{string,N}]}},
+                          {{string,"length"},{integer,L}}]}]};
+        V -> V
     end.

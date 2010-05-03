@@ -28,15 +28,15 @@
 %%%=========================================================================
 parse(AbsURI) ->
     case parse_scheme(AbsURI) of
-	{error, Reason} ->
-	    {error, Reason};
-	{Scheme, Rest} ->
-	    case (catch parse_uri_rest(Scheme, Rest)) of
-		{UserInfo, Host, Port, Path, Query} ->
-		    {Scheme, UserInfo, Host, Port, Path, Query};
-		_  ->
-		    {error, {malformed_url, AbsURI}}
-	    end
+        {error, Reason} ->
+            {error, Reason};
+        {Scheme, Rest} ->
+            case (catch parse_uri_rest(Scheme, Rest)) of
+                {UserInfo, Host, Port, Path, Query} ->
+                    {Scheme, UserInfo, Host, Port, Path, Query};
+                _  ->
+                    {error, {malformed_url, AbsURI}}
+            end
     end.
 
 %%%========================================================================
@@ -44,31 +44,31 @@ parse(AbsURI) ->
 %%%========================================================================
 parse_scheme(AbsURI) ->
     case split_uri(AbsURI, ":", {error, no_scheme}, 1, 1) of
-	{error, no_scheme} ->
-	    {error, no_scheme};
-	{StrScheme, Rest} ->
-	    case list_to_atom(http_util:to_lower(StrScheme)) of
-		Scheme when Scheme == http; Scheme == https ->
-		    {Scheme, Rest};
-		Scheme ->
-		    {error, {not_supported_scheme, Scheme}}
-	    end
+        {error, no_scheme} ->
+            {error, no_scheme};
+        {StrScheme, Rest} ->
+            case list_to_atom(http_util:to_lower(StrScheme)) of
+                Scheme when Scheme == http; Scheme == https ->
+                    {Scheme, Rest};
+                Scheme ->
+                    {error, {not_supported_scheme, Scheme}}
+            end
     end.
 
 parse_uri_rest(Scheme, "//" ++ URIPart) ->
 
     {Authority, PathQuery} =
-	case split_uri(URIPart, "/", URIPart, 1, 0) of
-	    Split = {_, _} ->
-		Split;
-	    URIPart ->
-		case split_uri(URIPart, "\\?", URIPart, 1, 0) of
-		    Split = {_, _} ->
-			Split;
-		    URIPart ->
-			{URIPart,""}
-		end
-	end,
+        case split_uri(URIPart, "/", URIPart, 1, 0) of
+            Split = {_, _} ->
+                Split;
+            URIPart ->
+                case split_uri(URIPart, "\\?", URIPart, 1, 0) of
+                    Split = {_, _} ->
+                        Split;
+                    URIPart ->
+                        {URIPart,""}
+                end
+        end,
 
     {UserInfo, HostPort} = split_uri(Authority, "@", {"", Authority}, 1, 1),
     {Host, Port} = parse_host_port(Scheme, HostPort),
@@ -94,11 +94,11 @@ parse_host_port(Scheme, HostPort) ->
 
 split_uri(UriPart, SplitChar, NoMatchResult, SkipLeft, SkipRight) ->
     case regexp:first_match(UriPart, SplitChar) of
-	{match, Match, _} ->
-	    {string:substr(UriPart, 1, Match - SkipLeft),
-	     string:substr(UriPart, Match + SkipRight, length(UriPart))};
-	nomatch ->
-	    NoMatchResult
+        {match, Match, _} ->
+            {string:substr(UriPart, 1, Match - SkipLeft),
+             string:substr(UriPart, Match + SkipRight, length(UriPart))};
+        nomatch ->
+            NoMatchResult
     end.
 
 default_port(http) ->

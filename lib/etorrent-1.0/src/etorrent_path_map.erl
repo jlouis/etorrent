@@ -27,14 +27,14 @@ select(Id, TorrentId) when is_integer(Id) ->
     R;
 select(Path, TorrentId) when is_list(Path) ->
     case mnesia:dirty_index_read(path_map, Path, #path_map.path) of
-	[] ->
-	    Id = etorrent_counters:next(path_map),
-	    ok = mnesia:dirty_write(#path_map{ id = {Id, TorrentId},
-					       path = Path}),
-	    Id;
-	[R] ->
-	    {Id, _TorrentId} = R#path_map.id,
-	    Id
+        [] ->
+            Id = etorrent_counters:next(path_map),
+            ok = mnesia:dirty_write(#path_map{ id = {Id, TorrentId},
+                                               path = Path}),
+            Id;
+        [R] ->
+            {Id, _TorrentId} = R#path_map.id,
+            Id
     end.
 
 %%--------------------------------------------------------------------
@@ -44,7 +44,7 @@ select(Path, TorrentId) when is_list(Path) ->
 delete(TorrentId) when is_integer(TorrentId) ->
     MatchHead = #path_map { id = {'_', TorrentId}, _ = '_' },
     lists:foreach(fun(Obj) -> mnesia:dirty_delete_object(Obj) end,
-		  mnesia:dirty_select(path_map, [{MatchHead, [], ['$_']}])),
+                  mnesia:dirty_select(path_map, [{MatchHead, [], ['$_']}])),
     ok.
 
 %%====================================================================

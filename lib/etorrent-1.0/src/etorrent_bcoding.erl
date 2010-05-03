@@ -12,7 +12,7 @@
 
 %% API
 -export([encode/1, decode/1, search_dict/2, search_dict_default/3,
-	parse/1]).
+        parse/1]).
 
 %%====================================================================
 %% API
@@ -23,10 +23,10 @@
 %%--------------------------------------------------------------------
 encode(BString) ->
     case BString of
-	{string, String} -> encode_string(String);
-	{integer, Integer} -> encode_integer(Integer);
-	{list, Items} -> encode_list([encode(I) || I <- Items]);
-	{dict, Items} -> encode_dict(encode_dict_items(Items))
+        {string, String} -> encode_string(String);
+        {integer, Integer} -> encode_integer(Integer);
+        {list, Items} -> encode_list([encode(I) || I <- Items]);
+        {dict, Items} -> encode_dict(encode_dict_items(Items))
     end.
 
 %%--------------------------------------------------------------------
@@ -43,18 +43,18 @@ decode(String) ->
 %%--------------------------------------------------------------------
 search_dict(Key, {dict, Elems}) ->
     case lists:keysearch(Key, 1, Elems) of
-	{value, {_, V}} ->
-	    V;
-	false ->
-	    false
+        {value, {_, V}} ->
+            V;
+        false ->
+            false
     end.
 
 search_dict_default(Key, Dict, Default) ->
     case search_dict(Key, Dict) of
-	false ->
-	    Default;
-	X ->
-	    X
+        false ->
+            Default;
+        X ->
+            X
     end.
 
 %%--------------------------------------------------------------------
@@ -96,22 +96,22 @@ decode_b([]) ->
     empty_string;
 decode_b([H | Rest]) ->
     case H of
-	$i ->
-	    decode_integer(Rest);
-	$l ->
-	    decode_list(Rest);
-	$d ->
-	    decode_dict(Rest);
-	$e ->
-	    {end_of_data, Rest};
-	S ->
-	    %% This might fail, and so what ;)
-	    attempt_string_decode([S|Rest])
+        $i ->
+            decode_integer(Rest);
+        $l ->
+            decode_list(Rest);
+        $d ->
+            decode_dict(Rest);
+        $e ->
+            {end_of_data, Rest};
+        S ->
+            %% This might fail, and so what ;)
+            attempt_string_decode([S|Rest])
     end.
 
 charPred(C) ->
     fun(E) ->
-	    E /= C end.
+            E /= C end.
 
 attempt_string_decode(String) ->
     {Number, Data} = lists:splitwith(charPred($:), String),
@@ -132,9 +132,9 @@ decode_list(String) ->
 decode_list_items([], Accum) -> {lists:reverse(Accum), []};
 decode_list_items(Items, Accum) ->
     case decode_b(Items) of
-	{end_of_data, Rest} ->
-	    {lists:reverse(Accum), Rest};
-	{I, Rest} -> decode_list_items(Rest, [I | Accum])
+        {end_of_data, Rest} ->
+            {lists:reverse(Accum), Rest};
+        {I, Rest} -> decode_list_items(Rest, [I | Accum])
     end.
 
 decode_dict(String) ->
@@ -145,10 +145,10 @@ decode_dict_items([], Accum) ->
     {Accum, []};
 decode_dict_items(String, Accum) ->
     case decode_b(String) of
-	{end_of_data, Rest} ->
-	    {Accum, Rest};
-	{Key, Rest1} -> {Value, Rest2} = decode_b(Rest1),
-			decode_dict_items(Rest2, [{Key, Value} | Accum])
+        {end_of_data, Rest} ->
+            {Accum, Rest};
+        {Key, Rest1} -> {Value, Rest2} = decode_b(Rest1),
+                        decode_dict_items(Rest2, [{Key, Value} | Accum])
     end.
 
 read_data(IODev) ->
@@ -156,8 +156,8 @@ read_data(IODev) ->
 
 eat_lines(IODev, Accum) ->
     case io:get_chars(IODev, ">", 8192) of
-	eof ->
-	    lists:concat(lists:reverse(Accum));
-	String ->
-	    eat_lines(IODev, [String | Accum])
+        eof ->
+            lists:concat(lists:reverse(Accum));
+        String ->
+            eat_lines(IODev, [String | Accum])
     end.

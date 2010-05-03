@@ -25,7 +25,7 @@ allowed_fast(Sz, {B1, B2, B3, B4}, K, InfoHash) ->
     B = <<B1:8/integer, B2:8/integer, B3:8/integer, B4:8/integer>>,
     allowed_fast(Sz, B, K, InfoHash);
 allowed_fast(Sz, <<B1:8/integer, B2:8/integer, B3:8/integer, _B4:8/integer>>,
-		  K, InfoHash) ->
+                  K, InfoHash) ->
     20 = size(InfoHash),
     %% Rip out the last byte. It means that you need more than a /24
     %%  in order to fool us.
@@ -59,10 +59,10 @@ cut(K, I, X, Sz, Set) ->
     Index = Y rem Sz,
     %% Stuff it into the set if it isn't there already.
     case sets:is_element(Index, Set) of
-	true ->
-	    cut(K, I+1, X, Sz, Set);
-	false ->
-	    cut(K-1, I+1, X, Sz, sets:add_element(Index, Set))
+        true ->
+            cut(K, I+1, X, Sz, Set);
+        false ->
+            cut(K-1, I+1, X, Sz, sets:add_element(Index, Set))
     end.
     
 %%====================================================================

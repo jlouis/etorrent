@@ -11,11 +11,11 @@
 
 %% API
 -export([start_link/0, next/1, obtain_peer_slot/0, release_peer_slot/0,
-	 max_peer_processes/0]).
+         max_peer_processes/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
-	 terminate/2, code_change/3]).
+         terminate/2, code_change/3]).
 
 -record(state, {}).
 -define(SERVER, ?MODULE).
@@ -55,8 +55,8 @@ init([]) ->
     process_flag(trap_exit, true),
     _Tid = ets:new(etorrent_counters, [named_table, protected]),
     ets:insert(etorrent_counters, [{torrent, 0},
-				   {path_map, 0},
-				   {peer_slots, 0}]),
+                                   {path_map, 0},
+                                   {peer_slots, 0}]),
     {ok, #state{}}.
 
 %%--------------------------------------------------------------------
@@ -74,11 +74,11 @@ handle_call({next, Seq}, _From, S) ->
 handle_call(obtain_peer_slot, _From, S) ->
     [{peer_slots, K}] = ets:lookup(etorrent_counters, peer_slots),
     case K >= max_peer_processes() of
-	true ->
-	    {reply, full, S};
-	false ->
-	    ets:update_counter(etorrent_counters, peer_slots, 1),
-	    {reply, ok, S}
+        true ->
+            {reply, full, S};
+        false ->
+            ets:update_counter(etorrent_counters, peer_slots, 1),
+            {reply, ok, S}
     end;
 handle_call(_Request, _From, State) ->
     Reply = ok,
@@ -129,8 +129,8 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 max_peer_processes() ->
     case application:get_env(etorrent, max_peers) of
-	{ok, N} when is_integer(N) ->
-	    N;
-	undefined ->
-	    ?MAX_PEER_PROCESSES
+        {ok, N} when is_integer(N) ->
+            N;
+        undefined ->
+            ?MAX_PEER_PROCESSES
     end.

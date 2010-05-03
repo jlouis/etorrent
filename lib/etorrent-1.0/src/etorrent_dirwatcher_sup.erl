@@ -30,8 +30,8 @@ start_link() ->
 
 init([]) ->
     DirWatcher = {etorrent_dirwatcher,
-		  {etorrent_dirwatcher, start_link, []},
-		  permanent, 2000, worker, [etorrent_dirwatcher]},
+                  {etorrent_dirwatcher, start_link, []},
+                  permanent, 2000, worker, [etorrent_dirwatcher]},
     {ok,{{one_for_one,1,60}, [DirWatcher]}}.
 
 %%====================================================================

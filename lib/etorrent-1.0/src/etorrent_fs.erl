@@ -16,17 +16,17 @@
 
 %% API
 -export([start_link/2,
-	 stop/1, read_piece/2, size_of_ops/1,
-	 write_chunk/2, check_piece/2]).
+         stop/1, read_piece/2, size_of_ops/1,
+         write_chunk/2, check_piece/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
-	 terminate/2, code_change/3]).
+         terminate/2, code_change/3]).
 
 -record(state, { torrent_id = none, %% id of torrent we are serving
-		 file_pool = none,
-		 supervisor = none,
-		 file_process_dict = none}).
+                 file_pool = none,
+                 supervisor = none,
+                 file_process_dict = none}).
 
 %%====================================================================
 %% API
@@ -78,16 +78,16 @@ write_chunk(Pid, {Index, Data, Ops}) ->
 init([IDHandle, SPid]) when is_integer(IDHandle) ->
     process_flag(trap_exit, true),
     {ok, #state{file_process_dict = dict:new(),
-		file_pool = none,
-		supervisor = SPid,
-		torrent_id = IDHandle}}.
+                file_pool = none,
+                supervisor = SPid,
+                torrent_id = IDHandle}}.
 
 handle_call(Msg, _From, S) when S#state.file_pool =:= none ->
     FSPool = etorrent_t_sup:get_pid(S#state.supervisor, fs_pool),
     handle_call(Msg, _From, S#state { file_pool = FSPool });
 handle_call({read_piece, PieceNum}, _From, S) ->
     [#piece { files = Operations}] =
-	etorrent_piece_mgr:select(S#state.torrent_id, PieceNum),
+        etorrent_piece_mgr:select(S#state.torrent_id, PieceNum),
     {Data, NS} = read_pieces_and_assemble(Operations, S),
     {reply, {ok, Data}, NS}.
 
@@ -96,38 +96,38 @@ handle_cast(Msg, S) when S#state.file_pool =:= none ->
     handle_cast(Msg, S#state { file_pool = FSPool });
 handle_cast({write_chunk, {Index, Data, Ops}}, S) ->
     case etorrent_piece_mgr:select(S#state.torrent_id, Index) of
-	[P] when P#piece.state =:= fetched ->
-	    {noreply, S};
-	[_] ->
-	    NS = fs_write(Data, Ops, S),
-	    {noreply, NS}
+        [P] when P#piece.state =:= fetched ->
+            {noreply, S};
+        [_] ->
+            NS = fs_write(Data, Ops, S),
+            {noreply, NS}
     end;
 handle_cast({check_piece, Index}, S) ->
     [#piece { hash = Hash, files = Operations}] =
-	etorrent_piece_mgr:select(S#state.torrent_id, Index),
+        etorrent_piece_mgr:select(S#state.torrent_id, Index),
     {Data, NS} = read_pieces_and_assemble(Operations, S),
     DataSize = size(Data),
     case Hash == crypto:sha(Data) of
-	true ->
-	    ok = etorrent_torrent:statechange(
-		   S#state.torrent_id,
-		   [{subtract_left, DataSize},
-		   {add_downloaded, DataSize}]),
-	    ok = etorrent_piece_mgr:statechange(
-		   S#state.torrent_id,
-		   Index,
-		   fetched),
-	    %% Make sure there is no chunks left for this piece.
-	    ok = etorrent_chunk_mgr:remove_chunks(S#state.torrent_id, Index),
-	    broadcast_have_message(Index, S#state.torrent_id),
-	    {noreply, NS};
-	false ->
-	    ok =
-		etorrent_piece_mgr:statechange(S#state.torrent_id,
-					       Index,
-					       not_fetched),
-	    etorrent_chunk_mgr:remove_chunks(S#state.torrent_id, Index),
-	    {noreply, NS}
+        true ->
+            ok = etorrent_torrent:statechange(
+                   S#state.torrent_id,
+                   [{subtract_left, DataSize},
+                   {add_downloaded, DataSize}]),
+            ok = etorrent_piece_mgr:statechange(
+                   S#state.torrent_id,
+                   Index,
+                   fetched),
+            %% Make sure there is no chunks left for this piece.
+            ok = etorrent_chunk_mgr:remove_chunks(S#state.torrent_id, Index),
+            broadcast_have_message(Index, S#state.torrent_id),
+            {noreply, NS};
+        false ->
+            ok =
+                etorrent_piece_mgr:statechange(S#state.torrent_id,
+                                               Index,
+                                               not_fetched),
+            etorrent_chunk_mgr:remove_chunks(S#state.torrent_id, Index),
+            {noreply, NS}
     end;
 handle_cast(stop, S) ->
     {stop, normal, S};
@@ -170,7 +170,7 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 create_file_process(Id, S) ->
     {ok, Pid} = etorrent_fs_pool_sup:add_file_process(S#state.file_pool,
-						      S#state.torrent_id, Id),
+                                                      S#state.torrent_id, Id),
     erlang:monitor(process, Pid),
     NewDict = dict:store(Id, Pid, S#state.file_process_dict),
     {ok, Pid, S#state{ file_process_dict = NewDict }}.
@@ -184,22 +184,22 @@ read_pieces_and_assemble([{Id, Offset, Size} | Rest], SoFar, S) ->
     %%          I've seen exit:{timeout, ...}. We should probably just warn
     %%          And try again ;)
     case dict:find(Id, S#state.file_process_dict) of
-	{ok, Pid} ->
-	    try
-		Data = etorrent_fs_process:read(Pid, Offset, Size),
-		read_pieces_and_assemble(Rest, <<SoFar/binary, Data/binary>>, S)
-	    catch
-		exit:{noproc, _} ->
-		    D = remove_file_process(Pid, S#state.file_process_dict),
-		    read_pieces_and_assemble([{Id, Offset, Size} | Rest],
-					     SoFar,
-					     S#state{file_process_dict = D})
-	    end;
-	error ->
-	    {ok, _Pid, NS} = create_file_process(Id, S),
-	    read_pieces_and_assemble([{Id, Offset, Size} | Rest],
-				     SoFar,
-				     NS)
+        {ok, Pid} ->
+            try
+                Data = etorrent_fs_process:read(Pid, Offset, Size),
+                read_pieces_and_assemble(Rest, <<SoFar/binary, Data/binary>>, S)
+            catch
+                exit:{noproc, _} ->
+                    D = remove_file_process(Pid, S#state.file_process_dict),
+                    read_pieces_and_assemble([{Id, Offset, Size} | Rest],
+                                             SoFar,
+                                             S#state{file_process_dict = D})
+            end;
+        error ->
+            {ok, _Pid, NS} = create_file_process(Id, S),
+            read_pieces_and_assemble([{Id, Offset, Size} | Rest],
+                                     SoFar,
+                                     NS)
     end.
     
 %%--------------------------------------------------------------------
@@ -211,39 +211,39 @@ fs_write(<<>>, [], S) -> S;
 fs_write(Data, [{Id, Offset, Size} | Rest], S) ->
     <<Chunk:Size/binary, Remaining/binary>> = Data,
     case dict:find(Id, S#state.file_process_dict) of
-	{ok, Pid} ->
-	    try
-		ok = etorrent_fs_process:write(Pid, Chunk, Offset, Size),
-		fs_write(Remaining, Rest, S)
-	    catch
-		exit:{noproc, _} ->
-		    D = remove_file_process(Pid, S#state.file_process_dict),
-		    fs_write(Data, [{Id, Offset, Size} | Rest],
-			     S#state {file_process_dict = D})
-	    end;
-	error ->
-	    {ok, _Pid, NS} = create_file_process(Id, S),
-	    fs_write(Data, [{Id, Offset, Size} | Rest], NS)
+        {ok, Pid} ->
+            try
+                ok = etorrent_fs_process:write(Pid, Chunk, Offset, Size),
+                fs_write(Remaining, Rest, S)
+            catch
+                exit:{noproc, _} ->
+                    D = remove_file_process(Pid, S#state.file_process_dict),
+                    fs_write(Data, [{Id, Offset, Size} | Rest],
+                             S#state {file_process_dict = D})
+            end;
+        error ->
+            {ok, _Pid, NS} = create_file_process(Id, S),
+            fs_write(Data, [{Id, Offset, Size} | Rest], NS)
     end.
 
 remove_file_process(Pid, Dict) ->
     case dict:fetch_keys(dict:filter(fun (_K, V) -> V =:= Pid end, Dict)) of
-	[Key] ->
-	    dict:erase(Key, Dict);
-	[] ->
-	    Dict
+        [Key] ->
+            dict:erase(Key, Dict);
+        [] ->
+            Dict
     end.
 
 stop_all_fs_processes(Dict) ->
     lists:foreach(fun({_, Pid}) -> etorrent_fs_process:stop(Pid) end,
-		  dict:to_list(Dict)),
+                  dict:to_list(Dict)),
     ok.
 
 broadcast_have_message(Index, TorrentId) ->
     Peers = etorrent_peer:all(TorrentId),
     lists:foreach(fun (Peer) ->
-			  etorrent_t_peer_recv:have(Peer#peer.pid, Index)
-		  end,
-		  Peers).
+                          etorrent_t_peer_recv:have(Peer#peer.pid, Index)
+                  end,
+                  Peers).
 
 

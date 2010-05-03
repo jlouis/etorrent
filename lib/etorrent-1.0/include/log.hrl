@@ -7,6 +7,6 @@
 -author('Mats Cronqvist').
 
 %% Simplified into oblivion.
--define(log(T),	error_logger:info_report(
-		  [process_info(self(),current_function),{line,?LINE}|T])).
+-define(log(T), error_logger:info_report(
+                  [process_info(self(),current_function),{line,?LINE}|T])).
 

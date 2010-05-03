@@ -21,25 +21,25 @@
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
-	 terminate/2, code_change/3]).
+         terminate/2, code_change/3]).
 
 -record(state, {our_peer_id = none,
-		info_hash = none,
+                info_hash = none,
 
-		timer_ref = none,
-		round = 0,
+                timer_ref = none,
+                round = 0,
 
-		optimistic_unchoke_pid = none,
-		opt_unchoke_chain = []}).
+                optimistic_unchoke_pid = none,
+                opt_unchoke_chain = []}).
 
 -record(rechoke_info, {pid :: pid(),
-		       kind :: 'seeding' | 'leeching',
-		       state :: 'seeding' | 'leeching' ,
-		       snubbed :: bool(),
-		       r_interest_state :: 'interested' | 'not_interested',
-		       r_choke_state :: 'choked' | 'unchoked' ,
-		       l_choke :: bool(),
-		       rate :: float() }).
+                       kind :: 'seeding' | 'leeching',
+                       state :: 'seeding' | 'leeching' ,
+                       snubbed :: bool(),
+                       r_interest_state :: 'interested' | 'not_interested',
+                       r_choke_state :: 'choked' | 'unchoked' ,
+                       l_choke :: bool(),
+                       rate :: float() }).
 
 -define(SERVER, ?MODULE).
 
@@ -65,7 +65,7 @@ init([OurPeerId]) ->
     process_flag(trap_exit, true),
     {ok, Tref} = timer:send_interval(?ROUND_TIME, self(), round_tick),
     {ok, #state{ our_peer_id = OurPeerId,
-		     timer_ref = Tref}}.
+                     timer_ref = Tref}}.
 
 handle_call({monitor, Pid}, _From, S) ->
     _Tref = erlang:monitor(process, Pid),
@@ -84,13 +84,13 @@ handle_cast(_Msg, State) ->
 
 handle_info(round_tick, S) ->
     case S#state.round of
-	0 ->
-	    {ok, NS} = advance_optimistic_unchoke(S),
-	    rechoke(NS),
-	    {noreply, NS#state { round = 2}};
-	N when is_integer(N) ->
-	    rechoke(S),
-	    {noreply, S#state{round = S#state.round - 1}}
+        0 ->
+            {ok, NS} = advance_optimistic_unchoke(S),
+            rechoke(NS),
+            {noreply, NS#state { round = 2}};
+        N when is_integer(N) ->
+            rechoke(S),
+            {noreply, S#state{round = S#state.round - 1}}
     end;
 handle_info({'DOWN', _Ref, process, Pid, Reason}, S)
   when (Reason =:= normal) or (Reason =:= shutdown) ->
@@ -105,8 +105,8 @@ handle_info({'DOWN', _Ref, process, Pid, Reason}, S)
 handle_info({'DOWN', _Ref, process, Pid, _Reason}, S) ->
     % The peer shut down unexpectedly re-add him to the queue in the *back*
     case etorrent_peer:select(Pid) of
-	[_Peer] -> ok = rechoke(S);
-	     [] -> ok
+        [_Peer] -> ok = rechoke(S);
+             [] -> ok
     end,
 
     NewChain = lists:delete(Pid, S#state.opt_unchoke_chain),
@@ -144,76 +144,76 @@ build_rechoke_info(_Seeding, []) ->
     [];
 build_rechoke_info(Seeding, [Pid | Next]) ->
     case etorrent_peer:select(Pid) of
-	[] -> build_rechoke_info(Seeding, Next);
-	[Peer] ->
-	    Kind = Peer#peer.state,
-	    Snubbed = etorrent_rate_mgr:snubbed(Peer#peer.torrent_id, Pid),
-	    PeerState = etorrent_rate_mgr:select_state(Peer#peer.torrent_id, Pid),
-	    case sets:is_element(Peer#peer.torrent_id, Seeding) of
-		true ->
-		    case etorrent_rate_mgr:fetch_send_rate(
-			   Peer#peer.torrent_id,
-			   Pid) of
-			none -> build_rechoke_info(Seeding, Next);
-			Rate ->
-			    [#rechoke_info { pid = Pid,
-					     kind = Kind,
-					     state = seeding,
-					     rate = Rate,
-					     r_interest_state =
-					       PeerState#peer_state.interest_state,
-					     r_choke_state =
-					       PeerState#peer_state.choke_state,
-					     l_choke =
-					       PeerState#peer_state.local_choke,
-					     snubbed = Snubbed } |
-			     build_rechoke_info(Seeding, Next)]
-		    end;
-		false ->
-		    case etorrent_rate_mgr:fetch_recv_rate(
-			   Peer#peer.torrent_id,
-			   Pid) of
-			none -> build_rechoke_info(Seeding, Next);
-			Rate ->
-			    [#rechoke_info { pid = Pid,
-					     kind = Kind,
-					     state = leeching,
-					     rate = -Rate, % Inverted for later sorting!
-					     r_interest_state =
-					       PeerState#peer_state.interest_state,
-					     r_choke_state =
-					       PeerState#peer_state.choke_state,
-					     l_choke =
-					       PeerState#peer_state.local_choke,
-					     snubbed = Snubbed } |
-			     build_rechoke_info(Seeding, Next)]
-		    end
-	    end
+        [] -> build_rechoke_info(Seeding, Next);
+        [Peer] ->
+            Kind = Peer#peer.state,
+            Snubbed = etorrent_rate_mgr:snubbed(Peer#peer.torrent_id, Pid),
+            PeerState = etorrent_rate_mgr:select_state(Peer#peer.torrent_id, Pid),
+            case sets:is_element(Peer#peer.torrent_id, Seeding) of
+                true ->
+                    case etorrent_rate_mgr:fetch_send_rate(
+                           Peer#peer.torrent_id,
+                           Pid) of
+                        none -> build_rechoke_info(Seeding, Next);
+                        Rate ->
+                            [#rechoke_info { pid = Pid,
+                                             kind = Kind,
+                                             state = seeding,
+                                             rate = Rate,
+                                             r_interest_state =
+                                               PeerState#peer_state.interest_state,
+                                             r_choke_state =
+                                               PeerState#peer_state.choke_state,
+                                             l_choke =
+                                               PeerState#peer_state.local_choke,
+                                             snubbed = Snubbed } |
+                             build_rechoke_info(Seeding, Next)]
+                    end;
+                false ->
+                    case etorrent_rate_mgr:fetch_recv_rate(
+                           Peer#peer.torrent_id,
+                           Pid) of
+                        none -> build_rechoke_info(Seeding, Next);
+                        Rate ->
+                            [#rechoke_info { pid = Pid,
+                                             kind = Kind,
+                                             state = leeching,
+                                             rate = -Rate, % Inverted for later sorting!
+                                             r_interest_state =
+                                               PeerState#peer_state.interest_state,
+                                             r_choke_state =
+                                               PeerState#peer_state.choke_state,
+                                             l_choke =
+                                               PeerState#peer_state.local_choke,
+                                             snubbed = Snubbed } |
+                             build_rechoke_info(Seeding, Next)]
+                    end
+            end
     end.
 
 advance_optimistic_unchoke(S) ->
     NewChain = move_cyclic_chain(S#state.opt_unchoke_chain),
     case NewChain of
-	[] ->
-	    {ok, S}; %% No peers yet
-	[H | _T] ->
-	    etorrent_t_peer_recv:unchoke(H),
-	    {ok, S#state { opt_unchoke_chain = NewChain,
-			   optimistic_unchoke_pid = H }}
+        [] ->
+            {ok, S}; %% No peers yet
+        [H | _T] ->
+            etorrent_t_peer_recv:unchoke(H),
+            {ok, S#state { opt_unchoke_chain = NewChain,
+                           optimistic_unchoke_pid = H }}
     end.
 
 move_cyclic_chain([]) -> [];
 move_cyclic_chain(Chain) ->
     F = fun (Pid) ->
-		case etorrent_peer:select(Pid) of
-		    [] -> true;
-		    [P] -> T = etorrent_rate_mgr:select_state(
-				 P#peer.torrent_id,
-				 Pid),
-			   not (T#peer_state.interest_state =:= interested
-				andalso T#peer_state.choke_state =:= choked)
-		end
-	end,
+                case etorrent_peer:select(Pid) of
+                    [] -> true;
+                    [P] -> T = etorrent_rate_mgr:select_state(
+                                 P#peer.torrent_id,
+                                 Pid),
+                           not (T#peer_state.interest_state =:= interested
+                                andalso T#peer_state.choke_state =:= choked)
+                end
+        end,
     {Front, Back} = lists:splitwith(F, Chain),
     %% Advance chain
     Back ++ Front.
@@ -226,18 +226,18 @@ insert_new_peer_into_chain(Pid, Chain) ->
 
 upload_slots() ->
     case application:get_env(etorrent, max_upload_slots) of
-	{ok, auto} ->
-	    {ok, Rate} = application:get_env(etorrent, max_upload_rate),
-	    case Rate of
-		N when N =<  0 -> 7; %% Educated guess
-		N when N  <  9 -> 2;
-		N when N  < 15 -> 3;
-		N when N  < 42 -> 4;
-		N ->
-		    round(math:sqrt(N * 0.6))
-	    end;
-	{ok, N} when is_integer(N) ->
-	    N
+        {ok, auto} ->
+            {ok, Rate} = application:get_env(etorrent, max_upload_rate),
+            case Rate of
+                N when N =<  0 -> 7; %% Educated guess
+                N when N  <  9 -> 2;
+                N when N  < 15 -> 3;
+                N when N  < 42 -> 4;
+                N ->
+                    round(math:sqrt(N * 0.6))
+            end;
+        {ok, N} when is_integer(N) ->
+            N
     end.
 
 split_preferred(Peers) ->
@@ -250,36 +250,36 @@ prune_preferred_peers(SDowns, SLeechs) ->
     DUploads = lists:max([1, round(MaxUploads * 0.7)]),
     SUploads = lists:max([1, round(MaxUploads * 0.3)]),
     {SUP2, DUP2} =
-	case lists:max([0, DUploads - length(SDowns)]) of
-	    0 -> {SUploads, DUploads};
-	    N -> {SUploads + N, DUploads - N}
-	end,
+        case lists:max([0, DUploads - length(SDowns)]) of
+            0 -> {SUploads, DUploads};
+            N -> {SUploads + N, DUploads - N}
+        end,
     {SUP3, DUP3} =
-	case lists:max([0, SUP2 - length(SLeechs)]) of
-	    0 -> {SUP2, DUP2};
-	    K ->
-		{SUP2 - K, lists:min([DUP2 + K, length(SDowns)])}
-	end,
+        case lists:max([0, SUP2 - length(SLeechs)]) of
+            0 -> {SUP2, DUP2};
+            K ->
+                {SUP2 - K, lists:min([DUP2 + K, length(SDowns)])}
+        end,
     {TSDowns, TSLeechs} = {lists:sublist(SDowns, DUP3),
-			   lists:sublist(SLeechs, SUP3)},
+                           lists:sublist(SLeechs, SUP3)},
     sets:union(sets:from_list(TSDowns), sets:from_list(TSLeechs)).
 
 rechoke_unchoke([], _PS) ->
     [];
 rechoke_unchoke([P | Next], PSet) ->
     case sets:is_element(P, PSet) of
-	true ->
-	    etorrent_t_peer_recv:unchoke(P#rechoke_info.pid),
-	    rechoke_unchoke(Next, PSet);
-	false ->
-	    [P | rechoke_unchoke(Next, PSet)]
+        true ->
+            etorrent_t_peer_recv:unchoke(P#rechoke_info.pid),
+            rechoke_unchoke(Next, PSet);
+        false ->
+            [P | rechoke_unchoke(Next, PSet)]
     end.
 
 optimistics(PSet) ->
     MinUp = case application:get_env(etorrent, min_uploads) of
-		{ok, N} -> N;
-		undefined -> 1
-	    end,
+                {ok, N} -> N;
+                undefined -> 1
+            end,
     lists:max([MinUp, upload_slots() - sets:size(PSet)]).
 
 rechoke_choke([], _Count, _Optimistics) ->
@@ -289,36 +289,36 @@ rechoke_choke([P | Next], Count, Optimistics) when Count >= Optimistics ->
     rechoke_choke(Next, Count, Optimistics);
 rechoke_choke([P | Next], Count, Optimistics) ->
     case P#rechoke_info.kind =:= seeding of
-	true ->
-	    etorrent_t_peer_recv:choke(P#rechoke_info.pid),
-	    rechoke_choke(Next, Count, Optimistics);
-	false ->
-	    etorrent_t_peer_recv:unchoke(P#rechoke_info.pid),
-	    case P#rechoke_info.r_interest_state =:= interested of
-		true ->
-		    rechoke_choke(Next, Count+1, Optimistics);
-		false ->
-		    rechoke_choke(Next, Count, Optimistics)
-	    end
+        true ->
+            etorrent_t_peer_recv:choke(P#rechoke_info.pid),
+            rechoke_choke(Next, Count, Optimistics);
+        false ->
+            etorrent_t_peer_recv:unchoke(P#rechoke_info.pid),
+            case P#rechoke_info.r_interest_state =:= interested of
+                true ->
+                    rechoke_choke(Next, Count+1, Optimistics);
+                false ->
+                    rechoke_choke(Next, Count, Optimistics)
+            end
     end.
 
 split_preferred_peers([], Downs, Leechs) ->
     {Downs, Leechs};
 split_preferred_peers([P | Next], Downs, Leechs) ->
     case P#rechoke_info.kind =:= seeding
-	  orelse P#rechoke_info.r_interest_state =:= not_interested of
-	true ->
-	    split_preferred_peers(Next, Downs, Leechs);
-	false when P#rechoke_info.state =:= seeding ->
-	    split_preferred_peers(Next, Downs, [P | Leechs]);
-	false when P#rechoke_info.snubbed =:= true ->
-	    split_preferred_peers(Next, Downs, Leechs);
-	false ->
-	    split_preferred_peers(Next, [P | Downs], Leechs)
+          orelse P#rechoke_info.r_interest_state =:= not_interested of
+        true ->
+            split_preferred_peers(Next, Downs, Leechs);
+        false when P#rechoke_info.state =:= seeding ->
+            split_preferred_peers(Next, Downs, [P | Leechs]);
+        false when P#rechoke_info.snubbed =:= true ->
+            split_preferred_peers(Next, Downs, Leechs);
+        false ->
+            split_preferred_peers(Next, [P | Downs], Leechs)
     end.
 
 seeding_torrents() ->
     {atomic, Torrents} = etorrent_torrent:all(),
     [T#torrent.id || T <- Torrents,
-		     T#torrent.state =:= seeding].
+                     T#torrent.state =:= seeding].
 

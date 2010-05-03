@@ -22,10 +22,10 @@
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
-	 terminate/2, code_change/3]).
+         terminate/2, code_change/3]).
 
 -record(state, {path = none,
-		iodev = none}).
+                iodev = none}).
 
 % If no request has been received in this interval, close the server.
 -define(REQUEST_TIMEOUT, timer:seconds(60)).
@@ -60,7 +60,7 @@ init([Id, TorrentId]) ->
     FullPath = filename:join([Workdir, Path]),
     {ok, IODev} = file:open(FullPath, [read, write, binary, raw, read_ahead]),
     {ok, #state{iodev = IODev,
-		path = FullPath}, ?REQUEST_TIMEOUT}.
+                path = FullPath}, ?REQUEST_TIMEOUT}.
 
 %%--------------------------------------------------------------------
 %% Function: %% handle_call(Request, From, State) -> {reply, Reply, State} |
@@ -97,8 +97,8 @@ handle_info(Info, State) ->
 
 terminate(_Reason, State) ->
     case file:close(State#state.iodev) of
-	ok -> ok;
-	E -> ?log([cant_close_file, E]), ok
+        ok -> ok;
+        E -> ?log([cant_close_file, E]), ok
     end.
 
 %%--------------------------------------------------------------------

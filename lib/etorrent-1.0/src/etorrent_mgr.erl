@@ -8,10 +8,10 @@
 
 -export([start_link/1,
 
-	 start/1, stop/1,
-	 check/1,
+         start/1, stop/1,
+         check/1,
 
-	 stop_all/0]).
+         stop_all/0]).
 
 -export([handle_cast/2, handle_call/3, init/1, terminate/2]).
 -export([handle_info/2, code_change/3]).
@@ -48,14 +48,14 @@ init([PeerId]) ->
 
 handle_cast({start, F}, S) ->
     case torrent_duplicate(F) of
-	true -> {noreply, S};
-	false ->
-	    {ok, _} =
-		etorrent_t_pool_sup:add_torrent(
-		  F,
-		  S#state.local_peer_id,
-		  etorrent_counters:next(torrent)),
-	    {noreply, S}
+        true -> {noreply, S};
+        false ->
+            {ok, _} =
+                etorrent_t_pool_sup:add_torrent(
+                  F,
+                  S#state.local_peer_id,
+                  etorrent_counters:next(torrent)),
+            {noreply, S}
     end;
 handle_cast({check, Id}, S) ->
     {atomic, [T]} = etorrent_tracking_map:select(Id),
@@ -69,10 +69,10 @@ handle_cast({stop, F}, S) ->
 handle_call(stop_all, _From, S) ->
     {atomic, Torrents} = etorrent_tracking_map:all(),
     lists:foreach(fun(#tracking_map { filename = F }) ->
-			  etorrent_t_pool_sup:stop_torrent(F),
-			  ok
-		  end,
-		  Torrents),
+                          etorrent_t_pool_sup:stop_torrent(F),
+                          ok
+                  end,
+                  Torrents),
     {reply, ok, S};
 handle_call(_A, _B, S) ->
     {noreply, S}.
@@ -91,19 +91,19 @@ code_change(_OldVsn, State, _Extra) ->
 stop_torrent(F, S) ->
     error_logger:info_msg("Stopping ~p~n", [F]),
     case etorrent_tracking_map:select({filename, F}) of
-	{atomic, [T]} when is_record(T, tracking_map) ->
-	    etorrent_t_pool_sup:stop_torrent(F),
-	    ok;
-	{atomic, []} ->
-	    %% Was already removed, it is ok.
-	    ok
+        {atomic, [T]} when is_record(T, tracking_map) ->
+            etorrent_t_pool_sup:stop_torrent(F),
+            ok;
+        {atomic, []} ->
+            %% Was already removed, it is ok.
+            ok
     end,
     {noreply, S}.
 
 
 torrent_duplicate(F) ->
     case etorrent_tracking_map:select({filename, F}) of
-	{atomic, []} -> false;
-	{atomic, [T]} -> duplicate =:= T#tracking_map.state
+        {atomic, []} -> false;
+        {atomic, [T]} -> duplicate =:= T#tracking_map.state
     end.
 

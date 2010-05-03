@@ -24,13 +24,13 @@
 start (Args) ->
     {Node, Commands} = parse_arguments(Args),
     Status = case rpc:call(Node, ?MODULE, process, [Commands]) of
-		 {badrpc, Reason} ->
-		     io:format("RPC failed on node ~p: ~p~n",
-			       [Node, Reason]),
-		     ?STATUS_BADRPC;
-		 S ->
-		     S
-	     end,
+                 {badrpc, Reason} ->
+                     io:format("RPC failed on node ~p: ~p~n",
+                               [Node, Reason]),
+                     ?STATUS_BADRPC;
+                 S ->
+                     S
+             end,
     halt(Status).
 
 %%====================================================================

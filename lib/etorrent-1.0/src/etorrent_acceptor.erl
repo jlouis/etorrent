@@ -16,10 +16,10 @@
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
-	 terminate/2, code_change/3]).
+         terminate/2, code_change/3]).
 
 -record(state, { listen_socket = none,
-		 our_peer_id}).
+                 our_peer_id}).
 
 %%====================================================================
 %% API
@@ -45,7 +45,7 @@ start_link(OurPeerId) ->
 init([OurPeerId]) ->
     {ok, ListenSocket} = etorrent_listener:get_socket(),
     {ok, #state{ listen_socket = ListenSocket,
-		 our_peer_id = OurPeerId}, 0}.
+                 our_peer_id = OurPeerId}, 0}.
 
 %%--------------------------------------------------------------------
 %% Function: %% handle_call(Request, From, State) -> {reply, Reply, State} |
@@ -77,12 +77,12 @@ handle_cast(_Msg, State) ->
 %%--------------------------------------------------------------------
 handle_info(timeout, S) ->
     case gen_tcp:accept(S#state.listen_socket) of
-	{ok, Socket} -> handshake(Socket, S),
-			{noreply, S, 0};
-	{error, closed}       -> {noreply, S, 0};
-	{error, econnaborted} -> {noreply, S, 0};
-	{error, enotconn}     -> {noreply, S, 0};
-	{error, E}            -> {stop, E, S}
+        {ok, Socket} -> handshake(Socket, S),
+                        {noreply, S, 0};
+        {error, closed}       -> {noreply, S, 0};
+        {error, econnaborted} -> {noreply, S, 0};
+        {error, enotconn}     -> {noreply, S, 0};
+        {error, E}            -> {stop, E, S}
     end.
 
 %%--------------------------------------------------------------------
@@ -108,45 +108,45 @@ code_change(_OldVsn, State, _Extra) ->
 
 handshake(Socket, S) ->
     case etorrent_peer_communication:receive_handshake(Socket) of
-	{ok, ReservedBytes, InfoHash, PeerId} ->
-	    lookup_infohash(Socket, ReservedBytes, InfoHash, PeerId, S);
-	{error, _Reason} ->
-	    gen_tcp:close(Socket),
-	    ok
+        {ok, ReservedBytes, InfoHash, PeerId} ->
+            lookup_infohash(Socket, ReservedBytes, InfoHash, PeerId, S);
+        {error, _Reason} ->
+            gen_tcp:close(Socket),
+            ok
     end.
 
 lookup_infohash(Socket, ReservedBytes, InfoHash, PeerId, S) ->
     case etorrent_tracking_map:select({infohash, InfoHash}) of
-	{atomic, [#tracking_map { _ = _}]} ->
-	    start_peer(Socket, ReservedBytes, PeerId, InfoHash, S);
-	{atomic, []} ->
-	    gen_tcp:close(Socket),
-	    ok
+        {atomic, [#tracking_map { _ = _}]} ->
+            start_peer(Socket, ReservedBytes, PeerId, InfoHash, S);
+        {atomic, []} ->
+            gen_tcp:close(Socket),
+            ok
     end.
 
 start_peer(Socket, ReservedBytes, PeerId, InfoHash, S) ->
     {ok, {Address, Port}} = inet:peername(Socket),
     case new_incoming_peer(Address, Port, InfoHash, PeerId, S) of
-	{ok, PeerProcessPid} ->
-	    case gen_tcp:controlling_process(Socket, PeerProcessPid) of
-		ok -> etorrent_t_peer_recv:complete_handshake(PeerProcessPid,
-							      ReservedBytes,
-							      Socket,
-							      PeerId),
-		      ok;
-		{error, enotconn} ->
-		    etorrent_t_peer_recv:stop(PeerProcessPid),
-		    ok
-	    end;
-	already_enough_connections ->
-	    ok;
-	connect_to_ourselves ->
-	    gen_tcp:close(Socket),
-	    ok;
-	bad_peer ->
-	    error_logger:info_report([peer_id_is_bad, PeerId]),
-	    gen_tcp:close(Socket),
-	    ok
+        {ok, PeerProcessPid} ->
+            case gen_tcp:controlling_process(Socket, PeerProcessPid) of
+                ok -> etorrent_t_peer_recv:complete_handshake(PeerProcessPid,
+                                                              ReservedBytes,
+                                                              Socket,
+                                                              PeerId),
+                      ok;
+                {error, enotconn} ->
+                    etorrent_t_peer_recv:stop(PeerProcessPid),
+                    ok
+            end;
+        already_enough_connections ->
+            ok;
+        connect_to_ourselves ->
+            gen_tcp:close(Socket),
+            ok;
+        bad_peer ->
+            error_logger:info_report([peer_id_is_bad, PeerId]),
+            gen_tcp:close(Socket),
+            ok
     end.
 
 new_incoming_peer(_IP, _Port, _InfoHash, PeerId, S) when S#state.our_peer_id == PeerId ->
@@ -154,26 +154,26 @@ new_incoming_peer(_IP, _Port, _InfoHash, PeerId, S) when S#state.our_peer_id == 
 new_incoming_peer(IP, Port, InfoHash, _PeerId, S) ->
     {atomic, [TM]} = etorrent_tracking_map:select({infohash, InfoHash}),
     case etorrent_peer_mgr:bad_peer(IP, Port, TM#tracking_map.id) of
-	true ->
-	    bad_peer;
-	false ->
-	    start_new_incoming_peer(IP, Port, InfoHash, S)
+        true ->
+            bad_peer;
+        false ->
+            start_new_incoming_peer(IP, Port, InfoHash, S)
     end.
 
 
 start_new_incoming_peer(IP, Port, InfoHash, S) ->
     case etorrent_counters:obtain_peer_slot() of
-	full -> already_enough_connections;
-	ok ->
-	    {atomic, [T]} = etorrent_tracking_map:select({infohash, InfoHash}),
-	    try etorrent_t_sup:add_peer(
-		  T#tracking_map.supervisor_pid,
-		  S#state.our_peer_id,
-		  InfoHash,
-		  T#tracking_map.id,
-		  {IP, Port})
-	    catch
-		_ -> etorrent_counters:release_peer_slot()
-	    end
+        full -> already_enough_connections;
+        ok ->
+            {atomic, [T]} = etorrent_tracking_map:select({infohash, InfoHash}),
+            try etorrent_t_sup:add_peer(
+                  T#tracking_map.supervisor_pid,
+                  S#state.our_peer_id,
+                  InfoHash,
+                  T#tracking_map.id,
+                  {IP, Port})
+            catch
+                _ -> etorrent_counters:release_peer_slot()
+            end
     end.
 

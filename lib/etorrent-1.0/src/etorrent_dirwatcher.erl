@@ -17,7 +17,7 @@
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
-	 terminate/2, code_change/3]).
+         terminate/2, code_change/3]).
 
 -record(state, {dir = none}).
 -define(WATCH_WAIT_TIME, timer:seconds(20)).
@@ -73,22 +73,22 @@ code_change(_OldVsn, State, _Extra) ->
 watch_directories(S) ->
     reset_marks(ets:first(etorrent_dirwatcher)),
     lists:foreach(fun process_file/1,
-		  filelib:wildcard("*.torrent", S#state.dir)),
+                  filelib:wildcard("*.torrent", S#state.dir)),
 
     ets:safe_fixtable(etorrent_dirwatcher, true),
     try
-	start_stop(ets:first(etorrent_dirwatcher))
+        start_stop(ets:first(etorrent_dirwatcher))
     after
-	ets:safe_fixtable(etorrent_dirwatcher, false)
+        ets:safe_fixtable(etorrent_dirwatcher, false)
     end,
     ok.
 
 process_file(F) ->
     case ets:lookup(etorrent_dirwatcher, F) of
-	[] ->
-	    ets:insert(etorrent_dirwatcher, {F, new});
-	[_] ->
-	    ets:insert(etorrent_dirwatcher, {F, marked})
+        [] ->
+            ets:insert(etorrent_dirwatcher, {F, new});
+        [_] ->
+            ets:insert(etorrent_dirwatcher, {F, marked})
     end.
 
 reset_marks('$end_of_table') -> ok;
@@ -100,9 +100,9 @@ start_stop('$end_of_table') -> ok;
 start_stop(Key) ->
     [{Key, S}] = ets:lookup(etorrent_dirwatcher, Key),
     case S of
-	new -> etorrent_mgr:start(Key);
-	marked -> ok;
-	unmarked -> etorrent_mgr:stop(Key),
-		    ets:delete(etorrent_dirwatcher, Key)
+        new -> etorrent_mgr:start(Key);
+        marked -> ok;
+        unmarked -> etorrent_mgr:stop(Key),
+                    ets:delete(etorrent_dirwatcher, Key)
     end,
     start_stop(ets:next(etorrent_dirwatcher, Key)).

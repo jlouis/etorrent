@@ -33,10 +33,10 @@ start_link() ->
 %% receiver process hooked on the supervisor.
 %%--------------------------------------------------------------------
 add_peer(GroupPid, LocalPeerId, InfoHash, FilesystemPid, Id,
-	 {IP, Port}) ->
+         {IP, Port}) ->
     {ok, Pid} = supervisor:start_child(GroupPid, [LocalPeerId, InfoHash,
-						  FilesystemPid, Id,
-						  {IP, Port}]),
+                                                  FilesystemPid, Id,
+                                                  {IP, Port}]),
     Children = supervisor:which_children(Pid),
     {value, {_, Child, _, _}} = lists:keysearch(receiver, 1, Children),
     {ok, Child}.
@@ -46,8 +46,8 @@ add_peer(GroupPid, LocalPeerId, InfoHash, FilesystemPid, Id,
 %%====================================================================
 init([]) ->
     PeerRecvs = {peer_recv,
-		 {etorrent_t_peer_sup, start_link, []},
-		 temporary, infinity, supervisor, [etorrent_t_peer_recv]},
+                 {etorrent_t_peer_sup, start_link, []},
+                 temporary, infinity, supervisor, [etorrent_t_peer_recv]},
     {ok, {{simple_one_for_one, 15, 60}, [PeerRecvs]}}.
 
 %%====================================================================

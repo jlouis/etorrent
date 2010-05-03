@@ -16,7 +16,7 @@
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
-	 terminate/2, code_change/3]).
+         terminate/2, code_change/3]).
 
 -record(state, { timer = none }).
 
@@ -39,7 +39,7 @@ start_link() ->
 %% Description: Query for the state of TorrentId, Id.
 %%--------------------------------------------------------------------
 query_state(Id) ->
-	gen_server:call(?SERVER, {query_state, Id}).
+        gen_server:call(?SERVER, {query_state, Id}).
 
 %%--------------------------------------------------------------------
 %% Function: stop()
@@ -75,8 +75,8 @@ init([]) ->
 handle_call({query_state, Id}, _From, S) ->
     {atomic, [TM]} = etorrent_tracking_map:select(Id),
     case etorrent_piece_diskstate:select(TM#tracking_map.filename) of
-	[] -> {reply, unknown, S};
-	[R] -> {reply, R#piece_diskstate.state, S}
+        [] -> {reply, unknown, S};
+        [R] -> {reply, R#piece_diskstate.state, S}
     end;
 handle_call(stop, _From, S) ->
     {stop, normal, ok, S};
@@ -139,7 +139,7 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 prune_disk_state(Tracking) ->
     TrackedSet = sets:from_list(
-		   [T#tracking_map.filename || T <- Tracking]),
+                   [T#tracking_map.filename || T <- Tracking]),
     ok = etorrent_piece_diskstate:prune(TrackedSet).
 
 %%--------------------------------------------------------------------
@@ -149,22 +149,22 @@ prune_disk_state(Tracking) ->
 persist_disk_state([]) ->
     ok;
 persist_disk_state([#tracking_map { id = Id,
-				    filename = FName} | Next]) ->
+                                    filename = FName} | Next]) ->
     case etorrent_torrent:select(Id) of
-	[] -> persist_disk_state(Next);
-	[S] -> case S#torrent.state of
-		   seeding ->
-		       etorrent_piece_diskstate:new(FName, seeding);
-		   leeching ->
-		       BitField = etorrent_piece_mgr:bitfield(Id),
-		       etorrent_piece_diskstate:new(FName, {bitfield, BitField});
-		   endgame ->
-		       BitField = etorrent_piece_mgr:bitfield(Id),
-		       etorrent_piece_diskstate:new(FName, {bitfield, BitField});
-		   unknown ->
-		       ok
-	       end,
-	       persist_disk_state(Next)
+        [] -> persist_disk_state(Next);
+        [S] -> case S#torrent.state of
+                   seeding ->
+                       etorrent_piece_diskstate:new(FName, seeding);
+                   leeching ->
+                       BitField = etorrent_piece_mgr:bitfield(Id),
+                       etorrent_piece_diskstate:new(FName, {bitfield, BitField});
+                   endgame ->
+                       BitField = etorrent_piece_mgr:bitfield(Id),
+                       etorrent_piece_diskstate:new(FName, {bitfield, BitField});
+                   unknown ->
+                       ok
+               end,
+               persist_disk_state(Next)
     end.
 
 persist_to_disk() ->

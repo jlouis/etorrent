@@ -31,7 +31,7 @@
 %%--------------------------------------------------------------------
 new(Filename, State) ->
     mnesia:dirty_write(#piece_diskstate { filename = Filename,
-					  state = State }).
+                                          state = State }).
 
 %%--------------------------------------------------------------------
 %% Function: prune/1 -> ok
@@ -40,16 +40,16 @@ new(Filename, State) ->
 %%--------------------------------------------------------------------
 prune(Filenames) ->
     {atomic, Kill} =
-	mnesia:transaction(
-	  fun () ->
-		  Q = qlc:q([E#piece_diskstate.filename
-			     || E <- mnesia:table(piece_diskstate),
-				sets:is_element(E#piece_diskstate.filename,
-						Filenames)]),
-		  qlc:e(Q)
-	  end),
+        mnesia:transaction(
+          fun () ->
+                  Q = qlc:q([E#piece_diskstate.filename
+                             || E <- mnesia:table(piece_diskstate),
+                                sets:is_element(E#piece_diskstate.filename,
+                                                Filenames)]),
+                  qlc:e(Q)
+          end),
     lists:foreach(fun (T) -> mnesia:dirty_delete(piece_diskstate, T) end,
-		  Kill),
+                  Kill),
     ok.
 
 %%--------------------------------------------------------------------
