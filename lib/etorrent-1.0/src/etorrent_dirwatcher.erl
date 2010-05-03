@@ -33,7 +33,8 @@ start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
 dir_watched() ->
-    gen_server:call(?SERVER, dir_watched).
+    {ok, Dir} = application:get_env(etorrent, dir),
+    Dir.
 
 %%====================================================================
 %% gen_server callbacks
@@ -44,8 +45,6 @@ init([]) ->
     _Tid = ets:new(etorrent_dirwatcher, [named_table, private]),
     {ok, #state{dir = Dir}, 0}.
 
-handle_call(dir_watched, _Who, S) ->
-    {reply, S#state.dir, S, ?WATCH_WAIT_TIME};
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State, ?WATCH_WAIT_TIME}.
