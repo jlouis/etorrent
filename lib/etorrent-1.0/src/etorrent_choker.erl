@@ -35,10 +35,10 @@
 -record(rechoke_info, {pid :: pid(),
                        kind :: 'seeding' | 'leeching',
                        state :: 'seeding' | 'leeching' ,
-                       snubbed :: bool(),
+                       snubbed :: boolean(),
                        r_interest_state :: 'interested' | 'not_interested',
                        r_choke_state :: 'choked' | 'unchoked' ,
-                       l_choke :: bool(),
+                       l_choke :: boolean(),
                        rate :: float() }).
 
 -define(SERVER, ?MODULE).
