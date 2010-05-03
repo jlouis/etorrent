@@ -19,7 +19,7 @@
 
 -record(state, {}).
 -define(SERVER, ?MODULE).
--define(MAX_PEER_PROCESSES, 40).
+-define(DEFAULT_MAX_PEER_PROCESSES, 40).
 
 %%====================================================================
 %% API
@@ -132,5 +132,5 @@ max_peer_processes() ->
         {ok, N} when is_integer(N) ->
             N;
         undefined ->
-            ?MAX_PEER_PROCESSES
+	    ?DEFAULT_MAX_PEER_PROCESSES
     end.
