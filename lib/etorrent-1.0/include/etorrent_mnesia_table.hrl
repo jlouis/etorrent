@@ -36,8 +36,4 @@
                torrent_id :: non_neg_integer(), % (IDX) Torrent Id this peer belongs to
                state :: 'seeding' | 'leeching'}).
 
--type(diskstate_state() :: 'seeding' | {'bitfield', binary()}).
-%% Piece state on disk for persistence
--record(piece_diskstate, {filename :: string(), % Name of torrent
-                          state :: diskstate_state()}). % state | {bitfield, BF}
 
