@@ -22,11 +22,6 @@ dialyzer-succ: libs
 tags:
 	cd lib && $(MAKE) tags
 
-run-create-db: libs
-	erl -noinput $(ERL_FLAGS) -pa $(ETORRENT_LIB)/ebin \
-	-config $(ETORRENT_LIB)/priv/etorrent.config \
-	-sname etorrent -s etorrent db_create_schema
-
 run: libs
 	erl -boot start_sasl $(ERL_FLAGS) -pa $(ETORRENT_LIB)/ebin \
 	-config $(ETORRENT_LIB)/priv/etorrent.config \

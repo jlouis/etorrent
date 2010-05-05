@@ -28,7 +28,3 @@ wait() ->
                   torrent_c_pieces, peer],
     mnesia:wait_for_tables(BaseTables, 5000).
 
-
-
-
-
