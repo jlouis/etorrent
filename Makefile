@@ -28,12 +28,12 @@ run-create-db: libs
 	-sname etorrent -s etorrent db_create_schema
 
 run: libs
-	erl $(ERL_FLAGS) -pa $(ETORRENT_LIB)/ebin \
+	erl -boot start_sasl $(ERL_FLAGS) -pa $(ETORRENT_LIB)/ebin \
 	-config $(ETORRENT_LIB)/priv/etorrent.config \
 	-sname etorrent -s etorrent start
 
 tracer:
-	erl -pa $(ETORRENT_LIB)/ebin -noinput \
+	erl -boot start_sasl -pa $(ETORRENT_LIB)/ebin -noinput \
 	-sname tracer -s tr client
 
 clean:
