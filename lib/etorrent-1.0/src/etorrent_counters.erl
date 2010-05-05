@@ -53,7 +53,7 @@ release_peer_slot() ->
 %%--------------------------------------------------------------------
 init([]) ->
     process_flag(trap_exit, true),
-    _Tid = ets:new(etorrent_counters, [named_table, protected]),
+    _Tid = ets:new(etorrent_counters, [named_table, private]),
     ets:insert(etorrent_counters, [{torrent, 0},
                                    {path_map, 0},
                                    {peer_slots, 0}]),
