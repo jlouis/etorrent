@@ -18,29 +18,29 @@
 %% API
 -export([start_link/0,
 
-	 choke/2, unchoke/2, interested/2, not_interested/2,
-	 local_choke/2, local_unchoke/2,
+         choke/2, unchoke/2, interested/2, not_interested/2,
+         local_choke/2, local_unchoke/2,
 
-	 recv_rate/5, recv_rate/4, send_rate/4,
+         recv_rate/5, recv_rate/4, send_rate/4,
 
-	 snubbed/2,
+         snubbed/2,
 
-	 fetch_recv_rate/2,
-	 fetch_send_rate/2,
-	 select_state/2,
+         fetch_recv_rate/2,
+         fetch_send_rate/2,
+         select_state/2,
 
-	 global_rate/0]).
+         global_rate/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
-	 terminate/2, code_change/3]).
+         terminate/2, code_change/3]).
 
 -record(state, { recv,
-		 send,
-		 state,
+                 send,
+                 state,
 
-		 global_recv,
-		 global_send}).
+                 global_recv,
+                 global_send}).
 
 -define(SERVER, ?MODULE).
 
@@ -64,21 +64,21 @@ local_unchoke(Id, Pid) -> gen_server:cast(?SERVER, {local_unchoke, Id, Pid}).
 
 select_state(Id, Who) ->
     case ets:lookup(etorrent_peer_state, {Id, Who}) of
-	[] ->
-	    #peer_state { }; % Pick defaults
-	[P] ->
-	    P
+        [] ->
+            #peer_state { }; % Pick defaults
+        [P] ->
+            P
     end.
 
 snubbed(Id, Who) ->
     T = etorrent_rate:now_secs(),
     case ets:lookup(etorrent_recv_state, {Id, Who}) of
-	[] ->
-	    false;
-	[#rate_mgr { last_got = unknown }] ->
-	    false;
-	[#rate_mgr { last_got = U}] ->
-	    T - U > ?DEFAULT_SNUB_TIME
+        [] ->
+            false;
+        [#rate_mgr { last_got = unknown }] ->
+            false;
+        [#rate_mgr { last_got = U}] ->
+            T - U > ?DEFAULT_SNUB_TIME
     end.
 
 
@@ -111,14 +111,14 @@ global_rate() ->
 init([]) ->
     process_flag(trap_exit, true),
     RTid = ets:new(etorrent_recv_state, [set, protected, named_table,
-					 {keypos, #rate_mgr.pid}]),
+                                         {keypos, #rate_mgr.pid}]),
     STid = ets:new(etorrent_send_state, [set, protected, named_table,
-					 {keypos, #rate_mgr.pid}]),
+                                         {keypos, #rate_mgr.pid}]),
     StTid = ets:new(etorrent_peer_state, [set, protected, named_table,
-					 {keypos, #peer_state.pid}]),
+                                         {keypos, #peer_state.pid}]),
     {ok, #state{ recv = RTid, send = STid, state = StTid,
-		 global_recv = etorrent_rate:init(?RATE_FUDGE),
-		 global_send = etorrent_rate:init(?RATE_FUDGE)}}.
+                 global_recv = etorrent_rate:init(?RATE_FUDGE),
+                 global_send = etorrent_rate:init(?RATE_FUDGE)}}.
 
 %%--------------------------------------------------------------------
 %% Function: %% handle_call(Request, From, State) -> {reply, Reply, State} |
@@ -193,68 +193,68 @@ code_change(_OldVsn, State, _Extra) ->
 
 alter_state(What, Id, Pid) ->
     _R = case ets:lookup(etorrent_peer_state, {Id, Pid}) of
-	[] ->
-	    ets:insert(etorrent_peer_state,
-	      alter_record(What,
-			   #peer_state { pid = {Id, Pid},
-					 choke_state = choked,
-					 interest_state = not_interested,
-					 local_choke = true})),
-	    erlang:monitor(process, Pid);
-	[R] ->
-	    ets:insert(etorrent_peer_state,
-		       alter_record(What, R))
+        [] ->
+            ets:insert(etorrent_peer_state,
+              alter_record(What,
+                           #peer_state { pid = {Id, Pid},
+                                         choke_state = choked,
+                                         interest_state = not_interested,
+                                         local_choke = true})),
+            erlang:monitor(process, Pid);
+        [R] ->
+            ets:insert(etorrent_peer_state,
+                       alter_record(What, R))
     end,
     ok.
 
 alter_record(What, R) ->
     case What of
-	choke ->
-	    R#peer_state { choke_state = choked };
-	unchoke ->
-	    R#peer_state { choke_state = unchoked };
-	interested ->
-	    R#peer_state { interest_state = interested };
-	not_interested ->
-	    R#peer_state { interest_state = not_interested };
-	local_choke ->
-	    R#peer_state { local_choke = true };
-	local_unchoke ->
-	    R#peer_state { local_choke = false}
+        choke ->
+            R#peer_state { choke_state = choked };
+        unchoke ->
+            R#peer_state { choke_state = unchoked };
+        interested ->
+            R#peer_state { interest_state = interested };
+        not_interested ->
+            R#peer_state { interest_state = not_interested };
+        local_choke ->
+            R#peer_state { local_choke = true };
+        local_unchoke ->
+            R#peer_state { local_choke = false}
     end.
 
 alter_state(What, Id, Who, Rate, Amount, Update, S) ->
     {T, NS} = case What of
-		  recv_rate -> NR = etorrent_rate:update(
-				      S#state.global_recv,
-				      Amount),
-			       { etorrent_recv_state,
-				 S#state { global_recv = NR }};
-		  send_rate -> NR = etorrent_rate:update(
-				      S#state.global_send,
-				      Amount),
-			       { etorrent_send_state,
-				 S#state { global_send = NR }}
-	      end,
+                  recv_rate -> NR = etorrent_rate:update(
+                                      S#state.global_recv,
+                                      Amount),
+                               { etorrent_recv_state,
+                                 S#state { global_recv = NR }};
+                  send_rate -> NR = etorrent_rate:update(
+                                      S#state.global_send,
+                                      Amount),
+                               { etorrent_send_state,
+                                 S#state { global_send = NR }}
+              end,
     _R = case ets:lookup(T, {Id, Who}) of
-	[] ->
-	    ets:insert(T,
-	      #rate_mgr { pid = {Id, Who},
-			  last_got = case Update of
-					 normal -> unknown;
-					 last_update -> etorrent_rate:now_secs()
-				     end,
-			  rate = Rate }),
-	    erlang:monitor(process, Who);
-	[R] ->
-	    ets:insert(T, R#rate_mgr { rate = Rate })
+        [] ->
+            ets:insert(T,
+              #rate_mgr { pid = {Id, Who},
+                          last_got = case Update of
+                                         normal -> unknown;
+                                         last_update -> etorrent_rate:now_secs()
+                                     end,
+                          rate = Rate }),
+            erlang:monitor(process, Who);
+        [R] ->
+            ets:insert(T, R#rate_mgr { rate = Rate })
     end,
     NS.
 
 fetch_rate(Where, Id, Pid) ->
     case ets:lookup(Where, {Id, Pid}) of
-	[] ->
-	    none;
-	[R] -> R#rate_mgr.rate
+        [] ->
+            none;
+        [R] -> R#rate_mgr.rate
     end.
 

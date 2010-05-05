@@ -13,7 +13,7 @@
 
 %% API
 -export([start_link/3, add_tracker/5, get_pid/2,
-	 add_peer/5]).
+         add_peer/5]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -32,7 +32,7 @@ start_link(File, Local_PeerId, Id) ->
 %%--------------------------------------------------------------------
 get_pid(Pid, Name) ->
     {value, {_, Child, _, _}} =
-	lists:keysearch(Name, 1, supervisor:which_children(Pid)),
+        lists:keysearch(Name, 1, supervisor:which_children(Pid)),
     Child.
 
 %%--------------------------------------------------------------------
@@ -46,20 +46,20 @@ get_pid(Pid, Name) ->
 %%--------------------------------------------------------------------
 add_tracker(Pid, URL, InfoHash, Local_Peer_Id, TorrentId) ->
     Tracker = {tracker_communication,
-	       {etorrent_tracker_communication, start_link,
-		[self(), URL, InfoHash, Local_Peer_Id, TorrentId]},
-	       permanent, 15000, worker, [etorrent_tracker_communication]},
+               {etorrent_tracker_communication, start_link,
+                [self(), URL, InfoHash, Local_Peer_Id, TorrentId]},
+               permanent, 15000, worker, [etorrent_tracker_communication]},
     supervisor:start_child(Pid, Tracker).
 
 add_peer(Pid, PeerId, InfoHash, TorrentId, {IP, Port}) ->
     FSPid = get_pid(Pid, fs),
     GroupPid = get_pid(Pid, peer_pool_sup),
     etorrent_t_peer_pool_sup:add_peer(GroupPid,
-				      PeerId,
-				      InfoHash,
-				      FSPid,
-				      TorrentId,
-				      {IP, Port}).
+                                      PeerId,
+                                      InfoHash,
+                                      FSPid,
+                                      TorrentId,
+                                      {IP, Port}).
 
 %%====================================================================
 %% Supervisor callbacks
@@ -75,17 +75,17 @@ add_peer(Pid, PeerId, InfoHash, TorrentId, {IP, Port}) ->
 %%--------------------------------------------------------------------
 init([Path, PeerId, Id]) ->
     FSPool = {fs_pool,
-	      {etorrent_fs_pool_sup, start_link, []},
-	      transient, infinity, supervisor, [etorrent_fs_pool_sup]},
+              {etorrent_fs_pool_sup, start_link, []},
+              transient, infinity, supervisor, [etorrent_fs_pool_sup]},
     FS = {fs,
-	  {etorrent_fs, start_link, [Id, self()]},
-	  permanent, 2000, worker, [etorrent_fs]},
+          {etorrent_fs, start_link, [Id, self()]},
+          permanent, 2000, worker, [etorrent_fs]},
     Control = {control,
-	       {etorrent_t_control, start_link, [Id, Path, PeerId]},
-	       permanent, 20000, worker, [etorrent_t_control]},
+               {etorrent_t_control, start_link, [Id, Path, PeerId]},
+               permanent, 20000, worker, [etorrent_t_control]},
     PeerPool = {peer_pool_sup,
-		{etorrent_t_peer_pool_sup, start_link, []},
-		transient, infinity, supervisor, [etorrent_t_peer_pool_sup]},
+                {etorrent_t_peer_pool_sup, start_link, []},
+                transient, infinity, supervisor, [etorrent_t_peer_pool_sup]},
     {ok, {{one_for_all, 1, 60}, [FSPool, FS, Control, PeerPool]}}.
 
 %%====================================================================

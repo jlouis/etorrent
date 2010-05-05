@@ -10,11 +10,11 @@
 %% API
 -export([start_link/0,
 
-	 persisted_state_to_disk/0,
+         persisted_state_to_disk/0,
 
-	 started_torrent/1,
-	 checking_torrent/1,
-	 seeding_torrent/1]).
+         started_torrent/1,
+         checking_torrent/1,
+         seeding_torrent/1]).
 
 -define(SERVER, ?MODULE).
 

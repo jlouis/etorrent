@@ -15,27 +15,27 @@
 
 %% API
 -export([start_link/3, start/1, stop/1,
-	torrent_checked/2, tracker_error_report/2, seed/1,
-	tracker_warning_report/2,
+        torrent_checked/2, tracker_error_report/2, seed/1,
+        tracker_warning_report/2,
 
-	check_torrent/1]).
+        check_torrent/1]).
 
 %% gen_fsm callbacks
 -export([init/1, handle_event/3, initializing/2, started/2,
-	 stopped/2, handle_sync_event/4, handle_info/3, terminate/3,
-	 code_change/4]).
+         stopped/2, handle_sync_event/4, handle_info/3, terminate/3,
+         code_change/4]).
 
 -record(state, {id = none,
 
-		path = none,
-		peer_id = none,
+                path = none,
+                peer_id = none,
 
-		parent_pid = none,
-		tracker_pid = none,
-		file_system_pid = none,
+                parent_pid = none,
+                tracker_pid = none,
+                file_system_pid = none,
 
-		disk_state = none,
-		available_peers = []}).
+                disk_state = none,
+                available_peers = []}).
 
 -define(CHECK_WAIT_TIME, 3000).
 
@@ -88,9 +88,9 @@ init([Parent, Id, Path, PeerId]) ->
     process_flag(trap_exit, true),
     etorrent_tracking_map:new(Path, Parent, Id),
     {ok, initializing, #state{id = Id,
-			      path = Path,
-			      peer_id = PeerId,
-			      parent_pid = Parent}, 0}. % Force timeout instantly.
+                              path = Path,
+                              peer_id = PeerId,
+                              parent_pid = Parent}, 0}. % Force timeout instantly.
 
 %%--------------------------------------------------------------------
 %% Function:
@@ -107,47 +107,47 @@ init([Parent, Id, Path, PeerId]) ->
 % Load a torrent at Path with Torrent
 initializing(timeout, S) ->
     case etorrent_tracking_map:is_ready_for_checking(S#state.id) of
-	false ->
-	    {next_state, initializing, S, ?CHECK_WAIT_TIME};
-	true ->
-	    %% TODO: Try to coalesce some of these operations together.
+        false ->
+            {next_state, initializing, S, ?CHECK_WAIT_TIME};
+        true ->
+            %% TODO: Try to coalesce some of these operations together.
 
-	    %% Read the torrent, check its contents for what we are missing
-	    etorrent_event_mgr:checking_torrent(S#state.id),
-	    {ok, Torrent, FSPid, InfoHash, NumberOfPieces} =
-		etorrent_fs_checker:read_and_check_torrent(
-		  S#state.id,
-		  S#state.parent_pid,
-		  S#state.path),
-	    %% Update the tracking map. This torrent has been started, and we
-	    %%  know its infohash
-	    etorrent_tracking_map:statechange(S#state.id, {infohash, InfoHash}),
-	    etorrent_tracking_map:statechange(S#state.id, started),
+            %% Read the torrent, check its contents for what we are missing
+            etorrent_event_mgr:checking_torrent(S#state.id),
+            {ok, Torrent, FSPid, InfoHash, NumberOfPieces} =
+                etorrent_fs_checker:read_and_check_torrent(
+                  S#state.id,
+                  S#state.parent_pid,
+                  S#state.path),
+            %% Update the tracking map. This torrent has been started, and we
+            %%  know its infohash
+            etorrent_tracking_map:statechange(S#state.id, {infohash, InfoHash}),
+            etorrent_tracking_map:statechange(S#state.id, started),
 
-	    %% Add a torrent entry for this torrent.
-	    ok = etorrent_torrent:new(
-		   S#state.id,
-		   {{uploaded, 0},
-		    {downloaded, 0},
-		    {left, calculate_amount_left(S#state.id)},
-		    {total, etorrent_metainfo:get_length(Torrent)}},
-		   NumberOfPieces),
+            %% Add a torrent entry for this torrent.
+            ok = etorrent_torrent:new(
+                   S#state.id,
+                   {{uploaded, 0},
+                    {downloaded, 0},
+                    {left, calculate_amount_left(S#state.id)},
+                    {total, etorrent_metainfo:get_length(Torrent)}},
+                   NumberOfPieces),
 
-	    %% Start the tracker
-	    {ok, TrackerPid} =
-		etorrent_t_sup:add_tracker(
-		  S#state.parent_pid,
-		  etorrent_metainfo:get_url(Torrent),
-		  etorrent_metainfo:get_infohash(Torrent),
-		  S#state.peer_id,
-		  S#state.id),
+            %% Start the tracker
+            {ok, TrackerPid} =
+                etorrent_t_sup:add_tracker(
+                  S#state.parent_pid,
+                  etorrent_metainfo:get_url(Torrent),
+                  etorrent_metainfo:get_infohash(Torrent),
+                  S#state.peer_id,
+                  S#state.id),
 
-	    %% Since the process will now go to a hibernation state, GC it
-	    etorrent_event_mgr:started_torrent(S#state.id),
-	    garbage_collect(),
-	    {next_state, started,
-	     S#state{file_system_pid = FSPid,
-		     tracker_pid = TrackerPid}}
+            %% Since the process will now go to a hibernation state, GC it
+            etorrent_event_mgr:started_torrent(S#state.id),
+            garbage_collect(),
+            {next_state, started,
+             S#state{file_system_pid = FSPid,
+                     tracker_pid = TrackerPid}}
 
     end.
 
@@ -155,11 +155,11 @@ started(stop, S) ->
     {stop, argh, S};
 started(check_torrent, S) ->
     case etorrent_fs_checker:check_torrent(S#state.file_system_pid,
-					   S#state.id) of
-	[] -> {next_state, started, S};
-	Errors ->
-	    error_logger:info_report([errornous_pieces, {Errors}]),
-	    {next_state, started, S}
+                                           S#state.id) of
+        [] -> {next_state, started, S};
+        Errors ->
+            error_logger:info_report([errornous_pieces, {Errors}]),
+            {next_state, started, S}
     end;
 started({tracker_error_report, Reason}, S) ->
     io:format("Got tracker error: ~s~n", [Reason]),
@@ -187,9 +187,9 @@ stopped(start, S) ->
 %%--------------------------------------------------------------------
 %% Function:
 %% handle_event(Event, StateName, State) -> {next_state, NextStateName,
-%%						  NextState} |
+%%                                                NextState} |
 %%                                          {next_state, NextStateName,
-%%					          NextState, Timeout} |
+%%                                                NextState, Timeout} |
 %%                                          {stop, Reason, NewState}
 %% Description: Whenever a gen_fsm receives an event sent using
 %% gen_fsm:send_all_state_event/2, this function is called to handle

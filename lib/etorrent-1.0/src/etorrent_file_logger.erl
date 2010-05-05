@@ -44,29 +44,29 @@ init(Dir, Filename, Pred) -> {Dir, Filename, Pred}.
 %%-----------------------------------------------------------------
 init({Dir, Filename, Pred}) ->
     case catch file_open(Dir, Filename) of
-	{ok, Fd} -> {ok, #state { dir = Dir, fname = Filename,
-				  cur_fd = Fd, pred = Pred }};
-	Error -> Error
+        {ok, Fd} -> {ok, #state { dir = Dir, fname = Filename,
+                                  cur_fd = Fd, pred = Pred }};
+        Error -> Error
     end.
 
 handle_event(Event, S) ->
     Date = date_str(erlang:localtime()),
-	#state{dir = _Dir, fname = _Fname, cur_fd = _CurFd, pred = Pred} = S,
-	case catch Pred(Event) of
-	true ->
-    	io:format(S#state.cur_fd, "~s : ~p~n", [Date, Event]),
-		{ok, S};
-	_ ->
-    	{ok, S}
-	end.
+        #state{dir = _Dir, fname = _Fname, cur_fd = _CurFd, pred = Pred} = S,
+        case catch Pred(Event) of
+        true ->
+        io:format(S#state.cur_fd, "~s : ~p~n", [Date, Event]),
+                {ok, S};
+        _ ->
+        {ok, S}
+        end.
 
 handle_info(_, State) ->
     {ok, State}.
 
 terminate(_, State) ->
     case file:close(State#state.cur_fd) of
-	ok -> State;
-	{error, R} -> ?log([cant_close_file,{reason, R}]), State
+        ok -> State;
+        {error, R} -> ?log([cant_close_file,{reason, R}]), State
     end.
 
 handle_call(null, State) ->
@@ -84,5 +84,5 @@ file_open(Dir, Fname) ->
 
 date_str({{Y, Mo, D}, {H, Mi, S}}) ->
     lists:flatten(io_lib:format("~w-~2.2.0w-~2.2.0w ~2.2.0w:"
-				"~2.2.0w:~2.2.0w",
-				[Y,Mo,D,H,Mi,S])).
+                                "~2.2.0w:~2.2.0w",
+                                [Y,Mo,D,H,Mi,S])).

@@ -12,7 +12,7 @@
 
 %% API
 -export([all/0, new/3, delete/1, select/1, statechange/2,
-	 is_ready_for_checking/1]).
+         is_ready_for_checking/1]).
 
 %%====================================================================
 %% API
@@ -24,10 +24,10 @@
 %%--------------------------------------------------------------------
 new(File, Supervisor, Id) when is_integer(Id), is_pid(Supervisor), is_list(File) ->
     mnesia:dirty_write(#tracking_map { id = Id,
-				       filename = File,
-				       supervisor_pid = Supervisor,
-				       info_hash = unknown,
-				       state = awaiting}).
+                                       filename = File,
+                                       supervisor_pid = Supervisor,
+                                       info_hash = unknown,
+                                       state = awaiting}).
 
 %%--------------------------------------------------------------------
 %% Function: all/0
@@ -36,7 +36,7 @@ new(File, Supervisor, Id) when is_integer(Id), is_pid(Supervisor), is_list(File)
 all() ->
     mnesia:transaction(
       fun () ->
-	      qlc:e(qlc:q([T || T <- mnesia:table(tracking_map)]))
+              qlc:e(qlc:q([T || T <- mnesia:table(tracking_map)]))
       end).
 
 %%--------------------------------------------------------------------
@@ -50,21 +50,21 @@ all() ->
 select(Id) when is_integer(Id) ->
     mnesia:transaction(
       fun () ->
-	      mnesia:read(tracking_map, Id, read)
+              mnesia:read(tracking_map, Id, read)
       end);
 select({filename,Filename}) ->
     mnesia:transaction(
       fun () ->
-	      Query = qlc:q([T || T <- mnesia:table(tracking_map),
-				  T#tracking_map.filename == Filename]),
-	      qlc:e(Query)
+              Query = qlc:q([T || T <- mnesia:table(tracking_map),
+                                  T#tracking_map.filename == Filename]),
+              qlc:e(Query)
       end);
 select({infohash, InfoHash}) ->
     mnesia:transaction(
       fun () ->
-	      Q = qlc:q([T || T <- mnesia:table(tracking_map),
-			      T#tracking_map.info_hash =:= InfoHash]),
-	      qlc:e(Q)
+              Q = qlc:q([T || T <- mnesia:table(tracking_map),
+                              T#tracking_map.info_hash =:= InfoHash]),
+              qlc:e(Q)
       end).
 
 %%--------------------------------------------------------------------
@@ -81,9 +81,9 @@ delete(Id) when is_integer(Id) ->
 %%--------------------------------------------------------------------
 statechange(Id, What) ->
     F = fun () ->
-		[TM] = mnesia:read(tracking_map, Id, write),
-		mnesia:write(alter_map(TM, What))
-	end,
+                [TM] = mnesia:read(tracking_map, Id, write),
+                mnesia:write(alter_map(TM, What))
+        end,
     {atomic, _} = mnesia:transaction(F),
     ok.
 
@@ -94,17 +94,17 @@ statechange(Id, What) ->
 %%--------------------------------------------------------------------
 is_ready_for_checking(Id) ->
     F = fun () ->
-		Q = qlc:q([TM || TM <- mnesia:table(tracking_map),
-				 TM#tracking_map.state =:= checking]),
-		case length(qlc:e(Q)) of
-		    0 ->
-			[TM] = mnesia:read(tracking_map, Id, write),
-			mnesia:write(TM#tracking_map { state = checking }),
-			true;
-		    _ ->
-			false
-		end
-	end,
+                Q = qlc:q([TM || TM <- mnesia:table(tracking_map),
+                                 TM#tracking_map.state =:= checking]),
+                case length(qlc:e(Q)) of
+                    0 ->
+                        [TM] = mnesia:read(tracking_map, Id, write),
+                        mnesia:write(TM#tracking_map { state = checking }),
+                        true;
+                    _ ->
+                        false
+                end
+        end,
     {atomic, T} = mnesia:transaction(F),
     T.
 
@@ -114,10 +114,10 @@ is_ready_for_checking(Id) ->
 
 alter_map(TM, What) ->
     case What of
-	{infohash, IH} ->
-	    TM#tracking_map { info_hash = IH };
-	started ->
-	    TM#tracking_map { state = started };
-	stopped ->
-	    TM#tracking_map { state = stopped }
+        {infohash, IH} ->
+            TM#tracking_map { info_hash = IH };
+        started ->
+            TM#tracking_map { state = started };
+        stopped ->
+            TM#tracking_map { state = stopped }
     end.

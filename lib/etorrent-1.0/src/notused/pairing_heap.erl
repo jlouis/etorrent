@@ -10,7 +10,7 @@
 
 %% API
 -export([new/0, is_pairing_heap/1, find_max/1, extract_max/1,
-	 insert/3, is_empty/1]).
+         insert/3, is_empty/1]).
 
 %%====================================================================
 %% API
@@ -47,10 +47,10 @@ find_max({pairing_heap, H}) ->
 %% -------------------------------------------------------------------
 extract_max({pairing_heap, H}) ->
     case heap_extract_max(H) of
-	empty ->
-	    empty;
-	{ok, E, P, NH} ->
-	    {ok, E, P, {pairing_heap, NH}}
+        empty ->
+            empty;
+        {ok, E, P, NH} ->
+            {ok, E, P, {pairing_heap, NH}}
     end.
 
 %% -------------------------------------------------------------------
@@ -70,26 +70,26 @@ insert(E, P, {pairing_heap, H}) ->
 
 heap_extract_max(H) ->
     case H of
-	empty ->
-	    empty;
-	{node, E, P, Cs} ->
-	    {ok, E, P, heap_mergify(Cs)}
+        empty ->
+            empty;
+        {node, E, P, Cs} ->
+            {ok, E, P, heap_mergify(Cs)}
     end.
 
 heap_find_max(H) ->
     case H of
-	empty ->
-	    empty;
-	{node, E, P, _} ->
-	    {ok, E, P}
+        empty ->
+            empty;
+        {node, E, P, _} ->
+            {ok, E, P}
     end.
 
 heap_is_empty(H) ->
     case H of
-	empty ->
-	    true;
-	_ ->
-	    false
+        empty ->
+            true;
+        _ ->
+            false
     end.
 
 heap_singleton(E, P) ->
@@ -103,12 +103,12 @@ heap_merge(empty, H) ->
 heap_merge(H, empty) ->
     H;
 heap_merge({node, E1, P1, C1},
-	   {node, E2, P2, C2}) ->
+           {node, E2, P2, C2}) ->
     if
-	P1 > P2 ->
-	    {node, E1, P2, [{node, E2, P2, C2} | C1]};
-	true ->
-	    {node, E2, P2, [{node, E1, P1, C1} | C2]}
+        P1 > P2 ->
+            {node, E1, P2, [{node, E2, P2, C2} | C1]};
+        true ->
+            {node, E2, P2, [{node, E1, P1, C1} | C2]}
     end.
 
 heap_mergify([]) ->

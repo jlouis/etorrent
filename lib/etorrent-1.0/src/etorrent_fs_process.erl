@@ -6,7 +6,7 @@
 %%%  file. It is possible to carry out the wished operations on the file
 %%%  in question for operating in a Torrent Client. The implementation has
 %%%  an automatic handler for file descriptors: If no request has been
-%%%  recieved in a given timeout, then the file is closed.
+%%%  received in a given timeout, then the file is closed.
 %%%
 %%% Created : 18 Jun 2007 by User Jlouis <jesper.louis.andersen@gmail.com>
 %%%-------------------------------------------------------------------
@@ -18,17 +18,17 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/2, get_data/3, put_data/4, stop/1]).
+-export([start_link/2, read/3, write/4, stop/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
-	 terminate/2, code_change/3]).
+         terminate/2, code_change/3]).
 
 -record(state, {path = none,
-		iodev = none}).
+                iodev = none}).
 
-% If no request has been recieved in this interval, close the server.
--define(REQUEST_TIMEOUT, 60000).
+% If no request has been received in this interval, close the server.
+-define(REQUEST_TIMEOUT, timer:seconds(60)).
 
 %%====================================================================
 %% API
@@ -40,11 +40,11 @@
 start_link(Path, Id) ->
     gen_server:start_link(?MODULE, [Path, Id], []).
 
-get_data(Pid, OffSet, Size) ->
-    gen_server:call(Pid, {read_request, OffSet, Size}).
+read(Pid, OffSet, Size) ->
+    gen_server:call(Pid, {read, OffSet, Size}).
 
-put_data(Pid, Chunk, Offset, _Size) ->
-    gen_server:call(Pid, {write_request, Offset, Chunk}).
+write(Pid, Chunk, Offset, _Size) ->
+    gen_server:call(Pid, {write, Offset, Chunk}).
 
 stop(Pid) ->
     gen_server:cast(Pid, stop).
@@ -60,7 +60,7 @@ init([Id, TorrentId]) ->
     FullPath = filename:join([Workdir, Path]),
     {ok, IODev} = file:open(FullPath, [read, write, binary, raw, read_ahead]),
     {ok, #state{iodev = IODev,
-		path = FullPath}, ?REQUEST_TIMEOUT}.
+                path = FullPath}, ?REQUEST_TIMEOUT}.
 
 %%--------------------------------------------------------------------
 %% Function: %% handle_call(Request, From, State) -> {reply, Reply, State} |
@@ -71,10 +71,10 @@ init([Id, TorrentId]) ->
 %%                                      {stop, Reason, State}
 %% Description: Handling call messages
 %%--------------------------------------------------------------------
-handle_call({read_request, Offset, Size}, _From, State) ->
+handle_call({read, Offset, Size}, _From, State) ->
     Data = read_request(Offset, Size, State),
     {reply, Data, State, ?REQUEST_TIMEOUT};
-handle_call({write_request, Offset, Data}, _From, S) ->
+handle_call({write, Offset, Data}, _From, S) ->
     ok = write_request(Offset, Data, S),
     {reply, ok, S, ?REQUEST_TIMEOUT}.
 
@@ -97,8 +97,8 @@ handle_info(Info, State) ->
 
 terminate(_Reason, State) ->
     case file:close(State#state.iodev) of
-	ok -> ok;
-	E -> ?log([cant_close_file, E]), ok
+        ok -> ok;
+        E -> ?log([cant_close_file, E]), ok
     end.
 
 %%--------------------------------------------------------------------

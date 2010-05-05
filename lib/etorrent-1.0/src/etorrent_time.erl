@@ -21,19 +21,19 @@
 %%--------------------------------------------------------------------
 now_subtract_seconds({Megasecs, Secs, Ms}, Subsecs) ->
     case Secs - Subsecs of
-	N when N >= 0 ->
-	    {Megasecs, N, Ms};
-	N ->
-	    Needed = abs(N) div 1000000 + 1,
-	    {Megasecs - Needed, N + (Needed * 1000000), Ms}
+        N when N >= 0 ->
+            {Megasecs, N, Ms};
+        N ->
+            Needed = abs(N) div 1000000 + 1,
+            {Megasecs - Needed, N + (Needed * 1000000), Ms}
     end.
 
 now_add_seconds({Megasecs, Secs, Ms}, Add) ->
     case Secs + Add of
-	K when K < 1000000 ->
-	    {Megasecs, K, Ms};
-	K ->
-	    {Megasecs + K div 1000000, K rem 1000000, Ms}
+        K when K < 1000000 ->
+            {Megasecs, K, Ms};
+        K ->
+            {Megasecs + K div 1000000, K rem 1000000, Ms}
     end.
 
 %%====================================================================

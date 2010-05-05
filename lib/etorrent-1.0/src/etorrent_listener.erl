@@ -15,7 +15,7 @@
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
-	 terminate/2, code_change/3]).
+         terminate/2, code_change/3]).
 
 -record(state, { listen_socket = none}).
 
@@ -52,6 +52,7 @@ get_socket() ->
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
 init([]) ->
+    process_flag(trap_exit, true),
     {ok, Port} = application:get_env(etorrent, port),
     {ok, ListenSocket} = find_listen_socket(Port, ?DEFAULT_SOCKET_INCREASE),
     {ok, #state{ listen_socket = ListenSocket}}.
@@ -97,8 +98,6 @@ handle_info(_Info, State) ->
 %% The return value is ignored.
 %%--------------------------------------------------------------------
 terminate(_Reason, State) ->
-    % Explicitly close the socket if we terminate.
-    error_logger:info_report([listener_closing_socket]),
     gen_tcp:close(State#state.listen_socket),
     ok.
 
@@ -116,9 +115,9 @@ find_listen_socket(_Port, 0) ->
     {error, could_not_find_free_socket};
 find_listen_socket(Port, N) ->
     case gen_tcp:listen(Port, [binary, inet, {active, false}]) of
-	{ok, Socket} ->
-	    {ok, Socket};
-	{error, eaddrinuse} ->
-	    find_listen_socket(Port+1, N-1)
+        {ok, Socket} ->
+            {ok, Socket};
+        {error, eaddrinuse} ->
+            find_listen_socket(Port+1, N-1)
     end.
 

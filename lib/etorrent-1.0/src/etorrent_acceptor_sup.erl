@@ -52,6 +52,6 @@ build_children(_PeerId, 0) -> [];
 build_children(PeerId, N) ->
     Id = {acceptor, N},
     ChildSpec = {Id,
-		 {etorrent_acceptor, start_link, [PeerId]},
-		 permanent, 2000, worker, [etorrent_acceptor]},
+                 {etorrent_acceptor, start_link, [PeerId]},
+                 permanent, 2000, worker, [etorrent_acceptor]},
     [ChildSpec | build_children(PeerId, N-1)].

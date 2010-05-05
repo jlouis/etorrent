@@ -9,9 +9,8 @@
 -module(etorrent_utils).
 
 %% API
--export([queue_remove/2, queue_remove_with_check/2,
-	 build_encoded_form_rfc1738/1,
-	 shuffle/1, gsplit/2]).
+-export([queue_remove/2, queue_remove_check/2,
+         build_encoded_form_rfc1738/1, shuffle/1, gsplit/2]).
 
 %%====================================================================
 %% API
@@ -43,15 +42,11 @@ gsplit(N, [H|T], Rest) ->
 %%   return false.
 %%   Note: Inefficient implementation. Converts to/from lists.
 %%--------------------------------------------------------------------
-queue_remove_with_check(Item, Q) ->
+queue_remove_check(Item, Q) ->
     QList = queue:to_list(Q),
-    case lists:member(Item, QList) of
-	true ->
-	    List = lists:delete(Item, QList),
-	    {ok, queue:from_list(List)};
-	false ->
-	    false
-    end.
+    true = lists:member(Item, QList),
+    List = lists:delete(Item, QList),
+    queue:from_list(List).
 
 %%--------------------------------------------------------------------
 %% Function: queue_remove(Item, queue()) -> queue()
@@ -72,14 +67,14 @@ queue_remove(Item, Q) ->
 build_encoded_form_rfc1738(List) when is_list(List) ->
     Unreserved = rfc_3986_unreserved_characters_set(),
     F = fun (E) ->
-		case sets:is_element(E, Unreserved) of
-		    true ->
-			E;
-		    false ->
-			lists:concat(
-			  ["%", io_lib:format("~2.16.0B", [E])])
-		end
-	end,
+                case sets:is_element(E, Unreserved) of
+                    true ->
+                        E;
+                    false ->
+                        lists:concat(
+                          ["%", io_lib:format("~2.16.0B", [E])])
+                end
+        end,
     lists:flatten([F(E) || E <- List]);
 build_encoded_form_rfc1738(Binary) when is_binary(Binary) ->
     build_encoded_form_rfc1738(binary_to_list(Binary)).
@@ -116,10 +111,10 @@ merge([], B) ->
     B;
 merge([A | As], [B | Bs]) ->
     case flip_coin() of
-	0 ->
-	    [A | merge(As, [B | Bs])];
-	1 ->
-	    [B | merge([A | As], Bs)]
+        0 ->
+            [A | merge(As, [B | Bs])];
+        1 ->
+            [B | merge([A | As], Bs)]
     end.
 
 %%

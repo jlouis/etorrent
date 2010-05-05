@@ -10,7 +10,7 @@
 -behaviour(supervisor).
 
 %% API
--export([start_link/5, add_sender/5]).
+-export([start_link/5, add_sender/6]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -26,15 +26,15 @@
 %%--------------------------------------------------------------------
 start_link(LocalPeerId, InfoHash, FilesystemPid, Id, {IP, Port}) ->
     supervisor:start_link(?MODULE, [LocalPeerId,
-				    InfoHash,
-				    FilesystemPid,
-				    Id,
-				    {IP, Port}]).
+                                    InfoHash,
+                                    FilesystemPid,
+                                    Id,
+                                    {IP, Port}]).
 
-add_sender(Pid, Socket, FileSystemPid, Id, RecvPid) ->
+add_sender(Pid, Socket, FileSystemPid, Id, FastExtension, RecvPid) ->
     Sender   = {sender, {etorrent_t_peer_send, start_link,
-			 [Socket, FileSystemPid, Id, RecvPid]},
-		permanent, 15000, worker, [etorrent_t_peer_send]},
+                         [Socket, FileSystemPid, Id, FastExtension, RecvPid]},
+                permanent, 15000, worker, [etorrent_t_peer_send]},
     supervisor:start_child(Pid, Sender).
 
 %%====================================================================
@@ -50,11 +50,11 @@ add_sender(Pid, Socket, FileSystemPid, Id, RecvPid) ->
 %% specifications.
 %%--------------------------------------------------------------------
 init([LocalPeerId, InfoHash, FilesystemPid, Id, {IP, Port}]) ->
-    Reciever = {reciever, {etorrent_t_peer_recv, start_link,
-			  [LocalPeerId, InfoHash, FilesystemPid, Id, self(),
-			   {IP, Port}]},
-		permanent, 15000, worker, [etorrent_t_peer_recv]},
-    {ok, {{one_for_all, 0, 1}, [Reciever]}}.
+    Receiver = {receiver, {etorrent_t_peer_recv, start_link,
+                          [LocalPeerId, InfoHash, FilesystemPid, Id, self(),
+                           {IP, Port}]},
+                permanent, 15000, worker, [etorrent_t_peer_recv]},
+    {ok, {{one_for_all, 0, 1}, [Receiver]}}.
 
 %%====================================================================
 %% Internal functions

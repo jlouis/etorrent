@@ -27,8 +27,8 @@ start_link() ->
 
 add_torrent(File, Local_PeerId, Id) ->
     Torrent = {File,
-	       {etorrent_t_sup, start_link, [File, Local_PeerId, Id]},
-	       transient, infinity, supervisor, [etorrent_t_sup]},
+               {etorrent_t_sup, start_link, [File, Local_PeerId, Id]},
+               transient, infinity, supervisor, [etorrent_t_sup]},
     supervisor:start_child(?SERVER, Torrent).
 
 stop_torrent(File) ->

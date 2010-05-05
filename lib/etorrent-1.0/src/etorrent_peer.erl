@@ -13,7 +13,7 @@
 %% API
 -export([new/5, all/1, delete/1, connected/3, ip_port/1, select/1,
 
-	 statechange/2]).
+         statechange/2]).
 
 %%====================================================================
 %% API
@@ -24,10 +24,10 @@
 %%--------------------------------------------------------------------
 new(IP, Port, TorrentId, Pid, State) ->
     mnesia:dirty_write(#peer { pid = Pid,
-			       ip = IP,
-			       port = Port,
-			       torrent_id = TorrentId,
-			       state = State}).
+                               ip = IP,
+                               port = Port,
+                               torrent_id = TorrentId,
+                               state = State}).
 
 %%--------------------------------------------------------------------
 %% Function: statechange(Pid, seeder) -> transaction
@@ -35,10 +35,10 @@ new(IP, Port, TorrentId, Pid, State) ->
 %%--------------------------------------------------------------------
 statechange(Pid, seeder) ->
     {atomic, _} = mnesia:transaction(
-		    fun () ->
-			    [Row] = mnesia:read(peer, Pid, write),
-			    mnesia:write(Row#peer { state = seeding })
-		    end),
+                    fun () ->
+                            [Row] = mnesia:read(peer, Pid, write),
+                            mnesia:write(Row#peer { state = seeding })
+                    end),
     ok.
 
 %%--------------------------------------------------------------------
@@ -55,7 +55,7 @@ ip_port(Pid) ->
 %%--------------------------------------------------------------------
 delete(Id) when is_integer(Id) ->
     [mnesia:dirty_delete_object(Peer) ||
-	Peer <- mnesia:dirty_index_read(peer, Id, #peer.torrent_id)];
+        Peer <- mnesia:dirty_index_read(peer, Id, #peer.torrent_id)];
 delete(Pid) when is_pid(Pid) ->
     mnesia:dirty_delete(peer, Pid).
 
@@ -65,12 +65,12 @@ delete(Pid) when is_pid(Pid) ->
 %%--------------------------------------------------------------------
 connected(IP, Port, Id) when is_integer(Id) ->
     F = fun () ->
-		Q = qlc:q([P || P <- mnesia:table(peer),
-				P#peer.ip =:= IP,
-				P#peer.port =:= Port,
-				P#peer.torrent_id =:= Id]),
-		length(qlc:e(Q)) > 0
-	end,
+                Q = qlc:q([P || P <- mnesia:table(peer),
+                                P#peer.ip =:= IP,
+                                P#peer.port =:= Port,
+                                P#peer.torrent_id =:= Id]),
+                length(qlc:e(Q)) > 0
+        end,
     {atomic, B} = mnesia:transaction(F),
     B.
 
