@@ -4,7 +4,7 @@
 -include("etorrent_version.hrl").
 -include("etorrent_mnesia_table.hrl").
 
--export([stop/0, start/0, db_create_schema/0]).
+-export([stop/0, start/0]).
 -export([start/2, stop/1, prep_stop/1]).
 -export([help/0, h/0, list/0, l/0, show/0, s/0, show/1, s/1, check/1]).
 
@@ -20,6 +20,8 @@ start() ->
           end,
     lists:foreach(Fun, [crypto, inets, mnesia, sasl]),
     %% DB
+    ok = mnesia:create_schema([node()]),
+    etorrent_mnesia_init:init(),
     etorrent_mnesia_init:wait(),
     %% Etorrent
     application:start(etorrent).
@@ -39,13 +41,6 @@ prep_stop(_S) ->
 
 stop(_State) ->
     ok.
-
-db_create_schema() ->
-    ok = mnesia:create_schema([node()]),
-    ok = application:start(mnesia),
-    etorrent_mnesia_init:init(),
-    mnesia:info(),
-    halt().
 
 %%--------------------------------------------------------------------
 %% Function: list() -> io()

@@ -138,8 +138,8 @@ start_peer(Socket, ReservedBytes, PeerId, InfoHash, S) ->
                     etorrent_t_peer_recv:stop(PeerProcessPid),
                     ok
             end;
-        already_enough_connections ->
-            ok;
+        already_enough_connections -> ok;
+        already_connected -> ok;
         connect_to_ourselves ->
             gen_tcp:close(Socket),
             ok;
@@ -153,11 +153,14 @@ new_incoming_peer(_IP, _Port, _InfoHash, PeerId, S) when S#state.our_peer_id == 
     connect_to_ourselves;
 new_incoming_peer(IP, Port, InfoHash, _PeerId, S) ->
     {atomic, [TM]} = etorrent_tracking_map:select({infohash, InfoHash}),
-    case etorrent_peer_mgr:bad_peer(IP, Port, TM#tracking_map.id) of
+    case etorrent_peer_mgr:is_bad_peer(IP, Port) of
         true ->
             bad_peer;
         false ->
-            start_new_incoming_peer(IP, Port, InfoHash, S)
+            case etorrent_peer:connected(IP, Port, TM#tracking_map.id) of
+                true -> already_connected;
+                false -> start_new_incoming_peer(IP, Port, InfoHash, S)
+            end
     end.
 
 

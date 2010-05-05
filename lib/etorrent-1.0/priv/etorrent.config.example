@@ -3,6 +3,7 @@
 	 {dir, "/var/tmp/etorrent"},
 	 {logger_dir, "/var/log/etorrent"},
 	 {logger_fname, "etorrent.log"},
+         {fast_resume, "fast_resume.tab"},
 
 	 {max_peers, 400},
 	 {max_upload_slots, auto},
@@ -13,7 +14,7 @@
         [{dir, "/var/tmp/etorrent_session"}]},
  {kernel,
 	[{start_timer, true}]}
-#  {sasl,
-# 	[{sasl_error_logger, {file, "err.log"}},
-# 	 {errlog_type, all}]}
+%  {sasl,
+% 	[{sasl_error_logger, {file, "err.log"}},
+% 	 {errlog_type, all}]}
 ].

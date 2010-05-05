@@ -20,8 +20,15 @@
 
 -record(state, { timer = none }).
 
+%% Type of the state in the diskstate in question.
+-type(diskstate_state() :: 'seeding' | {'bitfield', binary()}).
+
+%% Piece state on disk for persistence
+-record(piece_diskstate, {filename :: string(), % Name of torrent
+                          state :: diskstate_state()}).
+
 -define(SERVER, ?MODULE).
--define(PERSIST_TIME, 300). % Every 300 secs, may be done configurable.
+-define(PERSIST_TIME, timer:seconds(300)). % Every 300 secs, may be done configurable.
 
 %%====================================================================
 %% API
@@ -60,7 +67,15 @@ stop() -> gen_server:call(?SERVER, stop).
 %%--------------------------------------------------------------------
 init([]) ->
     process_flag(trap_exit, true),
-    {ok, TRef} = timer:send_interval(timer:seconds(?PERSIST_TIME), self(), persist),
+    {ok, F} = application:get_env(etorrent, fast_resume_file),
+    X = ets:file2tab(F, [{verify, true}]),
+    _ = case X of
+        {ok, etorrent_fast_resume} -> true;
+        E ->
+            error_logger:error_report([fast_resume_recovery_error, E]),
+            _ = ets:new(etorrent_fast_resume, [named_table, private])
+    end,
+    {ok, TRef} = timer:send_interval(?PERSIST_TIME, self(), persist),
     {ok, #state{ timer = TRef}}.
 
 %%--------------------------------------------------------------------
@@ -74,9 +89,9 @@ init([]) ->
 %%--------------------------------------------------------------------
 handle_call({query_state, Id}, _From, S) ->
     {atomic, [TM]} = etorrent_tracking_map:select(Id),
-    case etorrent_piece_diskstate:select(TM#tracking_map.filename) of
+    case ets:lookup(etorrent_fast_resume, TM#tracking_map.filename) of
         [] -> {reply, unknown, S};
-        [R] -> {reply, R#piece_diskstate.state, S}
+        [{_, R}] -> {reply, R#piece_diskstate.state, S}
     end;
 handle_call(stop, _From, S) ->
     {stop, normal, ok, S};
@@ -116,6 +131,7 @@ handle_info(_Info, State) ->
 %%--------------------------------------------------------------------
 terminate(normal, _State) ->
     persist_to_disk(),
+    true = ets:delete(etorrent_fast_resume),
     ok;
 terminate(_Reason, _State) ->
     ok.
@@ -137,40 +153,32 @@ code_change(_OldVsn, State, _Extra) ->
 %% Description: Prune the persistent disk state for anything we are
 %%   not tracking.
 %%--------------------------------------------------------------------
-prune_disk_state(Tracking) ->
-    TrackedSet = sets:from_list(
-                   [T#tracking_map.filename || T <- Tracking]),
-    ok = etorrent_piece_diskstate:prune(TrackedSet).
 
 %%--------------------------------------------------------------------
 %% Func: persist_disk_state(Tracking) -> ok
 %% Description: Persist state on disk
 %%--------------------------------------------------------------------
-persist_disk_state([]) ->
-    ok;
-persist_disk_state([#tracking_map { id = Id,
+track_in_ets_table([]) -> ok;
+track_in_ets_table([#tracking_map { id = Id,
                                     filename = FName} | Next]) ->
     case etorrent_torrent:select(Id) of
-        [] -> persist_disk_state(Next);
-        [S] -> case S#torrent.state of
-                   seeding ->
-                       etorrent_piece_diskstate:new(FName, seeding);
-                   leeching ->
-                       BitField = etorrent_piece_mgr:bitfield(Id),
-                       etorrent_piece_diskstate:new(FName, {bitfield, BitField});
-                   endgame ->
-                       BitField = etorrent_piece_mgr:bitfield(Id),
-                       etorrent_piece_diskstate:new(FName, {bitfield, BitField});
-                   unknown ->
-                       ok
-               end,
-               persist_disk_state(Next)
+        [] -> track_in_ets_table(Next); %% Not hot, skip it.
+        [S] ->
+            I = case S#torrent.state of
+                   seeding  -> {FName, seeding};
+                   leeching -> {FName, {bitfield, etorrent_piece_mgr:bitfield(Id)}};
+                   endgame  -> {FName, {bitfield, etorrent_piece_mgr:bitfield(Id)}};
+                   unknown  -> ok
+                end,
+            true = ets:insert(etorrent_fast_resume, I),
+            track_in_ets_table(Next)
     end.
 
 persist_to_disk() ->
     {atomic, Torrents} = etorrent_tracking_map:all(),
-    prune_disk_state(Torrents),
-    persist_disk_state(Torrents),
+    track_in_ets_table(Torrents),
+    {ok, F} = application:get_env(etorrent, fast_resume_file),
+    ok = ets:tab2file(etorrent_fast_resume, F, [{extended_info, [object_count, md5sum]}]),
     etorrent_event_mgr:persisted_state_to_disk(),
     ok.
 

@@ -64,21 +64,16 @@ local_unchoke(Id, Pid) -> gen_server:cast(?SERVER, {local_unchoke, Id, Pid}).
 
 select_state(Id, Who) ->
     case ets:lookup(etorrent_peer_state, {Id, Who}) of
-        [] ->
-            #peer_state { }; % Pick defaults
-        [P] ->
-            P
+        [] -> #peer_state { }; % Pick defaults
+        [P] -> P
     end.
 
 snubbed(Id, Who) ->
     T = etorrent_rate:now_secs(),
     case ets:lookup(etorrent_recv_state, {Id, Who}) of
-        [] ->
-            false;
-        [#rate_mgr { last_got = unknown }] ->
-            false;
-        [#rate_mgr { last_got = U}] ->
-            T - U > ?DEFAULT_SNUB_TIME
+        [] -> false;
+        [#rate_mgr { last_got = unknown }] -> false;
+        [#rate_mgr { last_got = U}] -> T - U > ?DEFAULT_SNUB_TIME
     end.
 
 
@@ -110,11 +105,11 @@ global_rate() ->
 %%--------------------------------------------------------------------
 init([]) ->
     process_flag(trap_exit, true),
-    RTid = ets:new(etorrent_recv_state, [set, protected, named_table,
+    RTid = ets:new(etorrent_recv_state, [protected, named_table,
                                          {keypos, #rate_mgr.pid}]),
-    STid = ets:new(etorrent_send_state, [set, protected, named_table,
+    STid = ets:new(etorrent_send_state, [protected, named_table,
                                          {keypos, #rate_mgr.pid}]),
-    StTid = ets:new(etorrent_peer_state, [set, protected, named_table,
+    StTid = ets:new(etorrent_peer_state, [protected, named_table,
                                          {keypos, #peer_state.pid}]),
     {ok, #state{ recv = RTid, send = STid, state = StTid,
                  global_recv = etorrent_rate:init(?RATE_FUDGE),
