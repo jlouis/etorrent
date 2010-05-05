@@ -71,7 +71,7 @@ bad_peer_list() ->
 init([OurPeerId]) ->
     process_flag(trap_exit, true),
     _Tref = timer:send_interval(?CHECK_TIME, self(), cleanup_table),
-    _Tid = ets:new(etorrent_bad_peer, [set, protected, named_table,
+    _Tid = ets:new(etorrent_bad_peer, [protected, named_table,
                                        {keypos, #bad_peer.ipport}]),
     {ok, #state{ our_peer_id = OurPeerId }}.
 
@@ -156,13 +156,19 @@ code_change(_OldVsn, State, _Extra) ->
 
 start_new_peers(IPList, State) ->
     %% Update the PeerList with the new incoming peers
+    %% XXX:
+    %%   the usort is potentially a bad idea here. It will sort the list
+    %%   and thus mostly take IP addresses in a specific order. This is
+    %%   a bad idea for various reasons.
+    %%
+    %%   A nice change would be to do duplicate removal the right way
+    %%   on the unsorted list.
     PeerList = lists:usort(IPList ++ State#state.available_peers),
     S = State#state { available_peers = PeerList},
 
     %% Replenish the connected peers.
     fill_peers(S).
 
-%%% NOTE: fill_peers/2 and spawn_new_peer/5 tail calls each other.
 fill_peers(S) ->
     case S#state.available_peers of
         [] ->
@@ -172,50 +178,39 @@ fill_peers(S) ->
             % Possible peer. Check it.
             case is_bad_peer(IP, Port) of
                 true ->
+                    % We don't like this peer, since she is the misbehavin'
+                    %  black list of d00m!
                     fill_peers(S#state{available_peers = R});
                 false ->
                     case etorrent_peer:connected(IP, Port, TorrentId) of
                         true ->
+                            % Already connected to the peer. This happens
+                            % when the peer connects back to us and the
+                            % tracker, which knows nothing about this,
+                            % still hands us the ip address.
                             fill_peers(S#state{available_peers = R});
                         false ->
                             error_logger:info_report([spawning, {ip, IP},
                                                       {port, Port}, {tid, TorrentId}]),
-                            spawn_new_peer(IP, Port, TorrentId,
-                                           S#state{available_peers = R})
+                            {atomic, [TM]} = etorrent_tracking_map:select(TorrentId),
+                            case etorrent_counters:obtain_peer_slot() of
+                                ok ->
+                                    try
+                                        {ok, Pid} = etorrent_t_sup:add_peer(
+                                            TM#tracking_map.supervisor_pid,
+                                            S#state.our_peer_id,
+                                            TM#tracking_map.info_hash,
+                                            TorrentId,
+                                            {IP, Port}),
+                                        ok = etorrent_t_peer_recv:connect( Pid, IP, Port)
+                                    catch
+                                        throw:_ -> etorrent_counters:release_peer_slot();
+                                        exit:_  -> etorrent_counters:release_peer_slot()
+                                    end,
+                                    fill_peers(S#state{available_peers = R});
+                                full -> S
+                            end
                     end
-            end
-    end.
-
-%%--------------------------------------------------------------------
-%% Function: spawn_new_peer(IP, Port, S) -> S
-%%  Args:   IP ::= ip_address()
-%%          Port ::= integer() (16-bit)
-%%          S :: #state()
-%% Description: Attempt to spawn the peer at IP/Port. Returns modified state.
-%%--------------------------------------------------------------------
-spawn_new_peer(IP, Port, TorrentId, S) ->
-    case etorrent_peer:connected(IP, Port, TorrentId) of
-        true ->
-            fill_peers(S);
-        false ->
-            {atomic, [TM]} = etorrent_tracking_map:select(TorrentId),
-            case etorrent_counters:obtain_peer_slot() of
-                ok ->
-                    try
-                        {ok, Pid} = etorrent_t_sup:add_peer(
-                                      TM#tracking_map.supervisor_pid,
-                                      S#state.our_peer_id,
-                                      TM#tracking_map.info_hash,
-                                      TorrentId,
-                                      {IP, Port}),
-                        ok = etorrent_t_peer_recv:connect(Pid, IP, Port)
-                    catch
-                        throw:_ -> etorrent_counters:release_peer_slot();
-                        exit:_ ->  etorrent_counters:release_peer_slot()
-                    end,
-                    fill_peers(S);
-                full ->
-                    S
             end
     end.
 
