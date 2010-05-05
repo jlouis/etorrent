@@ -16,7 +16,7 @@
 
 %% API
 -export([start_link/1, enter_bad_peer/3, bad_peer_list/0, add_peers/2,
-         bad_peer/3]).
+         is_bad_peer/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -47,12 +47,11 @@ add_peers(TorrentId, IPList) ->
     gen_server:cast(?SERVER, {add_peers,
                               [{TorrentId, {IP, Port}} || {IP, Port} <- IPList]}).
 
-bad_peer(IP, Port, TorrentId) ->
+%% Returns true if this peer is in the list of baddies
+is_bad_peer(IP, Port) ->
     case ets:lookup(etorrent_bad_peer, {IP, Port}) of
-        [] ->
-            etorrent_peer:connected(IP, Port, TorrentId);
-        [P] ->
-            P#bad_peer.offenses > ?DEFAULT_BAD_COUNT
+        [] -> false;
+        [P] -> P#bad_peer.offenses > ?DEFAULT_BAD_COUNT
     end.
 
 bad_peer_list() ->
@@ -85,10 +84,6 @@ init([OurPeerId]) ->
 %%                                      {stop, Reason, State}
 %% Description: Handling call messages
 %%--------------------------------------------------------------------
-%% A peer is bad if it has offended us or if it is already connected.
-handle_call({is_bad_peer, IP, Port, TorrentId}, _From, S) ->
-    Reply = bad_peer(IP, Port, TorrentId),
-    {reply, Reply, S};
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -175,14 +170,19 @@ fill_peers(S) ->
             S;
         [{TorrentId, {IP, Port}} | R] ->
             % Possible peer. Check it.
-            case bad_peer(IP, Port, TorrentId) of
+            case is_bad_peer(IP, Port) of
                 true ->
                     fill_peers(S#state{available_peers = R});
                 false ->
-                    error_logger:info_report([spawning, {ip, IP},
-                                              {port, Port}, {tid, TorrentId}]),
-                    spawn_new_peer(IP, Port, TorrentId,
-                                   S#state{available_peers = R})
+                    case etorrent_peer:connected(IP, Port, TorrentId) of
+                        true ->
+                            fill_peers(S#state{available_peers = R});
+                        false ->
+                            error_logger:info_report([spawning, {ip, IP},
+                                                      {port, Port}, {tid, TorrentId}]),
+                            spawn_new_peer(IP, Port, TorrentId,
+                                           S#state{available_peers = R})
+                    end
             end
     end.
 
