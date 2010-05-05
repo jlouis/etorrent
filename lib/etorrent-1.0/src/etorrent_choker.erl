@@ -44,6 +44,7 @@
 -define(SERVER, ?MODULE).
 
 -define(ROUND_TIME, 10000).
+-define(DEFAULT_OPTIMISTIC_SLOTS, 1).
 
 %%====================================================================
 %% API
@@ -278,7 +279,7 @@ rechoke_unchoke([P | Next], PSet) ->
 optimistics(PSet) ->
     MinUp = case application:get_env(etorrent, min_uploads) of
                 {ok, N} -> N;
-                undefined -> 1
+                undefined -> ?DEFAULT_OPTIMISTIC_SLOTS
             end,
     lists:max([MinUp, upload_slots() - sets:size(PSet)]).
 
