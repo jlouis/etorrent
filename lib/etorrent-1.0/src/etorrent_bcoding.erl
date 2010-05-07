@@ -33,7 +33,11 @@ encode(BString) ->
 %% Description: Decode a string to an erlang term.
 %%--------------------------------------------------------------------
 decode(String) ->
-    {Res, []} = decode_b(String),
+    {Res, E} = decode_b(String),
+    case E of
+        [] -> ok;
+        X  -> error_logger:info_report([spurious_extra_decoded, X])
+    end,
     Res.
 
 %%--------------------------------------------------------------------
