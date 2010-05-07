@@ -54,35 +54,21 @@ recv_message(Rate, Message) ->
     MSize = size(Message),
     Decoded =
         case Message of
-            <<>> ->
-                keep_alive;
-            <<?CHOKE>> ->
-                choke;
-            <<?UNCHOKE>> ->
-                unchoke;
-            <<?INTERESTED>> ->
-                interested;
-            <<?NOT_INTERESTED>> ->
-                not_interested;
-            <<?HAVE, PieceNum:32/big>> ->
-                {have, PieceNum};
-            <<?BITFIELD, BitField/binary>> ->
-                {bitfield, BitField};
-            <<?REQUEST, Index:32/big, Begin:32/big, Len:32/big>> ->
-                {request, Index, Begin, Len};
-            <<?PIECE, Index:32/big, Begin:32/big, Data/binary>> ->
-                {piece, Index, Begin, Data};
-            <<?CANCEL, Index:32/big, Begin:32/big, Len:32/big>> ->
-                {cancel, Index, Begin, Len};
-            <<?PORT, Port:16/big>> ->
-                {port, Port};
+            <<>> -> keep_alive;
+            <<?CHOKE>> -> choke;
+            <<?UNCHOKE>> -> unchoke;
+            <<?INTERESTED>> -> interested;
+            <<?NOT_INTERESTED>> -> not_interested;
+            <<?HAVE, PieceNum:32/big>> -> {have, PieceNum};
+            <<?BITFIELD, BitField/binary>> -> {bitfield, BitField};
+            <<?REQUEST, Index:32/big, Begin:32/big, Len:32/big>> -> {request, Index, Begin, Len};
+            <<?PIECE, Index:32/big, Begin:32/big, Data/binary>> -> {piece, Index, Begin, Data};
+            <<?CANCEL, Index:32/big, Begin:32/big, Len:32/big>> -> {cancel, Index, Begin, Len};
+            <<?PORT, Port:16/big>> -> {port, Port};
             %% FAST EXTENSION MESSAGES
-            <<?SUGGEST, Index:32/big>> ->
-                {suggest, Index};
-            <<?HAVE_ALL>> ->
-                have_all;
-            <<?HAVE_NONE>> ->
-                have_none;
+            <<?SUGGEST, Index:32/big>> -> {suggest, Index};
+            <<?HAVE_ALL>> -> have_all;
+            <<?HAVE_NONE>> -> have_none;
             <<?REJECT_REQUEST, Index:32, Offset:32, Len:32>> ->
                 {reject_request, Index, Offset, Len};
             <<?ALLOWED_FAST, FastSet/binary>> ->
@@ -97,39 +83,23 @@ recv_message(Rate, Message) ->
 send_message(Rate, Socket, Message) ->
     Datagram =
         case Message of
-            keep_alive ->
-                <<>>;
-            choke ->
-                <<?CHOKE>>;
-            unchoke ->
-                <<?UNCHOKE>>;
-            interested ->
-                <<?INTERESTED>>;
-            not_interested ->
-                <<?NOT_INTERESTED>>;
-            {have, PieceNum} ->
-                <<?HAVE, PieceNum:32/big>>;
-            {bitfield, BitField} ->
-                <<?BITFIELD, BitField/binary>>;
-            {request, Index, Begin, Len} ->
-                <<?REQUEST, Index:32/big, Begin:32/big, Len:32/big>>;
-            {piece, Index, Begin, Data} ->
-                <<?PIECE,
-                 Index:32/big, Begin:32/big, Data/binary>>;
-            {cancel, Index, Begin, Len} ->
-                <<?CANCEL, Index:32/big, Begin:32/big, Len:32/big>>;
-            {port, PortNum} ->
-                <<?PORT, PortNum:16/big>>;
+            keep_alive -> <<>>;
+            choke -> <<?CHOKE>>;
+            unchoke -> <<?UNCHOKE>>;
+            interested -> <<?INTERESTED>>;
+            not_interested -> <<?NOT_INTERESTED>>;
+            {have, PieceNum} -> <<?HAVE, PieceNum:32/big>>;
+            {bitfield, BitField} -> <<?BITFIELD, BitField/binary>>;
+            {request, Index, Begin, Len} -> <<?REQUEST, Index:32/big, Begin:32/big, Len:32/big>>;
+            {piece, Index, Begin, Data} -> <<?PIECE, Index:32/big, Begin:32/big, Data/binary>>;
+            {cancel, Index, Begin, Len} -> <<?CANCEL, Index:32/big, Begin:32/big, Len:32/big>>;
+            {port, PortNum} -> <<?PORT, PortNum:16/big>>;
             %% FAST EXTENSION
-            {suggest, Index} ->
-                <<?SUGGEST, Index:32>>;
-            have_all ->
-                <<?HAVE_ALL>>;
-            have_none ->
-                <<?HAVE_NONE>>;
-            {reject_request, Index, Offset, Len} ->
-                <<?REJECT_REQUEST, Index, Offset, Len>>;
-            {allowed_fast, FastSet} ->
+            {suggest, Index} -> <<?SUGGEST, Index:32>>;
+            have_all -> <<?HAVE_ALL>>;
+            have_none -> <<?HAVE_NONE>>;
+            {reject_request, Index, Offset, Len} -> <<?REJECT_REQUEST, Index, Offset, Len>>;
+            {allowed_fast, FastSet} -> 
                 BinFastSet = encode_fastset(FastSet),
                 <<?ALLOWED_FAST, BinFastSet/binary>>
         end,
@@ -138,9 +108,8 @@ send_message(Rate, Socket, Message) ->
     {Res, etorrent_rate:update(Rate, Sz), Sz}.
 
 %%--------------------------------------------------------------------
-%% Function: receive_handshake(Socket) -> {ok, protocol_version,
-%%                                             remote_peer_id()} |
-%%                                       {ok, proto_version(),
+%% Function: receive_handshake(Socket) -> {ok, protocol_version, remote_peer_id()} |
+%%                                        {ok, proto_version(),
 %%                                            info_hash(),
 %%                                            remote_peer_id()} |
 %%                                        {error, Reason}

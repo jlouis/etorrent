@@ -45,11 +45,7 @@ add_peer(GroupPid, LocalPeerId, InfoHash, FilesystemPid, Id,
 %% Supervisor callbacks
 %%====================================================================
 init([]) ->
-    PeerRecvs = {peer_recv,
+    ChildSpec = {child,
                  {etorrent_t_peer_sup, start_link, []},
-                 temporary, infinity, supervisor, [etorrent_t_peer_recv]},
-    {ok, {{simple_one_for_one, 15, 60}, [PeerRecvs]}}.
-
-%%====================================================================
-%% Internal functions
-%%====================================================================
+                 temporary, infinity, supervisor, [etorrent_t_peer_sup]},
+    {ok, {{simple_one_for_one, 15, 60}, [ChildSpec]}}.
