@@ -20,7 +20,7 @@ start() ->
           end,
     lists:foreach(Fun, [crypto, inets, mnesia, sasl]),
     %% DB
-    ok = mnesia:create_schema([node()]),
+    %% ok = mnesia:create_schema([node()]),
     etorrent_mnesia_init:init(),
     etorrent_mnesia_init:wait(),
     %% Etorrent

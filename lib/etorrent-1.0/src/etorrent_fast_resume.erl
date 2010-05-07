@@ -72,7 +72,7 @@ init([]) ->
     _ = case X of
         {ok, etorrent_fast_resume} -> true;
         E ->
-            error_logger:error_report([fast_resume_recovery_error, E]),
+            error_logger:info_report([fast_resume_no_data, E]),
             _ = ets:new(etorrent_fast_resume, [named_table, private])
     end,
     {ok, TRef} = timer:send_interval(?PERSIST_TIME, self(), persist),
@@ -164,13 +164,14 @@ track_in_ets_table([#tracking_map { id = Id,
     case etorrent_torrent:select(Id) of
         [] -> track_in_ets_table(Next); %% Not hot, skip it.
         [S] ->
-            I = case S#torrent.state of
+            {F, St} = case S#torrent.state of
                    seeding  -> {FName, seeding};
                    leeching -> {FName, {bitfield, etorrent_piece_mgr:bitfield(Id)}};
                    endgame  -> {FName, {bitfield, etorrent_piece_mgr:bitfield(Id)}};
                    unknown  -> ok
                 end,
-            true = ets:insert(etorrent_fast_resume, I),
+            true = ets:insert(etorrent_fast_resume, #piece_diskstate{filename = F,
+                                                                     state    = St}),
             track_in_ets_table(Next)
     end.
 
