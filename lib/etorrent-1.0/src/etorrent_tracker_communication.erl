@@ -326,7 +326,11 @@ decode_ips([IPDict | Rest], Accum) ->
 decode_ips(<<>>, Accum) ->
     Accum;
 decode_ips(<<B1:8, B2:8, B3:8, B4:8, Port:16/big, Rest/binary>>, Accum) ->
-    decode_ips(Rest, [{{B1, B2, B3, B4}, Port} | Accum]).
+    decode_ips(Rest, [{{B1, B2, B3, B4}, Port} | Accum]);
+decode_ips(Odd, Accum) ->
+    error_logger:info_report([tracker_wrong_ip_decode, Odd]),
+    Accum.
+
 
 response_ips(BC) ->
     case etorrent_bcoding:search_dict_default({string, "peers"}, BC, none) of
