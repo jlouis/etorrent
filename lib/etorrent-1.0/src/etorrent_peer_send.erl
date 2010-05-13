@@ -94,8 +94,12 @@ choke(Pid) ->
 unchoke(Pid) ->
     gen_server:cast(Pid, unchoke).
 
-%% Check if we choke the peer
-check_choke(Pid) -> gen_server:cast(Pid, check_choke).
+%% This call is used whenever we want to check the choke state of the peer.
+%% If it is true, we perform a rechoke request. It is probably the wrong
+%% place to issue the rechoke request. Rather, it would be better if a
+%% control process does this.
+check_choke(Pid) ->
+    gen_server:cast(Pid, check_choke).
 
 %%--------------------------------------------------------------------
 %% Func: not_interested(Pid)
@@ -131,6 +135,7 @@ stop(Pid) ->
 %% gen_server callbacks
 %%====================================================================
 init([Socket, FilesystemPid, TorrentId, FastExtension, Parent]) ->
+    %% Trap exits so we can cancel timers gracefully should we die
     process_flag(trap_exit, true),
     {ok, TRef} = timer:send_interval(?DEFAULT_KEEP_ALIVE_INTERVAL, self(), tick),
     {ok, Tref2} = timer:send_interval(?RATE_UPDATE, self(), rate_update),
@@ -144,30 +149,14 @@ init([Socket, FilesystemPid, TorrentId, FastExtension, Parent]) ->
             torrent_id = TorrentId,
             fast_extension = FastExtension,
             file_system_pid = FilesystemPid},
-     0}.
+     0}. %% Quickly enter a timeout.
 
-%%--------------------------------------------------------------------
-%% Function: %% handle_call(Request, From, State) -> {reply, Reply, State} |
-%%                                      {reply, Reply, State, Timeout} |
-%%                                      {noreply, State} |
-%%                                      {noreply, State, Timeout} |
-%%                                      {stop, Reason, Reply, State} |
-%%                                      {stop, Reason, State}
-%% Description: Handling call messages
-%%--------------------------------------------------------------------
-handle_call(_Request, _From, State) ->
-    Reply = ok,
-    {reply, Reply, State}.
 
-%%--------------------------------------------------------------------
-%% Func: code_change(OldVsn, State, Extra) -> {ok, NewState}
-%% Description: Convert process state when code is changed
-%%--------------------------------------------------------------------
-code_change(_OldVsn, State, _Extra) ->
-    {ok, State}.
-
+%% Whenever a tick is hit, we send out a keep alive message on the line.
 handle_info(tick, S) ->
     send_message(keep_alive, S, 0);
+
+%% When we are requested to update our rate, we do it here.
 handle_info(rate_update, S) ->
     Rate = etorrent_rate:update(S#state.rate, 0),
     ok = etorrent_rate_mgr:send_rate(S#state.torrent_id,
@@ -175,6 +164,10 @@ handle_info(rate_update, S) ->
                                      Rate#peer_rate.rate,
                                      0),
     {noreply, S#state { rate = Rate }};
+
+%% Different timeouts.
+%% When we are choking the peer and the piece cache is empty, garbage_collect() to reclaim
+%% space quickly rather than waiting for it to happen.
 handle_info(timeout, S)
   when S#state.choke =:= true andalso S#state.piece_cache =:= none ->
     garbage_collect(),
@@ -192,18 +185,22 @@ handle_info(Msg, S) ->
     error_logger:info_report([got_unknown_message, Msg, S]),
     {stop, {unknown_msg, Msg}}.
 
-handle_cast(choke, S) ->
-    perform_choke(S);
-handle_cast(unchoke, S) when S#state.choke == false ->
-    {noreply, S, 0};
+%% Handle requests to choke and unchoke. If we are already choking the peer,
+%% there is no reason to send the message again.
+handle_cast(choke, S) -> perform_choke(S);
+handle_cast(unchoke, S) when S#state.choke == false -> {noreply, S, 0};
 handle_cast(unchoke, S) when S#state.choke == true ->
     ok = etorrent_rate_mgr:local_unchoke(S#state.torrent_id, S#state.parent),
     send_message(unchoke, S#state{choke = false});
+
+%% A request to check the current choke state and ask for a rechoking
 handle_cast(check_choke, S) when S#state.choke =:= true ->
     {noreply, S, 0};
 handle_cast(check_choke, S) when S#state.choke =:= false ->
     ok = etorrent_choker:perform_rechoke(),
     {noreply, S, 0};
+
+%% Regular messages. We just send them onwards on the wire.
 handle_cast({bitfield, BF}, S) ->
     send_message({bitfield, BF}, S);
 handle_cast(not_interested, S) when S#state.interested =:= false ->
@@ -216,6 +213,20 @@ handle_cast(interested, S) when S#state.interested =:= false ->
     send_message(interested, S#state { interested = true });
 handle_cast({have, Pn}, S) ->
     send_message({have, Pn}, S);
+
+%% Cancels are handled specially when the fast extension is enabled.
+handle_cast({cancel, Idx, Offset, Len}, S) when S#state.fast_extension =:= true ->
+    try
+        NQ = etorrent_utils:queue_remove_check({Idx, Offset, Len},
+                                               S#state.requests),
+        {noreply, S#state { requests = NQ}, 0}
+    catch
+        exit:badmatch -> {stop, normal, S}
+    end;
+handle_cast({cancel, Index, OffSet, Len}, S) ->
+    NQ = etorrent_utils:queue_remove({Index, OffSet, Len}, S#state.requests),
+    {noreply, S#state{requests = NQ}, 0};
+
 handle_cast({local_request, {Index, Offset, Size}}, S) ->
     send_message({request, Index, Offset, Size}, S);
 handle_cast({remote_request, Idx, Offset, Len}, S)
@@ -235,22 +246,10 @@ handle_cast({remote_request, Index, Offset, Len}, S)
             NQ = queue:in({Index, Offset, Len}, S#state.requests),
             {noreply, S#state{requests = NQ}, 0}
     end;
-handle_cast({cancel, Idx, Offset, Len}, S) when S#state.fast_extension =:= true ->
-    try
-        NQ = etorrent_utils:queue_remove_check({Idx, Offset, Len},
-                                               S#state.requests),
-        {noreply, S#state { requests = NQ}, 0}
-    catch
-        exit:badmatch -> {stop, normal, S}
-    end;
-handle_cast({cancel, Index, OffSet, Len}, S) ->
-    NQ = etorrent_utils:queue_remove({Index, OffSet, Len}, S#state.requests),
-    {noreply, S#state{requests = NQ}, 0};
 handle_cast(stop, S) ->
     {stop, normal, S}.
 
 
-%% Terminating normally means we should inform our recv pair
 terminate(_Reason, S) ->
     _ = timer:cancel(S#state.timer),
     _ = timer:cancel(S#state.rate_timer),
@@ -325,20 +324,22 @@ send(Msg, S) ->
     end.
 
 
-perform_choke(S = #state { fast_extension = FX, choke = C}) ->
-    case {FX, C} of
-        {false, true} -> {noreply, S, 0};
-        {false, false} ->
-            ok = local_choke(S),
-            send_message(choke, S#state{choke = true, requests = queue:new(),
-                                        piece_cache = none});
-        {true, true} -> {noreply, S, 0};
-        {true, false} ->
-            local_choke(S),
-            {ok, NS} = send(choke, S),
-            FS = empty_requests(NS),
-            {noreply, FS, 0}
-    end.
+perform_choke(S) when S#state.fast_extension == true ->
+    perform_fast_ext_choke(S);
+perform_choke(S) when S#state.choke == true ->
+    {noreply, S, 0};
+perform_choke(S) ->
+    local_choke(S),
+    send_message(choke, S#state{choke = true, requests = queue:new(),
+                                piece_cache = none}).
+
+perform_fast_ext_choke(S) when S#state.choke == true ->
+    {noreply, S, 0};
+perform_fast_ext_choke(S) ->
+     local_choke(S),
+     {ok, NS} = send(choke, S),
+     FS = empty_requests(NS),
+     {noreply, FS, 0}.
 
 empty_requests(S) ->
     empty_requests(queue:out(S#state.requests), S).
@@ -352,3 +353,11 @@ empty_requests({{value, {Index, Offset, Len}}, Next}, S) ->
 local_choke(S) ->
     etorrent_rate_mgr:local_choke(S#state.torrent_id,
                                   S#state.parent).
+
+%% Unused callbacks
+handle_call(_Request, _From, State) ->
+    Reply = ok,
+    {reply, Reply, State}.
+
+code_change(_OldVsn, State, _Extra) ->
+    {ok, State}.
