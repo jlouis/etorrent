@@ -202,7 +202,7 @@ try_spawn_peer(PeerId, TM, TorrentId, IP, Port, R) ->
                     TM#tracking_map.info_hash,
                     TorrentId,
                     {IP, Port}),
-                ok = etorrent_t_peer_recv:connect( Pid, IP, Port)
+                ok = etorrent_peer_recv:connect( Pid, IP, Port)
             catch
                 throw:_ -> etorrent_counters:release_peer_slot();
                 exit:_  -> etorrent_counters:release_peer_slot()

@@ -1,5 +1,5 @@
 %%%-------------------------------------------------------------------
-%%% File    : etorrent_t_peer_group.erl
+%%% File    : etorrent_choker.erl
 %%% Author  : Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
 %%% License : See COPYING
 %%% Description : Master process for a number of peers.
@@ -198,7 +198,7 @@ advance_optimistic_unchoke(S) ->
         [] ->
             {ok, S}; %% No peers yet
         [H | _T] ->
-            etorrent_t_peer_recv:unchoke(H),
+            etorrent_peer_recv:unchoke(H),
             {ok, S#state { opt_unchoke_chain = NewChain,
                            optimistic_unchoke_pid = H }}
     end.
@@ -270,7 +270,7 @@ rechoke_unchoke([], _PS) ->
 rechoke_unchoke([P | Next], PSet) ->
     case sets:is_element(P, PSet) of
         true ->
-            etorrent_t_peer_recv:unchoke(P#rechoke_info.pid),
+            etorrent_peer_recv:unchoke(P#rechoke_info.pid),
             rechoke_unchoke(Next, PSet);
         false ->
             [P | rechoke_unchoke(Next, PSet)]
@@ -286,15 +286,15 @@ optimistics(PSet) ->
 rechoke_choke([], _Count, _Optimistics) ->
     ok;
 rechoke_choke([P | Next], Count, Optimistics) when Count >= Optimistics ->
-    etorrent_t_peer_recv:choke(P#rechoke_info.pid),
+    etorrent_peer_recv:choke(P#rechoke_info.pid),
     rechoke_choke(Next, Count, Optimistics);
 rechoke_choke([P | Next], Count, Optimistics) ->
     case P#rechoke_info.kind =:= seeding of
         true ->
-            etorrent_t_peer_recv:choke(P#rechoke_info.pid),
+            etorrent_peer_recv:choke(P#rechoke_info.pid),
             rechoke_choke(Next, Count, Optimistics);
         false ->
-            etorrent_t_peer_recv:unchoke(P#rechoke_info.pid),
+            etorrent_peer_recv:unchoke(P#rechoke_info.pid),
             case P#rechoke_info.r_interest_state =:= interested of
                 true ->
                     rechoke_choke(Next, Count+1, Optimistics);

@@ -107,7 +107,7 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 
 handshake(Socket, S) ->
-    case etorrent_peer_communication:receive_handshake(Socket) of
+    case etorrent_proto_wire:receive_handshake(Socket) of
         {ok, ReservedBytes, InfoHash, PeerId} ->
             lookup_infohash(Socket, ReservedBytes, InfoHash, PeerId, S);
         {error, _Reason} ->
@@ -129,13 +129,13 @@ start_peer(Socket, ReservedBytes, PeerId, InfoHash, S) ->
     case new_incoming_peer(Address, Port, InfoHash, PeerId, S) of
         {ok, PeerProcessPid} ->
             case gen_tcp:controlling_process(Socket, PeerProcessPid) of
-                ok -> etorrent_t_peer_recv:complete_handshake(PeerProcessPid,
+                ok -> etorrent_peer_recv:complete_handshake(PeerProcessPid,
                                                               ReservedBytes,
                                                               Socket,
                                                               PeerId),
                       ok;
                 {error, enotconn} ->
-                    etorrent_t_peer_recv:stop(PeerProcessPid),
+                    etorrent_peer_recv:stop(PeerProcessPid),
                     ok
             end;
         already_enough_connections -> ok;

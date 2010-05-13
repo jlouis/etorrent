@@ -1,5 +1,5 @@
 %%%-------------------------------------------------------------------
-%%% File    : etorrent_t_peer_recv.erl
+%%% File    : etorrent_peer_recv.erl
 %%% Author  : Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
 %%% License : See COPYING
 %%% Description : Represents a peers receiving of data
@@ -7,7 +7,7 @@
 %%% Created : 19 Jul 2007 by
 %%%    Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
 %%%-------------------------------------------------------------------
--module(etorrent_t_peer_recv).
+-module(etorrent_peer_recv).
 
 -behaviour(gen_server).
 
@@ -644,7 +644,7 @@ handle_read_from_socket(S, Packet)
 broadcast_queue_pieces(TorrentId) ->
     Peers = etorrent_peer:all(TorrentId),
     lists:foreach(fun (P) ->
-                          etorrent_t_peer_recv:queue_pieces(P#peer.pid)
+                          queue_pieces(P#peer.pid)
                   end,
                   Peers).
 
@@ -652,7 +652,7 @@ broadcast_queue_pieces(TorrentId) ->
 broadcast_got_chunk(Chunk, TorrentId) ->
     Peers = etorrent_peer:all(TorrentId),
     lists:foreach(fun (Peer) ->
-                          etorrent_t_peer_recv:endgame_got_chunk(Peer#peer.pid, Chunk)
+                          endgame_got_chunk(Peer#peer.pid, Chunk)
                   end,
                   Peers).
 
