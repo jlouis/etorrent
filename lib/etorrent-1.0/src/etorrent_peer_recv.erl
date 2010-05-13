@@ -17,7 +17,7 @@
 %% API
 -export([start_link/6, connect/3, choke/1, unchoke/1, interested/1,
          have/2, complete_handshake/4, endgame_got_chunk/2,
-         queue_pieces/1, stop/1]).
+         try_queue_pieces/1, stop/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -29,6 +29,9 @@
 
                  fast_extension = false, % Peer uses fast extension
 
+                 %% The packet continuation stores intermediate buffering
+                 %% when we only have received part of a package.
+                 packet_continuation = none,
                  pieces_left,
                  seeder = false,
                  tcp_socket = none,
@@ -56,7 +59,7 @@
                  rate_timer = none,
                  torrent_id = none}).
 
--define(DEFAULT_CONNECT_TIMEOUT, 120000). % Default timeout in ms
+-define(DEFAULT_CONNECT_TIMEOUT, 120 * 1000). % Default timeout in ms
 -define(DEFAULT_CHUNK_SIZE, 16384). % Default size for a chunk. All clients use this.
 -define(HIGH_WATERMARK, 15). % How many chunks to queue up to
 -define(LOW_WATERMARK, 5).  % Requeue when there are less than this number of pieces in queue
@@ -127,15 +130,14 @@ have(Pid, PieceNumber) ->
 endgame_got_chunk(Pid, Chunk) ->
     gen_server:cast(Pid, {endgame_got_chunk, Chunk}).
 
-%%--------------------------------------------------------------------
-%% Function: complete_handshake(Pid, Capabilities, Socket, PeerId)
-%% Description: Complete the handshake initiated by another client.
-%%--------------------------------------------------------------------
+%% Complete the handshake initiated by another client.
+%% TODO: We ought to do this in another place.
 complete_handshake(Pid, Capabilities, Socket, PeerId) ->
     gen_server:cast(Pid, {complete_handshake, Capabilities, Socket, PeerId}).
 
-queue_pieces(Pid) ->
-    gen_server:cast(Pid, queue_pieces).
+%% Request this this peer try queue up pieces.
+try_queue_pieces(Pid) ->
+    gen_server:cast(Pid, try_queue_pieces).
 
 %%====================================================================
 %% gen_server callbacks
@@ -153,7 +155,7 @@ init([LocalPeerId, InfoHash, FilesystemPid, Id, Parent, {IP, Port}]) ->
     {ok, TRef} = timer:send_interval(?RATE_UPDATE, self(), rate_update),
     %% TODO: Update the leeching state to seeding when peer finished torrent.
     ok = etorrent_peer:new(IP, Port, Id, self(), leeching),
-    ok = etorrent_choker:monitor(self()),
+    ok = etorrent_choker:monitor(self()), %% TODO: Perhaps call this :new ?
     [T] = etorrent_torrent:select(Id),
     {ok, #state{
        pieces_left = T#torrent.pieces,
@@ -167,29 +169,19 @@ init([LocalPeerId, InfoHash, FilesystemPid, Id, Parent, {IP, Port}]) ->
        file_system_pid = FilesystemPid}}.
 
 %%--------------------------------------------------------------------
-%% Function: %% handle_call(Request, From, State) -> {reply, Reply, State} |
-%%                                      {reply, Reply, State, Timeout} |
-%%                                      {noreply, State} |
-%%                                      {noreply, State, Timeout} |
-%%                                      {stop, Reason, Reply, State} |
-%%                                      {stop, Reason, State}
-%% Description: Handling call messages
-%%--------------------------------------------------------------------
-handle_call(_Request, _From, State) ->
-    Reply = ok,
-    {reply, Reply, State, 0}.
-
-%%--------------------------------------------------------------------
 %% Function: handle_cast(Msg, State) -> {noreply, State} |
 %%                                      {noreply, State, Timeout} |
 %%                                      {stop, Reason, State}
 %% Description: Handling cast messages
 %%--------------------------------------------------------------------
+%% TODO: This ought to be handled elsewhere. For now, it is ok to have here,
+%%  but it should be a temporary process which tries to make a connection and
+%%  sets the initial stuff up.
 handle_cast({connect, IP, Port}, S) ->
     case gen_tcp:connect(IP, Port, [binary, {active, false}],
                          ?DEFAULT_CONNECT_TIMEOUT) of
         {ok, Socket} ->
-            case etorrent_peer_communication:initiate_handshake(
+            case etorrent_proto_wire:initiate_handshake(
                    Socket,
                    S#state.local_peer_id,
                    S#state.info_hash) of
@@ -198,9 +190,10 @@ handle_cast({connect, IP, Port}, S) ->
                     {stop, normal, S};
                 {ok, Capabilities, PeerId} ->
                     FastExtension = lists:member(fast_extension, Capabilities),
-                    complete_connection_setup(S#state { tcp_socket = Socket,
-                                                        remote_peer_id = PeerId,
-                                                        fast_extension = FastExtension});
+                    complete_connection_setup(
+                        S#state { tcp_socket = Socket,
+                                  remote_peer_id = PeerId,
+                                  fast_extension = FastExtension});
                 {error, _} ->
                     {stop, normal, S}
             end;
@@ -237,13 +230,37 @@ handle_cast({have, PN}, S) ->
 handle_cast({endgame_got_chunk, Chunk}, S) ->
     NS = handle_endgame_got_chunk(Chunk, S),
     {noreply, NS, 0};
-handle_cast(queue_pieces, S) ->
+handle_cast(try_queue_pieces, S) ->
     {ok, NS} = try_to_queue_up_pieces(S),
     {noreply, NS, 0};
 handle_cast(stop, S) ->
     {stop, normal, S};
 handle_cast(_Msg, State) ->
     {noreply, State, 0}.
+
+handle_packet(S, Packet) ->
+    Cont = S#state.packet_continuation,
+    case etorrent_proto_wire:incoming_packet(Cont, Packet) of
+        ok -> {ok, S};
+        {ok, P, R} ->
+            Msg = etorrent_proto_wire:decode_msg(P),
+            NR = etorrent_rate:update(S#state.rate, size(P)),
+            ok = etorrent_rate_mgr:recv_rate(
+                S#state.torrent_id,
+                self(),
+                NR#peer_rate.rate,
+                size(P),
+                case Msg of {piece, _, _, _} -> last_update;
+                            _                -> normal end),
+            case handle_message(Msg, S#state { rate = NR}) of
+                {ok, NS} ->
+                    handle_packet(NS #state{ packet_continuation = none}, R);
+                {error, Reason} ->
+                    {error, Reason}
+            end;
+        {partial, C} ->
+            {ok, S#state { packet_continuation = {partial, C} }}
+    end.
 
 %%--------------------------------------------------------------------
 %% Function: handle_info(Info, State) -> {noreply, State} |
@@ -257,7 +274,11 @@ handle_info(timeout, S) when S#state.tcp_socket =:= none ->
 handle_info(timeout, S) ->
     case gen_tcp:recv(S#state.tcp_socket, 0, 3000) of
         {ok, Packet} ->
-            handle_read_from_socket(S, Packet);
+            case handle_packet(S, Packet) of
+                {ok, NS} -> {noreply, NS, 0};
+                {error, Reason} ->
+                    {stop, Reason, S}
+            end;
         {error, closed} ->
             {stop, normal, S};
         {error, ebadf} ->
@@ -359,7 +380,7 @@ handle_message(have_none, S) when S#state.fast_extension =:= true ->
                    pieces_left = Size,
                    seeder = false}};
 handle_message(have_all, S) when S#state.piece_set =/= unknown ->
-    {stop, normal, S};
+    {error, piece_set_out_of_band};
 handle_message(have_all, S) when S#state.fast_extension =:= true ->
     Size = etorrent_torrent:num_pieces(S#state.torrent_id),
     FullSet = gb_sets:from_list(lists:seq(0, Size - 1)),
@@ -369,7 +390,7 @@ handle_message(have_all, S) when S#state.fast_extension =:= true ->
 handle_message({bitfield, _BF}, S) when S#state.piece_set =/= unknown ->
     {ok, {IP, Port}} = inet:peername(S#state.tcp_socket),
     etorrent_peer_mgr:enter_bad_peer(IP, Port, S#state.remote_peer_id),
-    {stop, normal, S};
+    {error, piece_set_out_of_band};
 handle_message({bitfield, BitField}, S) ->
     Size = etorrent_torrent:num_pieces(S#state.torrent_id),
     {ok, PieceSet} =
@@ -591,60 +612,10 @@ statechange_interested(S, What) ->
     etorrent_peer_send:interested(S#state.send_pid),
     S#state{local_interested = What}.
 
-
-%%--------------------------------------------------------------------
-%% Function: handle_read_from_socket(State, Packet) -> NewState
-%%             Packet ::= binary()
-%%             State  ::= #state()
-%% Description: Packet came in. Handle it.
-%%--------------------------------------------------------------------
-handle_read_from_socket(S, <<>>) ->
-    {noreply, S, 0};
-handle_read_from_socket(S, <<0:32/big-integer, Rest/binary>>) when S#state.packet_left =:= none ->
-    handle_read_from_socket(S, Rest);
-handle_read_from_socket(S, <<Left:32/big-integer, Rest/binary>>) when S#state.packet_left =:= none ->
-    handle_read_from_socket(S#state { packet_left = Left,
-                                      packet_iolist = []}, Rest);
-handle_read_from_socket(S, Packet) when is_binary(S#state.packet_left) ->
-    H = S#state.packet_left,
-    handle_read_from_socket(S#state { packet_left = none },
-                            <<H/binary, Packet/binary>>);
-handle_read_from_socket(S, Packet) when size(Packet) < 4, S#state.packet_left =:= none ->
-    {noreply, S#state { packet_left = Packet }};
-handle_read_from_socket(S, Packet)
-  when size(Packet) >= S#state.packet_left, is_integer(S#state.packet_left) ->
-    Left = S#state.packet_left,
-    <<Data:Left/binary, Rest/binary>> = Packet,
-    Left = size(Data),
-    P = iolist_to_binary(lists:reverse([Data | S#state.packet_iolist])),
-    {Msg, Rate, Amount} = etorrent_peer_communication:recv_message(S#state.rate, P),
-    case Msg of
-        {piece, _, _ ,_} ->
-            ok = etorrent_rate_mgr:recv_rate(S#state.torrent_id,
-                                             self(), Rate#peer_rate.rate,
-                                             Amount, last_update);
-        _Msg ->
-            ok = etorrent_rate_mgr:recv_rate(S#state.torrent_id,
-                                             self(), Rate#peer_rate.rate,
-                                             Amount, normal)
-    end,
-    case handle_message(Msg, S#state {rate = Rate}) of
-        {ok, NS} ->
-            handle_read_from_socket(NS#state { packet_left = none,
-                                               packet_iolist = []},
-                                    Rest);
-        {stop, Err, NS} ->
-            {stop, Err, NS}
-    end;
-handle_read_from_socket(S, Packet)
-  when size(Packet) < S#state.packet_left, is_integer(S#state.packet_left) ->
-    {noreply, S#state { packet_iolist = [Packet | S#state.packet_iolist],
-                        packet_left = S#state.packet_left - size(Packet) }, 0}.
-
 broadcast_queue_pieces(TorrentId) ->
     Peers = etorrent_peer:all(TorrentId),
     lists:foreach(fun (P) ->
-                          queue_pieces(P#peer.pid)
+                          try_queue_pieces(P#peer.pid)
                   end,
                   Peers).
 
@@ -693,3 +664,6 @@ peer_seeds(Id, 0) ->
     end;
 peer_seeds(_Id, _N) -> ok.
 
+handle_call(_Request, _From, State) ->
+    Reply = ok,
+    {reply, Reply, State, 0}.

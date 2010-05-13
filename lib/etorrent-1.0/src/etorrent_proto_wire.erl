@@ -1,6 +1,7 @@
 -module(etorrent_proto_wire).
 
 -export([incoming_packet/2, send_msg/2, decode_bitfield/2, encode_bitfield/2,
+        decode_msg/1,
          receive_handshake/1, initiate_handshake/3]).
 
 -define(DEFAULT_HANDSHAKE_TIMEOUT, 120000).
@@ -38,12 +39,12 @@
 incoming_packet(none, <<>>) -> ok;
 
 incoming_packet(none, <<0:32/big-integer, Rest/binary>>) ->
-    {ok, keep_alive, Rest};
+    {ok, <<>>, Rest};
 
 incoming_packet(none, <<Left:32/big-integer, Rest/binary>>) ->
     incoming_packet({partial, {Left, []}}, Rest);
 
-incoming_packet({partial, Data}, <<More/binary>>) ->
+incoming_packet({partial, Data}, <<More/binary>>) when is_binary(Data) ->
     incoming_packet(none, <<Data/binary, More/binary>>);
 
 incoming_packet(none, Packet) when size(Packet) < 4 ->
@@ -54,8 +55,7 @@ incoming_packet({partial, {Left, IOL}}, Packet)
     <<Data:Left/binary, Rest/binary>> = Packet,
     Left = size(Data),
     P = iolist_to_binary(lists:reverse([Data | IOL])),
-    Msg = decode_msg(P),
-    {ok, Msg, Rest};
+    {ok, P, Rest};
 
 incoming_packet({partial, {Left, IOL}}, Packet)
         when size(Packet) < Left, is_integer(Left) ->
