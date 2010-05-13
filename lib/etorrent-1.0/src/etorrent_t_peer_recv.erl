@@ -218,20 +218,20 @@ handle_cast({complete_handshake, Capabilities, Socket, RemotePeerId}, S) ->
         {error, stop} -> {stop, normal, S}
     end;
 handle_cast(choke, S) ->
-    etorrent_t_peer_send:choke(S#state.send_pid),
+    etorrent_peer_send:choke(S#state.send_pid),
     {noreply, S, 0};
 handle_cast(unchoke, S) ->
-    etorrent_t_peer_send:unchoke(S#state.send_pid),
+    etorrent_peer_send:unchoke(S#state.send_pid),
     {noreply, S, 0};
 handle_cast(interested, S) ->
     {noreply, statechange_interested(S, true), 0};
 handle_cast({have, PN}, S) when S#state.piece_set =:= unknown ->
-    etorrent_t_peer_send:have(S#state.send_pid, PN),
+    etorrent_peer_send:have(S#state.send_pid, PN),
     {noreply, S, 0};
 handle_cast({have, PN}, S) ->
     case gb_sets:is_element(PN, S#state.piece_set) of
         true -> ok;
-        false -> ok = etorrent_t_peer_send:have(S#state.send_pid, PN)
+        false -> ok = etorrent_peer_send:have(S#state.send_pid, PN)
     end,
     {noreply, S, 0};
 handle_cast({endgame_got_chunk, Chunk}, S) ->
@@ -333,17 +333,17 @@ handle_message(unchoke, S) ->
     try_to_queue_up_pieces(S#state{remote_choked = false});
 handle_message(interested, S) ->
     ok = etorrent_rate_mgr:interested(S#state.torrent_id, self()),
-    ok = etorrent_t_peer_send:check_choke(S#state.send_pid),
+    ok = etorrent_peer_send:check_choke(S#state.send_pid),
     {ok, S};
 handle_message(not_interested, S) ->
     ok = etorrent_rate_mgr:not_interested(S#state.torrent_id, self()),
-    ok = etorrent_t_peer_send:check_choke(S#state.send_pid),
+    ok = etorrent_peer_send:check_choke(S#state.send_pid),
     {ok, S};
 handle_message({request, Index, Offset, Len}, S) ->
-    etorrent_t_peer_send:remote_request(S#state.send_pid, Index, Offset, Len),
+    etorrent_peer_send:remote_request(S#state.send_pid, Index, Offset, Len),
     {ok, S};
 handle_message({cancel, Index, Offset, Len}, S) ->
-    etorrent_t_peer_send:cancel(S#state.send_pid, Index, Offset, Len),
+    etorrent_peer_send:cancel(S#state.send_pid, Index, Offset, Len),
     {ok, S};
 handle_message({have, PieceNum}, S) ->
     peer_have(PieceNum, S);
@@ -412,7 +412,7 @@ handle_endgame_got_chunk({Index, Offset, Len}, S) ->
         true ->
             %% Delete the element from the request set.
             RS = gb_trees:delete({Index, Offset, Len}, S#state.remote_request_set),
-            etorrent_t_peer_send:cancel(S#state.send_pid,
+            etorrent_peer_send:cancel(S#state.send_pid,
                                         Index,
                                         Offset,
                                         Len),
@@ -549,7 +549,7 @@ queue_items([{Pn, Chunks} | Rest], SendPid, Tree) ->
                   true ->
                       Tree;
                   false ->
-                      etorrent_t_peer_send:local_request(SendPid,
+                      etorrent_peer_send:local_request(SendPid,
                                                          {Pn, Offset, Size}),
                       gb_trees:enter({Pn, Offset, Size}, Ops, T)
               end
@@ -562,7 +562,7 @@ queue_items([{Pn, Offset, Size, Ops} | Rest], SendPid, Tree) ->
              true ->
                  Tree;
              false ->
-                 etorrent_t_peer_send:local_request(SendPid,
+                 etorrent_peer_send:local_request(SendPid,
                                                     {Pn, Offset, Size}),
                  gb_trees:enter({Pn, Offset, Size}, Ops, Tree)
          end,
@@ -583,12 +583,12 @@ complete_connection_setup(S) ->
                                                    S#state.fast_extension,
                                                    self()),
     BF = etorrent_piece_mgr:bitfield(S#state.torrent_id),
-    etorrent_t_peer_send:bitfield(SendPid, BF),
+    etorrent_peer_send:bitfield(SendPid, BF),
 
     {noreply, S#state{send_pid = SendPid}, 0}.
 
 statechange_interested(S, What) ->
-    etorrent_t_peer_send:interested(S#state.send_pid),
+    etorrent_peer_send:interested(S#state.send_pid),
     S#state{local_interested = What}.
 
 

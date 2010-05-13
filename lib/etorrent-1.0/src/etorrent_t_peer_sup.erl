@@ -32,9 +32,9 @@ start_link(LocalPeerId, InfoHash, FilesystemPid, Id, {IP, Port}) ->
                                     {IP, Port}]).
 
 add_sender(Pid, Socket, FileSystemPid, Id, FastExtension, RecvPid) ->
-    Sender   = {sender, {etorrent_t_peer_send, start_link,
+    Sender   = {sender, {etorrent_peer_send, start_link,
                          [Socket, FileSystemPid, Id, FastExtension, RecvPid]},
-                permanent, 15000, worker, [etorrent_t_peer_send]},
+                permanent, 15000, worker, [etorrent_peer_send]},
     supervisor:start_child(Pid, Sender).
 
 %%====================================================================

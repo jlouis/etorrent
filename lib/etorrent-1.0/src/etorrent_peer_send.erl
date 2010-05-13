@@ -1,5 +1,5 @@
 %%%-------------------------------------------------------------------
-%%% File    : etorrent_t_peer_send.erl
+%%% File    : etorrent_peer_send.erl
 %%% Author  : Jesper Louis Andersen
 %%% License : See COPYING
 %%% Description : Send out events to a foreign socket.
@@ -7,7 +7,7 @@
 %%% Created : 27 Jan 2007 by
 %%%   Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
 %%%-------------------------------------------------------------------
--module(etorrent_t_peer_send).
+-module(etorrent_peer_send).
 
 -include("etorrent_mnesia_table.hrl").
 -include("etorrent_rate.hrl").
@@ -15,13 +15,17 @@
 -behaviour(gen_server).
 
 %% API
+
+%% Apart from standard gen_server things, the main idea of this module is
+%% to serve as a mediator for the peer in the send direction. Precisely,
+%% we have a message we can send to the process, for each of the possible
+%% messages one can send to a peer.
 -export([start_link/5,
          stop/1,
          check_choke/1,
 
          local_request/2, remote_request/4, cancel/4,
          choke/1, unchoke/1, have/2,
-
          not_interested/1, interested/1,
          bitfield/2]).
 
@@ -90,6 +94,7 @@ choke(Pid) ->
 unchoke(Pid) ->
     gen_server:cast(Pid, unchoke).
 
+%% Check if we choke the peer
 check_choke(Pid) -> gen_server:cast(Pid, check_choke).
 
 %%--------------------------------------------------------------------
@@ -99,6 +104,7 @@ check_choke(Pid) -> gen_server:cast(Pid, check_choke).
 not_interested(Pid) ->
     gen_server:cast(Pid, not_interested).
 
+%% Tell the peer we are interested in him/her.
 interested(Pid) ->
     gen_server:cast(Pid, interested).
 
@@ -109,6 +115,7 @@ interested(Pid) ->
 have(Pid, PieceNumber) ->
     gen_server:cast(Pid, {have, PieceNumber}).
 
+%% Send a bitfield message to the peer
 bitfield(Pid, BitField) ->
     gen_server:cast(Pid, {bitfield, BitField}).
 
