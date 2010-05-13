@@ -1,3 +1,5 @@
 *.beam
 err.*log
 tracer.log
+*~
+*.swp
