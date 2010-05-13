@@ -15,9 +15,9 @@
 -include("etorrent_rate.hrl").
 
 %% API
--export([start_link/6, connect/3, choke/1, unchoke/1, interested/1,
-         have/2, complete_handshake/4, endgame_got_chunk/2,
-         try_queue_pieces/1, stop/1]).
+-export([start_link/7, choke/1, unchoke/1, interested/1,
+         have/2, complete_handshake/1, endgame_got_chunk/2,
+         try_queue_pieces/1, stop/1, complete_conn_setup/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -34,7 +34,7 @@
                  packet_continuation = none,
                  pieces_left,
                  seeder = false,
-                 tcp_socket = none,
+                 socket = none,
 
                  remote_choked = true,
 
@@ -59,7 +59,6 @@
                  rate_timer = none,
                  torrent_id = none}).
 
--define(DEFAULT_CONNECT_TIMEOUT, 120 * 1000). % Default timeout in ms
 -define(DEFAULT_CHUNK_SIZE, 16384). % Default size for a chunk. All clients use this.
 -define(HIGH_WATERMARK, 15). % How many chunks to queue up to
 -define(LOW_WATERMARK, 5).  % Requeue when there are less than this number of pieces in queue
@@ -71,10 +70,10 @@
 %% Description: Starts the server
 %%--------------------------------------------------------------------
 start_link(LocalPeerId, InfoHash, FilesystemPid, Id, Parent,
-          {IP, Port}) ->
+          {IP, Port}, Socket) ->
     gen_server:start_link(?MODULE, [LocalPeerId, InfoHash,
                                     FilesystemPid, Id, Parent,
-                                    {IP, Port}], []).
+                                    {IP, Port}, Socket], []).
 
 %%--------------------------------------------------------------------
 %% Function: stop/1
@@ -83,17 +82,6 @@ start_link(LocalPeerId, InfoHash, FilesystemPid, Id, Parent,
 %%--------------------------------------------------------------------
 stop(Pid) ->
     gen_server:cast(Pid, stop).
-
-%%--------------------------------------------------------------------
-%% Function: connect(Pid, IP, Port)
-%% Description: Connect to the IP and Portnumber for communication with
-%%   the peer. Note we don't handle the connect in the init phase. This is
-%%   due to the fact that a connect may take a considerable amount of time.
-%%   With this scheme, we spawn off processes, and then make them all attempt
-%%   connects in parallel, which is much easier.
-%%--------------------------------------------------------------------
-connect(Pid, IP, Port) ->
-    gen_server:cast(Pid, {connect, IP, Port}).
 
 %%--------------------------------------------------------------------
 %% Function: choke(Pid)
@@ -132,8 +120,11 @@ endgame_got_chunk(Pid, Chunk) ->
 
 %% Complete the handshake initiated by another client.
 %% TODO: We ought to do this in another place.
-complete_handshake(Pid, Capabilities, Socket, PeerId) ->
-    gen_server:cast(Pid, {complete_handshake, Capabilities, Socket, PeerId}).
+complete_handshake(Pid) ->
+    gen_server:cast(Pid, complete_handshake).
+
+complete_conn_setup(Pid) ->
+    gen_server:cast(Pid, complete_connection_setup).
 
 %% Request this this peer try queue up pieces.
 try_queue_pieces(Pid) ->
@@ -150,7 +141,7 @@ try_queue_pieces(Pid) ->
 %%                         {stop, Reason}
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
-init([LocalPeerId, InfoHash, FilesystemPid, Id, Parent, {IP, Port}]) ->
+init([LocalPeerId, InfoHash, FilesystemPid, Id, Parent, {IP, Port}, Socket]) ->
     process_flag(trap_exit, true),
     {ok, TRef} = timer:send_interval(?RATE_UPDATE, self(), rate_update),
     %% TODO: Update the leeching state to seeding when peer finished torrent.
@@ -158,6 +149,7 @@ init([LocalPeerId, InfoHash, FilesystemPid, Id, Parent, {IP, Port}]) ->
     ok = etorrent_choker:monitor(self()), %% TODO: Perhaps call this :new ?
     [T] = etorrent_torrent:select(Id),
     {ok, #state{
+       socket = Socket,
        pieces_left = T#torrent.pieces,
        parent = Parent,
        local_peer_id = LocalPeerId,
@@ -177,39 +169,19 @@ init([LocalPeerId, InfoHash, FilesystemPid, Id, Parent, {IP, Port}]) ->
 %% TODO: This ought to be handled elsewhere. For now, it is ok to have here,
 %%  but it should be a temporary process which tries to make a connection and
 %%  sets the initial stuff up.
-handle_cast({connect, IP, Port}, S) ->
-    case gen_tcp:connect(IP, Port, [binary, {active, false}],
-                         ?DEFAULT_CONNECT_TIMEOUT) of
-        {ok, Socket} ->
-            case etorrent_proto_wire:initiate_handshake(
-                   Socket,
-                   S#state.local_peer_id,
-                   S#state.info_hash) of
-                {ok, _Capabilities, PeerId}
-                  when PeerId == S#state.local_peer_id ->
-                    {stop, normal, S};
-                {ok, Capabilities, PeerId} ->
-                    FastExtension = lists:member(fast_extension, Capabilities),
-                    complete_connection_setup(
-                        S#state { tcp_socket = Socket,
-                                  remote_peer_id = PeerId,
-                                  fast_extension = FastExtension});
-                {error, _} ->
-                    {stop, normal, S}
-            end;
-        {error, _Reason} ->
-            {stop, normal, S}
-    end;
-handle_cast({complete_handshake, Capabilities, Socket, RemotePeerId}, S) ->
-    FastExtension = lists:member(fast_extension, Capabilities),
-    case etorrent_proto_wire:complete_handshake(Socket,
+handle_cast(complete_handshake, S) ->
+    case etorrent_proto_wire:complete_handshake(S#state.socket,
                                                 S#state.info_hash,
                                                 S#state.local_peer_id) of
-        ok -> complete_connection_setup(S#state { tcp_socket = Socket,
-                                                  remote_peer_id = RemotePeerId,
-                                                  fast_extension = FastExtension});
-        {error, stop} -> {stop, normal, S}
+        ok ->
+            complete_connection_setup(S#state { remote_peer_id = none_set,
+                                                  fast_extension = false});
+        {error, stop} ->
+            {stop, normal, S}
     end;
+handle_cast(complete_connection_setup, S) ->
+    error_logger:info_report(completion_of_conn_setup),
+    complete_connection_setup(S);
 handle_cast(choke, S) ->
     etorrent_peer_send:choke(S#state.send_pid),
     {noreply, S, 0};
@@ -268,11 +240,11 @@ handle_packet(S, Packet) ->
 %%                                       {stop, Reason, State}
 %% Description: Handling all non call/cast messages
 %%--------------------------------------------------------------------
-handle_info(timeout, S) when S#state.tcp_socket =:= none ->
+handle_info(timeout, S) when S#state.socket =:= none ->
     %% Haven't started up yet
     {noreply, S, 3000};
 handle_info(timeout, S) ->
-    case gen_tcp:recv(S#state.tcp_socket, 0, 3000) of
+    case gen_tcp:recv(S#state.socket, 0, 3000) of
         {ok, Packet} ->
             case handle_packet(S, Packet) of
                 {ok, NS} -> {noreply, NS, 0};
@@ -311,7 +283,7 @@ terminate(Reason, S) ->
     etorrent_peer:delete(self()),
     etorrent_counters:release_peer_slot(),
     _NS = unqueue_all_pieces(S),
-    case S#state.tcp_socket of
+    case S#state.socket of
         none ->
             ok;
         Sock ->
@@ -382,7 +354,7 @@ handle_message(have_all, S) when S#state.fast_extension =:= true ->
                    pieces_left = 0,
                    seeder = true }};
 handle_message({bitfield, _BF}, S) when S#state.piece_set =/= unknown ->
-    {ok, {IP, Port}} = inet:peername(S#state.tcp_socket),
+    {ok, {IP, Port}} = inet:peername(S#state.socket),
     etorrent_peer_mgr:enter_bad_peer(IP, Port, S#state.remote_peer_id),
     {error, piece_set_out_of_band};
 handle_message({bitfield, BitField}, S) ->
@@ -590,15 +562,9 @@ queue_items([{Pn, Offset, Size, Ops} | Rest], SendPid, Tree) ->
 %%    * Send off the bitfield
 %%--------------------------------------------------------------------
 complete_connection_setup(S) ->
-    {ok, SendPid} = etorrent_t_peer_sup:add_sender(S#state.parent,
-                                                   S#state.tcp_socket,
-                                                   S#state.file_system_pid,
-                                                   S#state.torrent_id,
-                                                   S#state.fast_extension,
-                                                   self()),
+    {ok, SendPid} = etorrent_t_peer_sup:get_pid(S#state.parent, sender),
     BF = etorrent_piece_mgr:bitfield(S#state.torrent_id),
     etorrent_peer_send:bitfield(SendPid, BF),
-
     {noreply, S#state{send_pid = SendPid}, 0}.
 
 statechange_interested(S, What) ->
@@ -643,7 +609,7 @@ peer_have(PN, S) ->
                 {stop, R} -> {stop, R, S}
             end;
         false ->
-            {ok, {IP, Port}} = inet:peername(S#state.tcp_socket),
+            {ok, {IP, Port}} = inet:peername(S#state.socket),
             etorrent_peer_mgr:enter_bad_peer(IP, Port, S#state.remote_peer_id),
             {stop, normal, S}
     end.

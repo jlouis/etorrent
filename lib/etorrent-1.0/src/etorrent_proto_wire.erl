@@ -119,6 +119,7 @@ send_msg(Socket, Msg) ->
 
 %% Handshakes
 receive_handshake(Socket) ->
+    error_logger:info_report([self(), receiving_handshake]),
     Header = protocol_header(),
     case gen_tcp:send(Socket, Header) of
         ok ->
@@ -129,6 +130,7 @@ receive_handshake(Socket) ->
 
 initiate_handshake(Socket, LocalPeerId, InfoHash) ->
     % Since we are the initiator, send out this handshake
+    error_logger:info_report([self(), initiating_handshake]),
     Header = protocol_header(),
     try
         ok = gen_tcp:send(Socket, Header),
@@ -140,6 +142,7 @@ initiate_handshake(Socket, LocalPeerId, InfoHash) ->
     end.
 
 complete_handshake(Socket, InfoHash, LocalPeerId) ->
+    error_logger:info_report([self(), complete_handshake]),
     Header = protocol_header(),
     try
         ok = gen_tcp:send(Socket, Header),

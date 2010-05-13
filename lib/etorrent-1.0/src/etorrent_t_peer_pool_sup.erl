@@ -10,7 +10,7 @@
 -behaviour(supervisor).
 
 %% API
--export([start_link/0, add_peer/6]).
+-export([start_link/0, add_peer/7]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -33,13 +33,19 @@ start_link() ->
 %% receiver process hooked on the supervisor.
 %%--------------------------------------------------------------------
 add_peer(GroupPid, LocalPeerId, InfoHash, FilesystemPid, Id,
-         {IP, Port}) ->
-    {ok, Pid} = supervisor:start_child(GroupPid, [LocalPeerId, InfoHash,
+         {IP, Port}, Socket) ->
+    case supervisor:start_child(GroupPid, [LocalPeerId, InfoHash,
                                                   FilesystemPid, Id,
-                                                  {IP, Port}]),
-    Children = supervisor:which_children(Pid),
-    {value, {_, Child, _, _}} = lists:keysearch(receiver, 1, Children),
-    {ok, Child}.
+                                                  {IP, Port}, Socket]) of
+        {ok, Pid} ->
+                Children = supervisor:which_children(Pid),
+                {value, {_, Child, _, _}} = lists:keysearch(receiver, 1, Children),
+                {ok, Child};
+        {error, Reason} ->
+            error_logger:error_report({add_peer_error, Reason}),
+            {error, Reason}
+    end.
+
 
 %%====================================================================
 %% Supervisor callbacks

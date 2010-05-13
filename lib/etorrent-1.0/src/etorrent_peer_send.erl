@@ -53,10 +53,10 @@
 %%====================================================================
 %% API
 %%====================================================================
-start_link(Socket, FilesystemPid, TorrentId, FastExtension, RecvPid) ->
+start_link(Socket, FilesystemPid, TorrentId, FastExtension, Parent) ->
     gen_server:start_link(?MODULE,
                           [Socket, FilesystemPid, TorrentId, FastExtension,
-                           RecvPid], []).
+                           Parent], []).
 
 %%--------------------------------------------------------------------
 %% Func: remote_request(Pid, Index, Offset, Len)
@@ -139,13 +139,14 @@ init([Socket, FilesystemPid, TorrentId, FastExtension, Parent]) ->
     process_flag(trap_exit, true),
     {ok, TRef} = timer:send_interval(?DEFAULT_KEEP_ALIVE_INTERVAL, self(), tick),
     {ok, Tref2} = timer:send_interval(?RATE_UPDATE, self(), rate_update),
+    %% This may fail, but I want to check it
     {ok,
      #state{socket = Socket,
             timer = TRef,
             rate_timer = Tref2,
             requests = queue:new(),
             rate = etorrent_rate:init(),
-            parent = Parent,
+            parent = {non_inited, Parent},
             torrent_id = TorrentId,
             fast_extension = FastExtension,
             file_system_pid = FilesystemPid},
@@ -168,6 +169,9 @@ handle_info(rate_update, S) ->
 %% Different timeouts.
 %% When we are choking the peer and the piece cache is empty, garbage_collect() to reclaim
 %% space quickly rather than waiting for it to happen.
+handle_info(timeout, S = #state{ parent = {non_inited, P}}) ->
+    {ok, RecvPid} = etorrent_t_peer_sup:get_pid(P, receiver),
+    {noreply, S#state { parent = RecvPid }, 0};
 handle_info(timeout, S)
   when S#state.choke =:= true andalso S#state.piece_cache =:= none ->
     garbage_collect(),
@@ -202,6 +206,7 @@ handle_cast(check_choke, S) when S#state.choke =:= false ->
 
 %% Regular messages. We just send them onwards on the wire.
 handle_cast({bitfield, BF}, S) ->
+    error_logger:info_report(sending_bitfield),
     send_message({bitfield, BF}, S);
 handle_cast(not_interested, S) when S#state.interested =:= false ->
     {noreply, S, 0};

@@ -29,6 +29,7 @@
 -define(DEFAULT_BAD_COUNT, 2).
 -define(GRACE_TIME, 900).
 -define(CHECK_TIME, timer:seconds(300)).
+-define(DEFAULT_CONNECT_TIMEOUT, 30 * 1000).
 
 %%====================================================================
 %% API
@@ -195,18 +196,39 @@ guard_spawn_peer(PeerId, TorrentId, IP, Port, R) ->
 try_spawn_peer(PeerId, TM, TorrentId, IP, Port, R) ->
     case etorrent_counters:obtain_peer_slot() of
         ok ->
-            try
-                {ok, Pid} = etorrent_t_sup:add_peer(
-                    TM#tracking_map.supervisor_pid,
-                    PeerId,
-                    TM#tracking_map.info_hash,
-                    TorrentId,
-                    {IP, Port}),
-                ok = etorrent_peer_recv:connect( Pid, IP, Port)
-            catch
-                throw:_ -> etorrent_counters:release_peer_slot();
-                exit:_  -> etorrent_counters:release_peer_slot()
-            end,
+            spawn_peer(PeerId, TM, TorrentId, IP, Port),
             fill_peers(PeerId, R);
         full -> [{TorrentId, {IP, Port}} | R]
     end.
+
+spawn_peer(PeerId, TM, TorrentId, IP, Port) ->
+    spawn(fun () ->
+                case gen_tcp:connect(IP, Port, [binary, {active, false}],
+                                     ?DEFAULT_CONNECT_TIMEOUT) of
+                  {ok, Socket} ->
+                      case etorrent_proto_wire:initiate_handshake(
+                              Socket,
+                              PeerId,
+                              TM#tracking_map.info_hash) of
+                          {ok, _Capabilities, PeerId} -> ok;
+                          {ok, _Capabilities, RPID} ->
+                              {ok, Pid} = etorrent_t_sup:add_peer(
+                                  TM#tracking_map.supervisor_pid,
+                                  RPID,
+                                  TM#tracking_map.info_hash,
+                                  TorrentId,
+                                  {IP, Port},
+                                  Socket),
+                              ok = gen_tcp:controlling_process(Socket, Pid),
+                              etorrent_peer_recv:complete_conn_setup(Pid),
+                              ok;
+                          {error, _Reason} ->
+                              etorrent_counters:release_peer_slot(),
+                              ok
+                      end;
+                  {error, _Reason} ->
+                      etorrent_counters:release_peer_slot(),
+                      ok
+                end
+        end).
+

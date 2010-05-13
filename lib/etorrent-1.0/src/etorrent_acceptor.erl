@@ -126,7 +126,7 @@ lookup_infohash(Socket, ReservedBytes, InfoHash, PeerId, S) ->
 
 start_peer(Socket, ReservedBytes, PeerId, InfoHash, S) ->
     {ok, {Address, Port}} = inet:peername(Socket),
-    case new_incoming_peer(Address, Port, InfoHash, PeerId, S) of
+    case new_incoming_peer(Socket, Address, Port, InfoHash, PeerId, S) of
         {ok, PeerProcessPid} ->
             case gen_tcp:controlling_process(Socket, PeerProcessPid) of
                 ok -> etorrent_peer_recv:complete_handshake(PeerProcessPid,
@@ -149,9 +149,10 @@ start_peer(Socket, ReservedBytes, PeerId, InfoHash, S) ->
             ok
     end.
 
-new_incoming_peer(_IP, _Port, _InfoHash, PeerId, S) when S#state.our_peer_id == PeerId ->
+new_incoming_peer(_Socket, _IP, _Port, _InfoHash, PeerId, S)
+            when S#state.our_peer_id == PeerId ->
     connect_to_ourselves;
-new_incoming_peer(IP, Port, InfoHash, _PeerId, S) ->
+new_incoming_peer(Socket, IP, Port, InfoHash, _PeerId, S) ->
     {atomic, [TM]} = etorrent_tracking_map:select({infohash, InfoHash}),
     case etorrent_peer_mgr:is_bad_peer(IP, Port) of
         true ->
@@ -159,12 +160,12 @@ new_incoming_peer(IP, Port, InfoHash, _PeerId, S) ->
         false ->
             case etorrent_peer:connected(IP, Port, TM#tracking_map.id) of
                 true -> already_connected;
-                false -> start_new_incoming_peer(IP, Port, InfoHash, S)
+                false -> start_new_incoming_peer(Socket, IP, Port, InfoHash, S)
             end
     end.
 
 
-start_new_incoming_peer(IP, Port, InfoHash, S) ->
+start_new_incoming_peer(Socket, IP, Port, InfoHash, S) ->
     case etorrent_counters:obtain_peer_slot() of
         full -> already_enough_connections;
         ok ->
@@ -174,7 +175,8 @@ start_new_incoming_peer(IP, Port, InfoHash, S) ->
                   S#state.our_peer_id,
                   InfoHash,
                   T#tracking_map.id,
-                  {IP, Port})
+                  {IP, Port},
+                  Socket)
             catch
                 _ -> etorrent_counters:release_peer_slot()
             end

@@ -10,7 +10,7 @@
 -behaviour(supervisor).
 
 %% API
--export([start_link/5, add_sender/6]).
+-export([start_link/6, get_pid/2]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -24,18 +24,17 @@
 %% Function: start_link() -> {ok,Pid} | ignore | {error,Error}
 %% Description: Starts the supervisor
 %%--------------------------------------------------------------------
-start_link(LocalPeerId, InfoHash, FilesystemPid, Id, {IP, Port}) ->
+start_link(LocalPeerId, InfoHash, FilesystemPid, Id, {IP, Port}, Socket) ->
     supervisor:start_link(?MODULE, [LocalPeerId,
                                     InfoHash,
                                     FilesystemPid,
                                     Id,
-                                    {IP, Port}]).
+                                    {IP, Port}, Socket]).
 
-add_sender(Pid, Socket, FileSystemPid, Id, FastExtension, RecvPid) ->
-    Sender   = {sender, {etorrent_peer_send, start_link,
-                         [Socket, FileSystemPid, Id, FastExtension, RecvPid]},
-                permanent, 15000, worker, [etorrent_peer_send]},
-    supervisor:start_child(Pid, Sender).
+get_pid(Pid, Name) ->
+    {value, {_, Child, _, _}} =
+        lists:keysearch(Name, 1, supervisor:which_children(Pid)),
+    {ok, Child}.
 
 %%====================================================================
 %% Supervisor callbacks
@@ -49,12 +48,16 @@ add_sender(Pid, Socket, FileSystemPid, Id, FastExtension, RecvPid) ->
 %% to find out about restart strategy, maximum restart frequency and child
 %% specifications.
 %%--------------------------------------------------------------------
-init([LocalPeerId, InfoHash, FilesystemPid, Id, {IP, Port}]) ->
+init([LocalPeerId, InfoHash, FilesystemPid, Id, {IP, Port}, Socket]) ->
     Receiver = {receiver, {etorrent_peer_recv, start_link,
                           [LocalPeerId, InfoHash, FilesystemPid, Id, self(),
-                           {IP, Port}]},
+                           {IP, Port}, Socket]},
                 permanent, 15000, worker, [etorrent_peer_recv]},
-    {ok, {{one_for_all, 0, 1}, [Receiver]}}.
+    Sender   = {sender,   {etorrent_peer_send, start_link,
+                          [Socket, FilesystemPid, Id, false,
+                           self()]},
+                permanent, 15000, worker, [etorrent_peer_send]},
+    {ok, {{one_for_all, 0, 1}, [Receiver, Sender]}}.
 
 %%====================================================================
 %% Internal functions

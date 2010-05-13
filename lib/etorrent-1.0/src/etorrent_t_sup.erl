@@ -13,7 +13,7 @@
 
 %% API
 -export([start_link/3, add_tracker/5, get_pid/2,
-         add_peer/5]).
+         add_peer/6]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -51,7 +51,7 @@ add_tracker(Pid, URL, InfoHash, Local_Peer_Id, TorrentId) ->
                permanent, 15000, worker, [etorrent_tracker_communication]},
     supervisor:start_child(Pid, Tracker).
 
-add_peer(Pid, PeerId, InfoHash, TorrentId, {IP, Port}) ->
+add_peer(Pid, PeerId, InfoHash, TorrentId, {IP, Port}, Socket) ->
     FSPid = get_pid(Pid, fs),
     GroupPid = get_pid(Pid, peer_pool_sup),
     etorrent_t_peer_pool_sup:add_peer(GroupPid,
@@ -59,7 +59,8 @@ add_peer(Pid, PeerId, InfoHash, TorrentId, {IP, Port}) ->
                                       InfoHash,
                                       FSPid,
                                       TorrentId,
-                                      {IP, Port}).
+                                      {IP, Port},
+                                      Socket).
 
 %%====================================================================
 %% Supervisor callbacks
