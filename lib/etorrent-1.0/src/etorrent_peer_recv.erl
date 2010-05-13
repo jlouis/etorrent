@@ -39,7 +39,7 @@ init([TorrentId, Socket, Parent]) ->
 
 handle_info(timeout, S) when S#state.controller =:= none ->
     %% Haven't started up yet
-    {ok, ControlPid} = etorrent_t_peer_sup:get_pid(S#state.parent, control),
+    {ok, ControlPid} = etorrent_peer_sup:get_pid(S#state.parent, control),
     {noreply, S#state { controller = ControlPid }};
 handle_info(timeout, S) ->
     case gen_tcp:recv(S#state.socket, 0, 3000) of

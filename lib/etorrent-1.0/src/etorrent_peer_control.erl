@@ -499,7 +499,7 @@ queue_items([{Pn, Offset, Size, Ops} | Rest], SendPid, Tree) ->
 %%    * Send off the bitfield
 %%--------------------------------------------------------------------
 complete_connection_setup(S) ->
-    {ok, SendPid} = etorrent_t_peer_sup:get_pid(S#state.parent, sender),
+    {ok, SendPid} = etorrent_peer_sup:get_pid(S#state.parent, sender),
     BF = etorrent_piece_mgr:bitfield(S#state.torrent_id),
     etorrent_peer_send:bitfield(SendPid, BF),
     {noreply, S#state{send_pid = SendPid}, 0}.

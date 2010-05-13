@@ -1,11 +1,4 @@
-%%%-------------------------------------------------------------------
-%%% File    : etorrent_t_peer_sup.erl
-%%% Author  : Jesper Louis Andersen <>
-%%% Description : Supervisor for a peer connection.
-%%%
-%%% Created : 10 Jul 2008 by Jesper Louis Andersen <>
-%%%-------------------------------------------------------------------
--module(etorrent_t_peer_sup).
+-module(etorrent_peer_sup).
 
 -behaviour(supervisor).
 

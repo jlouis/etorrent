@@ -170,7 +170,7 @@ handle_info(rate_update, S) ->
 %% When we are choking the peer and the piece cache is empty, garbage_collect() to reclaim
 %% space quickly rather than waiting for it to happen.
 handle_info(timeout, S = #state{ parent = {non_inited, P}}) ->
-    {ok, RecvPid} = etorrent_t_peer_sup:get_pid(P, receiver),
+    {ok, RecvPid} = etorrent_peer_sup:get_pid(P, control),
     {noreply, S#state { parent = RecvPid }, 0};
 handle_info(timeout, S)
   when S#state.choke =:= true andalso S#state.piece_cache =:= none ->

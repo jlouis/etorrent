@@ -39,7 +39,7 @@ add_peer(GroupPid, LocalPeerId, InfoHash, FilesystemPid, Id,
                                                   {IP, Port}, Socket]) of
         {ok, Pid} ->
                 Children = supervisor:which_children(Pid),
-                {value, {_, Child, _, _}} = lists:keysearch(receiver, 1, Children),
+                {value, {_, Child, _, _}} = lists:keysearch(control, 1, Children),
                 {ok, Child};
         {error, Reason} ->
             error_logger:error_report({add_peer_error, Reason}),
@@ -52,6 +52,6 @@ add_peer(GroupPid, LocalPeerId, InfoHash, FilesystemPid, Id,
 %%====================================================================
 init([]) ->
     ChildSpec = {child,
-                 {etorrent_t_peer_sup, start_link, []},
-                 temporary, infinity, supervisor, [etorrent_t_peer_sup]},
+                 {etorrent_peer_sup, start_link, []},
+                 temporary, infinity, supervisor, [etorrent_peer_sup]},
     {ok, {{simple_one_for_one, 15, 60}, [ChildSpec]}}.
