@@ -161,9 +161,6 @@ init([LocalPeerId, InfoHash, FilesystemPid, Id, Parent, {IP, Port}, Socket]) ->
 %% TODO: This ought to be handled elsewhere. For now, it is ok to have here,
 %%  but it should be a temporary process which tries to make a connection and
 %%  sets the initial stuff up.
-handle_cast({incoming_msg, Msg}, S) ->
-    {ok, NS} = handle_message(Msg, S),
-    {noreply, NS};
 handle_cast(complete_handshake, S) ->
     case etorrent_proto_wire:complete_handshake(S#state.socket,
                                                 S#state.info_hash,
@@ -174,6 +171,9 @@ handle_cast(complete_handshake, S) ->
         {error, stop} ->
             {stop, normal, S}
     end;
+handle_cast({incoming_msg, Msg}, S) ->
+    {ok, NS} = handle_message(Msg, S),
+    {noreply, NS};
 handle_cast(complete_connection_setup, S) ->
     error_logger:info_report(completion_of_conn_setup),
     complete_connection_setup(S);
@@ -226,12 +226,7 @@ terminate(_Reason, S) ->
     etorrent_peer:delete(self()),
     etorrent_counters:release_peer_slot(),
     _NS = unqueue_all_pieces(S),
-    case S#state.socket of
-        none ->
-            ok;
-        Sock ->
-            gen_tcp:close(Sock)
-    end,
+    gen_tcp:close(S#state.socket),
     ok.
 
 %%--------------------------------------------------------------------
