@@ -259,23 +259,24 @@ terminate(_Reason, S) ->
 %%% Internal functions
 %%--------------------------------------------------------------------
 
-%%--------------------------------------------------------------------
-%% Function: send_piece_message/2
-%% Description: Send the message Msg and handle an eventual connection
-%%   close gracefully.
-%%--------------------------------------------------------------------
+%% Send off a piece message. Handle eventual connection close gracefully.
+%% TODO: The {stop, normal, ...} is utterly wrong here. If we loose the
+%% socket for some reason, we should terminate the whole peer, not simply
+%% this process.
 send_piece_message(Msg, S, Timeout) ->
-    case etorrent_peer_communication:send_message(S#state.rate, S#state.socket, Msg) of
-        {ok, R, Amount} ->
+    case etorrent_proto_wire:send_msg(S#state.socket, Msg) of
+        {ok, Sz} ->
+            NR = etorrent_rate:update(S#state.rate, Sz),
             ok = etorrent_rate_mgr:send_rate(S#state.torrent_id,
                                              S#state.parent,
-                                             R#peer_rate.rate,
-                                             Amount),
-            {noreply, S#state { rate = R }, Timeout};
-        {{error, closed}, R, _Amount} ->
-            {stop, normal, S#state { rate = R}}
+                                             NR#peer_rate.rate,
+                                             Sz),
+            {noreply, S#state { rate = NR }, Timeout};
+        {{error, closed}, _Sz} ->
+            {stop, normal, S}
     end.
 
+%% Send off a piece message
 send_piece(Index, Offset, Len, S) ->
     case S#state.piece_cache of
         {I, Binary} when I == Index ->
@@ -284,8 +285,7 @@ send_piece(Index, Offset, Len, S) ->
             %% Track uploaded size for torrent (for the tracker)
             ok = etorrent_torrent:statechange(S#state.torrent_id,
                                               {add_upload, Len}),
-            %% Track the amount uploaded by this peer.
-
+            %% Track the amount uploaded to this peer.
             send_piece_message(Msg, S, 0);
         %% Update cache and try again...
         {I, _Binary} when I /= Index ->
@@ -296,6 +296,9 @@ send_piece(Index, Offset, Len, S) ->
             send_piece(Index, Offset, Len, NS)
     end.
 
+%% Read in a piece from the file system
+%% TODO: Only read in blocks rather than while pieces. Caching is the O/S's area
+%%  of expertise.
 load_piece(Index, S) ->
     {ok, Piece} = etorrent_fs:read_piece(S#state.file_system_pid, Index),
     S#state{piece_cache = {Index, Piece}}.
@@ -303,6 +306,7 @@ load_piece(Index, S) ->
 send_message(Msg, S) ->
     send_message(Msg, S, 0).
 
+%% TODO: Think about the stop messages here. They are definitely wrong.
 send_message(Msg, S, Timeout) ->
     case send(Msg, S) of
         {ok, NS} -> {noreply, NS, Timeout};
@@ -311,18 +315,18 @@ send_message(Msg, S, Timeout) ->
     end.
 
 send(Msg, S) ->
-    case etorrent_peer_communication:send_message(S#state.rate, S#state.socket, Msg) of
-        {ok, Rate, Amount} ->
+    case etorrent_proto_wire:send_msg(S#state.socket, Msg) of
+        {ok, Sz} ->
+            NR = etorrent_rate:update(S#state.rate, Sz),
             ok = etorrent_rate_mgr:send_rate(
                    S#state.torrent_id,
                    S#state.parent,
-                   Rate#peer_rate.rate,
-                   Amount),
-            {ok, S#state { rate = Rate}};
-        {{error, E}, R, _Amount} ->
-            {error, E, S#state { rate = R }}
+                   NR#peer_rate.rate,
+                   Sz),
+            {ok, S#state { rate = NR}};
+        {{error, E}, _Amount} ->
+            {error, E, S}
     end.
-
 
 perform_choke(S) when S#state.fast_extension == true ->
     perform_fast_ext_choke(S);
