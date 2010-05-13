@@ -39,26 +39,16 @@ init([TorrentId, Socket, Parent]) ->
 
 handle_info(timeout, S) when S#state.controller =:= none ->
     %% Haven't started up yet
-    {ok, ControlPid} = etorrent_t_peer_sup:get_pid(S#state.parent, controller),
+    {ok, ControlPid} = etorrent_t_peer_sup:get_pid(S#state.parent, control),
     {noreply, S#state { controller = ControlPid }};
 handle_info(timeout, S) ->
     case gen_tcp:recv(S#state.socket, 0, 3000) of
-        {ok, Packet} ->
-            case handle_packet(S, Packet) of
-                {ok, NS} -> {noreply, NS, 0};
-                {error, Reason} ->
-                    {stop, Reason, S}
-            end;
-        {error, closed} ->
-            {stop, normal, S};
-        {error, ebadf} ->
-            {stop, normal, S};
-        {error, timeout} ->
-            {noreply, S, 0};
-        {error, ehostunreach} ->
-            {stop, normal, S};
-        {error, etimedout} ->
-            {noreply, S, 0}
+        {ok, Packet} -> {ok, NS} = handle_packet(S, Packet), {noreply, NS, 0};
+        {error, closed} -> {stop, normal, S};
+        {error, ebadf} -> {stop, normal, S};
+        {error, timeout} -> {noreply, S, 0};
+        {error, ehostunreach} -> {stop, normal, S};
+        {error, etimedout} -> {noreply, S, 0}
     end;
 handle_info(rate_update, S) ->
     NR = etorrent_rate:update(S#state.rate, 0),
@@ -84,7 +74,7 @@ handle_packet(S, Packet) ->
                 case Msg of
                     {piece, _, _, _} -> last_update;
                     _                -> normal end),
-            etorrent_peer_control:incoming_msg(Msg),
+            etorrent_peer_control:incoming_msg(S#state.controller, Msg),
             handle_packet(S#state { rate = NR,
                                     packet_continuation = none}, R);
         {partial, C} ->
@@ -92,7 +82,7 @@ handle_packet(S, Packet) ->
     end.
 
 terminate(_Reason, S) ->
-    timer:cancel(S#state.rate_timer),
+    {ok, cancel} = timer:cancel(S#state.rate_timer),
     ok.
 
 %%--------------------------------------------------------------------

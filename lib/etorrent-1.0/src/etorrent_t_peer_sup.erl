@@ -53,11 +53,14 @@ init([LocalPeerId, InfoHash, FilesystemPid, Id, {IP, Port}, Socket]) ->
                           [LocalPeerId, InfoHash, FilesystemPid, Id, self(),
                            {IP, Port}, Socket]},
                 permanent, 15000, worker, [etorrent_peer_control]},
+    Receiver = {receiver, {etorrent_peer_recv, start_link,
+                          [Id, Socket, self()]},
+                      permanent, 15000, worker, [etorrent_peer_recv]},
     Sender   = {sender,   {etorrent_peer_send, start_link,
                           [Socket, FilesystemPid, Id, false,
                            self()]},
                 permanent, 15000, worker, [etorrent_peer_send]},
-    {ok, {{one_for_all, 0, 1}, [Control, Sender]}}.
+    {ok, {{one_for_all, 0, 1}, [Control, Sender, Receiver]}}.
 
 %%====================================================================
 %% Internal functions

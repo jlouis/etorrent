@@ -8,7 +8,7 @@
 %% API
 -export([start_link/7, choke/1, unchoke/1, interested/1,
          have/2, complete_handshake/1, endgame_got_chunk/2,
-         try_queue_pieces/1, stop/1, complete_conn_setup/1]).
+         incoming_msg/2, try_queue_pieces/1, stop/1, complete_conn_setup/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -121,6 +121,10 @@ complete_conn_setup(Pid) ->
 try_queue_pieces(Pid) ->
     gen_server:cast(Pid, try_queue_pieces).
 
+%% This message is incoming to the peer
+incoming_msg(Pid, Msg) ->
+    gen_server:cast(Pid, {incoming_msg, Msg}).
+
 %%====================================================================
 %% gen_server callbacks
 %%====================================================================
@@ -134,7 +138,6 @@ try_queue_pieces(Pid) ->
 %%--------------------------------------------------------------------
 init([LocalPeerId, InfoHash, FilesystemPid, Id, Parent, {IP, Port}, Socket]) ->
     process_flag(trap_exit, true),
-    {ok, TRef} = timer:send_interval(?RATE_UPDATE, self(), rate_update),
     %% TODO: Update the leeching state to seeding when peer finished torrent.
     ok = etorrent_peer:new(IP, Port, Id, self(), leeching),
     ok = etorrent_choker:monitor(self()), %% TODO: Perhaps call this :new ?
@@ -147,8 +150,6 @@ init([LocalPeerId, InfoHash, FilesystemPid, Id, Parent, {IP, Port}, Socket]) ->
        remote_request_set = gb_trees:empty(),
        info_hash = InfoHash,
        torrent_id = Id,
-       rate = etorrent_rate:init(?RATE_FUDGE),
-       rate_timer = TRef,
        file_system_pid = FilesystemPid}}.
 
 %%--------------------------------------------------------------------
@@ -160,6 +161,9 @@ init([LocalPeerId, InfoHash, FilesystemPid, Id, Parent, {IP, Port}, Socket]) ->
 %% TODO: This ought to be handled elsewhere. For now, it is ok to have here,
 %%  but it should be a temporary process which tries to make a connection and
 %%  sets the initial stuff up.
+handle_cast({incoming_msg, Msg}, S) ->
+    {ok, NS} = handle_message(Msg, S),
+    {noreply, NS};
 handle_cast(complete_handshake, S) ->
     case etorrent_proto_wire:complete_handshake(S#state.socket,
                                                 S#state.info_hash,
@@ -175,55 +179,32 @@ handle_cast(complete_connection_setup, S) ->
     complete_connection_setup(S);
 handle_cast(choke, S) ->
     etorrent_peer_send:choke(S#state.send_pid),
-    {noreply, S, 0};
+    {noreply, S};
 handle_cast(unchoke, S) ->
     etorrent_peer_send:unchoke(S#state.send_pid),
-    {noreply, S, 0};
+    {noreply, S};
 handle_cast(interested, S) ->
     {noreply, statechange_interested(S, true), 0};
 handle_cast({have, PN}, S) when S#state.piece_set =:= unknown ->
     etorrent_peer_send:have(S#state.send_pid, PN),
-    {noreply, S, 0};
+    {noreply, S};
 handle_cast({have, PN}, S) ->
     case gb_sets:is_element(PN, S#state.piece_set) of
         true -> ok;
         false -> ok = etorrent_peer_send:have(S#state.send_pid, PN)
     end,
-    {noreply, S, 0};
+    {noreply, S};
 handle_cast({endgame_got_chunk, Chunk}, S) ->
     NS = handle_endgame_got_chunk(Chunk, S),
-    {noreply, NS, 0};
+    {noreply, NS};
 handle_cast(try_queue_pieces, S) ->
     {ok, NS} = try_to_queue_up_pieces(S),
-    {noreply, NS, 0};
+    {noreply, NS};
 handle_cast(stop, S) ->
     {stop, normal, S};
 handle_cast(_Msg, State) ->
-    {noreply, State, 0}.
+    {noreply, State}.
 
-handle_packet(S, Packet) ->
-    Cont = S#state.packet_continuation,
-    case etorrent_proto_wire:incoming_packet(Cont, Packet) of
-        ok -> {ok, S};
-        {ok, P, R} ->
-            Msg = etorrent_proto_wire:decode_msg(P),
-            NR = etorrent_rate:update(S#state.rate, size(P)),
-            ok = etorrent_rate_mgr:recv_rate(
-                S#state.torrent_id,
-                self(),
-                NR#peer_rate.rate,
-                size(P),
-                case Msg of {piece, _, _, _} -> last_update;
-                            _                -> normal end),
-            case handle_message(Msg, S#state { rate = NR}) of
-                {ok, NS} ->
-                    handle_packet(NS #state{ packet_continuation = none}, R);
-                {error, Reason} ->
-                    {error, Reason}
-            end;
-        {partial, C} ->
-            {ok, S#state { packet_continuation = {partial, C} }}
-    end.
 
 %%--------------------------------------------------------------------
 %% Function: handle_info(Info, State) -> {noreply, State} |
@@ -231,38 +212,8 @@ handle_packet(S, Packet) ->
 %%                                       {stop, Reason, State}
 %% Description: Handling all non call/cast messages
 %%--------------------------------------------------------------------
-handle_info(timeout, S) when S#state.socket =:= none ->
-    %% Haven't started up yet
-    {noreply, S, 3000};
-handle_info(timeout, S) ->
-    case gen_tcp:recv(S#state.socket, 0, 3000) of
-        {ok, Packet} ->
-            case handle_packet(S, Packet) of
-                {ok, NS} -> {noreply, NS, 0};
-                {error, Reason} ->
-                    {stop, Reason, S}
-            end;
-        {error, closed} ->
-            {stop, normal, S};
-        {error, ebadf} ->
-            {stop, normal, S};
-        {error, ehostunreach} ->
-            {stop, normal, S};
-        {error, etimedout} ->
-            {noreply, S, 0};
-        {error, timeout} when S#state.remote_choked =:= true ->
-            {noreply, S, 0};
-        {error, timeout} when S#state.remote_choked =:= false ->
-            {ok, NS} = try_to_queue_up_pieces(S),
-            {noreply, NS, 0}
-    end;
-handle_info(rate_update, S) ->
-    Rate = etorrent_rate:update(S#state.rate, 0),
-    ok = etorrent_rate_mgr:recv_rate(S#state.torrent_id,
-                self(), Rate#peer_rate.rate, 0),
-    {noreply, S#state { rate = Rate}, 0};
 handle_info(_Info, State) ->
-    {noreply, State, 0}.
+    {noreply, State}.
 
 %%--------------------------------------------------------------------
 %% Function: terminate(Reason, State) -> void()
@@ -271,7 +222,7 @@ handle_info(_Info, State) ->
 %% cleaning up. When it returns, the gen_server terminates with Reason.
 %% The return value is ignored.
 %%--------------------------------------------------------------------
-terminate(Reason, S) ->
+terminate(_Reason, S) ->
     etorrent_peer:delete(self()),
     etorrent_counters:release_peer_slot(),
     _NS = unqueue_all_pieces(S),
@@ -281,13 +232,7 @@ terminate(Reason, S) ->
         Sock ->
             gen_tcp:close(Sock)
     end,
-    case Reason of
-        normal -> ok;
-        shutdown -> ok;
-        _ -> error_logger:info_report([reason_for_termination, Reason])
-    end,
     ok.
-
 
 %%--------------------------------------------------------------------
 %%% Internal functions
