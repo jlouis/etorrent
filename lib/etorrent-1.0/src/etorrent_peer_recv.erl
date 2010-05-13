@@ -42,7 +42,7 @@ handle_info(timeout, S) when S#state.controller =:= none ->
     {ok, ControlPid} = etorrent_t_peer_sup:get_pid(S#state.parent, controller),
     {noreply, S#state { controller = ControlPid }};
 handle_info(timeout, S) ->
-    case gen_tcp:recv(S#state.socket, 0) of
+    case gen_tcp:recv(S#state.socket, 0, 3000) of
         {ok, Packet} ->
             case handle_packet(S, Packet) of
                 {ok, NS} -> {noreply, NS, 0};
@@ -53,11 +53,19 @@ handle_info(timeout, S) ->
             {stop, normal, S};
         {error, ebadf} ->
             {stop, normal, S};
+        {error, timeout} ->
+            {noreply, S, 0};
         {error, ehostunreach} ->
             {stop, normal, S};
         {error, etimedout} ->
             {noreply, S, 0}
     end;
+handle_info(rate_update, S) ->
+    NR = etorrent_rate:update(S#state.rate, 0),
+    ok = etorrent_rate_mgr:recv_rate(S#state.id,
+                                     self(),
+                                     NR#peer_rate.rate, 0),
+    {noreply, S#state { rate = NR }, 0};
 handle_info(_Info, State) ->
     {noreply, State, 0}.
 
