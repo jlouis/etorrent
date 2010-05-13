@@ -82,7 +82,7 @@ fetched(Id) ->
 bitfield(Id) when is_integer(Id) ->
     NP = etorrent_torrent:num_pieces(Id),
     Fetched = fetched(Id),
-    etorrent_peer_communication:construct_bitfield(
+    etorrent_proto_wire:encode_bitfield(
       NP,
       gb_sets:from_list(Fetched)).
 

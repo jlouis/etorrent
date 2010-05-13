@@ -2,7 +2,7 @@
 
 -export([incoming_packet/2, send_msg/2, decode_bitfield/2, encode_bitfield/2,
         decode_msg/1,
-         receive_handshake/1, initiate_handshake/3]).
+        complete_handshake/3, receive_handshake/1, initiate_handshake/3]).
 
 -define(DEFAULT_HANDSHAKE_TIMEOUT, 120000).
 -define(HANDSHAKE_SIZE, 68).
@@ -139,16 +139,16 @@ initiate_handshake(Socket, LocalPeerId, InfoHash) ->
         error:_ -> {error, stop}
     end.
 
-%% complete_handshake(Socket, InfoHash, LocalPeerId) ->
-%%     Header = protocol_header(),
-%%     try
-%%         ok = gen_tcp:send(Socket, Header),
-%%         ok = gen_tcp:send(Socket, InfoHash),
-%%         ok = gen_tcp:send(Socket, LocalPeerId),
-%%         ok
-%%     catch
-%%         error:_ -> {error, stop}
-%%     end.
+complete_handshake(Socket, InfoHash, LocalPeerId) ->
+    Header = protocol_header(),
+    try
+        ok = gen_tcp:send(Socket, Header),
+        ok = gen_tcp:send(Socket, InfoHash),
+        ok = gen_tcp:send(Socket, LocalPeerId),
+        ok
+    catch
+        error:_ -> {error, stop}
+    end.
 
 
 protocol_header() ->

@@ -202,9 +202,9 @@ handle_cast({connect, IP, Port}, S) ->
     end;
 handle_cast({complete_handshake, Capabilities, Socket, RemotePeerId}, S) ->
     FastExtension = lists:member(fast_extension, Capabilities),
-    case etorrent_peer_communication:complete_handshake(Socket,
-                                                        S#state.info_hash,
-                                                        S#state.local_peer_id) of
+    case etorrent_proto_wire:complete_handshake(Socket,
+                                                S#state.info_hash,
+                                                S#state.local_peer_id) of
         ok -> complete_connection_setup(S#state { tcp_socket = Socket,
                                                   remote_peer_id = RemotePeerId,
                                                   fast_extension = FastExtension});
@@ -324,12 +324,6 @@ terminate(Reason, S) ->
     end,
     ok.
 
-%%--------------------------------------------------------------------
-%% Func: code_change(OldVsn, State, Extra) -> {ok, NewState}
-%% Description: Convert process state when code is changed
-%%--------------------------------------------------------------------
-code_change(_OldVsn, State, _Extra) ->
-    {ok, State}.
 
 %%--------------------------------------------------------------------
 %%% Internal functions
@@ -394,7 +388,7 @@ handle_message({bitfield, _BF}, S) when S#state.piece_set =/= unknown ->
 handle_message({bitfield, BitField}, S) ->
     Size = etorrent_torrent:num_pieces(S#state.torrent_id),
     {ok, PieceSet} =
-        etorrent_peer_communication:destruct_bitfield(Size, BitField),
+        etorrent_proto_wire:decode_bitfield(Size, BitField),
     Left = S#state.pieces_left - gb_sets:size(PieceSet),
     case Left of
         0  -> ok = etorrent_peer:statechange(self(), seeder);
@@ -488,7 +482,6 @@ handle_got_chunk(Index, Offset, Data, Len, S) ->
             %%   throw it on the floor.
             {ok, S}
     end.
-
 
 
 %% TODO: This will probably get pretty expensive fast. We'll just hope it doesn't
@@ -667,3 +660,6 @@ peer_seeds(_Id, _N) -> ok.
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State, 0}.
+
+code_change(_OldVsn, State, _Extra) ->
+    {ok, State}.

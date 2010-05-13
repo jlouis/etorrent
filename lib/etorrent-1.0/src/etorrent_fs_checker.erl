@@ -97,7 +97,7 @@ initialize_pieces_seed(Id, FilePieceList) ->
       [{PN, Hash, Files, fetched} || {PN, {Hash, Files}} <- FilePieceList]).
 
 initialize_pieces_from_bitfield(Id, BitField, NumPieces, FilePieceList) ->
-    {ok, Set} = etorrent_peer_communication:destruct_bitfield(NumPieces, BitField),
+    {ok, Set} = etorrent_proto_wire:decode_bitfield(NumPieces, BitField),
     F = fun (PN) ->
                 case gb_sets:is_element(PN, Set) of
                     true -> fetched;
