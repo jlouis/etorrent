@@ -1,13 +1,4 @@
-%%%-------------------------------------------------------------------
-%%% File    : etorrent_peer_recv.erl
-%%% Author  : Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
-%%% License : See COPYING
-%%% Description : Represents a peers receiving of data
-%%%
-%%% Created : 19 Jul 2007 by
-%%%    Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
-%%%-------------------------------------------------------------------
--module(etorrent_peer_recv).
+-module(etorrent_peer_control).
 
 -behaviour(gen_server).
 

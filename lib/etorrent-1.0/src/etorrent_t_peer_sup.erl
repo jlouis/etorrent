@@ -49,15 +49,15 @@ get_pid(Pid, Name) ->
 %% specifications.
 %%--------------------------------------------------------------------
 init([LocalPeerId, InfoHash, FilesystemPid, Id, {IP, Port}, Socket]) ->
-    Receiver = {receiver, {etorrent_peer_recv, start_link,
+    Control = {control, {etorrent_peer_control, start_link,
                           [LocalPeerId, InfoHash, FilesystemPid, Id, self(),
                            {IP, Port}, Socket]},
-                permanent, 15000, worker, [etorrent_peer_recv]},
+                permanent, 15000, worker, [etorrent_peer_control]},
     Sender   = {sender,   {etorrent_peer_send, start_link,
                           [Socket, FilesystemPid, Id, false,
                            self()]},
                 permanent, 15000, worker, [etorrent_peer_send]},
-    {ok, {{one_for_all, 0, 1}, [Receiver, Sender]}}.
+    {ok, {{one_for_all, 0, 1}, [Control, Sender]}}.
 
 %%====================================================================
 %% Internal functions
