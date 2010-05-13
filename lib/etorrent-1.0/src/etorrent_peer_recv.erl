@@ -267,7 +267,8 @@ handle_info(timeout, S) ->
     end;
 handle_info(rate_update, S) ->
     Rate = etorrent_rate:update(S#state.rate, 0),
-    ok = etorrent_rate_mgr:recv_rate(S#state.torrent_id, self(), Rate#peer_rate.rate, 0),
+    ok = etorrent_rate_mgr:recv_rate(S#state.torrent_id,
+                self(), Rate#peer_rate.rate, 0),
     {noreply, S#state { rate = Rate}, 0};
 handle_info(_Info, State) ->
     {noreply, State, 0}.
