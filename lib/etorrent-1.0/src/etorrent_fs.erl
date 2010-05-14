@@ -239,11 +239,11 @@ stop_all_fs_processes(Dict) ->
                   dict:to_list(Dict)),
     ok.
 
-broadcast_have_message(Index, TorrentId) ->
-    Peers = etorrent_peer:all(TorrentId),
-    lists:foreach(fun (Peer) ->
-                          etorrent_peer_control:have(Peer#peer.pid, Index)
+broadcast_have_message(Index, Id) ->
+    {value, Pids} = etorrent_peer:all_pids(Id),
+    lists:foreach(fun (P) ->
+                          etorrent_peer_control:have(P, Index)
                   end,
-                  Peers).
+                  Pids).
 
 

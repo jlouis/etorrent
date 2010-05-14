@@ -13,6 +13,7 @@
 %% API
 -export([new/3, delete/1, select/1, all/0, statechange/2,
          num_pieces/1, decrease_not_fetched/1,
+         is_seeding/1,
          is_endgame/1, mode/1]).
 
 %%====================================================================
@@ -89,13 +90,17 @@ all(Pos) ->
 
 
 %%--------------------------------------------------------------------
-%% Function: num_pieces(Id) -> integer()
+%% Function: num_pieces(Id) -> {value, integer()}
 %% Description: Return the number of pieces for torrent Id
 %%--------------------------------------------------------------------
 num_pieces(Id) ->
     [R] = mnesia:dirty_read(torrent, Id),
-    R#torrent.pieces.
+    {value, R#torrent.pieces}.
 
+
+is_seeding(Id) ->
+    [T] = mnesia:dirty_read(torrent, Id),
+    {value, T#torrent.state =:= seeding}.
 
 %%--------------------------------------------------------------------
 %% Function: decrease_not_fetched(Id) -> ok | endgame

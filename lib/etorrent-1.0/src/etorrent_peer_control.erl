@@ -2,7 +2,6 @@
 
 -behaviour(gen_server).
 
--include("etorrent_mnesia_table.hrl").
 -include("etorrent_rate.hrl").
 
 %% API
@@ -23,7 +22,8 @@
                  %% The packet continuation stores intermediate buffering
                  %% when we only have received part of a package.
                  packet_continuation = none,
-                 pieces_left,
+                 pieces_left, % How many pieces are there left before the peer
+                              % has every pieces?
                  seeder = false,
                  socket = none,
 
@@ -141,10 +141,10 @@ init([LocalPeerId, InfoHash, FilesystemPid, Id, Parent, {IP, Port}, Socket]) ->
     %% TODO: Update the leeching state to seeding when peer finished torrent.
     ok = etorrent_peer:new(IP, Port, Id, self(), leeching),
     ok = etorrent_choker:monitor(self()), %% TODO: Perhaps call this :new ?
-    [T] = etorrent_torrent:select(Id),
+    {value, NumPieces} = etorrent_torrent:num_pieces(Id),
     {ok, #state{
        socket = Socket,
-       pieces_left = T#torrent.pieces,
+       pieces_left = NumPieces,
        parent = Parent,
        local_peer_id = LocalPeerId,
        remote_request_set = gb_trees:empty(),
@@ -281,7 +281,7 @@ handle_message(have_none, S) when S#state.fast_extension =:= true ->
 handle_message(have_all, S) when S#state.piece_set =/= unknown ->
     {error, piece_set_out_of_band};
 handle_message(have_all, S) when S#state.fast_extension =:= true ->
-    Size = etorrent_torrent:num_pieces(S#state.torrent_id),
+    {value, Size} = etorrent_torrent:num_pieces(S#state.torrent_id),
     FullSet = gb_sets:from_list(lists:seq(0, Size - 1)),
     {ok, S#state { piece_set = FullSet,
                    pieces_left = 0,
@@ -505,19 +505,19 @@ statechange_interested(S, What) ->
     S#state{local_interested = What}.
 
 broadcast_queue_pieces(TorrentId) ->
-    Peers = etorrent_peer:all(TorrentId),
+    {value, Pids} = etorrent_peer:all_pids(TorrentId),
     lists:foreach(fun (P) ->
-                          try_queue_pieces(P#peer.pid)
+                          try_queue_pieces(P)
                   end,
-                  Peers).
+                  Pids).
 
 
 broadcast_got_chunk(Chunk, TorrentId) ->
-    Peers = etorrent_peer:all(TorrentId),
-    lists:foreach(fun (Peer) ->
-                          endgame_got_chunk(Peer#peer.pid, Chunk)
+    {value, Pids} = etorrent_peer:all_pids(TorrentId),
+    lists:foreach(fun (P) ->
+                          endgame_got_chunk(P, Chunk)
                   end,
-                  Peers).
+                  Pids).
 
 peer_have(PN, S) when S#state.piece_set =:= unknown ->
     peer_have(PN, S#state {piece_set = gb_sets:new()});
@@ -539,7 +539,7 @@ peer_have(PN, S) ->
                         false ->
                             {ok, NS}
                     end;
-                {stop, R} -> {stop, R, S}
+                stop -> {stop, S}
             end;
         false ->
             {ok, {IP, Port}} = inet:peername(S#state.socket),
@@ -549,10 +549,9 @@ peer_have(PN, S) ->
 
 peer_seeds(Id, 0) ->
     ok = etorrent_peer:statechange(self(), seeder),
-    [T] = etorrent_torrent:select(Id),
-    case T#torrent.state of
-        seeding -> {stop, normal};
-        _ -> ok
+    case etorrent_torrent:is_seeding(Id) of
+        {value, true} -> stop;
+        {value, false} -> ok
     end;
 peer_seeds(_Id, _N) -> ok.
 

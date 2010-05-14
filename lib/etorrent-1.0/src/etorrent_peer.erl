@@ -11,7 +11,7 @@
 -include("etorrent_mnesia_table.hrl").
 
 %% API
--export([new/5, all/1, delete/1, connected/3, ip_port/1, select/1,
+-export([new/5, all_pids/1, delete/1, connected/3, ip_port/1, select/1,
 
          statechange/2]).
 
@@ -75,11 +75,14 @@ connected(IP, Port, Id) when is_integer(Id) ->
     B.
 
 %%--------------------------------------------------------------------
-%% Function: all(Id) -> [#peer]
-%% Description: Return all peers with a given Id
+%% Function: all_pids(Id) -> {value | [#peer]
+%% Description: Return all peer pids with a given torrentId
+%% TODO: We can probably fetch this from the supervisor tree. There is
+%% less reason to have this then.
 %%--------------------------------------------------------------------
-all(Id) ->
-    mnesia:dirty_index_read(peer, Id, #peer.torrent_id).
+all_pids(Id) ->
+    Pids = mnesia:dirty_index_read(peer, Id, #peer.torrent_id),
+    {value, [P#peer.pid || P <- Pids]}.
 
 %%--------------------------------------------------------------------
 %% Function: select(P)

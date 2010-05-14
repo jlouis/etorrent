@@ -80,7 +80,7 @@ fetched(Id) ->
                [{MH, [], ['$1']}]).
 
 bitfield(Id) when is_integer(Id) ->
-    NP = etorrent_torrent:num_pieces(Id),
+    {value, NP} = etorrent_torrent:num_pieces(Id),
     Fetched = fetched(Id),
     etorrent_proto_wire:encode_bitfield(
       NP,
