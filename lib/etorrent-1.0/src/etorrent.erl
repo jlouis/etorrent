@@ -24,7 +24,7 @@ start() ->
     etorrent_mnesia_init:init(),
     etorrent_mnesia_init:wait(),
     %% Etorrent
-    application:start(etorrent).
+    application:start(etorrent, permanent).
 
 start(_Type, _Args) ->
     PeerId = generate_peer_id(),
