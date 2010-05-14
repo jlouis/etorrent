@@ -323,11 +323,11 @@ handle_message(Unknown, S) ->
     {stop, normal, S}.
 
 %%--------------------------------------------------------------------
-%% Func: handle_endgame_got_chunk(Index, Offset, S) -> State
+%% Func: handle_endgame_got_chunk({chunk, Index, Offset, Len}, S) -> S
 %% Description: Some other peer just downloaded {Index, Offset, Len} so try
 %%   not to download it here if we can avoid it.
 %%--------------------------------------------------------------------
-handle_endgame_got_chunk({Index, Offset, Len}, S) ->
+handle_endgame_got_chunk({chunk, Index, Offset, Len}, S) ->
     case gb_trees:is_defined({Index, Offset, Len}, S#state.remote_request_set) of
         true ->
             %% Delete the element from the request set.
@@ -375,7 +375,12 @@ handle_got_chunk(Index, Offset, Data, Len, S) ->
                         found ->
                             ok;
                         assigned ->
-                            broadcast_got_chunk({Index, Offset, Len}, S#state.torrent_id)
+                            etorrent_peer:broadcast_peers(S#state.torrent_id,
+                                fun(P) ->
+                                        endgame_got_chunk(
+                                            P,
+                                            {chunk, Index, Offset, Len})
+                                end)
                     end;
                 false ->
                     ok
@@ -398,7 +403,8 @@ unqueue_piece({Idx, Offset, Len}, S) ->
         true ->
             ReqSet = gb_sets:delete({Idx, Offset, Len}, S#state.remote_request_set),
             ok = etorrent_chunk_mgr:putback_chunk(self(), {Idx, Offset, Len}),
-            broadcast_queue_pieces(S#state.torrent_id),
+            etorrent_peer:broadcast_peers(S#state.torrent_id,
+                fun(P) -> try_queue_pieces(P) end),
             {noreply, S#state { remote_request_set = ReqSet }}
     end.
 
@@ -412,7 +418,8 @@ unqueue_all_pieces(S) ->
     %% Put chunks back
     ok = etorrent_chunk_mgr:putback_chunks(self()),
     %% Tell other peers that there is 0xf00d!
-    broadcast_queue_pieces(S#state.torrent_id),
+    etorrent_peer:broadcast_peers(S#state.torrent_id,
+        fun(P) -> try_queue_pieces(P) end),
     %% Clean up the request set.
     S#state{remote_request_set = gb_trees:empty()}.
 
@@ -433,14 +440,10 @@ try_to_queue_up_pieces(S) ->
                                                 S#state.torrent_id,
                                                 S#state.piece_set,
                                                 PiecesToQueue) of
-                not_interested ->
-                    {ok, statechange_interested(S, false)};
-                none_eligible ->
-                    {ok, S};
-                {ok, Items} ->
-                    queue_items(Items, S);
-                {endgame, Items} ->
-                    queue_items(Items, S#state { endgame = true })
+                not_interested -> {ok, statechange_interested(S, false)};
+                none_eligible -> {ok, S};
+                {ok, Items} -> queue_items(Items, S);
+                {endgame, Items} -> queue_items(Items, S#state { endgame = true })
             end
     end.
 
@@ -503,21 +506,6 @@ complete_connection_setup(S) ->
 statechange_interested(S, What) ->
     etorrent_peer_send:interested(S#state.send_pid),
     S#state{local_interested = What}.
-
-broadcast_queue_pieces(TorrentId) ->
-    {value, Pids} = etorrent_peer:all_pids(TorrentId),
-    lists:foreach(fun (P) ->
-                          try_queue_pieces(P)
-                  end,
-                  Pids).
-
-
-broadcast_got_chunk(Chunk, TorrentId) ->
-    {value, Pids} = etorrent_peer:all_pids(TorrentId),
-    lists:foreach(fun (P) ->
-                          endgame_got_chunk(P, Chunk)
-                  end,
-                  Pids).
 
 peer_have(PN, S) when S#state.piece_set =:= unknown ->
     peer_have(PN, S#state {piece_set = gb_sets:new()});

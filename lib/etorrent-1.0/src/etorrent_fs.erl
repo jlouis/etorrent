@@ -119,7 +119,10 @@ handle_cast({check_piece, Index}, S) ->
                    fetched),
             %% Make sure there is no chunks left for this piece.
             ok = etorrent_chunk_mgr:remove_chunks(S#state.torrent_id, Index),
-            broadcast_have_message(Index, S#state.torrent_id),
+            etorrent_peer:broadcast_peers(S#state.torrent_id,
+                    fun(P) -> 
+                          etorrent_peer_control:have(P, Index)
+                    end),
             {noreply, NS};
         false ->
             ok =
@@ -238,12 +241,3 @@ stop_all_fs_processes(Dict) ->
     lists:foreach(fun({_, Pid}) -> etorrent_fs_process:stop(Pid) end,
                   dict:to_list(Dict)),
     ok.
-
-broadcast_have_message(Index, Id) ->
-    {value, Pids} = etorrent_peer:all_pids(Id),
-    lists:foreach(fun (P) ->
-                          etorrent_peer_control:have(P, Index)
-                  end,
-                  Pids).
-
-

@@ -12,8 +12,7 @@
 
 %% API
 -export([new/5, all_pids/1, delete/1, connected/3, ip_port/1, select/1,
-
-         statechange/2]).
+         broadcast_peers/2, statechange/2]).
 
 %%====================================================================
 %% API
@@ -83,6 +82,11 @@ connected(IP, Port, Id) when is_integer(Id) ->
 all_pids(Id) ->
     Pids = mnesia:dirty_index_read(peer, Id, #peer.torrent_id),
     {value, [P#peer.pid || P <- Pids]}.
+
+broadcast_peers(Id, Fun) ->
+    {value, Pids} = all_pids(Id),
+    lists:foreach(Fun, Pids),
+    ok.
 
 %%--------------------------------------------------------------------
 %% Function: select(P)
