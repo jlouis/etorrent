@@ -239,6 +239,7 @@ terminate(_Reason, S) ->
 %% Description: Process an incoming message Msg from the wire. Return either
 %%  {ok, S} if the processing was ok, or {stop, Reason, S} in case of an error.
 %%--------------------------------------------------------------------
+-spec handle_message(_,_) -> {'ok',_} | {'stop',_}.
 handle_message(keep_alive, S) ->
     {ok, S};
 handle_message(choke, S) ->
