@@ -13,7 +13,7 @@
 %% API
 -export([new/3, delete/1, select/1, all/0, statechange/2,
          num_pieces/1, decrease_not_fetched/1,
-         is_seeding/1,
+         is_seeding/1, seeding/0,
          is_endgame/1, mode/1]).
 
 %%====================================================================
@@ -101,6 +101,11 @@ num_pieces(Id) ->
 is_seeding(Id) ->
     [T] = mnesia:dirty_read(torrent, Id),
     {value, T#torrent.state =:= seeding}.
+
+seeding() ->
+    {atomic, Torrents} = etorrent_torrent:all(),
+    {value, [T#torrent.id || T <- Torrents,
+                    T#torrent.state =:= seeding]}.
 
 %%--------------------------------------------------------------------
 %% Function: decrease_not_fetched(Id) -> ok | endgame

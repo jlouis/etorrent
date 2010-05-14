@@ -138,7 +138,8 @@ rechoke(S) ->
     rechoke_choke(ToChoke, 0, optimistics(PreferredSet)).
 
 build_rechoke_info(Peers) ->
-    SeederSet = sets:from_list(seeding_torrents()),
+    {value, Seeding} = etorrent_torrent:seeding(),
+    SeederSet = sets:from_list(Seeding),
     build_rechoke_info(SeederSet, Peers).
 
 build_rechoke_info(_Seeding, []) ->
@@ -317,9 +318,4 @@ split_preferred_peers([P | Next], Downs, Leechs) ->
         false ->
             split_preferred_peers(Next, [P | Downs], Leechs)
     end.
-
-seeding_torrents() ->
-    {atomic, Torrents} = etorrent_torrent:all(),
-    [T#torrent.id || T <- Torrents,
-                     T#torrent.state =:= seeding].
 
