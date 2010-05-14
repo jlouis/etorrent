@@ -38,6 +38,7 @@
 
                 fast_extension = false,
 
+                controller = none,
                 rate = none,
                 choke = true,
                 interested = false, % Are we interested in the peer?
@@ -147,6 +148,7 @@ init([Socket, FilesystemPid, TorrentId, FastExtension, Parent]) ->
             requests = queue:new(),
             rate = etorrent_rate:init(),
             parent = {non_inited, Parent},
+            controller = none,
             torrent_id = TorrentId,
             fast_extension = FastExtension,
             file_system_pid = FilesystemPid},

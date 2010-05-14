@@ -30,7 +30,7 @@ start_link(TorrentId, Socket, Parent) ->
 
 init([TorrentId, Socket, Parent]) ->
     process_flag(trap_exit, true),
-    {ok, TRef} = timer:send_interval(?RATE_FUDGE, self(), rate_update),
+    {ok, TRef} = timer:send_interval(?RATE_UPDATE, self(), rate_update),
     {ok, #state { socket = Socket, parent = Parent,
                   rate = etorrent_rate:init(?RATE_FUDGE),
                   rate_timer = TRef,
@@ -68,7 +68,7 @@ handle_packet(S, Packet) ->
             NR = etorrent_rate:update(S#state.rate, size(P)),
             ok = etorrent_rate_mgr:recv_rate(
                 S#state.id,
-                self(),
+                S#state.controller,
                 NR#peer_rate.rate,
                 size(P),
                 case Msg of
