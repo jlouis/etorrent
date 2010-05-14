@@ -130,7 +130,6 @@ receive_handshake(Socket) ->
 
 initiate_handshake(Socket, LocalPeerId, InfoHash) ->
     % Since we are the initiator, send out this handshake
-    error_logger:info_report([self(), initiating_handshake]),
     Header = protocol_header(),
     try
         ok = gen_tcp:send(Socket, Header),

@@ -208,7 +208,6 @@ handle_cast(check_choke, S) when S#state.choke =:= false ->
 
 %% Regular messages. We just send them onwards on the wire.
 handle_cast({bitfield, BF}, S) ->
-    error_logger:info_report(sending_bitfield),
     send_message({bitfield, BF}, S);
 handle_cast(not_interested, S) when S#state.interested =:= false ->
     {noreply, S, 0};
