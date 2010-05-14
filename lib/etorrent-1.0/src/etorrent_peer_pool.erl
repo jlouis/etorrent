@@ -5,7 +5,7 @@
 %%%
 %%% Created : 17 Aug 2007 by Jesper Louis Andersen <>
 %%%-------------------------------------------------------------------
--module(etorrent_t_peer_pool_sup).
+-module(etorrent_peer_pool).
 
 -behaviour(supervisor).
 
