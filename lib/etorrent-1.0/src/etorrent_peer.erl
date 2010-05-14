@@ -12,6 +12,7 @@
 
 %% API
 -export([new/5, all_pids/1, delete/1, connected/3, ip_port/1, select/1,
+         find/1,
          broadcast_peers/2, statechange/2]).
 
 %%====================================================================
@@ -95,6 +96,13 @@ broadcast_peers(Id, Fun) ->
 %%--------------------------------------------------------------------
 select(Pid) when is_pid(Pid) ->
     mnesia:dirty_read(peer, Pid).
+
+find(Pid) when is_pid(Pid) ->
+    case mnesia:dirty_read(peer, Pid) of
+        [] -> not_found;
+        [PR] -> {peer_info, PR#peer.state, PR#peer.torrent_id}
+    end.
+
 
 %%====================================================================
 %% Internal functions

@@ -14,8 +14,6 @@
 -include("rate_mgr.hrl").
 -include("peer_state.hrl").
 
--include("etorrent_mnesia_table.hrl").
-
 %% API
 -export([start_link/1, perform_rechoke/0, monitor/1]).
 
@@ -145,17 +143,15 @@ build_rechoke_info(Peers) ->
 build_rechoke_info(_Seeding, []) ->
     [];
 build_rechoke_info(Seeding, [Pid | Next]) ->
-    case etorrent_peer:select(Pid) of
-        [] -> build_rechoke_info(Seeding, Next);
-        [Peer] ->
-            Kind = Peer#peer.state,
-            Snubbed = etorrent_rate_mgr:snubbed(Peer#peer.torrent_id, Pid),
-            PeerState = etorrent_rate_mgr:select_state(Peer#peer.torrent_id, Pid),
-            case sets:is_element(Peer#peer.torrent_id, Seeding) of
+    case etorrent_peer:find(Pid) of
+        not_found -> build_rechoke_info(Seeding, Next);
+        {peer_info, Kind, Id} -> 
+            %% Coalesce these two into one!
+            {value, Snubbed} = etorrent_rate_mgr:snubbed(Id, Pid),
+            {value, PeerState} = etorrent_rate_mgr:select_state(Id, Pid),
+            case sets:is_element(Id, Seeding) of
                 true ->
-                    case etorrent_rate_mgr:fetch_send_rate(
-                           Peer#peer.torrent_id,
-                           Pid) of
+                    case etorrent_rate_mgr:fetch_send_rate(Id, Pid) of
                         none -> build_rechoke_info(Seeding, Next);
                         Rate ->
                             [#rechoke_info { pid = Pid,
@@ -172,9 +168,7 @@ build_rechoke_info(Seeding, [Pid | Next]) ->
                              build_rechoke_info(Seeding, Next)]
                     end;
                 false ->
-                    case etorrent_rate_mgr:fetch_recv_rate(
-                           Peer#peer.torrent_id,
-                           Pid) of
+                    case etorrent_rate_mgr:fetch_recv_rate(Id, Pid) of
                         none -> build_rechoke_info(Seeding, Next);
                         Rate ->
                             [#rechoke_info { pid = Pid,
@@ -207,13 +201,12 @@ advance_optimistic_unchoke(S) ->
 move_cyclic_chain([]) -> [];
 move_cyclic_chain(Chain) ->
     F = fun (Pid) ->
-                case etorrent_peer:select(Pid) of
-                    [] -> true;
-                    [P] -> T = etorrent_rate_mgr:select_state(
-                                 P#peer.torrent_id,
-                                 Pid),
-                           not (T#peer_state.interest_state =:= interested
-                                andalso T#peer_state.choke_state =:= choked)
+                case etorrent_peer:find(Pid) of
+                    not_found -> true;
+                    {peer_info, _Kind, Id} ->
+                        {value, T} = etorrent_rate_mgr:select_state(Id, Pid),
+                            not (T#peer_state.interest_state =:= interested
+                                 andalso T#peer_state.choke_state =:= choked)
                 end
         end,
     {Front, Back} = lists:splitwith(F, Chain),
