@@ -29,6 +29,9 @@ start_link(PeerId) ->
 %%====================================================================
 init([PeerId]) ->
     error_logger:info_report([etorrent_supervisor_starting, PeerId]),
+    Torrent  = {torrent,
+                {etorrent_torrent, start_link, []},
+                permanent, 2000, worker, [etorrent_torrent]},
     Counters = {counters,
                 {etorrent_counters, start_link, []},
                 permanent, 2000, worker, [etorrent_counters]},
@@ -70,7 +73,8 @@ init([PeerId]) ->
                    transient, infinity, supervisor, [etorrent_t_pool_sup]},
 
     {ok, {{one_for_all, 1, 60},
-          [Counters, EventManager, PeerMgr, FastResume, RateManager, PieceManager,
+          [Torrent,
+           Counters, EventManager, PeerMgr, FastResume, RateManager, PieceManager,
            ChunkManager, Choker, Listener, AcceptorSup, TorrentMgr, DirWatcherSup,
            TorrentPool]}}.
 

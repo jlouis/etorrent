@@ -7,52 +7,39 @@
 %%%-------------------------------------------------------------------
 -module(etorrent_torrent).
 
+-behaviour(gen_server).
+
 -include_lib("stdlib/include/qlc.hrl").
 -include("etorrent_mnesia_table.hrl").
 
 %% API
--export([new/3, delete/1, select/1, all/0, statechange/2,
+-export([start_link/0,
+         new/3, delete/1, select/1, all/0, statechange/2,
          num_pieces/1, decrease_not_fetched/1,
          is_seeding/1, seeding/0,
          find/1, is_endgame/1, mode/1]).
 
+-export([init/1, handle_call/3, handle_cast/2, code_change/3,
+         handle_info/2, terminate/2]).
+
+-define(SERVER, ?MODULE).
+-record(state, { }).
+
 %%====================================================================
 %% API
 %%====================================================================
+
+start_link() ->
+    gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
+
 %%--------------------------------------------------------------------
 %% Function: new(Id, LoadData, NPieces) -> NPieces
 %% Description: Initialize a torrent entry for Id with the tracker
 %%   state as given. Pieces is the number of pieces for this torrent.
 %% Precondition: The #piece table has been filled with the torrents pieces.
 %%--------------------------------------------------------------------
-new(Id, {{uploaded, U}, {downloaded, D}, {left, L}, {total, T}}, NPieces) ->
-    State = case L of
-                0 ->
-                    etorrent_event_mgr:seeding_torrent(Id),
-                    seeding;
-                _ -> leeching
-            end,
-    F = fun() ->
-                mnesia:write(#torrent { id = Id,
-                                        left = L,
-                                        total = T,
-                                        uploaded = U,
-                                        downloaded = D,
-                                        pieces = NPieces,
-                                        state = State })
-        end,
-    {atomic, _} = mnesia:transaction(F),
-    Missing = etorrent_piece_mgr:num_not_fetched(Id),
-    mnesia:dirty_update_counter(torrent_c_pieces, Id, Missing),
-    ok.
-
-%%--------------------------------------------------------------------
-%% Function: mode(Id) -> seeding | endgame | leeching
-%% Description: Return the current mode of the torrent.
-%%--------------------------------------------------------------------
-mode(Id) ->
-    [#torrent { state = S}] = mnesia:dirty_read(torrent, Id),
-    S.
+new(Id, Info, NPieces) ->
+    gen_server:call(?SERVER, {new, Id, Info, NPieces}).
 
 %%--------------------------------------------------------------------
 %% Function: delete(Id) -> transaction
@@ -60,33 +47,29 @@ mode(Id) ->
 %%   an integer, or the Record itself we want to remove.
 %%--------------------------------------------------------------------
 delete(Id) when is_integer(Id) ->
-    mnesia:dirty_delete(torrent, Id),
-    mnesia:dirty_delete(torrent_c_pieces, Id).
+    gen_server:call(?SERVER, {delete, id}).
+
+
+%%--------------------------------------------------------------------
+%% Function: mode(Id) -> seeding | endgame | leeching
+%% Description: Return the current mode of the torrent.
+%%--------------------------------------------------------------------
+mode(Id) ->
+    gen_server:call(?SERVER, {mode, Id}).
 
 %%--------------------------------------------------------------------
 %% Function: select(Id, Pid) -> Rows
 %% Description: Return the torrent identified by Id
 %%--------------------------------------------------------------------
 select(Id) ->
-    mnesia:dirty_read(torrent, Id).
+    gen_server:call(?SERVER, {select, Id}).
 
 %%--------------------------------------------------------------------
 %% Function: all() -> Rows
 %% Description: Return all torrents, sorted by Id
 %%--------------------------------------------------------------------
 all() ->
-    all(#torrent.id).
-
-%%--------------------------------------------------------------------
-%% Function: all(Pos) -> Rows
-%% Description: Return all torrents, sorted by Pos
-%%--------------------------------------------------------------------
-all(Pos) ->
-    mnesia:transaction(
-      fun () ->
-              Q = qlc:q([P || P <- mnesia:table(torrent)]),
-              qlc:e(qlc:keysort(Pos, Q))
-      end).
+    gen_server:call(?SERVER, all).
 
 
 %%--------------------------------------------------------------------
@@ -186,6 +169,64 @@ is_endgame(Id) ->
         [] -> false % The torrent isn't there anymore.
     end.
 
-%%====================================================================
-%% Internal functions
-%%====================================================================
+init([]) ->
+    {ok, #state{}}.
+
+handle_call({new, Id, {{uploaded, U}, {downloaded, D},
+                       {left, L}, {total, T}}, NPieces}, _From, S) ->
+    State = case L of
+                0 -> etorrent_event_mgr:seeding_torrent(Id),
+                     seeding;
+                _ -> leeching
+            end,
+    F = fun() ->
+                mnesia:write(#torrent { id = Id,
+                                        left = L,
+                                        total = T,
+                                        uploaded = U,
+                                        downloaded = D,
+                                        pieces = NPieces,
+                                        state = State })
+        end,
+    {atomic, _} = mnesia:transaction(F),
+    Missing = etorrent_piece_mgr:num_not_fetched(Id),
+    mnesia:dirty_update_counter(torrent_c_pieces, Id, Missing),
+    {reply, ok, S};
+handle_call({delete, Id}, _F, S) ->
+    mnesia:dirty_delete(torrent, Id),
+    mnesia:dirty_delete(torrent_c_pieces, Id),
+    {reply, ok, S};
+handle_call({mode, Id}, _F, S) ->
+    [#torrent { state = St}] = mnesia:dirty_read(torrent, Id),
+    {reply, St, S};
+handle_call({select, Id}, _F, S) ->
+    R = mnesia:dirty_read(torrent, Id),
+    {reply, R, S};
+handle_call(all, _F, S) ->
+    Q = all(#torrent.id),
+    {reply, Q, S};
+handle_call(_M, _F, S) ->
+    {noreply, S}.
+
+handle_cast(_M, S) ->
+    {noreply, S}.
+
+handle_info(_M, S) ->
+    {noreply, S}.
+
+code_change(_OldVsn, S, _Extra) ->
+    {ok, S}.
+
+terminate(_Reason, _S) ->
+    ok.
+
+%%--------------------------------------------------------------------
+%% Function: all(Pos) -> Rows
+%% Description: Return all torrents, sorted by Pos
+%%--------------------------------------------------------------------
+all(Pos) ->
+    mnesia:transaction(
+      fun () ->
+              Q = qlc:q([P || P <- mnesia:table(torrent)]),
+              qlc:e(qlc:keysort(Pos, Q))
+      end).
