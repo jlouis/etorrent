@@ -172,8 +172,10 @@ handle_cast(complete_handshake, S) ->
             {stop, normal, S}
     end;
 handle_cast({incoming_msg, Msg}, S) ->
-    {ok, NS} = handle_message(Msg, S),
-    {noreply, NS};
+    case handle_message(Msg, S) of
+        {ok, NS} -> {noreply, NS};
+        {stop, X, NS} -> {stop, X, NS}
+    end;
 handle_cast(complete_connection_setup, S) ->
     error_logger:info_report(completion_of_conn_setup),
     complete_connection_setup(S);
@@ -184,7 +186,7 @@ handle_cast(unchoke, S) ->
     etorrent_peer_send:unchoke(S#state.send_pid),
     {noreply, S};
 handle_cast(interested, S) ->
-    {noreply, statechange_interested(S, true), 0};
+    {noreply, statechange_interested(S, true)};
 handle_cast({have, PN}, S) when S#state.piece_set =:= unknown ->
     etorrent_peer_send:have(S#state.send_pid, PN),
     {noreply, S};
@@ -497,7 +499,7 @@ complete_connection_setup(S) ->
     {ok, SendPid} = etorrent_peer_sup:get_pid(S#state.parent, sender),
     BF = etorrent_piece_mgr:bitfield(S#state.torrent_id),
     etorrent_peer_send:bitfield(SendPid, BF),
-    {noreply, S#state{send_pid = SendPid}, 0}.
+    {noreply, S#state{send_pid = SendPid}}.
 
 statechange_interested(S, What) ->
     etorrent_peer_send:interested(S#state.send_pid),
@@ -557,7 +559,7 @@ peer_seeds(_Id, _N) -> ok.
 
 handle_call(_Request, _From, State) ->
     Reply = ok,
-    {reply, Reply, State, 0}.
+    {reply, Reply, State}.
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
