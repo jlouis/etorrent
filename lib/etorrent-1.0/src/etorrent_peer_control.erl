@@ -174,7 +174,7 @@ handle_cast(complete_handshake, S) ->
 handle_cast({incoming_msg, Msg}, S) ->
     case handle_message(Msg, S) of
         {ok, NS} -> {noreply, NS};
-        {stop, X, NS} -> {stop, X, NS}
+        {stop, NS} -> {stop, normal, NS}
     end;
 handle_cast(complete_connection_setup, S) ->
     complete_connection_setup(S);
@@ -266,7 +266,8 @@ handle_message({cancel, Index, Offset, Len}, S) ->
     etorrent_peer_send:cancel(S#state.send_pid, Index, Offset, Len),
     {ok, S};
 handle_message({have, PieceNum}, S) ->
-    peer_have(PieceNum, S);
+    Reply = peer_have(PieceNum, S),
+    Reply;
 handle_message({suggest, Idx}, S) ->
     error_logger:info_report([{peer_id, S#state.remote_peer_id},
                               {suggest, Idx}]),
