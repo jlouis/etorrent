@@ -10,8 +10,6 @@
 
 -behaviour(gen_server).
 
--include("etorrent_mnesia_table.hrl").
-
 %% API
 -export([start_link/5, contact/1, stopped/1, completed/1, started/1]).
 
@@ -273,15 +271,16 @@ construct_headers([{Key, Value} | Rest], HeaderLines) ->
     construct_headers(Rest, [Data | HeaderLines]).
 
 build_tracker_url(S, Event) ->
-    [R] = etorrent_torrent:select(S#state.torrent_id),
+    {torrent_info, Uploaded, Downloaded, Left} =
+                etorrent_torrent:find(S#state.torrent_id),
     {ok, Port} = application:get_env(etorrent, port),
     Request = [{"info_hash",
                 etorrent_utils:build_encoded_form_rfc1738(S#state.info_hash)},
                {"peer_id",
                 etorrent_utils:build_encoded_form_rfc1738(S#state.peer_id)},
-               {"uploaded", R#torrent.uploaded},
-               {"downloaded", R#torrent.downloaded},
-               {"left", R#torrent.left},
+               {"uploaded", Uploaded},
+               {"downloaded", Downloaded},
+               {"left", Left},
                {"port", Port},
                {"compact", 1}],
     EReq = case Event of
