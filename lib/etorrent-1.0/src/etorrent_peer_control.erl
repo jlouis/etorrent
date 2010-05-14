@@ -177,7 +177,6 @@ handle_cast({incoming_msg, Msg}, S) ->
         {stop, X, NS} -> {stop, X, NS}
     end;
 handle_cast(complete_connection_setup, S) ->
-    error_logger:info_report(completion_of_conn_setup),
     complete_connection_setup(S);
 handle_cast(choke, S) ->
     etorrent_peer_send:choke(S#state.send_pid),
