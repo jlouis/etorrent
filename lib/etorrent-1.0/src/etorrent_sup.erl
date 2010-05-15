@@ -75,7 +75,7 @@ init([PeerId]) ->
                    {etorrent_t_pool_sup, start_link, []},
                    transient, infinity, supervisor, [etorrent_t_pool_sup]},
 
-    {ok, {{one_for_all, 1, 60},
+    {ok, {{one_for_all, 3, 60},
           [Torrent, TrackingMap,
            Counters, EventManager, PeerMgr, FastResume, RateManager, PieceManager,
            ChunkManager, Choker, Listener, AcceptorSup, TorrentMgr, DirWatcherSup,
