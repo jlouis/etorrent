@@ -106,7 +106,7 @@ handle_cast({check_piece, Index}, S) ->
     [#piece { hash = Hash, files = Operations}] =
         etorrent_piece_mgr:select(S#state.torrent_id, Index),
     {Data, NS} = read_pieces_and_assemble(Operations, S),
-    DataSize = size(Data),
+    DataSize = byte_size(Data),
     case Hash == crypto:sha(Data) of
         true ->
             ok = etorrent_torrent:statechange(

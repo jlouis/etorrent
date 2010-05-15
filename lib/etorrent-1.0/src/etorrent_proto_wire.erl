@@ -47,19 +47,19 @@ incoming_packet(none, <<Left:32/big-integer, Rest/binary>>) ->
 incoming_packet({partial, Data}, <<More/binary>>) when is_binary(Data) ->
     incoming_packet(none, <<Data/binary, More/binary>>);
 
-incoming_packet(none, Packet) when size(Packet) < 4 ->
+incoming_packet(none, Packet) when byte_size(Packet) < 4 ->
     {partial, Packet};
 
 incoming_packet({partial, {Left, IOL}}, Packet)
-        when size(Packet) >= Left, is_integer(Left) ->
+        when byte_size(Packet) >= Left, is_integer(Left) ->
     <<Data:Left/binary, Rest/binary>> = Packet,
-    Left = size(Data),
+    Left = byte_size(Data),
     P = iolist_to_binary(lists:reverse([Data | IOL])),
     {ok, P, Rest};
 
 incoming_packet({partial, {Left, IOL}}, Packet)
-        when size(Packet) < Left, is_integer(Left) ->
-    {partial, {Left - size(Packet), [Packet | IOL]}}.
+        when byte_size(Packet) < Left, is_integer(Left) ->
+    {partial, {Left - byte_size(Packet), [Packet | IOL]}}.
 
 %% Decode a message from the wire
 decode_msg(Message) ->
@@ -113,7 +113,7 @@ encode_msg(Message) ->
 %% Sz is the size of the sent datagram.
 send_msg(Socket, Msg) ->
     Datagram = encode_msg(Msg),
-    Sz = size(Datagram),
+    Sz = byte_size(Datagram),
     {gen_tcp:send(Socket, <<Sz:32/big, Datagram/binary>>), Sz}.
 
 

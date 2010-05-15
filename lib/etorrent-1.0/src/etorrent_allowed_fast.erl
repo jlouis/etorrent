@@ -26,7 +26,7 @@ allowed_fast(Sz, {B1, B2, B3, B4}, K, InfoHash) ->
     allowed_fast(Sz, B, K, InfoHash);
 allowed_fast(Sz, <<B1:8/integer, B2:8/integer, B3:8/integer, _B4:8/integer>>,
                   K, InfoHash) ->
-    20 = size(InfoHash),
+    20 = byte_size(InfoHash),
     %% Rip out the last byte. It means that you need more than a /24
     %%  in order to fool us.
     IpX = <<B1:8/integer, B2:8/integer, B3:8/integer, 0:8/integer>>,

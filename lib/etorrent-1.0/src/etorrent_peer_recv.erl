@@ -64,12 +64,12 @@ handle_packet(S, Packet) ->
         ok -> {ok, S};
         {ok, P, R} ->
             Msg = etorrent_proto_wire:decode_msg(P),
-            NR = etorrent_rate:update(S#state.rate, size(P)),
+            NR = etorrent_rate:update(S#state.rate, byte_size(P)),
             ok = etorrent_rate_mgr:recv_rate(
                 S#state.id,
                 S#state.controller,
                 NR#peer_rate.rate,
-                size(P),
+                byte_size(P),
                 case Msg of
                     {piece, _, _, _} -> last_update;
                     _                -> normal end),
