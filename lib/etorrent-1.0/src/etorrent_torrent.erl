@@ -10,11 +10,13 @@
 -behaviour(gen_server).
 
 -include("etorrent_torrent.hrl").
--include("etorrent_mnesia_table.hrl").
 
+%% Counter for how many pieces is missing from this torrent
+-record(c_pieces, {id :: non_neg_integer(), % Torrent id
+                   missing :: non_neg_integer()}). % Number of missing pieces
 %% API
 -export([start_link/0,
-         new/3, delete/1, select/1, all/0, statechange/2,
+         new/3, select/1, all/0, statechange/2,
          num_pieces/1, decrease_not_fetched/1,
          is_seeding/1, seeding/0,
          state/1,
@@ -24,7 +26,7 @@
          handle_info/2, terminate/2]).
 
 -define(SERVER, ?MODULE).
--record(state, {}).
+-record(state, { monitoring }).
 
 %%====================================================================
 %% API
@@ -41,15 +43,6 @@ start_link() ->
 %%--------------------------------------------------------------------
 new(Id, Info, NPieces) ->
     gen_server:call(?SERVER, {new, Id, Info, NPieces}).
-
-%%--------------------------------------------------------------------
-%% Function: delete(Id) -> transaction
-%% Description: Remove the torrent identified by Id. Id is either a
-%%   an integer, or the Record itself we want to remove.
-%%--------------------------------------------------------------------
-delete(Id) when is_integer(Id) ->
-    gen_server:call(?SERVER, {delete, id}).
-
 
 %%--------------------------------------------------------------------
 %% Function: mode(Id) -> seeding | endgame | leeching
@@ -127,10 +120,12 @@ is_endgame(Id) ->
 init([]) ->
     _ = ets:new(etorrent_torrent, [protected, named_table,
                                    {keypos, 2}]),
-    {ok, #state{}}.
+    _ = ets:new(etorrent_c_pieces, [protected, named_table,
+                                    {keypos, 2}]),
+    {ok, #state{ monitoring = dict:new() }}.
 
 handle_call({new, Id, {{uploaded, U}, {downloaded, D},
-                       {left, L}, {total, T}}, NPieces}, _From, S) ->
+                       {left, L}, {total, T}}, NPieces}, {Pid, _Tag}, S) ->
     State = case L of
                 0 -> etorrent_event_mgr:seeding_torrent(Id),
                      seeding;
@@ -145,12 +140,10 @@ handle_call({new, Id, {{uploaded, U}, {downloaded, D},
                            pieces = NPieces,
                            state = State }),
     Missing = etorrent_piece_mgr:num_not_fetched(Id),
-    mnesia:dirty_update_counter(torrent_c_pieces, Id, Missing),
-    {reply, ok, S};
-handle_call({delete, Id}, _F, S) ->
-    ets:delete(etorrent_torrent, Id),
-    mnesia:dirty_delete(torrent_c_pieces, Id),
-    {reply, ok, S};
+    true = ets:insert_new(etorrent_c_pieces, #c_pieces{ id = Id, missing = Missing}),
+    R = erlang:monitor(process, Pid),
+    NS = S#state { monitoring = dict:store(R, Id, S#state.monitoring) },
+    {reply, ok, NS};
 handle_call({mode, Id}, _F, S) ->
     [#torrent { state = St}] = ets:lookup(etorrent_torrent, Id),
     {reply, St, S};
@@ -167,7 +160,7 @@ handle_call({statechange, Id, What}, _F, S) ->
     Q = state_change(Id, What),
     {reply, Q, S};
 handle_call({decrease, Id}, _F, S) ->
-    N = mnesia:dirty_update_counter(torrent_c_pieces, Id, -1),
+    N = ets:update_counter(etorrent_c_pieces, Id, {#c_pieces.missing, -1}),
     case N of
         0 ->
             state_change(Id, endgame),
@@ -181,6 +174,11 @@ handle_call(_M, _F, S) ->
 handle_cast(_Msg, S) ->
     {noreply, S}.
 
+handle_info({'DOWN', Ref, _, _, _}, S) ->
+    {ok, Id} = dict:find(Ref, S#state.monitoring),
+    ets:delete(etorrent_torrent, Id),
+    ets:delete(etorrent_c_pieces, Id),
+    {noreply, S#state { monitoring = dict:erase(Ref, S#state.monitoring) }};
 handle_info(_M, S) ->
     {noreply, S}.
 
@@ -195,7 +193,7 @@ terminate(_Reason, _S) ->
 %% Description: Return all torrents, sorted by Pos
 %%--------------------------------------------------------------------
 all(Pos) ->
-    [Objects] = ets:match(etorrent_torrent, '$1'),
+    Objects = ets:match_object(etorrent_torrent, '$1'),
     lists:keysort(Pos, Objects).
 
 %% Change the state of the torrent with Id, altering it by the "What" part.

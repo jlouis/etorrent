@@ -13,15 +13,12 @@ init() ->
                         [{attributes, record_info(fields, path_map)},
                          {index, [path]}]),
 
-    mnesia:create_table(torrent_c_pieces,
-                        [{attributes, record_info(fields, torrent_c_pieces)}]),
-
     mnesia:create_table(peer,
                         [{attributes, record_info(fields, peer)},
                          {index, [torrent_id]}]),
     wait().
 
 wait() ->
-    BaseTables = [tracking_map, path_map, torrent_c_pieces, peer],
+    BaseTables = [tracking_map, path_map, peer],
     mnesia:wait_for_tables(BaseTables, 5000).
 

@@ -241,7 +241,6 @@ handle_info(Info, StateName, State) ->
 %% Reason. The return value is ignored.
 %%--------------------------------------------------------------------
 terminate(_Reason, _StateName, S) ->
-    etorrent_torrent:delete(S#state.id),
     etorrent_tracking_map:delete(S#state.id),
     ok.
 
