@@ -13,8 +13,6 @@ init() ->
                         [{attributes, record_info(fields, path_map)},
                          {index, [path]}]),
 
-    mnesia:create_table(torrent,
-                        [{attributes, record_info(fields, torrent)}]),
     mnesia:create_table(torrent_c_pieces,
                         [{attributes, record_info(fields, torrent_c_pieces)}]),
 

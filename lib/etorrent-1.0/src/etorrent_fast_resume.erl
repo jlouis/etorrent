@@ -52,7 +52,8 @@ query_state(Id) ->
 %% Function: stop()
 %% Description: Stop the fast-resume server.
 %%--------------------------------------------------------------------
-stop() -> gen_server:call(?SERVER, stop).
+stop() ->
+    gen_server:call(?SERVER, stop).
 
 %%====================================================================
 %% gen_server callbacks
@@ -161,19 +162,16 @@ code_change(_OldVsn, State, _Extra) ->
 track_in_ets_table([]) -> ok;
 track_in_ets_table([#tracking_map { id = Id,
                                     filename = FName} | Next]) ->
-    case etorrent_torrent:select(Id) of
-        [] -> track_in_ets_table(Next); %% Not hot, skip it.
-        [S] ->
-            {F, St} = case S#torrent.state of
-                   seeding  -> {FName, seeding};
-                   leeching -> {FName, {bitfield, etorrent_piece_mgr:bitfield(Id)}};
-                   endgame  -> {FName, {bitfield, etorrent_piece_mgr:bitfield(Id)}};
-                   unknown  -> ok
-                end,
-            true = ets:insert(etorrent_fast_resume, #piece_diskstate{filename = F,
-                                                                     state    = St}),
-            track_in_ets_table(Next)
-    end.
+    {F, St} = case etorrent_torrent:state(Id) of
+        not_found -> track_in_ets_table(Next); %% Not hot, skip it.
+        {value, seeding}  -> {FName, seeding};
+        {value, leeching} -> {FName, {bitfield, etorrent_piece_mgr:bitfield(Id)}};
+        {value, endgame}  -> {FName, {bitfield, etorrent_piece_mgr:bitfield(Id)}};
+        {value, unknown}  -> ok
+    end,
+    true = ets:insert(etorrent_fast_resume, #piece_diskstate{filename = F,
+                                                             state    = St}),
+    track_in_ets_table(Next).
 
 persist_to_disk() ->
     {atomic, Torrents} = etorrent_tracking_map:all(),

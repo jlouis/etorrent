@@ -540,8 +540,8 @@ peer_have(PN, S) ->
 peer_seeds(Id, 0) ->
     ok = etorrent_peer:statechange(self(), seeder),
     case etorrent_torrent:is_seeding(Id) of
-        {value, true} -> stop;
-        {value, false} -> ok
+        true  -> stop;
+        false -> ok
     end;
 peer_seeds(_Id, _N) -> ok.
 

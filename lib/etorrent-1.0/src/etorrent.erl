@@ -2,6 +2,7 @@
 -behaviour(application).
 
 -include("etorrent_version.hrl").
+-include("etorrent_torrent.hrl").
 -include("etorrent_mnesia_table.hrl").
 
 -export([stop/0, start/0]).
@@ -46,7 +47,7 @@ stop(_State) ->
 %% Description: List currently active torrents.
 %%--------------------------------------------------------------------
 list() ->
-    {atomic, A} = etorrent_torrent:all(),
+    A = etorrent_torrent:all(),
     {DownloadRate, UploadRate} = etorrent_rate_mgr:global_rate(),
     io:format("~3s ~11s ~11s ~11s ~11s ~3s ~3s ~7s~n",
               ["Id:", "total", "left", "uploaded", "downloaded",

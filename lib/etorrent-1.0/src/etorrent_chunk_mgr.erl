@@ -86,14 +86,14 @@ remove_chunks(TorrentId, Index) ->
 endgame_remove_chunk(Pid, Id, {Index, Offset, Len}) ->
     gen_server:call(?SERVER, {endgame_remove_chunk, Pid, Id, {Index, Offset, Len}}).
 
-%%--------------------------------------------------------------------
-%% Function: pick_chunks(Handle, PieceSet, StatePid, Num) -> ...
 %% Description: Return some chunks for downloading.
 %%
 %%   This function is relying on tail-calls to itself with different
 %%   tags to return the needed data.
 %%
 %%--------------------------------------------------------------------
+pick_chunks(_Pid, _Id, unknown, _N) ->
+    none_eligible;
 pick_chunks(Pid, Id, Set, N) ->
     gen_server:call(?SERVER, {pick_chunks, Pid, Id, Set, N},
                     timer:seconds(?PICK_CHUNKS_TIMEOUT)).
