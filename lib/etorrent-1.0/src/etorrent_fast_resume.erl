@@ -132,7 +132,6 @@ handle_info(_Info, State) ->
 %%--------------------------------------------------------------------
 terminate(normal, _State) ->
     persist_to_disk(),
-    true = ets:delete(etorrent_fast_resume),
     ok;
 terminate(_Reason, _State) ->
     ok.

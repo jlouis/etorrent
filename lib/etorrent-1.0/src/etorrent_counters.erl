@@ -52,7 +52,6 @@ release_peer_slot() ->
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
 init([]) ->
-    process_flag(trap_exit, true),
     _Tid = ets:new(etorrent_counters, [named_table, private]),
     ets:insert(etorrent_counters, [{torrent, 0},
                                    {path_map, 0},
@@ -114,7 +113,6 @@ handle_info(_Info, State) ->
 %% The return value is ignored.
 %%--------------------------------------------------------------------
 terminate(_Reason, _State) ->
-    true = ets:delete(etorrent_counters),
     ok.
 
 %%--------------------------------------------------------------------
