@@ -1,5 +1,5 @@
 %%%-------------------------------------------------------------------
-%%% File    : torrent.erl
+%%% File    : etorrent_t_control.erl
 %%% Author  : Jesper Louis Andersen <jlouis@succubus.local.domain>
 %%% License : See COPYING
 %%% Description : Representation of a torrent for downloading
@@ -119,6 +119,7 @@ initializing(timeout, S) ->
                   S#state.id,
                   S#state.parent_pid,
                   S#state.path),
+            etorrent_piece_mgr:add_monitor(self(), S#state.id),
             %% Update the tracking map. This torrent has been started, and we
             %%  know its infohash
             etorrent_tracking_map:statechange(S#state.id, {infohash, InfoHash}),
@@ -240,7 +241,6 @@ handle_info(Info, StateName, State) ->
 %% Reason. The return value is ignored.
 %%--------------------------------------------------------------------
 terminate(_Reason, _StateName, S) ->
-    ok = etorrent_piece_mgr:delete(S#state.id),
     etorrent_torrent:delete(S#state.id),
     etorrent_tracking_map:delete(S#state.id),
     ok.

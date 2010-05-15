@@ -13,9 +13,9 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0, delete/1, decrease_missing_chunks/2, statechange/3,
+-export([start_link/0, decrease_missing_chunks/2, statechange/3,
          fetched/2, bitfield/1, select/1, select/2, valid/2, interesting/2,
-         num_not_fetched/1, check_interest/2, add_pieces/2, chunk/3]).
+         add_monitor/2, num_not_fetched/1, check_interest/2, add_pieces/2, chunk/3]).
 
 -export([fetched/1]).
 
@@ -23,7 +23,7 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
--record(state, {}).
+-record(state, { monitoring }).
 -define(SERVER, ?MODULE).
 
 %%====================================================================
@@ -36,12 +36,6 @@
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
-%%--------------------------------------------------------------------
-%% Function: delete(Id) -> ok
-%% Description: Rip out the pieces identified by torrent with Id
-%%--------------------------------------------------------------------
-delete(Id) ->
-    gen_server:cast(?SERVER, {delete, Id}).
 %%--------------------------------------------------------------------
 %% Function: add_pieces(Id, FPList) -> void()
 %% Args:  Id ::= integer() - torrent id
@@ -85,6 +79,11 @@ bitfield(Id) when is_integer(Id) ->
     etorrent_proto_wire:encode_bitfield(
       NP,
       gb_sets:from_list(Fetched)).
+
+%% This call adds a monitor on a torrent controller, so its removal gives
+%% us a way to remove the pieces associated with that torrent.
+add_monitor(Pid, Id) ->
+    gen_server:cast(?SERVER, {add_monitor, Pid, Id}).
 
 %%--------------------------------------------------------------------
 %% Function: num_not_fetched(Id) -> integer()
@@ -157,7 +156,7 @@ interesting(Id, Pn) when is_integer(Id) ->
 init([]) ->
     _Tid = ets:new(etorrent_piece_tbl, [set, protected, named_table,
                                         {keypos, #piece.idpn}]),
-    {ok, #state{}}.
+    {ok, #state{ monitoring = dict:new()}}.
 
 %%--------------------------------------------------------------------
 %% Function: %% handle_call(Request, From, State) -> {reply, Reply, State} |
@@ -195,10 +194,6 @@ handle_call({statechange, Id, Idx, State}, _From, S) ->
     [P] = ets:lookup(etorrent_piece_tbl, {Id, Idx}),
     ets:insert(etorrent_piece_tbl, P#piece { state = State }),
     {reply, ok, S};
-handle_call({delete, Id}, _From, S) ->
-    MatchHead = #piece { idpn = {Id, '_'}, _ = '_'},
-    ets:select_delete(etorrent_piece_tbl, [{MatchHead, [], [true]}]),
-    {reply, ok, S};
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -209,6 +204,9 @@ handle_call(_Request, _From, State) ->
 %%                                      {stop, Reason, State}
 %% Description: Handling cast messages
 %%--------------------------------------------------------------------
+handle_cast({add_monitor, Pid, Id}, S) ->
+    R = erlang:monitor(process, Pid),
+    {noreply, S#state { monitoring = dict:store(R, Id, S#state.monitoring)}};
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
@@ -218,6 +216,11 @@ handle_cast(_Msg, State) ->
 %%                                       {stop, Reason, State}
 %% Description: Handling all non call/cast messages
 %%--------------------------------------------------------------------
+handle_info({'DOWN', Ref, _, _, _}, S) ->
+    {ok, Id} = dict:find(Ref, S#state.monitoring),
+    MatchHead = #piece { idpn = {Id, '_'}, _ = '_'},
+    ets:select_delete(etorrent_piece_tbl, [{MatchHead, [], [true]}]),
+    {noreply, S#state { monitoring = dict:erase(Ref, S#state.monitoring)}};
 handle_info(_Info, State) ->
     {noreply, State}.
 

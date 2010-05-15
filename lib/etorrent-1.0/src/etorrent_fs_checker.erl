@@ -30,17 +30,16 @@ check_torrent(FS, Id) ->
     [P#piece.idpn || P <- Pieces,
                      PieceCheck(P)].
 
-read_and_check_torrent(Id, SupervisorPid, Path) ->
+initialize_dictionary(Id, Path) ->
     %% Load the torrent
-    {ok, Torrent, Files, Infohash} =
-        load_torrent(Path),
-
-    %% Ensure the files are filled up with garbage of correct size
+    {ok, Torrent, Files, IH} = load_torrent(Path),
     ok = ensure_file_sizes_correct(Files),
+    {ok, FPList, NumPieces} = build_dictionary_on_files(Id, Torrent, Files),
+    {ok, Torrent, IH, FPList, NumPieces}.
 
-    %% Build the dictionary mapping pieces to file operations
-    {ok, FilePieceList, NumberOfPieces} =
-        build_dictionary_on_files(Id, Torrent, Files),
+read_and_check_torrent(Id, SupervisorPid, Path) ->
+    {ok, Torrent, Infohash, FilePieceList, NumberOfPieces} =
+        initialize_dictionary(Id, Path),
 
     %% Check the contents of the torrent, updates the state of the piecemap
     FS = etorrent_t_sup:get_pid(SupervisorPid, fs),
