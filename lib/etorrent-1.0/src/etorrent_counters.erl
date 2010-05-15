@@ -52,7 +52,7 @@ release_peer_slot() ->
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
 init([]) ->
-    _Tid = ets:new(etorrent_counters, [named_table, private]),
+    _Tid = ets:new(etorrent_counters, [named_table, protected]),
     ets:insert(etorrent_counters, [{torrent, 0},
                                    {path_map, 0},
                                    {peer_slots, 0}]),
@@ -76,7 +76,7 @@ handle_call(obtain_peer_slot, _From, S) ->
         true ->
             {reply, full, S};
         false ->
-            ets:update_counter(etorrent_counters, peer_slots, 1),
+            _N = ets:update_counter(etorrent_counters, peer_slots, 1),
             {reply, ok, S}
     end;
 handle_call(_Request, _From, State) ->
@@ -90,8 +90,11 @@ handle_call(_Request, _From, State) ->
 %% Description: Handling cast messages
 %%--------------------------------------------------------------------
 handle_cast(release_peer_slot, S) ->
-    K = ets:update_counter(etorrent_counters, peer_slots, -1),
-    true = K >= 0,
+    K = ets:update_counter(etorrent_counters, peer_slots, {2, -1, 0, 0}),
+    if
+        K >= 0 -> ok;
+        true -> error_logger:error_report([counter_negative, K])
+    end,
     {noreply, S};
 handle_cast(_Msg, State) ->
     {noreply, State}.
