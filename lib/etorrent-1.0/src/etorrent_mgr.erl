@@ -50,12 +50,11 @@ handle_cast({start, F}, S) ->
     case torrent_duplicate(F) of
         true -> {noreply, S};
         false ->
-            {ok, _} =
-                etorrent_t_pool_sup:add_torrent(
-                  F,
-                  S#state.local_peer_id,
-                  etorrent_counters:next(torrent)),
-            {noreply, S}
+            case etorrent_t_pool_sup:add_torrent( F, S#state.local_peer_id,
+                                                  etorrent_counters:next(torrent)) of
+                {ok, _} -> {noreply, S};
+                {error, {already_started, _Pid}} -> {noreply, S}
+            end
     end;
 handle_cast({check, Id}, S) ->
     {atomic, [T]} = etorrent_tracking_map:select(Id),
