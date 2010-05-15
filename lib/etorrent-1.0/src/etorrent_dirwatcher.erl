@@ -99,6 +99,7 @@ reset_marks(Key) ->
 
 sweep('$end_of_table') -> ok;
 sweep(Key) ->
+    Next = ets:next(etorrent_dirwatcher, Key),
     [{Key, S}] = ets:lookup(etorrent_dirwatcher, Key),
     case S of
         new -> etorrent_mgr:start(Key);
@@ -106,4 +107,4 @@ sweep(Key) ->
         unmarked -> etorrent_mgr:stop(Key),
                     ets:delete(etorrent_dirwatcher, Key)
     end,
-    sweep(ets:next(etorrent_dirwatcher, Key)).
+    sweep(Next).
