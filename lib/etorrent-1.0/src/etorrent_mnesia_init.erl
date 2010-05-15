@@ -22,7 +22,6 @@ init() ->
     wait().
 
 wait() ->
-    BaseTables = [tracking_map, path_map, torrent,
-                  torrent_c_pieces, peer],
+    BaseTables = [tracking_map, path_map, torrent_c_pieces, peer],
     mnesia:wait_for_tables(BaseTables, 5000).
 
