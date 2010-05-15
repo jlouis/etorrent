@@ -7,27 +7,37 @@
 %%%-------------------------------------------------------------------
 -module(etorrent_tracking_map).
 
+-behaviour(gen_server).
+
 -include_lib("stdlib/include/qlc.hrl").
 -include("etorrent_mnesia_table.hrl").
 
 %% API
--export([all/0, new/3, delete/1, select/1, statechange/2,
+-export([start_link/0, all/0, new/3, select/1, statechange/2,
          is_ready_for_checking/1]).
+
+-export([init/1, code_change/3, handle_info/2, handle_cast/2, handle_call/3,
+         terminate/2]).
+
+-record(state, { monitoring }).
+
+-define(SERVER, ?MODULE).
 
 %%====================================================================
 %% API
 %%====================================================================
+start_link() ->
+    gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
+
+
 %%--------------------------------------------------------------------
 %% Function: new(Filename, Supervisor) -> ok
 %% Description: Add a new torrent given by File with the Supervisor
 %%   pid as given to the database structure.
 %%--------------------------------------------------------------------
 new(File, Supervisor, Id) when is_integer(Id), is_pid(Supervisor), is_list(File) ->
-    mnesia:dirty_write(#tracking_map { id = Id,
-                                       filename = File,
-                                       supervisor_pid = Supervisor,
-                                       info_hash = unknown,
-                                       state = awaiting}).
+    gen_server:call(?SERVER, {new, File, Supervisor, Id}).
+
 
 %%--------------------------------------------------------------------
 %% Function: all/0
@@ -67,12 +77,6 @@ select({infohash, InfoHash}) ->
               qlc:e(Q)
       end).
 
-%%--------------------------------------------------------------------
-%% Function: delete(Id) -> ok
-%% Description: Clean out all references to torrents matching Pid
-%%--------------------------------------------------------------------
-delete(Id) when is_integer(Id) ->
-    mnesia:dirty_delete(tracking_map, Id).
 
 %%--------------------------------------------------------------------
 %% Function: statechange(Id, What) -> ok
@@ -107,6 +111,37 @@ is_ready_for_checking(Id) ->
         end,
     {atomic, T} = mnesia:transaction(F),
     T.
+
+init([]) ->
+    {ok, #state{ monitoring = dict:new() }}.
+
+
+handle_call({new, File, Supervisor, Id}, {Pid, _Tag}, S) ->
+    R = erlang:monitor(process, Pid),
+    mnesia:dirty_write(#tracking_map { id = Id,
+                                       filename = File,
+                                       supervisor_pid = Supervisor,
+                                       info_hash = unknown,
+                                       state = awaiting}),
+    {reply, ok, S #state{ monitoring = dict:store(R, Id, S#state.monitoring )}};
+handle_call(_Msg, _From, S) ->
+    {noreply, S}.
+
+handle_cast(_Msg, S) ->
+    {noreply, S}.
+
+handle_info({'DOWN', Ref, _, _, _}, S) ->
+    {ok, Id} = dict:find(Ref, S#state.monitoring),
+    mnesia:dirty_delete(tracking_map, Id),
+    {noreply, S#state { monitoring = dict:erase(Ref, S#state.monitoring) }};
+handle_info(_Msg, S) ->
+    {noreply, S}.
+
+code_change(_OldVsn, S, _Extra) ->
+    {ok, S}.
+
+terminate(_Reason, _S) ->
+    ok.
 
 %%====================================================================
 %% Internal functions

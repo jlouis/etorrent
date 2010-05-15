@@ -32,6 +32,9 @@ init([PeerId]) ->
     Torrent  = {torrent,
                 {etorrent_torrent, start_link, []},
                 permanent, 2000, worker, [etorrent_torrent]},
+    TrackingMap = {tracking_map,
+                   {etorrent_tracking_map, start_link, []},
+                    permanent, 2000, worker, [etorrent_tracking_map]},
     Counters = {counters,
                 {etorrent_counters, start_link, []},
                 permanent, 2000, worker, [etorrent_counters]},
@@ -73,7 +76,7 @@ init([PeerId]) ->
                    transient, infinity, supervisor, [etorrent_t_pool_sup]},
 
     {ok, {{one_for_all, 1, 60},
-          [Torrent,
+          [Torrent, TrackingMap,
            Counters, EventManager, PeerMgr, FastResume, RateManager, PieceManager,
            ChunkManager, Choker, Listener, AcceptorSup, TorrentMgr, DirWatcherSup,
            TorrentPool]}}.
