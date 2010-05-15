@@ -155,7 +155,6 @@ interesting(Id, Pn) when is_integer(Id) ->
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
 init([]) ->
-    process_flag(trap_exit, true),
     _Tid = ets:new(etorrent_piece_tbl, [set, protected, named_table,
                                         {keypos, #piece.idpn}]),
     {ok, #state{}}.
@@ -230,7 +229,6 @@ handle_info(_Info, State) ->
 %% The return value is ignored.
 %%--------------------------------------------------------------------
 terminate(_Reason, _State) ->
-    ets:delete(etorrent_piece_tbl),
     ok.
 
 %%--------------------------------------------------------------------

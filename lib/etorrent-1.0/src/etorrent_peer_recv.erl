@@ -29,7 +29,6 @@ start_link(TorrentId, Socket, Parent) ->
 %%====================================================================
 
 init([TorrentId, Socket, Parent]) ->
-    process_flag(trap_exit, true),
     {ok, TRef} = timer:send_interval(?RATE_UPDATE, self(), rate_update),
     {ok, #state { socket = Socket, parent = Parent,
                   rate = etorrent_rate:init(?RATE_FUDGE),
@@ -81,8 +80,7 @@ handle_packet(S, Packet) ->
             {ok, S#state { packet_continuation = {partial, C} }}
     end.
 
-terminate(_Reason, S) ->
-    {ok, cancel} = timer:cancel(S#state.rate_timer),
+terminate(_Reason, _S) ->
     ok.
 
 %%--------------------------------------------------------------------

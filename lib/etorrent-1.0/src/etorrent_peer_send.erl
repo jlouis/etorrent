@@ -136,8 +136,6 @@ stop(Pid) ->
 %% gen_server callbacks
 %%====================================================================
 init([Socket, FilesystemPid, TorrentId, FastExtension, Parent]) ->
-    %% Trap exits so we can cancel timers gracefully should we die
-    process_flag(trap_exit, true),
     {ok, TRef} = timer:send_interval(?DEFAULT_KEEP_ALIVE_INTERVAL, self(), tick),
     {ok, Tref2} = timer:send_interval(?RATE_UPDATE, self(), rate_update),
     %% This may fail, but I want to check it
@@ -256,9 +254,7 @@ handle_cast(stop, S) ->
     {stop, normal, S}.
 
 
-terminate(_Reason, S) ->
-    _ = timer:cancel(S#state.timer),
-    _ = timer:cancel(S#state.rate_timer),
+terminate(_Reason, _S) ->
     ok.
 
 %%--------------------------------------------------------------------

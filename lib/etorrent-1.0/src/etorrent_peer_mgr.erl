@@ -70,7 +70,6 @@ bad_peer_list() ->
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
 init([OurPeerId]) ->
-    process_flag(trap_exit, true),
     _Tref = timer:send_interval(?CHECK_TIME, self(), cleanup_table),
     _Tid = ets:new(etorrent_bad_peer, [protected, named_table,
                                        {keypos, #bad_peer.ipport}]),
@@ -140,7 +139,6 @@ handle_info(_Info, State) ->
 %% The return value is ignored.
 %%--------------------------------------------------------------------
 terminate(_Reason, _State) ->
-    ets:delete(etorrent_bad_peer),
     ok.
 
 %%--------------------------------------------------------------------

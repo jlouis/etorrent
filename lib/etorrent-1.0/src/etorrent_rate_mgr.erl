@@ -105,7 +105,6 @@ global_rate() ->
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
 init([]) ->
-    process_flag(trap_exit, true),
     RTid = ets:new(etorrent_recv_state, [protected, named_table,
                                          {keypos, #rate_mgr.pid}]),
     STid = ets:new(etorrent_send_state, [protected, named_table,
@@ -169,10 +168,7 @@ handle_info(_Info, State) ->
 %% cleaning up. When it returns, the gen_server terminates with Reason.
 %% The return value is ignored.
 %%--------------------------------------------------------------------
-terminate(_Reason, S) ->
-    true = ets:delete(S#state.recv),
-    true = ets:delete(S#state.send),
-    true = ets:delete(S#state.state),
+terminate(_Reason, _S) ->
     ok.
 
 

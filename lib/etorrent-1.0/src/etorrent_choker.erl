@@ -61,7 +61,6 @@ monitor(Pid) ->
 %%====================================================================
 
 init([OurPeerId]) ->
-    process_flag(trap_exit, true),
     {ok, Tref} = timer:send_interval(?ROUND_TIME, self(), round_tick),
     {ok, #state{ our_peer_id = OurPeerId,
                      timer_ref = Tref}}.

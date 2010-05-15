@@ -110,7 +110,6 @@ pick_chunks(Pid, Id, Set, N) ->
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
 init([]) ->
-    process_flag(trap_exit, true),
     _Tid = ets:new(etorrent_chunk_tbl, [set, protected, named_table,
                                         {keypos, 2}]),
     {ok, #state{}}.
@@ -245,7 +244,6 @@ handle_info(_Info, State) ->
 %% The return value is ignored.
 %%--------------------------------------------------------------------
 terminate(_Reason, _State) ->
-    ets:delete(etorrent_chunk_tbl),
     ok.
 
 %%--------------------------------------------------------------------
