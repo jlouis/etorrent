@@ -13,7 +13,7 @@
 %% API
 -export([get_piece_length/1, get_length/1, get_pieces/1, get_url/1,
          get_infohash/1,
-         get_files/1, get_name/1, hexify/1]).
+         get_files/1, get_name/1]).
 
 
 %%====================================================================
@@ -110,11 +110,6 @@ split_into_chunks(_N, []) -> [];
 split_into_chunks(N, String) ->
     {Chunk, Rest} = lists:split(N, String),
     [Chunk | split_into_chunks(N, Rest)].
-
-hexify(Digest) ->
-    lists:concat(
-      [lists:concat(io_lib:format("~.16B", [C]))
-       || C <- binary_to_list(Digest)]).
 
 %%--------------------------------------------------------------------
 %% Function: valid_path(Path)

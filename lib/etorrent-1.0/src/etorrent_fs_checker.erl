@@ -11,8 +11,7 @@
 -include("etorrent_piece.hrl").
 
 %% API
--export([read_and_check_torrent/3, load_torrent/1, ensure_file_sizes_correct/1,
-         check_torrent/2]).
+-export([read_and_check_torrent/3, check_torrent/2]).
 
 %%====================================================================
 %% API

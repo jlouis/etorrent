@@ -16,11 +16,11 @@
                    missing :: non_neg_integer()}). % Number of missing pieces
 %% API
 -export([start_link/0,
-         new/3, select/1, all/0, statechange/2,
+         new/3, all/0, statechange/2,
          num_pieces/1, decrease_not_fetched/1,
          is_seeding/1, seeding/0,
          state/1,
-         find/1, is_endgame/1, mode/1]).
+         find/1, is_endgame/1]).
 
 -export([init/1, handle_call/3, handle_cast/2, code_change/3,
          handle_info/2, terminate/2]).
@@ -43,20 +43,6 @@ start_link() ->
 %%--------------------------------------------------------------------
 new(Id, Info, NPieces) ->
     gen_server:call(?SERVER, {new, Id, Info, NPieces}).
-
-%%--------------------------------------------------------------------
-%% Function: mode(Id) -> seeding | endgame | leeching
-%% Description: Return the current mode of the torrent.
-%%--------------------------------------------------------------------
-mode(Id) ->
-    gen_server:call(?SERVER, {mode, Id}).
-
-%%--------------------------------------------------------------------
-%% Function: select(Id, Pid) -> Rows
-%% Description: Return the torrent identified by Id
-%%--------------------------------------------------------------------
-select(Id) ->
-    gen_server:call(?SERVER, {select, Id}).
 
 %%--------------------------------------------------------------------
 %% Function: all() -> Rows
@@ -144,12 +130,6 @@ handle_call({new, Id, {{uploaded, U}, {downloaded, D},
     R = erlang:monitor(process, Pid),
     NS = S#state { monitoring = dict:store(R, Id, S#state.monitoring) },
     {reply, ok, NS};
-handle_call({mode, Id}, _F, S) ->
-    [#torrent { state = St}] = ets:lookup(etorrent_torrent, Id),
-    {reply, St, S};
-handle_call({select, Id}, _F, S) ->
-    R = ets:lookup(etorrent_torrent, Id),
-    {reply, R, S};
 handle_call(all, _F, S) ->
     Q = all(#torrent.id),
     {reply, Q, S};

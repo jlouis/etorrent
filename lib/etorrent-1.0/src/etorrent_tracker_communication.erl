@@ -11,7 +11,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/5, contact/1, stopped/1, completed/1, started/1]).
+-export([start_link/5]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -47,35 +47,6 @@ start_link(ControlPid, Url, InfoHash, PeerId, TorrentId) ->
                           [ControlPid,
                             Url, InfoHash, PeerId, TorrentId],
                           []).
-
-%%--------------------------------------------------------------------
-%% Function: contact(Pid)
-%% Description: Contact the tracker right now ignoring the soft timeout
-%%   it won't ignore the hard-timeout though.
-%%--------------------------------------------------------------------
-contact(Pid) ->
-    gen_server:cast(Pid, contact).
-
-%%--------------------------------------------------------------------
-%% Function: stopped(Pid)
-%% Description: Tell the tracker that we stopped the torrent
-%%--------------------------------------------------------------------
-stopped(Pid) ->
-    gen_server:cast(Pid, stopped).
-
-%%--------------------------------------------------------------------
-%% Function: started(Pid)
-%% Description: Tell the tracker that we started the torrent
-%%--------------------------------------------------------------------
-started(Pid) ->
-    gen_server:cast(Pid, started).
-
-%%--------------------------------------------------------------------
-%% Function: started(Pid)
-%% Description: Tell the tracker that we completed the torrent
-%%--------------------------------------------------------------------
-completed(Pid) ->
-    gen_server:cast(Pid, completed).
 
 %%====================================================================
 %% gen_server callbacks
@@ -127,15 +98,9 @@ handle_call(_Request, _From, State) ->
 handle_cast(Msg, S) when S#state.hard_timer =:= none ->
     NS = contact_tracker(Msg, S),
     {noreply, NS};
-handle_cast(started, S) when S#state.queued_message =:= completed ->
-    {noreply, S};
-handle_cast(started, S) when S#state.queued_message =:= stopped ->
-    {noreply, S#state {queued_message = started }};
-handle_cast(stopped, S) ->
-    {noreply, S#state {queued_message = stopped }};
-handle_cast(completed, S) ->
-    {noreply, S#state {queued_message = completed }}.
-
+handle_cast(Msg, S) ->
+    error_logger:error_report([unknown_msg, Msg]),
+    {noreply, S}.
 
 %%--------------------------------------------------------------------
 %% Function: handle_info(Info, State) -> {noreply, State} |

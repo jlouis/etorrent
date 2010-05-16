@@ -15,8 +15,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/1, enter_bad_peer/3, bad_peer_list/0, add_peers/2,
-         is_bad_peer/2]).
+-export([start_link/1, enter_bad_peer/3, add_peers/2, is_bad_peer/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -54,9 +53,6 @@ is_bad_peer(IP, Port) ->
         [] -> false;
         [P] -> P#bad_peer.offenses > ?DEFAULT_BAD_COUNT
     end.
-
-bad_peer_list() ->
-    ets:match(etorrent_bad_peer, '_').
 
 %%====================================================================
 %% gen_server callbacks

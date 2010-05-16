@@ -5,9 +5,8 @@
 -include("etorrent_rate.hrl").
 
 %% API
--export([start_link/7, choke/1, unchoke/1, interested/1,
-         have/2, complete_handshake/1, endgame_got_chunk/2,
-         incoming_msg/2, try_queue_pieces/1, stop/1, complete_conn_setup/1]).
+-export([start_link/7, choke/1, unchoke/1, have/2, complete_handshake/1,
+        incoming_msg/2, stop/1, complete_conn_setup/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -87,13 +86,6 @@ choke(Pid) ->
 %%--------------------------------------------------------------------
 unchoke(Pid) ->
     gen_server:cast(Pid, unchoke).
-
-%%--------------------------------------------------------------------
-%% Function: interested(Pid)
-%% Description: Tell the peer we are interested.
-%%--------------------------------------------------------------------
-interested(Pid) ->
-    gen_server:cast(Pid, interested).
 
 %%--------------------------------------------------------------------
 %% Function: have(Pid, PieceNumber)
@@ -505,9 +497,16 @@ complete_connection_setup(S) ->
     etorrent_peer_send:bitfield(SendPid, BF),
     {noreply, S#state{send_pid = SendPid}}.
 
-statechange_interested(S, What) ->
+statechange_interested(S = #state{ local_interested = true }, true) ->
+    S;
+statechange_interested(S = #state{ local_interested = false }, true) ->
     etorrent_peer_send:interested(S#state.send_pid),
-    S#state{local_interested = What}.
+    S#state{local_interested = true};
+statechange_interested(S = #state{ local_interested = false}, false) ->
+    S;
+statechange_interested(S = #state{ local_interested = true}, false) ->
+    etorrent_peer_send:not_interested(S#state.send_pid),
+    S#state{local_interested = false}.
 
 peer_have(PN, S) when S#state.piece_set =:= unknown ->
     peer_have(PN, S#state {piece_set = gb_sets:new()});

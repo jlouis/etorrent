@@ -9,9 +9,7 @@
 -export([start_link/1,
 
          start/1, stop/1,
-         check/1,
-
-         stop_all/0]).
+         check/1]).
 
 -export([handle_cast/2, handle_call/3, init/1, terminate/2]).
 -export([handle_info/2, code_change/3]).
@@ -38,9 +36,6 @@ check(Id) ->
 %% Ask the manager process to stop a torrent, identified by File.
 stop(File) ->
     gen_server:cast(?SERVER, {stop, File}).
-
-stop_all() ->
-    gen_server:call(?SERVER, stop_all, 120000).
 
 %% Callbacks
 init([PeerId]) ->

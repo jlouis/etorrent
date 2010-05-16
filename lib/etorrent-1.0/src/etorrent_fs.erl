@@ -16,8 +16,7 @@
 
 %% API
 -export([start_link/2,
-         stop/1, read_piece/2, size_of_ops/1,
-         write_chunk/2, check_piece/2]).
+         read_piece/2, write_chunk/2, check_piece/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -33,25 +32,11 @@
 %%====================================================================
 
 %%--------------------------------------------------------------------
-%% Function: size_of_ops(operation_list) -> integer()
-%% Description: Return the file size of the given operations
-%%--------------------------------------------------------------------
-size_of_ops(Ops) ->
-    lists:sum([Size || {_Path, _Offset, Size} <- Ops]).
-
-%%--------------------------------------------------------------------
 %% Function: start_link/0
 %% Description: Spawn and link a new file_system process
 %%--------------------------------------------------------------------
 start_link(IDHandle, SPid) ->
     gen_server:start_link(?MODULE, [IDHandle, SPid], []).
-
-%%--------------------------------------------------------------------
-%% Function: stop(Pid) -> ok
-%% Description: Stop the file_system process identified by Pid
-%%--------------------------------------------------------------------
-stop(Pid) ->
-    gen_server:cast(Pid, stop).
 
 %%--------------------------------------------------------------------
 %% Function: read_piece(Pid, N) -> {ok, Binary}
@@ -132,9 +117,8 @@ handle_cast({check_piece, Index}, S) ->
             etorrent_chunk_mgr:remove_chunks(S#state.torrent_id, Index),
             {noreply, NS}
     end;
-handle_cast(stop, S) ->
-    {stop, normal, S};
-handle_cast(_Msg, State) ->
+handle_cast(Msg, State) ->
+    error_logger:error_report([unknown_msg, Msg]),
     {noreply, State}.
 
 %%--------------------------------------------------------------------
