@@ -497,9 +497,16 @@ complete_connection_setup(S) ->
     etorrent_peer_send:bitfield(SendPid, BF),
     {noreply, S#state{send_pid = SendPid}}.
 
-statechange_interested(S, What) ->
+statechange_interested(S = #state{ local_interested = true }, true) ->
+    S;
+statechange_interested(S = #state{ local_interested = false }, true) ->
     etorrent_peer_send:interested(S#state.send_pid),
-    S#state{local_interested = What}.
+    S#state{local_interested = true};
+statechange_interested(S = #state{ local_interested = false}, false) ->
+    S;
+statechange_interested(S = #state{ local_interested = true}, false) ->
+    etorrent_peer_send:not_interested(S#state.send_pid),
+    S#state{local_interested = false}.
 
 peer_have(PN, S) when S#state.piece_set =:= unknown ->
     peer_have(PN, S#state {piece_set = gb_sets:new()});
