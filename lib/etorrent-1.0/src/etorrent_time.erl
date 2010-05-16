@@ -8,7 +8,7 @@
 -module(etorrent_time).
 
 %% API
--export([now_add_seconds/2, now_subtract_seconds/2]).
+-export([now_subtract_seconds/2]).
 
 %%====================================================================
 %% API
@@ -26,14 +26,6 @@ now_subtract_seconds({Megasecs, Secs, Ms}, Subsecs) ->
         N ->
             Needed = abs(N) div 1000000 + 1,
             {Megasecs - Needed, N + (Needed * 1000000), Ms}
-    end.
-
-now_add_seconds({Megasecs, Secs, Ms}, Add) ->
-    case Secs + Add of
-        K when K < 1000000 ->
-            {Megasecs, K, Ms};
-        K ->
-            {Megasecs + K div 1000000, K rem 1000000, Ms}
     end.
 
 %%====================================================================

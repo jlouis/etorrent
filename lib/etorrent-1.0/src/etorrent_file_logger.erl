@@ -12,7 +12,7 @@
 
 -behaviour(gen_event).
 
--export([init/3, init/2]).
+-export([init/2]).
 
 -export([init/1, handle_event/2, handle_info/2, terminate/2]).
 -export([handle_call/2, code_change/3]).
