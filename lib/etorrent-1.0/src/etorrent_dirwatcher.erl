@@ -12,7 +12,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0, dir_watched/0]).
+-export([start_link/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -31,10 +31,6 @@
 %%--------------------------------------------------------------------
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
-
-dir_watched() ->
-    {ok, Dir} = application:get_env(etorrent, dir),
-    Dir.
 
 %%====================================================================
 %% gen_server callbacks

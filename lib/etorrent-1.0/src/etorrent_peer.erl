@@ -11,9 +11,8 @@
 -include("etorrent_mnesia_table.hrl").
 
 %% API
--export([new/5, all_pids/1, delete/1, connected/3, ip_port/1, select/1,
-         find/1,
-         broadcast_peers/2, statechange/2]).
+-export([new/5, delete/1, connected/3, select/1, find/1, broadcast_peers/2,
+         statechange/2]).
 
 %%====================================================================
 %% API
@@ -40,14 +39,6 @@ statechange(Pid, seeder) ->
                             mnesia:write(Row#peer { state = seeding })
                     end),
     ok.
-
-%%--------------------------------------------------------------------
-%% Function: ip_port(Pid) -> {IP, Port}
-%% Description: Select the IP and Port pair of a Pid
-%%--------------------------------------------------------------------
-ip_port(Pid) ->
-    [R] = mnesia:dirty_read(peer, Pid),
-    {R#peer.ip, R#peer.port}.
 
 %%--------------------------------------------------------------------
 %% Function: delete(Pid) -> ok | {aborted, Reason}

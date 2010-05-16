@@ -10,8 +10,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0, next/1, obtain_peer_slot/0, release_peer_slot/0,
-         max_peer_processes/0]).
+-export([start_link/0, next/1, obtain_peer_slot/0, release_peer_slot/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,

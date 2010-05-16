@@ -12,7 +12,7 @@
 -include("etorrent_mnesia_table.hrl").
 
 %% API
--export([start_link/0, query_state/1, stop/0]).
+-export([start_link/0, query_state/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -47,13 +47,6 @@ start_link() ->
 %%--------------------------------------------------------------------
 query_state(Id) ->
         gen_server:call(?SERVER, {query_state, Id}).
-
-%%--------------------------------------------------------------------
-%% Function: stop()
-%% Description: Stop the fast-resume server.
-%%--------------------------------------------------------------------
-stop() ->
-    gen_server:call(?SERVER, stop).
 
 %%====================================================================
 %% gen_server callbacks
@@ -94,8 +87,6 @@ handle_call({query_state, Id}, _From, S) ->
         [] -> {reply, unknown, S};
         [{_, R}] -> {reply, R#piece_diskstate.state, S}
     end;
-handle_call(stop, _From, S) ->
-    {stop, normal, ok, S};
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.

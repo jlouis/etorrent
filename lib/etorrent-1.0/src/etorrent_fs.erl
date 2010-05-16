@@ -16,8 +16,7 @@
 
 %% API
 -export([start_link/2,
-         stop/1, read_piece/2, size_of_ops/1,
-         write_chunk/2, check_piece/2]).
+         stop/1, read_piece/2, write_chunk/2, check_piece/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -31,13 +30,6 @@
 %%====================================================================
 %% API
 %%====================================================================
-
-%%--------------------------------------------------------------------
-%% Function: size_of_ops(operation_list) -> integer()
-%% Description: Return the file size of the given operations
-%%--------------------------------------------------------------------
-size_of_ops(Ops) ->
-    lists:sum([Size || {_Path, _Offset, Size} <- Ops]).
 
 %%--------------------------------------------------------------------
 %% Function: start_link/0

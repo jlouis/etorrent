@@ -21,7 +21,6 @@
 %% we have a message we can send to the process, for each of the possible
 %% messages one can send to a peer.
 -export([start_link/5,
-         stop/1,
          check_choke/1,
 
          local_request/2, remote_request/4, cancel/4,
@@ -32,6 +31,7 @@
 %% gen_server callbacks
 -export([init/1, handle_info/2, terminate/2, code_change/3,
          handle_call/3, handle_cast/2]).
+-ignore_xref({start_link, 5}).
 
 -record(state, {socket = none,
                 requests = none,
@@ -123,14 +123,6 @@ have(Pid, PieceNumber) ->
 %% Send a bitfield message to the peer
 bitfield(Pid, BitField) ->
     gen_server:cast(Pid, {bitfield, BitField}).
-
-
-%%--------------------------------------------------------------------
-%% Func: stop(Pid)
-%% Description: Tell the send process to stop the communication.
-%%--------------------------------------------------------------------
-stop(Pid) ->
-    gen_server:cast(Pid, stop).
 
 %%====================================================================
 %% gen_server callbacks
@@ -250,9 +242,8 @@ handle_cast({remote_request, Index, Offset, Len}, S)
             NQ = queue:in({Index, Offset, Len}, S#state.requests),
             {noreply, S#state{requests = NQ}, 0}
     end;
-handle_cast(stop, S) ->
-    {stop, normal, S}.
-
+handle_cast(_Msg, S) ->
+    {noreply, S}.
 
 terminate(_Reason, _S) ->
     ok.

@@ -5,9 +5,8 @@
 -include("etorrent_rate.hrl").
 
 %% API
--export([start_link/7, choke/1, unchoke/1, interested/1,
-         have/2, complete_handshake/1, endgame_got_chunk/2,
-         incoming_msg/2, try_queue_pieces/1, stop/1, complete_conn_setup/1]).
+-export([start_link/7, choke/1, unchoke/1, have/2, complete_handshake/1,
+        incoming_msg/2, stop/1, complete_conn_setup/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -87,13 +86,6 @@ choke(Pid) ->
 %%--------------------------------------------------------------------
 unchoke(Pid) ->
     gen_server:cast(Pid, unchoke).
-
-%%--------------------------------------------------------------------
-%% Function: interested(Pid)
-%% Description: Tell the peer we are interested.
-%%--------------------------------------------------------------------
-interested(Pid) ->
-    gen_server:cast(Pid, interested).
 
 %%--------------------------------------------------------------------
 %% Function: have(Pid, PieceNumber)

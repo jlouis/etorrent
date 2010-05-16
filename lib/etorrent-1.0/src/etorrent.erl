@@ -8,6 +8,8 @@
 -export([stop/0, start/0]).
 -export([start/2, stop/1, prep_stop/1]).
 -export([help/0, h/0, list/0, l/0, show/0, s/0, show/1, s/1, check/1]).
+-ignore_xref([{h, 0}, {l, 0}, {'prep_stop', 1}, {s, 0}, {s,1}, {stop, 0},
+              {check, 1}, {start, 0}]).
 
 -define(RANDOM_MAX_SIZE, 999999999999).
 

@@ -16,7 +16,7 @@
                    missing :: non_neg_integer()}). % Number of missing pieces
 %% API
 -export([start_link/0,
-         new/3, select/1, all/0, statechange/2,
+         new/3, all/0, statechange/2,
          num_pieces/1, decrease_not_fetched/1,
          is_seeding/1, seeding/0,
          state/1,
@@ -50,13 +50,6 @@ new(Id, Info, NPieces) ->
 %%--------------------------------------------------------------------
 mode(Id) ->
     gen_server:call(?SERVER, {mode, Id}).
-
-%%--------------------------------------------------------------------
-%% Function: select(Id, Pid) -> Rows
-%% Description: Return the torrent identified by Id
-%%--------------------------------------------------------------------
-select(Id) ->
-    gen_server:call(?SERVER, {select, Id}).
 
 %%--------------------------------------------------------------------
 %% Function: all() -> Rows
@@ -147,9 +140,6 @@ handle_call({new, Id, {{uploaded, U}, {downloaded, D},
 handle_call({mode, Id}, _F, S) ->
     [#torrent { state = St}] = ets:lookup(etorrent_torrent, Id),
     {reply, St, S};
-handle_call({select, Id}, _F, S) ->
-    R = ets:lookup(etorrent_torrent, Id),
-    {reply, R, S};
 handle_call(all, _F, S) ->
     Q = all(#torrent.id),
     {reply, Q, S};
