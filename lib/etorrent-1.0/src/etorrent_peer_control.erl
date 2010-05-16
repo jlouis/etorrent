@@ -39,7 +39,6 @@
                  packet_iolist = [],
 
                  endgame = false, % Are we in endgame mode?
-
                  parent = none,
 
                  file_system_pid = none,
@@ -157,11 +156,9 @@ handle_cast(complete_handshake, S) ->
     case etorrent_proto_wire:complete_handshake(S#state.socket,
                                                 S#state.info_hash,
                                                 S#state.local_peer_id) of
-        ok ->
-            complete_connection_setup(S#state { remote_peer_id = none_set,
+        ok -> complete_connection_setup(S#state { remote_peer_id = none_set,
                                                   fast_extension = false});
-        {error, stop} ->
-            {stop, normal, S}
+        {error, stop} -> {stop, normal, S}
     end;
 handle_cast({incoming_msg, Msg}, S) ->
     case handle_message(Msg, S) of
@@ -216,7 +213,6 @@ handle_info(_Info, State) ->
 %% The return value is ignored.
 %%--------------------------------------------------------------------
 terminate(_Reason, S) ->
-    etorrent_peer:delete(self()),
     etorrent_counters:release_peer_slot(),
     _NS = unqueue_all_pieces(S),
     gen_tcp:close(S#state.socket),

@@ -7,26 +7,37 @@
 %%%-------------------------------------------------------------------
 -module(etorrent_peer).
 
+-behaviour(gen_server).
+
 -include_lib("stdlib/include/qlc.hrl").
 -include("etorrent_mnesia_table.hrl").
 
+
 %% API
--export([new/5, delete/1, connected/3, select/1, find/1, broadcast_peers/2,
-         statechange/2]).
+-export([start_link/0]).
+-export([new/5, connected/3, select/1, find/1,
+         broadcast_peers/2, statechange/2]).
+
+-export([code_change/3,
+         handle_call/3, handle_info/2, handle_cast/2, init/1, terminate/2]).
+
+-define(SERVER, ?MODULE).
+-record(state, { monitoring }).
 
 %%====================================================================
 %% API
 %%====================================================================
+
+start_link() ->
+    gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
+
 %%--------------------------------------------------------------------
 %% Function: new(IP, Port, InfoHash, Pid) -> transaction
 %% Description: Insert a row for the peer
 %%--------------------------------------------------------------------
 new(IP, Port, TorrentId, Pid, State) ->
-    mnesia:dirty_write(#peer { pid = Pid,
-                               ip = IP,
-                               port = Port,
-                               torrent_id = TorrentId,
-                               state = State}).
+    gen_server:call(?SERVER, {new, IP, Port, TorrentId, Pid, State}).
+
 
 %%--------------------------------------------------------------------
 %% Function: statechange(Pid, seeder) -> transaction
@@ -39,16 +50,6 @@ statechange(Pid, seeder) ->
                             mnesia:write(Row#peer { state = seeding })
                     end),
     ok.
-
-%%--------------------------------------------------------------------
-%% Function: delete(Pid) -> ok | {aborted, Reason}
-%% Description: Delete all references to the peer owned by Pid
-%%--------------------------------------------------------------------
-delete(Id) when is_integer(Id) ->
-    [mnesia:dirty_delete_object(Peer) ||
-        Peer <- mnesia:dirty_index_read(peer, Id, #peer.torrent_id)];
-delete(Pid) when is_pid(Pid) ->
-    mnesia:dirty_delete(peer, Pid).
 
 %%--------------------------------------------------------------------
 %% Function: connected(IP, Port, Id) -> bool()
@@ -94,7 +95,35 @@ find(Pid) when is_pid(Pid) ->
         [PR] -> {peer_info, PR#peer.state, PR#peer.torrent_id}
     end.
 
+init([]) ->
+    {ok, #state { monitoring = dict:new() }}.
+
+terminate(_Reason, _S) ->
+    ok.
+
+handle_info({'DOWN', Ref, _, _, _}, S) ->
+    {ok, Pid} = dict:find(Ref, S#state.monitoring),
+    mnesia:dirty_delete(peer, Pid),
+    {noreply, S#state { monitoring = dict:erase(Ref, S#state.monitoring) }};
+handle_info(_Msg, S) ->
+    {noreply, S}.
+
+handle_call({new, IP, Port, TorrentId, Pid, State}, _From, S) ->
+    Q = mnesia:dirty_write(#peer { pid = Pid, ip = IP, port = Port,
+                                   torrent_id = TorrentId, state = State}),
+    Ref = erlang:monitor(process, Pid),
+    {reply, Q, S#state{ monitoring = dict:store(Ref, Pid, S#state.monitoring)}};
+handle_call(Msg, _From, S) ->
+    error_logger:error_report([unknown_msg, Msg]),
+    {noreply, S}.
+
+handle_cast(_Msg, S) ->
+    {noreply, S}.
+
+code_change(_OldVsn, S, _Extra) ->
+    {ok, S}.
 
 %%====================================================================
 %% Internal functions
 %%====================================================================
+
