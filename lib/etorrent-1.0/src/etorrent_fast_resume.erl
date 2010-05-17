@@ -157,7 +157,7 @@ track_in_ets_table([#tracking_map { id = Id,
         {value, seeding}  -> {FName, seeding};
         {value, leeching} -> {FName, {bitfield, etorrent_piece_mgr:bitfield(Id)}};
         {value, endgame}  -> {FName, {bitfield, etorrent_piece_mgr:bitfield(Id)}};
-        {value, unknown}  -> ok
+        {value, unknown}  -> track_in_ets_table(Next) %% Skip, we know nothing yet
     end,
     true = ets:insert(etorrent_fast_resume, #piece_diskstate{filename = F,
                                                              state    = St}),
