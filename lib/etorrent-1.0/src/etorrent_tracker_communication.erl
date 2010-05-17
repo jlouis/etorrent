@@ -158,6 +158,9 @@ contact_tracker(Event, S) ->
         {error,econnrefused} ->
             handle_timeout(S);
         {error, session_remotly_closed} ->
+            handle_timeout(S);
+        {error, Reason} ->
+            error_logger:error_report([contact_tracker_error, Reason]),
             handle_timeout(S)
     end.
 
