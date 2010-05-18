@@ -16,7 +16,7 @@
 
 %% API
 -export([start_link/2,
-         read_piece/2, write_chunk/2, check_piece/2]).
+         read_piece/2, read_chunk/4, write_chunk/2, check_piece/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -37,6 +37,10 @@
 %%--------------------------------------------------------------------
 start_link(IDHandle, SPid) ->
     gen_server:start_link(?MODULE, [IDHandle, SPid], []).
+
+%% Read a single chunk
+read_chunk(Pid, Pn, Offset, Len) ->
+    gen_server:call(Pid, {read_chunk, Pn, Offset, Len}).
 
 %%--------------------------------------------------------------------
 %% Function: read_piece(Pid, N) -> {ok, Binary}
@@ -74,7 +78,12 @@ handle_call({read_piece, PieceNum}, _From, S) ->
     [#piece { files = Operations}] =
         etorrent_piece_mgr:select(S#state.torrent_id, PieceNum),
     {Data, NS} = read_pieces_and_assemble(Operations, S),
-    {reply, {ok, Data}, NS}.
+    {reply, {ok, Data}, NS};
+handle_call({read_chunk, Pn, Offset, Len}, _From, S) ->
+    [#piece { files = Operations}] =
+        etorrent_piece_mgr:select(S#state.torrent_id, Pn),
+    {Reply, NS} = read_chunk_and_assemble(Operations, Offset, Len, S),
+    {reply, Reply, NS}.
 
 handle_cast(Msg, S) when S#state.file_pool =:= none ->
     FSPool = etorrent_t_sup:get_pid(S#state.supervisor, fs_pool),
@@ -162,33 +171,47 @@ create_file_process(Id, S) ->
     NewDict = dict:store(Id, Pid, S#state.file_process_dict),
     {ok, Pid, S#state{ file_process_dict = NewDict }}.
 
+read_chunk_and_assemble(Ops, Offset, Len, S) ->
+    read_chunk_and_assemble(Ops, <<>>, Offset, Len, S).
+
+read_chunk_and_assemble(_Ops, Done, _Offset, 0, S) -> {{ok, Done}, S};
+read_chunk_and_assemble([{_Id, _OS, Sz} | Rest], Done, Offset, L, S)
+        when Offset >= Sz ->
+    read_chunk_and_assemble(Rest, Done, Offset-Sz, L, S);
+read_chunk_and_assemble([{Id, OS, Sz} | Rest], Done, Offset, L, S)
+        when (Offset+L) > Sz ->
+    {value, Data, NS} = read(Id, OS+Offset, Sz-Offset, S),
+    read_chunk_and_assemble(Rest, <<Done/binary, Data/binary>>,
+                            0,
+                            L - (Sz - Offset), NS);
+read_chunk_and_assemble([{Id, OS, _Sz} | _Rest], Done, Offset, L, S) ->
+    {value, Data, NS} = read(Id, OS+Offset, L, S),
+    {{ok, <<Done/binary, Data/binary>>}, NS}.
+
+read(Id, Offset, Sz, S) ->
+    case dict:find(Id, S#state.file_process_dict) of
+        {ok, Pid} ->
+            try
+                Data = etorrent_fs_process:read(Pid, Offset, Sz),
+                {value, Data, S}
+            catch
+                exit:{noproc, _} ->
+                    D = remove_file_process(Pid, S#state.file_process_dict),
+                    read(Id, Offset, Sz, S#state{file_process_dict = D})
+            end;
+        error ->
+            {ok, _Pid, NS} = create_file_process(Id, S),
+            read(Id, Offset, Sz, NS)
+    end.
+
 read_pieces_and_assemble(Ops, S) ->
     read_pieces_and_assemble(Ops, <<>>, S).
 
 read_pieces_and_assemble([], Done, S) -> {Done, S};
 read_pieces_and_assemble([{Id, Offset, Size} | Rest], SoFar, S) ->
-    %% 2 Notes: This can't be tail recursive due to catch-handler on stack.
-    %%          I've seen exit:{timeout, ...}. We should probably just warn
-    %%          And try again ;)
-    case dict:find(Id, S#state.file_process_dict) of
-        {ok, Pid} ->
-            try
-                Data = etorrent_fs_process:read(Pid, Offset, Size),
-                read_pieces_and_assemble(Rest, <<SoFar/binary, Data/binary>>, S)
-            catch
-                exit:{noproc, _} ->
-                    D = remove_file_process(Pid, S#state.file_process_dict),
-                    read_pieces_and_assemble([{Id, Offset, Size} | Rest],
-                                             SoFar,
-                                             S#state{file_process_dict = D})
-            end;
-        error ->
-            {ok, _Pid, NS} = create_file_process(Id, S),
-            read_pieces_and_assemble([{Id, Offset, Size} | Rest],
-                                     SoFar,
-                                     NS)
-    end.
-    
+    {value, Data, NS} = read(Id, Offset, Size, S),
+    read_pieces_and_assemble(Rest, <<SoFar/binary, Data/binary>>, NS).
+
 %%--------------------------------------------------------------------
 %% Func: fs_write(Data, Operations, State) -> {ok, State}
 %% Description: Write data defined by Operations. Returns new State

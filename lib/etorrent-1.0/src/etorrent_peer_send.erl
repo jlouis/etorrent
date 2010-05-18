@@ -45,7 +45,6 @@
                 timer = none,
                 rate_timer = none,
                 parent = none,
-                piece_cache = none,
                 torrent_id = none,
                 file_system_pid = none}).
 
@@ -164,10 +163,6 @@ handle_info(rate_update, S) ->
 handle_info(timeout, S = #state{ parent = {non_inited, P}}) ->
     {ok, RecvPid} = etorrent_peer_sup:get_pid(P, control),
     {noreply, S#state { parent = RecvPid }, 0};
-handle_info(timeout, S)
-  when S#state.choke =:= true andalso S#state.piece_cache =:= none ->
-    garbage_collect(),
-    {noreply, S};
 handle_info(timeout, S) when S#state.choke =:= true ->
     {noreply, S};
 handle_info(timeout, S) when S#state.choke =:= false ->
@@ -271,30 +266,12 @@ send_piece_message(Msg, S, Timeout) ->
 
 %% Send off a piece message
 send_piece(Index, Offset, Len, S) ->
-    case S#state.piece_cache of
-        {I, Binary} when I == Index ->
-            <<_Skip:Offset/binary, Data:Len/binary, _R/binary>> = Binary,
-            Msg = {piece, Index, Offset, Data},
-            %% Track uploaded size for torrent (for the tracker)
-            ok = etorrent_torrent:statechange(S#state.torrent_id,
-                                              {add_upload, Len}),
-            %% Track the amount uploaded to this peer.
-            send_piece_message(Msg, S, 0);
-        %% Update cache and try again...
-        {I, _Binary} when I /= Index ->
-            NS = load_piece(Index, S),
-            send_piece(Index, Offset, Len, NS);
-        none ->
-            NS = load_piece(Index, S),
-            send_piece(Index, Offset, Len, NS)
-    end.
-
-%% Read in a piece from the file system
-%% TODO: Only read in blocks rather than while pieces. Caching is the O/S's area
-%%  of expertise.
-load_piece(Index, S) ->
-    {ok, Piece} = etorrent_fs:read_piece(S#state.file_system_pid, Index),
-    S#state{piece_cache = {Index, Piece}}.
+    {ok, PieceData} =
+        etorrent_fs:read_chunk(S#state.file_system_pid, Index, Offset, Len),
+    Msg = {piece, Index, Offset, PieceData},
+    ok = etorrent_torrent:statechange(S#state.torrent_id,
+                                        {add_upload, Len}),
+    send_piece_message(Msg, S, 0).
 
 send_message(Msg, S) ->
     send_message(Msg, S, 0).
@@ -327,8 +304,7 @@ perform_choke(S) when S#state.choke == true ->
     {noreply, S, 0};
 perform_choke(S) ->
     local_choke(S),
-    send_message(choke, S#state{choke = true, requests = queue:new(),
-                                piece_cache = none}).
+    send_message(choke, S#state{choke = true, requests = queue:new() }).
 
 perform_fast_ext_choke(S) when S#state.choke == true ->
     {noreply, S, 0};
@@ -342,7 +318,7 @@ empty_requests(S) ->
     empty_requests(queue:out(S#state.requests), S).
 
 empty_requests({empty, Q}, S) ->
-    S#state { requests = Q , piece_cache = none};
+    S#state { requests = Q };
 empty_requests({{value, {Index, Offset, Len}}, Next}, S) ->
     {ok, NS} = send({reject_request, Index, Offset, Len}, S),
     empty_requests(queue:out(Next), NS).
