@@ -127,12 +127,12 @@ lookup_infohash(Socket, ReservedBytes, InfoHash, PeerId, S) ->
 start_peer(Socket, _ReservedBytes, PeerId, InfoHash, S) ->
     {ok, {Address, Port}} = inet:peername(Socket),
     case new_incoming_peer(Socket, Address, Port, InfoHash, PeerId, S) of
-        {ok, PeerProcessPid} ->
-            case gen_tcp:controlling_process(Socket, PeerProcessPid) of
-                ok -> etorrent_peer_control:complete_handshake(PeerProcessPid),
+        {ok, RPid, CPid} ->
+            case gen_tcp:controlling_process(Socket, RPid) of
+                ok -> etorrent_peer_control:complete_handshake(CPid),
                       ok;
                 {error, enotconn} ->
-                    etorrent_peer_control:stop(PeerProcessPid),
+                    etorrent_peer_control:stop(CPid),
                     ok
             end;
         already_enough_connections -> ok;

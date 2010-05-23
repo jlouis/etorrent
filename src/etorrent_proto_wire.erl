@@ -1,7 +1,7 @@
 -module(etorrent_proto_wire).
 
--export([incoming_packet/2, send_msg/2, decode_bitfield/2, encode_bitfield/2,
-        decode_msg/1,
+-export([incoming_packet/2, send_msg/3, decode_bitfield/2, encode_bitfield/2,
+        decode_msg/1, remaining_bytes/1,
         complete_handshake/3, receive_handshake/1, initiate_handshake/3]).
 
 -define(DEFAULT_HANDSHAKE_TIMEOUT, 120000).
@@ -31,11 +31,15 @@
 -define(REJECT_REQUEST, 16:8).
 -define(ALLOWED_FAST, 17:8).
 
+%% Tell how many bytes there are left on a continuation
+remaining_bytes(none) -> {val, 0};
+remaining_bytes({partial, _D}) when is_binary(_D) -> {val, 0};
+remaining_bytes({partial, {Left, _}}) when is_integer(Left) -> {val, Left}.
+
 %% incoming_packet(State | none, Packet) -> ok | {ok, Decoded, Rest}
 %%                     | {partial, ContinuationState}
 %% The incoming packet function will attempt to decode an incoming packet. It returns either
 %% the decoded packet, or it returns a partial continuation to continue packet reading
-
 incoming_packet(none, <<>>) -> ok;
 
 incoming_packet(none, <<0:32/big-integer, Rest/binary>>) ->
@@ -111,11 +115,15 @@ encode_msg(Message) ->
 
 %% Send a message on a socket. Returns a pair {R, Sz}, where R is the result of the send and
 %% Sz is the size of the sent datagram.
-send_msg(Socket, Msg) ->
+send_msg(Socket, Msg, Mode) ->
     Datagram = encode_msg(Msg),
     Sz = byte_size(Datagram),
-    {gen_tcp:send(Socket, <<Sz:32/big, Datagram/binary>>), Sz}.
-
+    case Mode of
+        slow ->
+            {gen_tcp:send(Socket, <<Sz:32/big, Datagram/binary>>), Sz};
+        fast ->
+            {gen_tcp:send(Socket, Datagram), Sz}
+    end.
 
 %% Handshakes
 receive_handshake(Socket) ->

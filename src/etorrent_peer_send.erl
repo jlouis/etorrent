@@ -23,6 +23,9 @@
 -export([start_link/5,
          check_choke/1,
 
+         go_fast/1,
+         go_slow/1,
+
          local_request/2, remote_request/4, cancel/4,
          choke/1, unchoke/1, have/2,
          not_interested/1, interested/1,
@@ -33,10 +36,14 @@
          handle_call/3, handle_cast/2]).
 -ignore_xref({start_link, 5}).
 
+-type( mode() :: 'fast' | 'slow').
+
 -record(state, {socket = none,
                 requests = none,
 
                 fast_extension = false,
+
+                mode = slow :: mode(),
 
                 controller = none,
                 rate = none,
@@ -122,6 +129,12 @@ have(Pid, PieceNumber) ->
 %% Send a bitfield message to the peer
 bitfield(Pid, BitField) ->
     gen_server:cast(Pid, {bitfield, BitField}).
+
+go_fast(Pid) ->
+    gen_server:cast(Pid, {go_fast, self()}).
+
+go_slow(Pid) ->
+    gen_server:cast(Pid, {go_slow, self()}).
 
 %%====================================================================
 %% gen_server callbacks
@@ -237,6 +250,12 @@ handle_cast({remote_request, Index, Offset, Len}, S)
             NQ = queue:in({Index, Offset, Len}, S#state.requests),
             {noreply, S#state{requests = NQ}, 0}
     end;
+handle_cast({go_fast, Pid}, S) ->
+    ok = etorrent_peer_recv:cb_go_fast(Pid),
+    {noreply, S#state { mode = fast }};
+handle_cast({go_slow, Pid}, S) ->
+    ok = etorrent_peer_recv:cb_go_slow(Pid),
+    {noreply, S#state { mode = slow }};
 handle_cast(_Msg, S) ->
     {noreply, S}.
 
@@ -252,7 +271,7 @@ terminate(_Reason, _S) ->
 %% socket for some reason, we should terminate the whole peer, not simply
 %% this process.
 send_piece_message(Msg, S, Timeout) ->
-    case etorrent_proto_wire:send_msg(S#state.socket, Msg) of
+    case etorrent_proto_wire:send_msg(S#state.socket, Msg, S#state.mode) of
         {ok, Sz} ->
             NR = etorrent_rate:update(S#state.rate, Sz),
             ok = etorrent_rate_mgr:send_rate(S#state.torrent_id,
@@ -285,7 +304,7 @@ send_message(Msg, S, Timeout) ->
     end.
 
 send(Msg, S) ->
-    case etorrent_proto_wire:send_msg(S#state.socket, Msg) of
+    case etorrent_proto_wire:send_msg(S#state.socket, Msg, S#state.mode) of
         {ok, Sz} ->
             NR = etorrent_rate:update(S#state.rate, Sz),
             ok = etorrent_rate_mgr:send_rate(

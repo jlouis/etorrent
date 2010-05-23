@@ -38,9 +38,9 @@ add_peer(GroupPid, LocalPeerId, InfoHash, FilesystemPid, Id,
                                                   FilesystemPid, Id,
                                                   {IP, Port}, Socket]) of
         {ok, Pid} ->
-                Children = supervisor:which_children(Pid),
-                {value, {_, Child, _, _}} = lists:keysearch(control, 1, Children),
-                {ok, Child};
+                {ok, RecvPid} = etorrent_peer_sup:get_pid(Pid, receiver),
+                {ok, ControlPid} = etorrent_peer_sup:get_pid(Pid, control),
+                {ok, RecvPid, ControlPid};
         {error, Reason} ->
             error_logger:error_report({add_peer_error, Reason}),
             {error, Reason}

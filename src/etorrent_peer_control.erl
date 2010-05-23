@@ -192,7 +192,8 @@ handle_cast(try_queue_pieces, S) ->
     {noreply, NS};
 handle_cast(stop, S) ->
     {stop, normal, S};
-handle_cast(_Msg, State) ->
+handle_cast(Msg, State) ->
+    error_logger:error_report([unknown_msg, Msg]),
     {noreply, State}.
 
 
@@ -202,7 +203,11 @@ handle_cast(_Msg, State) ->
 %%                                       {stop, Reason, State}
 %% Description: Handling all non call/cast messages
 %%--------------------------------------------------------------------
-handle_info(_Info, State) ->
+handle_info({tcp, _P, _Packet}, State) ->
+    error_logger:error_report([wrong_controller]),
+    {noreply, State};
+handle_info(Info, State) ->
+    error_logger:error_report([unknown_msg, Info]),
     {noreply, State}.
 
 %%--------------------------------------------------------------------
