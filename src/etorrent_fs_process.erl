@@ -60,6 +60,7 @@ stop(Pid) ->
 init([Id, TorrentId]) ->
     %% We'll clean up file descriptors gracefully on termination.
     process_flag(trap_exit, true),
+    etorrent_fs_janitor:new_fs_process(self()),
     #path_map { path = Path} = etorrent_path_map:select(Id, TorrentId),
     {ok, Workdir} = application:get_env(etorrent, dir),
     FullPath = filename:join([Workdir, Path]),
@@ -77,9 +78,11 @@ init([Id, TorrentId]) ->
 %% Description: Handling call messages
 %%--------------------------------------------------------------------
 handle_call({read, Offset, Size}, _From, State) ->
+    etorrent_fs_janitor:bump(self()),
     Data = read_request(Offset, Size, State),
     {reply, {ok, Data}, State, ?REQUEST_TIMEOUT};
 handle_call({write, Offset, Data}, _From, S) ->
+    etorrent_fs_janitor:bump(self()),
     ok = write_request(Offset, Data, S),
     {reply, ok, S, ?REQUEST_TIMEOUT}.
 
