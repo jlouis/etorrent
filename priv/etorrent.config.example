@@ -1,18 +1,49 @@
 [{etorrent,
-        [{port, 1729},
-         {dir, "/var/tmp/etorrent"},
-         {logger_dir, "/var/log/etorrent"},
-         {logger_fname, "etorrent.log"},
-         {fast_resume, "fast_resume.tab"},
+        [
+         % The port entry tells etorrent which port it should listen on. It can currently not
+         % be limited to listen on certain interfaces only. It will instead bind to every
+         % available interface present.
+         {port, 1729},
 
+         % The directory to watch for .torrent files and the directory to download data into
+         {dir, "/var/tmp/etorrent"},
+
+         % Location of the log file
+         {logger_dir, "/var/log/etorrent"},
+
+         % Name of the log file. Etorrent will stamp out simple messages here whenever progress
+         % is made in the system.
+         {logger_fname, "etorrent.log"},
+
+         % Location of the fast resume file. If present this file is used to populate the fast-
+         % resume table, so startup is much faster. Every 5 minutes the file is stamped out,
+         % so an eventual death of the system won't affect too much. It is also written upon
+         % graceful termination.
+         {fast_resume, "/var/spool/etorrent/fast_resume.tab"},
+
+         % Limit on the number of peers the system can maximally be connected to
          {max_peers, 400},
-         {max_upload_slots, auto},
+
+         % The upload rate of the system. Currently, we don't honour it at all.
          {max_upload_rate, 175},
+
+         % Number of upload slots. Either an integer or 'auto'. We recommend 'auto' as this
+         % will calculate a sane number of upload slots from the upload_rate. If this is set
+         % too low, you will not saturate the outbound bandwidth. If set too high, peers will
+         % not like the client as it can only give bad rates to all peers.
+         {max_upload_slots, auto},
+
+         % High and low watermarks for the file system processes. Etorrent will not open more
+         % on-disk files than the limit given here.
          {fs_watermark_high, 128},
          {fs_watermark_low, 100},
 
+         % Number of optimistic upload slots. If your line is really fast, consider increasing
+         % this a little bit.
          {min_uploads, 2}]},
+
  {mnesia,
+         % Location of the mnesia database tables. It is on a deprecation track.
         [{dir, "/var/tmp/etorrent_session"}]},
  {kernel,
         [{start_timer, true}]}
