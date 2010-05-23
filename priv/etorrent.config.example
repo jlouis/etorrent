@@ -1,20 +1,22 @@
 [{etorrent,
-	[{port, 1729},
-	 {dir, "/var/tmp/etorrent"},
-	 {logger_dir, "/var/log/etorrent"},
-	 {logger_fname, "etorrent.log"},
+        [{port, 1729},
+         {dir, "/var/tmp/etorrent"},
+         {logger_dir, "/var/log/etorrent"},
+         {logger_fname, "etorrent.log"},
          {fast_resume, "fast_resume.tab"},
 
-	 {max_peers, 400},
-	 {max_upload_slots, auto},
-	 {max_upload_rate, 175},
+         {max_peers, 400},
+         {max_upload_slots, auto},
+         {max_upload_rate, 175},
+         {fs_watermark_high, 128},
+         {fs_watermark_low, 100},
 
-	 {min_uploads, 2}]},
+         {min_uploads, 2}]},
  {mnesia,
         [{dir, "/var/tmp/etorrent_session"}]},
  {kernel,
-	[{start_timer, true}]}
+        [{start_timer, true}]}
 %  {sasl,
-% 	[{sasl_error_logger, {file, "err.log"}},
-% 	 {errlog_type, all}]}
+%       [{sasl_error_logger, {file, "err.log"}},
+%        {errlog_type, all}]}
 ].
