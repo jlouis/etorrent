@@ -183,7 +183,8 @@ handle_cast({have, PN}, S) ->
         true -> ok;
         false -> ok = etorrent_peer_send:have(S#state.send_pid, PN)
     end,
-    {noreply, S};
+    Pruned = gb_sets:delete_any(PN, S#state.piece_set),
+    {noreply, S#state { piece_set = Pruned }};
 handle_cast({endgame_got_chunk, Chunk}, S) ->
     NS = handle_endgame_got_chunk(Chunk, S),
     {noreply, NS};
@@ -290,13 +291,13 @@ handle_message({bitfield, BitField}, S) ->
         _N -> ok
     end,
     case etorrent_piece_mgr:check_interest(S#state.torrent_id, PieceSet) of
-        interested ->
-            {ok, statechange_interested(S#state {piece_set = PieceSet,
+        {interested, Pruned} ->
+            {ok, statechange_interested(S#state {piece_set = gb_sets:from_list(Pruned),
                                                  pieces_left = Left,
                                                  seeder = Left == 0},
                                         true)};
         not_interested ->
-            {ok, S#state{piece_set = PieceSet, pieces_left = Left,
+            {ok, S#state{piece_set = gb_sets:empty(), pieces_left = Left,
                          seeder = Left == 0}};
         invalid_piece ->
             {stop, {invalid_piece_2, S#state.remote_peer_id}, S}
@@ -512,17 +513,19 @@ peer_have(PN, S) ->
             Left = S#state.pieces_left - 1,
             case peer_seeds(S#state.torrent_id, Left) of
                 ok ->
-                    PieceSet = gb_sets:add_element(PN, S#state.piece_set),
-                    NS = S#state{piece_set = PieceSet,
-                                 pieces_left = Left,
-                                 seeder = Left == 0},
                     case etorrent_piece_mgr:interesting(S#state.torrent_id, PN) of
-                        true when S#state.local_interested =:= true ->
-                            try_to_queue_up_pieces(S);
-                        true when S#state.local_interested =:= false ->
-                            try_to_queue_up_pieces(statechange_interested(S, true));
+                        true ->
+                            PS = gb_sets:add_element(PN, S#state.piece_set),
+                            NS = S#state { piece_set = PS, pieces_left = Left, seeder = Left == 0},
+                            case S#state.local_interested of
+                                true ->
+                                    try_to_queue_up_pieces(NS);
+                                false ->
+                                    try_to_queue_up_pieces(statechange_interested(NS, true))
+                            end;
                         false ->
-                            {ok, NS}
+                            NSS = S#state { pieces_left = Left, seeder = Left == 0},
+                            {ok, NSS}
                     end;
                 stop -> {stop, S}
             end;

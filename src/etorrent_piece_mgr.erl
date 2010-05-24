@@ -102,7 +102,7 @@ num_not_fetched(Id) when is_integer(Id) ->
 %%--------------------------------------------------------------------
 check_interest(Id, PieceSet) when is_integer(Id) ->
     It = gb_sets:iterator(PieceSet),
-    find_interest_piece(Id, gb_sets:next(It)).
+    find_interest_piece(Id, gb_sets:next(It), []).
 
 %%--------------------------------------------------------------------
 %% Function: select(Id) -> [#piece]
@@ -244,17 +244,19 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 %%% Internal functions
 %%--------------------------------------------------------------------
-find_interest_piece(_Id, none) ->
+find_interest_piece(_Id, none, []) ->
     not_interested;
-find_interest_piece(Id, {Pn, Next}) ->
+find_interest_piece(_Id, none, Acc) ->
+    {interested, Acc};
+find_interest_piece(Id, {Pn, Next}, Acc) ->
     case ets:lookup(etorrent_piece_tbl, {Id, Pn}) of
         [] ->
             invalid_piece;
         [P] when is_record(P, piece) ->
             case P#piece.state of
                 fetched ->
-                    find_interest_piece(Id, gb_sets:next(Next));
+                    find_interest_piece(Id, gb_sets:next(Next), Acc);
                 _Other ->
-                    interested
+                    find_interest_piece(Id, gb_sets:next(Next), [Pn | Acc])
             end
     end.
