@@ -49,7 +49,7 @@
                  torrent_id = none}).
 
 -define(DEFAULT_CHUNK_SIZE, 16384). % Default size for a chunk. All clients use this.
--define(HIGH_WATERMARK, 15). % How many chunks to queue up to
+-define(HIGH_WATERMARK, 30). % How many chunks to queue up to
 -define(LOW_WATERMARK, 5).  % Requeue when there are less than this number of pieces in queue
 %%====================================================================
 %% API
