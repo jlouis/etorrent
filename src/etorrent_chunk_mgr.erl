@@ -15,7 +15,7 @@
 %% API
 -export([start_link/0, store_chunk/4, putback_chunks/1,
          putback_chunk/2, mark_fetched/2, pick_chunks/4,
-         check_piece/3, endgame_remove_chunk/3]).
+         endgame_remove_chunk/3]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -46,14 +46,10 @@ start_link() ->
 mark_fetched(Id, {Index, Offset, Len}) ->
     gen_server:call(?SERVER, {mark_fetched, Id, Index, Offset, Len}).
 
-%%--------------------------------------------------------------------
-%% Function: store_chunk(Id, PieceNum, {Offset, Len},
-%%                       Data, FSPid, PeerGroupPid, Pid) -> ok
-%% Description: Workhorse function. Store a chunk in the chunk table.
-%%    If we have all chunks we need, then report the piece is full.
-%%--------------------------------------------------------------------
-store_chunk(Id, Index, {Offset, Len}, Pid) ->
-    gen_server:call(?SERVER, {store_chunk, Id, Index, {Offset, Len}, Pid},
+%% Store the chunk in the chunk table. As a side-effect, check the piece if it
+%% is fully fetched.
+store_chunk(Id, Index, {Offset, Len}, FSPid) ->
+    gen_server:call(?SERVER, {store_chunk, Id, Index, {Offset, Len}, FSPid},
                    timer:seconds(?STORE_CHUNK_TIMEOUT)).
 
 %%--------------------------------------------------------------------
@@ -88,10 +84,6 @@ pick_chunks(_Pid, _Id, unknown, _N) ->
 pick_chunks(Pid, Id, Set, N) ->
     gen_server:call(?SERVER, {pick_chunks, Pid, Id, Set, N},
                     timer:seconds(?PICK_CHUNKS_TIMEOUT)).
-
-%% Check a piece for completion
-check_piece(FSPid, Id, Idx) ->
-    gen_server:cast(?SERVER, {check_piece, FSPid, Id, Idx}).
 
 %%====================================================================
 %% gen_server callbacks
@@ -142,18 +134,23 @@ handle_call({endgame_remove_chunk, Pid, Id, {Index, Offset, _Len}}, _From, S) ->
                      end
           end,
     {reply, Res, S};
-handle_call({store_chunk, Id, Index, {Offset, Len}, Pid}, _From, S) ->
+%% TODO: This can be async.
+handle_call({store_chunk, Id, Index, {Offset, Len}, FSPid}, {Pid, _Tag}, S) ->
     %% Add the newly fetched data to the fetched list
     Present = update_fetched(Id, Index, {Offset, Len}),
     %% Update chunk assignment
     update_chunk_assignment(Id, Index, Pid, {Offset, Len}),
     %% Countdown number of missing chunks
-    R = case Present of
-            fetched -> ok;
-            true    -> ok;
-            false   -> etorrent_piece_mgr:decrease_missing_chunks(Id, Index)
-        end,
-    {reply, R, S};
+    case Present of
+        fetched -> ok;
+        true    -> ok;
+        false   ->
+            case etorrent_piece_mgr:decrease_missing_chunks(Id, Index) of
+                full -> check_piece(FSPid, Id, Index);
+                X    -> X
+            end
+    end,
+    {reply, ok, S};
 handle_call({pick_chunks, Pid, Id, Set, Remaining}, _From, S) ->
     R = case pick_chunks(pick_chunked, {Pid, Id, Set, [], Remaining, none}) of
             not_interested -> pick_chunks_endgame(Id, Set, Remaining, not_interested);
@@ -214,15 +211,10 @@ handle_cast({putback_chunks, Pid}, S) ->
               ets:delete_object(etorrent_chunk_tbl, C)
       end),
     {noreply, S};
-handle_cast({check_piece, FSPid, Id, Idx}, S) ->
-    etorrent_fs:check_piece(FSPid, Idx),
-    MatchHead = #chunk { idt = {Id, Idx, '_'}, _ = '_'},
-    ets:select_delete(etorrent_chunk_tbl,
-                      [{MatchHead, [], [true]}]),
-    {noreply, S};
 handle_cast(Msg, State) ->
     error_logger:error_report([unknown_msg, Msg]),
     {noreply, State}.
+
 
 %%--------------------------------------------------------------------
 %% Function: handle_info(Info, State) -> {noreply, State} |
@@ -316,6 +308,12 @@ select_chunks_by_piecenum(Id, Index, N, Pid) ->
     Remaining = N - length(Return),
     {ok, {Index, Return}, Remaining}.
 
+%% Check the piece Idx on torrent Id for completion
+check_piece(FSPid, Id, Idx) ->
+    etorrent_fs:check_piece(FSPid, Idx),
+    MatchHead = #chunk { idt = {Id, Idx, '_'}, _ = '_'},
+    ets:select_delete(etorrent_chunk_tbl,
+                      [{MatchHead, [], [true]}]).
 
 %%--------------------------------------------------------------------
 %% Function: chunkify(Operations) ->

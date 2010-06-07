@@ -354,17 +354,10 @@ handle_got_chunk(Index, Offset, Data, Len, S) ->
         {value, Ops} ->
             ok = etorrent_fs:write_chunk(S#state.file_system_pid,
                                          {Index, Data, Ops}),
-            case etorrent_chunk_mgr:store_chunk(S#state.torrent_id,
+            ok = etorrent_chunk_mgr:store_chunk(S#state.torrent_id,
                                                 Index,
                                                 {Offset, Len},
-                                                self()) of
-                full ->
-                    etorrent_chunk_mgr:check_piece(S#state.file_system_pid,
-                                                   S#state.torrent_id,
-                                                   Index);
-                ok ->
-                    ok
-            end,
+                                                S#state.file_system_pid),
             %% Tell other peers we got the chunk if in endgame
             case S#state.endgame of
                 true ->
