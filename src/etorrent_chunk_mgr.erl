@@ -272,8 +272,7 @@ find_remaining_chunks(Id, PieceSet) ->
 %%
 %%--------------------------------------------------------------------
 chunkify_new_piece(Id, PieceSet) when is_integer(Id) ->
-    It = gb_sets:iterator(PieceSet),
-    case find_new_piece(Id, gb_sets:next(It)) of
+    case etorrent_piece_mgr:find_new(Id, PieceSet) of
         none -> none_eligible;
         P when is_record(P, piece) ->
             chunkify_piece(Id, P),
@@ -384,37 +383,20 @@ chunkify_piece(Id, P) when is_record(P, piece) ->
     ok.
 
 %%--------------------------------------------------------------------
-%% Function: find_new_piece(Id, Iterator) -> #piece | none
-%% Description: Search an iterator for a not_fetched piece. Return the #piece
-%%   record or none.
-%%--------------------------------------------------------------------
-find_new_piece(_Id, none) -> none;
-find_new_piece(Id, {PN, Next}) ->
-    case ets:lookup(etorrent_piece_tbl, {Id, PN}) of
-        [] ->
-            find_new_piece(Id, gb_sets:next(Next));
-        [P] when P#piece.state =:= not_fetched ->
-            P;
-        [_P] -> find_new_piece(Id, gb_sets:next(Next))
-    end.
-
-%%--------------------------------------------------------------------
 %% Function: find_chunked_chunks(Id, iterator_result()) -> none | PieceNum
 %% Description: Search an iterator for a chunked piece.
 %%--------------------------------------------------------------------
-find_chunked_chunks(_Id, none, Res) ->
-    Res;
+find_chunked_chunks(_Id, none, Res) -> Res;
 find_chunked_chunks(Id, {Pn, Next}, Res) ->
-    [P] = ets:lookup(etorrent_piece_tbl, {Id, Pn}),
-    case P#piece.state of
-        chunked ->
+    case etorrent_piece_mgr:is_chunked(Id, Pn) of
+        true ->
             case ets:lookup(etorrent_chunk_tbl, {Id, Pn, not_fetched}) of
                 [] ->
                     find_chunked_chunks(Id, gb_sets:next(Next), found_chunked);
                 _ ->
-                    P#piece.piece_number
+                    Pn
             end;
-        _Other ->
+        false ->
             find_chunked_chunks(Id, gb_sets:next(Next), Res)
     end.
 
