@@ -48,8 +48,8 @@ mark_fetched(Id, {Index, Offset, Len}) ->
 
 %% Store the chunk in the chunk table. As a side-effect, check the piece if it
 %% is fully fetched.
-store_chunk(Id, Index, {Offset, Len}, FSPid) ->
-    gen_server:call(?SERVER, {store_chunk, Id, Index, {Offset, Len}, FSPid},
+store_chunk(Id, {Index, D, Ops}, {Offset, Len}, FSPid) ->
+    gen_server:call(?SERVER, {store_chunk, Id, {Index, D, Ops}, {Offset, Len}, FSPid},
                    timer:seconds(?STORE_CHUNK_TIMEOUT)).
 
 %%--------------------------------------------------------------------
@@ -135,7 +135,9 @@ handle_call({endgame_remove_chunk, Pid, Id, {Index, Offset, _Len}}, _From, S) ->
           end,
     {reply, Res, S};
 %% TODO: This can be async.
-handle_call({store_chunk, Id, Index, {Offset, Len}, FSPid}, {Pid, _Tag}, S) ->
+handle_call({store_chunk, Id, {Index, Data, Ops},
+                    {Offset, Len}, FSPid}, {Pid, _Tag}, S) ->
+    ok = etorrent_fs:write_chunk(FSPid, {Index, Data, Ops}),
     %% Add the newly fetched data to the fetched list
     Present = update_fetched(Id, Index, {Offset, Len}),
     %% Update chunk assignment

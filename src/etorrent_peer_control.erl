@@ -352,10 +352,8 @@ handle_got_chunk(Index, Offset, Data, Len, S) ->
     case gb_trees:lookup({Index, Offset, Len},
                          S#state.remote_request_set) of
         {value, Ops} ->
-            ok = etorrent_fs:write_chunk(S#state.file_system_pid,
-                                         {Index, Data, Ops}),
             ok = etorrent_chunk_mgr:store_chunk(S#state.torrent_id,
-                                                Index,
+                                                {Index, Data, Ops},
                                                 {Offset, Len},
                                                 S#state.file_system_pid),
             %% Tell other peers we got the chunk if in endgame
