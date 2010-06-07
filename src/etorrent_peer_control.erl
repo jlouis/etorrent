@@ -359,7 +359,9 @@ handle_got_chunk(Index, Offset, Data, Len, S) ->
                                                 {Offset, Len},
                                                 self()) of
                 full ->
-                    etorrent_fs:check_piece(S#state.file_system_pid, Index);
+                    etorrent_chunk_mgr:check_piece(S#state.file_system_pid,
+                                                   S#state.torrent_id,
+                                                   Index);
                 ok ->
                     ok
             end,

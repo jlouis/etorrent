@@ -13,9 +13,9 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0, remove_chunks/2, store_chunk/4, putback_chunks/1,
+-export([start_link/0, store_chunk/4, putback_chunks/1,
          putback_chunk/2, mark_fetched/2, pick_chunks/4,
-         endgame_remove_chunk/3]).
+         check_piece/3, endgame_remove_chunk/3]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -67,15 +67,6 @@ putback_chunk(Pid, {Idx, Offset, Len}) ->
     gen_server:cast(?SERVER, {putback_chunk, Pid, {Idx, Offset, Len}}).
 
 %%--------------------------------------------------------------------
-%% Function: remove_chunks/2
-%% Args:  Id  ::= integer() - torrent id
-%%        Idx ::= integer() - Index of Piece
-%% Description: Oblitterate all chunks for Index in the torrent Id.
-%%--------------------------------------------------------------------
-remove_chunks(TorrentId, Index) ->
-    gen_server:cast(?SERVER, {remove_chunks, TorrentId, Index}).
-
-%%--------------------------------------------------------------------
 %% Function: endgame_remove_chunk/3
 %% Args:  Pid ::= pid()     - pid of caller
 %%        Id  ::= integer() - torrent id
@@ -97,6 +88,10 @@ pick_chunks(_Pid, _Id, unknown, _N) ->
 pick_chunks(Pid, Id, Set, N) ->
     gen_server:call(?SERVER, {pick_chunks, Pid, Id, Set, N},
                     timer:seconds(?PICK_CHUNKS_TIMEOUT)).
+
+%% Check a piece for completion
+check_piece(FSPid, Id, Idx) ->
+    gen_server:cast(?SERVER, {check_piece, FSPid, Id, Idx}).
 
 %%====================================================================
 %% gen_server callbacks
@@ -219,12 +214,14 @@ handle_cast({putback_chunks, Pid}, S) ->
               ets:delete_object(etorrent_chunk_tbl, C)
       end),
     {noreply, S};
-handle_cast({remove_chunks, Id, Idx}, S) ->
+handle_cast({check_piece, FSPid, Id, Idx}, S) ->
+    etorrent_fs:check_piece(FSPid, Idx),
     MatchHead = #chunk { idt = {Id, Idx, '_'}, _ = '_'},
     ets:select_delete(etorrent_chunk_tbl,
                       [{MatchHead, [], [true]}]),
     {noreply, S};
-handle_cast(_Msg, State) ->
+handle_cast(Msg, State) ->
+    error_logger:error_report([unknown_msg, Msg]),
     {noreply, State}.
 
 %%--------------------------------------------------------------------

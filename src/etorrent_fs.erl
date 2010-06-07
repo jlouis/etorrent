@@ -111,8 +111,6 @@ handle_cast({check_piece, Index}, S) ->
                    S#state.torrent_id,
                    Index,
                    fetched),
-            %% Make sure there is no chunks left for this piece.
-            ok = etorrent_chunk_mgr:remove_chunks(S#state.torrent_id, Index),
             etorrent_peer:broadcast_peers(S#state.torrent_id,
                     fun(P) -> 
                           etorrent_peer_control:have(P, Index)
@@ -123,7 +121,6 @@ handle_cast({check_piece, Index}, S) ->
                 etorrent_piece_mgr:statechange(S#state.torrent_id,
                                                Index,
                                                not_fetched),
-            etorrent_chunk_mgr:remove_chunks(S#state.torrent_id, Index),
             {noreply, NS}
     end;
 handle_cast(Msg, State) ->
