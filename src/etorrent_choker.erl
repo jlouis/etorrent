@@ -47,77 +47,17 @@
 %%====================================================================
 %% API
 %%====================================================================
+-spec start_link(pid()) -> {ok, pid()} | {error, any()} | ignore.
 start_link(OurPeerId) ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [OurPeerId], []).
 
+-spec perform_rechoke() -> ok.
 perform_rechoke() ->
     gen_server:cast(?SERVER, rechoke).
 
+-spec monitor(pid()) -> ok.
 monitor(Pid) ->
     gen_server:call(?SERVER, {monitor, Pid}).
-
-%%====================================================================
-%% gen_server callbacks
-%%====================================================================
-
-init([OurPeerId]) ->
-    {ok, Tref} = timer:send_interval(?ROUND_TIME, self(), round_tick),
-    {ok, #state{ our_peer_id = OurPeerId,
-                     timer_ref = Tref}}.
-
-handle_call({monitor, Pid}, _From, S) ->
-    _Tref = erlang:monitor(process, Pid),
-    NewChain = insert_new_peer_into_chain(Pid, S#state.opt_unchoke_chain),
-    perform_rechoke(),
-    {reply, ok, S#state { opt_unchoke_chain = NewChain }};
-handle_call(Request, _From, State) ->
-    error_logger:error_report([unknown_peer_group_call, Request]),
-    Reply = ok,
-    {reply, Reply, State}.
-handle_cast(rechoke, S) ->
-    rechoke(S),
-    {noreply, S};
-handle_cast(_Msg, State) ->
-    {noreply, State}.
-
-handle_info(round_tick, S) ->
-    case S#state.round of
-        0 ->
-            {ok, NS} = advance_optimistic_unchoke(S),
-            rechoke(NS),
-            {noreply, NS#state { round = 2}};
-        N when is_integer(N) ->
-            rechoke(S),
-            {noreply, S#state{round = S#state.round - 1}}
-    end;
-handle_info({'DOWN', _Ref, process, Pid, Reason}, S)
-  when (Reason =:= normal) or (Reason =:= shutdown) ->
-    % The peer shut down normally. Hence we just remove him and start up
-    %  other peers. Eventually the tracker will re-add him to the peer list
-
-    % XXX: We might have to do something else
-    rechoke(S),
-
-    NewChain = lists:delete(Pid, S#state.opt_unchoke_chain),
-    {noreply, S#state { opt_unchoke_chain = NewChain }};
-handle_info({'DOWN', _Ref, process, Pid, _Reason}, S) ->
-    % The peer shut down unexpectedly re-add him to the queue in the *back*
-    case etorrent_peer:select(Pid) of
-        [_Peer] -> ok = rechoke(S);
-             [] -> ok
-    end,
-
-    NewChain = lists:delete(Pid, S#state.opt_unchoke_chain),
-    {noreply, S#state{opt_unchoke_chain = NewChain}};
-handle_info(Info, State) ->
-    error_logger:error_report([unknown_info_peer_group, Info]),
-    {noreply, State}.
-
-terminate(_Reason, _S) ->
-    ok.
-
-code_change(_OldVsn, State, _Extra) ->
-    {ok, State}.
 
 %%--------------------------------------------------------------------
 %%% Internal functions
@@ -144,7 +84,7 @@ build_rechoke_info(_Seeding, []) ->
 build_rechoke_info(Seeding, [Pid | Next]) ->
     case etorrent_peer:find(Pid) of
         not_found -> build_rechoke_info(Seeding, Next);
-        {peer_info, Kind, Id} -> 
+        {peer_info, Kind, Id} ->
             %% Coalesce these two into one!
             {value, Snubbed} = etorrent_rate_mgr:snubbed(Id, Pid),
             {value, PeerState} = etorrent_rate_mgr:select_state(Id, Pid),
@@ -310,4 +250,67 @@ split_preferred_peers([P | Next], Downs, Leechs) ->
         false ->
             split_preferred_peers(Next, [P | Downs], Leechs)
     end.
+
+%%====================================================================
+%% gen_server callbacks
+%%====================================================================
+
+init([OurPeerId]) ->
+    {ok, Tref} = timer:send_interval(?ROUND_TIME, self(), round_tick),
+    {ok, #state{ our_peer_id = OurPeerId,
+                     timer_ref = Tref}}.
+
+handle_call({monitor, Pid}, _From, S) ->
+    _Tref = erlang:monitor(process, Pid),
+    NewChain = insert_new_peer_into_chain(Pid, S#state.opt_unchoke_chain),
+    perform_rechoke(),
+    {reply, ok, S#state { opt_unchoke_chain = NewChain }};
+handle_call(Request, _From, State) ->
+    error_logger:error_report([unknown_peer_group_call, Request]),
+    Reply = ok,
+    {reply, Reply, State}.
+handle_cast(rechoke, S) ->
+    rechoke(S),
+    {noreply, S};
+handle_cast(_Msg, State) ->
+    {noreply, State}.
+
+handle_info(round_tick, S) ->
+    case S#state.round of
+        0 ->
+            {ok, NS} = advance_optimistic_unchoke(S),
+            rechoke(NS),
+            {noreply, NS#state { round = 2}};
+        N when is_integer(N) ->
+            rechoke(S),
+            {noreply, S#state{round = S#state.round - 1}}
+    end;
+handle_info({'DOWN', _Ref, process, Pid, Reason}, S)
+  when (Reason =:= normal) or (Reason =:= shutdown) ->
+    % The peer shut down normally. Hence we just remove him and start up
+    %  other peers. Eventually the tracker will re-add him to the peer list
+
+    % XXX: We might have to do something else
+    rechoke(S),
+
+    NewChain = lists:delete(Pid, S#state.opt_unchoke_chain),
+    {noreply, S#state { opt_unchoke_chain = NewChain }};
+handle_info({'DOWN', _Ref, process, Pid, _Reason}, S) ->
+    % The peer shut down unexpectedly re-add him to the queue in the *back*
+    case etorrent_peer:select(Pid) of
+        [_Peer] -> ok = rechoke(S);
+             [] -> ok
+    end,
+
+    NewChain = lists:delete(Pid, S#state.opt_unchoke_chain),
+    {noreply, S#state{opt_unchoke_chain = NewChain}};
+handle_info(Info, State) ->
+    error_logger:error_report([unknown_info_peer_group, Info]),
+    {noreply, State}.
+
+terminate(_Reason, _S) ->
+    ok.
+
+code_change(_OldVsn, State, _Extra) ->
+    {ok, State}.
 
