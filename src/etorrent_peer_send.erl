@@ -14,7 +14,6 @@
 
 -behaviour(gen_server).
 
-%% API
 
 %% Apart from standard gen_server things, the main idea of this module is
 %% to serve as a mediator for the peer in the send direction. Precisely,
@@ -57,6 +56,7 @@
 
 -define(DEFAULT_KEEP_ALIVE_INTERVAL, 120*1000). % From proto. spec.
 -define(MAX_REQUESTS, 1024). % Maximal number of requests a peer may make.
+
 %%====================================================================
 %% API
 %%====================================================================
@@ -135,6 +135,99 @@ go_fast(Pid) ->
 
 go_slow(Pid) ->
     gen_server:cast(Pid, {go_slow, self()}).
+
+
+%%--------------------------------------------------------------------
+%%% Internal functions
+%%--------------------------------------------------------------------
+
+%% Send off a piece message. Handle eventual connection close gracefully.
+%% TODO: The {stop, normal, ...} is utterly wrong here. If we loose the
+%% socket for some reason, we should terminate the whole peer, not simply
+%% this process.
+send_piece_message(Msg, S, Timeout) ->
+    case etorrent_proto_wire:send_msg(S#state.socket, Msg, S#state.mode) of
+        {ok, Sz} ->
+            NR = etorrent_rate:update(S#state.rate, Sz),
+            ok = etorrent_rate_mgr:send_rate(S#state.torrent_id,
+                                             S#state.parent,
+                                             NR#peer_rate.rate,
+                                             Sz),
+            {noreply, S#state { rate = NR }, Timeout};
+        {{error, closed}, _Sz} ->
+            {stop, normal, S}
+    end.
+
+%% Send off a piece message
+send_piece(Index, Offset, Len, S) ->
+    {ok, PieceData} =
+        etorrent_fs:read_chunk(S#state.file_system_pid, Index, Offset, Len),
+    Msg = {piece, Index, Offset, PieceData},
+    ok = etorrent_torrent:statechange(S#state.torrent_id,
+                                        {add_upload, Len}),
+    send_piece_message(Msg, S, 0).
+
+send_message(Msg, S) ->
+    send_message(Msg, S, 0).
+
+%% TODO: Think about the stop messages here. They are definitely wrong.
+send_message(Msg, S, Timeout) ->
+    case send(Msg, S) of
+        {ok, NS} -> {noreply, NS, Timeout};
+        {error, closed, NS} -> {stop, normal, NS};
+        {error, ebadf, NS} -> {stop, normal, NS}
+    end.
+
+send(Msg, S) ->
+    case etorrent_proto_wire:send_msg(S#state.socket, Msg, S#state.mode) of
+        {ok, Sz} ->
+            NR = etorrent_rate:update(S#state.rate, Sz),
+            ok = etorrent_rate_mgr:send_rate(
+                   S#state.torrent_id,
+                   S#state.parent,
+                   NR#peer_rate.rate,
+                   Sz),
+            {ok, S#state { rate = NR}};
+        {{error, E}, _Amount} ->
+            {error, E, S}
+    end.
+
+perform_choke(S) when S#state.fast_extension == true ->
+    perform_fast_ext_choke(S);
+perform_choke(S) when S#state.choke == true ->
+    {noreply, S, 0};
+perform_choke(S) ->
+    local_choke(S),
+    send_message(choke, S#state{choke = true, requests = queue:new() }).
+
+perform_fast_ext_choke(S) when S#state.choke == true ->
+    {noreply, S, 0};
+perform_fast_ext_choke(S) ->
+     local_choke(S),
+     {ok, NS} = send(choke, S),
+     FS = empty_requests(NS),
+     {noreply, FS, 0}.
+
+empty_requests(S) ->
+    empty_requests(queue:out(S#state.requests), S).
+
+empty_requests({empty, Q}, S) ->
+    S#state { requests = Q };
+empty_requests({{value, {Index, Offset, Len}}, Next}, S) ->
+    {ok, NS} = send({reject_request, Index, Offset, Len}, S),
+    empty_requests(queue:out(Next), NS).
+
+local_choke(S) ->
+    etorrent_rate_mgr:local_choke(S#state.torrent_id,
+                                  S#state.parent).
+
+%% Unused callbacks
+handle_call(_Request, _From, State) ->
+    Reply = ok,
+    {reply, Reply, State}.
+
+code_change(_OldVsn, State, _Extra) ->
+    {ok, State}.
 
 %%====================================================================
 %% gen_server callbacks
@@ -261,95 +354,3 @@ handle_cast(_Msg, S) ->
 
 terminate(_Reason, _S) ->
     ok.
-
-%%--------------------------------------------------------------------
-%%% Internal functions
-%%--------------------------------------------------------------------
-
-%% Send off a piece message. Handle eventual connection close gracefully.
-%% TODO: The {stop, normal, ...} is utterly wrong here. If we loose the
-%% socket for some reason, we should terminate the whole peer, not simply
-%% this process.
-send_piece_message(Msg, S, Timeout) ->
-    case etorrent_proto_wire:send_msg(S#state.socket, Msg, S#state.mode) of
-        {ok, Sz} ->
-            NR = etorrent_rate:update(S#state.rate, Sz),
-            ok = etorrent_rate_mgr:send_rate(S#state.torrent_id,
-                                             S#state.parent,
-                                             NR#peer_rate.rate,
-                                             Sz),
-            {noreply, S#state { rate = NR }, Timeout};
-        {{error, closed}, _Sz} ->
-            {stop, normal, S}
-    end.
-
-%% Send off a piece message
-send_piece(Index, Offset, Len, S) ->
-    {ok, PieceData} =
-        etorrent_fs:read_chunk(S#state.file_system_pid, Index, Offset, Len),
-    Msg = {piece, Index, Offset, PieceData},
-    ok = etorrent_torrent:statechange(S#state.torrent_id,
-                                        {add_upload, Len}),
-    send_piece_message(Msg, S, 0).
-
-send_message(Msg, S) ->
-    send_message(Msg, S, 0).
-
-%% TODO: Think about the stop messages here. They are definitely wrong.
-send_message(Msg, S, Timeout) ->
-    case send(Msg, S) of
-        {ok, NS} -> {noreply, NS, Timeout};
-        {error, closed, NS} -> {stop, normal, NS};
-        {error, ebadf, NS} -> {stop, normal, NS}
-    end.
-
-send(Msg, S) ->
-    case etorrent_proto_wire:send_msg(S#state.socket, Msg, S#state.mode) of
-        {ok, Sz} ->
-            NR = etorrent_rate:update(S#state.rate, Sz),
-            ok = etorrent_rate_mgr:send_rate(
-                   S#state.torrent_id,
-                   S#state.parent,
-                   NR#peer_rate.rate,
-                   Sz),
-            {ok, S#state { rate = NR}};
-        {{error, E}, _Amount} ->
-            {error, E, S}
-    end.
-
-perform_choke(S) when S#state.fast_extension == true ->
-    perform_fast_ext_choke(S);
-perform_choke(S) when S#state.choke == true ->
-    {noreply, S, 0};
-perform_choke(S) ->
-    local_choke(S),
-    send_message(choke, S#state{choke = true, requests = queue:new() }).
-
-perform_fast_ext_choke(S) when S#state.choke == true ->
-    {noreply, S, 0};
-perform_fast_ext_choke(S) ->
-     local_choke(S),
-     {ok, NS} = send(choke, S),
-     FS = empty_requests(NS),
-     {noreply, FS, 0}.
-
-empty_requests(S) ->
-    empty_requests(queue:out(S#state.requests), S).
-
-empty_requests({empty, Q}, S) ->
-    S#state { requests = Q };
-empty_requests({{value, {Index, Offset, Len}}, Next}, S) ->
-    {ok, NS} = send({reject_request, Index, Offset, Len}, S),
-    empty_requests(queue:out(Next), NS).
-
-local_choke(S) ->
-    etorrent_rate_mgr:local_choke(S#state.torrent_id,
-                                  S#state.parent).
-
-%% Unused callbacks
-handle_call(_Request, _From, State) ->
-    Reply = ok,
-    {reply, Reply, State}.
-
-code_change(_OldVsn, State, _Extra) ->
-    {ok, State}.
