@@ -23,7 +23,7 @@
 
          recv_rate/5, recv_rate/4, send_rate/4,
 
-         snubbed/2,
+         get_state/2,
 
          fetch_recv_rate/2,
          fetch_send_rate/2,
@@ -62,21 +62,25 @@ not_interested(Id, Pid) -> gen_server:cast(?SERVER, {not_interested, Id, Pid}).
 local_choke(Id, Pid) -> gen_server:cast(?SERVER, {local_choke, Id, Pid}).
 local_unchoke(Id, Pid) -> gen_server:cast(?SERVER, {local_unchoke, Id, Pid}).
 
+-spec get_state(integer(), pid()) -> {value, boolean(), #peer_state{}}.
+get_state(Id, Who) ->
+    T = etorrent_rate:now_secs(),
+    P = case ets:lookup(etorrent_peer_state, {Id, Who}) of
+            [] -> #peer_state{}; % Pick defaults
+            [Ps] -> Ps
+        end,
+    Snubbed = case ets:lookup(etorrent_recv_state, {Id, Who}) of
+                [] -> false;
+                [#rate_mgr { last_got = unknown}] -> false;
+                [#rate_mgr { last_got = U}] -> T - U > ?DEFAULT_SNUB_TIME
+              end,
+    {value, Snubbed, P}.
+
 select_state(Id, Who) ->
     case ets:lookup(etorrent_peer_state, {Id, Who}) of
         [] -> {value, #peer_state { }}; % Pick defaults
         [P] -> {value, P}
     end.
-
--spec snubbed(integer(),pid()) -> {'value',boolean()}.
-snubbed(Id, Who) when is_integer(Id), is_pid(Who) ->
-    T = etorrent_rate:now_secs(),
-    case ets:lookup(etorrent_recv_state, {Id, Who}) of
-        [] -> {value, false};
-        [#rate_mgr { last_got = unknown }] -> {value, false};
-        [#rate_mgr { last_got = U}] -> {value, T - U > ?DEFAULT_SNUB_TIME}
-    end.
-
 
 fetch_recv_rate(Id, Pid) -> fetch_rate(etorrent_recv_state, Id, Pid).
 fetch_send_rate(Id, Pid) -> fetch_rate(etorrent_send_state, Id, Pid).

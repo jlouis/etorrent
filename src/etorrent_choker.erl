@@ -86,8 +86,7 @@ build_rechoke_info(Seeding, [Pid | Next]) ->
         not_found -> build_rechoke_info(Seeding, Next);
         {peer_info, Kind, Id} ->
             %% Coalesce these two into one!
-            {value, Snubbed} = etorrent_rate_mgr:snubbed(Id, Pid),
-            {value, PeerState} = etorrent_rate_mgr:select_state(Id, Pid),
+            {value, Snubbed, PeerState} = etorrent_rate_mgr:get_state(Id, Pid),
             case sets:is_element(Id, Seeding) of
                 true ->
                     case etorrent_rate_mgr:fetch_send_rate(Id, Pid) of
