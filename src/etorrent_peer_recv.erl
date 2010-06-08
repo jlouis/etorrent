@@ -152,11 +152,9 @@ handle_cast(Msg, S) ->
     next_msg(S).
 
 handle_call(go_fast, _From, S) ->
-    error_logger:info_report(going_fast),
     ok = inet:setopts(S#state.socket, [{active, true}, {packet, 4}, {packet_size, 256*1024}]),
     {reply, ok, S#state { mode = fast }};
 handle_call(go_slow, _From, S) ->
-    error_logger:info_report(going_slow),
     ok = inet:setopts(S#state.socket, [{active, false}]),
     {reply, ok, S#state { mode = slow }};
 handle_call(_Request, _From, S) ->
