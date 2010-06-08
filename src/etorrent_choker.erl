@@ -79,49 +79,41 @@ build_rechoke_info(Peers) ->
     SeederSet = sets:from_list(Seeding),
     build_rechoke_info(SeederSet, Peers).
 
+-spec lookup_info(set(), integer(), pid()) -> none | {seeding, float()}
+                                                   | {leeching, float()}.
+lookup_info(Seeding, Id, Pid) ->
+    case sets:is_element(Id, Seeding) of
+        true ->
+            case etorrent_rate_mgr:fetch_send_rate(Id, Pid) of
+                none -> none;
+                Rate -> {seeding, Rate}
+            end;
+        false ->
+            case etorrent_rate_mgr:fetch_recv_rate(Id, Pid) of
+                none -> none;
+                Rate -> {leeching, -Rate}
+            end
+    end.
+
 build_rechoke_info(_Seeding, []) ->
     [];
 build_rechoke_info(Seeding, [Pid | Next]) ->
     case etorrent_peer:find(Pid) of
         not_found -> build_rechoke_info(Seeding, Next);
         {peer_info, Kind, Id} ->
-            %% Coalesce these two into one!
             {value, Snubbed, PeerState} = etorrent_rate_mgr:get_state(Id, Pid),
-            case sets:is_element(Id, Seeding) of
-                true ->
-                    case etorrent_rate_mgr:fetch_send_rate(Id, Pid) of
-                        none -> build_rechoke_info(Seeding, Next);
-                        Rate ->
-                            [#rechoke_info { pid = Pid,
-                                             kind = Kind,
-                                             state = seeding,
-                                             rate = Rate,
-                                             r_interest_state =
-                                               PeerState#peer_state.interest_state,
-                                             r_choke_state =
-                                               PeerState#peer_state.choke_state,
-                                             l_choke =
-                                               PeerState#peer_state.local_choke,
-                                             snubbed = Snubbed } |
-                             build_rechoke_info(Seeding, Next)]
-                    end;
-                false ->
-                    case etorrent_rate_mgr:fetch_recv_rate(Id, Pid) of
-                        none -> build_rechoke_info(Seeding, Next);
-                        Rate ->
-                            [#rechoke_info { pid = Pid,
-                                             kind = Kind,
-                                             state = leeching,
-                                             rate = -Rate, % Inverted for later sorting!
-                                             r_interest_state =
-                                               PeerState#peer_state.interest_state,
-                                             r_choke_state =
-                                               PeerState#peer_state.choke_state,
-                                             l_choke =
-                                               PeerState#peer_state.local_choke,
-                                             snubbed = Snubbed } |
-                             build_rechoke_info(Seeding, Next)]
-                    end
+            case lookup_info(Seeding, Id, Pid) of
+                none -> build_rechoke_info(Seeding, Next);
+                {S, R} -> [#rechoke_info {
+                                    pid = Pid,
+                                    kind = Kind,
+                                    state = S,
+                                    rate = R,
+                                    r_interest_state = PeerState#peer_state.interest_state,
+                                    r_choke_state    = PeerState#peer_state.choke_state,
+                                    l_choke          = PeerState#peer_state.local_choke,
+                                    snubbed = Snubbed } |
+                            build_rechoke_info(Seeding, Next)]
             end
     end.
 
