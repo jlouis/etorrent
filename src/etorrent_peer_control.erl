@@ -131,7 +131,7 @@ init([LocalPeerId, InfoHash, FilesystemPid, Id, Parent, {IP, Port}, Socket]) ->
     process_flag(trap_exit, true),
     %% TODO: Update the leeching state to seeding when peer finished torrent.
     ok = etorrent_peer:new(IP, Port, Id, self(), leeching),
-    ok = etorrent_choker:monitor(self()), %% TODO: Perhaps call this :new ?
+    ok = etorrent_choker:monitor(self()),
     {value, NumPieces} = etorrent_torrent:num_pieces(Id),
     {ok, #state{
        socket = Socket,
