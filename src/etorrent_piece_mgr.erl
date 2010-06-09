@@ -14,7 +14,8 @@
 
 %% API
 -export([start_link/0, decrease_missing_chunks/2, statechange/3,
-         fetched/2, bitfield/1, select/1, select/2, valid/2, interesting/2,
+         is_chunked/2,
+         find_new/2, fetched/2, bitfield/1, select/1, select/2, valid/2, interesting/2,
          add_monitor/2, num_not_fetched/1, check_interest/2, add_pieces/2, chunk/3]).
 
 -export([fetched/1]).
@@ -140,6 +141,34 @@ interesting(Id, Pn) when is_integer(Id) ->
             false;
         _ ->
             true
+    end.
+
+%% Search an iterator for a not_fetched piece. Return the #piece
+%%   record or none.
+-spec find_new(integer(), gb_set()) -> none | #piece{}.
+
+find_new(Id, GBSet) ->
+    Iter = gb_sets:iterator(GBSet),
+    find_new_worker(Id, gb_sets:next(Iter)).
+
+find_new_worker(_Id, none) -> none;
+find_new_worker(Id, {PN, Nxt}) ->
+    case ets:lookup(etorrent_piece_tbl, {Id, PN}) of
+        [] ->
+            find_new_worker(Id, gb_sets:next(Nxt));
+        [P] when P#piece.state =:= not_fetched ->
+            P;
+        [_P] -> find_new_worker(Id, gb_sets:next(Nxt))
+    end.
+
+%% Returns true if the piece in question is chunked.
+-spec is_chunked(integer(), integer()) -> boolean().
+
+is_chunked(Id, Pn) ->
+    [P] = ets:lookup(etorrent_piece_tbl, {Id, Pn}),
+    case P#piece.state of
+        chunked -> true;
+        _       -> false
     end.
 
 %%====================================================================
