@@ -8,7 +8,8 @@
 -module(etorrent_allowed_fast).
 
 %% API
--export([allowed_fast/4, test1/0, test2/0]).
+-export([allowed_fast/4]).
+-export([test1/0, test2/0]).
 
 %%====================================================================
 %% API

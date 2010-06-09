@@ -9,9 +9,15 @@
 -module(etorrent_bcoding).
 -author("Jesper Louis Andersen <jesper.louis.andersen@gmail.com>").
 
-%% API
 -export([encode/1, decode/1, search_dict/2, search_dict_default/3,
         parse/1]).
+
+-type bstring() :: {'string', string()}.
+-type binteger() :: {'integer', integer()}.
+-type bcode() :: bstring()
+               | binteger()
+               | {'list', [bcode()]}
+               | {'dict', [{bstring(), bcode()}]}.
 
 %%====================================================================
 %% API
@@ -20,6 +26,7 @@
 %% Function: encode/1
 %% Description: Encode an erlang term into a String
 %%--------------------------------------------------------------------
+-spec encode(bcode()) -> string().
 encode(BString) ->
     case BString of
         {string, String} -> encode_string(String);
@@ -32,6 +39,7 @@ encode(BString) ->
 %% Function: decode/1
 %% Description: Decode a string to an erlang term.
 %%--------------------------------------------------------------------
+-spec decode(string()) -> bcode().
 decode(String) ->
     {Res, E} = decode_b(String),
     case E of
@@ -44,6 +52,8 @@ decode(String) ->
 %% Function: search_dict/1
 %% Description: Search the dict for a key. Returns the value or crashes.
 %%--------------------------------------------------------------------
+-type bdict() :: {'dict', [{bstring(), bcode()}]}.
+-spec search_dict(bstring(), bdict()) -> false | bcode().
 search_dict(Key, {dict, Elems}) ->
     case lists:keysearch(Key, 1, Elems) of
         {value, {_, V}} ->
@@ -52,6 +62,7 @@ search_dict(Key, {dict, Elems}) ->
             false
     end.
 
+-spec search_dict_default(bstring(), bdict(), any()) -> bcode() | any().
 search_dict_default(Key, Dict, Default) ->
     case search_dict(Key, Dict) of
         false ->
@@ -64,6 +75,7 @@ search_dict_default(Key, Dict, Default) ->
 %% Function: parse/1
 %% Description: Parse a file into a Torrent structure.
 %%--------------------------------------------------------------------
+-spec parse(string()) -> bcode().
 parse(File) ->
     {ok, IODev} = file:open(File, [read]),
     Data = read_data(IODev),
