@@ -32,12 +32,15 @@
 
 %% =======================================================================
 
+-spec start_link(integer(), any(), pid()) -> ignore | {ok, pid()} | {error, any()}.
 start_link(TorrentId, Socket, Parent) ->
     gen_server:start_link(?MODULE, [TorrentId, Socket, Parent], []).
 
+-spec cb_go_fast(pid()) -> ok.
 cb_go_fast(P) ->
     gen_server:call(P, go_fast).
 
+-spec cb_go_slow(pid()) -> ok.
 cb_go_slow(P) ->
     gen_server:call(P, go_slow).
 

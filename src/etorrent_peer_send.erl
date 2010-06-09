@@ -60,6 +60,8 @@
 %%====================================================================
 %% API
 %%====================================================================
+-spec start_link(port(), pid(), integer(), boolean(), pid()) ->
+    ignore | {ok, pid()} | {error, any()}.
 start_link(Socket, FilesystemPid, TorrentId, FastExtension, Parent) ->
     gen_server:start_link(?MODULE,
                           [Socket, FilesystemPid, TorrentId, FastExtension,
@@ -70,6 +72,7 @@ start_link(Socket, FilesystemPid, TorrentId, FastExtension, Parent) ->
 %% Description: The remote end (ie, the peer) requested a chunk
 %%  {Index, Offset, Len}
 %%--------------------------------------------------------------------
+-spec remote_request(pid(), integer(), integer(), integer()) -> ok.
 remote_request(Pid, Index, Offset, Len) ->
     gen_server:cast(Pid, {remote_request, Index, Offset, Len}).
 
@@ -77,6 +80,7 @@ remote_request(Pid, Index, Offset, Len) ->
 %% Func: local_request(Pid, Index, Offset, Len)
 %% Description: We request a piece from the peer: {Index, Offset, Len}
 %%--------------------------------------------------------------------
+-spec local_request(pid(), {integer(), integer(), integer()}) -> ok.
 local_request(Pid, {Index, Offset, Size}) ->
     gen_server:cast(Pid, {local_request, {Index, Offset, Size}}).
 
@@ -84,6 +88,7 @@ local_request(Pid, {Index, Offset, Size}) ->
 %% Func: cancel(Pid, Index, Offset, Len)
 %% Description: Cancel the {Index, Offset, Len} at the peer.
 %%--------------------------------------------------------------------
+-spec cancel(pid(), integer(), integer(), integer()) -> ok.
 cancel(Pid, Index, Offset, Len) ->
     gen_server:cast(Pid, {cancel, Index, Offset, Len}).
 
@@ -91,6 +96,7 @@ cancel(Pid, Index, Offset, Len) ->
 %% Func: choke(Pid)
 %% Description: Choke the peer.
 %%--------------------------------------------------------------------
+-spec choke(pid()) -> ok.
 choke(Pid) ->
     gen_server:cast(Pid, choke).
 
@@ -98,6 +104,7 @@ choke(Pid) ->
 %% Func: unchoke(Pid)
 %% Description: Unchoke the peer.
 %%--------------------------------------------------------------------
+-spec unchoke(pid()) -> ok.
 unchoke(Pid) ->
     gen_server:cast(Pid, unchoke).
 
@@ -105,6 +112,7 @@ unchoke(Pid) ->
 %% If it is true, we perform a rechoke request. It is probably the wrong
 %% place to issue the rechoke request. Rather, it would be better if a
 %% control process does this.
+-spec check_choke(pid()) -> ok.
 check_choke(Pid) ->
     gen_server:cast(Pid, check_choke).
 
@@ -112,10 +120,12 @@ check_choke(Pid) ->
 %% Func: not_interested(Pid)
 %% Description: Tell the peer we are not interested in him anymore
 %%--------------------------------------------------------------------
+-spec not_interested(pid()) -> ok.
 not_interested(Pid) ->
     gen_server:cast(Pid, not_interested).
 
 %% Tell the peer we are interested in him/her.
+-spec interested(pid()) -> ok.
 interested(Pid) ->
     gen_server:cast(Pid, interested).
 
@@ -123,16 +133,22 @@ interested(Pid) ->
 %% Func: have(Pid, PieceNumber)
 %% Description: Tell the peer we have the piece PieceNumber
 %%--------------------------------------------------------------------
+-spec have(pid(), integer()) -> ok.
 have(Pid, PieceNumber) ->
     gen_server:cast(Pid, {have, PieceNumber}).
 
 %% Send a bitfield message to the peer
+-spec bitfield(pid(), binary()) -> ok. %% This should be checked
 bitfield(Pid, BitField) ->
     gen_server:cast(Pid, {bitfield, BitField}).
 
+%% Request that we enable fast messaging (port is active and we get messages).
+-spec go_fast(pid()) -> ok.
 go_fast(Pid) ->
     gen_server:cast(Pid, {go_fast, self()}).
 
+%% Request that we enable slow messaging (manual handling of packets, port is passive)
+-spec go_slow(pid()) -> ok.
 go_slow(Pid) ->
     gen_server:cast(Pid, {go_slow, self()}).
 
