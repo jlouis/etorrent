@@ -150,16 +150,22 @@ init([LocalPeerId, InfoHash, FilesystemPid, Id, Parent, {IP, Port}, Socket]) ->
 %% TODO: This ought to be handled elsewhere. For now, it is ok to have here,
 %%  but it should be a temporary process which tries to make a connection and
 %%  sets the initial stuff up.
-handle_cast({initialize, incoming}, S) ->
-    case etorrent_proto_wire:complete_handshake(S#state.socket,
-                                                S#state.info_hash,
-                                                S#state.local_peer_id) of
-        ok -> complete_connection_setup(S#state { remote_peer_id = none_set,
-                                                  fast_extension = false});
-        {error, stop} -> {stop, normal, S}
+handle_cast({initialize, Way}, S) ->
+    case Way of
+        incoming ->
+            case etorrent_proto_wire:complete_handshake(
+                            S#state.socket,
+                            S#state.info_hash,
+                            S#state.local_peer_id) of
+                ok -> complete_connection_setup(
+                        S#state { remote_peer_id = none_set,
+                                  fast_extension = false});
+            {error, stop} -> {stop, normal, S}
+            end;
+        outgoing ->
+            {ok, NS} = complete_connection_setup(S),
+            {noreply, NS}
     end;
-handle_cast({initialize, outgoing}, S) ->
-    complete_connection_setup(S);
 handle_cast({incoming_msg, Msg}, S) ->
     case handle_message(Msg, S) of
         {ok, NS} -> {noreply, NS};
@@ -488,7 +494,7 @@ complete_connection_setup(S) ->
     {ok, SendPid} = etorrent_peer_sup:get_pid(S#state.parent, sender),
     BF = etorrent_piece_mgr:bitfield(S#state.torrent_id),
     etorrent_peer_send:bitfield(SendPid, BF),
-    {noreply, S#state{send_pid = SendPid}}.
+    {ok, S#state{send_pid = SendPid }}.
 
 statechange_interested(S = #state{ local_interested = true }, true) ->
     S;
