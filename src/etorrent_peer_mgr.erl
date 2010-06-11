@@ -214,7 +214,7 @@ spawn_peer(PeerId, TM, TorrentId, IP, Port) ->
                                   {IP, Port},
                                   Socket),
                               ok = gen_tcp:controlling_process(Socket, RecvPid),
-                              etorrent_peer_control:complete_conn_setup(ControlPid),
+                              etorrent_peer_control:initialize(ControlPid, outgoing),
                               ok;
                           {error, _Reason} ->
                               etorrent_counters:release_peer_slot(),

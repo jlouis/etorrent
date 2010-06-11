@@ -5,8 +5,8 @@
 -include("etorrent_rate.hrl").
 
 %% API
--export([start_link/7, choke/1, unchoke/1, have/2, complete_handshake/1,
-        incoming_msg/2, stop/1, complete_conn_setup/1]).
+-export([start_link/7, choke/1, unchoke/1, have/2, initialize/2,
+        incoming_msg/2, stop/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -100,13 +100,11 @@ have(Pid, PieceNumber) ->
 endgame_got_chunk(Pid, Chunk) ->
     gen_server:cast(Pid, {endgame_got_chunk, Chunk}).
 
-%% Complete the handshake initiated by another client.
-%% TODO: We ought to do this in another place.
-complete_handshake(Pid) ->
-    gen_server:cast(Pid, complete_handshake).
-
-complete_conn_setup(Pid) ->
-    gen_server:cast(Pid, complete_connection_setup).
+%% @doc Complete the handshake initiated by another client.
+-type direction() :: incoming | outgoing.
+-spec initialize(pid(), direction()) -> ok.
+initialize(Pid, Way) ->
+    gen_server:cast(Pid, {initialize, Way}).
 
 %% Request this this peer try queue up pieces.
 try_queue_pieces(Pid) ->
@@ -152,7 +150,7 @@ init([LocalPeerId, InfoHash, FilesystemPid, Id, Parent, {IP, Port}, Socket]) ->
 %% TODO: This ought to be handled elsewhere. For now, it is ok to have here,
 %%  but it should be a temporary process which tries to make a connection and
 %%  sets the initial stuff up.
-handle_cast(complete_handshake, S) ->
+handle_cast({initialize, incoming}, S) ->
     case etorrent_proto_wire:complete_handshake(S#state.socket,
                                                 S#state.info_hash,
                                                 S#state.local_peer_id) of
@@ -160,13 +158,13 @@ handle_cast(complete_handshake, S) ->
                                                   fast_extension = false});
         {error, stop} -> {stop, normal, S}
     end;
+handle_cast({initialize, outgoing}, S) ->
+    complete_connection_setup(S);
 handle_cast({incoming_msg, Msg}, S) ->
     case handle_message(Msg, S) of
         {ok, NS} -> {noreply, NS};
         {stop, NS} -> {stop, normal, NS}
     end;
-handle_cast(complete_connection_setup, S) ->
-    complete_connection_setup(S);
 handle_cast(choke, S) ->
     etorrent_peer_send:choke(S#state.send_pid),
     {noreply, S};

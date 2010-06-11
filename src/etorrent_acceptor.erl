@@ -129,7 +129,7 @@ start_peer(Socket, _ReservedBytes, PeerId, InfoHash, S) ->
     case new_incoming_peer(Socket, Address, Port, InfoHash, PeerId, S) of
         {ok, RPid, CPid} ->
             case gen_tcp:controlling_process(Socket, RPid) of
-                ok -> etorrent_peer_control:complete_handshake(CPid),
+                ok -> etorrent_peer_control:initialize(CPid, incoming),
                       ok;
                 {error, enotconn} ->
                     etorrent_peer_control:stop(CPid),
