@@ -42,6 +42,8 @@
 %% Function: start_link() -> {ok,Pid} | ignore | {error,Error}
 %% Description: Starts the server
 %%--------------------------------------------------------------------
+-spec start_link(pid(), string(), binary(), integer(), integer()) ->
+    ignore | {ok, pid()} | {error, any()}.
 start_link(ControlPid, Url, InfoHash, PeerId, TorrentId) ->
     gen_server:start_link(?MODULE,
                           [ControlPid,

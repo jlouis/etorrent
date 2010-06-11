@@ -27,15 +27,24 @@
 %% Function: start_link() -> {ok,Pid} | ignore | {error,Error}
 %% Description: Starts the server
 %%--------------------------------------------------------------------
+-spec start_link() -> ignore | {ok, pid()} | {error, any()}.
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
+%% @doc Obtain the next integer in the sequence Sequence
+-spec next(atom()) -> integer().
 next(Sequence) ->
     gen_server:call(?SERVER, {next, Sequence}).
 
+%% @doc Obtain a peer slot to work with.
+-spec obtain_peer_slot() -> ok | full.
 obtain_peer_slot() ->
     gen_server:call(?SERVER, obtain_peer_slot).
 
+%% @doc Release a peer slot again
+%% @todo This method for peer slot construction is definitely wrong
+%% we should go for monitors for releasing peer slots again.
+-spec release_peer_slot() -> ok.
 release_peer_slot() ->
     gen_server:cast(?SERVER, release_peer_slot).
 

@@ -35,10 +35,14 @@
 %% Function: start_link/0
 %% Description: Spawn and link a new file_system process
 %%--------------------------------------------------------------------
+-spec start_link(integer(), pid()) ->
+    ignore | {ok, pid()} | {error, any()}.
 start_link(IDHandle, SPid) ->
     gen_server:start_link(?MODULE, [IDHandle, SPid], []).
 
 %% Read a single chunk
+-spec read_chunk(pid(), integer(), integer(), integer()) ->
+    {ok, binary()}.
 read_chunk(Pid, Pn, Offset, Len) ->
     gen_server:call(Pid, {read_chunk, Pn, Offset, Len}).
 
@@ -46,6 +50,7 @@ read_chunk(Pid, Pn, Offset, Len) ->
 %% Function: read_piece(Pid, N) -> {ok, Binary}
 %% Description: Ask file_system process Pid to retrieve Piece N
 %%--------------------------------------------------------------------
+-spec read_piece(pid(), integer()) -> {ok, binary()}.
 read_piece(Pid, Pn) when is_integer(Pn) ->
     gen_server:call(Pid, {read_piece, Pn}).
 
@@ -54,10 +59,12 @@ read_piece(Pid, Pn) when is_integer(Pn) ->
 %% Description: Search the mnesia tables for the Piece with Index and
 %%   write it back to disk.
 %%--------------------------------------------------------------------
+-spec check_piece(pid(), integer()) -> ok.
 check_piece(Pid, Index) ->
     gen_server:cast(Pid, {check_piece, Index}).
 
-
+%% TODO: Spec ops.
+-spec write_chunk(pid(), {integer(), binary(), any()}) -> ok.
 write_chunk(Pid, {Index, Data, Ops}) ->
     gen_server:cast(Pid, {write_chunk, {Index, Data, Ops}}).
 
@@ -189,7 +196,7 @@ read(Id, Offset, Sz, S) ->
     case dict:find(Id, S#state.file_process_dict) of
         {ok, Pid} ->
             try
-                Data = etorrent_fs_process:read(Pid, Offset, Sz),
+                {ok, Data} = etorrent_fs_process:read(Pid, Offset, Sz),
                 {value, Data, S}
             catch
                 exit:{noproc, _} ->

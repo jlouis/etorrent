@@ -30,22 +30,27 @@
 % If no request has been received in this interval, close the server.
 -define(REQUEST_TIMEOUT, timer:seconds(60)).
 
-%%====================================================================
-%% API
-%%====================================================================
-%%--------------------------------------------------------------------
-%% Function: start_link() -> {ok,Pid} | ignore | {error,Error}
-%% Description: Starts the server
-%%--------------------------------------------------------------------
+%% ====================================================================
+%% @doc start a file-maintenance process of the file at Path. Id is the
+%% torrent Id it is running on.
+-spec start_link(string(), integer()) -> 'ignore' | {'ok', pid()} | {'error', any()}.
 start_link(Path, Id) ->
     gen_server:start_link(?MODULE, [Path, Id], []).
 
+%% @doc Read data the file maintained by Pid at Offset and Size bytes
+%% from that offset point. 
+-spec read(pid(), integer(), integer()) -> {ok, binary()}.
 read(Pid, OffSet, Size) ->
     gen_server:call(Pid, {read, OffSet, Size}).
 
+%% @doc Write Chunk to the file maintained by Pid at Offset. The Size
+%% field is currently ignored.
+-spec write(pid(), binary(), integer(), integer()) -> ok.
 write(Pid, Chunk, Offset, _Size) ->
     gen_server:call(Pid, {write, Offset, Chunk}).
 
+%% @doc stop the file maintained by Pid
+-spec stop(pid()) -> ok.
 stop(Pid) ->
     gen_server:cast(Pid, stop).
 
@@ -73,7 +78,7 @@ init([Id, TorrentId]) ->
 %%--------------------------------------------------------------------
 handle_call({read, Offset, Size}, _From, State) ->
     Data = read_request(Offset, Size, State),
-    {reply, Data, State, ?REQUEST_TIMEOUT};
+    {reply, {ok, Data}, State, ?REQUEST_TIMEOUT};
 handle_call({write, Offset, Data}, _From, S) ->
     ok = write_request(Offset, Data, S),
     {reply, ok, S, ?REQUEST_TIMEOUT}.
