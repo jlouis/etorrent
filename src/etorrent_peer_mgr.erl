@@ -160,41 +160,38 @@ start_new_peers(IPList, State) ->
     %%   on the unsorted list.
     PeerList = lists:usort(IPList ++ State#state.available_peers),
     PeerId   = State#state.our_peer_id,
-    Remaining = fill_peers(PeerId, PeerList),
+    {value, SlotsLeft} = etorrent_counters:slots_left(),
+    Remaining = fill_peers(SlotsLeft, PeerId, PeerList),
     State#state{available_peers = Remaining}.
 
-fill_peers(_PeerId, []) -> [];
-fill_peers(PeerId, [{TorrentId, {IP, Port}} | R]) ->
+fill_peers(0, _PeerId, Rem) -> Rem;
+fill_peers(_K, _PeerId, []) -> [];
+fill_peers(K, PeerId, [{TorrentId, {IP, Port}} | R]) ->
     case is_bad_peer(IP, Port) of
-       true -> fill_peers(PeerId, R);
-       false -> guard_spawn_peer(PeerId, TorrentId, IP, Port, R)
+       true -> fill_peers(K, PeerId, R);
+       false -> guard_spawn_peer(K, PeerId, TorrentId, IP, Port, R)
     end.
 
-guard_spawn_peer(PeerId, TorrentId, IP, Port, R) ->
+guard_spawn_peer(K, PeerId, TorrentId, IP, Port, R) ->
     case etorrent_peer:connected(IP, Port, TorrentId) of
         true ->
             % Already connected to the peer. This happens
             % when the peer connects back to us and the
             % tracker, which knows nothing about this,
             % still hands us the ip address.
-            fill_peers(PeerId, R);
+            fill_peers(K, PeerId, R);
         false ->
             case etorrent_tracking_map:select(TorrentId) of
                 {atomic, []} -> %% No such Torrent currently started, skip
-                    fill_peers(PeerId, R);
+                    fill_peers(K, PeerId, R);
                 {atomic, [TM]} ->
-                    try_spawn_peer(PeerId, TM, TorrentId, IP, Port, R)
+                    try_spawn_peer(K, PeerId, TM, TorrentId, IP, Port, R)
             end
     end.
 
-try_spawn_peer(PeerId, TM, TorrentId, IP, Port, R) ->
-    case etorrent_counters:slots_left() of
-        {value, 0} ->
-            [{TorrentId, {IP, Port}} | R];
-        {value, K} when is_integer(K) ->
-            spawn_peer(PeerId, TM, TorrentId, IP, Port),
-            fill_peers(PeerId, R)
-    end.
+try_spawn_peer(K, PeerId, TM, TorrentId, IP, Port, R) ->
+    spawn_peer(PeerId, TM, TorrentId, IP, Port),
+    fill_peers(K-1, PeerId, R).
 
 spawn_peer(PeerId, TM, TorrentId, IP, Port) ->
     spawn(fun () ->
