@@ -163,9 +163,9 @@ new_incoming_peer(Socket, IP, Port, InfoHash, _PeerId, S) ->
 
 
 start_new_incoming_peer(Socket, IP, Port, InfoHash, S) ->
-    case etorrent_counters:slots_full() of
-        true -> already_enough_connections;
-        false ->
+    case etorrent_counters:slots_left() of
+        {value, 0} -> already_enough_connections;
+        {value, K} when is_integer(K) ->
             {atomic, [T]} = etorrent_tracking_map:select({infohash, InfoHash}),
             etorrent_t_sup:add_peer(
                   T#tracking_map.supervisor_pid,

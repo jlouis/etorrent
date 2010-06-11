@@ -188,10 +188,10 @@ guard_spawn_peer(PeerId, TorrentId, IP, Port, R) ->
     end.
 
 try_spawn_peer(PeerId, TM, TorrentId, IP, Port, R) ->
-    case etorrent_counters:slots_full() of
-        true ->
+    case etorrent_counters:slots_left() of
+        {value, 0} ->
             [{TorrentId, {IP, Port}} | R];
-        false ->
+        {value, K} when is_integer(K) ->
             spawn_peer(PeerId, TM, TorrentId, IP, Port),
             fill_peers(PeerId, R)
     end.

@@ -10,7 +10,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0, next/1, obtain_peer_slot/0, slots_full/0]).
+-export([start_link/0, next/1, obtain_peer_slot/0, slots_left/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -41,9 +41,9 @@ next(Sequence) ->
 obtain_peer_slot() ->
     gen_server:call(?SERVER, obtain_peer_slot).
 
--spec slots_full() -> boolean().
-slots_full() ->
-    gen_server:call(?SERVER, slots_full).
+-spec slots_left() -> {value, integer()}.
+slots_left() ->
+    gen_server:call(?SERVER, slots_left).
 
 %%====================================================================
 %% gen_server callbacks
@@ -85,9 +85,9 @@ handle_call(obtain_peer_slot, {Pid, _Tag}, S) ->
             _N = ets:update_counter(etorrent_counters, peer_slots, 1),
             {reply, ok, S}
     end;
-handle_call(slots_full, _From, S) ->
+handle_call(slots_left, _From, S) ->
     [{peer_slots, K}] = ets:lookup(etorrent_counters, peer_slots),
-    {reply, K >= max_peer_processes(), S};
+    {reply, {value, max_peer_processes() - K}, S};
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -137,10 +137,11 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 %%% Internal functions
 %%--------------------------------------------------------------------
+-spec max_peer_processes() -> integer().
 max_peer_processes() ->
     case application:get_env(etorrent, max_peers) of
         {ok, N} when is_integer(N) ->
             N;
         undefined ->
-	    ?DEFAULT_MAX_PEER_PROCESSES
+            ?DEFAULT_MAX_PEER_PROCESSES
     end.
