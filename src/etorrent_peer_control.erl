@@ -151,20 +151,14 @@ init([LocalPeerId, InfoHash, FilesystemPid, Id, Parent, {IP, Port}, Socket]) ->
 %%  but it should be a temporary process which tries to make a connection and
 %%  sets the initial stuff up.
 handle_cast({initialize, Way}, S) ->
-    case Way of
-        incoming ->
-            case etorrent_proto_wire:complete_handshake(
-                            S#state.socket,
-                            S#state.info_hash,
-                            S#state.local_peer_id) of
-                ok -> complete_connection_setup(
-                        S#state { remote_peer_id = none_set,
-                                  fast_extension = false});
-            {error, stop} -> {stop, normal, S}
+    case etorrent_counters:obtain_peer_slot() of
+        ok ->
+            case connection_initialize(Way, S) of
+                {ok, NS} -> {noreply, NS};
+                {stop, Type} -> {stop, Type, S}
             end;
-        outgoing ->
-            {ok, NS} = complete_connection_setup(S),
-            {noreply, NS}
+        full ->
+            {stop, normal, S}
     end;
 handle_cast({incoming_msg, Msg}, S) ->
     case handle_message(Msg, S) of
@@ -223,7 +217,6 @@ handle_info(Info, State) ->
 %% The return value is ignored.
 %%--------------------------------------------------------------------
 terminate(_Reason, S) ->
-    etorrent_counters:release_peer_slot(),
     _NS = unqueue_all_pieces(S),
     gen_tcp:close(S#state.socket),
     ok.
@@ -483,6 +476,26 @@ queue_items([{Pn, Offset, Size, Ops} | Rest], SendPid, Tree) ->
          end,
     queue_items(Rest, SendPid, NT).
 
+
+% @doc Initialize the connection, depending on the way the connection is
+connection_initialize(Way, S) ->
+    case Way of
+        incoming ->
+            case etorrent_proto_wire:complete_handshake(
+                            S#state.socket,
+                            S#state.info_hash,
+                            S#state.local_peer_id) of
+                ok -> {ok, NS} = complete_connection_setup(
+                                    S#state { remote_peer_id = none_set,
+                                              fast_extension = false}),
+                      {ok, NS};
+                {error, stop} -> {stop, normal}
+            end;
+        outgoing ->
+            {ok, NS} = complete_connection_setup(S),
+            {ok, NS}
+    end.
+
 %%--------------------------------------------------------------------
 %% Function: complete_connection_setup() -> gen_server_reply()}
 %% Description: Do the bookkeeping needed to set up the peer:
@@ -551,3 +564,4 @@ handle_call(_Request, _From, State) ->
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
+

@@ -10,7 +10,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0, next/1, obtain_peer_slot/0, release_peer_slot/0]).
+-export([start_link/0, next/1, obtain_peer_slot/0, slots_full/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -41,12 +41,9 @@ next(Sequence) ->
 obtain_peer_slot() ->
     gen_server:call(?SERVER, obtain_peer_slot).
 
-%% @doc Release a peer slot again
-%% @todo This method for peer slot construction is definitely wrong
-%% we should go for monitors for releasing peer slots again.
--spec release_peer_slot() -> ok.
-release_peer_slot() ->
-    gen_server:cast(?SERVER, release_peer_slot).
+-spec slots_full() -> boolean().
+slots_full() ->
+    gen_server:call(?SERVER, slots_full).
 
 %%====================================================================
 %% gen_server callbacks
@@ -78,15 +75,19 @@ init([]) ->
 handle_call({next, Seq}, _From, S) ->
     N = ets:update_counter(etorrent_counters, Seq, 1),
     {reply, N, S};
-handle_call(obtain_peer_slot, _From, S) ->
+handle_call(obtain_peer_slot, {Pid, _Tag}, S) ->
     [{peer_slots, K}] = ets:lookup(etorrent_counters, peer_slots),
     case K >= max_peer_processes() of
         true ->
             {reply, full, S};
         false ->
+            _Ref = erlang:monitor(process, Pid),
             _N = ets:update_counter(etorrent_counters, peer_slots, 1),
             {reply, ok, S}
     end;
+handle_call(slots_full, _From, S) ->
+    [{peer_slots, K}] = ets:lookup(etorrent_counters, peer_slots),
+    {reply, K >= max_peer_processes(), S};
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -97,13 +98,6 @@ handle_call(_Request, _From, State) ->
 %%                                      {stop, Reason, State}
 %% Description: Handling cast messages
 %%--------------------------------------------------------------------
-handle_cast(release_peer_slot, S) ->
-    K = ets:update_counter(etorrent_counters, peer_slots, {2, -1, 0, 0}),
-    if
-        K >= 0 -> ok;
-        true -> error_logger:error_report([counter_negative, K])
-    end,
-    {noreply, S};
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
@@ -113,6 +107,13 @@ handle_cast(_Msg, State) ->
 %%                                       {stop, Reason, State}
 %% Description: Handling all non call/cast messages
 %%--------------------------------------------------------------------
+handle_info({'DOWN', _Ref, process, _Pid, _Reason}, S) ->
+    K = ets:update_counter(etorrent_counters, peer_slots, {2, -1, 0, 0}),
+    if
+        K >= 0 -> ok;
+        true -> error_logger:error_report([counter_negative, K])
+    end,
+    {noreply, S};
 handle_info(_Info, State) ->
     {noreply, State}.
 

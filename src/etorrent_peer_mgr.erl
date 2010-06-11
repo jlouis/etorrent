@@ -188,11 +188,12 @@ guard_spawn_peer(PeerId, TorrentId, IP, Port, R) ->
     end.
 
 try_spawn_peer(PeerId, TM, TorrentId, IP, Port, R) ->
-    case etorrent_counters:obtain_peer_slot() of
-        ok ->
+    case etorrent_counters:slots_full() of
+        true ->
+            [{TorrentId, {IP, Port}} | R];
+        false ->
             spawn_peer(PeerId, TM, TorrentId, IP, Port),
-            fill_peers(PeerId, R);
-        full -> [{TorrentId, {IP, Port}} | R]
+            fill_peers(PeerId, R)
     end.
 
 spawn_peer(PeerId, TM, TorrentId, IP, Port) ->
@@ -217,11 +218,9 @@ spawn_peer(PeerId, TM, TorrentId, IP, Port) ->
                               etorrent_peer_control:initialize(ControlPid, outgoing),
                               ok;
                           {error, _Reason} ->
-                              etorrent_counters:release_peer_slot(),
                               ok
                       end;
                   {error, _Reason} ->
-                      etorrent_counters:release_peer_slot(),
                       ok
                 end
         end).

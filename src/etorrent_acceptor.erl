@@ -163,19 +163,16 @@ new_incoming_peer(Socket, IP, Port, InfoHash, _PeerId, S) ->
 
 
 start_new_incoming_peer(Socket, IP, Port, InfoHash, S) ->
-    case etorrent_counters:obtain_peer_slot() of
-        full -> already_enough_connections;
-        ok ->
+    case etorrent_counters:slots_full() of
+        true -> already_enough_connections;
+        false ->
             {atomic, [T]} = etorrent_tracking_map:select({infohash, InfoHash}),
-            try etorrent_t_sup:add_peer(
+            etorrent_t_sup:add_peer(
                   T#tracking_map.supervisor_pid,
                   S#state.our_peer_id,
                   InfoHash,
                   T#tracking_map.id,
                   {IP, Port},
                   Socket)
-            catch
-                _ -> etorrent_counters:release_peer_slot()
-            end
     end.
 
