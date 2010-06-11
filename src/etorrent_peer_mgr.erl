@@ -27,7 +27,7 @@
 -define(SERVER, ?MODULE).
 -define(DEFAULT_BAD_COUNT, 2).
 -define(GRACE_TIME, 900).
--define(CHECK_TIME, timer:seconds(300)).
+-define(CHECK_TIME, timer:seconds(120)).
 -define(DEFAULT_CONNECT_TIMEOUT, 30 * 1000).
 
 %%====================================================================
@@ -123,6 +123,7 @@ handle_info(cleanup_table, S) ->
                            [{#bad_peer { last_offense = '$1', _='_'},
                              [{'<','$1',{Bound}}],
                              [true]}]),
+    gen_server:cast(?SERVER, {add_peers, []}),
     {noreply, S};
 handle_info(_Info, State) ->
     {noreply, State}.
