@@ -21,13 +21,9 @@
 -record(state, { listen_socket = none,
                  our_peer_id}).
 
-%%====================================================================
-%% API
-%%====================================================================
-%%--------------------------------------------------------------------
-%% Function: start_link(OurPeerId) -> {ok,Pid} | ignore | {error,Error}
-%% Description: Starts the server.
-%%--------------------------------------------------------------------
+%% @doc Starts the server.
+%% @end
+-spec start_link(pid()) -> {ok, pid()} | ignore | {error, term()}.
 start_link(OurPeerId) ->
     gen_server:start_link(?MODULE, [OurPeerId], []).
 
