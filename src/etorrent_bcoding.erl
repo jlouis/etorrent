@@ -62,7 +62,7 @@ search_dict(Key, {dict, Elems}) ->
             false
     end.
 
--spec search_dict_default(bstring(), bdict(), any()) -> bcode() | any().
+-spec search_dict_default(bstring(), bdict(), X) -> bcode() | X.
 search_dict_default(Key, Dict, Default) ->
     case search_dict(Key, Dict) of
         false ->

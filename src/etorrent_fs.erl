@@ -11,6 +11,7 @@
 
 -include("etorrent_piece.hrl").
 -include("etorrent_mnesia_table.hrl").
+-include("types.hrl").
 
 -behaviour(gen_server).
 
@@ -59,7 +60,7 @@ check_piece(Pid, Index) ->
 %% @doc writes a chunk, {Index, Data, Ops} back to disk. Pid is the FS Pid
 %%   which should carry out the writing operation.
 %% @end
--spec write_chunk(pid(), {integer(), binary(), any()}) -> ok.
+-spec write_chunk(pid(), {integer(), binary(), [operation()]}) -> ok.
 write_chunk(Pid, {Index, Data, Ops}) ->
     gen_server:cast(Pid, {write_chunk, {Index, Data, Ops}}).
 
@@ -190,11 +191,10 @@ read_pieces_and_assemble([{Id, Offset, Size} | Rest], SoFar, S) ->
     {value, Data, NS} = read(Id, Offset, Size, S),
     read_pieces_and_assemble(Rest, <<SoFar/binary, Data/binary>>, NS).
 
-%%--------------------------------------------------------------------
-%% Func: fs_write(Data, Operations, State) -> {ok, State}
-%% Description: Write data defined by Operations. Returns new State
+%% @doc Write data defined by Operations. Returns new State
 %%   maintaining the file_process_dict.
-%%--------------------------------------------------------------------
+%% @end
+-spec fs_write(binary(), [operation()], #state{}) -> #state{}.
 fs_write(<<>>, [], S) -> S;
 fs_write(Data, [{Id, Offset, Size} | Rest], S) ->
     <<Chunk:Size/binary, Remaining/binary>> = Data,

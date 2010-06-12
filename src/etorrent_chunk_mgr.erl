@@ -9,6 +9,7 @@
 
 -include("etorrent_piece.hrl").
 -include("etorrent_chunk.hrl").
+-include("types.hrl").
 
 -behaviour(gen_server).
 
@@ -249,10 +250,10 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%--------------------------------------------------------------------
 
-%%--------------------------------------------------------------------
-%% Function: find_remaining_chunks(Id, PieceSet) -> [Chunk]
-%% Description: Find all remaining chunks for a torrent matching PieceSet
-%%--------------------------------------------------------------------
+%% @doc Find all remaining chunks for a torrent matching PieceSet
+%% @end
+-spec find_remaining_chunks(integer(), set()) ->
+    [{integer(), integer(), integer(), [operation()]}].
 find_remaining_chunks(Id, PieceSet) ->
     %% Note that the chunk table is often very small.
     MatchHeadAssign = #chunk { idt = {Id, '$1', {assigned, '_'}}, chunks = '$2'},
@@ -264,13 +265,14 @@ find_remaining_chunks(Id, PieceSet) ->
     [{PN, Os, Sz, Ops} || {PN, Chunks} <- Eligible,
                           {Os, Sz, Ops} <- Chunks].
 
-%%--------------------------------------------------------------------
-%% Function: chunkify_new_piece(Id, PieceSet) -> ok | none_eligible
-%% Description: Find a piece in the PieceSet which has not been chunked
+%% @doc Chunkify a new piece.
+%%
+%%  Find a piece in the PieceSet which has not been chunked
 %%  yet and chunk it. Returns either ok if a piece was chunked or none_eligible
 %%  if we can't find anything to chunk up in the PieceSet.
 %%
-%%--------------------------------------------------------------------
+%% @end
+-spec chunkify_new_piece(integer(), gb_set()) -> ok | none_eligible.
 chunkify_new_piece(Id, PieceSet) when is_integer(Id) ->
     case etorrent_piece_mgr:find_new(Id, PieceSet) of
         none -> none_eligible;
@@ -316,14 +318,13 @@ check_piece(FSPid, Id, Idx) ->
     ets:select_delete(etorrent_chunk_tbl,
                       [{MatchHead, [], [true]}]).
 
-%%--------------------------------------------------------------------
-%% Function: chunkify(Operations) ->
-%%  [{Offset, Size, FileOperations}]
-%% Description: From a list of operations to read/write a piece, construct
+%% @doc Break a piece into logical chunks
+%%
+%%   From a list of operations to read/write a piece, construct
 %%   a list of chunks given by Offset of the chunk, Size of the chunk and
 %%   how to read/write that chunk.
-%%--------------------------------------------------------------------
-
+%% @end
+-spec chunkify([operation()]) -> [{integer(), integer(), [operation()]}].
 %% First, we call the version of the function doing the grunt work.
 chunkify(Operations) ->
     chunkify(0, 0, [], Operations, ?DEFAULT_CHUNK_SIZE).
@@ -365,11 +366,11 @@ chunkify(AtOffset, EatenBytes, Operations,
              Rest,
              Left - Size).
 
-%%--------------------------------------------------------------------
-%% Function: chunkify_piece(Id, PieceNum) -> ok
-%% Description: Given a PieceNumber, cut it up into chunks and add those
+%% @doc Add a chunked piece to the chunk table
+%%   Given a PieceNumber, cut it up into chunks and add those
 %%   to the chunk table.
-%%--------------------------------------------------------------------
+%% @end
+-spec chunkify_piece(integer(), #piece{}) -> ok.
 chunkify_piece(Id, P) when is_record(P, piece) ->
     Chunks = chunkify(P#piece.files),
     NumChunks = length(Chunks),
