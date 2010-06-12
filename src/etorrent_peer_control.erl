@@ -3,6 +3,7 @@
 -behaviour(gen_server).
 
 -include("etorrent_rate.hrl").
+-include("types.hrl").
 
 %% API
 -export([start_link/7, choke/1, unchoke/1, have/2, complete_handshake/1,
@@ -435,22 +436,16 @@ try_to_queue_up_pieces(S) ->
             end
     end.
 
-%%--------------------------------------------------------------------
-%% Function: queue_items/2
-%% Args:     ChunkList ::= [CompactChunk | ExplicitChunk]
-%%           S         ::= #state
-%%           CompactChunk ::= {PieceNumber, ChunkList}
-%%           ExplicitChunk ::= {PieceNumber, Offset, Size, Ops}
-%%           ChunkList ::= [{Offset, Size, Ops}]
-%%           PieceNumber, Offset, Size ::= integer()
-%%           Ops ::= file_operations - described elsewhere.
-%% Description: Send chunk messages for each chunk we decided to queue.
+%% @doc Send chunk messages for each chunk we decided to queue.
 %%   also add these chunks to the piece request set.
-%%--------------------------------------------------------------------
+%% @end
+-type chunk() :: {integer(), integer(), [operation()]}.
+-spec queue_items([chunk()], #state{}) -> {ok, #state{}}.
 queue_items(ChunkList, S) ->
     RSet = queue_items(ChunkList, S#state.send_pid, S#state.remote_request_set),
     {ok, S#state { remote_request_set = RSet }}.
 
+-spec queue_items([{integer(), [chunk()]}], pid(), gb_tree()) -> gb_tree().
 queue_items([], _SendPid, Tree) -> Tree;
 queue_items([{Pn, Chunks} | Rest], SendPid, Tree) ->
     NT = lists:foldl(
