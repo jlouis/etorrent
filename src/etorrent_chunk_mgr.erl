@@ -16,7 +16,7 @@
 %% @todo: What pid is the chunk recording pid? Control or SendPid?
 %% API
 -export([start_link/0, store_chunk/4, putback_chunks/1,
-         putback_chunk/2, mark_fetched/2, pick_chunks/3,
+         putback_chunks/2, mark_fetched/2, pick_chunks/3,
          endgame_remove_chunk/3]).
 
 %% gen_server callbacks
@@ -65,8 +65,8 @@ store_chunk(Id, {Index, D, Ops}, {Offset, Len}, FSPid) ->
 putback_chunks(Pid) ->
     gen_server:cast(?SERVER, {putback_chunks, Pid}).
 
--spec putback_chunk(pid(), {integer(), integer(), integer()}) -> ok.
-putback_chunk(Pid, {Idx, Offset, Len}) ->
+-spec putback_chunks(pid(), {integer(), integer(), integer()}) -> ok.
+putback_chunks(Pid, {Idx, Offset, Len}) ->
     gen_server:cast(?SERVER, {putback_chunk, Pid, {Idx, Offset, Len}}).
 
 %%--------------------------------------------------------------------

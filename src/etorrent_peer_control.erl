@@ -391,7 +391,7 @@ unqueue_piece({Idx, Offset, Len}, S) ->
             {stop, normal, S};
         true ->
             ReqSet = gb_sets:delete({Idx, Offset, Len}, S#state.remote_request_set),
-            ok = etorrent_chunk_mgr:putback_chunk(self(), {Idx, Offset, Len}),
+            ok = etorrent_chunk_mgr:putback_chunks(self(), {Idx, Offset, Len}),
             etorrent_peer:broadcast_peers(S#state.torrent_id,
                 fun(P) -> try_queue_pieces(P) end),
             {noreply, S#state { remote_request_set = ReqSet }}
