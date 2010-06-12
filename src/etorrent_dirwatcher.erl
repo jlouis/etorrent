@@ -23,46 +23,18 @@
 -define(SERVER, ?MODULE).
 
 %%====================================================================
-%% API
-%%====================================================================
-%%--------------------------------------------------------------------
-%% Function: start_link() -> {ok,Pid} | ignore | {error,Error}
-%% Description: Starts the server
-%%--------------------------------------------------------------------
+
+%% @doc Starts the dirwatcher process
+%% @end
+-spec start_link() -> {ok, pid()} | ignore | {error, term()}.
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
+
 %%====================================================================
-%% gen_server callbacks
-%%====================================================================
-init([]) ->
-    {ok, Dir} = application:get_env(etorrent, dir),
-    _Tid = ets:new(etorrent_dirwatcher, [named_table, private]),
-    {ok, #state{dir = Dir}, 0}.
 
-handle_call(_Request, _From, State) ->
-    Reply = ok,
-    {reply, Reply, State, ?WATCH_WAIT_TIME}.
-
-handle_cast(_Request, S) ->
-    {noreply, S, ?WATCH_WAIT_TIME}.
-
-handle_info(timeout, S) ->
-    watch_directories(S),
-    {noreply, S, ?WATCH_WAIT_TIME};
-handle_info(_Info, State) ->
-    {noreply, State, ?WATCH_WAIT_TIME}.
-
-terminate(_Reason, _State) ->
-    ok.
-
-code_change(_OldVsn, State, _Extra) ->
-    {ok, State}.
-
-%%--------------------------------------------------------------------
-%%% Internal functions
-%%--------------------------------------------------------------------
-
+%% @doc Watch directories for changes
+%%
 %% Watch directories will look through the directory we are watching
 %%  and will start and stop torrents according to what is inside the
 %%  directory.
@@ -73,6 +45,7 @@ code_change(_OldVsn, State, _Extra) ->
 %%
 %% Finally, a Sweep is used to start and stop torrents according to
 %% their markings.
+%% @end
 watch_directories(S) ->
     reset_marks(ets:first(etorrent_dirwatcher)),
     lists:foreach(fun mark/1,
@@ -104,3 +77,28 @@ sweep(Key) ->
                     ets:delete(etorrent_dirwatcher, Key)
     end,
     sweep(Next).
+
+%%====================================================================
+init([]) ->
+    {ok, Dir} = application:get_env(etorrent, dir),
+    _Tid = ets:new(etorrent_dirwatcher, [named_table, private]),
+    {ok, #state{dir = Dir}, 0}.
+
+handle_call(_Request, _From, State) ->
+    Reply = ok,
+    {reply, Reply, State, ?WATCH_WAIT_TIME}.
+
+handle_cast(_Request, S) ->
+    {noreply, S, ?WATCH_WAIT_TIME}.
+
+handle_info(timeout, S) ->
+    watch_directories(S),
+    {noreply, S, ?WATCH_WAIT_TIME};
+handle_info(_Info, State) ->
+    {noreply, State, ?WATCH_WAIT_TIME}.
+
+terminate(_Reason, _State) ->
+    ok.
+
+code_change(_OldVsn, State, _Extra) ->
+    {ok, State}.
