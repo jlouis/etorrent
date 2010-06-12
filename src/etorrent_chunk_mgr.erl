@@ -53,8 +53,7 @@ mark_fetched(Id, {Index, Offset, Len}) ->
 -spec store_chunk(integer(), {integer(), binary(), term()}, {integer(), integer()}, pid()) ->
                 ok.
 store_chunk(Id, {Index, D, Ops}, {Offset, Len}, FSPid) ->
-    gen_server:call(?SERVER, {store_chunk, Id, {Index, D, Ops}, {Offset, Len}, FSPid},
-                   timer:seconds(?STORE_CHUNK_TIMEOUT)).
+    gen_server:cast(?SERVER, {store_chunk, Id, self(), {Index, D, Ops}, {Offset, Len}, FSPid}).
 
 %%--------------------------------------------------------------------
 %% Function: putback_chunks(Pid) -> transaction
@@ -137,25 +136,6 @@ handle_call({endgame_remove_chunk, Pid, Id, {Index, Offset, _Len}}, _From, S) ->
                      end
           end,
     {reply, Res, S};
-%% TODO: This can be async.
-handle_call({store_chunk, Id, {Index, Data, Ops},
-                    {Offset, Len}, FSPid}, {Pid, _Tag}, S) ->
-    ok = etorrent_fs:write_chunk(FSPid, {Index, Data, Ops}),
-    %% Add the newly fetched data to the fetched list
-    Present = update_fetched(Id, Index, {Offset, Len}),
-    %% Update chunk assignment
-    update_chunk_assignment(Id, Index, Pid, {Offset, Len}),
-    %% Countdown number of missing chunks
-    case Present of
-        fetched -> ok;
-        true    -> ok;
-        false   ->
-            case etorrent_piece_mgr:decrease_missing_chunks(Id, Index) of
-                full -> check_piece(FSPid, Id, Index);
-                X    -> X
-            end
-    end,
-    {reply, ok, S};
 handle_call({pick_chunks, Pid, Id, Set, Remaining}, _From, S) ->
     R = case pick_chunks(pick_chunked, {Pid, Id, Set, [], Remaining, none}) of
             not_interested -> pick_chunks_endgame(Id, Set, Remaining, not_interested);
@@ -196,6 +176,23 @@ handle_cast({putback_chunk, Pid, {Idx, Offset, Len}}, S) ->
                                         C#chunk { chunks = NewList })
               end
       end),
+    {noreply, S};
+handle_cast({store_chunk, Id, Pid, {Index, Data, Ops}, {Offset, Len}, FSPid}, S) ->
+    ok = etorrent_fs:write_chunk(FSPid, {Index, Data, Ops}),
+    %% Add the newly fetched data to the fetched list
+    Present = update_fetched(Id, Index, {Offset, Len}),
+    %% Update chunk assignment
+    update_chunk_assignment(Id, Index, Pid, {Offset, Len}),
+    %% Countdown number of missing chunks
+    case Present of
+        fetched -> ok;
+        true    -> ok;
+        false   ->
+            case etorrent_piece_mgr:decrease_missing_chunks(Id, Index) of
+                full -> check_piece(FSPid, Id, Index);
+                X    -> X
+            end
+    end,
     {noreply, S};
 handle_cast({putback_chunks, Pid}, S) ->
     for_each_chunk(
