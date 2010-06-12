@@ -24,7 +24,7 @@
 
 %%====================================================================
 
-%% @doc Starts the dirwatcher process
+%% @doc Starts the dirwatcher process.
 %% @end
 -spec start_link() -> {ok, pid()} | ignore | {error, term()}.
 start_link() ->
@@ -33,16 +33,14 @@ start_link() ->
 
 %%====================================================================
 
-%% @doc Watch directories for changes
-%%
+%% @doc Watch directories for changes.
 %% Watch directories will look through the directory we are watching
-%%  and will start and stop torrents according to what is inside the
-%%  directory.
+%% and will start and stop torrents according to what is inside the
+%% directory.
 %%
-%% The process used is a mark & sweep strategy: First all entries in
-%%  the ETS table is made unmarked. Then we process through the files
-%%  adding new keys or marking keys as we go along with process_file/1.
-%%
+%% The process used is a mark and sweep strategy: First all entries
+%% inthe ETS table is made unmarked. Then we process through the files
+%% adding new keys or marking keys as we go along with process_file/1.
 %% Finally, a Sweep is used to start and stop torrents according to
 %% their markings.
 %% @end
