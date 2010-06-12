@@ -80,8 +80,12 @@ putback_chunk(Pid, {Idx, Offset, Len}) ->
 endgame_remove_chunk(Pid, Id, {Index, Offset, Len}) ->
     gen_server:call(?SERVER, {endgame_remove_chunk, Pid, Id, {Index, Offset, Len}}).
 
-% @doc Return some chunks for downloading.
-% @todo spec this beast.
+%% @doc Return some chunks for downloading.
+%% @end
+-type chunk_lst1() :: [{integer(), integer(), integer(), [operation()]}].
+-type chunk_lst2() :: [{integer(), [#chunk{}]}].
+-spec pick_chunks(pid(), integer(), unknown | gb_set(), integer()) ->
+    none_eligible | not_interested | {ok | endgame, chunk_lst1() | chunk_lst2()}.
 pick_chunks(_Pid, _Id, unknown, _N) ->
     none_eligible;
 pick_chunks(Pid, Id, Set, N) ->
@@ -483,7 +487,7 @@ pick_chunks(endgame, {Id, PieceSet, N}) ->
     Shuffled = etorrent_utils:shuffle(Remaining),
     {endgame, lists:sublist(Shuffled, N)}.
 
-
+-spec pick_chunks_endgame(integer(), gb_set(), integer(), X) -> X | {endgame, [#chunk{}]}.
 pick_chunks_endgame(Id, Set, Remaining, Ret) ->
     case etorrent_torrent:is_endgame(Id) of
         false -> Ret; %% No endgame yet
