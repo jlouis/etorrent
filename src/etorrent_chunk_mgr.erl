@@ -13,9 +13,10 @@
 
 -behaviour(gen_server).
 
+%% @todo: What pid is the chunk recording pid? Control or SendPid?
 %% API
 -export([start_link/0, store_chunk/4, putback_chunks/1,
-         putback_chunk/2, mark_fetched/2, pick_chunks/4,
+         putback_chunk/2, mark_fetched/2, pick_chunks/3,
          endgame_remove_chunk/3]).
 
 %% gen_server callbacks
@@ -77,19 +78,19 @@ putback_chunk(Pid, {Idx, Offset, Len}) ->
 %%   given pid
 %%--------------------------------------------------------------------
 -spec endgame_remove_chunk(pid(), integer(), {integer(), integer(), integer()}) -> ok.
-endgame_remove_chunk(Pid, Id, {Index, Offset, Len}) ->
-    gen_server:call(?SERVER, {endgame_remove_chunk, Pid, Id, {Index, Offset, Len}}).
+endgame_remove_chunk(SendPid, Id, {Index, Offset, Len}) ->
+    gen_server:call(?SERVER, {endgame_remove_chunk, SendPid, Id, {Index, Offset, Len}}).
 
 %% @doc Return some chunks for downloading.
 %% @end
 -type chunk_lst1() :: [{integer(), integer(), integer(), [operation()]}].
 -type chunk_lst2() :: [{integer(), [#chunk{}]}].
--spec pick_chunks(pid(), integer(), unknown | gb_set(), integer()) ->
+-spec pick_chunks(integer(), unknown | gb_set(), integer()) ->
     none_eligible | not_interested | {ok | endgame, chunk_lst1() | chunk_lst2()}.
-pick_chunks(_Pid, _Id, unknown, _N) ->
+pick_chunks(_Id, unknown, _N) ->
     none_eligible;
-pick_chunks(Pid, Id, Set, N) ->
-    gen_server:call(?SERVER, {pick_chunks, Pid, Id, Set, N},
+pick_chunks(Id, Set, N) ->
+    gen_server:call(?SERVER, {pick_chunks, Id, Set, N},
                     timer:seconds(?PICK_CHUNKS_TIMEOUT)).
 
 %%====================================================================
@@ -131,8 +132,9 @@ handle_call({mark_fetched, Id, Index, Offset, _Len}, _From, S) ->
                      end
         end,
     {reply, Res, S};
-handle_call({endgame_remove_chunk, Pid, Id, {Index, Offset, _Len}}, _From, S) ->
-    Res = case ets:lookup(etorrent_chunk_tbl, {Id, Index, {assigned, Pid}}) of
+handle_call({endgame_remove_chunk, SendPid, Id, {Index, Offset, _Len}},
+            _From, S) ->
+    Res = case ets:lookup(etorrent_chunk_tbl, {Id, Index, {assigned, SendPid}}) of
               [] -> ok;
               [R] -> case lists:keydelete(Offset, 1, R#chunk.chunks) of
                          [] -> ets:delete_object(etorrent_chunk_tbl, R);
@@ -141,7 +143,7 @@ handle_call({endgame_remove_chunk, Pid, Id, {Index, Offset, _Len}}, _From, S) ->
                      end
           end,
     {reply, Res, S};
-handle_call({pick_chunks, Pid, Id, Set, Remaining}, _From, S) ->
+handle_call({pick_chunks, Id, Set, Remaining}, {Pid, _Tag}, S) ->
     R = case pick_chunks(pick_chunked, {Pid, Id, Set, [], Remaining, none}) of
             not_interested -> pick_chunks_endgame(Id, Set, Remaining, not_interested);
             {ok, []}       -> pick_chunks_endgame(Id, Set, Remaining, none_eligible);
