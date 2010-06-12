@@ -34,6 +34,7 @@
 %% Function: start_link() -> {ok,Pid} | ignore | {error,Error}
 %% Description: Starts the server
 %%--------------------------------------------------------------------
+-spec start_link() -> ignore | {ok, pid()} | {error, any()}.
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
@@ -43,11 +44,14 @@ start_link() ->
 %%        IOL ::= {integer(), integer(), integer()} - {Index, Offs, Len}
 %% Description: Mark a given chunk as fetched.
 %%--------------------------------------------------------------------
+-spec mark_fetched(integer(), {integer(), integer(), integer()}) -> found | assigned.
 mark_fetched(Id, {Index, Offset, Len}) ->
     gen_server:call(?SERVER, {mark_fetched, Id, Index, Offset, Len}).
 
-%% Store the chunk in the chunk table. As a side-effect, check the piece if it
-%% is fully fetched.
+% @doc Store the chunk in the chunk table. As a side-effect, check the piece if it
+% is fully fetched.
+-spec store_chunk(integer(), {integer(), binary(), term()}, {integer(), integer()}, pid()) ->
+                ok.
 store_chunk(Id, {Index, D, Ops}, {Offset, Len}, FSPid) ->
     gen_server:call(?SERVER, {store_chunk, Id, {Index, D, Ops}, {Offset, Len}, FSPid},
                    timer:seconds(?STORE_CHUNK_TIMEOUT)).
@@ -56,9 +60,11 @@ store_chunk(Id, {Index, D, Ops}, {Offset, Len}, FSPid) ->
 %% Function: putback_chunks(Pid) -> transaction
 %% Description: Find all chunks assigned to Pid and mark them as not_fetched
 %%--------------------------------------------------------------------
+-spec putback_chunks(pid()) -> ok.
 putback_chunks(Pid) ->
     gen_server:cast(?SERVER, {putback_chunks, Pid}).
 
+-spec putback_chunk(pid(), {integer(), integer(), integer()}) -> ok.
 putback_chunk(Pid, {Idx, Offset, Len}) ->
     gen_server:cast(?SERVER, {putback_chunk, Pid, {Idx, Offset, Len}}).
 
@@ -70,15 +76,12 @@ putback_chunk(Pid, {Idx, Offset, Len}) ->
 %% Description: Remove a chunk in the endgame from its assignment to a
 %%   given pid
 %%--------------------------------------------------------------------
+-spec endgame_remove_chunk(pid(), integer(), {integer(), integer(), integer()}) -> ok.
 endgame_remove_chunk(Pid, Id, {Index, Offset, Len}) ->
     gen_server:call(?SERVER, {endgame_remove_chunk, Pid, Id, {Index, Offset, Len}}).
 
-%% Description: Return some chunks for downloading.
-%%
-%%   This function is relying on tail-calls to itself with different
-%%   tags to return the needed data.
-%%
-%%--------------------------------------------------------------------
+% @doc Return some chunks for downloading.
+% @todo spec this beast.
 pick_chunks(_Pid, _Id, unknown, _N) ->
     none_eligible;
 pick_chunks(Pid, Id, Set, N) ->
