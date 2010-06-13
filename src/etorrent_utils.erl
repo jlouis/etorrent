@@ -13,18 +13,13 @@
          build_encoded_form_rfc1738/1, shuffle/1, gsplit/2]).
 
 %%====================================================================
-%% API
-%%====================================================================
 
-%%--------------------------------------------------------------------
-%% Function: gsplit(N, L1) -> {L2, L3}
-%% Description:
-%%    types: N          - integer()
-%%           L1, L2, L3 - list()
-%%
-%%   Graceful split. Works is lists:split, but if N is greater than
-%%     length(L1) then L1 =:= L2 and L3 = []
-%%--------------------------------------------------------------------
+%% @doc Graceful split.
+%% Works like lists:split, but if N is greater than length(L1), then
+%% it will return L1 =:= L2 and L3 = []. This will gracefully make it
+%% ignore out-of-items situations.
+%% @end
+-spec gsplit(integer(), [term()]) -> {[term()], [term()]}.
 gsplit(N, L) ->
     gsplit(N, L, []).
 
@@ -35,35 +30,34 @@ gsplit(0, L1, Rest) ->
 gsplit(N, [H|T], Rest) ->
     gsplit(N-1, T, [H | Rest]).
 
-%%--------------------------------------------------------------------
-%% Function: queue_remove_with_check(Item, Q1) -> {ok, Q2} | false
-%% Description: If Item is present in queue(), remove the first
-%%   occurence and return it as {ok, Q2}. If the item can not be found
-%%   return false.
-%%   Note: Inefficient implementation. Converts to/from lists.
-%%--------------------------------------------------------------------
+%% @doc Remove items from a queue
+%% If Item is present in queue(), remove the first
+%% occurence and return it as {ok, Q2}. If the item can not be found
+%% return false.
+%% Note: Inefficient implementation. Converts to/from lists.
+%% @end
+-spec queue_remove_check(term(), queue()) -> queue().
 queue_remove_check(Item, Q) ->
     QList = queue:to_list(Q),
     true = lists:member(Item, QList),
     List = lists:delete(Item, QList),
     queue:from_list(List).
 
-%%--------------------------------------------------------------------
-%% Function: queue_remove(Item, queue()) -> queue()
-%% Description: Remove first occurence of Item in queue() if present.
-%%   Note: This function assumes the representation of queue is opaque
-%%     and thus the function is quite ineffective. We can build a much
-%%     much faster version if we create our own queues.
-%%--------------------------------------------------------------------
+%% @doc
+%% Remove first occurence of Item in queue() if present.
+%% Note: This function assumes the representation of queue is opaque
+%% and thus the function is quite ineffective. We can build a much
+%% much faster version if we create our own queues.
+%% @end
+-spec queue_remove(term(), queue()) -> queue().
 queue_remove(Item, Q) ->
     QList = queue:to_list(Q),
     List = lists:delete(Item, QList),
     queue:from_list(List).
 
-%%--------------------------------------------------------------------
-%% Function: build_encoded_form_rfc1738(list() | binary()) -> String
-%% Description: Convert the list into RFC1738 encoding (URL-encoding).
-%%--------------------------------------------------------------------
+%% @doc Convert the list into RFC1738 encoding (URL-encoding).
+%% @end
+-spec build_encoded_form_rfc1738(string()) -> string().
 build_encoded_form_rfc1738(List) when is_list(List) ->
     Unreserved = rfc_3986_unreserved_characters_set(),
     F = fun (E) ->
@@ -79,15 +73,12 @@ build_encoded_form_rfc1738(List) when is_list(List) ->
 build_encoded_form_rfc1738(Binary) when is_binary(Binary) ->
     build_encoded_form_rfc1738(binary_to_list(Binary)).
 
-%%--------------------------------------------------------------------
-%% Function: shuffle(List1) -> List2
-%% Description: Permute List1 randomly. Returns the permuted list.
-%%--------------------------------------------------------------------
+%% @doc Permute List1 randomly. Returns the permuted list.
+%% @end
+-spec shuffle([term()]) -> [term()].
 shuffle(List) ->
     merge_shuffle(List).
 
-%%====================================================================
-%% Internal functions
 %%====================================================================
 
 rfc_3986_unreserved_characters() ->
@@ -138,9 +129,3 @@ merge_shuffle([Item]) ->
 merge_shuffle(List) ->
     {A, B} = partition(List),
     merge(merge_shuffle(A), merge_shuffle(B)).
-
-
-
-
-
-
