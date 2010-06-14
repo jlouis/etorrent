@@ -94,13 +94,14 @@ handle_call({write, Offset, Data}, _From, S) ->
 %%--------------------------------------------------------------------
 handle_cast(stop, S) ->
     {stop, normal, S};
-handle_cast(_Msg, State) ->
+handle_cast(Msg, State) ->
+    ?log([unknown_cast, Msg]),
     {noreply, State, ?REQUEST_TIMEOUT}.
 
 handle_info(timeout, State) ->
     {stop, normal, State};
 handle_info(Info, State) ->
-    error_logger:warning_report([unknown_fs_process, Info]),
+    ?log([unknown_info_msg, Info]),
     {noreply, State}.
 
 terminate(_Reason, State) ->
