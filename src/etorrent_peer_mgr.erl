@@ -27,7 +27,7 @@
 -define(SERVER, ?MODULE).
 -define(DEFAULT_BAD_COUNT, 2).
 -define(GRACE_TIME, 900).
--define(CHECK_TIME, timer:seconds(300)).
+-define(CHECK_TIME, timer:seconds(120)).
 -define(DEFAULT_CONNECT_TIMEOUT, 30 * 1000).
 
 %%====================================================================
@@ -123,6 +123,7 @@ handle_info(cleanup_table, S) ->
                            [{#bad_peer { last_offense = '$1', _='_'},
                              [{'<','$1',{Bound}}],
                              [true]}]),
+    gen_server:cast(?SERVER, {add_peers, []}),
     {noreply, S};
 handle_info(_Info, State) ->
     {noreply, State}.
@@ -160,40 +161,38 @@ start_new_peers(IPList, State) ->
     %%   on the unsorted list.
     PeerList = lists:usort(IPList ++ State#state.available_peers),
     PeerId   = State#state.our_peer_id,
-    Remaining = fill_peers(PeerId, PeerList),
+    {value, SlotsLeft} = etorrent_counters:slots_left(),
+    Remaining = fill_peers(SlotsLeft, PeerId, PeerList),
     State#state{available_peers = Remaining}.
 
-fill_peers(_PeerId, []) -> [];
-fill_peers(PeerId, [{TorrentId, {IP, Port}} | R]) ->
+fill_peers(0, _PeerId, Rem) -> Rem;
+fill_peers(_K, _PeerId, []) -> [];
+fill_peers(K, PeerId, [{TorrentId, {IP, Port}} | R]) ->
     case is_bad_peer(IP, Port) of
-       true -> fill_peers(PeerId, R);
-       false -> guard_spawn_peer(PeerId, TorrentId, IP, Port, R)
+       true -> fill_peers(K, PeerId, R);
+       false -> guard_spawn_peer(K, PeerId, TorrentId, IP, Port, R)
     end.
 
-guard_spawn_peer(PeerId, TorrentId, IP, Port, R) ->
+guard_spawn_peer(K, PeerId, TorrentId, IP, Port, R) ->
     case etorrent_peer:connected(IP, Port, TorrentId) of
         true ->
             % Already connected to the peer. This happens
             % when the peer connects back to us and the
             % tracker, which knows nothing about this,
             % still hands us the ip address.
-            fill_peers(PeerId, R);
+            fill_peers(K, PeerId, R);
         false ->
             case etorrent_tracking_map:select(TorrentId) of
                 {atomic, []} -> %% No such Torrent currently started, skip
-                    fill_peers(PeerId, R);
+                    fill_peers(K, PeerId, R);
                 {atomic, [TM]} ->
-                    try_spawn_peer(PeerId, TM, TorrentId, IP, Port, R)
+                    try_spawn_peer(K, PeerId, TM, TorrentId, IP, Port, R)
             end
     end.
 
-try_spawn_peer(PeerId, TM, TorrentId, IP, Port, R) ->
-    case etorrent_counters:obtain_peer_slot() of
-        ok ->
-            spawn_peer(PeerId, TM, TorrentId, IP, Port),
-            fill_peers(PeerId, R);
-        full -> [{TorrentId, {IP, Port}} | R]
-    end.
+try_spawn_peer(K, PeerId, TM, TorrentId, IP, Port, R) ->
+    spawn_peer(PeerId, TM, TorrentId, IP, Port),
+    fill_peers(K-1, PeerId, R).
 
 spawn_peer(PeerId, TM, TorrentId, IP, Port) ->
     spawn(fun () ->
@@ -214,14 +213,12 @@ spawn_peer(PeerId, TM, TorrentId, IP, Port) ->
                                   {IP, Port},
                                   Socket),
                               ok = gen_tcp:controlling_process(Socket, RecvPid),
-                              etorrent_peer_control:complete_conn_setup(ControlPid),
+                              etorrent_peer_control:initialize(ControlPid, outgoing),
                               ok;
                           {error, _Reason} ->
-                              etorrent_counters:release_peer_slot(),
                               ok
                       end;
                   {error, _Reason} ->
-                      etorrent_counters:release_peer_slot(),
                       ok
                 end
         end).
