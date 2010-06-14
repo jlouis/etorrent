@@ -31,8 +31,7 @@ start() ->
 
 start(_Type, _Args) ->
     PeerId = generate_peer_id(),
-    {ok, Pid} = etorrent_sup:start_link(PeerId),
-    {ok, Pid}.
+    etorrent_sup:start_link(PeerId).
 
 stop() ->
     ok = application:stop(etorrent).
