@@ -19,7 +19,7 @@
          % resume table, so startup is much faster. Every 5 minutes the file is stamped out,
          % so an eventual death of the system won't affect too much. It is also written upon
          % graceful termination.
-         {fast_resume, "/var/spool/etorrent/fast_resume.tab"},
+         {fast_resume_file, "/var/spool/etorrent/fast_resume.tab"},
 
          % Limit on the number of peers the system can maximally be connected to
          {max_peers, 400},
