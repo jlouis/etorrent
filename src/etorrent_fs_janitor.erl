@@ -14,30 +14,20 @@
 -record(state, { high, low }).
 
 %% Start a new janitor.
+-spec start_link() -> ignore | {ok, pid()} | {error, term()}.
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
+-spec new_fs_process(pid()) -> ok | ignore.
 new_fs_process(Pid) ->
     bump(Pid),
     gen_server:cast(?MODULE, {monitor_me, Pid}),
     fs_maybe_collect().
 
+-spec bump(pid()) -> true.
 bump(Pid) ->
     ets:insert(?MODULE, {Pid, erlang:now()}).
 
-%% Check the current number of processes. If there are more than the high watermark,
-%% start a resource collection.
-fs_maybe_collect() ->
-    H = case application:get_env(etorrent, fs_watermark_high) of
-            {ok, V} -> V;
-            undefined -> ?HIGH
-        end,
-    Sz = ets:info(?MODULE, size),
-    if
-        Sz > H ->
-            gen_server:cast(?SERVER, fs_collect);
-        true -> ignore
-    end.
 
 %% =======================================================================
 
@@ -52,6 +42,20 @@ create_tab() ->
     _ = ets:new(?MODULE, [public, named_table]),
     ok.
 
+%% Check the current number of processes. If there are more than the high watermark,
+%% start a resource collection.
+-spec fs_maybe_collect() -> ok | ignore.
+fs_maybe_collect() ->
+    H = case application:get_env(etorrent, fs_watermark_high) of
+            {ok, V} -> V;
+            undefined -> ?HIGH
+        end,
+    Sz = ets:info(?MODULE, size),
+    if
+        Sz > H ->
+            gen_server:cast(?SERVER, fs_collect);
+        true -> ignore
+    end.
 %% =======================================================================
 
 init([]) ->
