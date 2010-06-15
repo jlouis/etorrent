@@ -42,6 +42,10 @@
          % this a little bit.
          {min_uploads, 2}]},
 
+ % The following part will enable the (currently experimental) webui on etorrent, binding to
+ % 127.0.0.1:8080. It can't do much yet, but it is a start.
+ % {inets, [{services, [{httpd, [{proplist_file,
+ %                        "./priv/webui.config"}]}]}]},
  {mnesia,
          % Location of the mnesia database tables. It is on a deprecation track.
         [{dir, "/var/tmp/etorrent_session"}]},
