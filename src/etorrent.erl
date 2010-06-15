@@ -40,8 +40,7 @@ start() ->
 %% @end
 start(_Type, _Args) ->
     PeerId = generate_peer_id(),
-    {ok, Pid} = etorrent_sup:start_link(PeerId),
-    {ok, Pid}.
+    etorrent_sup:start_link(PeerId).
 
 %% @doc Application callback.
 %% @end

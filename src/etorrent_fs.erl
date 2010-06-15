@@ -12,6 +12,7 @@
 -include("etorrent_piece.hrl").
 -include("etorrent_mnesia_table.hrl").
 -include("types.hrl").
+-include("log.hrl").
 
 -behaviour(gen_server).
 
@@ -84,7 +85,10 @@ handle_call({read_chunk, Pn, Offset, Len}, _From, S) ->
     [#piece { files = Operations}] =
         etorrent_piece_mgr:select(S#state.torrent_id, Pn),
     {Reply, NS} = read_chunk_and_assemble(Operations, Offset, Len, S),
-    {reply, Reply, NS}.
+    {reply, Reply, NS};
+handle_call(Msg, From, S) ->
+    ?log([unknown_call, Msg, From, S]),
+    {noreply, S}.
 
 handle_cast(Msg, S) when S#state.file_pool =:= none ->
     FSPool = etorrent_t_sup:get_pid(S#state.supervisor, fs_pool),
@@ -125,13 +129,14 @@ handle_cast({check_piece, Index}, S) ->
             {noreply, NS}
     end;
 handle_cast(Msg, State) ->
-    error_logger:error_report([unknown_msg, Msg]),
+    ?log([unknown_msg, Msg]),
     {noreply, State}.
 
 handle_info({'DOWN', _R, process, Pid, _Reason}, S) ->
     Nd = remove_file_process(Pid, S#state.file_process_dict),
     {noreply, S#state { file_process_dict = Nd }};
-handle_info(_Info, State) ->
+handle_info(Info, State) ->
+    ?log([unknown_info_msg, Info]),
     {noreply, State}.
 
 terminate(_Reason, S) ->
