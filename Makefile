@@ -8,7 +8,10 @@ VER=1.0
 
 SHELL=/bin/sh
 ETORRENT_LIB=.
-all: etorrent
+all: rebar
+
+rebar:
+	rebar compile
 
 etorrent:
 	$(ERL) -make
