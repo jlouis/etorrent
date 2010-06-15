@@ -1,7 +1,0 @@
-{release, {"eTorrent","1.0"}, {erts,"5.5.5"},
- [{kernel,"2.11.5"},
-  {stdlib,"1.14.5"},
-  {crypto, "1.5.1.1"},
-  {inets, "4.7.16"},
-  {etorrent, "1.0"}]}.
-
