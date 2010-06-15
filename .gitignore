@@ -3,3 +3,4 @@ err.*log
 tracer.log
 *~
 *.swp
+webui/*.log
