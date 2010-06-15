@@ -26,27 +26,19 @@ Currently supported BEPs:
 ## GETTING STARTED WITHOUT INSTALLING
 
   1. Check Makefile.config for the right configuration options
-  2. run 'make'
-  3. create 'lib/etorrent-1.0/priv/etorrent.config' there is an example
-     file in the same dir.
-  4. run 'make run' which will spawn etorrent in a running
-     configuration.
-
+  2. edit the file 'priv/etorrent.config'.
+  3. 'rebar compile'
+  4. 'make run'
   5. drop a .torrent file in the watched dir and see what happens.
-
   6. call etorrent:help(). from the Erlang CLI to get a list of available
      commands.
 
 ## GETTING STARTED WITH INSTALLING
 
   1. edit 'Makefile.config' to suit your liking.
-
-  2. run 'make'
-
-  3. run 'make install' (with proper privileges)
-
-  4. There is an etorrentctl shell script dropped in $PREFIX/bin that can
-     be used for manipulating the running etorrent instance.
+  2. 'rebar compile'
+  3. 'rebar generate'
+  4. You should now have a standalone embedded node in the 'rel' directory.
 
 ## ISSUES
 
