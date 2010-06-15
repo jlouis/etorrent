@@ -19,3 +19,7 @@ p { font-family: 'Droid Serif', arial, serif;
 body { background-color: #006E4A;
      }
 
+table { font-family: 'Droid Serif', arial, serif;
+        font-size: -20%;
+        color: #eeeeee;
+      }
