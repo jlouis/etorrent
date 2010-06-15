@@ -22,4 +22,7 @@ body { background-color: #006E4A;
 table { font-family: 'Droid Serif', arial, serif;
         font-size: -20%;
         color: #eeeeee;
+        border-bottom: 1px solid;
       }
+
+th { border-bottom: 1px solid; }
