@@ -11,6 +11,7 @@
 
 -include("etorrent_piece.hrl").
 -include("etorrent_mnesia_table.hrl").
+-include("types.hrl").
 
 -behaviour(gen_server).
 
@@ -28,48 +29,41 @@
                  file_process_dict = none}).
 
 %%====================================================================
-%% API
-%%====================================================================
 
-%%--------------------------------------------------------------------
-%% Function: start_link/0
-%% Description: Spawn and link a new file_system process
-%%--------------------------------------------------------------------
+%% @doc Spawn and link a new file_system process
+%% @end
 -spec start_link(integer(), pid()) ->
     ignore | {ok, pid()} | {error, any()}.
 start_link(IDHandle, SPid) ->
     gen_server:start_link(?MODULE, [IDHandle, SPid], []).
 
-%% Read a single chunk
+%% @doc Read a single chunk
+%% @end
 -spec read_chunk(pid(), integer(), integer(), integer()) ->
     {ok, binary()}.
 read_chunk(Pid, Pn, Offset, Len) ->
     gen_server:call(Pid, {read_chunk, Pn, Offset, Len}).
 
-%%--------------------------------------------------------------------
-%% Function: read_piece(Pid, N) -> {ok, Binary}
-%% Description: Ask file_system process Pid to retrieve Piece N
-%%--------------------------------------------------------------------
+%% @doc Ask file_system process Pid to retrieve Piece N
+%% @end
 -spec read_piece(pid(), integer()) -> {ok, binary()}.
 read_piece(Pid, Pn) when is_integer(Pn) ->
     gen_server:call(Pid, {read_piece, Pn}).
 
-%%--------------------------------------------------------------------
-%% Function: check_piece(Pid, PeerGroupPid, Index) -> ok | wrong_hash
-%% Description: Search the mnesia tables for the Piece with Index and
+%% @doc Search the mnesia tables for the Piece with Index and
 %%   write it back to disk.
-%%--------------------------------------------------------------------
+%% @end
 -spec check_piece(pid(), integer()) -> ok.
 check_piece(Pid, Index) ->
     gen_server:cast(Pid, {check_piece, Index}).
 
-%% TODO: Spec ops.
--spec write_chunk(pid(), {integer(), binary(), any()}) -> ok.
+%% @doc writes a chunk, {Index, Data, Ops} back to disk. Pid is the FS Pid
+%%   which should carry out the writing operation.
+%% @end
+-spec write_chunk(pid(), {integer(), binary(), [operation()]}) -> ok.
 write_chunk(Pid, {Index, Data, Ops}) ->
     gen_server:cast(Pid, {write_chunk, {Index, Data, Ops}}).
 
-%%====================================================================
-%% gen_server callbacks
 %%====================================================================
 init([IDHandle, SPid]) when is_integer(IDHandle) ->
     process_flag(trap_exit, true),
@@ -134,40 +128,21 @@ handle_cast(Msg, State) ->
     error_logger:error_report([unknown_msg, Msg]),
     {noreply, State}.
 
-%%--------------------------------------------------------------------
-%% Function: handle_info(Info, State) -> {noreply, State} |
-%%                                       {noreply, State, Timeout} |
-%%                                       {stop, Reason, State}
-%% Description: Handling all non call/cast messages
-%%--------------------------------------------------------------------
 handle_info({'DOWN', _R, process, Pid, _Reason}, S) ->
     Nd = remove_file_process(Pid, S#state.file_process_dict),
     {noreply, S#state { file_process_dict = Nd }};
 handle_info(_Info, State) ->
     {noreply, State}.
 
-%%--------------------------------------------------------------------
-%% Function: terminate(Reason, State) -> void()
-%% Description: This function is called by a gen_server when it is about to
-%% terminate. It should be the opposite of Module:init/1 and do any necessary
-%% cleaning up. When it returns, the gen_server terminates with Reason.
-%% The return value is ignored.
-%%--------------------------------------------------------------------
 terminate(_Reason, S) ->
     ok = stop_all_fs_processes(S#state.file_process_dict),
     ok = etorrent_path_map:delete(S#state.torrent_id),
     ok.
 
-%%--------------------------------------------------------------------
-%% Func: code_change(OldVsn, State, Extra) -> {ok, NewState}
-%% Description: Convert process state when code is changed
-%%--------------------------------------------------------------------
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
-%%--------------------------------------------------------------------
-%%% Internal functions
-%%--------------------------------------------------------------------
+%% =======================================================================
 create_file_process(Id, S) ->
     {ok, Pid} = etorrent_fs_pool_sup:add_file_process(S#state.file_pool,
                                                       S#state.torrent_id, Id),
@@ -216,11 +191,10 @@ read_pieces_and_assemble([{Id, Offset, Size} | Rest], SoFar, S) ->
     {value, Data, NS} = read(Id, Offset, Size, S),
     read_pieces_and_assemble(Rest, <<SoFar/binary, Data/binary>>, NS).
 
-%%--------------------------------------------------------------------
-%% Func: fs_write(Data, Operations, State) -> {ok, State}
-%% Description: Write data defined by Operations. Returns new State
+%% @doc Write data defined by Operations. Returns new State
 %%   maintaining the file_process_dict.
-%%--------------------------------------------------------------------
+%% @end
+-spec fs_write(binary(), [operation()], #state{}) -> #state{}.
 fs_write(<<>>, [], S) -> S;
 fs_write(Data, [{Id, Offset, Size} | Rest], S) ->
     <<Chunk:Size/binary, Remaining/binary>> = Data,

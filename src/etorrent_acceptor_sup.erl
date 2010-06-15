@@ -19,12 +19,9 @@
 -define(SERVER, ?MODULE).
 
 %%====================================================================
-%% API functions
-%%====================================================================
-%%--------------------------------------------------------------------
-%% Function: start_link(PeerId) -> {ok,Pid} | ignore | {error,Error}
-%% Description: Starts the supervisor
-%%--------------------------------------------------------------------
+%% @doc Starts the supervisor
+%% @end
+-spec start_link(string()) -> {ok, pid()} | ignore | {error, term()}.
 start_link(PeerId) ->
     supervisor:start_link({local, ?SERVER}, ?MODULE, [PeerId]).
 

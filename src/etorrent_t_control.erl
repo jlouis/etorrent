@@ -148,7 +148,6 @@ initializing(timeout, S) ->
             {next_state, started,
              S#state{file_system_pid = FSPid,
                      tracker_pid = TrackerPid}}
-
     end.
 
 started(stop, S) ->

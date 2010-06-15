@@ -3,6 +3,7 @@
 -behaviour(gen_server).
 
 -include("etorrent_rate.hrl").
+-include("types.hrl").
 
 %% API
 -export([start_link/7, choke/1, unchoke/1, have/2, initialize/2,
@@ -388,7 +389,7 @@ unqueue_piece({Idx, Offset, Len}, S) ->
             {stop, normal, S};
         true ->
             ReqSet = gb_sets:delete({Idx, Offset, Len}, S#state.remote_request_set),
-            ok = etorrent_chunk_mgr:putback_chunk(self(), {Idx, Offset, Len}),
+            ok = etorrent_chunk_mgr:putback_chunks(self(), {Idx, Offset, Len}),
             etorrent_peer:broadcast_peers(S#state.torrent_id,
                 fun(P) -> try_queue_pieces(P) end),
             {noreply, S#state { remote_request_set = ReqSet }}
@@ -422,8 +423,7 @@ try_to_queue_up_pieces(S) ->
         %% Optimization: Only replenish pieces modulo some N
         N when is_integer(N) ->
             PiecesToQueue = ?HIGH_WATERMARK - N,
-            case etorrent_chunk_mgr:pick_chunks(self(),
-                                                S#state.torrent_id,
+            case etorrent_chunk_mgr:pick_chunks(S#state.torrent_id,
                                                 S#state.piece_set,
                                                 PiecesToQueue) of
                 not_interested -> {ok, statechange_interested(S, false)};
@@ -433,22 +433,16 @@ try_to_queue_up_pieces(S) ->
             end
     end.
 
-%%--------------------------------------------------------------------
-%% Function: queue_items/2
-%% Args:     ChunkList ::= [CompactChunk | ExplicitChunk]
-%%           S         ::= #state
-%%           CompactChunk ::= {PieceNumber, ChunkList}
-%%           ExplicitChunk ::= {PieceNumber, Offset, Size, Ops}
-%%           ChunkList ::= [{Offset, Size, Ops}]
-%%           PieceNumber, Offset, Size ::= integer()
-%%           Ops ::= file_operations - described elsewhere.
-%% Description: Send chunk messages for each chunk we decided to queue.
+%% @doc Send chunk messages for each chunk we decided to queue.
 %%   also add these chunks to the piece request set.
-%%--------------------------------------------------------------------
+%% @end
+-type chunk() :: {integer(), integer(), [operation()]}.
+-spec queue_items([chunk()], #state{}) -> {ok, #state{}}.
 queue_items(ChunkList, S) ->
     RSet = queue_items(ChunkList, S#state.send_pid, S#state.remote_request_set),
     {ok, S#state { remote_request_set = RSet }}.
 
+-spec queue_items([{integer(), [chunk()]}], pid(), gb_tree()) -> gb_tree().
 queue_items([], _SendPid, Tree) -> Tree;
 queue_items([{Pn, Chunks} | Rest], SendPid, Tree) ->
     NT = lists:foldl(

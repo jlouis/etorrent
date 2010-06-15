@@ -22,6 +22,8 @@
 %%         InfoHash ::= binary() - infohash of torrent.
 %% Description: Compute the allowed fast set for a peer
 %%--------------------------------------------------------------------
+-type ip() :: {integer(), integer(), integer(), integer()}.
+-spec allowed_fast(integer(), ip() | binary(), integer(), binary()) -> {value, set()}.
 allowed_fast(Sz, {B1, B2, B3, B4}, K, InfoHash) ->
     B = <<B1:8/integer, B2:8/integer, B3:8/integer, B4:8/integer>>,
     allowed_fast(Sz, B, K, InfoHash);
@@ -39,7 +41,7 @@ allowed_fast(Sz, <<B1:8/integer, B2:8/integer, B3:8/integer, _B4:8/integer>>,
 %%====================================================================
 %% Internal functions
 %%====================================================================
-rnd(0, _X, _Sz, Set) -> Set;
+rnd(0, _X, _Sz, Set) -> {value, Set};
 rnd(K, X, Sz, Set) ->
     %% Start a new round. Each round hashes the previous round to gen.
     %%  a pseudo-random sequence
@@ -72,14 +74,14 @@ cut(K, I, X, Sz, Set) ->
 test1() ->
     N = 16#AA,
     InfoHash = list_to_binary(lists:duplicate(20, N)),
-    PieceSet = allowed_fast(1313, {80,4,4,200}, 7, InfoHash),
+    {value, PieceSet} = allowed_fast(1313, {80,4,4,200}, 7, InfoHash),
     Pieces = lists:sort(sets:to_list(PieceSet)),
     [287, 376, 431, 808, 1059, 1188, 1217] = Pieces.
 
 test2() ->
     N = 16#AA,
     InfoHash = list_to_binary(lists:duplicate(20, N)),
-    PieceSet = allowed_fast(1313, {80,4,4,200}, 9, InfoHash),
+    {value, PieceSet} = allowed_fast(1313, {80,4,4,200}, 9, InfoHash),
     Pieces = lists:sort(sets:to_list(PieceSet)),
     [287, 353, 376, 431, 508, 808, 1059, 1188, 1217] = Pieces.
 
