@@ -17,6 +17,8 @@
         $(document).ready(function() {
                 $.get('/ajax/etorrent_webui:list', function(data) {
                     $('#downloading_list').html(data);
+
+                    $('#torrent_table').tablesorter();
                 });
         });
     </script>
