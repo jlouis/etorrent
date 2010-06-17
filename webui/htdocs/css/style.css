@@ -1,16 +1,13 @@
 /* Etorrent style sheet */
 /*
-Primary Color:
-    00AA72		207F60		006E4A		35D4A0		60D4AE
-Secondary Color A:
-    FFDE00		BFAD30		A69000		FFE640		FFED73
-Secondary Color B:
-    7109AA		5F2580		48036F		9F3ED5		AD66D5
+ * FFDB71 BFAB70 A68525 FFE495 FFEBB1
+ * 976AD6 7D64A1 4E228B B791EB C4A9EB
+ * 64A4D1 60849D 215D88 8DC3E8 A6CDE8
 */
 
 h1 { font-family: 'Yanone Kaffeesatz', arial, serif;
      font-size: 250%;
-     color: #FFDE00;
+     color: #FFDB71;
    }
 
 p { font-family: 'Droid Serif', arial, serif;
@@ -21,7 +18,7 @@ p { font-family: 'Droid Serif', arial, serif;
     color: #eeeeee;
 }
 
-body { background-color: #006E4A;
+body { background-color: #64A4D1;
      }
 
 table { font-family: 'Droid Serif', arial, serif;
