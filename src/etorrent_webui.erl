@@ -23,7 +23,7 @@ list_rates() ->
 
 table_header() ->
     "<table id=\"torrent_table\"><thead>" ++
-    "<tr><th>FName</th><th>Id</th><th>Total</th><th>Left</th><th>Uploaded</th><th>Downloaded</th>" ++
+    "<tr><th>FName</th><th>Id</th><th>Total (MiB)</th><th>Left (MiB)</th><th>Uploaded (MiB)</th><th>Downloaded (MiB)</th>" ++
     "<th>L/S</th><th>Complete</th><th>Rate</th></tr></thead><tbody>".
 
 list_torrents() ->
@@ -32,15 +32,15 @@ list_torrents() ->
         fun (R) ->
                 {atomic, [#tracking_map { filename = FN, _=_}]} =
                     etorrent_tracking_map:select(R#torrent.id),
-                io_lib:format("<tr><td>~s</td><td>~3.B</td><td>~11.B</td><td>~11.B</td><td>~11.B</td><td>~11.B</td>"++
-                              "<td>~3.B / ~3.B</td><td>~7.3f%</td>" ++
+                io_lib:format("<tr><td>~s</td><td>~3.B</td><td>~11.1f</td><td>~11.1f</td><td>~11.1f</td><td>~11.1f</td>"++
+                              "<td>~3.B / ~3.B</td><td>~7.1f%</td>" ++
                               "<td><span id=\"~s\">~s</span>~9.B</td></tr>~n",
                         [strip_torrent(FN),
                          R#torrent.id,
-                         R#torrent.total,
-                         R#torrent.left,
-                         R#torrent.uploaded,
-                         R#torrent.downloaded,
+                         R#torrent.total / (1024 * 1024),
+                         R#torrent.left  / (1024 * 1024),
+                         R#torrent.uploaded / (1024 * 1024),
+                         R#torrent.downloaded / (1024 * 1024),
                          R#torrent.leechers,
                          R#torrent.seeders,
                          percent_complete(R),

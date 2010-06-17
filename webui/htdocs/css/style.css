@@ -35,6 +35,9 @@ table { font-family: 'Droid Serif', arial, serif;
 th { padding: 1px 3px; }
 td { padding: 1px 3px; }
 
+div#hd { padding-left: 10px; }
+div#ft { padding-left: 10px; }
+
 div#bd { background-color: #EEEEEE;
          -moz-border-radius: 5px;
          -webkit-border-radius: 5px;
