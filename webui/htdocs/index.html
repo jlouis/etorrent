@@ -13,7 +13,7 @@
   <script type="text/javascript" src="/js/jquery.tablesorter.js"></script>
 </head>
 <body>
-    <div id="doc" class="yui-t1">
+    <div id="doc2" class="yui-t1">
         <div id="hd">
                 <h1>Etorrent file overview</h1>
         </div>
@@ -38,6 +38,9 @@
         $(document).ready(function() {
                 $.get('/ajax/etorrent_webui:list', function(data) {
                     $('#downloading_list').html(data);
+                    $('span#sparkline').each(function (idx) {
+                        $(this).sparkline('html', {type: 'discrete'});
+                    });
 
                     $('#torrent_table').tablesorter();
                 });

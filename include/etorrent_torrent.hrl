@@ -12,4 +12,5 @@
      pieces = unknown :: non_neg_integer() | 'unknown', % Number of pieces in torrent
      seeders = 0 :: non_neg_integer(), % How many people have a completed file?
      leechers = 0 :: non_neg_integer(), % How many people are downloaded
+     rate_sparkline = [1,2,3,2,2,6,6,10,2,2,3,4,5,6],
      state :: torrent_state()}).
