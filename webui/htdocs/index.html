@@ -38,8 +38,17 @@
         $(document).ready(function() {
                 $.get('/ajax/etorrent_webui:list', function(data) {
                     $('#downloading_list').html(data);
-                    $('span#sparkline').each(function (idx) {
-                        $(this).sparkline('html', {type: 'discrete'});
+                    $('span#sparkline-leech').each(function (idx) {
+                        $(this).sparkline('html', {
+                            type: 'line',
+                            lineColor: '#00f',
+                            fillColor: '#cdf' });
+                    });
+                    $('span#sparkline-seed').each(function (idx) {
+                        $(this).sparkline('html', {
+                            type: 'line',
+                            lineColor: '#f00',
+                            fillColor: '#fcd' });
                     });
 
                     $('#torrent_table').tablesorter();

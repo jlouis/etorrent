@@ -34,7 +34,7 @@ list_torrents() ->
                     etorrent_tracking_map:select(R#torrent.id),
                 io_lib:format("<tr><td>~s</td><td>~3.B</td><td>~11.B</td><td>~11.B</td><td>~11.B</td><td>~11.B</td>"++
                               "<td>~3.B / ~3.B</td><td>~7.3f%</td>" ++
-                              "<td><span id=sparkline>~s</span></td></tr>~n",
+                              "<td><span id=\"~s\">~s</span></td></tr>~n",
                         [strip_torrent(FN),
                          R#torrent.id,
                          R#torrent.total,
@@ -44,7 +44,12 @@ list_torrents() ->
                          R#torrent.leechers,
                          R#torrent.seeders,
                          percent_complete(R),
-                         show_sparkline(R#torrent.rate_sparkline)])
+                         case R#torrent.state of
+                            leeching -> "sparkline-leech";
+                            seeding  -> "sparkline-seed"
+                         end,
+                         show_sparkline(
+                             lists:reverse(R#torrent.rate_sparkline))])
         end, A),
     {ok, Rows}.
 
@@ -61,7 +66,10 @@ strip_torrent(FileName) ->
     string:join(lists:reverse(R), ".").
 
 show_sparkline([]) -> "";
-show_sparkline([I]) -> [integer_to_list(I)];
+show_sparkline([I]) -> [conv_number(I)];
 show_sparkline([I | R]) ->
-    [integer_to_list(I), ", " | show_sparkline(R)].
+    [conv_number(I), ", " | show_sparkline(R)].
+
+conv_number(I) when is_integer(I) -> integer_to_list(I);
+conv_number(F) when is_float(F)   -> float_to_list(F).
 

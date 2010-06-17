@@ -26,6 +26,7 @@
          handle_info/2, terminate/2]).
 
 -define(SERVER, ?MODULE).
+-define(TAB, ?MODULE).
 -record(state, { monitoring }).
 
 %%====================================================================
@@ -62,7 +63,7 @@ num_pieces(Id) ->
     gen_server:call(?SERVER, {num_pieces, Id}).
 
 state(Id) ->
-    case ets:lookup(etorrent_torrent, Id) of
+    case ets:lookup(?TAB, Id) of
         [] -> not_found;
         [M] -> {value, M#torrent.state}
     end.
@@ -80,7 +81,7 @@ seeding() ->
 
 %% Request the torrent information.
 find(Id) ->
-    [T] = ets:lookup(etorrent_torrent, Id),
+    [T] = ets:lookup(?TAB, Id),
     {torrent_info, T#torrent.uploaded, T#torrent.downloaded, T#torrent.left}.
 
 
@@ -98,16 +99,18 @@ decrease_not_fetched(Id) ->
 %% Description: Returns true if the torrent is in endgame mode
 %%--------------------------------------------------------------------
 is_endgame(Id) ->
-    case ets:lookup(etorrent_torrent, Id) of
+    case ets:lookup(?TAB, Id) of
         [T] -> T#torrent.state =:= endgame;
         [] -> false % The torrent isn't there anymore.
     end.
 
 init([]) ->
-    _ = ets:new(etorrent_torrent, [protected, named_table,
+    _ = ets:new(?TAB, [protected, named_table,
                                    {keypos, 2}]),
     _ = ets:new(etorrent_c_pieces, [protected, named_table,
                                     {keypos, 2}]),
+    {ok, _} = timer:send_interval(timer:seconds(60),
+                                  rate_sparkline_update),
     {ok, #state{ monitoring = dict:new() }}.
 
 handle_call({new, Id, {{uploaded, U}, {downloaded, D},
@@ -117,7 +120,7 @@ handle_call({new, Id, {{uploaded, U}, {downloaded, D},
                      seeding;
                 _ -> leeching
             end,
-    true = ets:insert_new(etorrent_torrent,
+    true = ets:insert_new(?TAB,
                 #torrent { id = Id,
                            left = L,
                            total = T,
@@ -134,7 +137,7 @@ handle_call(all, _F, S) ->
     Q = all(#torrent.id),
     {reply, Q, S};
 handle_call({num_pieces, Id}, _F, S) ->
-    [R] = ets:lookup(etorrent_torrent, Id),
+    [R] = ets:lookup(?TAB, Id),
     {reply, {value, R#torrent.pieces}, S};
 handle_call({statechange, Id, What}, _F, S) ->
     Q = state_change(Id, What),
@@ -156,9 +159,12 @@ handle_cast(_Msg, S) ->
 
 handle_info({'DOWN', Ref, _, _, _}, S) ->
     {ok, Id} = dict:find(Ref, S#state.monitoring),
-    ets:delete(etorrent_torrent, Id),
+    ets:delete(?TAB, Id),
     ets:delete(etorrent_c_pieces, Id),
     {noreply, S#state { monitoring = dict:erase(Ref, S#state.monitoring) }};
+handle_info(rate_sparkline_update, S) ->
+    for_each_torrent(fun update_sparkline_rate/1),
+    {noreply, S};
 handle_info(_M, S) ->
     {noreply, S}.
 
@@ -173,15 +179,46 @@ terminate(_Reason, _S) ->
 %% Description: Return all torrents, sorted by Pos
 %%--------------------------------------------------------------------
 all(Pos) ->
-    Objects = ets:match_object(etorrent_torrent, '$1'),
+    Objects = ets:match_object(?TAB, '$1'),
     lists:keysort(Pos, Objects).
+
+%% @doc Run function F on each torrent
+%% @end
+for_each_torrent(F) ->
+    Rows = all(2),
+    lists:foreach(F, Rows).
+
+%% @doc Update the rate_sparkline field in the #torrent{} record.
+%% @end
+update_sparkline_rate(Row) ->
+    case Row#torrent.state of
+        X when X =:= seeding orelse X =:= leeching ->
+            {ok, R} = etorrent_rate_mgr:get_torrent_rate(
+                            Row#torrent.id, X),
+            SL = update_sparkline(R, Row#torrent.rate_sparkline),
+            ets:insert(?TAB, Row#torrent { rate_sparkline = SL }),
+            ok;
+        _ ->
+            ok
+    end.
+
+%% @doc Add a new rate to a sparkline, and trim if it gets too big
+%% @end
+update_sparkline(NR, L) ->
+    case length(L) > 25 of
+        true ->
+            {F, _} = lists:split(20, L),
+            [NR | F];
+        false ->
+            [NR | L]
+    end.
 
 %% Change the state of the torrent with Id, altering it by the "What" part.
 %% Precondition: Torrent exists in the ETS table.
 state_change(_Id, []) ->
     ok;
 state_change(Id, [What | Rest]) ->
-    [T] = ets:lookup(etorrent_torrent, Id),
+    [T] = ets:lookup(?TAB, Id),
     New = case What of
               unknown ->
                   T#torrent{state = unknown};
@@ -206,7 +243,7 @@ state_change(Id, [What | Rest]) ->
               {tracker_report, Seeders, Leechers} ->
                   T#torrent{seeders = Seeders, leechers = Leechers}
           end,
-    ets:insert(etorrent_torrent, New),
+    ets:insert(?TAB, New),
     case {T#torrent.state, New#torrent.state} of
         {leeching, seeding} ->
             etorrent_event_mgr:seeding_torrent(Id),
