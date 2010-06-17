@@ -9,20 +9,41 @@ Secondary Color B:
 */
 
 h1 { font-family: 'Yanone Kaffeesatz', arial, serif;
+     font-size: 250%;
      color: #eeeeee;
    }
 
 p { font-family: 'Droid Serif', arial, serif;
-    color: #eeeeee;
+    color: #333333;
   }
+
+#ft p {
+    color: #eeeeee;
+}
 
 body { background-color: #006E4A;
      }
 
 table { font-family: 'Droid Serif', arial, serif;
-        font-size: -20%;
-        color: #eeeeee;
+        font-size: 80%;
+        color: #333333;
         border-bottom: 1px solid;
       }
 
+div#bd { background-color: #EEEEEE;
+         -moz-border-radius: 5px;
+         -webkit-border-radius: 5px;
+         border: 1px solid #000;
+         padding: 10px;
+       }
+
+div#tasklist { background-color: #333333;
+               -moz-border-radius: 5px;
+               -webkit-border-radius: 5px;
+               padding: 10px;
+             }
+
+#tasklist ul {
+    color: #eeeeee;
+    }
 th { border-bottom: 1px solid; }
