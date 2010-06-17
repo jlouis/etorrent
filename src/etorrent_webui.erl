@@ -34,7 +34,7 @@ list_torrents() ->
                     etorrent_tracking_map:select(R#torrent.id),
                 io_lib:format("<tr><td>~s</td><td>~3.B</td><td>~11.B</td><td>~11.B</td><td>~11.B</td><td>~11.B</td>"++
                               "<td>~3.B / ~3.B</td><td>~7.3f%</td>" ++
-                              "<td><span id=\"~s\">~s</span></td></tr>~n",
+                              "<td><span id=\"~s\">~s</span>~9.B</td></tr>~n",
                         [strip_torrent(FN),
                          R#torrent.id,
                          R#torrent.total,
@@ -49,7 +49,11 @@ list_torrents() ->
                             seeding  -> "sparkline-seed"
                          end,
                          show_sparkline(
-                             lists:reverse(R#torrent.rate_sparkline))])
+                             lists:reverse(R#torrent.rate_sparkline)),
+                         case R#torrent.rate_sparkline of
+                            []      -> 0;
+                            [F | _] -> round(F / 1024)
+                         end])
         end, A),
     {ok, Rows}.
 
