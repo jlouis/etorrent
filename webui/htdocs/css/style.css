@@ -10,6 +10,11 @@ h1 { font-family: 'Yanone Kaffeesatz', arial, serif;
      color: #FFDB71;
    }
 
+h2 { font-family: 'Yanone Kaffeesatz', arial, serif;
+     font-size: 190%;
+     color: #333333;
+   }
+
 p { font-family: 'Droid Serif', arial, serif;
     color: #333333;
   }
