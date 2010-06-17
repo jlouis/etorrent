@@ -21,10 +21,10 @@
 %%   with badly and poorly implemented trackers (most of them)
 %%--------------------------------------------------------------------
 request(URL) ->
-    case http:request(get, {URL, [{"User-Agent", ?AGENT_TRACKER_STRING},
-                                  {"Host", decode_host(URL)},
-                                  {"Accept", "*/*"},
-                                  {"Accept-Encoding", "gzip, identity"}]},
+    case httpc:request(get, {URL, [{"User-Agent", ?AGENT_TRACKER_STRING},
+                                   {"Host", decode_host(URL)},
+                                   {"Accept", "*/*"},
+                                   {"Accept-Encoding", "gzip, identity"}]},
                       [], [{headers_as_is, true}]) of
         {ok, {{Version, StatusCode, ReasonPhrase}, Headers, Body}} ->
             case decode_content_encoding(Headers) of
