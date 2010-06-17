@@ -25,7 +25,7 @@ dialyzer: etorrent
 dialyzer-succ: etorrent
 	$(DIALYZER) --verbose --succ_typings -I $(ETORRENT_LIB)/include -r $(ETORRENT_LIB)
 
-run: etorrent
+run: rebar
 	erl -boot start_sasl $(ERL_FLAGS) -pa $(ETORRENT_LIB)/ebin \
 	-config $(ETORRENT_LIB)/priv/etorrent.config \
 	-sname etorrent -s etorrent start
