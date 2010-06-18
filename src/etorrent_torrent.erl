@@ -225,7 +225,8 @@ state_change(Id, [What | Rest]) ->
               leeching ->
                   T#torrent{state = leeching};
               seeding ->
-                  T#torrent{state = seeding};
+                  T#torrent{state = seeding,
+                            rate_sparkline = [0.0] };
               endgame ->
                   T#torrent{state = endgame};
               {add_downloaded, Amount} ->
