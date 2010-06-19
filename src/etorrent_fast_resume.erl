@@ -63,7 +63,6 @@ persist_to_disk() ->
     _ = track_in_ets_table(Torrents),
     {ok, F} = application:get_env(etorrent, fast_resume_file),
     ok = ets:tab2file(etorrent_fast_resume, F, [{extended_info, [object_count, md5sum]}]),
-    etorrent_event_mgr:persisted_state_to_disk(),
     ok.
 
 %% ==================================================================

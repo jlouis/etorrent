@@ -9,8 +9,7 @@
 
 -export([start_link/0,
 
-         persisted_state_to_disk/0,
-
+         event/1,
          started_torrent/1,
          checking_torrent/1,
          seeding_torrent/1]).
@@ -18,18 +17,17 @@
 -define(SERVER, ?MODULE).
 
 %% API
-started_torrent(Id) ->
-    gen_event:notify(?SERVER, {started_torrent, Id}).
+event(What) ->
+    gen_event:notify(?SERVER, What).
 
+started_torrent(Id) ->
+    event({started_torrent, Id}).
 
 checking_torrent(Id) ->
-    gen_event:notify(?SERVER, {checking_torrent, Id}).
+    event({checking_torrent, Id}).
 
 seeding_torrent(Id) ->
-    gen_event:notify(?SERVER, {seeding_torrent, Id}).
-
-persisted_state_to_disk() ->
-    gen_event:notify(?SERVER, persisted_state_to_disk).
+    event({seeding_torrent, Id}).
 
 %%====================================================================
 %% gen_event callbacks
