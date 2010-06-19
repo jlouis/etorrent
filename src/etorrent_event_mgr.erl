@@ -45,5 +45,6 @@ start_link() ->
     {ok, Fname} = application:get_env(etorrent, logger_fname),
     Args = etorrent_file_logger:init(Dir, Fname),
     gen_event:add_handler(?SERVER, etorrent_file_logger, Args),
+    gen_event:add_handler(?SERVER, etorrent_memory_logger, []),
     {ok, Pid}.
 

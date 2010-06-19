@@ -24,6 +24,7 @@ p { font-family: 'Droid Serif', arial, serif;
 }
 
 body { background-color: #64A4D1;
+       font-family: 'Droid Serif', arial, serif;
      }
 
 table { font-family: 'Droid Serif', arial, serif;
@@ -45,6 +46,10 @@ div#bd { background-color: #EEEEEE;
          padding: 10px;
        }
 
+div#downloading_list {
+    margin-bottom: 20px;
+}
+
 div#tasklist { background-color: #333333;
                -moz-border-radius: 5px;
                -webkit-border-radius: 5px;
@@ -55,3 +60,8 @@ div#tasklist { background-color: #333333;
     color: #eeeeee;
     }
 th { border-bottom: 1px solid; }
+
+span#time {
+    padding-right: 20px;
+}
+

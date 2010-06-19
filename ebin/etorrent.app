@@ -14,6 +14,7 @@
             etorrent_piece_mgr, etorrent_proto_wire, etorrent_rate,
             etorrent_rate_mgr, etorrent_sup, etorrent_t_control, etorrent_time,
             etorrent_torrent, etorrent_t_pool_sup,
+            etorrent_memory_logger,
             etorrent_tracker_communication, etorrent_tracking_map,
             etorrent_t_sup, etorrent_utils, http_gzip, etorrent_fs_janitor,
             etorrent_webui]},

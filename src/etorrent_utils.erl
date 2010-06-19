@@ -10,7 +10,8 @@
 
 %% API
 -export([queue_remove/2, queue_remove_check/2,
-         build_encoded_form_rfc1738/1, shuffle/1, gsplit/2]).
+         build_encoded_form_rfc1738/1, shuffle/1, gsplit/2,
+         date_str/1]).
 
 %%====================================================================
 
@@ -79,6 +80,12 @@ build_encoded_form_rfc1738(Binary) when is_binary(Binary) ->
 shuffle(List) ->
     merge_shuffle(List).
 
+-spec date_str({{integer(), integer(), integer()},
+                {integer(), integer(), integer()}}) -> string().
+date_str({{Y, Mo, D}, {H, Mi, S}}) ->
+    lists:flatten(io_lib:format("~w-~2.2.0w-~2.2.0w ~2.2.0w:"
+                                "~2.2.0w:~2.2.0w",
+                                [Y,Mo,D,H,Mi,S])).
 %%====================================================================
 
 rfc_3986_unreserved_characters() ->

@@ -4,8 +4,16 @@
 -include("etorrent_torrent.hrl").
 -include("etorrent_mnesia_table.hrl").
 
--export([list/3]).
+-export([list/3, log/3]).
 
+log(SessId, _Env, _Input) ->
+    Entries = etorrent_memory_logger:all_entries(),
+    [mod_esi:deliver(SessId, format_log_entry(E)) ||
+        E <- lists:keysort(1, Entries)].
+
+format_log_entry({_Now, LTime, Event}) ->
+    io_lib:format("<span id='time'>~s</span><span id='event'>~p</span><br>~n",
+        [etorrent_utils:date_str(LTime), Event]).
 
 list(SessID, _Env, _Input) ->
     {ok, Rates2} = list_rates(),

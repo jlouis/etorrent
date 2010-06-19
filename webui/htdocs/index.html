@@ -22,6 +22,8 @@
                 <div class="yui-b">
                     <h2>Current Torrents</h2>
                     <div id="downloading_list"></div>
+                    <h2>Latest log messages</h2>
+                    <div id="log_list"></div>
                 </div>
             </div>
             <div class="yui-b">
@@ -37,6 +39,10 @@
    </div>
     <script type="text/javascript">
         $(document).ready(function() {
+                $.get('/ajax/etorrent_webui:log', function(data) {
+                    $('#log_list').html(data);
+                });
+
                 $.get('/ajax/etorrent_webui:list', function(data) {
                     $('#downloading_list').html(data);
                     $('span#sparkline-leech').each(function (idx) {
