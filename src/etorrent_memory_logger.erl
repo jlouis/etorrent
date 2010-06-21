@@ -1,14 +1,15 @@
 %%%-------------------------------------------------------------------
 %%% File    : etorrent_file_logger.erl
 %%% Author  : Jesper Louis Andersen <>
-%%% Description : Log to a file. Loosely based on log_mf_h from the
-%%%  erlang distribution
+%%% Description : Log to a memory table. When entries are older than
+%%%  12 hours, prune the entries.
 %%%
 %%% Created :  9 Jul 2008 by Jesper Louis Andersen <>
 %%%-------------------------------------------------------------------
 -module(etorrent_memory_logger).
 
 -include("log.hrl").
+-include_lib("stdlib/include/ms_transform.hrl").
 
 -behaviour(gen_event).
 
@@ -19,7 +20,9 @@
 -record(state, {}).
 
 -define(TAB, ?MODULE).
+-define(OLD_PRUNE_TIME, 12 * 60 * 60).
 
+-spec all_entries() -> [term()].
 all_entries() ->
     ets:match_object(?TAB, '_').
 
@@ -48,7 +51,13 @@ code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 %% =======================================================================
-%% @todo Implement prune_old_events
+%% @doc Prune events which are older than a given amount of time
+%% @end
 prune_old_events() ->
+    NowSecs = calendar:datetime_to_gregorian_seconds(
+                        calendar:universal_time()),
+    TS = NowSecs - ?OLD_PRUNE_TIME,
+    PruneTime = calendar:gregorian_seconds_to_datetime(TS),
+    MS = ets:fun2ms(fun({N, LT, Evt}) -> LT < PruneTime end),
+    ets:select_delete(?TAB, MS),
     ok.
-
