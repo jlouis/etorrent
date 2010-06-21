@@ -17,11 +17,11 @@ format_log_entry({_Now, LTime, Event}) ->
 
 list(SessID, _Env, _Input) ->
     {ok, Rates2} = list_rates(),
-    mod_esi:deliver(SessID, table_header()),
+    ok = mod_esi:deliver(SessID, table_header()),
     {ok, Table} = list_torrents(),
-    mod_esi:deliver(SessID, Table),
-    mod_esi:deliver(SessID, table_footer()),
-    mod_esi:deliver(SessID, Rates2).
+    ok = mod_esi:deliver(SessID, Table),
+    ok = mod_esi:deliver(SessID, table_footer()),
+    ok = mod_esi:deliver(SessID, Rates2).
 
 list_rates() ->
     {DownloadRate, UploadRate} = etorrent_rate_mgr:global_rate(),

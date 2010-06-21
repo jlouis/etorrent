@@ -26,7 +26,7 @@ all_entries() ->
 %% =======================================================================
 
 init(_Args) ->
-    ets:new(?TAB, [named_table, protected]),
+    _ = ets:new(?TAB, [named_table, protected]),
     {ok, #state{}}.
 
 handle_event(Evt, S) ->
