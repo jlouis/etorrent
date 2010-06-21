@@ -16,27 +16,21 @@
 
 -define(SERVER, ?MODULE).
 
-%% API
+%% =======================================================================
+-spec event(term()) -> ok.
 event(What) ->
     gen_event:notify(?SERVER, What).
 
-started_torrent(Id) ->
-    event({started_torrent, Id}).
+-spec started_torrent(integer()) -> ok.
+started_torrent(Id) -> event({started_torrent, Id}).
 
-checking_torrent(Id) ->
-    event({checking_torrent, Id}).
+-spec checking_torrent(integer()) -> ok.
+checking_torrent(Id) -> event({checking_torrent, Id}).
 
-seeding_torrent(Id) ->
-    event({seeding_torrent, Id}).
+-spec seeding_torrent(integer()) -> ok.
+seeding_torrent(Id) -> event({seeding_torrent, Id}).
 
-%%====================================================================
-%% gen_event callbacks
-%%====================================================================
-
-%%--------------------------------------------------------------------
-%% Function: start_link() -> {ok,Pid} | {error,Error}
-%% Description: Creates an event manager.
-%%--------------------------------------------------------------------
+%% ====================================================================
 start_link() ->
     {ok, Pid} = gen_event:start_link({local, ?SERVER}),
     {ok, Dir} = application:get_env(etorrent, logger_dir),
@@ -45,4 +39,3 @@ start_link() ->
     gen_event:add_handler(?SERVER, etorrent_file_logger, Args),
     gen_event:add_handler(?SERVER, etorrent_memory_logger, []),
     {ok, Pid}.
-

@@ -10,6 +10,7 @@
 -behaviour(gen_server).
 
 -include("etorrent_mnesia_table.hrl").
+-include("types.hrl").
 
 %% API
 -export([start_link/0, query_state/1]).
@@ -24,20 +25,25 @@
 -define(PERSIST_TIME, timer:seconds(300)). % Every 300 secs, may be done configurable.
 
 %%====================================================================
-%% API
-%%====================================================================
-%%--------------------------------------------------------------------
-%% Function: start_link() -> {ok,Pid} | ignore | {error,Error}
-%% Description: Starts the server
-%%--------------------------------------------------------------------
+%% @doc Start up the server
+%% @end
+-spec start_link() -> {ok, pid()} | ignore | {error, term()}.
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
-
-%%--------------------------------------------------------------------
-%% Function: query(Id) -> seeding | {bitfield, BitField} | unknown
-%% Description: Query for the state of TorrentId, Id.
-%%--------------------------------------------------------------------
+%% @doc Query for the state of TorrentId, Id.
+%% <p>The function returns one of several possible values:</p>
+%% <dl><dt>unknown</dt>
+%%     <dd>The torrent is in an unknown state. This means we know nothing
+%%         in particular about the torrent and we should simply load it as
+%%         if we had just started it</dd>
+%%     <dt>seeding</dt><dd>We are currently seeding this torrent</dd>
+%%     <dt>{bitfield, BF}</dt>
+%%     <dd>Here is the bitfield of known good pieces. The rest are in
+%%         an unknown state.</dd>
+%% </dl>
+%% @end
+-spec query_state(integer()) -> unknown | seeding | {bitfield, bitfield()}.
 query_state(Id) ->
         gen_server:call(?SERVER, {query_state, Id}).
 

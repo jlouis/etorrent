@@ -19,29 +19,27 @@
 
 -record(state, {dir, fname, cur_fd, pred}).
 
-%%%-----------------------------------------------------------------
-%%% This module implements an event handler that writes events
-%%% to a single logfile.
-%%%-----------------------------------------------------------------
-%% Func: init/2
-%% Args: EventMgr = pid() | atom()
-%%       Dir  = string()
-%%       Filename  = string()
-%%       Pred = fun(Event) -> boolean()
-%% Purpose: An event handler.  Writes binary events
-%%          to file Filename in the directory Dir.
-%%          Each event is filtered with the predicate function Pred.
-%%          Reports can be browsed with Report Browser Tool (rb).
-%% Returns: Args = term()
-%%          The Args term should be used in a call to
-%%          gen_event:add_handler(EventMgr, log_mf_h, Args).
-%%-----------------------------------------------------------------
+%% =======================================================================
+%% @doc Initialize the file logger
+%% @end
+-spec init(string(), string()) -> 
+        {string(), string(), fun((_) -> boolean())}.
 init(Dir, Filename) -> init(Dir, Filename, fun(_) -> true end).
+
+-spec init(string(), string(), fun((term()) -> boolean())) ->
+            {string(), string(), fun((term()) -> boolean())}.
 init(Dir, Filename, Pred) -> {Dir, Filename, Pred}.
 
-%%-----------------------------------------------------------------
-%% Call-back functions from gen_event
-%%-----------------------------------------------------------------
+%% -----------------------------------------------------------------------
+file_open(Dir, Fname) ->
+    {ok, FD} = file:open(filename:join(Dir, Fname), [append]),
+    {ok, FD}.
+
+date_str({{Y, Mo, D}, {H, Mi, S}}) ->
+    lists:flatten(io_lib:format("~w-~2.2.0w-~2.2.0w ~2.2.0w:"
+                                "~2.2.0w:~2.2.0w",
+                                [Y,Mo,D,H,Mi,S])).
+%% =======================================================================
 init({Dir, Filename, Pred}) ->
     case catch file_open(Dir, Filename) of
         {ok, Fd} -> {ok, #state { dir = Dir, fname = Filename,
@@ -75,14 +73,3 @@ handle_call(null, State) ->
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
-%%-----------------------------------------------------------------
-%% Misc functions
-%%-----------------------------------------------------------------
-file_open(Dir, Fname) ->
-    {ok, FD} = file:open(filename:join(Dir, Fname), [append]),
-    {ok, FD}.
-
-date_str({{Y, Mo, D}, {H, Mi, S}}) ->
-    lists:flatten(io_lib:format("~w-~2.2.0w-~2.2.0w ~2.2.0w:"
-                                "~2.2.0w:~2.2.0w",
-                                [Y,Mo,D,H,Mi,S])).

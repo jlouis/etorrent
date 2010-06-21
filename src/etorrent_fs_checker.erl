@@ -9,16 +9,18 @@
 -module(etorrent_fs_checker).
 
 -include("etorrent_piece.hrl").
+-include("types.hrl").
 
 %% API
 -export([read_and_check_torrent/3, check_torrent/2]).
 
-%%====================================================================
-%% API
-%%====================================================================
+%% ====================================================================
 
-%% Check the contents of torrent Id, backed by filesystem FS and report a
-%%   list of bad pieces.
+% @doc Check the contents of torrent Id
+% <p>We will check a torrent, Id, backed by filesystem pid FS and report a
+%   list of bad pieces.</p>
+% @end
+-spec check_torrent(pid(), integer()) -> [{integer(), integer()}].
 check_torrent(FS, Id) ->
     Pieces = etorrent_piece_mgr:select(Id),
     PieceCheck =
@@ -29,13 +31,14 @@ check_torrent(FS, Id) ->
     [P#piece.idpn || P <- Pieces,
                      PieceCheck(P)].
 
-initialize_dictionary(Id, Path) ->
-    %% Load the torrent
-    {ok, Torrent, Files, IH} = load_torrent(Path),
-    ok = ensure_file_sizes_correct(Files),
-    {ok, FPList, NumPieces} = build_dictionary_on_files(Id, Torrent, Files),
-    {ok, Torrent, IH, FPList, NumPieces}.
 
+% @doc Read and check a torrent
+% <p>The torrent given by Id, at Path (the .torrent file) and a supervisor
+% given as SupervisorPid %    will be checked for correctness. We return a tuple
+% with various information about said torrent: The decoded Torrent dictionary,
+% the FS pid, the info hash and the number of pieces in the torrent.</p>
+% @end
+-spec read_and_check_torrent(integer(), pid(), string()) -> {ok, bcode(), pid(), binary(), integer()}.
 read_and_check_torrent(Id, SupervisorPid, Path) ->
     {ok, Torrent, Infohash, FilePieceList, NumberOfPieces} =
         initialize_dictionary(Id, Path),
@@ -45,11 +48,6 @@ read_and_check_torrent(Id, SupervisorPid, Path) ->
     case etorrent_fast_resume:query_state(Id) of
         seeding -> initialize_pieces_seed(Id, FilePieceList);
         {bitfield, BF} -> initialize_pieces_from_bitfield(Id, BF, NumberOfPieces, FilePieceList);
-        leeching ->
-            ok = etorrent_piece_mgr:add_pieces(
-                   Id,
-                  [{PN, Hash, Fls, not_fetched} || {PN, {Hash, Fls}} <- FilePieceList]),
-            ok = initialize_pieces_from_disk(FS, Id, FilePieceList);
         %% XXX: The next one here could initialize with not_fetched all over
         unknown ->
             ok = etorrent_piece_mgr:add_pieces(
@@ -59,6 +57,15 @@ read_and_check_torrent(Id, SupervisorPid, Path) ->
     end,
 
     {ok, Torrent, FS, Infohash, NumberOfPieces}.
+
+%% =======================================================================
+
+initialize_dictionary(Id, Path) ->
+    %% Load the torrent
+    {ok, Torrent, Files, IH} = load_torrent(Path),
+    ok = ensure_file_sizes_correct(Files),
+    {ok, FPList, NumPieces} = build_dictionary_on_files(Id, Torrent, Files),
+    {ok, Torrent, IH, FPList, NumPieces}.
 
 load_torrent(Path) ->
     {ok, Workdir} = application:get_env(etorrent, dir),
@@ -128,10 +135,6 @@ build_dictionary_on_files(TorrentId, Torrent, Files) ->
     MappedPieces = [{Num, {Hash, insert_into_path_map(Ops, TorrentId)}} ||
                        {Num, {Hash, Ops}} <- PieceList],
     {ok, MappedPieces, N}.
-
-%%====================================================================
-%% Internal functions
-%%====================================================================
 
 extract_piece(0, Fs, Offset, B) ->
     {ok, Fs, Offset, B};
