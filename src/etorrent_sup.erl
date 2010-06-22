@@ -18,15 +18,12 @@
 
 -define(SERVER, ?MODULE).
 
-%%====================================================================
-%% API functions
-%%====================================================================
+%% ====================================================================
+-spec start_link([binary()]) -> {ok, pid()} | ignore | {error, term()}.
 start_link(PeerId) ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, [PeerId]).
 
-%%====================================================================
-%% Supervisor callbacks
-%%====================================================================
+%% ====================================================================
 init([PeerId]) ->
     error_logger:info_report([etorrent_supervisor_starting, PeerId]),
     Torrent  = {torrent,
@@ -86,7 +83,3 @@ init([PeerId]) ->
            Counters, EventManager, PeerMgr, FastResume, RateManager, PieceManager,
            ChunkManager, Choker, Listener, AcceptorSup, TorrentMgr, DirWatcherSup,
            TorrentPool]}}.
-
-%%====================================================================
-%% Internal functions
-%%====================================================================

@@ -20,6 +20,12 @@
 
 -define(TAB, ?MODULE).
 
+%% =======================================================================
+
+% @doc Return all entries in the memory logger table
+% @end
+% @todo Improve spec
+-spec all_entries() -> [{term(), term(), term()}].
 all_entries() ->
     ets:match_object(?TAB, '_').
 

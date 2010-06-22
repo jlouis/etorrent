@@ -11,15 +11,15 @@
 %% API
 -export([request/1]).
 
-%%====================================================================
-%% API
-%%====================================================================
-%%--------------------------------------------------------------------
-%% Function: request/1
-%% Description: As http:request/1 in the inets application, but also
-%%   handles gzip. The request headers are explicitly handled to deal
-%%   with badly and poorly implemented trackers (most of them)
-%%--------------------------------------------------------------------
+%% ====================================================================
+
+% @doc Compression (gzip) enabled variant of http:request
+% <p>As http:request/1 in the inets application, but also handles gzip. The
+% request headers are explicitly handled to deal with badly and poorly
+% implemented trackers (most of them)
+% @end
+-type http_response() :: {{string(), integer(), string()}, string(), string()}.
+-spec request(string()) -> {error, term()} | {ok, http_response()}.
 request(URL) ->
     case httpc:request(get, {URL, [{"User-Agent", ?AGENT_TRACKER_STRING},
                                    {"Host", decode_host(URL)},
@@ -39,9 +39,9 @@ request(URL) ->
             E
     end.
 
-%%====================================================================
-%% Internal functions
-%%====================================================================
+%% ====================================================================
+
+% Variant that decodes the content headers, handling compression.
 decode_content_encoding(Headers) ->
     LowerCaseHeaderKeys =
         [{string:to_lower(K), V} || {K, V} <- Headers],
@@ -56,6 +56,8 @@ decode_content_encoding(Headers) ->
             identity
     end.
 
+% Find the correct host name in an URL. It revolves around getting the port
+% right.
 decode_host(URL) ->
     {_Scheme, _UserInfo, Host, Port, _Path, _Query} =
         etorrent_http_uri:parse(URL),

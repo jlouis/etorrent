@@ -10,15 +10,12 @@
 %% API
 -export([now_subtract_seconds/2]).
 
-%%====================================================================
-%% API
-%%====================================================================
-%%--------------------------------------------------------------------
-%% Function: now_subtract(NT, Millisecs) -> NT
-%% Args:    NT ::= {Megasecs, Secs, Millisecs}
-%%          Megasecs = Secs = Millisecs = integer()
-%% Description: Subtract a time delta in millsecs from a now() triple
-%%--------------------------------------------------------------------
+%% ====================================================================
+
+% @doc Subtract a time delta in millsecs from a now() triple
+% @end
+-spec now_subtract_seconds({integer(), integer(), integer()}, integer()) ->
+    {integer(), integer(), integer()}.
 now_subtract_seconds({Megasecs, Secs, Ms}, Subsecs) ->
     case Secs - Subsecs of
         N when N >= 0 ->
@@ -27,7 +24,3 @@ now_subtract_seconds({Megasecs, Secs, Ms}, Subsecs) ->
             Needed = abs(N) div 1000000 + 1,
             {Megasecs - Needed, N + (Needed * 1000000), Ms}
     end.
-
-%%====================================================================
-%% Internal functions
-%%====================================================================
