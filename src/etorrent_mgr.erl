@@ -21,21 +21,33 @@
 
 %% API
 
-%% Start a new etorrent_t_manager process
+%% =======================================================================
+
+% @doc Start a new etorrent_t_manager process
+% @end
+-spec start_link(binary()) -> {ok, pid()} | ignore | {error, term()}.
 start_link(PeerId) ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [PeerId], []).
 
-%% Ask the manager process to start a new torrent, given in File.
+% @doc Ask the manager process to start a new torrent, given in File.
+% @end
+-spec start(string()) -> ok.
 start(File) ->
     gen_server:cast(?SERVER, {start, File}).
 
-%% Check a torrents contents
+% @doc Check a torrents contents
+% @end
+-spec check(integer()) -> ok.
 check(Id) ->
     gen_server:cast(?SERVER, {check, Id}).
 
-%% Ask the manager process to stop a torrent, identified by File.
+% @doc Ask the manager process to stop a torrent, identified by File.
+% @end
+-spec stop(string()) -> ok.
 stop(File) ->
     gen_server:cast(?SERVER, {stop, File}).
+
+%% =======================================================================
 
 %% Callbacks
 init([PeerId]) ->
@@ -81,7 +93,7 @@ terminate(_Foo, _State) ->
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
-%% Internal functions
+%% =======================================================================
 stop_torrent(F, S) ->
     error_logger:info_msg("Stopping ~p~n", [F]),
     case etorrent_tracking_map:select({filename, F}) of

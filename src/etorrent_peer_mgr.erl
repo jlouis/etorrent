@@ -11,6 +11,7 @@
 
 -include("etorrent_mnesia_table.hrl").
 -include("etorrent_bad_peer.hrl").
+-include("types.hrl").
 
 -behaviour(gen_server).
 
@@ -30,66 +31,50 @@
 -define(CHECK_TIME, timer:seconds(120)).
 -define(DEFAULT_CONNECT_TIMEOUT, 30 * 1000).
 
-%%====================================================================
-%% API
-%%====================================================================
-%%--------------------------------------------------------------------
-%% Function: start_link() -> {ok,Pid} | ignore | {error,Error}
-%% Description: Starts the server
-%%--------------------------------------------------------------------
+%% ====================================================================
+% @doc Start the peer manager
+% @end
+-spec start_link(binary()) -> {ok, pid()} | ignore | {error, term()}.
 start_link(OurPeerId) ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [OurPeerId], []).
 
+% @doc Tell the peer mananger that a given peer behaved badly.
+% @end
+-spec enter_bad_peer(ip(), integer(), binary()) -> ok.
 enter_bad_peer(IP, Port, PeerId) ->
     gen_server:cast(?SERVER, {enter_bad_peer, IP, Port, PeerId}).
 
+% @doc Add a list of {IP, Port} peers to the manager.
+% <p>The manager will use the list of peers for connections to other peers. It
+% may not use all of those given if it deems it has enough connections right
+% now.</p>
+% @end
+-spec add_peers(integer(), [{ip(), integer()}]) -> ok.
 add_peers(TorrentId, IPList) ->
     gen_server:cast(?SERVER, {add_peers,
                               [{TorrentId, {IP, Port}} || {IP, Port} <- IPList]}).
 
-%% Returns true if this peer is in the list of baddies
+% @doc Returns true if this peer is in the list of baddies
+% @end
+-spec is_bad_peer(ip(), integer()) -> boolean().
 is_bad_peer(IP, Port) ->
     case ets:lookup(etorrent_bad_peer, {IP, Port}) of
         [] -> false;
         [P] -> P#bad_peer.offenses > ?DEFAULT_BAD_COUNT
     end.
 
-%%====================================================================
-%% gen_server callbacks
-%%====================================================================
+%% ====================================================================
 
-%%--------------------------------------------------------------------
-%% Function: init(Args) -> {ok, State} |
-%%                         {ok, State, Timeout} |
-%%                         ignore               |
-%%                         {stop, Reason}
-%% Description: Initiates the server
-%%--------------------------------------------------------------------
 init([OurPeerId]) ->
     _Tref = timer:send_interval(?CHECK_TIME, self(), cleanup_table),
     _Tid = ets:new(etorrent_bad_peer, [protected, named_table,
                                        {keypos, #bad_peer.ipport}]),
     {ok, #state{ our_peer_id = OurPeerId }}.
 
-%%--------------------------------------------------------------------
-%% Function: %% handle_call(Request, From, State) -> {reply, Reply, State} |
-%%                                      {reply, Reply, State, Timeout} |
-%%                                      {noreply, State} |
-%%                                      {noreply, State, Timeout} |
-%%                                      {stop, Reason, Reply, State} |
-%%                                      {stop, Reason, State}
-%% Description: Handling call messages
-%%--------------------------------------------------------------------
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
 
-%%--------------------------------------------------------------------
-%% Function: handle_cast(Msg, State) -> {noreply, State} |
-%%                                      {noreply, State, Timeout} |
-%%                                      {stop, Reason, State}
-%% Description: Handling cast messages
-%%--------------------------------------------------------------------
 handle_cast({add_peers, IPList}, S) ->
     NS = start_new_peers(IPList, S),
     {noreply, NS};
@@ -111,12 +96,6 @@ handle_cast({enter_bad_peer, IP, Port, PeerId}, S) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-%%--------------------------------------------------------------------
-%% Function: handle_info(Info, State) -> {noreply, State} |
-%%                                       {noreply, State, Timeout} |
-%%                                       {stop, Reason, State}
-%% Description: Handling all non call/cast messages
-%%--------------------------------------------------------------------
 handle_info(cleanup_table, S) ->
     Bound = etorrent_time:now_subtract_seconds(now(), ?GRACE_TIME),
     _N = ets:select_delete(etorrent_bad_peer,
@@ -128,27 +107,13 @@ handle_info(cleanup_table, S) ->
 handle_info(_Info, State) ->
     {noreply, State}.
 
-%%--------------------------------------------------------------------
-%% Function: terminate(Reason, State) -> void()
-%% Description: This function is called by a gen_server when it is about to
-%% terminate. It should be the opposite of Module:init/1 and do any necessary
-%% cleaning up. When it returns, the gen_server terminates with Reason.
-%% The return value is ignored.
-%%--------------------------------------------------------------------
 terminate(_Reason, _State) ->
     ok.
 
-%%--------------------------------------------------------------------
-%% Func: code_change(OldVsn, State, Extra) -> {ok, NewState}
-%% Description: Convert process state when code is changed
-%%--------------------------------------------------------------------
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
-%%--------------------------------------------------------------------
-%%% Internal functions
-%%--------------------------------------------------------------------
-
+%% --------------------------------------------------------------------
 
 start_new_peers(IPList, State) ->
     %% Update the PeerList with the new incoming peers
