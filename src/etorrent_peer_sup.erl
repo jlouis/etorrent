@@ -2,6 +2,8 @@
 
 -behaviour(supervisor).
 
+-include("types.hrl").
+
 %% API
 -export([start_link/6, get_pid/2]).
 
@@ -10,13 +12,9 @@
 
 -define(SERVER, ?MODULE).
 
-%%====================================================================
-%% API functions
-%%====================================================================
-%%--------------------------------------------------------------------
-%% Function: start_link() -> {ok,Pid} | ignore | {error,Error}
-%% Description: Starts the supervisor
-%%--------------------------------------------------------------------
+%% ====================================================================
+-spec start_link(binary(), binary(), pid(), integer(), {ip(), integer()}, port()) ->
+            {ok, pid()} | ignore | {error, term()}.
 start_link(LocalPeerId, InfoHash, FilesystemPid, Id, {IP, Port}, Socket) ->
     supervisor:start_link(?MODULE, [LocalPeerId,
                                     InfoHash,
@@ -24,23 +22,16 @@ start_link(LocalPeerId, InfoHash, FilesystemPid, Id, {IP, Port}, Socket) ->
                                     Id,
                                     {IP, Port}, Socket]).
 
+%% @todo Move this function to a more global spot. It is duplicated
+% @doc return the pid() of a given child.
+% @end
+-spec get_pid(pid(), atom()) -> {ok, pid()}.
 get_pid(Pid, Name) ->
     {value, {_, Child, _, _}} =
         lists:keysearch(Name, 1, supervisor:which_children(Pid)),
     {ok, Child}.
 
-%%====================================================================
-%% Supervisor callbacks
-%%====================================================================
-%%--------------------------------------------------------------------
-%% Func: init(Args) -> {ok,  {SupFlags,  [ChildSpec]}} |
-%%                     ignore                          |
-%%                     {error, Reason}
-%% Description: Whenever a supervisor is started using
-%% supervisor:start_link/[2,3], this function is called by the new process
-%% to find out about restart strategy, maximum restart frequency and child
-%% specifications.
-%%--------------------------------------------------------------------
+%% ====================================================================
 init([LocalPeerId, InfoHash, FilesystemPid, Id, {IP, Port}, Socket]) ->
     Control = {control, {etorrent_peer_control, start_link,
                           [LocalPeerId, InfoHash, FilesystemPid, Id, self(),
@@ -54,7 +45,3 @@ init([LocalPeerId, InfoHash, FilesystemPid, Id, {IP, Port}, Socket]) ->
                            self()]},
                 permanent, 15000, worker, [etorrent_peer_send]},
     {ok, {{one_for_all, 0, 1}, [Control, Sender, Receiver]}}.
-
-%%====================================================================
-%% Internal functions
-%%====================================================================
