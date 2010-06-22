@@ -6,22 +6,33 @@
 
 -export([list/3, log/3]).
 
+%% =======================================================================
+% @doc Request retrieval of the in-memory log file
+% @end
+-spec log(binary(), ignore, ignore) -> ok.
 log(SessId, _Env, _Input) ->
     Entries = etorrent_memory_logger:all_entries(),
-    [mod_esi:deliver(SessId, format_log_entry(E)) ||
-        E <- lists:keysort(1, Entries)].
+    [ok = mod_esi:deliver(SessId, format_log_entry(E)) ||
+        E <- lists:keysort(1, Entries)],
+    ok.
 
+% @doc Request retrieval of the list of currently serving torrents
+% @end
+-spec list(binary(), ignore, ignore) -> ok.
+list(SessID, _Env, _Input) ->
+    {ok, Rates2} = list_rates(),
+    ok = mod_esi:deliver(SessID, table_header()),
+    {ok, Table} = list_torrents(),
+    ok = mod_esi:deliver(SessID, Table),
+    ok = mod_esi:deliver(SessID, table_footer()),
+    ok = mod_esi:deliver(SessID, Rates2),
+    ok.
+
+%% =======================================================================
 format_log_entry({_Now, LTime, Event}) ->
     io_lib:format("<span id='time'>~s</span><span id='event'>~p</span><br>~n",
         [etorrent_utils:date_str(LTime), Event]).
 
-list(SessID, _Env, _Input) ->
-    {ok, Rates2} = list_rates(),
-    mod_esi:deliver(SessID, table_header()),
-    {ok, Table} = list_torrents(),
-    mod_esi:deliver(SessID, Table),
-    mod_esi:deliver(SessID, table_footer()),
-    mod_esi:deliver(SessID, Rates2).
 
 list_rates() ->
     {DownloadRate, UploadRate} = etorrent_rate_mgr:global_rate(),
@@ -86,4 +97,3 @@ show_sparkline([I | R]) ->
 
 conv_number(I) when is_integer(I) -> integer_to_list(I);
 conv_number(F) when is_float(F)   -> float_to_list(F).
-

@@ -2,6 +2,7 @@
 
 -type operation() :: {integer(), integer(), integer()}.
 -type bitfield() :: binary().
+-type ip() :: {integer(), integer(), integer(), integer()}.
 
 % The bcode() type:
 -type bstring() :: {'string', string()}.

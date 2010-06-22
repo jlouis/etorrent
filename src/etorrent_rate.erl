@@ -14,33 +14,25 @@
 
 -define(MAX_RATE_PERIOD, 20).
 
-%%====================================================================
-%% API
-%%====================================================================
-%%--------------------------------------------------------------------
-%% Function: init/1
-%% Args: Fudge ::= integer() - The fudge skew to start out with
-%% Description: Return an initialized rate tuple.
-%%--------------------------------------------------------------------
+%% ====================================================================
+% @doc Convenience initializer for init/1
+% @end
 init() -> init(?RATE_FUDGE).
 
+% @doc Initialize the rate tuple.
+%    Takes a single integer, fudge, which is the fudge factor used to start up.
+%    It fakes the startup of the rate calculation.
+% @end
+-spec init(integer()) -> #peer_rate{}.
 init(Fudge) ->
     T = now_secs(),
     #peer_rate { next_expected = T + Fudge,
                  last = T - Fudge,
                  rate_since = T - Fudge }.
 
-%%--------------------------------------------------------------------
-%% Function: update/2
-%% Args: Amount ::= integer() - Number of bytes that arrived
-%%       Rate   ::= double()  - Current rate
-%%       Total  ::= integer() - Total amount of bytes downloaded
-%%       NextExpected ::= time() - When is the next update expected
-%%       Last   ::= time()    - When was the last update
-%%       RateSince ::= time() - Point in time where the rate has its
-%%                              basis
-%% Description: Update the rate by Amount.
-%%--------------------------------------------------------------------
+% @doc Update the rate record with Amount new downloaded bytes
+% @end
+-spec update(#peer_rate{}, integer()) -> #peer_rate{}.
 update(#peer_rate {rate = Rate,
                    total = Total,
                    next_expected = NextExpected,
@@ -69,20 +61,16 @@ update(#peer_rate {rate = Rate,
                          rate_since = lists:max([RateSince, T - ?MAX_RATE_PERIOD])}
     end.
 
-
-%%--------------------------------------------------------------------
-%% Function: eta/2
-%% Args: Left  ::= integer() - Number of bytes left to download
-%%       DownloadRate   ::= double()  - Download rate
-%% Description: Calculate estimated time of arrival.
-%% Returns: {Days, {Hours, Minutes, Seconds}}
-%%--------------------------------------------------------------------
+% @doc Calculate estimated time of arrival.
+% @end
+-type eta() :: {integer(), {integer(), integer(), integer()}}.
+-spec eta(integer(), float()) -> eta().
 eta(Left, DownloadRate) ->
         calendar:seconds_to_daystime(round(Left / DownloadRate)).
 
-%%====================================================================
-%% Internal functions
-%%====================================================================
+% @doc Returns the number of seconds elapsed as gregorian calendar seconds
+% @end
+-spec now_secs() -> integer().
 now_secs() ->
     calendar:datetime_to_gregorian_seconds(
      calendar:local_time()).
