@@ -35,5 +35,5 @@ tracer:
 	-sname tracer -s tr client
 
 clean:
-	rm ebin/*.beam
+	rebar clean
 
