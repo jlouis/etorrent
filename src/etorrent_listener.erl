@@ -27,7 +27,8 @@
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
-%% @doc Return the listen socket we are bound to.
+% @doc Return the listen socket we are bound to.
+% @end
 -spec get_socket() -> {ok, port()}.
 get_socket() ->
     gen_server:call(?SERVER, get_socket).
@@ -44,6 +45,7 @@ find_listen_socket(Port, N) ->
     end.
 
 %% ====================================================================
+
 init([]) ->
     process_flag(trap_exit, true),
     {ok, Port} = application:get_env(etorrent, port),

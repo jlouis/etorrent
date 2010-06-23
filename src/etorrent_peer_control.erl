@@ -285,7 +285,7 @@ handle_message({bitfield, _BF}, S) when S#state.piece_set =/= unknown ->
     etorrent_peer_mgr:enter_bad_peer(IP, Port, S#state.remote_peer_id),
     {error, piece_set_out_of_band};
 handle_message({bitfield, BitField}, S) ->
-    Size = etorrent_torrent:num_pieces(S#state.torrent_id),
+    {value, Size} = etorrent_torrent:num_pieces(S#state.torrent_id),
     {ok, PieceSet} =
         etorrent_proto_wire:decode_bitfield(Size, BitField),
     Left = S#state.pieces_left - gb_sets:size(PieceSet),

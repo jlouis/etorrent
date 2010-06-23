@@ -17,32 +17,21 @@
 
 -define(SERVER, ?MODULE).
 
-%%====================================================================
-%% API functions
-%%====================================================================
-%%--------------------------------------------------------------------
-%% Function: start_link() -> {ok,Pid} | ignore | {error,Error}
-%% Description: Starts the supervisor
-%%--------------------------------------------------------------------
-start_link() ->
-    supervisor:start_link(?MODULE, []).
+%% ====================================================================
+% @doc Start up the supervisor
+% @end
+-spec start_link() -> {ok, pid()} | ignore | {error, term()}.
+start_link() -> supervisor:start_link(?MODULE, []).
 
-%%--------------------------------------------------------------------
-%% Function: add_file_process/2
-%% Description: Add a new process for maintaining a file.
-%%--------------------------------------------------------------------
+% @doc Add a new process for maintaining a file.
+% @end
+-spec add_file_process(pid(), integer(), string()) -> {ok, pid()} | {error, term()} | {ok, pid(), term()}.
 add_file_process(Pid, TorrentId, Path) ->
     supervisor:start_child(Pid, [Path, TorrentId]).
 
-%%====================================================================
-%% Supervisor callbacks
-%%====================================================================
+%% ====================================================================
 init([]) ->
     FSProcesses = {'FSPROCESS',
                    {etorrent_fs_process, start_link, []},
                    transient, 2000, worker, [etorrent_fs_process]},
     {ok, {{simple_one_for_one, 1, 60}, [FSProcesses]}}.
-
-%%====================================================================
-%% Internal functions
-%%====================================================================

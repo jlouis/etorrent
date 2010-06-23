@@ -29,80 +29,108 @@
 -define(TAB, ?MODULE).
 -record(state, { monitoring }).
 
-%%====================================================================
-%% API
-%%====================================================================
+%% ====================================================================
 
+-spec start_link() -> {ok, pid()} | ignore | {error, term()}.
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
-%%--------------------------------------------------------------------
-%% Function: new(Id, LoadData, NPieces) -> NPieces
-%% Description: Initialize a torrent entry for Id with the tracker
-%%   state as given. Pieces is the number of pieces for this torrent.
-%% Precondition: The #piece table has been filled with the torrents pieces.
-%%--------------------------------------------------------------------
+% @doc Initialize a torrent
+% <p>The torrent entry for Id with the tracker
+%   state as given. Pieces is the number of pieces for this torrent.
+% </p>
+% <p><emph>Precondition:</emph> The #piece table has been filled with the torrents pieces.</p>
+% @end
+-spec new(integer(),
+       {{uploaded, integer()},
+        {downloaded, integer()},
+        {left, integer()},
+        {total, integer()}}, integer()) -> ok.
 new(Id, Info, NPieces) ->
     gen_server:call(?SERVER, {new, Id, Info, NPieces}).
 
-%%--------------------------------------------------------------------
-%% Function: all() -> Rows
-%% Description: Return all torrents, sorted by Id
-%%--------------------------------------------------------------------
+% @doc Return all torrents, sorted by Id
+% @end
+-spec all() -> [#torrent{}].
 all() ->
     gen_server:call(?SERVER, all).
 
+% @doc Request a change of state for the torrent
+% <p>The specific What part is documented as the alteration() type
+% in the module.
+% </p>
+% @end
+-type alteration() :: unknown
+                    | leeching
+                    | seeding
+                    | endgame
+                    | {add_downloaded, integer()}
+                    | {add_upload, integer()}
+                    | {subtract_left, integer()}
+                    | {tracker_report, integer(), integer()}.
+-spec statechange(integer(), [alteration()]) -> ok.
 statechange(Id, What) ->
     gen_server:call(?SERVER, {statechange, Id, What}).
 
-%%--------------------------------------------------------------------
-%% Function: num_pieces(Id) -> {value, integer()}
-%% Description: Return the number of pieces for torrent Id
-%%--------------------------------------------------------------------
+% @doc Return the number of pieces for torrent Id
+% @end
+-spec num_pieces(integer()) -> {value, integer()}.
 num_pieces(Id) ->
     gen_server:call(?SERVER, {num_pieces, Id}).
 
+% @doc Return the current state of the torrent identified by Id
+% @end
+-spec state(integer()) -> not_found | {value, seeding | leeching | unknown}.
 state(Id) ->
     case ets:lookup(?TAB, Id) of
         [] -> not_found;
         [M] -> {value, M#torrent.state}
     end.
 
-%% Returns {value, True} if the torrent is a seeding torrent
+% @doc Returns true if the torrent is a seeding torrent
+% @end
+-spec is_seeding(integer()) -> boolean().
 is_seeding(Id) ->
     {value, S} = state(Id),
     S =:= seeding.
 
-%% Returns all torrents which are currently seeding
+% @doc Returns all torrents which are currently seeding
+% @end
+-spec seeding() -> {value, [integer()]}.
 seeding() ->
     Torrents = all(),
     {value, [T#torrent.id || T <- Torrents,
                     T#torrent.state =:= seeding]}.
 
-%% Request the torrent information.
+% @doc Return a torrent_info block for a given torrent
+% @end
+-spec find(integer()) ->
+    {torrent_info, undefined | integer(),
+                   undefined | integer(),
+                   undefined | integer()}.
 find(Id) ->
     [T] = ets:lookup(?TAB, Id),
     {torrent_info, T#torrent.uploaded, T#torrent.downloaded, T#torrent.left}.
 
 
-%%--------------------------------------------------------------------
-%% Function: decrease_not_fetched(Id) -> ok | endgame
-%% Description: track that we downloaded a piece, eventually updating
-%%  the endgame result.
-%%--------------------------------------------------------------------
+% @doc Track that we downloaded a piece
+%  <p>As a side-effect, this call eventually updates the endgame state</p>
+% @end
+-spec decrease_not_fetched(integer()) -> ok.
 decrease_not_fetched(Id) ->
     gen_server:call(?SERVER, {decrease, Id}).
 
 
-%%--------------------------------------------------------------------
-%% Function: is_endgame(Id) -> bool()
-%% Description: Returns true if the torrent is in endgame mode
-%%--------------------------------------------------------------------
+% @doc Returns true if the torrent is in endgame mode
+% @end
+-spec is_endgame(integer()) -> boolean().
 is_endgame(Id) ->
     case ets:lookup(?TAB, Id) of
         [T] -> T#torrent.state =:= endgame;
         [] -> false % The torrent isn't there anymore.
     end.
+
+%% =======================================================================
 
 init([]) ->
     _ = ets:new(?TAB, [protected, named_table,
@@ -146,7 +174,7 @@ handle_call({decrease, Id}, _F, S) ->
     N = ets:update_counter(etorrent_c_pieces, Id, {#c_pieces.missing, -1}),
     case N of
         0 ->
-            state_change(Id, endgame),
+            state_change(Id, [endgame]),
             {reply, endgame, S};
         N when is_integer(N) ->
             {reply, ok, S}
@@ -173,6 +201,8 @@ code_change(_OldVsn, S, _Extra) ->
 
 terminate(_Reason, _S) ->
     ok.
+
+%% -----------------------------------------------------------------------
 
 %%--------------------------------------------------------------------
 %% Function: all(Pos) -> Rows
@@ -252,6 +282,4 @@ state_change(Id, [What | Rest]) ->
         _ ->
             ok
     end,
-    state_change(Id, Rest);
-state_change(Id, What) when is_integer(Id) ->
-    state_change(Id, [What]).
+    state_change(Id, Rest).

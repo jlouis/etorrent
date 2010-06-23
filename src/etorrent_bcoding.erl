@@ -8,16 +8,11 @@
 %%%-------------------------------------------------------------------
 -module(etorrent_bcoding).
 -author("Jesper Louis Andersen <jesper.louis.andersen@gmail.com>").
+-include("types.hrl").
 
 -export([encode/1, decode/1, search_dict/2, search_dict_default/3,
         parse/1]).
 
--type bstring() :: {'string', string()}.
--type binteger() :: {'integer', integer()}.
--type bcode() :: bstring()
-               | binteger()
-               | {'list', [bcode()]}
-               | {'dict', [{bstring(), bcode()}]}.
 
 %%====================================================================
 %% API

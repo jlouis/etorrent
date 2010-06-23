@@ -22,7 +22,12 @@
 -define(TAB, ?MODULE).
 -define(OLD_PRUNE_TIME, 12 * 60 * 60).
 
--spec all_entries() -> [term()].
+%% =======================================================================
+
+% @doc Return all entries in the memory logger table
+% @end
+% @todo Improve spec
+-spec all_entries() -> [{term(), term(), term()}].
 all_entries() ->
     ets:match_object(?TAB, '_').
 

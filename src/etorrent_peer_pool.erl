@@ -9,6 +9,8 @@
 
 -behaviour(supervisor).
 
+-include("types.hrl").
+
 %% API
 -export([start_link/0, add_peer/7]).
 
@@ -17,21 +19,18 @@
 
 -define(SERVER, ?MODULE).
 
-%%====================================================================
-%% API functions
-%%====================================================================
-%%--------------------------------------------------------------------
-%% Function: start_link() -> {ok,Pid} | ignore | {error,Error}
-%% Description: Starts the supervisor
-%%--------------------------------------------------------------------
-start_link() ->
-    supervisor:start_link(?MODULE, []).
+%% ====================================================================
+-spec start_link() -> {ok, pid()} | ignore | {error, term()}.
+start_link() -> supervisor:start_link(?MODULE, []).
 
-%%--------------------------------------------------------------------
-%% Function: add_peer/6
-%% Description: Add a peer to the supervisor pool. Returns the
-%% receiver process hooked on the supervisor.
-%%--------------------------------------------------------------------
+% @doc Add a peer to the supervisor pool.
+% <p>Post-factum, when new peers arrives, or we deplete the number of connected
+% peer below a certain threshold, we add new peers. When this happens, we call
+% the add_peer/7 function given here. It sets up a peer and adds it to the
+% supervisor.</p>
+% @end
+-spec add_peer(pid(), binary(), binary(), pid(), integer(), {ip(), integer()}, port()) ->
+            {error, term()} | {ok, pid(), pid()}.
 add_peer(GroupPid, LocalPeerId, InfoHash, FilesystemPid, Id,
          {IP, Port}, Socket) ->
     case supervisor:start_child(GroupPid, [LocalPeerId, InfoHash,
@@ -47,9 +46,7 @@ add_peer(GroupPid, LocalPeerId, InfoHash, FilesystemPid, Id,
     end.
 
 
-%%====================================================================
-%% Supervisor callbacks
-%%====================================================================
+%% ====================================================================
 init([]) ->
     ChildSpec = {child,
                  {etorrent_peer_sup, start_link, []},
