@@ -102,8 +102,7 @@ send_msg(Socket, Msg, Mode) ->
 
 % @doc Decode a binary bitfield into a pieceset
 % @end
-% @todo Fix the spec of this function. It has a nasty bug.
--spec decode_bitfield({value, integer()} | integer(), binary()) ->
+-spec decode_bitfield(integer(), binary()) ->
     {ok, gb_set()} | {error, term()}.
 decode_bitfield(Size, BinaryLump) ->
     ByteList = binary_to_list(BinaryLump),
