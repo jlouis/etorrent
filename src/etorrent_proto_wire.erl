@@ -31,15 +31,34 @@
 -define(REJECT_REQUEST, 16:8).
 -define(ALLOWED_FAST, 17:8).
 
-%% Tell how many bytes there are left on a continuation
-remaining_bytes(none) -> {val, 0};
-remaining_bytes({partial, _D}) when is_binary(_D) -> {val, 0};
-remaining_bytes({partial, {Left, _}}) when is_integer(Left) -> {val, Left}.
+%% =======================================================================
 
-%% incoming_packet(State | none, Packet) -> ok | {ok, Decoded, Rest}
-%%                     | {partial, ContinuationState}
-%% The incoming packet function will attempt to decode an incoming packet. It returns either
-%% the decoded packet, or it returns a partial continuation to continue packet reading
+% The type of packets:
+-type packet() :: keep_alive
+                | choke
+                | unchoke
+                | interested
+                | not_interested
+                | {have, integer()}
+                | {bitfield, binary()}
+                | {request, integer(), integer(), integer()}
+                | {piece, integer(), integer(), binary()}
+                | {cancel, integer(), integer(), integer()}
+                | {port, integer()}
+                | {suggest, integer()}
+                | have_all
+                | have_none
+                | {reject_request, integer(), integer(), integer()}
+                | {allowed_fast, [integer()]}.
+
+% @doc Decode an incoming (partial) packet
+% <p>The incoming packet function will attempt to decode an incoming packet. It
+% returns either the decoded packet, or it returns a partial continuation to
+% continue packet reading.</p>
+% @end
+-type cont_state() :: {partial, binary() | {integer(), [binary()]}}.
+-spec incoming_packet(none | cont_state(), binary()) ->
+    ok | {ok, binary(), binary()} | cont_state().
 incoming_packet(none, <<>>) -> ok;
 
 incoming_packet(none, <<0:32/big-integer, Rest/binary>>) ->
@@ -65,7 +84,60 @@ incoming_packet({partial, {Left, IOL}}, Packet)
         when byte_size(Packet) < Left, is_integer(Left) ->
     {partial, {Left - byte_size(Packet), [Packet | IOL]}}.
 
-%% Decode a message from the wire
+% @doc Send a message on a socket.
+% <p>Returns a pair {R, Sz}, where R is the result of the send and Sz is the
+% size of the sent datagram.</p>
+% @end
+-spec send_msg(port(), packet(), slow | fast) -> {ok | {error, term()},
+                                                  integer()}.
+send_msg(Socket, Msg, Mode) ->
+    Datagram = encode_msg(Msg),
+    Sz = byte_size(Datagram),
+    case Mode of
+        slow ->
+            {gen_tcp:send(Socket, <<Sz:32/big, Datagram/binary>>), Sz};
+        fast ->
+            {gen_tcp:send(Socket, Datagram), Sz}
+    end.
+
+% @doc Decode a binary bitfield into a pieceset
+% @end
+% @todo Fix the spec of this function. It has a nasty bug.
+-spec decode_bitfield({value, integer()} | integer(), binary()) ->
+    {ok, gb_set()} | {error, term()}.
+decode_bitfield(Size, BinaryLump) ->
+    ByteList = binary_to_list(BinaryLump),
+    Numbers = decode_bytes(0, ByteList),
+    PieceSet = gb_sets:from_list(lists:flatten(Numbers)),
+    case max_element(PieceSet) < Size of
+        true ->
+            {ok, PieceSet};
+        false ->
+            {error, bitfield_had_wrong_padding}
+    end.
+
+% @doc Encode a pieceset into a binary bitfield
+% <p>The Size entry is the full size of the bitfield, so the function knows
+% how much and when to pad
+% </p>
+% @end
+-spec encode_bitfield(integer(), gb_set()) -> binary().
+encode_bitfield(Size, PieceSet) ->
+    PadBits = 8 - (Size rem 8),
+    F = fun(N) ->
+                case gb_sets:is_element(N, PieceSet) of
+                    true -> 1;
+                    false -> 0
+                end
+        end,
+    Bits = lists:append([F(N) || N <- lists:seq(0, Size-1)],
+                        [0 || _N <- lists:seq(1,PadBits)]),
+    0 = length(Bits) rem 8,
+    list_to_binary(build_bytes(Bits)).
+
+% @doc Decode a message from the wire
+% @end
+-spec decode_msg(binary()) -> packet().
 decode_msg(Message) ->
    case Message of
        <<>> -> keep_alive;
@@ -88,6 +160,74 @@ decode_msg(Message) ->
        <<?ALLOWED_FAST, FastSet/binary>> ->
            {allowed_fast, decode_allowed_fast(FastSet)}
    end.
+
+% @doc Tell how many bytes there are left on a continuation
+% <p>Occasionally, we will need to know how many bytes we are missing on a
+% continuation, before we have to full packet. This function reports this.</p>
+% @end
+-spec remaining_bytes(none | cont_state()) -> {val, integer()}.
+remaining_bytes(none) -> {val, 0};
+remaining_bytes({partial, _D}) when is_binary(_D) -> {val, 0};
+remaining_bytes({partial, {Left, _}}) when is_integer(Left) -> {val, Left}.
+
+% @doc Complete a partially initiated handshake.
+% <p>This function is used for incoming peer connections. They start off by
+% transmitting all their information, we check it against our current database
+% of what we accept. If we accept the message, then this function is called to
+% complete the handshake by reflecting back the correct handshake to the
+% peer.</p>
+% @end
+-spec complete_handshake(port(), binary(), binary()) ->
+    ok | {error, term()}.
+complete_handshake(Socket, InfoHash, LocalPeerId) ->
+    error_logger:info_report([self(), complete_handshake]),
+    try
+        ok = gen_tcp:send(Socket, InfoHash),
+        ok = gen_tcp:send(Socket, LocalPeerId),
+        ok
+    catch
+        error:_ -> {error, stop}
+    end.
+
+% @doc Receive and incoming handshake
+% <p>If the handshake is in the incoming direction, the method is to fling off
+% the protocol header, so the peer knows we are talking bittorrent. Then it
+% waits for the header to arrive. If the header is good, the connection can be
+% completed by a call to complete_handshake/3.</p>
+% @end
+-spec receive_handshake(port()) ->
+    {error, term()} | {ok, [{integer(), term()}], binary(), binary()}.
+receive_handshake(Socket) ->
+    error_logger:info_report([self(), receiving_handshake]),
+    Header = protocol_header(),
+    case gen_tcp:send(Socket, Header) of
+        ok ->
+            receive_header(Socket, await);
+        {error, X}  ->
+            {error, X}
+    end.
+
+% @doc Initiate a handshake in the outgoing direction
+% <p>If we are initiating a connection, then it is simple. We just fling off
+% everything to the peer and await the peer to get back to us. When he
+% eventually gets back, we can check his InfoHash against ours.</p>
+% @end
+-type capabilities() :: [{integer(), atom()}].
+-spec initiate_handshake(port(), binary(), binary()) ->
+    {error, term()} | {ok, capabilities(), binary(), binary()}
+                    | {ok, capabilities(), binary()}.
+initiate_handshake(Socket, LocalPeerId, InfoHash) ->
+    % Since we are the initiator, send out this handshake
+    Header = protocol_header(),
+    try
+        ok = gen_tcp:send(Socket, Header),
+        ok = gen_tcp:send(Socket, InfoHash),
+        ok = gen_tcp:send(Socket, LocalPeerId),
+        receive_header(Socket, InfoHash)
+    catch
+        error:_ -> {error, stop}
+    end.
+%% =======================================================================
 
 %% Encode a message for the wire
 encode_msg(Message) ->
@@ -113,52 +253,9 @@ encode_msg(Message) ->
            <<?ALLOWED_FAST, BinFastSet/binary>>
    end.
 
-%% Send a message on a socket. Returns a pair {R, Sz}, where R is the result of the send and
-%% Sz is the size of the sent datagram.
-send_msg(Socket, Msg, Mode) ->
-    Datagram = encode_msg(Msg),
-    Sz = byte_size(Datagram),
-    case Mode of
-        slow ->
-            {gen_tcp:send(Socket, <<Sz:32/big, Datagram/binary>>), Sz};
-        fast ->
-            {gen_tcp:send(Socket, Datagram), Sz}
-    end.
 
-%% Handshakes
-receive_handshake(Socket) ->
-    error_logger:info_report([self(), receiving_handshake]),
-    Header = protocol_header(),
-    case gen_tcp:send(Socket, Header) of
-        ok ->
-            receive_header(Socket, await);
-        {error, X}  ->
-            {error, X}
-    end.
 
-initiate_handshake(Socket, LocalPeerId, InfoHash) ->
-    % Since we are the initiator, send out this handshake
-    Header = protocol_header(),
-    try
-        ok = gen_tcp:send(Socket, Header),
-        ok = gen_tcp:send(Socket, InfoHash),
-        ok = gen_tcp:send(Socket, LocalPeerId),
-        receive_header(Socket, InfoHash)
-    catch
-        error:_ -> {error, stop}
-    end.
 
-complete_handshake(Socket, InfoHash, LocalPeerId) ->
-    error_logger:info_report([self(), complete_handshake]),
-    Header = protocol_header(),
-    try
-        ok = gen_tcp:send(Socket, Header),
-        ok = gen_tcp:send(Socket, InfoHash),
-        ok = gen_tcp:send(Socket, LocalPeerId),
-        ok
-    catch
-        error:_ -> {error, stop}
-    end.
 
 
 protocol_header() ->
@@ -227,19 +324,6 @@ decode_proto_caps(N) ->
       Capabilities,
       []).
 
-%% BITFIELD CONSTRUCTION/DESTRUCTION
-encode_bitfield(Size, PieceSet) ->
-    PadBits = 8 - (Size rem 8),
-    F = fun(N) ->
-                case gb_sets:is_element(N, PieceSet) of
-                    true -> 1;
-                    false -> 0
-                end
-        end,
-    Bits = lists:append([F(N) || N <- lists:seq(0, Size-1)],
-                        [0 || _N <- lists:seq(1,PadBits)]),
-    0 = length(Bits) rem 8,
-    list_to_binary(build_bytes(Bits)).
 
 build_bytes(BitField) ->
     build_bytes(BitField, []).
@@ -254,16 +338,6 @@ bytify([B1, B2, B3, B4, B5, B6, B7, B8]) ->
     <<B1:1/integer, B2:1/integer, B3:1/integer, B4:1/integer,
       B5:1/integer, B6:1/integer, B7:1/integer, B8:1/integer>>.
 
-decode_bitfield(Size, BinaryLump) ->
-    ByteList = binary_to_list(BinaryLump),
-    Numbers = decode_bytes(0, ByteList),
-    PieceSet = gb_sets:from_list(lists:flatten(Numbers)),
-    case max_element(PieceSet) < Size of
-        true ->
-            {ok, PieceSet};
-        false ->
-            {error, bitfield_had_wrong_padding}
-    end.
 
 max_element(Set) ->
     gb_sets:fold(fun(E, Max) ->
