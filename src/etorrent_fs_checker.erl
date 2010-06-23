@@ -179,7 +179,7 @@ insert_into_path_map([], _, _, _) -> [];
 insert_into_path_map([{Path, Offset, Size} | Next], TorrentId, Path, Keyval) ->
     [{Keyval, Offset, Size} | insert_into_path_map(Next, TorrentId, Path, Keyval)];
 insert_into_path_map([{Path, Offset, Size} | Next], TorrentId, _Key, _KeyVal) ->
-    KeyVal = etorrent_path_map:select(Path, TorrentId),
+    {value, KeyVal} = etorrent_path_map:populate_entry(Path, TorrentId),
     [{KeyVal, Offset, Size} | insert_into_path_map(Next, TorrentId, Path, KeyVal)].
 
 
