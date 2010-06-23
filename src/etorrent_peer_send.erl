@@ -180,7 +180,7 @@ send_piece(Index, Offset, Len, S) ->
         etorrent_fs:read_chunk(S#state.file_system_pid, Index, Offset, Len),
     Msg = {piece, Index, Offset, PieceData},
     ok = etorrent_torrent:statechange(S#state.torrent_id,
-                                        {add_upload, Len}),
+                                        [{add_upload, Len}]),
     send_piece_message(Msg, S, 0).
 
 send_message(Msg, S) ->

@@ -185,9 +185,9 @@ handle_tracker_response(BC, none, none, S) ->
                                 response_ips(BC)),
     %% Update the state of the torrent
     ok = etorrent_torrent:statechange(S#state.torrent_id,
-                                      {tracker_report,
+                                      [{tracker_report,
                                        decode_integer("complete", BC),
-                                       decode_integer("incomplete", BC)}),
+                                       decode_integer("incomplete", BC)}]),
     %% Timeout
     TrackerId = tracker_id(BC),
     handle_timeout(BC, S#state { trackerid = TrackerId }).
