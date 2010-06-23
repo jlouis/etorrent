@@ -11,6 +11,7 @@
 
 -include_lib("stdlib/include/qlc.hrl").
 -include("etorrent_mnesia_table.hrl").
+-include("types.hrl").
 
 
 %% API
@@ -24,25 +25,21 @@
 -define(SERVER, ?MODULE).
 -record(state, { monitoring }).
 
-%%====================================================================
-%% API
-%%====================================================================
+%% ====================================================================
 
+-spec start_link() -> {ok, pid()} | ignore | {error, term()}.
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
-%%--------------------------------------------------------------------
-%% Function: new(IP, Port, InfoHash, Pid) -> transaction
-%% Description: Insert a row for the peer
-%%--------------------------------------------------------------------
+% @doc Insert a row for the peer
+% @end
+-spec new(ip(), integer(), integer(), pid(), seeding | leeching) -> ok.
 new(IP, Port, TorrentId, Pid, State) ->
     gen_server:call(?SERVER, {new, IP, Port, TorrentId, Pid, State}).
 
-
-%%--------------------------------------------------------------------
-%% Function: statechange(Pid, seeder) -> transaction
-%% Description: Change the peer to a seeder
-%%--------------------------------------------------------------------
+% @doc Change the peer to a seeder
+% @end
+-spec statechange(pid(), seeder) -> ok.
 statechange(Pid, seeder) ->
     {atomic, _} = mnesia:transaction(
                     fun () ->
@@ -51,10 +48,9 @@ statechange(Pid, seeder) ->
                     end),
     ok.
 
-%%--------------------------------------------------------------------
-%% Function: connected(IP, Port, Id) -> bool()
-%% Description: Returns true if we are already connected to this peer.
-%%--------------------------------------------------------------------
+% @doc Returns true if we are already connected to this peer.
+% @end
+-spec connected(ip(), integer(), integer()) -> boolean().
 connected(IP, Port, Id) when is_integer(Id) ->
     F = fun () ->
                 Q = qlc:q([P || P <- mnesia:table(peer),
@@ -66,35 +62,40 @@ connected(IP, Port, Id) when is_integer(Id) ->
     {atomic, B} = mnesia:transaction(F),
     B.
 
-%%--------------------------------------------------------------------
-%% Function: all_pids(Id) -> {value | [#peer]
-%% Description: Return all peer pids with a given torrentId
-%% TODO: We can probably fetch this from the supervisor tree. There is
-%% less reason to have this then.
-%%--------------------------------------------------------------------
+% @doc Return all peer pids with a given torrentId
+% @end
+% @todo We can probably fetch this from the supervisor tree. There is
+% less reason to have this then.
+-spec all_pids(integer()) -> {value, [pid()]}.
 all_pids(Id) ->
     Pids = mnesia:dirty_index_read(peer, Id, #peer.torrent_id),
     {value, [P#peer.pid || P <- Pids]}.
 
+% @doc Invoke a function on all peers matching a torrent Id
+% @end
+-spec broadcast_peers(integer(), fun((pid()) -> term())) -> ok.
 broadcast_peers(Id, Fun) ->
     {value, Pids} = all_pids(Id),
     lists:foreach(Fun, Pids),
     ok.
 
-%%--------------------------------------------------------------------
-%% Function: select(P)
-%%           P ::= pid()
-%% Description: Select the peer matching pid P.
-%%--------------------------------------------------------------------
+% @doc Select the peer matching Pid.
+% @end
+-spec select(pid()) -> [#peer{}].
 select(Pid) when is_pid(Pid) ->
     mnesia:dirty_read(peer, Pid).
 
+% @doc Find the peer matching Pid
+% @todo Consider coalescing calls to this function into the select-function
+% @end
+-spec find(pid()) -> not_found | {peer_info, seeding | leeching, integer()}.
 find(Pid) when is_pid(Pid) ->
     case mnesia:dirty_read(peer, Pid) of
         [] -> not_found;
         [PR] -> {peer_info, PR#peer.state, PR#peer.torrent_id}
     end.
 
+%% =======================================================================
 init([]) ->
     {ok, #state { monitoring = dict:new() }}.
 
