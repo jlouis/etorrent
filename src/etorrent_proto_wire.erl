@@ -179,7 +179,6 @@ remaining_bytes({partial, {Left, _}}) when is_integer(Left) -> {val, Left}.
 -spec complete_handshake(port(), binary(), binary()) ->
     ok | {error, term()}.
 complete_handshake(Socket, InfoHash, LocalPeerId) ->
-    error_logger:info_report([self(), complete_handshake]),
     try
         ok = gen_tcp:send(Socket, InfoHash),
         ok = gen_tcp:send(Socket, LocalPeerId),
@@ -197,7 +196,6 @@ complete_handshake(Socket, InfoHash, LocalPeerId) ->
 -spec receive_handshake(port()) ->
     {error, term()} | {ok, [{integer(), term()}], binary(), binary()}.
 receive_handshake(Socket) ->
-    error_logger:info_report([self(), receiving_handshake]),
     Header = protocol_header(),
     case gen_tcp:send(Socket, Header) of
         ok ->
