@@ -61,7 +61,38 @@ div#tasklist { background-color: #333333;
     }
 th { border-bottom: 1px solid; }
 
+tr:nth-child(even) {
+    background: #eee;
+}
+
+tr:nth-child(odd) {
+    background: #ddd;
+}
+
 span#time {
     padding-right: 20px;
+}
+
+table {
+    margin: 10px 0px 15px;
+    text-align: left;
+}
+
+table thead tr .header {
+        background-image: url(bg.gif);
+        background-repeat: no-repeat;
+        background-position: center right;
+        cursor: pointer;
+}
+
+table thead tr .headerSortUp {
+   background-image: url(/images/asc.gif);
+}
+table thead tr .headerSortDown {
+   background-image: url(/images/desc.gif);
+}
+
+table thead tr .headerSortDown, table thead tr .headerSortUp {
+    background-color: #976ad6;
 }
 

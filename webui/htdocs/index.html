@@ -58,7 +58,9 @@
                             lineColor: '4E228B' });
                     });
 
-                    $('#torrent_table').tablesorter();
+                    $('#torrent_table').tablesorter({
+                        sortList: [[0,0]]
+                    });
                 });
         });
     </script>
