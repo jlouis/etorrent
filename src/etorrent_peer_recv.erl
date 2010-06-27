@@ -16,6 +16,7 @@
                  parent = parent,
                  packet_continuation = none,
                  rate = none,
+                 last_piece_msg_count = 0,
                  id = none,
                  rate_timer = none,
                  controller = none,
@@ -29,6 +30,9 @@
 
 -define(ENTER_FAST, 16000).
 -define(ENTER_SLOW, 4000).
+% Set the threshold to be 30 seconds by dividing the count with the rate update
+% interval
+-define(LAST_PIECE_COUNT_THRESHOLD, ((30*1000) / (?RATE_UPDATE))).
 
 %% =======================================================================
 
@@ -59,17 +63,11 @@ go_slow(S) ->
 handle_packet(Packet, S) ->
     Msg = etorrent_proto_wire:decode_msg(Packet),
     NR = etorrent_rate:update(S#state.rate, byte_size(Packet)),
-    ok = etorrent_rate_mgr:recv_rate(
-        S#state.id,
-        S#state.controller,
-        NR#peer_rate.rate,
-        byte_size(Packet),
-        case Msg of
-            {piece, _, _, _} -> last_update;
-            _ -> normal
-        end),
     etorrent_peer_control:incoming_msg(S#state.controller, Msg),
-    {ok, S#state { rate = NR }}.
+    NewCount = case Msg of {piece, _, _, _} -> 0;
+                           _ -> S#state.last_piece_msg_count
+               end,
+    {ok, S#state { rate = NR, last_piece_msg_count = NewCount }}.
 
 handle_packet_slow(S, Packet) ->
     Cont = S#state.packet_continuation,
@@ -86,9 +84,6 @@ handle_packet_slow(S, Packet) ->
             {ok, S#state { packet_continuation = {partial, C} }}
     end.
 
-% Change to fast mode
-
-
 % Request the next message to be processed
 next_msg(S) when S#state.mode =:= transition ->
     {noreply, S};
@@ -98,6 +93,11 @@ next_msg(S) when S#state.mode =:= slow ->
     {noreply, S, 0};
 next_msg(S) when S#state.mode =:= fast_setup ->
     {noreply, S, 0}.
+
+is_snubbing_us(S) when S#state.last_piece_msg_count > ?LAST_PIECE_COUNT_THRESHOLD ->
+    snubbed;
+is_snubbing_us(_S) ->
+    normal.
 
 %% ======================================================================
 
@@ -126,11 +126,14 @@ handle_info(timeout, S) ->
         {error, ehostunreach} -> {stop, normal, S};
         {error, etimedout} -> next_msg(S)
     end;
-handle_info(rate_update, S) ->
-    NR = etorrent_rate:update(S#state.rate, 0),
-    ok = etorrent_rate_mgr:recv_rate(S#state.id,
+handle_info(rate_update, OS) ->
+    NR = etorrent_rate:update(OS#state.rate, 0),
+    SnubState = is_snubbing_us(OS),
+    ok = etorrent_rate_mgr:recv_rate(OS#state.id,
                                      self(),
-                                     NR#peer_rate.rate, 0),
+                                     NR#peer_rate.rate,
+                                     SnubState),
+    S = OS#state { last_piece_msg_count = OS#state.last_piece_msg_count + 1 },
     if
         NR#peer_rate.rate > ?ENTER_FAST andalso S#state.mode =:= slow ->
             next_msg(S#state { rate = NR , mode = fast_setup });

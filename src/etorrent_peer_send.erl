@@ -165,10 +165,6 @@ send_piece_message(Msg, S, Timeout) ->
     case etorrent_proto_wire:send_msg(S#state.socket, Msg, S#state.mode) of
         {ok, Sz} ->
             NR = etorrent_rate:update(S#state.rate, Sz),
-            ok = etorrent_rate_mgr:send_rate(S#state.torrent_id,
-                                             S#state.parent,
-                                             NR#peer_rate.rate,
-                                             Sz),
             {noreply, S#state { rate = NR }, Timeout};
         {{error, closed}, _Sz} ->
             {stop, normal, S}
@@ -198,11 +194,6 @@ send(Msg, S) ->
     case etorrent_proto_wire:send_msg(S#state.socket, Msg, S#state.mode) of
         {ok, Sz} ->
             NR = etorrent_rate:update(S#state.rate, Sz),
-            ok = etorrent_rate_mgr:send_rate(
-                   S#state.torrent_id,
-                   S#state.parent,
-                   NR#peer_rate.rate,
-                   Sz),
             {ok, S#state { rate = NR}};
         {{error, E}, _Amount} ->
             {error, E, S}
@@ -275,8 +266,7 @@ handle_info(rate_update, S) ->
     Rate = etorrent_rate:update(S#state.rate, 0),
     ok = etorrent_rate_mgr:send_rate(S#state.torrent_id,
                                      S#state.parent,
-                                     Rate#peer_rate.rate,
-                                     0),
+                                     Rate#peer_rate.rate),
     {noreply, S#state { rate = Rate }};
 
 %% Different timeouts.

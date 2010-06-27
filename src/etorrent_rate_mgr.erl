@@ -21,7 +21,7 @@
          choke/2, unchoke/2, interested/2, not_interested/2,
          local_choke/2, local_unchoke/2,
 
-         recv_rate/5, recv_rate/4, send_rate/4,
+         recv_rate/4, send_rate/3,
 
          get_state/2,
          get_torrent_rate/2,
@@ -65,15 +65,14 @@ local_unchoke(Id, Pid) -> gen_server:cast(?SERVER, {local_unchoke, Id, Pid}).
 
 -spec get_state(integer(), pid()) -> {value, boolean(), #peer_state{}}.
 get_state(Id, Who) ->
-    T = etorrent_rate:now_secs(),
     P = case ets:lookup(etorrent_peer_state, {Id, Who}) of
             [] -> #peer_state{}; % Pick defaults
             [Ps] -> Ps
         end,
     Snubbed = case ets:lookup(etorrent_recv_state, {Id, Who}) of
                 [] -> false;
-                [#rate_mgr { last_got = unknown}] -> false;
-                [#rate_mgr { last_got = U}] -> T - U > ?DEFAULT_SNUB_TIME
+                [#rate_mgr { snub_state = normal}] -> false;
+                [#rate_mgr { snub_state = snubbed}] -> true
               end,
     {value, Snubbed, P}.
 
@@ -86,18 +85,15 @@ select_state(Id, Who) ->
 fetch_recv_rate(Id, Pid) -> fetch_rate(etorrent_recv_state, Id, Pid).
 fetch_send_rate(Id, Pid) -> fetch_rate(etorrent_send_state, Id, Pid).
 
-recv_rate(Id, Pid, Rate, Amount) ->
-    recv_rate(Id, Pid, Rate, Amount, normal).
-
-recv_rate(Id, Pid, Rate, Amount, Update) ->
-    gen_server:cast(?SERVER, {recv_rate, Id, Pid, Rate, Amount, Update}).
+recv_rate(Id, Pid, Rate, SnubState) ->
+    gen_server:cast(?SERVER, {recv_rate, Id, Pid, Rate, SnubState}).
 
 -spec get_torrent_rate(integer(), leeching | seeding) -> {ok, float()}.
 get_torrent_rate(Id, Direction) ->
     gen_server:call(?SERVER, {get_torrent_rate, Id, Direction}).
 
-send_rate(Id, Pid, Rate, Amount) ->
-    gen_server:cast(?SERVER, {send_rate, Id, Pid, Rate, Amount, normal}).
+send_rate(Id, Pid, Rate) ->
+    gen_server:cast(?SERVER, {send_rate, Id, Pid, Rate, unchanged}).
 
 global_rate() ->
     gen_server:call(?SERVER, global_rate).
@@ -124,19 +120,11 @@ init([]) ->
                  global_recv = etorrent_rate:init(?RATE_FUDGE),
                  global_send = etorrent_rate:init(?RATE_FUDGE)}}.
 
-%%--------------------------------------------------------------------
-%% Function: %% handle_call(Request, From, State) -> {reply, Reply, State} |
-%%                                      {reply, Reply, State, Timeout} |
-%%                                      {noreply, State} |
-%%                                      {noreply, State, Timeout} |
-%%                                      {stop, Reason, Reply, State} |
-%%                                      {stop, Reason, State}
-%% Description: Handling call messages
-%%--------------------------------------------------------------------
+% @todo Lift these calls out of the process.
 handle_call(global_rate, _From, S) ->
-    #state { global_recv = GR, global_send = GS } = S,
-    Reply = { GR#peer_rate.rate, GS#peer_rate.rate },
-    {reply, Reply, S};
+    RR = sum_global_rate(etorrent_recv_state),
+    SR = sum_global_rate(etorrent_send_state),
+    {reply, {RR, SR}, S};
 handle_call({get_torrent_rate, Id, Direction}, _F, S) ->
     Tab = case Direction of
             leeching -> etorrent_recv_state;
@@ -158,9 +146,9 @@ handle_call(_Request, _From, State) ->
 handle_cast({What, Id, Pid}, S) ->
     ok = alter_state(What, Id, Pid),
     {noreply, S};
-handle_cast({What, Id, Who, Rate, Amount, Update}, S) ->
-    NS = alter_state(What, Id, Who, Rate, Amount, Update, S),
-    {noreply, NS};
+handle_cast({What, Id, Who, Rate, SnubState}, S) ->
+    ok = alter_state(What, Id, Who, Rate, SnubState),
+    {noreply, S};
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
@@ -199,6 +187,9 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 %%% Internal functions
 %%--------------------------------------------------------------------
+sum_global_rate(Table) ->
+    Objs = ets:match_object(Table, #rate_mgr { _ = '_' }),
+    lists:sum([K#rate_mgr.rate || K <- Objs]).
 
 alter_state(What, Id, Pid) ->
     _R = case ets:lookup(etorrent_peer_state, {Id, Pid}) of
@@ -232,33 +223,31 @@ alter_record(What, R) ->
             R#peer_state { local_choke = false}
     end.
 
-alter_state(What, Id, Who, Rate, Amount, Update, S) ->
-    {T, NS} = case What of
-                  recv_rate -> NR = etorrent_rate:update(
-                                      S#state.global_recv,
-                                      Amount),
-                               { etorrent_recv_state,
-                                 S#state { global_recv = NR }};
-                  send_rate -> NR = etorrent_rate:update(
-                                      S#state.global_send,
-                                      Amount),
-                               { etorrent_send_state,
-                                 S#state { global_send = NR }}
-              end,
+alter_state(What, Id, Who, Rate, SnubState) ->
+    T = case What of
+            recv_rate -> etorrent_recv_state;
+            send_rate -> etorrent_send_state
+        end,
     _R = case ets:lookup(T, {Id, Who}) of
         [] ->
             ets:insert(T,
               #rate_mgr { pid = {Id, Who},
-                          last_got = case Update of
-                                         normal -> unknown;
-                                         last_update -> etorrent_rate:now_secs()
-                                     end,
+                          snub_state = case SnubState of
+                                         snubbed -> snubbed;
+                                         normal  -> normal;
+                                         unchanged -> normal
+                                       end,
                           rate = Rate }),
             erlang:monitor(process, Who);
         [R] ->
-            ets:insert(T, R#rate_mgr { rate = Rate })
+            ets:insert(T, R#rate_mgr { rate = Rate,
+                                       snub_state =
+                                            case SnubState of
+                                              unchanged -> R#rate_mgr.snub_state;
+                                              X         -> X
+                                            end })
     end,
-    NS.
+    ok.
 
 fetch_rate(Where, Id, Pid) ->
     case ets:lookup(Where, {Id, Pid}) of
