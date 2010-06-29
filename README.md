@@ -70,4 +70,4 @@ currently lacking a mailing list) or use the issue tracker:
      that there are some commentary on these pages which can be disputed
      quite a lot.
 
-# vim: filetype=none tw=76 expandtab
+; vim: filetype=none tw=76 expandtab
