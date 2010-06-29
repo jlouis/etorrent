@@ -17,7 +17,7 @@ unless you are able to fix eventual problems. If you've noticed any bad
 behavior it is definitely a bug and should be reported as soon as possible
 so we can get it away.
 
-Currently supported BEPs:
+### Currently supported BEPs:
 
    * BEP 03 - The BitTorrent Protocol Specification.
    * BEP 04 - Known Number Allocations.
@@ -47,3 +47,27 @@ Either mail them to jesper.louis.andersen@gmail.com (We are
 currently lacking a mailing list) or use the issue tracker:
 
   http://github.com/jlouis/etorrent/issues
+
+## Reading material for hacking Etorrent:
+
+   - [Protocol specification - BEP0003](http://www.bittorrent.org/beps/bep_0003.html):
+     This is the original protocol specification, tracked into the BEP
+     process. It is worth reading because it explains the general overview
+     and the precision with which the original protocol was written down.
+
+   - [Bittorrent Enhancement Process - BEP0000](http://www.bittorrent.org/beps/bep_0000.html)
+     The BEP process is an official process for adding extensions on top of
+     the BitTorrent protocol. It allows implementors to mix and match the
+     extensions making sense for their client and it allows people to
+     discuss extensions publicly in a forum. It also provisions for the
+     deprecation of certain features in the long run as they prove to be of
+     less value.
+
+   - [wiki.theory.org](http://wiki.theory.org/Main_Page)
+     An alternative description of the protocol. This description is in
+     general much more detailed than the BEP structure. It is worth a read
+     because it acts somewhat as a historic remark and a side channel. Note
+     that there are some commentary on these pages which can be disputed
+     quite a lot.
+
+# vim: filetype=none tw=76 expandtab
