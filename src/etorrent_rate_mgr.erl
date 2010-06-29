@@ -45,22 +45,28 @@
 
 -define(SERVER, ?MODULE).
 
-%%====================================================================
-%% API
-%%====================================================================
-%%--------------------------------------------------------------------
-%% Function: start_link() -> {ok,Pid} | ignore | {error,Error}
-%% Description: Starts the server
-%%--------------------------------------------------------------------
+%% ====================================================================
+-spec start_link() -> ignore | {ok, pid()} | {error, term()}.
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
 %% Send state information
+-spec choke(integer(), pid()) -> ok.
 choke(Id, Pid) -> gen_server:cast(?SERVER, {choke, Id, Pid}).
+
+-spec unchoke(integer(), pid()) -> ok.
 unchoke(Id, Pid) -> gen_server:cast(?SERVER, {unchoke, Id, Pid}).
+
+-spec interested(integer(), pid()) -> ok.
 interested(Id, Pid) -> gen_server:cast(?SERVER, {interested, Id, Pid}).
+
+-spec not_interested(integer(), pid()) -> ok.
 not_interested(Id, Pid) -> gen_server:cast(?SERVER, {not_interested, Id, Pid}).
+
+-spec local_choke(integer(), pid()) -> ok.
 local_choke(Id, Pid) -> gen_server:cast(?SERVER, {local_choke, Id, Pid}).
+
+-spec local_unchoke(integer(), pid()) -> ok.
 local_unchoke(Id, Pid) -> gen_server:cast(?SERVER, {local_unchoke, Id, Pid}).
 
 -spec get_state(integer(), pid()) -> {value, boolean(), #peer_state{}}.
@@ -76,15 +82,22 @@ get_state(Id, Who) ->
               end,
     {value, Snubbed, P}.
 
+-spec select_state(integer(), pid()) -> {value, #peer_state{}}.
 select_state(Id, Who) ->
     case ets:lookup(etorrent_peer_state, {Id, Who}) of
         [] -> {value, #peer_state { }}; % Pick defaults
         [P] -> {value, P}
     end.
 
+-spec fetch_recv_rate(integer(), pid()) ->
+    none | undefined | float().
 fetch_recv_rate(Id, Pid) -> fetch_rate(etorrent_recv_state, Id, Pid).
+
+-spec fetch_send_rate(integer(), pid()) ->
+    none | undefined | float().
 fetch_send_rate(Id, Pid) -> fetch_rate(etorrent_send_state, Id, Pid).
 
+-spec recv_rate(integer(), pid(), float(), normal | snubbed) -> ok.
 recv_rate(Id, Pid, Rate, SnubState) ->
     gen_server:cast(?SERVER, {recv_rate, Id, Pid, Rate, SnubState}).
 
@@ -92,23 +105,16 @@ recv_rate(Id, Pid, Rate, SnubState) ->
 get_torrent_rate(Id, Direction) ->
     gen_server:call(?SERVER, {get_torrent_rate, Id, Direction}).
 
+-spec send_rate(integer(), pid(), float()) -> ok.
 send_rate(Id, Pid, Rate) ->
     gen_server:cast(?SERVER, {send_rate, Id, Pid, Rate, unchanged}).
 
+-spec global_rate() -> {float(), float()}.
 global_rate() ->
     gen_server:call(?SERVER, global_rate).
 
-%%====================================================================
-%% gen_server callbacks
-%%====================================================================
+%% ====================================================================
 
-%%--------------------------------------------------------------------
-%% Function: init(Args) -> {ok, State} |
-%%                         {ok, State, Timeout} |
-%%                         ignore               |
-%%                         {stop, Reason}
-%% Description: Initiates the server
-%%--------------------------------------------------------------------
 init([]) ->
     RTid = ets:new(etorrent_recv_state, [protected, named_table,
                                          {keypos, #rate_mgr.pid}]),
@@ -137,12 +143,6 @@ handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
 
-%%--------------------------------------------------------------------
-%% Function: handle_cast(Msg, State) -> {noreply, State} |
-%%                                      {noreply, State, Timeout} |
-%%                                      {stop, Reason, State}
-%% Description: Handling cast messages
-%%--------------------------------------------------------------------
 handle_cast({What, Id, Pid}, S) ->
     ok = alter_state(What, Id, Pid),
     {noreply, S};
@@ -152,12 +152,6 @@ handle_cast({What, Id, Who, Rate, SnubState}, S) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-%%--------------------------------------------------------------------
-%% Function: handle_info(Info, State) -> {noreply, State} |
-%%                                       {noreply, State, Timeout} |
-%%                                       {stop, Reason, State}
-%% Description: Handling all non call/cast messages
-%%--------------------------------------------------------------------
 handle_info({'DOWN', _Ref, process, Pid, _Reason}, S) ->
     true = ets:match_delete(etorrent_recv_state, #rate_mgr { pid = {'_', Pid}, _='_'}),
     true = ets:match_delete(etorrent_send_state, #rate_mgr { pid = {'_', Pid}, _='_'}),
@@ -166,27 +160,13 @@ handle_info({'DOWN', _Ref, process, Pid, _Reason}, S) ->
 handle_info(_Info, State) ->
     {noreply, State}.
 
-%%--------------------------------------------------------------------
-%% Function: terminate(Reason, State) -> void()
-%% Description: This function is called by a gen_server when it is about to
-%% terminate. It should be the opposite of Module:init/1 and do any necessary
-%% cleaning up. When it returns, the gen_server terminates with Reason.
-%% The return value is ignored.
-%%--------------------------------------------------------------------
 terminate(_Reason, _S) ->
     ok.
 
-
-%%--------------------------------------------------------------------
-%% Func: code_change(OldVsn, State, Extra) -> {ok, NewState}
-%% Description: Convert process state when code is changed
-%%--------------------------------------------------------------------
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
-%%--------------------------------------------------------------------
-%%% Internal functions
-%%--------------------------------------------------------------------
+%% --------------------------------------------------------------------
 sum_global_rate(Table) ->
     Objs = ets:match_object(Table, #rate_mgr { _ = '_' }),
     lists:sum([K#rate_mgr.rate || K <- Objs]).
@@ -249,6 +229,9 @@ alter_state(What, Id, Who, Rate, SnubState) ->
     end,
     ok.
 
+-type rate_mgr_tables() :: etorrent_send_state | etorrent_recv_state.
+-spec fetch_rate(rate_mgr_tables(), integer(), pid()) ->
+    none | float() | undefined.
 fetch_rate(Where, Id, Pid) ->
     case ets:lookup(Where, {Id, Pid}) of
         [] ->
