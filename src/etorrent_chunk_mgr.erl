@@ -11,20 +11,23 @@
 -include("etorrent_chunk.hrl").
 -include("types.hrl").
 
+-include_lib("stdlib/include/ms_transform.hrl").
+
 -behaviour(gen_server).
 
 %% @todo: What pid is the chunk recording pid? Control or SendPid?
 %% API
 -export([start_link/0, store_chunk/4, putback_chunks/1,
          putback_chunks/2, mark_fetched/2, pick_chunks/3,
-         endgame_remove_chunk/3]).
+         new/1, endgame_remove_chunk/3]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
--record(state, {}).
+-record(state, { torrent_dict }).
 -define(SERVER, ?MODULE).
+-define(TAB, etorrent_chunk_tbl).
 -define(STORE_CHUNK_TIMEOUT, 20).
 -define(PICK_CHUNKS_TIMEOUT, 20).
 -define(DEFAULT_CHUNK_SIZE, 16384).
@@ -93,6 +96,14 @@ pick_chunks(Id, Set, N) ->
     gen_server:call(?SERVER, {pick_chunks, Id, Set, N},
                     timer:seconds(?PICK_CHUNKS_TIMEOUT)).
 
+% @doc Request the managing of a new torrent identified by Id
+% <p>Note that the calling Pid is tracked as being the owner of the torrent.
+% If the calling Pid dies, then the torrent will be assumed stopped</p>
+% @end
+-spec new(integer()) -> ok.
+new(Id) ->
+    gen_server:call(?SERVER, {new, Id}).
+
 %%====================================================================
 %% gen_server callbacks
 %%====================================================================
@@ -107,7 +118,8 @@ pick_chunks(Id, Set, N) ->
 init([]) ->
     _Tid = ets:new(etorrent_chunk_tbl, [set, protected, named_table,
                                         {keypos, 2}]),
-    {ok, #state{}}.
+    D = dict:new(),
+    {ok, #state{ torrent_dict = D }}.
 
 %%--------------------------------------------------------------------
 %% Function: %% handle_call(Request, From, State) -> {reply, Reply, State} |
@@ -118,6 +130,10 @@ init([]) ->
 %%                                      {stop, Reason, State}
 %% Description: Handling call messages
 %%--------------------------------------------------------------------
+handle_call({new, Id}, {Pid, _Tag}, S) ->
+    ManageDict = dict:store(Pid, Id, S#state.torrent_dict),
+    _ = erlang:monitor(process, Pid),
+    {reply, ok, S#state { torrent_dict = ManageDict }};
 handle_call({mark_fetched, Id, Index, Offset, _Len}, _From, S) ->
     Res = case ets:lookup(etorrent_chunk_tbl, {Id, Index, not_fetched}) of
               [] -> assigned;
@@ -231,6 +247,11 @@ handle_cast(Msg, State) ->
 %%                                       {stop, Reason, State}
 %% Description: Handling all non call/cast messages
 %%--------------------------------------------------------------------
+handle_info({'DOWN', _Ref, process, Pid, _Reason}, S) ->
+    {ok, Id} = dict:find(Pid, S#state.torrent_dict),
+    clear_torrent_entries(Id),
+    ManageDict = dict:erase(Pid, S#state.torrent_dict),
+    {noreply, S#state { torrent_dict = ManageDict }};
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -255,6 +276,12 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 %%% Internal functions
 %%--------------------------------------------------------------------
+
+%% @doc Find all entries for a given torrent file and clear them out
+%% @end
+clear_torrent_entries(Id) ->
+    Matcher = ets:fun2ms(fun(#chunk { idt = {Id2, _, _}}) -> Id2 == Id end),
+    ets:select_delete(?TAB, Matcher).
 
 %% @doc Find all remaining chunks for a torrent matching PieceSet
 %% @end

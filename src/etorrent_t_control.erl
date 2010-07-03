@@ -90,6 +90,7 @@ seed(Pid) ->
 
 init([Parent, Id, Path, PeerId]) ->
     etorrent_tracking_map:new(Path, Parent, Id),
+    etorrent_chunk_mgr:new(Id),
     {ok, initializing, #state{id = Id,
                               path = Path,
                               peer_id = PeerId,
