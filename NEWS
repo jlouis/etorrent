@@ -1,3 +1,47 @@
+Version 1.0:
+
+  First release I admit others might find useful. It is also the first release
+  in 2 years. Again, we incrementally improve over the latest release by
+  increasing overall robustness of the application. CPU usage and Memory usage
+  has in general been improved in this release.
+
+  Highlights:
+
+  (Tuncer Ayaz): Estimate the ETA of torrents. Guess at when they are done.
+
+  When processes are stopping, correctly clean up ETS tables. The solution we
+  use is to place monitors on key processes. Bookkeeping processes then act on
+  'DOWN' messages and remove ETS entries again.
+
+  All module-exported functions now have edoc tags and -spec entries.
+
+  We now use rebar for building the application. To come is a standalone-node
+  provisioning. For now the 'run' makefile target is to be used. Also adapt the
+  file layout mandated by rebar.
+
+  Adaptive active/passive sockets. When a peer is slow, we manage the socket
+  ourselves. This gives fine granularity of its speed. When the peer socket
+  jumps above a high watermark, it is made active, pushing the overhead to the
+  C-layer of the VM.
+
+  Use an LRU-replacement scheme on open files. Limit the number of open files
+  to 128 at once. This enables torrents with more than 1024 - OPEN_SOCKETS
+  files to be downloaded.
+
+  Add a WebUI. The inets server provides a simple RPC-service for a primarily
+  Javascript-enabled web-frontend. It can only display the basic overview at
+  the moment, but it should be easy to extend with new functionality.
+
+  Numerous additional code cleanups here and there. It should be even easier to
+  read and understand now.
+
+  Make GitHub the official repository place:
+
+    http://github.com/jlouis/etorrent
+
+  Use http://github.com/jlouis/etorrent/issues for issues. Issues can be voted
+  on, so if one prefers one thing over the other, don't hesitate to hint me :)
+
 Version 0.9:
 
   This is yet another Tech. Preview release. The torrent client works
