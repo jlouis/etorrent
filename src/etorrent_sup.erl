@@ -10,6 +10,8 @@
 
 -behaviour(supervisor).
 
+-include("supervisor.hrl").
+
 %% API
 -export([start_link/1]).
 
@@ -23,54 +25,27 @@
 start_link(PeerId) ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, [PeerId]).
 
+
 %% ====================================================================
 init([PeerId]) ->
     error_logger:info_report([etorrent_supervisor_starting, PeerId]),
-    Torrent  = {torrent,
-                {etorrent_torrent, start_link, []},
-                permanent, 2000, worker, [etorrent_torrent]},
-    FSJanitor = {janitor,
-                {etorrent_fs_janitor, start_link, []},
-                permanent, 2000, worker, [etorrent_fs_janitor]},
-    TrackingMap = {tracking_map,
-                   {etorrent_tracking_map, start_link, []},
-                    permanent, 2000, worker, [etorrent_tracking_map]},
-    Peer     = {peer,
-                {etorrent_peer, start_link, []},
-                permanent, 2000, worker, [etorrent_peer]},
-    Counters = {counters,
-                {etorrent_counters, start_link, []},
-                permanent, 2000, worker, [etorrent_counters]},
-    EventManager = {event_manager,
-                    {etorrent_event_mgr, start_link, []},
-                    permanent, 2000, worker, [etorrent_event_mgr]},
-    PeerMgr = {peer_mgr,
-                  {etorrent_peer_mgr, start_link, [PeerId]},
-                  permanent, 5000, worker, [etorrent_peer_mgr]},
-    FastResume = {fast_resume,
-                  {etorrent_fast_resume, start_link, []},
-                  transient, 5000, worker, [etorrent_fast_resume]},
-    RateManager = {rate_manager,
-                   {etorrent_rate_mgr, start_link, []},
-                   permanent, 5000, worker, [etorrent_rate_mgr]},
-    PieceManager = {etorrent_piece_mgr,
-                    {etorrent_piece_mgr, start_link, []},
-                    permanent, 15000, worker, [etorrent_piece_mgr]},
-    ChunkManager = {etorrent_chunk_mgr,
-                    {etorrent_chunk_mgr, start_link, []},
-                    permanent, 15000, worker, [etorrent_chunk_mgr]},
-    Choker = {choker,
-              {etorrent_choker, start_link, [PeerId]},
-              permanent, 5000, worker, [etorrent_choker]},
-    Listener = {listener,
-                {etorrent_listener, start_link, []},
-                permanent, 2000, worker, [etorrent_listener]},
+    Torrent      = ?CHILD(etorrent_torrent),
+    FSJanitor    = ?CHILD(etorrent_fs_janitor),
+    TrackingMap  = ?CHILD(etorrent_tracking_map),
+    Peer         = ?CHILD(etorrent_peer),
+    Counters     = ?CHILD(etorrent_counters),
+    EventManager = ?CHILD(etorrent_event_mgr),
+    PeerMgr      = ?CHILDP(etorrent_peer_mgr, [PeerId]),
+    FastResume   = ?CHILD(etorrent_fast_resume),
+    RateManager  = ?CHILD(etorrent_rate_mgr),
+    PieceManager = ?CHILD(etorrent_piece_mgr),
+    ChunkManager = ?CHILD(etorrent_chunk_mgr),
+    Choker       = ?CHILDP(etorrent_choker, [PeerId]),
+    Listener     = ?CHILD(etorrent_listener),
     AcceptorSup = {acceptor_sup,
                    {etorrent_acceptor_sup, start_link, [PeerId]},
                    permanent, infinity, supervisor, [etorrent_acceptor_sup]},
-    TorrentMgr = {manager,
-                  {etorrent_mgr, start_link, [PeerId]},
-                  permanent, 2000, worker, [etorrent_mgr]},
+    TorrentMgr   = ?CHILDP(etorrent_mgr, [PeerId]),
     DirWatcherSup = {dirwatcher_sup,
                   {etorrent_dirwatcher_sup, start_link, []},
                   transient, infinity, supervisor, [etorrent_dirwatcher_sup]},
@@ -80,6 +55,7 @@ init([PeerId]) ->
 
     {ok, {{one_for_all, 3, 60},
           [Torrent, FSJanitor, TrackingMap, Peer,
-           Counters, EventManager, PeerMgr, FastResume, RateManager, PieceManager,
-           ChunkManager, Choker, Listener, AcceptorSup, TorrentMgr, DirWatcherSup,
-           TorrentPool]}}.
+           Counters, EventManager, PeerMgr, 
+           FastResume, RateManager, PieceManager,
+           ChunkManager, Choker, Listener, AcceptorSup,
+           TorrentMgr, DirWatcherSup, TorrentPool]}}.
