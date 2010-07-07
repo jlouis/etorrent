@@ -9,7 +9,7 @@
             etorrent_fs_pool_sup, etorrent_fs_process, etorrent_http_uri,
             etorrent_listener, etorrent_metainfo, etorrent_mgr,
             etorrent_mnesia_init, etorrent_path_map, etorrent_peer_control,
-            etorrent_peer, etorrent_peer_mgr, etorrent_peer_pool,
+            etorrent_peer, etorrent_peer_mgr, etorrent_peer_pool_sup,
             etorrent_peer_recv, etorrent_peer_send, etorrent_peer_sup,
             etorrent_piece_mgr, etorrent_proto_wire, etorrent_rate,
             etorrent_rate_mgr, etorrent_sup, etorrent_t_control, etorrent_time,

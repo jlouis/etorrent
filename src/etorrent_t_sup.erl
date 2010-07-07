@@ -59,7 +59,8 @@ add_tracker(Pid, URL, InfoHash, Local_Peer_Id, TorrentId) ->
 add_peer(Pid, PeerId, InfoHash, TorrentId, {IP, Port}, Socket) ->
     FSPid = get_pid(Pid, fs),
     GroupPid = get_pid(Pid, peer_pool_sup),
-    etorrent_peer_pool:add_peer(GroupPid,
+    etorrent_peer_pool_sup:add_peer(
+                                GroupPid,
                                 PeerId,
                                 InfoHash,
                                 FSPid,
@@ -79,6 +80,6 @@ init([Path, PeerId, Id]) ->
                {etorrent_t_control, start_link, [Id, Path, PeerId]},
                permanent, 20000, worker, [etorrent_t_control]},
     PeerPool = {peer_pool_sup,
-                {etorrent_peer_pool, start_link, []},
-                transient, infinity, supervisor, [etorrent_peer_pool]},
+                {etorrent_peer_pool_sup, start_link, []},
+                transient, infinity, supervisor, [etorrent_peer_pool_sup]},
     {ok, {{one_for_all, 1, 60}, [FSPool, FS, Control, PeerPool]}}.
