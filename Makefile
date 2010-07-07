@@ -28,7 +28,7 @@ dialyzer-succ: etorrent
 run: rebar
 	erl -boot start_sasl $(ERL_FLAGS) -pa $(ETORRENT_LIB)/ebin \
 	-config $(ETORRENT_LIB)/priv/etorrent.config \
-	-sname etorrent -s etorrent start
+	-sname etorrent -s etorrent_app start
 
 tracer:
 	erl -boot start_sasl -pa $(ETORRENT_LIB)/ebin -noinput \

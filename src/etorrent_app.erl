@@ -1,4 +1,4 @@
--module(etorrent).
+-module(etorrent_app).
 -behaviour(application).
 
 -include("etorrent_version.hrl").
