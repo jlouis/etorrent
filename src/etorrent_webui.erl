@@ -42,7 +42,7 @@ list_rates() ->
 table_header() ->
     "<table id=\"torrent_table\"><thead>" ++
     "<tr><th>FName</th><th>Id</th><th>Total (MiB)</th><th>Left (MiB)</th><th>Uploaded (MiB)</th><th>Downloaded (MiB)</th>" ++
-    "<th>L/S</th><th>Complete</th><th>Rate</th></tr></thead><tbody>".
+    "<th>L/S</th><th>Complete</th><th>Rate</th><th>Boxplot</th></tr></thead><tbody>".
 
 list_torrents() ->
     A = etorrent_torrent:all(),
@@ -50,9 +50,12 @@ list_torrents() ->
         fun (R) ->
                 {atomic, [#tracking_map { filename = FN, _=_}]} =
                     etorrent_tracking_map:select(R#torrent.id),
-                io_lib:format("<tr><td>~s</td><td>~3.B</td><td>~11.1f</td><td>~11.1f</td><td>~11.1f</td><td>~11.1f</td>"++
-                              "<td>~3.B / ~3.B</td><td>~7.1f%</td>" ++
-                              "<td><span id=\"~s\">~s</span>~9.B / ~9.B / ~9.B</td></tr>~n",
+                io_lib:format(
+                    "<tr><td>~s</td><td>~3.B</td><td>~11.1f</td>" ++
+                    "<td>~11.1f</td><td>~11.1f</td><td>~11.1f</td>"++
+                    "<td>~3.B / ~3.B</td><td>~7.1f%</td>" ++
+                    "<td><span id=\"~s\">~s</span>~9.B / ~9.B / ~9.B</td>" ++
+                    "<td><span id=\"boxplot\">~s</td></tr>~n",
                         [strip_torrent(FN),
                          R#torrent.id,
                          R#torrent.total / (1024 * 1024),
@@ -73,7 +76,9 @@ list_torrents() ->
                             []      -> 0;
                             [F | _] -> round(F / 1024)
                          end,
-                         round(lists:min(R#torrent.rate_sparkline) / 1024)])
+                         round(lists:min(R#torrent.rate_sparkline) / 1024),
+                         show_sparkline(
+                            lists:reverse(R#torrent.rate_sparkline))])
         end, A),
     {ok, Rows}.
 
