@@ -58,6 +58,12 @@
                             lineColor: '4E228B' });
                     });
 
+                    $('span#boxplot').each(function (idx) {
+                        $(this).sparkline('html', {
+                            type: 'box'
+                        });
+                    });
+
                     $('#torrent_table').tablesorter({
                         sortList: [[0,0]]
                     });
