@@ -285,8 +285,9 @@ handle_message({bitfield, _BF},
     etorrent_peer_mgr:enter_bad_peer(IP, Port, RemotePid),
     {error, piece_set_out_of_band};
 handle_message({bitfield, BitField},
-        #state { torrent_id = Torrent_Id, pieces_left = Pieces_Left } = S) ->
-    {value, Size} = etorrent_torrent:num_pieces(S#state.torrent_id),
+        #state { torrent_id = Torrent_Id, pieces_left = Pieces_Left,
+                 remote_peer_id = RemotePid } = S) ->
+    {value, Size} = etorrent_torrent:num_pieces(Torrent_Id),
     {ok, PieceSet} =
         etorrent_proto_wire:decode_bitfield(Size, BitField),
     Left = Pieces_Left - gb_sets:size(PieceSet),
@@ -304,7 +305,7 @@ handle_message({bitfield, BitField},
             {ok, S#state{piece_set = gb_sets:empty(), pieces_left = Left,
                          seeder = Left == 0}};
         invalid_piece ->
-            {stop, {invalid_piece_2, S#state.remote_peer_id}, S}
+            {stop, {invalid_piece_2, RemotePid}, S}
     end;
 handle_message({reject_request, Idx, Offset, Len},
     #state { fast_extension = true } = S) ->

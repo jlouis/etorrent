@@ -339,9 +339,11 @@ handle_cast({remote_request, Idx, Offset, Len},
         send_message({reject_request, Idx, Offset, Len}, S, 0);
 handle_cast({remote_request, _Index, _Offset, _Len}, #state { choke = true } = S) ->
     {noreply, S, 0};
-handle_cast({remote_request, Index, Offset, Len}, #state { choke = false } = S) ->
-    case queue:len(S#state.requests) > ?MAX_REQUESTS of
-        true when S#state.fast_extension =:= true ->
+handle_cast({remote_request, Index, Offset, Len},
+            #state { choke = false, fast_extension = FastExtension,
+                     requests = Reqs} = S) ->
+    case queue:len(Reqs) > ?MAX_REQUESTS of
+        true when FastExtension == true ->
             send_message({reject_request, Index, Offset, Len}, S, 0);
         true ->
             {stop, max_queue_len_exceeded, S};
