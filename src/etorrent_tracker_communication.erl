@@ -97,7 +97,7 @@ handle_call(_Request, _From, State) ->
 %%                                      {stop, Reason, State}
 %% Description: Handling cast messages
 %%----------------------p----------------------------------------------
-handle_cast(Msg, S) when S#state.hard_timer =:= none ->
+handle_cast(Msg, #state { hard_timer = none } = S) ->
     NS = contact_tracker(Msg, S),
     {noreply, NS};
 handle_cast(Msg, S) ->
@@ -110,7 +110,8 @@ handle_cast(Msg, S) ->
 %%                                       {stop, Reason, State}
 %% Description: Handling all non call/cast messages
 %%--------------------------------------------------------------------
-handle_info(hard_timeout, S) when S#state.queued_message =:= none ->
+handle_info(hard_timeout,
+    #state { queued_message = none } = S) ->
     %% There is nothing to do with the hard_timer, just ignore this
     {noreply, S#state { hard_timer = none }};
 handle_info(hard_timeout, S) ->

@@ -73,7 +73,7 @@ init([IDHandle, SPid]) when is_integer(IDHandle) ->
                 supervisor = SPid,
                 torrent_id = IDHandle}}.
 
-handle_call(Msg, _From, S) when S#state.file_pool =:= none ->
+    handle_call(Msg, _From, #state { file_pool = none } = S) ->
     FSPool = etorrent_t_sup:get_pid(S#state.supervisor, fs_pool),
     handle_call(Msg, _From, S#state { file_pool = FSPool });
 handle_call({read_piece, PieceNum}, _From, S) ->
@@ -90,12 +90,12 @@ handle_call(Msg, From, S) ->
     ?log([unknown_call, Msg, From, S]),
     {noreply, S}.
 
-handle_cast(Msg, S) when S#state.file_pool =:= none ->
+handle_cast(Msg, #state { file_pool = none } = S) ->
     FSPool = etorrent_t_sup:get_pid(S#state.supervisor, fs_pool),
     handle_cast(Msg, S#state { file_pool = FSPool });
 handle_cast({write_chunk, {Index, Data, Ops}}, S) ->
     case etorrent_piece_mgr:select(S#state.torrent_id, Index) of
-        [P] when P#piece.state =:= fetched ->
+        [#piece { state = fetched }] ->
             {noreply, S};
         [_] ->
             NS = fs_write(Data, Ops, S),

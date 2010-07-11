@@ -46,11 +46,10 @@ table_header() ->
 
 list_torrents() ->
     A = etorrent_torrent:all(),
-    Rows = lists:map(
-        fun (R) ->
+    Rows = [begin
                 {atomic, [#tracking_map { filename = FN, _=_}]} =
                     etorrent_tracking_map:select(R#torrent.id),
-                io_lib:format(
+            io_lib:format(
                     "<tr><td>~s</td><td>~3.B</td><td>~11.1f</td>" ++
                     "<td>~11.1f</td><td>~11.1f</td><td>~11.1f</td>"++
                     "<td>~3.B / ~3.B</td><td>~7.1f%</td>" ++
@@ -79,7 +78,7 @@ list_torrents() ->
                          round(lists:min(R#torrent.rate_sparkline) / 1024),
                          show_sparkline(
                             lists:reverse(R#torrent.rate_sparkline))])
-        end, A),
+        end || R <- A],
     {ok, Rows}.
 
 percent_complete(R) ->

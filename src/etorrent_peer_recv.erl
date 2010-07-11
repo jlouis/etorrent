@@ -85,13 +85,13 @@ handle_packet_slow(S, Packet) ->
     end.
 
 % Request the next message to be processed
-next_msg(S) when S#state.mode =:= transition ->
+next_msg(#state { mode = transition } = S) ->
     {noreply, S};
-next_msg(S) when S#state.mode =:= fast ->
+next_msg(#state { mode = fast } = S) ->
     {noreply, S};
-next_msg(S) when S#state.mode =:= slow ->
+next_msg(#state { mode = slow } = S) ->
     {noreply, S, 0};
-next_msg(S) when S#state.mode =:= fast_setup ->
+next_msg(#state { mode = fast_setup } = S) ->
     {noreply, S, 0}.
 
 is_snubbing_us(S) when S#state.last_piece_msg_count > ?LAST_PIECE_COUNT_THRESHOLD ->
@@ -104,9 +104,9 @@ is_snubbing_us(_S) ->
 terminate(_Reason, _S) ->
     ok.
 
-handle_info(timeout, S) when S#state.controller =:= none ->
+handle_info(timeout, #state { controller = none, parent = Parent } = S) ->
     %% Haven't started up yet
-    {ok, ControlPid} = etorrent_peer_sup:get_pid(S#state.parent, control),
+    {ok, ControlPid} = etorrent_peer_sup:get_pid(Parent, control),
     {noreply, S#state { controller = ControlPid }};
 handle_info(timeout, S) ->
     Length =

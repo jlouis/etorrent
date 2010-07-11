@@ -95,8 +95,8 @@ is_ready_for_checking(Id) ->
     F = fun () ->
                 Q = qlc:q([TM || TM <- mnesia:table(tracking_map),
                                  TM#tracking_map.state =:= checking]),
-                case length(qlc:e(Q)) of
-                    0 ->
+                case qlc:e(Q) of
+                    [] ->
                         [TM] = mnesia:read(tracking_map, Id, write),
                         mnesia:write(TM#tracking_map { state = checking }),
                         true;

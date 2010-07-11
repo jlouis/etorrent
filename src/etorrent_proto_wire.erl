@@ -129,8 +129,8 @@ encode_bitfield(Size, PieceSet) ->
                     false -> 0
                 end
         end,
-    Bits = lists:append([F(N) || N <- lists:seq(0, Size-1)],
-                        [0 || _N <- lists:seq(1,PadBits)]),
+    Bits = [F(N) || N <- lists:seq(0, Size-1)] ++
+           [0 || _N <- lists:seq(1,PadBits)],
     0 = length(Bits) rem 8,
     list_to_binary(build_bytes(Bits)).
 

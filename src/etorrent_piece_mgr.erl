@@ -136,12 +136,7 @@ valid(Id, Pn) when is_integer(Id) ->
 %%--------------------------------------------------------------------
 interesting(Id, Pn) when is_integer(Id) ->
     [P] = ets:lookup(etorrent_piece_tbl, {Id, Pn}),
-    case P#piece.state of
-        fetched ->
-            false;
-        _ ->
-            true
-    end.
+    P#piece.state =/= fetched.
 
 %% Search an iterator for a not_fetched piece. Return the #piece
 %%   record or none.
@@ -156,8 +151,7 @@ find_new_worker(Id, {PN, Nxt}) ->
     case ets:lookup(etorrent_piece_tbl, {Id, PN}) of
         [] ->
             find_new_worker(Id, gb_sets:next(Nxt));
-        [P] when P#piece.state =:= not_fetched ->
-            P;
+        [#piece{ state = not_fetched } = P] -> P;
         [_P] -> find_new_worker(Id, gb_sets:next(Nxt))
     end.
 
@@ -166,10 +160,7 @@ find_new_worker(Id, {PN, Nxt}) ->
 
 is_chunked(Id, Pn) ->
     [P] = ets:lookup(etorrent_piece_tbl, {Id, Pn}),
-    case P#piece.state of
-        chunked -> true;
-        _       -> false
-    end.
+    P#piece.state == chunked.
 
 %%====================================================================
 %% gen_server callbacks
@@ -281,7 +272,7 @@ find_interest_piece(Id, {Pn, Next}, Acc) ->
     case ets:lookup(etorrent_piece_tbl, {Id, Pn}) of
         [] ->
             invalid_piece;
-        [P] when is_record(P, piece) ->
+        [#piece{} = P] ->
             case P#piece.state of
                 fetched ->
                     find_interest_piece(Id, gb_sets:next(Next), Acc);

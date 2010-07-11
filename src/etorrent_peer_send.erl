@@ -199,15 +199,15 @@ send(Msg, S) ->
             {error, E, S}
     end.
 
-perform_choke(S) when S#state.fast_extension == true ->
+perform_choke(#state { fast_extension = true} = S) ->
     perform_fast_ext_choke(S);
-perform_choke(S) when S#state.choke == true ->
+perform_choke(#state { choke = true } = S) ->
     {noreply, S, 0};
 perform_choke(S) ->
     local_choke(S),
     send_message(choke, S#state{choke = true, requests = queue:new() }).
 
-perform_fast_ext_choke(S) when S#state.choke == true ->
+perform_fast_ext_choke(#state { choke = true } = S) ->
     {noreply, S, 0};
 perform_fast_ext_choke(S) ->
      local_choke(S),
@@ -272,12 +272,12 @@ handle_info(rate_update, S) ->
 %% Different timeouts.
 %% When we are choking the peer and the piece cache is empty, garbage_collect() to reclaim
 %% space quickly rather than waiting for it to happen.
-handle_info(timeout, S = #state{ parent = {non_inited, P}}) ->
+handle_info(timeout, #state{ parent = {non_inited, P}} = S) ->
     {ok, RecvPid} = etorrent_peer_sup:get_pid(P, control),
     {noreply, S#state { parent = RecvPid }, 0};
-handle_info(timeout, S) when S#state.choke =:= true ->
+handle_info(timeout, #state { choke = true} = S) ->
     {noreply, S};
-handle_info(timeout, S) when S#state.choke =:= false ->
+handle_info(timeout, #state { choke = false} = S) ->
     case queue:out(S#state.requests) of
         {empty, _} ->
             {noreply, S};
@@ -291,34 +291,34 @@ handle_info(Msg, S) ->
 %% Handle requests to choke and unchoke. If we are already choking the peer,
 %% there is no reason to send the message again.
 handle_cast(choke, S) -> perform_choke(S);
-handle_cast(unchoke, S) when S#state.choke == false -> {noreply, S, 0};
-handle_cast(unchoke, S) when S#state.choke == true ->
+handle_cast(unchoke, #state { choke = false } = S) -> {noreply, S, 0};
+handle_cast(unchoke, #state { choke = true } = S) ->
     ok = etorrent_rate_mgr:local_unchoke(S#state.torrent_id, S#state.parent),
     send_message(unchoke, S#state{choke = false});
 
 %% A request to check the current choke state and ask for a rechoking
-handle_cast(check_choke, S) when S#state.choke =:= true ->
+handle_cast(check_choke, #state { choke = true } = S) ->
     {noreply, S, 0};
-handle_cast(check_choke, S) when S#state.choke =:= false ->
+handle_cast(check_choke, #state { choke = false } = S) ->
     ok = etorrent_choker:perform_rechoke(),
     {noreply, S, 0};
 
 %% Regular messages. We just send them onwards on the wire.
 handle_cast({bitfield, BF}, S) ->
     send_message({bitfield, BF}, S);
-handle_cast(not_interested, S) when S#state.interested =:= false ->
+handle_cast(not_interested, #state { interested = false} = S) ->
     {noreply, S, 0};
-handle_cast(not_interested, S) when S#state.interested =:= true ->
+handle_cast(not_interested, #state { interested = true } = S) ->
     send_message(not_interested, S#state { interested = false });
-handle_cast(interested, S) when S#state.interested =:= true ->
+handle_cast(interested, #state { interested = true } = S) ->
     {noreply, S, 0};
-handle_cast(interested, S) when S#state.interested =:= false ->
+handle_cast(interested, #state { interested = false } = S) ->
     send_message(interested, S#state { interested = true });
 handle_cast({have, Pn}, S) ->
     send_message({have, Pn}, S);
 
 %% Cancels are handled specially when the fast extension is enabled.
-handle_cast({cancel, Idx, Offset, Len}, S) when S#state.fast_extension =:= true ->
+handle_cast({cancel, Idx, Offset, Len}, #state { fast_extension = true} = S) ->
     try
         NQ = etorrent_utils:queue_remove_check({Idx, Offset, Len},
                                                S#state.requests),
@@ -332,14 +332,12 @@ handle_cast({cancel, Index, OffSet, Len}, S) ->
 
 handle_cast({local_request, {Index, Offset, Size}}, S) ->
     send_message({request, Index, Offset, Size}, S);
-handle_cast({remote_request, Idx, Offset, Len}, S)
-  when S#state.fast_extension =:= true, S#state.choke == true ->
-    send_message({reject_request, Idx, Offset, Len}, S, 0);
-handle_cast({remote_request, _Index, _Offset, _Len}, S)
-  when S#state.choke == true ->
+handle_cast({remote_request, Idx, Offset, Len},
+    #state { fast_extension = true, choke = true } = S) ->
+        send_message({reject_request, Idx, Offset, Len}, S, 0);
+handle_cast({remote_request, _Index, _Offset, _Len}, #state { choke = true } = S) ->
     {noreply, S, 0};
-handle_cast({remote_request, Index, Offset, Len}, S)
-  when S#state.choke == false ->
+handle_cast({remote_request, Index, Offset, Len}, #state { choke = false } = S) ->
     case queue:len(S#state.requests) > ?MAX_REQUESTS of
         true when S#state.fast_extension =:= true ->
             send_message({reject_request, Index, Offset, Len}, S, 0);
