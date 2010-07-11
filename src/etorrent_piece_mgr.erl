@@ -272,8 +272,8 @@ find_interest_piece(Id, {Pn, Next}, Acc) ->
     case ets:lookup(etorrent_piece_tbl, {Id, Pn}) of
         [] ->
             invalid_piece;
-        [#piece{} = P] ->
-            case P#piece.state of
+        [#piece{ state = State}] ->
+            case State of
                 fetched ->
                     find_interest_piece(Id, gb_sets:next(Next), Acc);
                 _Other ->

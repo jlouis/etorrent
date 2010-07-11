@@ -142,9 +142,9 @@ start_peer(Socket, _ReservedBytes, PeerId, InfoHash, S) ->
             ok
     end.
 
-new_incoming_peer(_Socket, _IP, _Port, _InfoHash, PeerId, S)
-            when S#state.our_peer_id == PeerId ->
-    connect_to_ourselves;
+new_incoming_peer(_Socket, _IP, _Port, _InfoHash, PeerId,
+    #state { our_peer_id = Our_Peer_Id }) when Our_Peer_Id == PeerId ->
+        connect_to_ourselves;
 new_incoming_peer(Socket, IP, Port, InfoHash, _PeerId, S) ->
     {atomic, [TM]} = etorrent_tracking_map:select({infohash, InfoHash}),
     case etorrent_peer_mgr:is_bad_peer(IP, Port) of

@@ -309,7 +309,7 @@ find_remaining_chunks(Id, PieceSet) ->
 chunkify_new_piece(Id, PieceSet) when is_integer(Id) ->
     case etorrent_piece_mgr:find_new(Id, PieceSet) of
         none -> none_eligible;
-        P when is_record(P, piece) ->
+        #piece{} = P ->
             chunkify_piece(Id, P),
             ok
     end.
@@ -404,11 +404,11 @@ chunkify(AtOffset, EatenBytes, Operations,
 %%   to the chunk table.
 %% @end
 -spec chunkify_piece(integer(), #piece{}) -> ok.
-chunkify_piece(Id, P) when is_record(P, piece) ->
-    Chunks = chunkify(P#piece.files),
+chunkify_piece(Id, #piece{ files = Files, state = State, idpn = IDPN }) ->
+    Chunks = chunkify(Files),
     NumChunks = length(Chunks),
-    not_fetched = P#piece.state,
-    {Id, Idx} = P#piece.idpn,
+    not_fetched = State,
+    {Id, Idx} = IDPN,
     ok = etorrent_piece_mgr:chunk(Id, Idx, NumChunks),
     ets:insert(etorrent_chunk_tbl,
                #chunk { idt = {Id, Idx, not_fetched},

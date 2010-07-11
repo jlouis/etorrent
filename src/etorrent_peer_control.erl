@@ -174,15 +174,15 @@ handle_cast(unchoke, S) ->
     {noreply, S};
 handle_cast(interested, S) ->
     {noreply, statechange_interested(S, true)};
-handle_cast({have, PN}, #state { piece_set = unknown } = S) ->
-    etorrent_peer_send:have(S#state.send_pid, PN),
+handle_cast({have, PN}, #state { piece_set = unknown, send_pid = SPid } = S) ->
+    etorrent_peer_send:have(SPid, PN),
     {noreply, S};
-handle_cast({have, PN}, S) ->
-    case gb_sets:is_element(PN, S#state.piece_set) of
+handle_cast({have, PN}, #state { piece_set = PS, send_pid = SPid } = S) ->
+    case gb_sets:is_element(PN, PS) of
         true -> ok;
-        false -> ok = etorrent_peer_send:have(S#state.send_pid, PN)
+        false -> ok = etorrent_peer_send:have(SPid, PN)
     end,
-    Pruned = gb_sets:delete_any(PN, S#state.piece_set),
+    Pruned = gb_sets:delete_any(PN, PS),
     {noreply, S#state { piece_set = Pruned }};
 handle_cast({endgame_got_chunk, Chunk}, S) ->
     NS = handle_endgame_got_chunk(Chunk, S),
@@ -265,28 +265,31 @@ handle_message({suggest, Idx}, S) ->
     {ok, S};
 handle_message(have_none, #state { piece_set = PS } = S) when PS =/= unknown ->
     {stop, normal, S};
-handle_message(have_none, #state { fast_extension = true } = S) ->
-    Size = etorrent_torrent:num_pieces(S#state.torrent_id),
+handle_message(have_none, #state { fast_extension = true, torrent_id = Torrent_Id } = S) ->
+    Size = etorrent_torrent:num_pieces(Torrent_Id),
     {ok, S#state { piece_set = gb_sets:new(),
                    pieces_left = Size,
                    seeder = false}};
        handle_message(have_all, #state { piece_set = PS }) when PS =/= unknown ->
     {error, piece_set_out_of_band};
-handle_message(have_all, #state { fast_extension = true } = S) ->
-    {value, Size} = etorrent_torrent:num_pieces(S#state.torrent_id),
+handle_message(have_all, #state { fast_extension = true, torrent_id = Torrent_Id } = S) ->
+    {value, Size} = etorrent_torrent:num_pieces(Torrent_Id),
     FullSet = gb_sets:from_list(lists:seq(0, Size - 1)),
     {ok, S#state { piece_set = FullSet,
                    pieces_left = 0,
                    seeder = true }};
-       handle_message({bitfield, _BF}, #state { piece_set = PS } = S) when PS =/= unknown ->
-    {ok, {IP, Port}} = inet:peername(S#state.socket),
-    etorrent_peer_mgr:enter_bad_peer(IP, Port, S#state.remote_peer_id),
+handle_message({bitfield, _BF}, 
+    #state { piece_set = PS, socket = Socket, remote_peer_id = RemotePid })
+            when PS =/= unknown ->
+    {ok, {IP, Port}} = inet:peername(Socket),
+    etorrent_peer_mgr:enter_bad_peer(IP, Port, RemotePid),
     {error, piece_set_out_of_band};
-handle_message({bitfield, BitField}, #state { torrent_id = Torrent_Id } = S) ->
+handle_message({bitfield, BitField},
+        #state { torrent_id = Torrent_Id, pieces_left = Pieces_Left } = S) ->
     {value, Size} = etorrent_torrent:num_pieces(S#state.torrent_id),
     {ok, PieceSet} =
         etorrent_proto_wire:decode_bitfield(Size, BitField),
-    Left = S#state.pieces_left - gb_sets:size(PieceSet),
+    Left = Pieces_Left - gb_sets:size(PieceSet),
     case Left of
         0  -> ok = etorrent_peer:statechange(self(), seeder);
         _N -> ok
@@ -307,10 +310,8 @@ handle_message({reject_request, Idx, Offset, Len},
     #state { fast_extension = true } = S) ->
     unqueue_piece({Idx, Offset, Len}, S);
 handle_message({piece, Index, Offset, Data}, S) ->
-    case handle_got_chunk(Index, Offset, Data, size(Data), S) of
-        {ok, NS} ->
-            try_to_queue_up_pieces(NS)
-    end;
+    {ok, NS} = handle_got_chunk(Index, Offset, Data, size(Data), S),
+    try_to_queue_up_pieces(NS);
 handle_message(Unknown, S) ->
     error_logger:info_report([{unknown_message, Unknown}]),
     {stop, normal, S}.

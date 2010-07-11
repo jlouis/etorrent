@@ -277,8 +277,8 @@ handle_info(timeout, #state{ parent = {non_inited, P}} = S) ->
     {noreply, S#state { parent = RecvPid }, 0};
 handle_info(timeout, #state { choke = true} = S) ->
     {noreply, S};
-handle_info(timeout, #state { choke = false} = S) ->
-    case queue:out(S#state.requests) of
+handle_info(timeout, #state { choke = false, requests = Reqs} = S) ->
+    case queue:out(Reqs) of
         {empty, _} ->
             {noreply, S};
         {{value, {Index, Offset, Len}}, NewQ} ->
@@ -292,8 +292,9 @@ handle_info(Msg, S) ->
 %% there is no reason to send the message again.
 handle_cast(choke, S) -> perform_choke(S);
 handle_cast(unchoke, #state { choke = false } = S) -> {noreply, S, 0};
-handle_cast(unchoke, #state { choke = true } = S) ->
-    ok = etorrent_rate_mgr:local_unchoke(S#state.torrent_id, S#state.parent),
+handle_cast(unchoke,
+        #state { choke = true, torrent_id = Torrent_Id, parent = Parent } = S) ->
+    ok = etorrent_rate_mgr:local_unchoke(Torrent_Id, Parent),
     send_message(unchoke, S#state{choke = false});
 
 %% A request to check the current choke state and ask for a rechoking
@@ -318,10 +319,11 @@ handle_cast({have, Pn}, S) ->
     send_message({have, Pn}, S);
 
 %% Cancels are handled specially when the fast extension is enabled.
-handle_cast({cancel, Idx, Offset, Len}, #state { fast_extension = true} = S) ->
+handle_cast({cancel, Idx, Offset, Len},
+        #state { fast_extension = true, requests = Requests} = S) ->
     try
         NQ = etorrent_utils:queue_remove_check({Idx, Offset, Len},
-                                               S#state.requests),
+                                               Requests),
         {noreply, S#state { requests = NQ}, 0}
     catch
         exit:badmatch -> {stop, normal, S}
