@@ -97,19 +97,19 @@ handle_call({write, Offset, Data}, _From, S) ->
 handle_cast(stop, S) ->
     {stop, normal, S};
 handle_cast(Msg, State) ->
-    ?log([unknown_cast, Msg]),
+    ?WARN([unknown_cast, Msg]),
     {noreply, State, ?REQUEST_TIMEOUT}.
 
 handle_info(timeout, State) ->
     {stop, normal, State};
 handle_info(Info, State) ->
-    ?log([unknown_info_msg, Info]),
+    ?WARN([unknown_info_msg, Info]),
     {noreply, State}.
 
 terminate(_Reason, State) ->
     case file:close(State#state.iodev) of
         ok -> ok;
-        E -> ?log([cant_close_file, E]), ok
+        E -> ?WARN([cant_close_file, E]), ok
     end.
 
 %%--------------------------------------------------------------------

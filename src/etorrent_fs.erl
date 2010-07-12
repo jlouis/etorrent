@@ -87,7 +87,7 @@ handle_call({read_chunk, Pn, Offset, Len}, _From, S) ->
     {Reply, NS} = read_chunk_and_assemble(Operations, Offset, Len, S),
     {reply, Reply, NS};
 handle_call(Msg, From, S) ->
-    ?log([unknown_call, Msg, From, S]),
+    ?WARN([unknown_call, Msg, From, S]),
     {noreply, S}.
 
 handle_cast(Msg, #state { file_pool = none, supervisor = Sup } = S) ->
@@ -129,14 +129,14 @@ handle_cast({check_piece, Index}, S) ->
             {noreply, NS}
     end;
 handle_cast(Msg, State) ->
-    ?log([unknown_msg, Msg]),
+    ?WARN([unknown_msg, Msg]),
     {noreply, State}.
 
 handle_info({'DOWN', _R, process, Pid, _Reason}, S) ->
     Nd = remove_file_process(Pid, S#state.file_process_dict),
     {noreply, S#state { file_process_dict = Nd }};
 handle_info(Info, State) ->
-    ?log([unknown_info_msg, Info]),
+    ?WARN([unknown_info_msg, Info]),
     {noreply, State}.
 
 terminate(_Reason, S) ->

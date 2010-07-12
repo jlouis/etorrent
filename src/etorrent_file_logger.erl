@@ -64,7 +64,7 @@ handle_info(_, State) ->
 terminate(_, State) ->
     case file:close(State#state.cur_fd) of
         ok -> State;
-        {error, R} -> ?log([cant_close_file,{reason, R}]), State
+        {error, R} -> ?WARN([cant_close_file,{reason, R}]), State
     end.
 
 handle_call(null, State) ->
