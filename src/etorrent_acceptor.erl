@@ -10,6 +10,7 @@
 -behaviour(gen_server).
 
 -include("etorrent_mnesia_table.hrl").
+-include("log.hrl").
 
 %% API
 -export([start_link/1]).
@@ -137,7 +138,7 @@ start_peer(Socket, _ReservedBytes, PeerId, InfoHash, S) ->
             gen_tcp:close(Socket),
             ok;
         bad_peer ->
-            error_logger:info_report([peer_id_is_bad, PeerId]),
+            ?INFO([peer_id_is_bad, PeerId]),
             gen_tcp:close(Socket),
             ok
     end.

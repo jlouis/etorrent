@@ -11,6 +11,7 @@
 
 -include("etorrent_mnesia_table.hrl").
 -include("etorrent_rate.hrl").
+-include("log.hrl").
 
 -behaviour(gen_server).
 
@@ -285,7 +286,7 @@ handle_info(timeout, #state { choke = false, requests = Reqs} = S) ->
             send_piece(Index, Offset, Len, S#state { requests = NewQ } )
     end;
 handle_info(Msg, S) ->
-    error_logger:info_report([got_unknown_message, Msg, S]),
+    ?WARN([got_unknown_message, Msg, S]),
     {stop, {unknown_msg, Msg}}.
 
 %% Handle requests to choke and unchoke. If we are already choking the peer,

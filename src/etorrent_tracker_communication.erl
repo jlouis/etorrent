@@ -9,6 +9,7 @@
 -module(etorrent_tracker_communication).
 
 -behaviour(gen_server).
+-include("log.hrl").
 
 %% API
 -export([start_link/5]).
@@ -152,7 +153,7 @@ contact_tracker(S) ->
 
 contact_tracker(Event, S) ->
     NewUrl = build_tracker_url(S, Event),
-    error_logger:info_report([{contacting_tracker, NewUrl}]),
+    ?INFO([{contacting_tracker, NewUrl}]),
     case http_gzip:request(NewUrl) of
         {ok, {{_, 200, _}, _, Body}} ->
             handle_tracker_response(etorrent_bcoding:decode(Body), S);
@@ -298,7 +299,7 @@ decode_ips(<<>>, Accum) ->
 decode_ips(<<B1:8, B2:8, B3:8, B4:8, Port:16/big, Rest/binary>>, Accum) ->
     decode_ips(Rest, [{{B1, B2, B3, B4}, Port} | Accum]);
 decode_ips(Odd, Accum) ->
-    error_logger:info_report([tracker_wrong_ip_decode, Odd]),
+    ?INFO([tracker_wrong_ip_decode, Odd]),
     Accum.
 
 

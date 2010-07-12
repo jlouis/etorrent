@@ -11,6 +11,7 @@
 -behaviour(supervisor).
 
 -include("supervisor.hrl").
+-include("log.hrl").
 
 %% API
 -export([start_link/1]).
@@ -28,7 +29,7 @@ start_link(PeerId) ->
 
 %% ====================================================================
 init([PeerId]) ->
-    error_logger:info_report([etorrent_supervisor_starting, PeerId]),
+    ?INFO([etorrent_supervisor_starting, PeerId]),
     Torrent      = ?CHILD(etorrent_torrent),
     FSJanitor    = ?CHILD(etorrent_fs_janitor),
     TrackingMap  = ?CHILD(etorrent_tracking_map),

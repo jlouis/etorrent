@@ -4,6 +4,7 @@
 
 -include("etorrent_rate.hrl").
 -include("types.hrl").
+-include("log.hrl").
 
 %% API
 -export([start_link/7, choke/1, unchoke/1, have/2, initialize/2,
@@ -260,8 +261,7 @@ handle_message({cancel, Index, Offset, Len}, S) ->
     {ok, S};
 handle_message({have, PieceNum}, S) -> peer_have(PieceNum, S);
 handle_message({suggest, Idx}, S) ->
-    error_logger:info_report([{peer_id, S#state.remote_peer_id},
-                              {suggest, Idx}]),
+    ?INFO([{peer_id, S#state.remote_peer_id}, {suggest, Idx}]),
     {ok, S};
 handle_message(have_none, #state { piece_set = PS } = S) when PS =/= unknown ->
     {stop, normal, S};
@@ -314,7 +314,7 @@ handle_message({piece, Index, Offset, Data}, S) ->
     {ok, NS} = handle_got_chunk(Index, Offset, Data, size(Data), S),
     try_to_queue_up_pieces(NS);
 handle_message(Unknown, S) ->
-    error_logger:info_report([{unknown_message, Unknown}]),
+    ?WARN([unknown_message, Unknown]),
     {stop, normal, S}.
 
 %%--------------------------------------------------------------------

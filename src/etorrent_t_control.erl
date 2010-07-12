@@ -12,6 +12,7 @@
 -behaviour(gen_fsm).
 
 -include("etorrent_piece.hrl").
+-include("log.hrl").
 
 %% API
 -export([start_link/3, start/1, stop/1,
@@ -149,7 +150,7 @@ started(check_torrent, S) ->
                                            S#state.id) of
         [] -> {next_state, started, S};
         Errors ->
-            error_logger:info_report([errornous_pieces, {Errors}]),
+            ?INFO([errornous_pieces, {Errors}]),
             {next_state, started, S}
     end;
 started({tracker_error_report, Reason}, S) ->
@@ -168,7 +169,7 @@ handle_sync_event(_Event, _From, StateName, State) ->
     {reply, Reply, StateName, State}.
 
 handle_info(Info, StateName, State) ->
-    error_logger:info_report([unknown_info, Info, StateName]),
+    ?WARN([unknown_info, Info, StateName]),
     {next_state, StateName, State}.
 
 terminate(_Reason, _StateName, _S) ->

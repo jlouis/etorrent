@@ -9,6 +9,7 @@
 -module(etorrent_bcoding).
 -author("Jesper Louis Andersen <jesper.louis.andersen@gmail.com>").
 -include("types.hrl").
+-include("log.hrl").
 
 -export([encode/1, decode/1, search_dict/2, search_dict_default/3,
         parse/1]).
@@ -39,7 +40,7 @@ decode(String) ->
     {Res, E} = decode_b(String),
     case E of
         [] -> ok;
-        X  -> error_logger:info_report([spurious_extra_decoded, X])
+        X  -> ?INFO([spurious_extra_decoded, X])
     end,
     Res.
 

@@ -11,6 +11,7 @@
 
 -include("etorrent_mnesia_table.hrl").
 -include("types.hrl").
+-include("log.hrl").
 
 %% API
 -export([start_link/0, query_state/1]).
@@ -80,7 +81,7 @@ init([]) ->
     _ = case X of
         {ok, etorrent_fast_resume} -> true;
         E ->
-            error_logger:info_report([fast_resume_no_data, E]),
+            ?INFO([fast_resume_no_data, E]),
             _ = ets:new(etorrent_fast_resume, [named_table, private])
     end,
     {ok, TRef} = timer:send_interval(?PERSIST_TIME, self(), persist),
@@ -100,7 +101,7 @@ handle_cast(_Msg, State) ->
     {noreply, State}.
 
 handle_info(persist, S) ->
-    error_logger:info_report([persist_to_disk]),
+    ?INFO([persist_to_disk]),
     persist_to_disk(),
     {noreply, S};
 handle_info(_Info, State) ->
