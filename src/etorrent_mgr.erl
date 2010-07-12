@@ -5,6 +5,7 @@
 -behaviour(gen_server).
 
 -include("etorrent_mnesia_table.hrl").
+-include("log.hrl").
 
 -export([start_link/1,
 
@@ -84,7 +85,7 @@ handle_call(_A, _B, S) ->
     {noreply, S}.
 
 handle_info(Info, State) ->
-    error_logger:info_msg("Unknown message: ~p~n", [Info]),
+    ?WARN([unknown_info, Info]),
     {noreply, State}.
 
 terminate(_Foo, _State) ->
@@ -95,7 +96,7 @@ code_change(_OldVsn, State, _Extra) ->
 
 %% =======================================================================
 stop_torrent(F, S) ->
-    error_logger:info_msg("Stopping ~p~n", [F]),
+    ?INFO([stopping, F]),
     case etorrent_tracking_map:select({filename, F}) of
         {atomic, [#tracking_map{}]} ->
             etorrent_t_pool_sup:stop_torrent(F),
