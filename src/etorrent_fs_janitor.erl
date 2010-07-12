@@ -1,6 +1,7 @@
 -module(etorrent_fs_janitor).
 
 -behaviour(gen_server).
+-include("log.hrl").
 
 -export([start_link/0, fs_maybe_collect/0, bump/1, new_fs_process/1]).
 
@@ -78,11 +79,11 @@ handle_cast({monitor_me, Pid}, S) ->
     erlang:monitor(process, Pid),
     {noreply, S};
 handle_cast(Other, S) ->
-    error_logger:error_report([unknown_msg, Other]),
+    ?ERR([unknown_msg, Other]),
     {noreply, S}.
 
 handle_call(Other, _From, S) ->
-    error_logger:error_report([unknown_msg, Other]),
+    ?ERR([unknown_msg, Other]),
     {noreply, S}.
 
 handle_info({'DOWN', _, _, Pid, _}, S) ->

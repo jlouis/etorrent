@@ -10,6 +10,7 @@
 -behaviour(supervisor).
 
 -include("types.hrl").
+-include("log.hrl").
 
 %% API
 -export([start_link/0, add_peer/7]).
@@ -41,7 +42,7 @@ add_peer(GroupPid, LocalPeerId, InfoHash, FilesystemPid, Id,
                 {ok, ControlPid} = etorrent_peer_sup:get_pid(Pid, control),
                 {ok, RecvPid, ControlPid};
         {error, Reason} ->
-            error_logger:error_report({add_peer_error, Reason}),
+            ?ERR({add_peer_error, Reason}),
             {error, Reason}
     end.
 

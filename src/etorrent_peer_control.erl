@@ -194,7 +194,7 @@ handle_cast(try_queue_pieces, S) ->
 handle_cast(stop, S) ->
     {stop, normal, S};
 handle_cast(Msg, State) ->
-    error_logger:error_report([unknown_msg, Msg]),
+    ?WARN([unknown_msg, Msg]),
     {noreply, State}.
 
 
@@ -205,10 +205,10 @@ handle_cast(Msg, State) ->
 %% Description: Handling all non call/cast messages
 %%--------------------------------------------------------------------
 handle_info({tcp, _P, _Packet}, State) ->
-    error_logger:error_report([wrong_controller]),
+    ?ERR([wrong_controller]),
     {noreply, State};
 handle_info(Info, State) ->
-    error_logger:error_report([unknown_msg, Info]),
+    ?WARN([unknown_msg, Info]),
     {noreply, State}.
 
 %%--------------------------------------------------------------------
@@ -553,9 +553,9 @@ peer_seeds(Id, 0) ->
     end;
 peer_seeds(_Id, _N) -> ok.
 
-handle_call(_Request, _From, State) ->
-    Reply = ok,
-    {reply, Reply, State}.
+handle_call(Request, _From, State) ->
+    ?WARN([unknown_handle_call, Request]),
+    {noreply, State}.
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.

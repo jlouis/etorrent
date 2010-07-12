@@ -12,6 +12,7 @@
 -include_lib("stdlib/include/qlc.hrl").
 -include("etorrent_mnesia_table.hrl").
 -include("types.hrl").
+-include("log.hrl").
 
 
 %% API
@@ -106,7 +107,8 @@ handle_info({'DOWN', Ref, _, _, _}, S) ->
     {ok, Pid} = dict:find(Ref, S#state.monitoring),
     mnesia:dirty_delete(peer, Pid),
     {noreply, S#state { monitoring = dict:erase(Ref, S#state.monitoring) }};
-handle_info(_Msg, S) ->
+handle_info(Msg, S) ->
+    ?WARN([unknown_msg, Msg]),
     {noreply, S}.
 
 handle_call({new, IP, Port, TorrentId, Pid, State}, _From, S) ->
@@ -115,10 +117,11 @@ handle_call({new, IP, Port, TorrentId, Pid, State}, _From, S) ->
     Ref = erlang:monitor(process, Pid),
     {reply, Q, S#state{ monitoring = dict:store(Ref, Pid, S#state.monitoring)}};
 handle_call(Msg, _From, S) ->
-    error_logger:error_report([unknown_msg, Msg]),
+    ?WARN([unknown_msg, Msg]),
     {noreply, S}.
 
-handle_cast(_Msg, S) ->
+handle_cast(Msg, S) ->
+    ?WARN([unknown_msg, Msg]),
     {noreply, S}.
 
 code_change(_OldVsn, S, _Extra) ->

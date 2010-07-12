@@ -10,6 +10,7 @@
 -include("etorrent_piece.hrl").
 -include("etorrent_chunk.hrl").
 -include("types.hrl").
+-include("log.hrl").
 
 -include_lib("stdlib/include/ms_transform.hrl").
 
@@ -237,7 +238,7 @@ handle_cast({putback_chunks, Pid}, S) ->
       end),
     {noreply, S};
 handle_cast(Msg, State) ->
-    error_logger:error_report([unknown_msg, Msg]),
+    ?WARN([unknown_msg, Msg]),
     {noreply, State}.
 
 

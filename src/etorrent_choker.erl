@@ -13,6 +13,7 @@
 
 -include("rate_mgr.hrl").
 -include("peer_state.hrl").
+-include("log.hrl").
 
 %% API
 -export([start_link/1, perform_rechoke/0, monitor/1]).
@@ -257,7 +258,7 @@ handle_call({monitor, Pid}, _From, S) ->
     perform_rechoke(),
     {reply, ok, S#state { opt_unchoke_chain = NewChain }};
 handle_call(Request, _From, State) ->
-    error_logger:error_report([unknown_peer_group_call, Request]),
+    ?ERR([unknown_peer_group_call, Request]),
     Reply = ok,
     {reply, Reply, State}.
 handle_cast(rechoke, S) ->
@@ -296,7 +297,7 @@ handle_info({'DOWN', _Ref, process, Pid, _Reason}, S) ->
     NewChain = lists:delete(Pid, S#state.opt_unchoke_chain),
     {noreply, S#state{opt_unchoke_chain = NewChain}};
 handle_info(Info, State) ->
-    error_logger:error_report([unknown_info_peer_group, Info]),
+    ?ERR([unknown_info_peer_group, Info]),
     {noreply, State}.
 
 terminate(_Reason, _S) ->

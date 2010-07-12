@@ -8,6 +8,7 @@
 -module(etorrent_counters).
 
 -behaviour(gen_server).
+-include("log.hrl").
 
 %% API
 -export([start_link/0, next/1, obtain_peer_slot/0, slots_left/0]).
@@ -111,7 +112,7 @@ handle_info({'DOWN', _Ref, process, _Pid, _Reason}, S) ->
     K = ets:update_counter(etorrent_counters, peer_slots, {2, -1, 0, 0}),
     if
         K >= 0 -> ok;
-        true -> error_logger:error_report([counter_negative, K])
+        true -> ?ERR([counter_negative, K])
     end,
     {noreply, S};
 handle_info(_Info, State) ->

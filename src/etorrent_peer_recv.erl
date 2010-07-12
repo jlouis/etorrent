@@ -112,7 +112,7 @@ handle_info(timeout, #state { controller = none, parent = Parent } = S) ->
 handle_info(timeout, S) ->
     Length =
         case S#state.mode of
-            fast -> error_logger:error_report([timeout_in_fast_mode]), 0;
+            fast -> ?ERR([timeout_in_fast_mode]), 0;
             slow -> 0;
             fast_setup ->
                 {val, L} = etorrent_proto_wire:remaining_bytes(S#state.packet_continuation),

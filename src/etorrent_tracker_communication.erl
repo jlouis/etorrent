@@ -102,7 +102,7 @@ handle_cast(Msg, #state { hard_timer = none } = S) ->
     NS = contact_tracker(Msg, S),
     {noreply, NS};
 handle_cast(Msg, S) ->
-    error_logger:error_report([unknown_msg, Msg]),
+    ?ERR([unknown_msg, Msg]),
     {noreply, S}.
 
 %%--------------------------------------------------------------------
@@ -164,7 +164,7 @@ contact_tracker(Event, S) ->
         {error, session_remotly_closed} ->
             handle_timeout(S);
         {error, Reason} ->
-            error_logger:error_report([contact_tracker_error, Reason]),
+            ?ERR([contact_tracker_error, Reason]),
             handle_timeout(S)
     end.
 
