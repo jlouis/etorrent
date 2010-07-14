@@ -17,7 +17,7 @@
                  packet_continuation = none,
                  rate = none,
                  last_piece_msg_count = 0,
-                 id = none,
+                 id :: integer(),
                  rate_timer = none,
                  controller = none,
                  % The MODE of the receiver. It is either a fast peer, in which
@@ -60,9 +60,10 @@ go_slow(S) ->
     etorrent_peer_send:go_slow(P),
     S#state { mode = transition }.
 
-handle_packet(Packet, S) ->
+handle_packet(Packet, #state { id = Id } = S) ->
     Msg = etorrent_proto_wire:decode_msg(Packet),
     NR = etorrent_rate:update(S#state.rate, byte_size(Packet)),
+    ok = etorrent_torrent:statechange(Id, [{add_downloaded, byte_size(Packet)}]),
     etorrent_peer_control:incoming_msg(S#state.controller, Msg),
     NewCount = case Msg of {piece, _, _, _} -> 0;
                            _ -> S#state.last_piece_msg_count
