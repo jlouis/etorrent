@@ -96,7 +96,7 @@ handle_call(_Request, _From, State) ->
 %%                                      {noreply, State, Timeout} |
 %%                                      {stop, Reason, State}
 %% Description: Handling cast messages
-%%----------------------p----------------------------------------------
+%%---------------------------------------------------------------------
 handle_cast(Msg, #state { hard_timer = none } = S) ->
     NS = contact_tracker(Msg, S),
     {noreply, NS};
