@@ -11,7 +11,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/5]).
+-export([start_link/5, completed/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -49,6 +49,11 @@ start_link(ControlPid, Url, InfoHash, PeerId, TorrentId) ->
                           [ControlPid,
                             Url, InfoHash, PeerId, TorrentId],
                           []).
+
+-spec completed(pid()) ->
+		        ok.
+completed(Pid) ->
+    gen_server:cast(Pid, completed).
 
 %%====================================================================
 %% gen_server callbacks
@@ -97,6 +102,9 @@ handle_call(_Request, _From, State) ->
 %%                                      {stop, Reason, State}
 %% Description: Handling cast messages
 %%----------------------p----------------------------------------------
+handle_cast(completed, S) ->
+    NS = contact_tracker(completed, S),
+    {noreply, NS};
 handle_cast(Msg, #state { hard_timer = none } = S) ->
     NS = contact_tracker(Msg, S),
     {noreply, NS};
