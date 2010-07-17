@@ -267,7 +267,8 @@ state_change(Id, [What | Rest]) ->
                   Left = T#torrent.left - Amount,
                   case Left of
                       0 ->
-                          T#torrent { left = 0, state = seeding };
+                          T#torrent { left = 0, state = seeding,
+				      rate_sparkline = [0.0] };
                       N when N =< T#torrent.total ->
                           T#torrent { left = N }
                   end;
