@@ -1,4 +1,3 @@
-%% -*- erlang-indent-level: 2 -*-
 %%% Created : 14 Mar 2008 by Mats Cronqvist <masse@kreditor.se>
 
 %% @doc
