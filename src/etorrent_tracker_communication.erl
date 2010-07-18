@@ -18,8 +18,7 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
--record(state, {should_contact_tracker = false,
-                queued_message = none,
+-record(state, {queued_message = none,
                 %% The hard timer is the time we *must* wait on the tracker.
                 %% soft timer may be overridden if we want to change state.
                 soft_timer = none,
@@ -67,8 +66,7 @@ init([ControlPid, Url, InfoHash, PeerId, TorrentId]) ->
     {ok, HardRef} = timer:send_after(0, hard_timeout),
     {ok, SoftRef} = timer:send_after(timer:seconds(?DEFAULT_CONNECTION_TIMEOUT_INTERVAL),
                                      soft_timeout),
-    {ok, #state{should_contact_tracker = false,
-                control_pid = ControlPid,
+    {ok, #state{control_pid = ControlPid,
                 torrent_id = TorrentId,
                 url = Url,
                 info_hash = InfoHash,
@@ -152,9 +150,9 @@ contact_tracker(S) ->
     contact_tracker(none, S).
 
 contact_tracker(Event, S) ->
-    NewUrl = build_tracker_url(S, Event),
-    ?INFO([{contacting_tracker, NewUrl}]),
-    case http_gzip:request(NewUrl) of
+    RequestUrl = build_tracker_url(S#state.url, S, Event),
+    ?INFO([{contacting_tracker, RequestUrl}]),
+    case http_gzip:request(RequestUrl) of
         {ok, {{_, 200, _}, _, Body}} ->
             handle_tracker_response(etorrent_bcoding:decode(Body), S);
         {error, etimedout} ->
@@ -242,14 +240,16 @@ construct_headers([{Key, Value} | Rest], HeaderLines) ->
     Data = lists:concat([Key, "=", Value, "&"]),
     construct_headers(Rest, [Data | HeaderLines]).
 
-build_tracker_url(S, Event) ->
+build_tracker_url(Url, #state { torrent_id = Id,
+				info_hash = InfoHash,
+				peer_id = PeerId }, Event) ->
     {torrent_info, Uploaded, Downloaded, Left} =
-                etorrent_torrent:find(S#state.torrent_id),
+                etorrent_torrent:find(Id),
     {ok, Port} = application:get_env(etorrent, port),
     Request = [{"info_hash",
-                etorrent_utils:build_encoded_form_rfc1738(S#state.info_hash)},
+                etorrent_utils:build_encoded_form_rfc1738(InfoHash)},
                {"peer_id",
-                etorrent_utils:build_encoded_form_rfc1738(S#state.peer_id)},
+                etorrent_utils:build_encoded_form_rfc1738(PeerId)},
                {"uploaded", Uploaded},
                {"downloaded", Downloaded},
                {"left", Left},
@@ -261,7 +261,7 @@ build_tracker_url(S, Event) ->
                stopped -> [{"event", "stopped"} | Request];
                completed -> [{"event", "completed"} | Request]
            end,
-    lists:concat([S#state.url, "?", construct_headers(EReq, [])]).
+    lists:concat([Url, "?", construct_headers(EReq, [])]).
 
 %%% Tracker response lookup functions
 response_interval(BC) ->
