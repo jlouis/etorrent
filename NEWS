@@ -1,3 +1,12 @@
+Version 1.0.1:
+
+  Minor bug-fix release:
+
+  * (WebUI) Sparklines are reset properly when torrents complete
+  * (WebUI) Boxplots beside the sparklines.
+  * (Bug) Tracker is now correctly told about completion.
+  * (Bug) Up/Downloaded is now reported as the concensus in the BT community.
+
 Version 1.0:
 
   First release I admit others might find useful. It is also the first release
