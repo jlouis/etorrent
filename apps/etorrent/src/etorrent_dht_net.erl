@@ -847,7 +847,6 @@ prop_inv_compact() ->
            Input =:= Output
        end).
 
-
 encoder({dht_query, Method, MsgId, Params}) ->
     encode_query(Method, MsgId, Params).
 

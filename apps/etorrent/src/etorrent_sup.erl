@@ -46,6 +46,9 @@ init([PeerId]) ->
                    {etorrent_acceptor_sup, start_link, [PeerId]},
                    permanent, infinity, supervisor, [etorrent_acceptor_sup]},
     TorrentMgr   = ?CHILDP(etorrent_mgr, [PeerId]),
+    UdpTracking = {udp_tracker_sup,
+		   {etorrent_udp_tracker_sup, start_link, []},
+		   transient, infinity, supervisor, [etorrent_udp_tracker_sup]},
     DirWatcherSup = {dirwatcher_sup,
                   {etorrent_dirwatcher_sup, start_link, []},
                   transient, infinity, supervisor, [etorrent_dirwatcher_sup]},
@@ -68,4 +71,5 @@ init([PeerId]) ->
            Counters, EventManager, PeerMgr,
            FastResume, RateManager, PieceManager,
            ChunkManager, Choker, Listener, AcceptorSup,
-           TorrentMgr, DirWatcherSup, TorrentPool] ++ DHTSup}}.
+           TorrentMgr, UdpTracking,
+	   DirWatcherSup, TorrentPool] ++ DHTSup}}.
