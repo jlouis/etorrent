@@ -109,9 +109,7 @@ handle_cast({check_piece, Index}, S) ->
     case Hash == crypto:sha(Data) of
         true ->
             ok = etorrent_torrent:statechange(
-                   S#state.torrent_id,
-                   [{subtract_left, DataSize},
-                   {add_downloaded, DataSize}]),
+                S#state.torrent_id, [{subtract_left, DataSize}]),
             ok = etorrent_piece_mgr:statechange(
                    S#state.torrent_id,
                    Index,

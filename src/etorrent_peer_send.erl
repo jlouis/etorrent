@@ -158,18 +158,6 @@ go_slow(Pid) ->
 %%% Internal functions
 %%--------------------------------------------------------------------
 
-%% Send off a piece message. Handle eventual connection close gracefully.
-%% TODO: The {stop, normal, ...} is utterly wrong here. If we loose the
-%% socket for some reason, we should terminate the whole peer, not simply
-%% this process.
-send_piece_message(Msg, S, Timeout) ->
-    case etorrent_proto_wire:send_msg(S#state.socket, Msg, S#state.mode) of
-        {ok, Sz} ->
-            NR = etorrent_rate:update(S#state.rate, Sz),
-            {noreply, S#state { rate = NR }, Timeout};
-        {{error, closed}, _Sz} ->
-            {stop, normal, S}
-    end.
 
 %% Send off a piece message
 send_piece(Index, Offset, Len, S) ->
@@ -178,7 +166,7 @@ send_piece(Index, Offset, Len, S) ->
     Msg = {piece, Index, Offset, PieceData},
     ok = etorrent_torrent:statechange(S#state.torrent_id,
                                         [{add_upload, Len}]),
-    send_piece_message(Msg, S, 0).
+    send_message(Msg, S).
 
 send_message(Msg, S) ->
     send_message(Msg, S, 0).
@@ -191,10 +179,11 @@ send_message(Msg, S, Timeout) ->
         {error, ebadf, NS} -> {stop, normal, NS}
     end.
 
-send(Msg, S) ->
+send(Msg, #state { torrent_id = Id} = S) ->
     case etorrent_proto_wire:send_msg(S#state.socket, Msg, S#state.mode) of
         {ok, Sz} ->
             NR = etorrent_rate:update(S#state.rate, Sz),
+            ok = etorrent_torrent:statechange(Id, [{add_upload, Sz}]),
             {ok, S#state { rate = NR}};
         {{error, E}, _Amount} ->
             {error, E, S}
