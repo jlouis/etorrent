@@ -12,6 +12,7 @@
          event/1,
          started_torrent/1,
          checking_torrent/1,
+	 completed_torrent/1,
          seeding_torrent/1]).
 
 -define(SERVER, ?MODULE).
@@ -29,6 +30,9 @@ checking_torrent(Id) -> event({checking_torrent, Id}).
 
 -spec seeding_torrent(integer()) -> ok.
 seeding_torrent(Id) -> event({seeding_torrent, Id}).
+
+-spec completed_torrent(integer()) -> ok.
+completed_torrent(Id) -> event({completed_torrent, Id}).
 
 %% ====================================================================
 start_link() ->

@@ -16,7 +16,7 @@
 
 %% API
 -export([start_link/3, start/1, stop/1,
-        torrent_checked/2, tracker_error_report/2, seed/1,
+        torrent_checked/2, tracker_error_report/2, completed/1,
         tracker_warning_report/2,
 
         check_torrent/1]).
@@ -81,11 +81,9 @@ tracker_error_report(Pid, Report) ->
 tracker_warning_report(Pid, Report) ->
     gen_fsm:send_event(Pid, {tracker_warning_report, Report}).
 
-% @doc Alter the torrent to a seeding torrent
-% @end
--spec seed(pid()) -> ok.
-seed(Pid) ->
-    gen_fsm:send_event(Pid, seed).
+-spec completed(pid()) -> ok.
+completed(Pid) ->
+    gen_fsm:send_event(Pid, completed).
 
 %% ====================================================================
 
@@ -153,6 +151,10 @@ started(check_torrent, S) ->
             ?INFO([errornous_pieces, {Errors}]),
             {next_state, started, S}
     end;
+started(completed, #state { id = Id, tracker_pid = TrackerPid } = S) ->
+    etorrent_event_mgr:completed_torrent(Id),
+    etorrent_tracker_communication:completed(TrackerPid),
+    {next_state, started, S};
 started({tracker_error_report, Reason}, S) ->
     io:format("Got tracker error: ~s~n", [Reason]),
     {next_state, started, S}.
