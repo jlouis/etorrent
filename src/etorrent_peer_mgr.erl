@@ -169,13 +169,14 @@ spawn_peer(PeerId, TM, TorrentId, IP, Port) ->
                               PeerId,
                               TM#tracking_map.info_hash) of
                           {ok, _Capabilities, PeerId} -> ok;
-                          {ok, _Capabilities, RPID} ->
+                          {ok, Capabilities, RPID} ->
                               {ok, RecvPid, ControlPid} = etorrent_t_sup:add_peer(
                                   TM#tracking_map.supervisor_pid,
                                   RPID,
                                   TM#tracking_map.info_hash,
                                   TorrentId,
                                   {IP, Port},
+				  Capabilities,
                                   Socket),
                               ok = gen_tcp:controlling_process(Socket, RecvPid),
                               etorrent_peer_control:initialize(ControlPid, outgoing),

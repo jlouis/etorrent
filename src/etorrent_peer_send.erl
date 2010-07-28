@@ -1,3 +1,4 @@
+
 %%%-------------------------------------------------------------------
 %%% File    : etorrent_peer_send.erl
 %%% Author  : Jesper Louis Andersen
@@ -29,6 +30,7 @@
          local_request/2, remote_request/4, cancel/4,
          choke/1, unchoke/1, have/2,
          not_interested/1, interested/1,
+	 extended_msg/1,
          bitfield/2]).
 
 %% gen_server callbacks
@@ -142,6 +144,10 @@ have(Pid, PieceNumber) ->
 -spec bitfield(pid(), binary()) -> ok. %% This should be checked
 bitfield(Pid, BitField) ->
     gen_server:cast(Pid, {bitfield, BitField}).
+
+-spec extended_msg(pid()) -> ok.
+extended_msg(Pid) ->
+    gen_server:cast(Pid, extended_msg).
 
 %% Request that we enable fast messaging (port is active and we get messages).
 -spec go_fast(pid()) -> ok.
@@ -297,6 +303,8 @@ handle_cast(check_choke, #state { choke = false } = S) ->
 %% Regular messages. We just send them onwards on the wire.
 handle_cast({bitfield, BF}, S) ->
     send_message({bitfield, BF}, S);
+handle_cast(extended_msg, S) ->
+    send_message({extended, 0, etorrent_proto_wire:extended_msg_contents()}, S);
 handle_cast(not_interested, #state { interested = false} = S) ->
     {noreply, S, 0};
 handle_cast(not_interested, #state { interested = true } = S) ->

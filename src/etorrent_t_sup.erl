@@ -15,7 +15,7 @@
 
 %% API
 -export([start_link/3, add_tracker/5, get_pid/2,
-         add_peer/6]).
+         add_peer/7]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -54,19 +54,21 @@ add_tracker(Pid, URL, InfoHash, Local_Peer_Id, TorrentId) ->
 % peer_pools add_peer/7 function. It is just cleaner to call through this
 % supervisor, as it has the knowledge about the peer pool pid.</p>
 % @end
--spec add_peer(pid(), binary(), binary(), integer(), {ip(), integer()}, port()) ->
+-spec add_peer(pid(), binary(), binary(), integer(), {ip(), integer()}, [capabilities()],
+	       port()) ->
         {ok, pid(), pid()} | {error, term()}.
-add_peer(Pid, PeerId, InfoHash, TorrentId, {IP, Port}, Socket) ->
+add_peer(Pid, PeerId, InfoHash, TorrentId, {IP, Port}, Capabilities, Socket) ->
     FSPid = get_pid(Pid, fs),
     GroupPid = get_pid(Pid, peer_pool_sup),
     etorrent_peer_pool_sup:add_peer(
-                                GroupPid,
-                                PeerId,
-                                InfoHash,
-                                FSPid,
-                                TorrentId,
-                                {IP, Port},
-                                Socket).
+      GroupPid,
+      PeerId,
+      InfoHash,
+      FSPid,
+      TorrentId,
+      {IP, Port},
+      Capabilities,
+      Socket).
 
 %% ====================================================================
 init([Path, PeerId, Id]) ->

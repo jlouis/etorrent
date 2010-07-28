@@ -5,7 +5,7 @@
 -include("types.hrl").
 
 %% API
--export([start_link/6, get_pid/2]).
+-export([start_link/7, get_pid/2]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -13,14 +13,17 @@
 -define(SERVER, ?MODULE).
 
 %% ====================================================================
--spec start_link(binary(), binary(), pid(), integer(), {ip(), integer()}, port()) ->
+-spec start_link(binary(), binary(), pid(), integer(), {ip(), integer()},
+		 [capabilities()], port()) ->
             {ok, pid()} | ignore | {error, term()}.
-start_link(LocalPeerId, InfoHash, FilesystemPid, Id, {IP, Port}, Socket) ->
+start_link(LocalPeerId, InfoHash, FilesystemPid, Id, {IP, Port}, Capabilities, Socket) ->
     supervisor:start_link(?MODULE, [LocalPeerId,
                                     InfoHash,
                                     FilesystemPid,
                                     Id,
-                                    {IP, Port}, Socket]).
+                                    {IP, Port},
+				    Capabilities,
+				    Socket]).
 
 %% @todo Move this function to a more global spot. It is duplicated
 % @doc return the pid() of a given child.
@@ -32,10 +35,10 @@ get_pid(Pid, Name) ->
     {ok, Child}.
 
 %% ====================================================================
-init([LocalPeerId, InfoHash, FilesystemPid, Id, {IP, Port}, Socket]) ->
+init([LocalPeerId, InfoHash, FilesystemPid, Id, {IP, Port}, Caps, Socket]) ->
     Control = {control, {etorrent_peer_control, start_link,
                           [LocalPeerId, InfoHash, FilesystemPid, Id, self(),
-                           {IP, Port}, Socket]},
+                           {IP, Port}, Caps, Socket]},
                 permanent, 15000, worker, [etorrent_peer_control]},
     Receiver = {receiver, {etorrent_peer_recv, start_link,
                           [Id, Socket, self()]},
