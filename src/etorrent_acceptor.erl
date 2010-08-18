@@ -105,25 +105,25 @@ code_change(_OldVsn, State, _Extra) ->
 
 handshake(Socket, S) ->
     case etorrent_proto_wire:receive_handshake(Socket) of
-        {ok, ReservedBytes, InfoHash, PeerId} ->
-            lookup_infohash(Socket, ReservedBytes, InfoHash, PeerId, S);
+        {ok, Caps, InfoHash, PeerId} ->
+            lookup_infohash(Socket, Caps, InfoHash, PeerId, S);
         {error, _Reason} ->
             gen_tcp:close(Socket),
             ok
     end.
 
-lookup_infohash(Socket, ReservedBytes, InfoHash, PeerId, S) ->
+lookup_infohash(Socket, Caps, InfoHash, PeerId, S) ->
     case etorrent_tracking_map:select({infohash, InfoHash}) of
         {atomic, [#tracking_map { _ = _}]} ->
-            start_peer(Socket, ReservedBytes, PeerId, InfoHash, S);
+            start_peer(Socket, Caps, PeerId, InfoHash, S);
         {atomic, []} ->
             gen_tcp:close(Socket),
             ok
     end.
 
-start_peer(Socket, _ReservedBytes, PeerId, InfoHash, S) ->
+start_peer(Socket, Caps, PeerId, InfoHash, S) ->
     {ok, {Address, Port}} = inet:peername(Socket),
-    case new_incoming_peer(Socket, Address, Port, InfoHash, PeerId, S) of
+    case new_incoming_peer(Socket, Caps, Address, Port, InfoHash, PeerId, S) of
         {ok, RPid, CPid} ->
             case gen_tcp:controlling_process(Socket, RPid) of
                 ok -> etorrent_peer_control:initialize(CPid, incoming),
@@ -143,10 +143,10 @@ start_peer(Socket, _ReservedBytes, PeerId, InfoHash, S) ->
             ok
     end.
 
-new_incoming_peer(_Socket, _IP, _Port, _InfoHash, PeerId,
+new_incoming_peer(_Socket, _Caps, _IP, _Port, _InfoHash, PeerId,
     #state { our_peer_id = Our_Peer_Id }) when Our_Peer_Id == PeerId ->
         connect_to_ourselves;
-new_incoming_peer(Socket, IP, Port, InfoHash, _PeerId, S) ->
+new_incoming_peer(Socket, Caps, IP, Port, InfoHash, _PeerId, S) ->
     {atomic, [TM]} = etorrent_tracking_map:select({infohash, InfoHash}),
     case etorrent_peer_mgr:is_bad_peer(IP, Port) of
         true ->
@@ -154,22 +154,23 @@ new_incoming_peer(Socket, IP, Port, InfoHash, _PeerId, S) ->
         false ->
             case etorrent_peer:connected(IP, Port, TM#tracking_map.id) of
                 true -> already_connected;
-                false -> start_new_incoming_peer(Socket, IP, Port, InfoHash, S)
+                false -> start_new_incoming_peer(Socket, Caps, IP, Port, InfoHash, S)
             end
     end.
 
 
-start_new_incoming_peer(Socket, IP, Port, InfoHash, S) ->
+start_new_incoming_peer(Socket, Caps, IP, Port, InfoHash, S) ->
     case etorrent_counters:slots_left() of
         {value, 0} -> already_enough_connections;
         {value, K} when is_integer(K) ->
             {atomic, [T]} = etorrent_tracking_map:select({infohash, InfoHash}),
             etorrent_t_sup:add_peer(
-                  T#tracking_map.supervisor_pid,
-                  S#state.our_peer_id,
-                  InfoHash,
-                  T#tracking_map.id,
-                  {IP, Port},
-                  Socket)
+	      T#tracking_map.supervisor_pid,
+	      S#state.our_peer_id,
+	      InfoHash,
+	      T#tracking_map.id,
+	      {IP, Port},
+	      Caps,
+	      Socket)
     end.
 

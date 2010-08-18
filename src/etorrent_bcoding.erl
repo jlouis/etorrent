@@ -35,8 +35,9 @@ encode(BString) ->
 %% Function: decode/1
 %% Description: Decode a string to an erlang term.
 %%--------------------------------------------------------------------
--spec decode(string()) -> bcode().
-decode(String) ->
+-spec decode(string() | binary()) -> bcode().
+decode(Bin) when is_binary(Bin) -> decode(binary_to_list(Bin));
+decode(String) when is_list(String) ->
     {Res, E} = decode_b(String),
     case E of
         [] -> ok;

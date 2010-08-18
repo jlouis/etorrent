@@ -13,7 +13,7 @@
 -include("log.hrl").
 
 %% API
--export([start_link/0, add_peer/7]).
+-export([start_link/0, add_peer/8]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -30,13 +30,14 @@ start_link() -> supervisor:start_link(?MODULE, []).
 % the add_peer/7 function given here. It sets up a peer and adds it to the
 % supervisor.</p>
 % @end
--spec add_peer(pid(), binary(), binary(), pid(), integer(), {ip(), integer()}, port()) ->
+-spec add_peer(pid(), binary(), binary(), pid(), integer(), {ip(), integer()},
+	       [capabilities()], port()) ->
             {error, term()} | {ok, pid(), pid()}.
 add_peer(GroupPid, LocalPeerId, InfoHash, FilesystemPid, Id,
-         {IP, Port}, Socket) ->
+         {IP, Port}, Capabilities, Socket) ->
     case supervisor:start_child(GroupPid, [LocalPeerId, InfoHash,
                                                   FilesystemPid, Id,
-                                                  {IP, Port}, Socket]) of
+                                                  {IP, Port}, Capabilities, Socket]) of
         {ok, Pid} ->
                 {ok, RecvPid} = etorrent_peer_sup:get_pid(Pid, receiver),
                 {ok, ControlPid} = etorrent_peer_sup:get_pid(Pid, control),

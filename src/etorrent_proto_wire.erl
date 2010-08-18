@@ -1,8 +1,17 @@
 -module(etorrent_proto_wire).
 
--export([incoming_packet/2, send_msg/3, decode_bitfield/2, encode_bitfield/2,
-        decode_msg/1, remaining_bytes/1,
-        complete_handshake/3, receive_handshake/1, initiate_handshake/3]).
+-include("etorrent_version.hrl").
+
+-export([incoming_packet/2,
+	 send_msg/3,
+	 decode_bitfield/2,
+	 encode_bitfield/2,
+	 decode_msg/1,
+	 remaining_bytes/1,
+	 complete_handshake/3,
+	 receive_handshake/1,
+	 extended_msg_contents/0,
+	 initiate_handshake/3]).
 
 -define(DEFAULT_HANDSHAKE_TIMEOUT, 120000).
 -define(HANDSHAKE_SIZE, 68).
@@ -11,6 +20,7 @@
 %% Extensions
 -define(EXT_BASIS, 0). % The protocol basis
 -define(EXT_FAST,  4). % The Fast Extension
+-define(EXT_EXTMSG, 1 bsl 20). % The extended message extension
 
 %% Packet types
 -define(CHOKE, 0:8).
@@ -31,6 +41,9 @@
 -define(REJECT_REQUEST, 16:8).
 -define(ALLOWED_FAST, 17:8).
 
+%% Extended messaging
+-define(EXTENDED, 20:8).
+
 %% =======================================================================
 
 % The type of packets:
@@ -49,7 +62,8 @@
                 | have_all
                 | have_none
                 | {reject_request, integer(), integer(), integer()}
-                | {allowed_fast, [integer()]}.
+                | {allowed_fast, [integer()]}
+		| {extended, integer(), binary()}.
 
 % @doc Decode an incoming (partial) packet
 % <p>The incoming packet function will attempt to decode an incoming packet. It
@@ -157,7 +171,10 @@ decode_msg(Message) ->
        <<?REJECT_REQUEST, Index:32, Offset:32, Len:32>> ->
            {reject_request, Index, Offset, Len};
        <<?ALLOWED_FAST, FastSet/binary>> ->
-           {allowed_fast, decode_allowed_fast(FastSet)}
+           {allowed_fast, decode_allowed_fast(FastSet)};
+       %% EXTENDED MESSAGING
+       <<?EXTENDED, Type:8, Contents/binary>> ->
+	   {extended, Type, Contents}
    end.
 
 % @doc Tell how many bytes there are left on a continuation
@@ -245,9 +262,12 @@ encode_msg(Message) ->
        have_all -> <<?HAVE_ALL>>;
        have_none -> <<?HAVE_NONE>>;
        {reject_request, Index, Offset, Len} -> <<?REJECT_REQUEST, Index, Offset, Len>>;
-       {allowed_fast, FastSet} -> 
+       {allowed_fast, FastSet} ->
            BinFastSet = encode_fastset(FastSet),
-           <<?ALLOWED_FAST, BinFastSet/binary>>
+           <<?ALLOWED_FAST, BinFastSet/binary>>;
+       %% EXTENDED MESSAGING
+       {extended, Type, Contents} ->
+	   <<?EXTENDED, Type:8, Contents/binary>>
    end.
 
 
@@ -308,18 +328,21 @@ receive_header(Socket, InfoHash) ->
 
 encode_proto_caps() ->
     ProtoSpec = lists:sum([%?EXT_FAST,
+			   ?EXT_EXTMSG,
                            ?EXT_BASIS]),
     <<ProtoSpec:64/big>>.
 
 decode_proto_caps(N) ->
-    Capabilities = [{?EXT_FAST,  fast_extension}],
-    lists:foldl(
+    Capabilities = [{?EXT_FAST,  fast_extension},
+		    {?EXT_EXTMSG, extended_messaging}],
+    Decoded = lists:foldl(
       fun
           ({M, Cap}, Acc) when (M band N) > 0 -> [Cap | Acc];
           (_Capability, Acc) -> Acc
       end,
       Capabilities,
-      []).
+      []),
+    [Cap || {_, Cap} <- Decoded].
 
 
 build_bytes(BitField) ->
@@ -367,3 +390,15 @@ encode_fastset([]) -> <<>>;
 encode_fastset([Idx | Rest]) ->
     R = encode_fastset(Rest),
     <<R/binary, Idx:32>>.
+
+extended_msg_contents() ->
+    {ok, Port} = application:get_env(etorrent, port),
+    extended_msg_contents(Port, ?AGENT_TRACKER_STRING, 250).
+
+extended_msg_contents(Port, ClientVersion, ReqQ) ->
+    iolist_to_binary(etorrent_bcoding:encode(
+      {dict, [{{string, "p"}, {integer, Port}},
+	      {{string, "v"}, {string, ClientVersion}},
+	      {{string, "reqq"}, {integer, ReqQ}},
+	      {{string, "m"}, {dict, []}}]})).
+
