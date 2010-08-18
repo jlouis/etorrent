@@ -19,7 +19,7 @@
 %% @todo: What pid is the chunk recording pid? Control or SendPid?
 %% API
 -export([start_link/0, store_chunk/4, putback_chunks/1,
-         putback_chunks/2, mark_fetched/2, pick_chunks/3,
+         mark_fetched/2, pick_chunks/3,
          new/1, endgame_remove_chunk/3]).
 
 %% gen_server callbacks
@@ -32,6 +32,7 @@
 -define(STORE_CHUNK_TIMEOUT, 20).
 -define(PICK_CHUNKS_TIMEOUT, 20).
 -define(DEFAULT_CHUNK_SIZE, 16384).
+
 
 %%====================================================================
 %% API
@@ -68,10 +69,6 @@ store_chunk(Id, {Index, D, Ops}, {Offset, Len}, FSPid) ->
 -spec putback_chunks(pid()) -> ok.
 putback_chunks(Pid) ->
     gen_server:cast(?SERVER, {putback_chunks, Pid}).
-
--spec putback_chunks(pid(), {integer(), integer(), integer()}) -> ok.
-putback_chunks(Pid, {Idx, Offset, Len}) ->
-    gen_server:cast(?SERVER, {putback_chunk, Pid, {Idx, Offset, Len}}).
 
 %%--------------------------------------------------------------------
 %% Function: endgame_remove_chunk/3
@@ -117,8 +114,7 @@ new(Id) ->
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
 init([]) ->
-    _Tid = ets:new(etorrent_chunk_tbl, [set, protected, named_table,
-                                        {keypos, 2}]),
+    _Tid = ets:new(?TAB, [bag, protected, named_table, {keypos, #chunk.idt}]),
     D = dict:new(),
     {ok, #state{ torrent_dict = D }}.
 
@@ -136,30 +132,19 @@ handle_call({new, Id}, {Pid, _Tag}, S) ->
     _ = erlang:monitor(process, Pid),
     {reply, ok, S#state { torrent_dict = ManageDict }};
 handle_call({mark_fetched, Id, Index, Offset, _Len}, _From, S) ->
-    Res = case ets:lookup(etorrent_chunk_tbl, {Id, Index, not_fetched}) of
-              [] -> assigned;
-              [R] -> case lists:keymember(Offset, 1, R#chunk.chunks) of
-                         true -> case lists:keydelete(Offset, 1, R#chunk.chunks) of
-                                     [] -> ets:delete_object(etorrent_chunk_tbl, R);
-                                     NC -> ets:insert(etorrent_chunk_tbl,
-                                                      R#chunk { chunks = NC })
-                                 end,
-                                 found;
-                         false -> assigned
-                     end
-        end,
-    {reply, Res, S};
+    case ets:match_object(?TAB, #chunk { idt = {Id, Index, not_fetched},
+					 chunk = {Offset, '_', '_'} }) of
+	[] -> {reply, assigned, S};
+	[Obj] -> ets:delete_object(?TAB, Obj),
+		 {reply, found, S}
+    end;
+%% @todo: If we have an idt with {assigned, pid()}, do we have chunk = Offset?
 handle_call({endgame_remove_chunk, SendPid, Id, {Index, Offset, _Len}},
             _From, S) ->
-    Res = case ets:lookup(etorrent_chunk_tbl, {Id, Index, {assigned, SendPid}}) of
-              [] -> ok;
-              [R] -> case lists:keydelete(Offset, 1, R#chunk.chunks) of
-                         [] -> ets:delete_object(etorrent_chunk_tbl, R);
-                         NC -> ets:insert(etorrent_chunk_tbl,
-                                          R#chunk { chunks = NC })
-                     end
-          end,
-    {reply, Res, S};
+    ets:match_delete(?TAB,
+		      #chunk { idt = {Id, Index, {assigned, SendPid}},
+			       chunk = Offset }),
+    {reply, ok, S};
 handle_call({pick_chunks, Id, Set, Remaining}, {Pid, _Tag}, S) ->
     R = case pick_chunks(pick_chunked, {Pid, Id, Set, [], Remaining, none}) of
             not_interested -> pick_chunks_endgame(Id, Set, Remaining, not_interested);
@@ -177,30 +162,6 @@ handle_call(_Request, _From, State) ->
 %%                                      {stop, Reason, State}
 %% Description: Handling cast messages
 %%--------------------------------------------------------------------
-handle_cast({putback_chunk, Pid, {Idx, Offset, Len}}, S) ->
-    for_each_chunk(
-      Pid, Idx,
-      fun (C) ->
-              {Id, _, _} = C#chunk.idt,
-              Chunks = C#chunk.chunks,
-              NotFetchIdt = {Id, Idx, not_fetched},
-              case ets:lookup(etorrent_chunk_tbl, NotFetchIdt) of
-                  [] ->
-                      ets:insert(etorrent_chunk_tbl,
-                                 #chunk { idt = NotFetchIdt,
-                                          chunks = [{Idx, Offset, Len}]});
-                  [R] ->
-                      ets:insert(etorrent_chunk_tbl,
-                                 R#chunk { chunks = [{Idx, Offset, Len} |
-                                                     R#chunk.chunks]})
-              end,
-              case lists:delete({Idx, Offset, Len}, Chunks) of
-                  [] -> ets:delete_object(etorrent_chunk_tbl, C);
-                  NewList -> ets:insert(etorrent_chunk_tbl,
-                                        C#chunk { chunks = NewList })
-              end
-      end),
-    {noreply, S};
 handle_cast({store_chunk, Id, Pid, {Index, Data, Ops}, {Offset, Len}, FSPid}, S) ->
     ok = etorrent_fs:write_chunk(FSPid, {Index, Data, Ops}),
     %% Add the newly fetched data to the fetched list
@@ -218,23 +179,16 @@ handle_cast({store_chunk, Id, Pid, {Index, Data, Ops}, {Offset, Len}, FSPid}, S)
             end
     end,
     {noreply, S};
+% @todo This only works if {assigned, pid()} has chunks as a 3-tuple
 handle_cast({putback_chunks, Pid}, S) ->
     for_each_chunk(
       Pid,
       fun(C) ->
               {Id, Idx, _} = C#chunk.idt,
-              Chunks = C#chunk.chunks,
-              NotFetchIdt = {Id, Idx, not_fetched},
-              case ets:lookup(etorrent_chunk_tbl, NotFetchIdt) of
-                  [] ->
-                      ets:insert(etorrent_chunk_tbl,
-                                 #chunk { idt = NotFetchIdt,
-                                          chunks = Chunks});
-                  [R] ->
-                      ets:insert(etorrent_chunk_tbl,
-                                 R#chunk { chunks = R#chunk.chunks ++ Chunks})
-              end,
-              ets:delete_object(etorrent_chunk_tbl, C)
+	      ets:insert(?TAB,
+			 #chunk { idt = {Id, Idx, not_fetched},
+				  chunk = C#chunk.chunk }),
+              ets:delete_object(?TAB, C)
       end),
     {noreply, S};
 handle_cast(Msg, State) ->
@@ -281,23 +235,22 @@ code_change(_OldVsn, State, _Extra) ->
 %% @doc Find all entries for a given torrent file and clear them out
 %% @end
 clear_torrent_entries(Id) ->
-    Matcher = ets:fun2ms(fun(#chunk { idt = {Id2, _, _}}) -> Id2 == Id end),
-    ets:select_delete(?TAB, Matcher).
+    ets:match_delete(?TAB, #chunk { idt = {Id, '_', '_'}, chunk = '_'}).
 
 %% @doc Find all remaining chunks for a torrent matching PieceSet
 %% @end
+%% @todo Consider using ets:fun2ms here to parse-transform the matches
 -spec find_remaining_chunks(integer(), set()) ->
     [{integer(), integer(), integer(), [operation()]}].
 find_remaining_chunks(Id, PieceSet) ->
     %% Note that the chunk table is often very small.
-    MatchHeadAssign = #chunk { idt = {Id, '$1', {assigned, '_'}}, chunks = '$2'},
-    MatchHeadNotFetch = #chunk { idt = {Id, '$1', not_fetched}, chunks = '$2'},
-    RowsA = ets:select(etorrent_chunk_tbl, [{MatchHeadAssign, [], [{{'$1', '$2'}}]}]),
-    RowsN = ets:select(etorrent_chunk_tbl, [{MatchHeadNotFetch, [], [{{'$1', '$2'}}]}]),
-    Eligible = [{PN, Chunks} || {PN, Chunks} <- RowsA ++ RowsN,
+    MatchHeadAssign = #chunk { idt = {Id, '$1', {assigned, '_'}}, chunk = '$2'},
+    MatchHeadNotFetch = #chunk { idt = {Id, '$1', not_fetched}, chunk = '$2'},
+    RowsA = ets:select(?TAB, [{MatchHeadAssign, [], [{{'$1', '$2'}}]}]),
+    RowsN = ets:select(?TAB, [{MatchHeadNotFetch, [], [{{'$1', '$2'}}]}]),
+    Eligible = [{PN, Chunk} || {PN, Chunk} <- RowsA ++ RowsN,
                                 gb_sets:is_element(PN, PieceSet)],
-    [{PN, Os, Sz, Ops} || {PN, Chunks} <- Eligible,
-                          {Os, Sz, Ops} <- Chunks].
+    [{PN, Os, Sz, Ops} || {PN, {Os, Sz, Ops}} <- Eligible].
 
 %% @doc Chunkify a new piece.
 %%
@@ -323,34 +276,22 @@ chunkify_new_piece(Id, PieceSet) when is_integer(Id) ->
 %%  if it got some chunks and there is still Remain chunks left to pick.
 %%--------------------------------------------------------------------
 select_chunks_by_piecenum(Id, Index, N, Pid) ->
-    [R] = ets:lookup(etorrent_chunk_tbl,
-                    {Id, Index, not_fetched}),
+    R = ets:lookup(?TAB, {Id, Index, not_fetched}),
     %% Get up to N chunks
-    {Return, Rest} = etorrent_utils:gsplit(N, R#chunk.chunks),
+    {Return, _Rest} = etorrent_utils:gsplit(N, R),
     [_|_] = Return, %% Assert.
-    %% Write back missing chunks.
-    case Rest of
-        [] -> ets:delete_object(etorrent_chunk_tbl, R);
-        [_|_] -> ets:insert(etorrent_chunk_tbl, R#chunk { chunks = Rest})
-    end,
     %% Assign chunk to us
-    Q = case ets:lookup(etorrent_chunk_tbl, {Id, Index, {assigned, Pid}}) of
-            [] ->
-                #chunk { idt = {Id, Index, {assigned, Pid}},
-                         chunks = [] };
-            [C] -> C
-        end,
-    ets:insert(etorrent_chunk_tbl, Q#chunk { chunks = Return ++ Q#chunk.chunks}),
+    [ets:delete_object(?TAB, Ret) || Ret <- Return],
+    ets:insert(?TAB, [C#chunk { idt = {Id, Index, {assigned, Pid}} }
+		      || C <- Return]),
     %% Tell caller how much is remaning
     Remaining = N - length(Return),
-    {ok, {Index, Return}, Remaining}.
+    {ok, {Index, [E#chunk.chunk || E <- Return]}, Remaining}.
 
 %% Check the piece Idx on torrent Id for completion
 check_piece(FSPid, Id, Idx) ->
     etorrent_fs:check_piece(FSPid, Idx),
-    MatchHead = #chunk { idt = {Id, Idx, '_'}, _ = '_'},
-    ets:select_delete(etorrent_chunk_tbl,
-                      [{MatchHead, [], [true]}]).
+    ets:match_delete(?TAB, #chunk { idt = {Id, Idx, '_'}, _ = '_'}).
 
 %% @doc Break a piece into logical chunks
 %%
@@ -411,9 +352,9 @@ chunkify_piece(Id, #piece{ files = Files, state = State, idpn = IDPN }) ->
     not_fetched = State,
     {Id, Idx} = IDPN,
     ok = etorrent_piece_mgr:chunk(Id, Idx, NumChunks),
-    ets:insert(etorrent_chunk_tbl,
-               #chunk { idt = {Id, Idx, not_fetched},
-                        chunks = Chunks}),
+    ets:insert(?TAB,
+	       [#chunk { idt = {Id, Idx, not_fetched},
+			 chunk = CH } || CH <- Chunks]),
     etorrent_torrent:decrease_not_fetched(Id),
     ok.
 
@@ -425,7 +366,7 @@ find_chunked_chunks(_Id, none, Res) -> Res;
 find_chunked_chunks(Id, {Pn, Next}, Res) ->
     case etorrent_piece_mgr:is_chunked(Id, Pn) of
         true ->
-            case ets:lookup(etorrent_chunk_tbl, {Id, Pn, not_fetched}) of
+            case ets:lookup(?TAB, {Id, Pn, not_fetched}) of
                 [] ->
                     find_chunked_chunks(Id, gb_sets:next(Next), found_chunked);
                 _ ->
@@ -439,40 +380,22 @@ update_fetched(Id, Index, {Offset, _Len}) ->
     case etorrent_piece_mgr:fetched(Id, Index) of
         true -> fetched;
         false ->
-            case ets:lookup(etorrent_chunk_tbl,
-                            {Id, Index, fetched}) of
-                [] ->
-                    ets:insert(etorrent_chunk_tbl,
-                               #chunk { idt = {Id, Index, fetched},
-                                        chunks = [Offset]}),
-                    false;
-                [R] ->
-                    case lists:member(Offset, R#chunk.chunks) of
-                        true -> true;
-                        false ->
-                            ets:insert(etorrent_chunk_tbl,
-                                       R#chunk { chunks = [ Offset | R#chunk.chunks]}),
-                            false
-                    end
-            end
+	    case ets:match_object(?TAB, #chunk { idt = {Id, Index, fetched},
+						 chunk = Offset }) of
+		[] ->
+		    ets:insert(?TAB,
+			       #chunk { idt = {Id, Index, fetched},
+					chunk = Offset }),
+		    false;
+		[_Obj] ->
+		    true
+	    end
     end.
 
 update_chunk_assignment(Id, Index, Pid,
-                        {Offset, Len}) ->
-    case ets:lookup(etorrent_chunk_tbl,
-                    {Id, Index, {assigned, Pid}}) of
-        [] ->
-            %% Stored a chunk not belonging to us, ignore
-            ok;
-        [S] ->
-            case lists:keydelete({Offset, Len}, 1, S#chunk.chunks) of
-                [] ->
-                    ets:delete_object(etorrent_chunk_tbl, S);
-                L when is_list(L) ->
-                    ets:insert(etorrent_chunk_tbl,
-                               S#chunk { chunks = L })
-            end
-    end.
+                        {Offset, _Len}) ->
+    ets:match_delete(?TAB, #chunk { idt = {Id, Index, {assigned, Pid}},
+				    chunk = {Offset, '_', '_'} }).
 
 %%
 %% There are 0 remaining chunks to be desired, return the chunks so far
@@ -528,11 +451,6 @@ for_each_chunk(Pid, F) when is_pid(Pid) ->
     MatchHead = #chunk { idt = {'_', '_', {assigned, Pid}}, _ = '_'},
     for_each_chunk(MatchHead, F);
 for_each_chunk(MatchHead, F) ->
-    Rows = ets:select(etorrent_chunk_tbl, [{MatchHead, [], ['$_']}]),
+    Rows = ets:select(?TAB, [{MatchHead, [], ['$_']}]),
     lists:foreach(F, Rows),
     ok.
-
-for_each_chunk(Pid, Idx, F) when is_integer(Idx) ->
-    MatchHead = #chunk { idt = {'_', Idx, {assigned, Pid}}, _ = '_'},
-    for_each_chunk(MatchHead, F).
-
