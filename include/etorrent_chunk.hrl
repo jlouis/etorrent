@@ -1,6 +1,7 @@
 %% A mapping containing the chunks tracking
--record(chunk, {idt, % {id, piece_number, state} tuple
-                     % state is fetched | {assigned, Pid} | not_fetched,
-                chunks}). % {offset, size}
+-record(chunk, {idt :: {integer() | '_' | '$1',
+			integer() | '_' | '$1',
+			not_fetched | fetched | {assigned, pid() | '_'} | '_'},
+                chunks :: [integer() | {integer(), integer(), [term()]}] | '_' | '$2'}).
 
 
