@@ -4,7 +4,7 @@
 -include("etorrent_rate.hrl").
 -include("log.hrl").
 
--export([start_link/3, cb_go_fast/1, cb_go_slow/1]).
+-export([start_link/2, cb_go_fast/1, cb_go_slow/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -14,7 +14,6 @@
 -type(mode() :: 'transition' | 'fast' | 'slow' | 'fast_setup').
 
 -record(state, { socket = none,
-                 parent = parent,
                  packet_continuation = none,
                  rate = none,
                  last_piece_msg_count = 0,
@@ -37,9 +36,9 @@
 
 %% =======================================================================
 
--spec start_link(integer(), any(), pid()) -> ignore | {ok, pid()} | {error, any()}.
-start_link(TorrentId, Socket, Parent) ->
-    gen_server:start_link(?MODULE, [TorrentId, Socket, Parent], []).
+-spec start_link(integer(), any()) -> ignore | {ok, pid()} | {error, any()}.
+start_link(TorrentId, Socket) ->
+    gen_server:start_link(?MODULE, [TorrentId, Socket], []).
 
 -spec cb_go_fast(pid()) -> ok.
 cb_go_fast(P) ->
@@ -52,12 +51,12 @@ cb_go_slow(P) ->
 %% =======================================================================
 
 go_fast(S) ->
-    {ok, P} = etorrent_peer_sup:get_pid(S#state.parent, sender),
+    P = gproc:lookup_local_name({peer, S#state.socket, sender}),
     etorrent_peer_send:go_fast(P),
     S#state { mode = transition }.
 
 go_slow(S) ->
-    {ok, P} = etorrent_peer_sup:get_pid(S#state.parent, sender),
+    P = gproc:lookup_local_name({peer, S#state.socket, sender}),
     etorrent_peer_send:go_slow(P),
     S#state { mode = transition }.
 
@@ -106,9 +105,11 @@ is_snubbing_us(_S) ->
 terminate(_Reason, _S) ->
     ok.
 
-handle_info(timeout, #state { controller = none, parent = Parent } = S) ->
+handle_info(timeout,
+	    #state { controller = none,
+		     socket = Sock } = S) ->
     %% Haven't started up yet
-    {ok, ControlPid} = etorrent_peer_sup:get_pid(Parent, control),
+    ControlPid = gproc:lookup_local_name({peer, Sock, control}),
     {noreply, S#state { controller = ControlPid }};
 handle_info(timeout, S) ->
     Length =
@@ -173,9 +174,10 @@ handle_call(Req, _From, S) ->
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
-init([TorrentId, Socket, Parent]) ->
+init([TorrentId, Socket]) ->
+    gproc:add_local_name({peer, Socket, receiver}),
     {ok, TRef} = timer:send_interval(?RATE_UPDATE, self(), rate_update),
-    {ok, #state { socket = Socket, parent = Parent,
+    {ok, #state { socket = Socket,
                   rate = etorrent_rate:init(?RATE_FUDGE),
                   rate_timer = TRef,
                   id = TorrentId,

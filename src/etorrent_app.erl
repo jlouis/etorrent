@@ -28,7 +28,7 @@ start() ->
                 {error, {already_started, Application}} -> ok
             end
           end,
-    lists:foreach(Fun, [crypto, inets, mnesia, sasl]),
+    [Fun(A) || A <- [crypto, inets, mnesia, sasl, gproc]],
     %% DB
     %% ok = mnesia:create_schema([node()]),
     etorrent_mnesia_init:init(),

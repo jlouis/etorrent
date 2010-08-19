@@ -165,7 +165,6 @@ start_new_incoming_peer(Socket, Caps, IP, Port, InfoHash, S) ->
         {value, K} when is_integer(K) ->
             {atomic, [T]} = etorrent_tracking_map:select({infohash, InfoHash}),
             etorrent_t_sup:add_peer(
-	      T#tracking_map.supervisor_pid,
 	      S#state.our_peer_id,
 	      InfoHash,
 	      T#tracking_map.id,

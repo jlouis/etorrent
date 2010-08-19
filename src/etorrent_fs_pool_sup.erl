@@ -10,7 +10,7 @@
 -behaviour(supervisor).
 
 %% API
--export([start_link/0, add_file_process/3]).
+-export([start_link/1, add_file_process/3]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -20,8 +20,8 @@
 %% ====================================================================
 % @doc Start up the supervisor
 % @end
--spec start_link() -> {ok, pid()} | ignore | {error, term()}.
-start_link() -> supervisor:start_link(?MODULE, []).
+-spec start_link(integer()) -> {ok, pid()} | ignore | {error, term()}.
+start_link(Id) -> supervisor:start_link(?MODULE, [Id]).
 
 % @doc Add a new process for maintaining a file.
 % @end
@@ -30,7 +30,8 @@ add_file_process(Pid, TorrentId, Path) ->
     supervisor:start_child(Pid, [Path, TorrentId]).
 
 %% ====================================================================
-init([]) ->
+init([Id]) ->
+    gproc:add_local_name({torrent, Id, fs_pool}),
     FSProcesses = {'FSPROCESS',
                    {etorrent_fs_process, start_link, []},
                    transient, 2000, worker, [etorrent_fs_process]},

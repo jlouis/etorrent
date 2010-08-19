@@ -12,7 +12,7 @@
 -include("types.hrl").
 
 %% API
--export([read_and_check_torrent/3, check_torrent/2]).
+-export([read_and_check_torrent/2, check_torrent/1]).
 
 %% ====================================================================
 
@@ -20,8 +20,9 @@
 % <p>We will check a torrent, Id, backed by filesystem pid FS and report a
 %   list of bad pieces.</p>
 % @end
--spec check_torrent(pid(), integer()) -> [{integer(), integer()}].
-check_torrent(FS, Id) ->
+-spec check_torrent(integer()) -> [{integer(), integer()}].
+check_torrent(Id) ->
+    FS = gproc:lookup_local_name({torrent, Id, fs}),
     Pieces = etorrent_piece_mgr:select(Id),
     PieceCheck =
         fun (#piece { idpn = {_, PN}, hash = Hash}) ->
@@ -38,13 +39,13 @@ check_torrent(FS, Id) ->
 % with various information about said torrent: The decoded Torrent dictionary,
 % the FS pid, the info hash and the number of pieces in the torrent.</p>
 % @end
--spec read_and_check_torrent(integer(), pid(), string()) -> {ok, bcode(), pid(), binary(), integer()}.
-read_and_check_torrent(Id, SupervisorPid, Path) ->
+-spec read_and_check_torrent(integer(), string()) -> {ok, bcode(), binary(), integer()}.
+read_and_check_torrent(Id, Path) ->
     {ok, Torrent, Infohash, FilePieceList, NumberOfPieces} =
         initialize_dictionary(Id, Path),
 
     %% Check the contents of the torrent, updates the state of the piecemap
-    FS = etorrent_t_sup:get_pid(SupervisorPid, fs),
+    FS = gproc:lookup_local_name({torrent, Id, fs}),
     case etorrent_fast_resume:query_state(Id) of
         seeding -> initialize_pieces_seed(Id, FilePieceList);
         {bitfield, BF} -> initialize_pieces_from_bitfield(Id, BF, NumberOfPieces, FilePieceList);
@@ -56,7 +57,7 @@ read_and_check_torrent(Id, SupervisorPid, Path) ->
             ok = initialize_pieces_from_disk(FS, Id, FilePieceList)
     end,
 
-    {ok, Torrent, FS, Infohash, NumberOfPieces}.
+    {ok, Torrent, Infohash, NumberOfPieces}.
 
 %% =======================================================================
 
