@@ -21,7 +21,8 @@
 -type http_response() :: {{string(), integer(), string()}, string(), string()}.
 -spec request(string()) -> {error, term()} | {ok, http_response()}.
 request(URL) ->
-    case httpc:request(get, {URL, [{"User-Agent", ?AGENT_TRACKER_STRING},
+    Mod = find_http_module(),
+    case Mod:request(get, {URL, [{"User-Agent", ?AGENT_TRACKER_STRING},
                                    {"Host", decode_host(URL)},
                                    {"Accept", "*/*"},
                                    {"Accept-Encoding", "gzip, identity"}]},
@@ -65,4 +66,14 @@ decode_host(URL) ->
         80 -> Host;
         N when is_integer(N) ->
             Host ++ ":" ++ integer_to_list(N)
+    end.
+
+
+%% Find the version of the HTTP module to call.
+find_http_module() ->
+    case erlang:system_info(otp_release) of
+	"R14A" ->
+	    httpc;
+	_ ->
+	    http
     end.
