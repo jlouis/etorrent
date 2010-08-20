@@ -21,6 +21,7 @@ so we can get it away.
 
    * BEP 03 - The BitTorrent Protocol Specification.
    * BEP 04 - Known Number Allocations.
+   * BEP 12 - Multitracker Metadata Extension.
    * BEP 23 - Tracker Returns Compact Peer Lists.
 
 ## GETTING STARTED WITHOUT INSTALLING

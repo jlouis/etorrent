@@ -54,9 +54,14 @@ get_pieces(Torrent) ->
 % @end
 -spec get_url(bcode()) -> string().
 get_url(Torrent) ->
-    {string, U} = etorrent_bcoding:search_dict({string, "announce"},
-                                               Torrent),
-    U.
+    case etorrent_bcoding:search_dict({string, "announce-list"}, Torrent) of
+	{list, Elems} ->
+	    decode_announce_urls(Elems);
+	false ->
+	    {string, U} = etorrent_bcoding:search_dict({string, "announce"},
+						       Torrent),
+	    [[U]]
+    end.
 
 % @doc Return the infohash for a torrent
 % @end
@@ -142,3 +147,9 @@ get_files_section(Torrent) ->
                           {{string,"length"},{integer,L}}]}]};
         V -> V
     end.
+
+decode_announce_urls(Tiers) ->
+    [ decode_tier(Tier) || {list, Tier} <- Tiers ].
+
+decode_tier(Urls) ->
+    [U || {string, U} <- Urls].

@@ -11,6 +11,7 @@
 -behaviour(gen_server).
 -include("log.hrl").
 
+-include("types.hrl").
 %% API
 -export([start_link/5, completed/1]).
 
@@ -18,8 +19,7 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
--record(state, {should_contact_tracker = false,
-                queued_message = none,
+-record(state, {queued_message = none,
                 %% The hard timer is the time we *must* wait on the tracker.
                 %% soft timer may be overridden if we want to change state.
                 soft_timer = none,
@@ -45,10 +45,10 @@
 %%--------------------------------------------------------------------
 -spec start_link(pid(), string(), binary(), integer(), integer()) ->
     ignore | {ok, pid()} | {error, any()}.
-start_link(ControlPid, Url, InfoHash, PeerId, TorrentId) ->
+start_link(ControlPid, UrlTiers, InfoHash, PeerId, TorrentId) ->
     gen_server:start_link(?MODULE,
                           [ControlPid,
-                            Url, InfoHash, PeerId, TorrentId],
+                            UrlTiers, InfoHash, PeerId, TorrentId],
                           []).
 
 -spec completed(pid()) ->
@@ -67,15 +67,14 @@ completed(Pid) ->
 %%                         {stop, Reason}
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
-init([ControlPid, Url, InfoHash, PeerId, TorrentId]) ->
+init([ControlPid, UrlTiers, InfoHash, PeerId, TorrentId]) ->
     process_flag(trap_exit, true),
     {ok, HardRef} = timer:send_after(0, hard_timeout),
     {ok, SoftRef} = timer:send_after(timer:seconds(?DEFAULT_CONNECTION_TIMEOUT_INTERVAL),
                                      soft_timeout),
-    {ok, #state{should_contact_tracker = false,
-                control_pid = ControlPid,
+    {ok, #state{control_pid = ControlPid,
                 torrent_id = TorrentId,
-                url = Url,
+                url = shuffle_tiers(UrlTiers),
                 info_hash = InfoHash,
                 peer_id = PeerId,
 
@@ -156,27 +155,69 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%--------------------------------------------------------------------
 
+-spec contact_tracker(#state{}) ->
+			     #state{}.
 contact_tracker(S) ->
     contact_tracker(none, S).
 
-contact_tracker(Event, S) ->
-    NewUrl = build_tracker_url(S, Event),
-    ?INFO([{contacting_tracker, NewUrl}]),
-    case http_gzip:request(NewUrl) of
-        {ok, {{_, 200, _}, _, Body}} ->
-            handle_tracker_response(etorrent_bcoding:decode(Body), S);
-        {error, etimedout} ->
-            handle_timeout(S);
-        {error,econnrefused} ->
-            handle_timeout(S);
-        {error, session_remotly_closed} ->
-            handle_timeout(S);
-        {error, Reason} ->
-            ?ERR([contact_tracker_error, Reason]),
-            handle_timeout(S)
+-spec contact_tracker(tracker_event() | none, #state{}) ->
+			     #state{}.
+contact_tracker(Event, #state { url = Tiers } = S) ->
+    case contact_tracker(Tiers, Event, S) of
+	{none, NS} ->
+	    NS;
+	{ok, NS, NewTiers} ->
+	    NS #state { url = NewTiers }
+    end.
+-type tier() :: [string()].
+-spec contact_tracker([tier()], tracker_event() | none, #state{}) ->
+			     {none, #state{}} | {ok, #state{}, [tier()]}.
+contact_tracker([], _Event, #state { torrent_id = Id} = S) ->
+    ?INFO([no_trackers_could_be_contacted, Id]),
+    {none, handle_timeout(S)};
+contact_tracker([Tier | NextTier], Event, S) ->
+    case contact_tracker_tier(Tier, Event, S) of
+	{ok, NS, MoveToFrontUrl, Rest} ->
+	    NewTier = [MoveToFrontUrl | Rest],
+	    {ok, NS, [NewTier | NextTier]};
+	none ->
+	    case contact_tracker(NextTier, Event, S) of
+		{ok, NS, TierUrls} ->
+		    {ok, NS, [Tier | TierUrls]};
+		{none, NS} ->
+		    {none, NS}
+	    end
     end.
 
+-spec contact_tracker_tier([string()], tracker_event() | none, #state{}) ->
+				  none | {ok, #state{}, string(), [string()]}.
+contact_tracker_tier([], _Event, _S) ->
+    none;
+contact_tracker_tier([Url | Next], Event, S) ->
+    RequestUrl = build_tracker_url(Url, Event, S),
+    ?INFO([{contacting_tracker, RequestUrl}]),
+    case http_gzip:request(RequestUrl) of
+        {ok, {{_, 200, _}, _, Body}} ->
+	    {ok,
+	     handle_tracker_response(etorrent_bcoding:decode(Body), S),
+	     Url, Next};
+        {error, Type} ->
+	    case Type of
+		etimedout -> ignore;
+		econnrefused -> ignore;
+		session_remotly_closed -> ignore;
+		Err ->
+		    error_logger:error_report([contact_tracker_error, Err]),
+		    ignore
+	    end,
+	    case contact_tracker_tier(Next, Event, S) of
+		{ok, NS, MoveToFrontUrl, Rest} ->
+		    {ok, NS, MoveToFrontUrl, [Url | Rest]};
+		none -> none
+	    end
+    end.
 
+-spec handle_tracker_response(bcode(), #state{}) -> #state{}.
 handle_tracker_response(BC, S) ->
     handle_tracker_response(BC,
                             fetch_error_message(BC),
@@ -202,11 +243,14 @@ handle_tracker_response(BC, none, none, S) ->
     TrackerId = tracker_id(BC),
     handle_timeout(BC, S#state { trackerid = TrackerId }).
 
+-spec handle_timeout(#state{}) -> #state{}.
 handle_timeout(S) ->
     Interval = timer:seconds(?DEFAULT_CONNECTION_TIMEOUT_INTERVAL),
     MinInterval = timer:seconds(?DEFAULT_CONNECTION_TIMEOUT_MIN_INTERVAL),
     handle_timeout(Interval, MinInterval, S).
 
+-spec handle_timeout(bcode(), #state{}) ->
+			    #state{}.
 handle_timeout(BC, S) ->
     Interval = response_interval(BC),
     MinInterval = response_mininterval(BC),
@@ -250,14 +294,17 @@ construct_headers([{Key, Value} | Rest], HeaderLines) ->
     Data = lists:concat([Key, "=", Value, "&"]),
     construct_headers(Rest, [Data | HeaderLines]).
 
-build_tracker_url(S, Event) ->
+build_tracker_url(Url, Event,
+		  #state { torrent_id = Id,
+			   info_hash = InfoHash,
+			   peer_id = PeerId }) ->
     {torrent_info, Uploaded, Downloaded, Left} =
-                etorrent_torrent:find(S#state.torrent_id),
+                etorrent_torrent:find(Id),
     {ok, Port} = application:get_env(etorrent, port),
     Request = [{"info_hash",
-                etorrent_utils:build_encoded_form_rfc1738(S#state.info_hash)},
+                etorrent_utils:build_encoded_form_rfc1738(InfoHash)},
                {"peer_id",
-                etorrent_utils:build_encoded_form_rfc1738(S#state.peer_id)},
+                etorrent_utils:build_encoded_form_rfc1738(PeerId)},
                {"uploaded", Uploaded},
                {"downloaded", Downloaded},
                {"left", Left},
@@ -269,7 +316,7 @@ build_tracker_url(S, Event) ->
                stopped -> [{"event", "stopped"} | Request];
                completed -> [{"event", "completed"} | Request]
            end,
-    lists:concat([S#state.url, "?", construct_headers(EReq, [])]).
+    lists:concat([Url, "?", construct_headers(EReq, [])]).
 
 %%% Tracker response lookup functions
 response_interval(BC) ->
@@ -340,3 +387,5 @@ fetch_error_message(BC) ->
 fetch_warning_message(BC) ->
     etorrent_bcoding:search_dict_default({string, "warning message"}, BC, none).
 
+shuffle_tiers(Tiers) ->
+    [etorrent_utils:shuffle(T) || T <- Tiers].

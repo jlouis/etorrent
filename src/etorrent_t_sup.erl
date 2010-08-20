@@ -42,10 +42,10 @@ get_pid(Pid, Name) ->
 % report the "left" part to the tracker if it is not the case.</p>
 % @end
 -spec add_tracker(pid(), string(), binary(), binary(), integer()) -> {ok, pid()} | {ok, pid(), term()} | {error, term()}.
-add_tracker(Pid, URL, InfoHash, Local_Peer_Id, TorrentId) ->
+add_tracker(Pid, UrlTiers, InfoHash, Local_Peer_Id, TorrentId) ->
     Tracker = {tracker_communication,
                {etorrent_tracker_communication, start_link,
-                [self(), URL, InfoHash, Local_Peer_Id, TorrentId]},
+                [self(), UrlTiers, InfoHash, Local_Peer_Id, TorrentId]},
                permanent, 15000, worker, [etorrent_tracker_communication]},
     supervisor:start_child(Pid, Tracker).
 
