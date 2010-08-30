@@ -7,7 +7,7 @@
 -include("log.hrl").
 
 %% API
--export([start_link/8, choke/1, unchoke/1, have/2, initialize/2,
+-export([start_link/6, choke/1, unchoke/1, have/2, initialize/2,
         incoming_msg/2, stop/1]).
 
 %% gen_server callbacks
@@ -42,7 +42,6 @@
                  packet_iolist = [],
 
                  endgame = false, % Are we in endgame mode?
-                 parent = none,
 
                  file_system_pid = none,
                  send_pid = none,
@@ -61,11 +60,9 @@
 %% Function: start_link() -> {ok,Pid} | ignore | {error,Error}
 %% Description: Starts the server
 %%--------------------------------------------------------------------
-start_link(LocalPeerId, InfoHash, FilesystemPid, Id, Parent,
-          {IP, Port}, Caps, Socket) ->
+start_link(LocalPeerId, InfoHash, Id, {IP, Port}, Caps, Socket) ->
     gen_server:start_link(?MODULE, [LocalPeerId, InfoHash,
-                                    FilesystemPid, Id, Parent,
-                                    {IP, Port}, Caps, Socket], []).
+                                    Id, {IP, Port}, Caps, Socket], []).
 
 %%--------------------------------------------------------------------
 %% Function: stop/1
@@ -128,22 +125,23 @@ incoming_msg(Pid, Msg) ->
 %%                         {stop, Reason}
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
-init([LocalPeerId, InfoHash, FilesystemPid, Id, Parent, {IP, Port}, Caps, Socket]) ->
+init([LocalPeerId, InfoHash, Id, {IP, Port}, Caps, Socket]) ->
     process_flag(trap_exit, true),
     %% TODO: Update the leeching state to seeding when peer finished torrent.
     ok = etorrent_peer:new(IP, Port, Id, self(), leeching),
     ok = etorrent_choker:monitor(self()),
     {value, NumPieces} = etorrent_torrent:num_pieces(Id),
+    gproc:add_local_name({peer, Socket, control}),
+    FS = gproc:lookup_local_name({torrent, Id, fs}),
     {ok, #state{
        socket = Socket,
        pieces_left = NumPieces,
-       parent = Parent,
        local_peer_id = LocalPeerId,
        remote_request_set = gb_trees:empty(),
        info_hash = InfoHash,
        torrent_id = Id,
        extended_messaging = proplists:get_bool(extended_messaging, Caps),
-       file_system_pid = FilesystemPid}}.
+       file_system_pid = FS}}.
 
 %%--------------------------------------------------------------------
 %% Function: handle_cast(Msg, State) -> {noreply, State} |
@@ -492,8 +490,9 @@ connection_initialize(Way, S) ->
 %%    * Start the send pid
 %%    * Send off the bitfield
 %%--------------------------------------------------------------------
-complete_connection_setup(#state { extended_messaging = EMSG } = S) ->
-    {ok, SendPid} = etorrent_peer_sup:get_pid(S#state.parent, sender),
+complete_connection_setup(#state { extended_messaging = EMSG,
+				   socket = Sock } = S) ->
+    SendPid = gproc:lookup_local_name({peer, Sock, sender}),
     BF = etorrent_piece_mgr:bitfield(S#state.torrent_id),
     case EMSG of
 	true -> etorrent_peer_send:extended_msg(SendPid);

@@ -65,9 +65,7 @@ handle_cast({start, F}, S) ->
             end
     end;
 handle_cast({check, Id}, S) ->
-    {atomic, [T]} = etorrent_tracking_map:select(Id),
-    SPid = T#tracking_map.supervisor_pid,
-    Child = etorrent_t_sup:get_pid(SPid, control),
+    Child = gproc:lookup_local_name({torrent, Id, control}),
     etorrent_t_control:check_torrent(Child),
     {noreply, S};
 handle_cast({stop, F}, S) ->

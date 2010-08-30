@@ -261,9 +261,7 @@ state_change(Id, [What | Rest]) ->
                   Left = T#torrent.left - Amount,
                   case Left of
                       0 ->
-			  {atomic, [#tracking_map { supervisor_pid = SPid }]} =
-			      etorrent_tracking_map:select(Id),
-			  ControlPid = etorrent_t_sup:get_pid(SPid, control),
+			  ControlPid = gproc:lookup_local_name({torrent, Id, control}),
 			  etorrent_t_control:completed(ControlPid),
                           T#torrent { left = 0, state = seeding,
 				      rate_sparkline = [0.0] };

@@ -33,8 +33,6 @@
 
                 parent_pid = none,
                 tracker_pid = none,
-                file_system_pid = none,
-
                 disk_state = none,
                 available_peers = []}).
 
@@ -90,6 +88,7 @@ completed(Pid) ->
 init([Parent, Id, Path, PeerId]) ->
     etorrent_tracking_map:new(Path, Parent, Id),
     etorrent_chunk_mgr:new(Id),
+    gproc:add_local_name({torrent, Id, control}),
     {ok, initializing, #state{id = Id,
                               path = Path,
                               peer_id = PeerId,
@@ -104,11 +103,9 @@ initializing(timeout, S) ->
 
             %% Read the torrent, check its contents for what we are missing
             etorrent_event_mgr:checking_torrent(S#state.id),
-            {ok, Torrent, FSPid, InfoHash, NumberOfPieces} =
-                etorrent_fs_checker:read_and_check_torrent(
-                  S#state.id,
-                  S#state.parent_pid,
-                  S#state.path),
+            {ok, Torrent, InfoHash, NumberOfPieces} =
+                etorrent_fs_checker:read_and_check_torrent(S#state.id,
+							   S#state.path),
             etorrent_piece_mgr:add_monitor(self(), S#state.id),
             %% Update the tracking map. This torrent has been started, and we
             %%  know its infohash
@@ -137,15 +134,13 @@ initializing(timeout, S) ->
             etorrent_event_mgr:started_torrent(S#state.id),
             garbage_collect(),
             {next_state, started,
-             S#state{file_system_pid = FSPid,
-                     tracker_pid = TrackerPid}}
+             S#state{tracker_pid = TrackerPid}}
     end.
 
 started(stop, S) ->
     {stop, argh, S};
 started(check_torrent, S) ->
-    case etorrent_fs_checker:check_torrent(S#state.file_system_pid,
-                                           S#state.id) of
+    case etorrent_fs_checker:check_torrent(S#state.id) of
         [] -> {next_state, started, S};
         Errors ->
             ?INFO([errornous_pieces, {Errors}]),

@@ -171,7 +171,6 @@ spawn_peer(PeerId, TM, TorrentId, IP, Port) ->
                           {ok, _Capabilities, PeerId} -> ok;
                           {ok, Capabilities, RPID} ->
                               {ok, RecvPid, ControlPid} = etorrent_t_sup:add_peer(
-                                  TM#tracking_map.supervisor_pid,
                                   RPID,
                                   TM#tracking_map.info_hash,
                                   TorrentId,

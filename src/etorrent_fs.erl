@@ -17,7 +17,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/2,
+-export([start_link/1,
          read_piece/2, read_chunk/4, write_chunk/2, check_piece/2]).
 
 %% gen_server callbacks
@@ -26,17 +26,15 @@
 
 -record(state, { torrent_id = none, %% id of torrent we are serving
                  file_pool = none,
-                 supervisor = none,
                  file_process_dict = none}).
 
 %%====================================================================
 
 %% @doc Spawn and link a new file_system process
 %% @end
--spec start_link(integer(), pid()) ->
-    ignore | {ok, pid()} | {error, any()}.
-start_link(IDHandle, SPid) ->
-    gen_server:start_link(?MODULE, [IDHandle, SPid], []).
+-spec start_link(integer()) -> ignore | {ok, pid()} | {error, any()}.
+start_link(IDHandle) ->
+    gen_server:start_link(?MODULE, [IDHandle], []).
 
 %% @doc Read a single chunk
 %% @end
@@ -66,16 +64,14 @@ write_chunk(Pid, {Index, Data, Ops}) ->
     gen_server:cast(Pid, {write_chunk, {Index, Data, Ops}}).
 
 %%====================================================================
-init([IDHandle, SPid]) when is_integer(IDHandle) ->
+init([IDHandle]) when is_integer(IDHandle) ->
     process_flag(trap_exit, true),
+    gproc:add_local_name({torrent, IDHandle, fs}),
+    FSPool = gproc:lookup_local_name({torrent, IDHandle, fs_pool}),
     {ok, #state{file_process_dict = dict:new(),
-                file_pool = none,
-                supervisor = SPid,
+                file_pool = FSPool,
                 torrent_id = IDHandle}}.
 
-handle_call(Msg, _From, #state { file_pool = none, supervisor = Sup } = S) ->
-    FSPool = etorrent_t_sup:get_pid(Sup, fs_pool),
-    handle_call(Msg, _From, S#state { file_pool = FSPool });
 handle_call({read_piece, PieceNum}, _From, S) ->
     [#piece { files = Operations}] =
         etorrent_piece_mgr:select(S#state.torrent_id, PieceNum),
@@ -90,9 +86,6 @@ handle_call(Msg, From, S) ->
     ?WARN([unknown_call, Msg, From, S]),
     {noreply, S}.
 
-handle_cast(Msg, #state { file_pool = none, supervisor = Sup } = S) ->
-    FSPool = etorrent_t_sup:get_pid(Sup, fs_pool),
-    handle_cast(Msg, S#state { file_pool = FSPool });
 handle_cast({write_chunk, {Index, Data, Ops}}, S) ->
     case etorrent_piece_mgr:select(S#state.torrent_id, Index) of
         [#piece { state = fetched }] ->
@@ -115,7 +108,7 @@ handle_cast({check_piece, Index}, S) ->
                    Index,
                    fetched),
             etorrent_peer:broadcast_peers(S#state.torrent_id,
-                    fun(P) -> 
+                    fun(P) ->
                           etorrent_peer_control:have(P, Index)
                     end),
             {noreply, NS};

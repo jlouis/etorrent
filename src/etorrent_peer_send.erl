@@ -21,7 +21,7 @@
 %% to serve as a mediator for the peer in the send direction. Precisely,
 %% we have a message we can send to the process, for each of the possible
 %% messages one can send to a peer.
--export([start_link/5,
+-export([start_link/3,
          check_choke/1,
 
          go_fast/1,
@@ -63,12 +63,11 @@
 %%====================================================================
 %% API
 %%====================================================================
--spec start_link(port(), pid(), integer(), boolean(), pid()) ->
+-spec start_link(port(), integer(), boolean()) ->
     ignore | {ok, pid()} | {error, any()}.
-start_link(Socket, FilesystemPid, TorrentId, FastExtension, Parent) ->
+start_link(Socket, TorrentId, FastExtension) ->
     gen_server:start_link(?MODULE,
-                          [Socket, FilesystemPid, TorrentId, FastExtension,
-                           Parent], []).
+                          [Socket, TorrentId, FastExtension], []).
 
 %%--------------------------------------------------------------------
 %% Func: remote_request(Pid, Index, Offset, Len)
@@ -235,9 +234,11 @@ code_change(_OldVsn, State, _Extra) ->
 %%====================================================================
 %% gen_server callbacks
 %%====================================================================
-init([Socket, FilesystemPid, TorrentId, FastExtension, Parent]) ->
+init([Socket, TorrentId, FastExtension]) ->
     {ok, TRef} = timer:send_interval(?DEFAULT_KEEP_ALIVE_INTERVAL, self(), tick),
     {ok, Tref2} = timer:send_interval(?RATE_UPDATE, self(), rate_update),
+    gproc:add_local_name({peer, Socket, sender}),
+    FS = gproc:lookup_local_name({torrent, TorrentId, fs}),
     %% This may fail, but I want to check it
     {ok,
      #state{socket = Socket,
@@ -245,11 +246,11 @@ init([Socket, FilesystemPid, TorrentId, FastExtension, Parent]) ->
             rate_timer = Tref2,
             requests = queue:new(),
             rate = etorrent_rate:init(),
-            parent = {non_inited, Parent},
+            parent = {non_inited, foo},
             controller = none,
             torrent_id = TorrentId,
             fast_extension = FastExtension,
-            file_system_pid = FilesystemPid},
+            file_system_pid = FS},
      0}. %% Quickly enter a timeout.
 
 
@@ -268,8 +269,10 @@ handle_info(rate_update, S) ->
 %% Different timeouts.
 %% When we are choking the peer and the piece cache is empty, garbage_collect() to reclaim
 %% space quickly rather than waiting for it to happen.
-handle_info(timeout, #state{ parent = {non_inited, P}} = S) ->
-    {ok, RecvPid} = etorrent_peer_sup:get_pid(P, control),
+%% @todo Consider if this can be simplified. It looks wrong here.
+handle_info(timeout, #state{ parent = {non_inited, _},
+			     socket = Sock } = S) ->
+    RecvPid = gproc:lookup_local_name({peer, Sock, receiver}),
     {noreply, S#state { parent = RecvPid }, 0};
 handle_info(timeout, #state { choke = true} = S) ->
     {noreply, S};
