@@ -2,6 +2,7 @@
 [{description, "BitTorrent client in Erlang"},
  {vsn, "1.0"},
  {modules, [
+     etorrent,
      etorrent_acceptor, etorrent_acceptor_sup, etorrent_allowed_fast,
      etorrent_bcoding, etorrent_choker, etorrent_chunk_mgr,
      etorrent_counters, etorrent_dirwatcher, etorrent_dirwatcher_sup,
