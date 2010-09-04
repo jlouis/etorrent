@@ -28,12 +28,13 @@ so we can get it away.
 
   1. Check Makefile.config for the right configuration options
   2. edit the file 'priv/etorrent.config'. Use the example 'priv/etorrent.config.example' as a start.
-  3. 'rebar compile'
-  4. 'make run'
-  5. drop a .torrent file in the watched dir and see what happens.
-  6. call etorrent:help(). from the Erlang CLI to get a list of available
+  3. 'rebar get-deps' to get the dependencies needed by the code.
+  4. 'rebar compile' to compile the code into the BEAM format.
+  5. 'make run'
+  6. drop a .torrent file in the watched dir and see what happens.
+  7. call etorrent:help(). from the Erlang CLI to get a list of available
      commands.
-  7. If you enabled the webui, you can try browsing to its location. By default the location is 'http://localhost:8080'.
+  8. If you enabled the webui, you can try browsing to its location. By default the location is 'http://localhost:8080'.
 
 ## GETTING STARTED WITH INSTALLING
 
