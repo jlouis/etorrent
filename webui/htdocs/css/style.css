@@ -79,7 +79,7 @@ table {
 }
 
 table thead tr .header {
-        background-image: url(bg.gif);
+        background-image: url(/images/bg.gif);
         background-repeat: no-repeat;
         background-position: center right;
         cursor: pointer;
