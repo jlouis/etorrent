@@ -1,3 +1,30 @@
+Version 1.1.0:
+
+In this version, we have mostly cleaned up some code paths to make
+room for further improvements and adaptations. From v1.0.0 we have the
+following important changes:
+
+  * Add boxplots next to the sparklines in the WebUI. Boxplots will
+    quickly tell you the current speed of a torrent file which is
+    being processed by etorrent.
+  * Add backwards compatibility for Erlang R13B-x.
+  * Change the chunk_mgr ETS table to a bag rather than a set. We used
+    bag semantics by implementing them as lists anyway and there is a
+    slight improvement in letting the C-code handle the bag. It also
+    shaves off about 50 lines of code.
+  * Use gproc for process registration. This greatly simplifies the
+    code at the expensive of a dependency on gproc and gen_leader
+    (gen_leader we don't use for anything, but gproc needs).
+  * API calls are now again called etorrent:h() and such. Moved from
+    the application code in etorrent_app.
+  * Fix a bug in the WebUI where an icon was referenced incorrectly.
+
+Furthermore, we now support some new bittorrent protocol extensions:
+
+  * Support for extended messaging (BEP-10).
+  * Support for multi-tracker torrents (BEP-12). To be really useful,
+    we also need support for BEP-15 which is UDP tracking.
+
 Version 1.0.1:
 
   Minor bug-fix release:
