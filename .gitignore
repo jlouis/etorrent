@@ -4,3 +4,5 @@ tracer.log
 *~
 *.swp
 webui/*.log
+deps/*
+/erl_crash.dump
