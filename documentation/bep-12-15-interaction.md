@@ -34,25 +34,17 @@ the usual http://domain.com/foo/announce announce url schema with a new one:
 This schema designates an UDP capable tracker running at
 domain.com. Note the deliberate omission of the path-component from
 the URL. There is none for the UDP method. Trackers supplying an
-udp:// schema MUST answer on UDP. A tracker MAY choose to supply both
-the http:// and udp:// schemas at the same time.
+udp:// schema MUST answer on UDP. A torrent file MAY choose to supply both
+the http:// and udp:// schemas at the same time for trackers.
+
+The udp:// schema MAY be used in any tier in a BEP-12 multi-tracker
+designation anywhere in the lists of individual tiers.
 
 ### Equivalence
 
 An http:// and udp:// schema are considered to be equivalent, provided
 they have the same domain name. Otherwise they are considered to be
 different.
-
-## Torrent file handling
-
-As per the BEP-12 spec, we are given a list of tiers
-
-   T1, T1, T3, ...
-
-where each Tn contains a list of tracker urls for that tier. The rule
-from BEP-12 to shuffle each tier still applies in this BEP. Clients
-MUST shuffle the list. This is to make sure we still load balance
-trackers evenly among clients.
 
 ## Client handling
 
@@ -78,14 +70,22 @@ Given tiers
 
       T1, T2, ..., Tk
 
-treat this tier-list as a flat list of announce URLs. That is,
-concatenate T1, T2, ..., Tk to form a single list. Then, if udp:// and
-http:// announce URLs are *equivalent* as per the above definition,
-swap them to make the udp:// schema come first, disregarding
-tiers. Note that this allows the udp:// schema url to move to an
-earlier tier.
+First shuffle each tier T1, T2, ..., Tk randomly as per the BEP-12
+specification.
 
-After this swapping has occurred, treat everything as BEP-12.
+Then, treat this tier-list as a flat list of announce URLs. That is,
+concatenate T1, T2, ..., Tk to form a single list. Ff udp:// and
+http:// announce URLs are *equivalent* as per the above definition of
+equivalence, swap them to make the udp:// schema come first,
+disregarding tiers. Note that this allows the udp:// schema url to
+move to an earlier tier.
+
+After this swapping has occurred, treat everything as BEP-12. Note
+that this will make a client prefer udp:// based trackers over http://
+based trackers, even in the same tier. Yet, it still gives each tracker
+the same probability distribution as the unshuffled list. We assume
+that a tracker with both UDP and HTTP capability prefers to be
+contacted on UDP.
 
 The rationale for letting udp:// schemas move between tiers is that
 many torrents are created with a single tracker announceURL in each
@@ -122,8 +122,9 @@ helpful discussions of the method and critique of this BEP.
 
 ## References
 
-BEP-12
-BEP-15
+   * BEP-12
+
+   * BEP-15
 
 ## Copyright
 
