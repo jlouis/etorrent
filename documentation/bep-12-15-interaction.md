@@ -74,7 +74,7 @@ First shuffle each tier T1, T2, ..., Tk randomly as per the BEP-12
 specification.
 
 Then, treat this tier-list as a flat list of announce URLs. That is,
-concatenate T1, T2, ..., Tk to form a single list. Ff udp:// and
+concatenate T1, T2, ..., Tk to form a single list. udp:// and
 http:// announce URLs are *equivalent* as per the above definition of
 equivalence, swap them to make the udp:// schema come first,
 disregarding tiers. Note that this allows the udp:// schema url to
@@ -123,7 +123,6 @@ helpful discussions of the method and critique of this BEP.
 ## References
 
    * BEP-12
-
    * BEP-15
 
 ## Copyright
