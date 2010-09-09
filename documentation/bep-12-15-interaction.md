@@ -9,68 +9,116 @@ based on what different clients do.
 
 ## Rationale
 
-In the bittorrent system, it is beneficial to be able to handle
-multiple trackers at once. This proposal is BEP-12. Another beneficial
-proposal is to handle tracker requests as UDP traffic (BEP-15) rather
-than relying on TCP-traffic. The former provides redundancy, while the
-latter provides efficient bandwidth utilization. BEP-15 does not,
-however, describe how it is to be invoked by the client.
+In the bittorrent system, it is beneficial to handle multiple trackers
+at once. This proposal is BEP-12. Another beneficial proposal is to
+handle tracker requests as UDP traffic (BEP-15), rather than relying
+on TCP-traffic. The former provides redundancy, while the latter
+provides efficient bandwidth utilization. BEP-15 does not, however,
+describe how it is supposed that the client recognizes a tracker as
+being UDP capable.
 
-This BEP proposal is written to document what clients are *currently
-doing* as opposed to what they ought to be doing. The goal is not to
-enforce a new solution, but rather to describe an existing de-facto
-method of getting BEP-12 and 15 to interplay with each other.
+This proposal aims to remedy this shortcoming. It describes how some
+clients *currently* handle the situation by a clever interplay between
+BEP-12 and BEP-15. The goal is not to provide nor enforce a new
+solution -- rather we opt for describing the de-facto method of
+getting BEP-12 and 15 to interplay.
 
 ## Approach
 
-BEP-12 contains the concept of multiple announcement URLs. We extend
-the usual http:// announce url scheme with a new one:
+BEP-12 contains the concept of multiple announcement URLs. These are
+arranged in tiers of announcement URLs. We extend
+the usual http://domain.com/foo/announce announce url schema with a new one:
 
-   udp://...
+   udp://domain.com
 
-many words can be traded on this choice, but as per the rationale, we
-adopt a stance to document existing setups. The scheme signifies we
-use UDP-tracking as per BEP-15. A tracker MAY choose to use this to
-explicitly tell the client it supports UDP-tracking as per BEP-15. A
-client which do not support BEP-15 SHOULD ignore *any* schemas it
-doesn't know, the udp:// schema included.
+This schema designates an UDP capable tracker running at
+domain.com. Note the deliberate omission of the path-component from
+the URL. There is none for the UDP method. Trackers supplying an
+udp:// schema MUST answer on UDP. A tracker MAY choose to supply both
+the http:// and udp:// schemas at the same time.
 
-A tracker MAY choose to supply an announce URL as the http:// scheme
-and as the udp:// scheme at the same time. The client SHOULD prefer the
-udp:// scheme if at all possible. The trackers are considered to be
-equivalent if they point to the same domain name, ignoring the path
-component (which does not make sense in the udp:// scheme).
+### Equivalence
+
+An http:// and udp:// schema are considered to be equivalent, provided
+they have the same domain name. Otherwise they are considered to be
+different.
+
+## Torrent file handling
+
+As per the BEP-12 spec, we are given a list of tiers
+
+   T1, T1, T3, ...
+
+where each Tn contains a list of tracker urls for that tier. The rule
+from BEP-12 to shuffle each tier still applies in this BEP. Clients
+MUST shuffle the list. This is to make sure we still load balance
+trackers evenly among clients.
+
+## Client handling
+
+A client which do not support BEP-15 SHOULD ignore *any* schemas it
+doesn't know about, the udp:// schema included.
+
+Clients contact udp:// schema trackers as described in BEP-15. A
+failure to answer is regarded as if the tracker in the tier is
+unreachable and the usual BEP-12 rules apply for finding the next
+candidate tracker.
+
+It is paramount that a client still provides adequate shuffling of
+trackers as per BEP-12. The simple idea of letting udp:// schemas
+"bubble" to the front of the list in each tier MUST be avoided. It
+does not distribute the announce URLs evenly as it gives too much
+preference to UDP capable trackers.
+
+Rather, the client can use the following method:
 
 ### Preferral of UDP trackers
 
-The rule for preferring UDP trackers is this: If an UDP tracker is
-found, search the current tier and earlier tiers (see BEP-12 for the
-definition of a tier). If the corresponding HTTP tracker announce URL
-is found (it is equivalent), swap the UDP tracker for the HTTP to make
-the UDP tracker come first.
+Given tiers
 
-#### Ordering example
+      T1, T2, ..., Tk
 
-Among a BEP-12 tier, the client SHOULD prefer udp:// schema URIs in a
-tier. Thus, if the tiers are
+treat this tier-list as a flat list of announce URLs. That is,
+concatenate T1, T2, ..., Tk to form a single list. Then, if udp:// and
+http:// announce URLs are *equivalent* as per the above definition,
+swap them to make the udp:// schema come first, disregarding
+tiers. Note that this allows the udp:// schema url to move to an
+earlier tier.
+
+After this swapping has occurred, treat everything as BEP-12.
+
+The rationale for letting udp:// schemas move between tiers is that
+many torrents are created with a single tracker announceURL in each
+tier. Thus simply shuffling in each tier has no effect on such a
+torrent file.
+
+### Ordering example
+
+Assume we have the following two tiers:
 
     {[http://one.com, udp://one.com, http://two.com],
      [http://three.com, udp://four.com, udp://two.com]}
 
-we SHOULD process them in the following order, from top to bottom:
+As per BEP-12, random shuffling of these lists are carried
+out. Here is one such random shuffling:
 
-   udp://one.com, udp://two.com http://one.com udp://four.com
-   {http://three.com, http://two.com} -- any of these followed by the
-   other per shuffle rules of BEP-12
+    {[http://one.com, http://two.com, udp://one.com],
+     [http://four.com, udp://two.com, http://three.com]}
 
-Note that if the udp:// tracker responds, it will be moved to the
-front of the tier and thus be used in subsequent requests.
+The UDP preference rule now swaps the "one.com" and "two.com" domains
+to obtain the list:
+
+    {[udp://one.com, udp://two.com, http://one.com],
+     [http://four.com, http://two.com, http://three.com]}
+
+At this point, we follow the rules from BEP-12, included moving the
+succesful responses to the front of the list.
 
 ## Acknowledgements
 
 We acknowledge Arvid Nordberg, and his libtorrent-rasterbar C++ code,
-for the above method. The description is loosely based upon what the
-libtorrent code is doing.
+for the udp:// preference method. We also acknowledge Arvid for
+helpful discussions of the method and critique of this BEP.
 
 ## References
 
