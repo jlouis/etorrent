@@ -10,9 +10,9 @@ based on what different clients do.
 ## Rationale
 
 In the bittorrent system, it is beneficial to handle multiple trackers
-at once. This proposal is BEP-12. Another beneficial proposal is to
-handle tracker requests as UDP traffic (BEP-15), rather than relying
-on TCP-traffic. The former provides redundancy, while the latter
+at once. This proposal is BEP-12. Another beneficial proposal, BEP-15,
+is to handle tracker requests as UDP traffic, rather than relying on
+HTTP/TCP-traffic. The former provides redundancy, while the latter
 provides efficient bandwidth utilization. BEP-15 does not, however,
 describe how it is supposed that the client recognizes a tracker as
 being UDP capable.
@@ -26,35 +26,37 @@ getting BEP-12 and 15 to interplay.
 ## Approach
 
 BEP-12 contains the concept of multiple announcement URLs. These are
-arranged in tiers of announcement URLs. We extend
+arranged in tiers, where each tier is a list of announcement URLs. We extend
 the usual http://domain.com/foo/announce announce url schema with a new one:
 
    udp://domain.com
 
 This schema designates an UDP capable tracker running at
 domain.com. Note the deliberate omission of the path-component from
-the URL. There is none for the UDP method. Trackers supplying an
-udp:// schema MUST answer on UDP. A torrent file MAY choose to supply both
-the http:// and udp:// schemas at the same time for trackers.
+the URL. There is none for the UDP method. A torrent file MAY choose
+to supply both the http:// and udp:// schemas at the same time for
+a particular tracker.
 
 The udp:// schema MAY be used in any tier in a BEP-12 multi-tracker
 designation anywhere in the lists of individual tiers.
 
-### Equivalence
+#### Equivalence
 
 An http:// and udp:// schema are considered to be equivalent, provided
 they have the same domain name. Otherwise they are considered to be
-different.
+different. The domain names are to be evaulated as (lexicographic)
+string equality, not by DNS lookup of an IP-address.
 
 ## Client handling
 
-A client which do not support BEP-15 SHOULD ignore *any* schemas it
-doesn't know about, the udp:// schema included.
+A client SHOULD ignore *any* schemas it doesn't know about, the udp://
+schema included. Thus, a client not supporting BEP-15 SHOULD ignore
+the udp:// schema, and strip it from the BEP-12 tracker lists.
 
 Clients contact udp:// schema trackers as described in BEP-15. A
 failure to answer is regarded as if the tracker in the tier is
 unreachable and the usual BEP-12 rules apply for finding the next
-candidate tracker.
+candidate tracker to try.
 
 It is paramount that a client still provides adequate shuffling of
 trackers as per BEP-12. The simple idea of letting udp:// schemas
