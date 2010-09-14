@@ -1,7 +1,7 @@
 -module(etorrent_dht_net).
 -include_lib("stdlib/include/qlc.hrl").
 -behaviour(gen_server).
--import(bittorrent_bcoding, [search_dict/2, search_dict_default/3]).
+-import(etorrent_bcoding, [search_dict/2, search_dict_default/3]).
 -define(is_infohash(Parameter),
     (is_binary(Parameter) and (byte_size(Parameter) == 20))).
 
@@ -78,14 +78,11 @@
 srv_name() ->
    dht_socket_server.
 
-tab_name() ->
-    dht_nodes.
-
 query_timeout() ->
     2000.
 
 search_width() ->
-    16.
+    32.
 
 search_retries() ->
     4.
@@ -100,6 +97,7 @@ any_port() ->
 % Public interface
 %
 start_link() ->
+    etorrent_dht_state:open(),
     gen_server:start({local, srv_name()}, ?MODULE, [], []).
 
 node_id() ->
@@ -191,7 +189,13 @@ find_node_search(Target, Next, Queried, Alive,
     % Check if the closest node in the work queue is closer
     % to the infohash than the closest responsive node.
     {MinAliveDist, _, _, _} = gb_sets:smallest(NewAlive),
-    {MinQueueDist, _, _, _} = lists:min(NewNext),
+    MinQueueDist = case NewNext of
+        [] ->
+            2 * MinAliveDist;
+        Other -> 
+            {MinDist, _, _, _} = lists:min(Other),
+            MinDist
+    end,
 
     % Check if the closest node in the work queue is closer
     % to the infohash than the closest responsive node.
@@ -214,7 +218,8 @@ get_peers(IP, Port, InfoHash) when ?is_infohash(InfoHash) ->
                                            Values, NoPeers),
             {Peers, Nodes} = case MaybePeers of
                 NoPeers ->
-                    Compact = orddict:fetch(<<"nodes">>, Values),
+                    {string, LCompact} = search_dict({string, "nodes"}, Values),
+                    Compact = list_to_binary(LCompact),
                     INodes = compact_to_node_infos(Compact),
                     {[], INodes};
                 {list, PeerStrings} ->
@@ -232,15 +237,14 @@ get_peers(IP, Port, InfoHash) when ?is_infohash(InfoHash) ->
 %
 get_peers_search(InfoHash) when ?is_infohash(InfoHash) ->
     Width    = search_width(),
+    MaxRetry = search_retries(),
     Known    = etorrent_dht_state:known_nodes(),
     Queue    = closest_to(InfoHash, Known, Width),
     Queried  = gb_sets:empty(),
     Alive    = gb_sets:empty(),
     Retries  = 0,
-    MaxRetry = search_retries(),
     get_peers_search(InfoHash, Queue, Queried, Alive,
-                  Retries, MaxRetry, Width).
-
+                     Retries, MaxRetry, Width).
 
 
 get_peers_search(InfoHash, Queue, Queried, Alive, Retries, Retries, Width) ->
@@ -337,13 +341,15 @@ return(IP, Port, ID, Response) ->
 %
 bootstrap(IP, Port) ->
     ok = etorrent_dht_state:clear(),
+    {_, InitSet} = find_node(IP, Port, node_id()),
+    ok = etorrent_dht_state:save(InitSet),
     NodeSet = find_node_search(node_id()),
     Entries = [{ID, IP, Port} || {_, ID, IP, Port} <- NodeSet],
     etorrent_dht_state:save(Entries).
 
 
 init([]) ->
-    {ok, _} = dets:open_file(tab_name(), [{type, set}]),
+    ok = etorrent_dht_state:open(),
     {ok, Socket} = gen_udp:open(any_port(), socket_options()),
     State = #state{socket=Socket,
                    self=random_id(),
@@ -473,14 +479,15 @@ handle_info(Msg, State) ->
     {noreply, State}.
 
 terminate(_, State) ->
-    gen_udp:close(State#state.socket),
+    catch gen_udp:close(State#state.socket),
+    catch etorrent_dht_state:close(),
     {ok, State}.
 
 code_change(_, _, State) ->
     {ok, State}.
 
 node_id_param(Params) ->
-    LNodeID = search_dict({string, "id"}, Params),
+    {string, LNodeID} = search_dict({string, "id"}, Params),
     list_to_binary(LNodeID).
 
 common_values(Self) ->
@@ -566,10 +573,10 @@ decode_msg(InMsg) ->
             {string, MString} = search_dict({string, "q"}, Msg),
             {dict, Params}    = search_dict({string, "a"}, Msg),
             Method  = string_to_method(MString),
-            {Method, MsgID, Params};
+            {Method, MsgID, {dict, Params}};
         {string, "r"} ->
             {dict, Values} = search_dict({string, "r"}, Msg),
-            {response, MsgID, Values};
+            {response, MsgID, {dict, Values}};
         {string, "e"} ->
             error
     end.
