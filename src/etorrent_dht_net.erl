@@ -17,10 +17,10 @@
 %     to map the response to the correct client reference.
 %
 %     A timer is used to notify the server of requests that
-%     time out, if a request times out {error, timeout} is 
+%     time out, if a request times out {error, timeout} is
 %     returned to the client. If a response is received after
 %     the timer has fired, the response is dropped.
-%     
+%
 %     The expected behavior is that the high-level timeout fires
 %     before the gen_server call times out, therefore this interval
 %     should be shorter then the interval used by gen_server calls.
@@ -120,7 +120,7 @@ ping(IP, Port) ->
 find_node(IP, Port, Target) when ?is_infohash(Target) ->
     case gen_server:call(srv_name(), {find_node, IP, Port, Target}) of
         timeout -> {error, timeout};
-        Values  -> 
+        Values  ->
             {string, ID} = search_dict({string, "id"}, Values),
             {string, Compact} = search_dict({string, "nodes"}, Values),
             BinCompact = list_to_binary(Compact),
@@ -147,8 +147,9 @@ find_node_search(Target) when ?is_infohash(Target) ->
     find_node_search(Target, Next, Queried, Alive,
                      Retries, MaxRetries, Width).
 
-find_node_search(Target, Next, Queried, Alive,
-                 MaxRetries, MaxRetries, Width) ->
+
+find_node_search(_Target, _Next, _Queried, Alive,
+                 _MaxRetries, _MaxRetries, _Width) ->
     lists:sort(gb_sets:to_list(Alive));
 
 find_node_search(Target, Next, Queried, Alive,
@@ -161,7 +162,7 @@ find_node_search(Target, Next, Queried, Alive,
     % Query all nodes in the queue and generate a list of
     % {Dist, ID, IP, Port, Nodes} elements
     SearchCalls = [{?MODULE, find_node, [IP, Port, Target]}
-                  || {Dist, ID, IP, Port} <- Next],
+                  || {_Dist, _ID, IP, Port} <- Next],
     ReturnValues = rpc:parallel_eval(SearchCalls),
     WithArgs = lists:zip(Next, ReturnValues),
 
@@ -170,7 +171,7 @@ find_node_search(Target, Next, Queried, Alive,
                     {NID, Nodes}} <- WithArgs, is_binary(NID)],
 
     % Mark all nodes that responded as alive
-    AddAlive = [{Dist, ID, IP, Port} 
+    AddAlive = [{Dist, ID, IP, Port}
                ||{Dist, ID, IP, Port, _} <- Successful],
     NewAlive = gb_sets:union(Alive, gb_sets:from_list(AddAlive)),
 
@@ -192,7 +193,7 @@ find_node_search(Target, Next, Queried, Alive,
     MinQueueDist = case NewNext of
         [] ->
             2 * MinAliveDist;
-        Other -> 
+        Other ->
             {MinDist, _, _, _} = lists:min(Other),
             MinDist
     end,
@@ -205,12 +206,12 @@ find_node_search(Target, Next, Queried, Alive,
 
     find_node_search(Target, NewNext, NewQueried, NewAlive,
                      NewRetries, MaxRetries, Width).
- 
+
 
 get_peers(IP, Port, InfoHash) when ?is_infohash(InfoHash) ->
     case gen_server:call(srv_name(), {get_peers, IP, Port, InfoHash}) of
         timeout -> {error, timeout};
-        Values  -> 
+        Values  ->
             {string, ID} = search_dict({string, "id"}, Values),
             {string, Token}  = search_dict({string, "token"}, Values),
             NoPeers = make_ref(),
@@ -247,7 +248,8 @@ get_peers_search(InfoHash) when ?is_infohash(InfoHash) ->
                      Retries, MaxRetry, Width).
 
 
-get_peers_search(InfoHash, Queue, Queried, Alive, Retries, Retries, Width) ->
+%% Retries twice???
+get_peers_search(_InfoHash, _Queue, _Queried, Alive, _Retries, _Retries, _Width) ->
     % If the search has failed to come up with a node that is
     % closer to the infohash multiple times return a list of the
     % nodes closest to the infohash.
@@ -262,7 +264,7 @@ get_peers_search(InfoHash, Queue, Queried, Alive,
     % Query all nodes in the queue and generate a list of
     % {Dist, ID, IP, Port, Peers, Nodes} elements
     SearchCalls = [{?MODULE, get_peers, [IP, Port, InfoHash]}
-                  || {Dist, ID, IP, Port} <- Queue],
+                  || {_Dist, _ID, IP, Port} <- Queue],
     ReturnValues = rpc:parallel_eval(SearchCalls),
     WithArgs = lists:zip(Queue, ReturnValues),
 
@@ -271,7 +273,7 @@ get_peers_search(InfoHash, Queue, Queried, Alive,
                      {_, _, Peers, Nodes}} <- WithArgs],
 
     % Mark all nodes that responded as alive
-    AddAlive = [{Dist, ID, IP, Port} 
+    AddAlive = [{Dist, ID, IP, Port}
                ||{Dist, ID, IP, Port, _, _} <- Successful],
     NewAlive = gb_sets:union(Alive, gb_sets:from_list(AddAlive)),
 
@@ -310,7 +312,7 @@ get_peers_search(InfoHash, Queue, Queried, Alive,
         get_peers_search(InfoHash, NewQueue, NewQueried,
                          NewAlive, NewRetries, MaxRetries, Width)
     end.
-   
+
 
 
 
@@ -344,9 +346,8 @@ bootstrap(IP, Port) ->
     {_, InitSet} = find_node(IP, Port, node_id()),
     ok = etorrent_dht_state:save(InitSet),
     NodeSet = find_node_search(node_id()),
-    Entries = [{ID, IP, Port} || {_, ID, IP, Port} <- NodeSet],
+    Entries = [{ID, Ip, P} || {_, ID, Ip, P} <- NodeSet],
     etorrent_dht_state:save(Entries).
-
 
 init([]) ->
     ok = etorrent_dht_state:open(),
@@ -363,10 +364,9 @@ closest_to(InfoHash, NodeList, NumNodes) ->
     if
     (length(Sorted) =< NumNodes) -> Sorted;
     (length(Sorted) >  NumNodes)  ->
-        {Head, Tail} = lists:split(NumNodes, Sorted),
+        {Head, _Tail} = lists:split(NumNodes, Sorted),
         Head
     end.
-
 
 
 timeout_reference(IP, Port, ID) ->
@@ -409,17 +409,17 @@ handle_call({announce, IP, Port, InfoHash, Token, BTPort}, From, State) ->
             {{string, "token"}, {string, LToken}}],
     do_send_query('announce', Args, IP, Port, From, State);
 
-handle_call({return, IP, Port, ID, Values}, From, State) ->
+handle_call({return, IP, Port, ID, Values}, _From, State) ->
     Socket = State#state.socket,
     Response = encode_response(ID, Values),
     ok = gen_udp:send(Socket, IP, Port, Response),
     {reply, ok, State};
 
-handle_call({get_node_id}, From, State) ->
+handle_call({get_node_id}, _From, State) ->
     #state{self=Self} = State,
     {reply, Self, State};
 
-handle_call({get_num_open}, From, State) ->
+handle_call({get_num_open}, _From, State) ->
     Sent = State#state.sent,
     NumSent = gen_trees:size(Sent),
     {reply, NumSent, State}.
@@ -447,14 +447,14 @@ handle_info({timeout, _, IP, Port, ID}, State) ->
     NewState = case find_sent_query(IP, Port, ID, Sent) of
         error ->
             State;
-        {ok, {Client, Timeout}} ->
+        {ok, {Client, _Timeout}} ->
             _ = gen_server:reply(Client, timeout),
             NewSent = clear_sent_query(IP, Port, ID, Sent),
             State#state{sent=NewSent}
     end,
     {noreply, NewState};
 
-handle_info({udp, Socket, IP, Port, Packet}, State) ->
+handle_info({udp, _Socket, IP, Port, Packet}, State) ->
     Sent = State#state.sent,
     Self = State#state.self,
     NewState = case decode_msg(Packet) of
@@ -475,7 +475,7 @@ handle_info({udp, Socket, IP, Port, Packet}, State) ->
     end,
     {noreply, NewState};
 
-handle_info(Msg, State) ->
+handle_info(_Msg, State) ->
     {noreply, State}.
 
 terminate(_, State) ->
@@ -494,11 +494,11 @@ common_values(Self) ->
     [{{string, "id"}, {string, binary_to_list(Self)}}].
 
 handle_query('ping', Params, IP, Port, MsgID, Self) ->
-    NodeID = node_id_param(Params),
+    _NodeID = node_id_param(Params),
     return(IP, Port, MsgID, common_values(Self));
 
 handle_query('find_node', Params, IP, Port, MsgID, Self) ->
-    NodeID = node_id_param(Params),
+    _NodeID = node_id_param(Params),
     {string, LTarget} = search_dict({string, "target"}, Params),
     Target = list_to_binary(LTarget),
     CloseNodes = etorrent_dht_state:closest_to(Target),
@@ -508,7 +508,7 @@ handle_query('find_node', Params, IP, Port, MsgID, Self) ->
     return(IP, Port, MsgID, common_values(Self) ++ Values);
 
 handle_query('get_peers', Params, IP, Port, MsgID, Self) ->
-    NodeID = node_id_param(Params),
+    _NodeID = node_id_param(Params),
     {string, LHash} = search_dict({string, "info_hash"}, Params),
     InfoHash = list_to_binary(LHash),
     Values = case etorrent_dht_state:get_peers(InfoHash) of
@@ -523,7 +523,7 @@ handle_query('get_peers', Params, IP, Port, MsgID, Self) ->
             [{{string, "peers"}, {string, LCompact}}]
     end,
     return(IP, Port, MsgID, common_values(Self) ++ Values).
-            
+
 
 unique_message_id(IP, Port, Open) ->
     IntID = random:uniform(16#FFFF),
@@ -558,7 +558,7 @@ random_id() ->
     Bytes = [Byte() || _ <- lists:seq(1, 20)],
     list_to_binary(Bytes).
 
- 
+
 distance(BID0, BID1) ->
     <<ID0:160>> = BID0,
     <<ID1:160>> = BID1,
