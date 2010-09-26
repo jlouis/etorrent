@@ -32,8 +32,10 @@
 %     the infohash.
 
 % Public interface
--export([start_link/0,
+-export([start/0,
+         start_link/1,
          node_id/0,
+         node_port/0,
          ping/2,
          find_node/3,
          find_node_search/1,
@@ -41,8 +43,8 @@
          get_peers_search/1,
          announce/5,
          return/4,
-
-         bootstrap/2]).
+         closest_to/3, % TODO - move to state or util
+         distance/2]). % TODO - move to state or util
 
 % gen_server callbacks
 -export([init/1,
@@ -96,12 +98,20 @@ any_port() ->
 %
 % Public interface
 %
-start_link() ->
-    etorrent_dht_state:open(),
-    gen_server:start({local, srv_name()}, ?MODULE, [], []).
+start() ->
+    NodeID = random_id(),
+    {ok, _} = etorrent_dht_net:start_link(NodeID),
+    {ok, _} = etorrent_dht_state:start_link(NodeID),
+    ok.
+
+start_link(NodeID) ->
+    gen_server:start({local, srv_name()}, ?MODULE, [NodeID], []).
 
 node_id() ->
     gen_server:call(srv_name(), {get_node_id}).
+
+node_port() ->
+    gen_server:call(srv_name(), {get_node_port}).
 
 %
 %
@@ -110,8 +120,8 @@ ping(IP, Port) ->
     case gen_server:call(srv_name(), {ping, IP, Port}) of
         timeout -> pang;
         Reply   ->
-            {string, ID} = search_dict({string, "id"}, Reply),
-            list_to_binary(ID)
+            {string, LID} = search_dict({string, "id"}, Reply),
+            list_to_binary(LID)
     end.
 
 %
@@ -119,13 +129,16 @@ ping(IP, Port) ->
 %
 find_node(IP, Port, Target) when ?is_infohash(Target) ->
     case gen_server:call(srv_name(), {find_node, IP, Port, Target}) of
-        timeout -> {error, timeout};
+        timeout ->
+            {error, timeout};
         Values  ->
-            {string, ID} = search_dict({string, "id"}, Values),
+            {string, LID} = search_dict({string, "id"}, Values),
+            ID = list_to_binary(LID),
             {string, Compact} = search_dict({string, "nodes"}, Values),
             BinCompact = list_to_binary(Compact),
             Nodes = compact_to_node_infos(BinCompact),
-            {list_to_binary(ID), Nodes}
+            etorrent_dht_state:log_request_success(IP, Port, ID),
+            {ID, Nodes}
     end.
 
 %
@@ -137,11 +150,10 @@ find_node(IP, Port, Target) when ?is_infohash(Target) ->
 %     - Which nodes has responded?
 %     - Which nodes has not been queried?
 find_node_search(Target) when ?is_infohash(Target) ->
-    Width = search_width(),
-    Known = etorrent_dht_state:known_nodes(),
-    Next = closest_to(Target, Known, Width),
+    Width   = search_width(),
+    Next    = etorrent_dht_state:closest_to(Target, Width),
     Queried = gb_sets:empty(),
-    Alive = gb_sets:empty(),
+    Alive   = gb_sets:empty(),
     Retries = 0,
     MaxRetries = search_retries(),
     find_node_search(Target, Next, Queried, Alive,
@@ -149,8 +161,12 @@ find_node_search(Target) when ?is_infohash(Target) ->
 
 
 find_node_search(_Target, _Next, _Queried, Alive,
-                 _MaxRetries, _MaxRetries, _Width) ->
-    lists:sort(gb_sets:to_list(Alive));
+                 MaxRetries, MaxRetries, _Width) ->
+    % Insert all responsive nodes into the routing table
+    AliveList = gb_sets:to_list(Alive),
+    etorrent_dht_state:insert_nodes(AliveList),
+    % Return all responsive nodes or at most Width?
+    AliveList;
 
 find_node_search(Target, Next, Queried, Alive,
                  Retries, MaxRetries, Width) ->
@@ -239,8 +255,7 @@ get_peers(IP, Port, InfoHash) when ?is_infohash(InfoHash) ->
 get_peers_search(InfoHash) when ?is_infohash(InfoHash) ->
     Width    = search_width(),
     MaxRetry = search_retries(),
-    Known    = etorrent_dht_state:known_nodes(),
-    Queue    = closest_to(InfoHash, Known, Width),
+    Queue    = etorrent_dht_state:closest_to(InfoHash, Width),
     Queried  = gb_sets:empty(),
     Alive    = gb_sets:empty(),
     Retries  = 0,
@@ -253,7 +268,10 @@ get_peers_search(_InfoHash, _Queue, _Queried, Alive, _Retries, _Retries, _Width)
     % If the search has failed to come up with a node that is
     % closer to the infohash multiple times return a list of the
     % nodes closest to the infohash.
-    {closest, lists:sort(gb_sets:to_list(Alive))};
+    AliveList = gb_sets:to_list(Alive),
+    % Insert all responsive nodes into the routing table
+    etorrent_dht_state:insert_nodes(AliveList),
+    {closest, AliveList};
 
 get_peers_search(InfoHash, Queue, Queried, Alive,
               Retries, MaxRetries, Width) ->
@@ -336,24 +354,10 @@ announce(IP, Port, InfoHash, Token, BTPort) when ?is_infohash(InfoHash),
 return(IP, Port, ID, Response) ->
     ok = gen_server:call(srv_name(), {return, IP, Port, ID, Response}).
 
-%
-% Bootstrap the local routing table using a known node
-% This will clear the local routing table of all previous
-% entries.
-%
-bootstrap(IP, Port) ->
-    ok = etorrent_dht_state:clear(),
-    {_, InitSet} = find_node(IP, Port, node_id()),
-    ok = etorrent_dht_state:save(InitSet),
-    NodeSet = find_node_search(node_id()),
-    Entries = [{ID, Ip, P} || {_, ID, Ip, P} <- NodeSet],
-    etorrent_dht_state:save(Entries).
-
-init([]) ->
-    ok = etorrent_dht_state:open(),
+init([NodeID]) ->
     {ok, Socket} = gen_udp:open(any_port(), socket_options()),
     State = #state{socket=Socket,
-                   self=random_id(),
+                   self=NodeID,
                    sent=gb_trees:empty()},
     {ok, State}.
 
@@ -419,9 +423,15 @@ handle_call({get_node_id}, _From, State) ->
     #state{self=Self} = State,
     {reply, Self, State};
 
+handle_call({get_node_port}, _From, State) ->
+    #state{
+        socket=Socket} = State,
+    {ok, {_, Port}} = inet:sockname(Socket),
+    {reply, Port, State};
+
 handle_call({get_num_open}, _From, State) ->
     Sent = State#state.sent,
-    NumSent = gen_trees:size(Sent),
+    NumSent = gb_trees:size(Sent),
     {reply, NumSent, State}.
 
 do_send_query(Method, Args, IP, Port, From, State) ->
@@ -433,6 +443,7 @@ do_send_query(Method, Args, IP, Port, From, State) ->
 
     ok = gen_udp:send(Socket, IP, Port, Query),
     TRef = timeout_reference(IP, Port, MsgID),
+    error_logger:info_msg("Sent ~w to ~w:~w", [Method, IP, Port]),
 
     NewSent = store_sent_query(IP, Port, MsgID, From, TRef, Sent),
     NewState = State#state{sent=NewSent},
@@ -469,6 +480,10 @@ handle_info({udp, _Socket, IP, Port, Packet}, State) ->
                     State#state{sent=NewSent}
             end;
         {Method, ID, Params} ->
+            error_logger:info_msg("Received ~w from ~w:~w", [Method, IP, Port]),
+            {string, SNID} = search_dict({string, "id"}, Params),
+            NID = list_to_binary(SNID),
+            etorrent_dht_state:insert_nodes([{NID, IP, Port}]),
             HandlerArgs = [Method, Params, IP, Port, ID, Self],
             spawn_link(?MODULE, handle_query, HandlerArgs),
             State
@@ -480,40 +495,32 @@ handle_info(_Msg, State) ->
 
 terminate(_, State) ->
     catch gen_udp:close(State#state.socket),
-    catch etorrent_dht_state:close(),
     {ok, State}.
 
 code_change(_, _, State) ->
     {ok, State}.
 
-node_id_param(Params) ->
-    {string, LNodeID} = search_dict({string, "id"}, Params),
-    list_to_binary(LNodeID).
-
 common_values(Self) ->
     [{{string, "id"}, {string, binary_to_list(Self)}}].
 
 handle_query('ping', Params, IP, Port, MsgID, Self) ->
-    _NodeID = node_id_param(Params),
     return(IP, Port, MsgID, common_values(Self));
 
 handle_query('find_node', Params, IP, Port, MsgID, Self) ->
-    _NodeID = node_id_param(Params),
     {string, LTarget} = search_dict({string, "target"}, Params),
     Target = list_to_binary(LTarget),
-    CloseNodes = etorrent_dht_state:closest_to(Target),
+    CloseNodes = [{ID, NIP, NPort} || {_, ID, NIP, NPort} <- etorrent_dht_state:closest_to(Target)],
     BinCompact = node_infos_to_compact(CloseNodes),
     LCompact = binary_to_list(BinCompact),
     Values = [{{string, "nodes"}, {string, LCompact}}],
     return(IP, Port, MsgID, common_values(Self) ++ Values);
 
 handle_query('get_peers', Params, IP, Port, MsgID, Self) ->
-    _NodeID = node_id_param(Params),
     {string, LHash} = search_dict({string, "info_hash"}, Params),
     InfoHash = list_to_binary(LHash),
     Values = case etorrent_dht_state:get_peers(InfoHash) of
         [] ->
-            Nodes = etorrent_dht_state:closest_to(InfoHash),
+            Nodes = [{ID, NIP, NPort} || {_, ID, NIP, NPort} <- etorrent_dht_state:closest_to(InfoHash)],
             BinCompact = node_infos_to_compact(Nodes),
             LCompact = binary_to_list(BinCompact),
             [{{string, "nodes"}, {string, LCompact}}];
@@ -522,7 +529,10 @@ handle_query('get_peers', Params, IP, Port, MsgID, Self) ->
             LCompact = binary_to_list(BinCompact),
             [{{string, "peers"}, {string, LCompact}}]
     end,
-    return(IP, Port, MsgID, common_values(Self) ++ Values).
+    return(IP, Port, MsgID, common_values(Self) ++ Values);
+
+handle_query('announce', Params, IP, Port, MsgID, Self) ->
+    return(IP, Port, MsgID, common_values(Self)).
 
 
 unique_message_id(IP, Port, Open) ->
