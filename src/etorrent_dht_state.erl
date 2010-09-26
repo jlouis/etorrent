@@ -63,17 +63,16 @@
     node_access=gb_trees:empty(),    % Last time of node activity
     buck_timers=gb_trees:empty(),    % Timers used for bucket timeouts
     node_timeout=10*60*1000,         % Node keepalive timeout
-    buck_timeout=15*60*1000,         % Bucket refresh timeout
+    buck_timeout=5*60*1000,          % Bucket refresh timeout
     node_buffers=gb_trees:empty()}). % FIFO buckets for unmaintained nodes
 %
 % Since each key in the node_access tree is always a
 % member of the node set, use the node_access tree to check
 % if a node is a member of the routing table.
 %
-% The bucket refresh timeout must be larger than the keepalive
-% timeout for nodes. If the difference between them is too short,
-% or negative, the server will attempt to replace disconnected
-% nodes _immediately_, or even before they are disconnected.
+% The bucket refresh timeout is the amount of time that the
+% server will tolerate a node to be disconnected before it
+% attempts to refresh the bucket.
 %
 
 srv_name() ->
@@ -205,6 +204,7 @@ handle_call({insert_node, ID, IP, Port}, From, State) ->
             State;       
 
         {false, []} when length(PrevBMembers) < 8 ->
+            error_logger:info_msg("Inserting ~w:~w into the routing table", [IP, Port]),
             New = {ID, IP, Port},
             NewNodes   = ordsets:add_element(New, PrevNodes),
             NewNTimers = init_node_timer(ID, IP, Port, NTimeout, PrevNTimers),
@@ -305,6 +305,7 @@ handle_info({inactive_node, ID, IP, Port}, State) ->
     NewState = case is_in_table(ID, IP, Port, NAccess) of
         false -> State;
         true ->
+            error_logger:info_msg("Node at ~w:~w timed out", [IP, Port]),
             _ = spawn_link(?MODULE, keepalive, [ID, IP, Port]),
             NewNTimers = reset_node_timer(ID, IP, Port, NTimeout, PrevNTimers),
             State#state{node_timers=NewNTimers}
@@ -322,7 +323,7 @@ handle_info({inactive_bucket, Bucket}, State) ->
 
     BMembers   = bucket_nodes(Self, Bucket, Nodes),
     TmpBTimers = cancel_bucket_timer(Bucket, PrevBTimers),
-    NewBTimers = init_bucket_timer(Bucket, BTimeout - NTimeout, TmpBTimers),
+    NewBTimers = init_bucket_timer(Bucket, BTimeout, TmpBTimers),
     NewState   = State#state{buck_timers=NewBTimers},
 
     {noreply, NewState}.

@@ -55,7 +55,8 @@
          code_change/3]).
 
 % internal exports
--export([handle_query/6]).
+-export([handle_query/6,
+         decode_msg/1]).
 
 
 -record(state, {
@@ -164,7 +165,8 @@ find_node_search(_Target, _Next, _Queried, Alive,
                  MaxRetries, MaxRetries, _Width) ->
     % Insert all responsive nodes into the routing table
     AliveList = gb_sets:to_list(Alive),
-    etorrent_dht_state:insert_nodes(AliveList),
+    WithoutDist = [{ID, IP, Port} || {_, ID, IP, Port} <- AliveList],
+    etorrent_dht_state:insert_nodes(WithoutDist),
     % Return all responsive nodes or at most Width?
     AliveList;
 
@@ -468,7 +470,23 @@ handle_info({timeout, _, IP, Port, ID}, State) ->
 handle_info({udp, _Socket, IP, Port, Packet}, State) ->
     Sent = State#state.sent,
     Self = State#state.self,
-    NewState = case decode_msg(Packet) of
+    NewState = case (catch decode_msg(Packet)) of
+        {'EXIT', _} ->
+            error_logger:error_msg("Invalid packet from ~w:~w: ~w", [IP, Port, Packet]),
+            State;
+
+        {error, ID, Code, ErrorMsg} ->
+            error_logger:error_msg("Received error from ~w:~w (~w) ~w", [IP, Port, Code, ErrorMsg]),
+            case find_sent_query(IP, Port, ID, Sent) of
+                error ->
+                    State;
+                {ok, {Client, Timeout}} ->
+                    _ = cancel_timeout(Timeout),
+                    _ = gen_server:reply(Client, timeout),
+                    NewSent = clear_sent_query(IP, Port, ID, Sent),
+                    State#state{sent=NewSent}
+            end;
+
         {response, ID, Values} ->
             case find_sent_query(IP, Port, ID, Sent) of
                 error ->
@@ -503,7 +521,7 @@ code_change(_, _, State) ->
 common_values(Self) ->
     [{{string, "id"}, {string, binary_to_list(Self)}}].
 
-handle_query('ping', Params, IP, Port, MsgID, Self) ->
+handle_query('ping', _, IP, Port, MsgID, Self) ->
     return(IP, Port, MsgID, common_values(Self));
 
 handle_query('find_node', Params, IP, Port, MsgID, Self) ->
@@ -531,7 +549,7 @@ handle_query('get_peers', Params, IP, Port, MsgID, Self) ->
     end,
     return(IP, Port, MsgID, common_values(Self) ++ Values);
 
-handle_query('announce', Params, IP, Port, MsgID, Self) ->
+handle_query('announce', _, IP, Port, MsgID, Self) ->
     return(IP, Port, MsgID, common_values(Self)).
 
 
@@ -588,7 +606,9 @@ decode_msg(InMsg) ->
             {dict, Values} = search_dict({string, "r"}, Msg),
             {response, MsgID, {dict, Values}};
         {string, "e"} ->
-            error
+            {list, Error} = search_dict({string, "e"}, Msg),
+            [{integer, ECode}, {string, EMsg}] = Error,
+            {error, MsgID, ECode, EMsg}
     end.
 
 
