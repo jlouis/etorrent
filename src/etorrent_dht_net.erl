@@ -51,13 +51,14 @@
          code_change/3]).
 
 % internal exports
--export([handle_query/6,
+-export([handle_query/7,
          decode_msg/1]).
 
 
 -record(state, {
     socket,
-    sent
+    sent,
+    tokens
 }).
 
 %
@@ -88,8 +89,8 @@ search_retries() ->
 socket_options() ->
     [list, inet, {active, true}].
 
-any_port() ->
-    0.
+token_lifetime() ->
+    5*60*1000.
 
 %
 % Public interface
@@ -345,7 +346,9 @@ return(IP, Port, ID, Response) ->
 init([DHTPort]) ->
     {ok, Socket} = gen_udp:open(DHTPort, socket_options()),
     State = #state{socket=Socket,
-                   sent=gb_trees:empty()},
+                   sent=gb_trees:empty(),
+                   tokens=init_tokens(3)},
+    erlang:send_after(token_lifetime(), self(), renew_token),
     {ok, State}.
 
 
@@ -455,8 +458,17 @@ handle_info({timeout, _, IP, Port, ID}, State) ->
     end,
     {noreply, NewState};
 
+handle_info(renew_token, State) ->
+    #state{tokens=PrevTokens} = State,
+    NewTokens = renew_token(PrevTokens),
+    NewState = State#state{tokens=NewTokens},
+    erlang:send_after(token_lifetime(), self(), renew_token),
+    {noreply, NewState};
+
 handle_info({udp, _Socket, IP, Port, Packet}, State) ->
-    Sent = State#state.sent,
+    #state{
+        sent=Sent,
+        tokens=Tokens} = State,
     Self = etorrent_dht_state:node_id(),
     NewState = case (catch decode_msg(Packet)) of
         {'EXIT', _} ->
@@ -490,7 +502,7 @@ handle_info({udp, _Socket, IP, Port, Packet}, State) ->
             {string, SNID} = search_dict({string, "id"}, Params),
             NID = list_to_binary(SNID),
             etorrent_dht_state:insert_nodes([{NID, IP, Port}]),
-            HandlerArgs = [Method, Params, IP, Port, ID, Self],
+            HandlerArgs = [Method, Params, IP, Port, ID, Self, Tokens],
             spawn_link(?MODULE, handle_query, HandlerArgs),
             State
     end,
@@ -513,10 +525,10 @@ code_change(_, _, State) ->
 common_values(Self) ->
     [{{string, "id"}, {string, binary_to_list(Self)}}].
 
-handle_query('ping', _, IP, Port, MsgID, Self) ->
+handle_query('ping', _, IP, Port, MsgID, Self, _Tokens) ->
     return(IP, Port, MsgID, common_values(Self));
 
-handle_query('find_node', Params, IP, Port, MsgID, Self) ->
+handle_query('find_node', Params, IP, Port, MsgID, Self, _Tokens) ->
     {string, LTarget} = search_dict({string, "target"}, Params),
     Target = list_to_binary(LTarget),
     CloseNodes = [{ID, NIP, NPort} || {_, ID, NIP, NPort} <- etorrent_dht_state:closest_to(Target)],
@@ -525,7 +537,7 @@ handle_query('find_node', Params, IP, Port, MsgID, Self) ->
     Values = [{{string, "nodes"}, {string, LCompact}}],
     return(IP, Port, MsgID, common_values(Self) ++ Values);
 
-handle_query('get_peers', Params, IP, Port, MsgID, Self) ->
+handle_query('get_peers', Params, IP, Port, MsgID, Self, Tokens) ->
     {string, LHash} = search_dict({string, "info_hash"}, Params),
     InfoHash = list_to_binary(LHash),
     Values = case etorrent_dht_tracker:get_peers(InfoHash) of
@@ -539,15 +551,22 @@ handle_query('get_peers', Params, IP, Port, MsgID, Self) ->
             PeerList = {list, [{string, binary_to_list(P)} || P <- PeerBins]},
             [{{string, "values"}, PeerList}]
     end,
-    TokenVals = [{{string, "token"}, {string, "banan"}}],
+    LToken = binary_to_list(token_value(IP, Port, Tokens)),
+    TokenVals = [{{string, "token"}, {string, LToken}}],
     return(IP, Port, MsgID, common_values(Self) ++ TokenVals ++ Values);
 
-handle_query('announce', Params, IP, Port, MsgID, Self) ->
+handle_query('announce', Params, IP, Port, MsgID, Self, Tokens) ->
     {string, LHash} = search_dict({string, "info_hash"}, Params),
     InfoHash = list_to_binary(LHash),
     {integer, BTPort} = search_dict({string, "port"}, Params),
-    {string, Token} = search_dict({string, "token"}, Params),
-    etorrent_dht_tracker:announce(InfoHash, IP, BTPort),
+    {string, LToken} = search_dict({string, "token"}, Params),
+    Token = list_to_binary(LToken),
+    _ = case is_valid_token(Token, IP, Port, Tokens) of
+        true ->
+            etorrent_dht_tracker:announce(InfoHash, IP, BTPort);
+        false ->
+            error_logger:error_msg("Invalid token from ~w:~w ~w", [IP, Port, Token])
+    end,
     return(IP, Port, MsgID, common_values(Self)).
 
 unique_message_id(IP, Port, Open) ->
@@ -577,6 +596,54 @@ tkey(IP, Port, ID) ->
 
 tval(Client, TimeoutRef) ->
     {Client, TimeoutRef}.
+
+%
+% Generate a random token value. A token value is used to filter out bogus announce
+% requests, or at least announce requests from nodes that never sends get_peers requests.
+%
+random_token() ->
+    ID0 = random:uniform(16#FFFF),
+    ID1 = random:uniform(16#FFFF),
+    <<ID0:16, ID1:16>>.
+
+%
+% Initialize the socket server's token queue, the size of this queue
+% will be kept constant during the running-time of the server. The
+% size of this queue specifies how old tokens the server will accept.
+%
+init_tokens(NumTokens) ->
+    queue:from_list([random_token() || _ <- lists:seq(1, NumTokens)]).
+%
+% Calculate the token value for a client based on the % client's IP address
+% and Port number combined with a secret token value held by the socket server.
+% This avoids the need to store unique token values in the socket server.
+%
+token_value(IP, Port, Token) when is_binary(Token) ->
+    Hash = erlang:phash2({IP, Port, Token}),
+    <<Hash:32>>;
+
+token_value(IP, Port, Tokens) ->
+    MostRecent = queue:last(Tokens),
+    token_value(IP, Port, MostRecent).
+
+
+
+%
+% Check if a token value included by a node in an announce message is bogus
+% of based on a token that is not recent enough.
+%
+is_valid_token(TokenValue, IP, Port, Tokens) ->
+    ValidValues = [token_value(IP, Port, Token) || Token <- queue:to_list(Tokens)],
+    lists:member(TokenValue, ValidValues).
+
+%
+% Discard the oldest token and create a new one to replace it.
+%
+renew_token(Tokens) ->
+    {_, WithoutOldest} = queue:out(Tokens),
+    queue:in(random_token(), WithoutOldest).
+
+
 
 decode_msg(InMsg) ->
     Msg = etorrent_bcoding:decode(InMsg),
