@@ -9,6 +9,7 @@ start(DHTPort) ->
     start(DHTPort, "etorrent_dht.persistent").
 
 start(DHTPort, StateFile) ->
+    _ = etorrent_dht_tracker:init(),
     {ok, _} = etorrent_dht_state:start_link(StateFile),
     {ok, _} = etorrent_dht_net:start_link(DHTPort),
     ok.

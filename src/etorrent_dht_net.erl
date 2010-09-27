@@ -528,22 +528,27 @@ handle_query('find_node', Params, IP, Port, MsgID, Self) ->
 handle_query('get_peers', Params, IP, Port, MsgID, Self) ->
     {string, LHash} = search_dict({string, "info_hash"}, Params),
     InfoHash = list_to_binary(LHash),
-    Values = case etorrent_dht_state:get_peers(InfoHash) of
+    Values = case etorrent_dht_tracker:get_peers(InfoHash) of
         [] ->
             Nodes = [{ID, NIP, NPort} || {_, ID, NIP, NPort} <- etorrent_dht_state:closest_to(InfoHash)],
             BinCompact = node_infos_to_compact(Nodes),
             LCompact = binary_to_list(BinCompact),
             [{{string, "nodes"}, {string, LCompact}}];
         Peers ->
-            BinCompact = peers_to_compact(Peers),
-            LCompact = binary_to_list(BinCompact),
-            [{{string, "peers"}, {string, LCompact}}]
+            PeerBins = [peers_to_compact([P]) || P <- Peers],
+            PeerList = {list, [{string, binary_to_list(P)} || P <- PeerBins]},
+            [{{string, "values"}, PeerList}]
     end,
-    return(IP, Port, MsgID, common_values(Self) ++ Values);
+    TokenVals = [{{string, "token"}, {string, "banan"}}],
+    return(IP, Port, MsgID, common_values(Self) ++ TokenVals ++ Values);
 
-handle_query('announce', _, IP, Port, MsgID, Self) ->
+handle_query('announce', Params, IP, Port, MsgID, Self) ->
+    {string, LHash} = search_dict({string, "info_hash"}, Params),
+    InfoHash = list_to_binary(LHash),
+    {integer, BTPort} = search_dict({string, "port"}, Params),
+    {string, Token} = search_dict({string, "token"}, Params),
+    etorrent_dht_tracker:announce(InfoHash, IP, BTPort),
     return(IP, Port, MsgID, common_values(Self)).
-
 
 unique_message_id(IP, Port, Open) ->
     IntID = random:uniform(16#FFFF),

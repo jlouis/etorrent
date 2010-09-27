@@ -60,13 +60,14 @@
 
 -record(state, {
     node_id,
-    node_set=ordsets:new(),          % The set used for the routing table
-    node_timers=gb_trees:empty(),    % Timers used for node timeouts 
-    node_access=gb_trees:empty(),    % Last time of node activity
-    buck_timers=gb_trees:empty(),    % Timers used for bucket timeouts
-    node_timeout=10*60*1000,         % Node keepalive timeout
-    buck_timeout=5*60*1000,          % Bucket refresh timeout
-    node_buffers=gb_trees:empty()}). % FIFO buckets for unmaintained nodes
+    node_set=ordsets:new(),           % The set used for the routing table
+    node_timers=gb_trees:empty(),     % Timers used for node timeouts 
+    node_access=gb_trees:empty(),     % Last time of node activity
+    buck_timers=gb_trees:empty(),     % Timers used for bucket timeouts
+    node_timeout=10*60*1000,          % Node keepalive timeout
+    buck_timeout=5*60*1000,           % Bucket refresh timeout
+    node_buffers=gb_trees:empty(),    % FIFO buckets for unmaintained nodes
+    state_file="/tmp/dht_state"}).    % Path to persistent state
 %
 % Since each key in the node_access tree is always a
 % member of the node set, use the node_access tree to check
@@ -164,7 +165,8 @@ init([StateFile]) ->
     State = InitState#state{
         buck_timers=BTimers,
         node_timers=NTimers,
-        node_access=NAccess},
+        node_access=NAccess,
+        state_file=StateFile},
     {ok, State}.
 
 handle_call({insert_nodes, Nodes}, From, State) ->
@@ -371,7 +373,8 @@ handle_info({inactive_bucket, Bucket}, State) ->
     {noreply, NewState}.
 
 terminate(_, State) ->
-    dump_state("etorrent_dht.persistent", State).
+    #state{state_file=StateFile} = State,
+    dump_state(StateFile, State).
 
 dump_state(Filename, ServerState) ->
     #state{

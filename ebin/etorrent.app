@@ -19,8 +19,8 @@
      etorrent_memory_logger,
      etorrent_tracker_communication, etorrent_tracking_map,
      etorrent_t_sup, etorrent_utils, http_gzip, etorrent_fs_janitor,
-     etorrent_dht_net,
-     etorrent_dht_state,
+     etorrent_dht_net, etorrent_dht_state,
+     etorrent_dht, etorrent_dht_tracker,
      etorrent_webui
  ]},
  {registered,
