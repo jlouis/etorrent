@@ -35,6 +35,7 @@
 
 -export([srv_name/0,
          start_link/1,
+         node_id/0,
          insert_node/2,
          insert_nodes/1,
          insert_node/3,
@@ -44,7 +45,11 @@
          log_request_timeout/3,
          log_request_success/3,
          log_request_from/3,
-         keepalive/3]).
+         keepalive/3,
+         dump_state/0,
+         dump_state/1,
+         dump_state/2,
+         load_state/2]).
 
 -export([init/1,
          handle_call/3,
@@ -52,9 +57,6 @@
          handle_info/2,
          terminate/2,
          code_change/3]).
-
--import(etorrent_dht_net, [distance/2, closest_to/3]).
-
 
 -record(state, {
     node_id,
@@ -78,8 +80,11 @@
 srv_name() ->
     etorrent_dht_state_server.
 
-start_link(NodeID) ->
-    gen_server:start_link({local, srv_name()}, ?MODULE, [NodeID], []).
+start_link(StateFile) ->
+    gen_server:start_link({local, srv_name()}, ?MODULE, [StateFile], []).
+
+node_id() ->
+    gen_server:call(srv_name(), {node_id}).
 
 insert_node(IP, Port) ->
     case etorrent_dht_net:ping(IP, Port) of
@@ -119,6 +124,12 @@ log_request_from(ID, IP, Port) ->
     Call = {request_from, ID, IP, Port},
     gen_server:call(srv_name(), Call).
 
+dump_state() ->
+    gen_server:call(srv_name(), {dump_state}).
+
+dump_state(Filename) ->
+    gen_server:call(srv_name(), {dump_state, Filename}).
+
 keepalive(ID, IP, Port) ->
     case etorrent_dht_net:ping(IP, Port) of
         ID    -> log_request_success(ID, IP, Port);
@@ -127,13 +138,33 @@ keepalive(ID, IP, Port) ->
     end.
 
 
-init([NodeID]) ->
-    InitState = #state{node_id=NodeID},
-    #state{buck_timers=InitBTimers} = InitState,
+
+init([StateFile]) ->
+    InitState = load_state(StateFile, #state{}),
+    #state{
+        node_set=InitNodes,
+        buck_timers=InitBTimers,
+        node_timers=InitNTimers,
+        node_access=InitNAccess} = InitState,
+
+    % If any nodes are loaded on startup, access times and
+    % timers must be restored to reasonably short values.
     BTimers = lists:foldl(fun(Bucket, Acc) ->
         init_bucket_timer(Bucket, 1000, Acc)
     end, InitBTimers, bucket_ranges()),
-    State = InitState#state{buck_timers=BTimers},
+
+    NTimers = lists:foldl(fun({ID, IP, Port}, Acc) ->
+        init_node_timer(ID, IP, Port, 1000, Acc)
+    end, InitNTimers, InitNodes),
+
+    NAccess = lists:foldl(fun({ID, IP, Port}, Acc) ->
+        init_node_access(ID, IP, Port, Acc)
+    end, InitNAccess, InitNodes),
+
+    State = InitState#state{
+        buck_timers=BTimers,
+        node_timers=NTimers,
+        node_access=NAccess},
     {ok, State}.
 
 handle_call({insert_nodes, Nodes}, From, State) ->
@@ -154,7 +185,7 @@ handle_call({insert_nodes, Nodes}, From, State) ->
     % These nodes will be distributed across a set of buckets
     Ranges  = bucket_ranges(),
     Buckets = ordsets:from_list(
-        [bucket_range(distance(ID, Self), Ranges) || {ID, _, _} <- InsNodes]),
+        [bucket_range(etorrent_dht:distance(ID, Self), Ranges) || {ID, _, _} <- InsNodes]),
 
     _ = [begin
         % Which nodes are already in this bucket, and which
@@ -246,7 +277,7 @@ handle_call({insert_node, ID, IP, Port}, From, State) ->
 
 handle_call({closest_to, NodeID, NumNodes}, From, State) ->
     #state{node_set=Nodes} = State,
-    CloseNodes = closest_to(NodeID, Nodes, NumNodes),
+    CloseNodes = etorrent_dht:closest_to(NodeID, Nodes, NumNodes),
     {reply, CloseNodes, State};
 
 
@@ -292,7 +323,18 @@ handle_call({request_success, ID, IP, Port}, From, State) ->
 
 
 handle_call({request_from, ID, IP, Port}, From, State) ->
-    {reply, ok, State}.
+    {reply, ok, State};
+
+handle_call({dump_state}, _From, State) ->
+    {reply, State, State};
+
+handle_call({dump_state, Filename}, _From, State) ->
+   catch dump_state(Filename, State),
+    {reply, ok, State};
+
+handle_call({node_id}, _From, State) ->
+    #state{node_id=Self} = State,
+    {reply, Self, State}.
 
 handle_cast(_, State) ->
     {noreply, State}.
@@ -328,8 +370,30 @@ handle_info({inactive_bucket, Bucket}, State) ->
 
     {noreply, NewState}.
 
-terminate(_, _) ->
-    ok.
+terminate(_, State) ->
+    dump_state("etorrent_dht.persistent", State).
+
+dump_state(Filename, ServerState) ->
+    #state{
+        node_id=Self,
+        node_set=Nodes} = ServerState,
+    PersistentState = [{node_id, Self}, {node_set, Nodes}],
+    file:write_file(Filename, term_to_binary(PersistentState)).
+
+load_state(Filename, ServerState) ->
+    case file:read_file(Filename) of
+        {ok, BinState} ->
+            PersistentState = binary_to_term(BinState),
+            {value, {_, Self}}  = lists:keysearch(node_id, 1, PersistentState),
+            {value, {_, Nodes}} = lists:keysearch(node_set, 1, PersistentState),
+            ServerState#state{
+                node_id=Self,
+                node_set=Nodes};
+        {error, Reason} ->
+            error_logger:error_msg("Failed to load state from ~s", [Filename]),
+            ServerState#state{
+                node_id=etorrent_dht:random_id()}
+    end.
 
 code_change(_, _, State) ->
     {ok, State}.
@@ -400,7 +464,7 @@ bucket_range(Distance, [_|T]) ->
 % Determine which bucket range a node falls within
 %
 bucket_range(Self, ID, Ranges) ->
-    Distance = distance(Self, ID),
+    Distance = etorrent_dht:distance(Self, ID),
     bucket_range(Distance, Ranges).
 
 
@@ -410,7 +474,7 @@ bucket_range(Self, ID, Ranges) ->
 bucket_nodes(_, _, []) ->
     [];
 bucket_nodes(Self, {Min, Max}=Bucket, [{ID, _, _}=H|T]) ->
-    Dist = distance(ID, Self),
+    Dist = etorrent_dht:distance(ID, Self),
     if  (Dist >= Min) and (Dist =< Max) -> [H|bucket_nodes(Self, Bucket, T)];
         true -> bucket_nodes(Self, Bucket, T)
     end.

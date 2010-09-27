@@ -32,9 +32,7 @@
 %     the infohash.
 
 % Public interface
--export([start/0,
-         start_link/1,
-         node_id/0,
+-export([start_link/1,
          node_port/0,
          ping/2,
          find_node/3,
@@ -42,9 +40,7 @@
          get_peers/3,
          get_peers_search/1,
          announce/5,
-         return/4,
-         closest_to/3, % TODO - move to state or util
-         distance/2]). % TODO - move to state or util
+         return/4]).
 
 % gen_server callbacks
 -export([init/1,
@@ -61,8 +57,7 @@
 
 -record(state, {
     socket,
-    sent,
-    self
+    sent
 }).
 
 %
@@ -99,17 +94,8 @@ any_port() ->
 %
 % Public interface
 %
-start() ->
-    NodeID = random_id(),
-    {ok, _} = etorrent_dht_net:start_link(NodeID),
-    {ok, _} = etorrent_dht_state:start_link(NodeID),
-    ok.
-
-start_link(NodeID) ->
-    gen_server:start({local, srv_name()}, ?MODULE, [NodeID], []).
-
-node_id() ->
-    gen_server:call(srv_name(), {get_node_id}).
+start_link(DHTPort) ->
+    gen_server:start({local, srv_name()}, ?MODULE, [DHTPort], []).
 
 node_port() ->
     gen_server:call(srv_name(), {get_node_port}).
@@ -203,7 +189,7 @@ find_node_search(Target, Next, Queried, Alive,
     NewNodes  = [NodeInfo
                 || NodeInfo <- AllNodes
                 ,  not gb_sets:is_member(NodeInfo, NewQueried)],
-    NewNext = closest_to(Target, NewNodes, Width),
+    NewNext = etorrent_dht:closest_to(Target, NewNodes, Width),
 
     % Check if the closest node in the work queue is closer
     % to the infohash than the closest responsive node.
@@ -314,7 +300,7 @@ get_peers_search(InfoHash, Queue, Queried, Alive,
     NewNodes  = [NodeInfo
                 || NodeInfo <- AllNodes
                 ,  not IsQueried(NodeInfo)],
-    NewQueue  = closest_to(InfoHash, NewNodes, Width),
+    NewQueue  = etorrent_dht:closest_to(InfoHash, NewNodes, Width),
 
     % Check if the closest node in the work queue is closer
     % to the infohash than the closest responsive node.
@@ -356,23 +342,12 @@ announce(IP, Port, InfoHash, Token, BTPort) when ?is_infohash(InfoHash),
 return(IP, Port, ID, Response) ->
     ok = gen_server:call(srv_name(), {return, IP, Port, ID, Response}).
 
-init([NodeID]) ->
-    {ok, Socket} = gen_udp:open(any_port(), socket_options()),
+init([DHTPort]) ->
+    {ok, Socket} = gen_udp:open(DHTPort, socket_options()),
     State = #state{socket=Socket,
-                   self=NodeID,
                    sent=gb_trees:empty()},
     {ok, State}.
 
-closest_to(InfoHash, NodeList, NumNodes) ->
-    WithDist = [{distance(ID, InfoHash), ID, IP, Port}
-               || {ID, IP, Port} <- NodeList],
-    Sorted = lists:sort(WithDist),
-    if
-    (length(Sorted) =< NumNodes) -> Sorted;
-    (length(Sorted) >  NumNodes)  ->
-        {Head, _Tail} = lists:split(NumNodes, Sorted),
-        Head
-    end.
 
 
 timeout_reference(IP, Port, ID) ->
@@ -383,13 +358,13 @@ cancel_timeout(TimeoutRef) ->
     erlang:cancel_timer(TimeoutRef).
 
 handle_call({ping, IP, Port}, From, State) ->
-    #state{self=Self} = State,
+    Self = etorrent_dht_state:node_id(),
     LSelf = binary_to_list(Self),
     Args = [{{string, "id"}, {string, LSelf}}],
     do_send_query('ping', Args, IP, Port, From, State);
 
 handle_call({find_node, IP, Port, Target}, From, State) ->
-    #state{self=Self} = State,
+    Self = etorrent_dht_state:node_id(),
     LSelf = binary_to_list(Self),
     LTarget = binary_to_list(Target),
     Args = [{{string, "id"}, {string, LSelf}},
@@ -397,7 +372,7 @@ handle_call({find_node, IP, Port, Target}, From, State) ->
     do_send_query('find_node', Args, IP, Port, From, State);
 
 handle_call({get_peers, IP, Port, InfoHash}, From, State) ->
-    #state{self=Self} = State,
+    Self = etorrent_dht_state:node_id(),
     LSelf = binary_to_list(Self),
     LHash = binary_to_list(InfoHash),
     Args = [{{string, "id"}, {string, LSelf}},
@@ -405,7 +380,7 @@ handle_call({get_peers, IP, Port, InfoHash}, From, State) ->
     do_send_query('get_peers', Args, IP, Port, From, State);
 
 handle_call({announce, IP, Port, InfoHash, Token, BTPort}, From, State) ->
-    #state{self=Self} = State,
+    Self = etorrent_dht_state:node_id(),
     LSelf = binary_to_list(Self),
     LHash = binary_to_list(InfoHash),
     LToken = binary_to_list(Token),
@@ -418,12 +393,17 @@ handle_call({announce, IP, Port, InfoHash, Token, BTPort}, From, State) ->
 handle_call({return, IP, Port, ID, Values}, _From, State) ->
     Socket = State#state.socket,
     Response = encode_response(ID, Values),
-    ok = gen_udp:send(Socket, IP, Port, Response),
+    ok = case gen_udp:send(Socket, IP, Port, Response) of
+        ok ->
+            ok;
+        {error, einval} ->
+            error_logger:error_msg("Error (einval) when returning to ~w:~w", [IP, Port]),
+            ok;
+        {error, eagain} ->
+            error_logger:error_msg("Error (eagain) when returning to ~w:~w", [IP, Port]),
+            ok
+    end,
     {reply, ok, State};
-
-handle_call({get_node_id}, _From, State) ->
-    #state{self=Self} = State,
-    {reply, Self, State};
 
 handle_call({get_node_port}, _From, State) ->
     #state{
@@ -443,13 +423,21 @@ do_send_query(Method, Args, IP, Port, From, State) ->
     MsgID = unique_message_id(IP, Port, Sent),
     Query = encode_query(Method, MsgID, Args),
 
-    ok = gen_udp:send(Socket, IP, Port, Query),
-    TRef = timeout_reference(IP, Port, MsgID),
-    error_logger:info_msg("Sent ~w to ~w:~w", [Method, IP, Port]),
+    case gen_udp:send(Socket, IP, Port, Query) of
+        ok ->
+            TRef = timeout_reference(IP, Port, MsgID),
+            error_logger:info_msg("Sent ~w to ~w:~w", [Method, IP, Port]),
 
-    NewSent = store_sent_query(IP, Port, MsgID, From, TRef, Sent),
-    NewState = State#state{sent=NewSent},
-    {noreply, NewState}.
+            NewSent = store_sent_query(IP, Port, MsgID, From, TRef, Sent),
+            NewState = State#state{sent=NewSent},
+            {noreply, NewState};
+        {error, einval} ->
+            error_logger:error_msg("Error (einval) when sending ~w to ~w:~w", [Method, IP, Port]),
+            {reply, timeout, State};
+        {error, eagain} ->
+            error_logger:error_msg("Error (eagain) when sending ~w to ~w:~w", [Method, IP, Port]),
+            {reply, timeout, State}
+    end.
 
 handle_cast(not_implemented, State) ->
     {noreply, State}.
@@ -469,7 +457,7 @@ handle_info({timeout, _, IP, Port, ID}, State) ->
 
 handle_info({udp, _Socket, IP, Port, Packet}, State) ->
     Sent = State#state.sent,
-    Self = State#state.self,
+    Self = etorrent_dht_state:node_id(),
     NewState = case (catch decode_msg(Packet)) of
         {'EXIT', _} ->
             error_logger:error_msg("Invalid packet from ~w:~w: ~w", [IP, Port, Packet]),
@@ -512,7 +500,11 @@ handle_info(_Msg, State) ->
     {noreply, State}.
 
 terminate(_, State) ->
-    catch gen_udp:close(State#state.socket),
+    (catch gen_udp:close(State#state.socket)),
+    #state{sent=Sent} = State,
+    LSent = gb_trees:values(Sent),
+    _ = [catch gen_server:reply(Client, timeout) || {Client, _} <- LSent],
+    _ = [catch cancel_timeout(TRef) || {_, TRef} <- LSent],
     {ok, State}.
 
 code_change(_, _, State) ->
@@ -580,17 +572,6 @@ tkey(IP, Port, ID) ->
 
 tval(Client, TimeoutRef) ->
     {Client, TimeoutRef}.
-
-random_id() ->
-    Byte  = fun() -> random:uniform(256) - 1 end,
-    Bytes = [Byte() || _ <- lists:seq(1, 20)],
-    list_to_binary(Bytes).
-
-
-distance(BID0, BID1) ->
-    <<ID0:160>> = BID0,
-    <<ID1:160>> = BID1,
-    ID0 bxor ID1.
 
 decode_msg(InMsg) ->
     Msg = etorrent_bcoding:decode(InMsg),
