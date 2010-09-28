@@ -313,8 +313,9 @@ handle_message({piece, Index, Offset, Data}, S) ->
 handle_message({extended, _, _}, S) when S#state.extended_messaging == false ->
     %% We do not accept extended messages unless they have been enabled.
     {stop, normal, S};
-handle_message({extended, 0, BCode}, S) ->
-    ?INFO([{extended_message, etorrent_bcoding:decode(BCode)}]),
+handle_message({extended, 0, _BCode}, S) ->
+    %% Disable the extended messaging for now,
+    %?INFO([{extended_message, etorrent_bcoding:decode(BCode)}]),
     %% We could consider storing the information here, if needed later on,
     %%   but for now we simply ignore that.
     {ok, S};
