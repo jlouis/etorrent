@@ -1,5 +1,5 @@
 -module(etorrent_dht_tracker).
--export([init/0,
+-export([start_link/0,
          tab_name/0,
          announce/3,
          get_peers/1]).
@@ -7,15 +7,15 @@
 tab_name() ->
     etorrent_dht_tracker_tab.
 
+max_per_torrent() ->
+    32.
 
-init() ->
-    case ets:info(tab_name()) of
-        undefined ->
-            _ = ets:new(tab_name(), [named_table, public, bag]),
-            ok;
-        _ ->
-            ok
+start_link() ->
+    _ = case ets:info(tab_name()) of
+        undefined -> ets:new(tab_name(), [named_table, public, bag]);
+        _ -> ok
     end.
+    
 
 %
 % Register a peer as a member of a swarm. If the maximum number of
@@ -43,8 +43,7 @@ get_peers(InfoHash) ->
         '$end_of_table' -> []
     end.
 
-max_per_torrent() ->
-    32.
 
 random_peer() ->
+    random:seed(now()),
     random:uniform(max_per_torrent()).
