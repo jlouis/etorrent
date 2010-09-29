@@ -125,7 +125,7 @@ find_node(IP, Port, Target) when ?is_infohash(Target) ->
             {string, Compact} = search_dict({string, "nodes"}, Values),
             BinCompact = list_to_binary(Compact),
             Nodes = compact_to_node_infos(BinCompact),
-            etorrent_dht_state:log_request_success(IP, Port, ID),
+            etorrent_dht_state:log_request_success(ID, IP, Port),
             {ID, Nodes}
     end.
 
@@ -153,7 +153,7 @@ find_node_search(_Target, _Next, _Queried, Alive,
     % Insert all responsive nodes into the routing table
     AliveList = gb_sets:to_list(Alive),
     WithoutDist = [{ID, IP, Port} || {_, ID, IP, Port} <- AliveList],
-    etorrent_dht_state:insert_nodes(WithoutDist),
+    etorrent_dht_state:unsafe_insert_nodes(WithoutDist),
     % Return all responsive nodes or at most Width?
     AliveList;
 
@@ -259,7 +259,7 @@ get_peers_search(_InfoHash, _Queue, _Queried, Alive, _Retries, _Retries, _Width)
     % nodes closest to the infohash.
     AliveList = gb_sets:to_list(Alive),
     % Insert all responsive nodes into the routing table
-    etorrent_dht_state:insert_nodes(AliveList),
+    etorrent_dht_state:unsafe_insert_nodes(AliveList),
     {closest, AliveList};
 
 get_peers_search(InfoHash, Queue, Queried, Alive,
@@ -499,12 +499,21 @@ handle_info({udp, _Socket, IP, Port, Packet}, State) ->
             end;
         {Method, ID, Params} ->
             error_logger:info_msg("Received ~w from ~w:~w", [Method, IP, Port]),
-            {string, SNID} = search_dict({string, "id"}, Params),
-            NID = list_to_binary(SNID),
-            etorrent_dht_state:insert_nodes([{NID, IP, Port}]),
-            HandlerArgs = [Method, Params, IP, Port, ID, Self, Tokens],
-            spawn_link(?MODULE, handle_query, HandlerArgs),
-            State
+            case find_sent_query(IP, Port, ID, Sent) of
+                {ok, {Client, Timeout}} ->
+                    _ = cancel_timeout(Timeout),
+                    _ = gen_server:reply(Client, timeout),
+                    error_logger:error_msg("Bad node, don't send queries to yourself!"),
+                    NewSent = clear_sent_query(IP, Port, ID, Sent),
+                    State#state{sent=NewSent};
+                error ->
+                    {string, SNID} = search_dict({string, "id"}, Params),
+                    NID = list_to_binary(SNID),
+                    spawn_link(etorrent_dht_state, safe_insert_node, [NID, IP, Port]),
+                    HandlerArgs = [Method, Params, IP, Port, ID, Self, Tokens],
+                    spawn_link(?MODULE, handle_query, HandlerArgs),
+                    State
+            end
     end,
     {noreply, NewState};
 
