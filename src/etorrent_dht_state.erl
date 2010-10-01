@@ -7,38 +7,43 @@
 -define(in_range(IDExpr, MinExpr, MaxExpr),
     ((IDExpr >= MinExpr) and (IDExpr < MaxExpr))).
 
-
 %
 % This module implements a server maintaining the
-% DHT routing table. The routing table is stored as
-% an ordered set of ID, IP, Port triplets.
+% DHT routing table. The nodes in the routing table
+% is distributed across a set of buckets. The bucket
+% set is created incrementally based on the local node id.
 %
-% A set of buckets, distance ranges, is used to limit
+% The set of buckets, id ranges, is used to limit
 % the number of nodes in the routing table. The routing
-% table must only contain 8 nodes that fall within the
-% range of each bucket. A bucket is defined for the range
-% (2^n) - 1 to 2^(n + 1) for each number between 0 and 161.
-%
-% Each bucket is maintaned independently. If there are four
-% or more disconnected nodes in a bucket, the contents are
-% refreshed by querying the remaining nodes in the bucket.
-%
-% A bucket is also refreshed once a disconnected node has
-% been disconnected for 5 minutes. This ensures that buckets
-% are not refreshed too frequently. 
+% table must only contain ?K nodes that fall within the
+% range of each bucket.
 %
 % A node is considered disconnected if it does not respond to
-% a ping query after 10 minutes of inactivity.
-%
-% A node is also considered disconnected if any query sent to
-% it times out and a subsequent ping query also times out.
-%
-% To make sure that each node that is inserted into the
-% routing table is reachable from this node a ping query
-% is issued for each node before it replaces an existing
-% node.
-%
+% a ping query after 10 minutes of inactivity. Inactive nodes
+% are kept in the routing table but are not propagated to 
+% neighbouring nodes through responses through find_node
+% and get_peers responses.
+% This allows the node to keep the routing table intact
+% while operating in offline mode. It also allows the node
+% to operate with a partial routing table without exposing
+% inconsitencies to neighboring nodes.
 
+% A bucket is refreshed once the least recently active node
+% has been inactive for 5 minutes. If a replacement for the
+% least recently active node can't be replaced, the server
+% should wait at least 5 minutes before attempting to find
+% a replacement again.
+%
+% The timeouts (expiry times) in this server is managed
+% using a pair containg the time that a node/bucket was 
+% last active and a reference to the currently active timer.
+%
+% The activity time is used to validate the timeout messages
+% sent to the server in those cases where the timer was cancelled
+% inbetween that the timer fired and the server received the timeout
+% message. The activity time is also used to calculate when
+% future timeout should occur.
+%
 
 -export([srv_name/0,
          start_link/1,
@@ -69,16 +74,12 @@
 
 -record(state, {
     node_id,
-    buckets=b_new(),              % The actual routing table
-    node_timers=timer_tree(),     % Node activity times and timeout references
-    buck_timers=timer_tree(),     % Bucker activity times and timeout references
-    node_timeout=10*60*1000,      % Node keepalive timeout
-    buck_timeout=5*60*1000,       % Bucket refresh timeout
+    buckets=b_new(), % The actual routing table
+    node_timers=timer_tree(), % Node activity times and timeout references
+    buck_timers=timer_tree(),% Bucker activity times and timeout references
+    node_timeout=10*60*1000,  % Default node keepalive timeout
+    buck_timeout=5*60*1000,   % Default bucket refresh timeout
     state_file="/tmp/dht_state"}). % Path to persistent state
-%
-% Since each key in the node_access tree is always a
-% member of the node set, use the node_access tree to check
-% if a node is a member of the routing table.
 %
 % The bucket refresh timeout is the amount of time that the
 % server will tolerate a node to be disconnected before it
