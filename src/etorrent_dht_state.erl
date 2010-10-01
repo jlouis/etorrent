@@ -222,7 +222,7 @@ unsafe_ping(IP, Port) ->
             case safe_ping(IP, Port) of
                 pang ->
                     RandNode = random_node_tag(),
-                    DelSpec = [{{'_', '_', RandNode}, [], [true]}],
+                    DelSpec = [{{'_', RandNode}, [], [true]}],
                     _ = ets:select_delete(unreachable_tab(), DelSpec),
                     ets:insert(unreachable_tab(), {{IP, Port}, RandNode}),
                     {error, timeout};
