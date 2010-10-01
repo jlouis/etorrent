@@ -1,7 +1,12 @@
 -module(etorrent_dht_state).
 -behaviour(gen_server).
 -compile(export_all).
--import(ordsets, [add_element/2, del_element/2]).
+-import(ordsets, [add_element/2, del_element/2, subtract/2]).
+-import(error_logger, [info_msg/2, error_msg/2]).
+-define(K, 8). 
+-define(in_range(IDExpr, MinExpr, MaxExpr),
+    ((IDExpr >= MinExpr) and (IDExpr < MaxExpr))).
+
 
 %
 % This module implements a server maintaining the
@@ -64,14 +69,12 @@
 
 -record(state, {
     node_id,
-    buckets=b_new(),                  % The set used for the routing table
-    node_timers=gb_trees:empty(),     % Timers used for node timeouts 
-    node_access=gb_trees:empty(),     % Last time of node activity
-    buck_timers=gb_trees:empty(),     % Timers used for bucket timeouts
-    node_timeout=10*60*1000,          % Node keepalive timeout
-    buck_timeout=5*60*1000,           % Bucket refresh timeout
-    node_buffers=gb_trees:empty(),    % FIFO buckets for unmaintained nodes
-    state_file="/tmp/dht_state"}).    % Path to persistent state
+    buckets=b_new(),              % The actual routing table
+    node_timers=timer_tree(),     % Node activity times and timeout references
+    buck_timers=timer_tree(),     % Bucker activity times and timeout references
+    node_timeout=10*60*1000,      % Node keepalive timeout
+    buck_timeout=5*60*1000,       % Bucket refresh timeout
+    state_file="/tmp/dht_state"}). % Path to persistent state
 %
 % Since each key in the node_access tree is always a
 % member of the node set, use the node_access tree to check
@@ -189,6 +192,9 @@ keepalive(ID, IP, Port) ->
         _     -> log_request_timeout(ID, IP, Port)
     end.
 
+spawn_keepalive(ID, IP, Port) ->
+    spawn(?MODULE, keepalive, [ID, IP, Port]).
+
 
 
 init([StateFile]) ->
@@ -198,16 +204,20 @@ init([StateFile]) ->
     % when we are up and running. Use unsafe insertions or the
     % whole state will be lost if etorrent starts without 
     % internet connectivity.
-    Later = fun() -> random:uniform(5000) end,
-    [timer:apply_after(Later(), ?MODULE, unsafe_insert_node, [ensure_bin_id(ID), IP, Port])
+    [spawn(?MODULE, unsafe_insert_node, [ensure_bin_id(ID), IP, Port])
     || {ID, IP, Port} <- NodeList],
 
     #state{
         buckets=Buckets,
         buck_timers=InitBTimers,
+        node_timeout=NTimeout,
         buck_timeout=BTimeout} = #state{},
-    [RootRange] = b_ranges(Buckets),
-    BTimers = init_bucket_timer(RootRange, BTimeout, InitBTimers),
+
+    Now = now(),
+    BTimers = lists:foldl(fun(Range, Acc) ->
+        BTimer = bucket_timer_from(Now, NTimeout, Now, BTimeout, Range),
+        add_timer(Range, Now, BTimer, Acc)
+    end, InitBTimers, b_ranges(Buckets)),
 
     State = #state{
         node_id=ensure_int_id(NodeID),
@@ -218,38 +228,45 @@ init([StateFile]) ->
 handle_call({is_interesting, InputID, IP, Port}, _From, State) -> 
     ID = ensure_int_id(InputID),
     #state{
+        node_id=Self,
         buckets=Buckets,
         node_timeout=NTimeout,
-        node_access=NAccess} = State,
+        node_timers=NTimers} = State,
     IsInteresting = case b_is_member(ID, IP, Port, Buckets) of
-        false -> false;
-        true ->
+        true -> false;
+        false ->
             BMembers = b_members(ID, Buckets),   
-            DMembers = disconnected(BMembers, NTimeout, NAccess),
-            DMembers =/= []
+            Inactive = inactive_nodes(BMembers, NTimeout, NTimers),
+            case (Inactive =/= []) or (length(BMembers) < ?K) of
+                true -> true;
+                false ->
+                    TryBuckets = b_insert(Self, ID, IP, Port, Buckets),
+                    b_is_member(ID, IP, Port, TryBuckets)
+            end
     end,
     {reply, IsInteresting, State};
 
 handle_call({insert_node, InputID, IP, Port}, _From, State) ->
-    ID = ensure_int_id(InputID),
+    ID   = ensure_int_id(InputID),
+    Now  = now(),
+    Node = {ID, IP, Port},
     #state{
         node_id=Self,
         buckets=PrevBuckets,
         node_timers=PrevNTimers,
-        node_access=PrevNAccess,
         buck_timers=PrevBTimers,
         node_timeout=NTimeout,
         buck_timeout=BTimeout} = State,
 
     IsPrevMember = b_is_member(ID, IP, Port, PrevBuckets),
-    Disconnected = case IsPrevMember of
+    Inactive = case IsPrevMember of
         true  -> [];
         false ->
             PrevBMembers = b_members(ID, PrevBuckets),
-            disconnected(PrevBMembers, NTimeout, PrevNAccess)
+            inactive_nodes(PrevBMembers, NTimeout, PrevNTimers)
     end,
 
-    {NewBuckets, Deleted} = case {IsPrevMember, Disconnected} of
+    {NewBuckets, Replace} = case {IsPrevMember, Inactive} of
         {true, _} ->
             % If the node is already a member of the node set,
             % don't change a thing
@@ -269,65 +286,61 @@ handle_call({insert_node, InputID, IP, Port}, _From, State) ->
 
     % If the new node replaced a new, remove all timer and access time
     % information from the state
-    {TmpNTimers, TmpNAccess} = case Deleted of
+    TmpNTimers = case Replace of
         none ->
-            {PrevNTimers, PrevNAccess};
-        {DID, DIP, DPort} ->
-            {cancel_node_timer(DID, DIP, DPort, PrevNTimers),
-             clear_node_access(DID, DIP, DPort, PrevNAccess)}
+            PrevNTimers;
+        [{_, _, _}=DNode|_] ->
+            del_timer(DNode, PrevNTimers)
     end,
 
 
 
     IsNewMember = b_is_member(ID, IP, Port, NewBuckets),
-    {NewNTimers, NewNAccess} = case {IsPrevMember, IsNewMember} of
+    NewNTimers  = case {IsPrevMember, IsNewMember} of
         {false, false} ->
-            {TmpNTimers, TmpNAccess};
-
+            TmpNTimers;
         {true, true} ->
-            {TmpNTimers, TmpNAccess};
-        
-        {false, true} ->
-            {init_node_timer(ID, IP, Port, NTimeout, TmpNTimers),
-             init_node_access(ID, IP, Port, TmpNAccess)}
+            TmpNTimers;
+        {false, true}  ->
+            NTimer = node_timer_from(Now, NTimeout, Node),
+            add_timer(Node, Now, NTimer, TmpNTimers)
     end,
 
     NewBTimers = case {IsPrevMember, IsNewMember} of
         {false, false} ->
-            % No changes, the old node timers are still valid
             PrevBTimers;
         {true, true} ->
             PrevBTimers;
 
         {false, true} ->
-            % The bucket set may have changed, The least recently active
-            % node in the affected buckets may also have changed.
-            % Reset all bucket timers to be sure.
-            TmpBTimers = lists:foldl(fun(Range, Acc) ->
-                cancel_bucket_timer(Range, Acc)
-            end, PrevBTimers, b_ranges(PrevBuckets)),
+            AllPrevRanges = b_ranges(PrevBuckets),
+            AllNewRanges  = b_ranges(NewBuckets),
+
+            DelRanges  = subtract(AllPrevRanges, AllNewRanges),
+            NewRanges  = subtract(AllNewRanges, AllPrevRanges),
+
+            DelBTimers = lists:foldl(fun(Range, Acc) ->
+                del_timer(Range, Acc)
+            end, PrevBTimers, DelRanges),
             
-            CaseBTimers = lists:foldl(fun(Range, Acc) ->
-                TmpBMembers = b_members(Range, NewBuckets),
-                LeastRecent = n_least_recent(TmpBMembers, NewNAccess),
-                init_bucket_timer(Range, LeastRecent, BTimeout, Acc)
-            end, TmpBTimers, b_ranges(NewBuckets)),
-            CaseBTimers
+            lists:foldl(fun(Range, Acc) ->
+                BMembers = b_members(Range, NewBuckets),
+                LRecent = least_recent(BMembers, NewNTimers),
+                BTimer = bucket_timer_from(
+                             Now, BTimeout, LRecent, NTimeout, Range),
+                add_timer(Range, Now, BTimer, Acc)
+            end, DelBTimers, NewRanges)
     end, 
-    B0 = lists:sort(gb_trees:keys(NewBTimers)),
-    B1 = lists:sort(b_ranges(NewBuckets)),
-    true = (B0 == B1),
     NewState = State#state{
         buckets=NewBuckets,
         node_timers=NewNTimers,
-        node_access=NewNAccess,
         buck_timers=NewBTimers},
     {reply, ok, NewState};
             
 
 
 
-handle_call({closest_to, InputNodeID, NumNodes}, From, State) ->
+handle_call({closest_to, InputNodeID, NumNodes}, _, State) ->
     NodeID = ensure_int_id(InputNodeID),
     #state{buckets=Buckets} = State,
     Nodes = b_node_list(Buckets),
@@ -336,54 +349,65 @@ handle_call({closest_to, InputNodeID, NumNodes}, From, State) ->
     {reply, OutputClose, State};
 
 
-handle_call({request_timeout, InputID, IP, Port}, From, State) ->
-    ID = ensure_int_id(InputID),
+handle_call({request_timeout, InputID, IP, Port}, _, State) ->
+    ID   = ensure_int_id(InputID),
+    Node = {ID, IP, Port},
+    Now  = now(),
     #state{
         buckets=Buckets,
         node_timeout=NTimeout,
-        node_timers=PrevNTimers,
-        node_access=NAccess} = State,
+        node_timers=PrevNTimers} = State,
 
-    NewState = case b_is_member(ID, IP, Port, Buckets) of
+    NewNTimers = case b_is_member(ID, IP, Port, Buckets) of
         false ->
             State;
         true ->
-            NewNTimers = reset_node_timer(ID, IP, Port, NTimeout, PrevNTimers),
-            State#state{node_timers=NewNTimers}
+            {LActive, _} = get_timer(Node, PrevNTimers),
+            TmpNTimers   = del_timer(Node, PrevNTimers),
+            NTimer       = node_timer_from(Now, NTimeout, Node),
+            add_timer(Node, LActive, NTimer, TmpNTimers)
     end,
+    NewState = State#state{node_timers=NewNTimers},
     {reply, ok, NewState};
 
-handle_call({request_success, InputID, IP, Port}, From, State) ->
-    ID = ensure_int_id(InputID),
+handle_call({request_success, InputID, IP, Port}, _, State) ->
+    ID   = ensure_int_id(InputID),
+    Now  = now(),
+    Node = {ID, IP, Port},
     #state{
-        node_id=Self,
         buckets=Buckets,
-        node_timeout=NTimeout,
         node_timers=PrevNTimers,
-        node_access=PrevNAccess,
         buck_timers=PrevBTimers,
+        node_timeout=NTimeout,
         buck_timeout=BTimeout} = State,
     NewState = case b_is_member(ID, IP, Port, Buckets) of
         false ->
             State;
         true ->
-            NewNTimers  = reset_node_timer(ID, IP, Port, NTimeout, PrevNTimers),
-            NewNAccess  = reset_node_access(ID, IP, Port, PrevNAccess),
-            Bucket      = b_range(ID, Buckets),
-            BMembers    = b_members(Bucket, Buckets),
-            LeastRecent = n_least_recent(BMembers, NewNAccess),
-            TmpBTimers  = cancel_bucket_timer(Bucket, PrevBTimers),
-            NewBTimers  = init_bucket_timer(Bucket, LeastRecent, BTimeout, TmpBTimers),
+            Range = b_range(ID, Buckets),
+
+            {NLActive, _} = get_timer(Node, PrevNTimers),
+            TmpNTimers    = del_timer(Node, PrevNTimers),
+            NTimer        = node_timer_from(Now, NTimeout, Node),
+            NewNTimers    = add_timer(Node, NLActive, NTimer, TmpNTimers),
+
+            {BActive, _} = get_timer(Range, PrevBTimers),
+            TmpBTimers   = del_timer(Range, PrevBTimers),
+            BMembers     = b_members(Range, Buckets),
+            LNRecent     = least_recent(BMembers, NewNTimers),
+            BTimer       = bucket_timer_from(
+                               BActive, BTimeout, LNRecent, NTimeout, Range),
+            NewBTimers    = add_timer(Range, BActive, BTimer, TmpBTimers),
+            
             State#state{
                 node_timers=NewNTimers,
-                node_access=NewNAccess,
                 buck_timers=NewBTimers}
     end,
     {reply, ok, NewState};
 
 
 handle_call({request_from, ID, IP, Port}, From, State) ->
-    {reply, ok, State};
+    handle_call({request_success, ID, IP, Port}, From, State);
 
 handle_call({dump_state}, _From, State) ->
     #state{
@@ -409,36 +433,63 @@ handle_cast(_, State) ->
 
 handle_info({inactive_node, InputID, IP, Port}, State) ->
     ID = ensure_int_id(InputID),
+    Now = now(),
+    Node = {ID, IP, Port},
     #state{
         buckets=Buckets,
         node_timers=PrevNTimers,
         node_timeout=NTimeout} = State,
-    NewState = case b_is_member(ID, IP, Port, Buckets) of
-        false ->
+    
+    IsMember = b_is_member(ID, IP, Port, Buckets),
+    HasTimed = case IsMember of
+        false -> false;
+        true  -> has_timed_out(Node, NTimeout, PrevNTimers)
+    end,
+
+    NewState = case {IsMember, HasTimed} of
+        {false, false} ->
             State;
-        true ->
-            error_logger:info_msg("Node at ~w:~w timed out", [IP, Port]),
-            _ = spawn_link(?MODULE, keepalive, [ensure_bin_id(ID), IP, Port]),
-            NewNTimers = reset_node_timer(ID, IP, Port, NTimeout, PrevNTimers),
+        {true, false} ->
+            State;
+        {true, true} ->
+            info_msg("Node at ~w:~w timed out", [IP, Port]),
+            spawn_keepalive(ensure_bin_id(ID), IP, Port),
+            {LActive,_} = get_timer(Node, PrevNTimers),
+            TmpNTimers  = del_timer(Node, PrevNTimers),
+            NewTimer    = node_timer_from(Now, NTimeout, Node),
+            NewNTimers  = add_timer(Node, LActive, NewTimer, TmpNTimers),
             State#state{node_timers=NewNTimers}
     end,
     {noreply, NewState};
 
-handle_info({inactive_bucket, Bucket}, State) ->
+handle_info({inactive_bucket, Range}, State) ->
+    Now = now(),
     #state{
-        node_id=Self,
         buckets=Buckets,
-        node_access=NAccess,
-        node_timeout=NTimeout,
+        node_timers=NTimers,
         buck_timers=PrevBTimers,
+        node_timeout=NTimeout,
         buck_timeout=BTimeout} = State,
 
-    NewState = case b_has_bucket(Bucket, Buckets) of
-        false ->
+    BucketExists = b_has_bucket(Range, Buckets),
+    HasTimed = case BucketExists of
+        false -> false;
+        true  -> has_timed_out(Range, BTimeout, PrevBTimers)
+    end,
+
+    NewState = case {BucketExists, HasTimed} of
+        {false, false} ->
             State;
-        true ->
-            TmpBTimers = cancel_bucket_timer(Bucket, PrevBTimers),
-            NewBTimers = init_bucket_timer(Bucket, BTimeout, TmpBTimers),
+        {true, false} ->
+            State;
+        {true, true} ->
+            info_msg("Bucket timed out", []),
+            TmpBTimers = del_timer(Range, PrevBTimers),
+            BMembers   = b_members(Range, Buckets),
+            LRecent    = least_recent(BMembers, NTimers),
+            NewTimer   = bucket_timer_from(
+                            Now, BTimeout, LRecent, NTimeout, Range),
+            NewBTimers = add_timer(Range, Now, NewTimer, TmpBTimers),
             State#state{buck_timers=NewBTimers}
     end,
     {noreply, NewState}.
@@ -473,49 +524,6 @@ load_state(Filename) ->
 code_change(_, _, State) ->
     {ok, State}.
 
-
-is_disconnected(ID, IP, Port, Timeout, AccessTimes) ->
-    LastActive = gb_trees:get({ID, IP, Port}, AccessTimes),
-    (timer:now_diff(LastActive, now()) div 1000) > Timeout.
-
-disconnected(Nodes, Timeout, AccessTimes) ->
-    [N || {ID, IP, Port}=N <- Nodes,
-    is_disconnected(ID, IP, Port, Timeout, AccessTimes)].
-
-nodes_by_access(Nodes, AccessTimes) ->
-    GetTime  = fun({_, _, _}=N) -> gb_trees:get(N, AccessTimes) end,
-    WithTime = [{GetTime(N), ID, IP, Port} || {ID, IP, Port}=N <- Nodes],
-    ByTime   = lists:sort(WithTime),
-    [{ID, IP, Port} || {_, ID, IP, Port} <- ByTime].
-
-
-reset_node_timer(ID, IP, Port, Timeout, Timers) ->
-    init_node_timer(ID, IP, Port, Timeout,
-        cancel_node_timer(ID, IP, Port, Timers)).
-
-init_node_timer(ID, IP, Port, Timeout, Timers) -> 
-    Msg = {inactive_node, ID, IP, Port},
-    Ref = erlang:send_after(Timeout, self(), Msg),
-    gb_trees:insert({ID, IP, Port}, Ref, Timers).
-
-cancel_node_timer(ID, IP, Port, Timers) ->
-    Ref = gb_trees:get({ID, IP, Port}, Timers),
-    erlang:cancel_timer(Ref),
-    gb_trees:delete({ID, IP, Port}, Timers).
-
-reset_node_access(ID, IP, Port, Access) ->
-    init_node_access(ID, IP, Port,
-        clear_node_access(ID, IP, Port, Access)).
-
-init_node_access(ID, IP, Port, Access) ->
-    gb_trees:insert({ID, IP, Port}, now(), Access).
-
-clear_node_access(ID, IP, Port, Access) ->
-    gb_trees:delete({ID, IP, Port}, Access).
-
--define(K, 8). 
--define(in_range(IDExpr, MinExpr, MaxExpr),
-    ((IDExpr >= MinExpr) and (IDExpr < MaxExpr))).
 
 %
 % Create a new bucket list
@@ -576,7 +584,7 @@ b_ranges([{Min, Max, _}|T]) ->
 %
 % Delete a node from a bucket list
 %
-b_delete(ID, IP, Port, []) ->
+b_delete(_, _, _, []) ->
     [];
 b_delete(ID, IP, Port, [{Min, Max, Members}|T])
 when ?in_range(ID, Min, Max) ->
@@ -603,9 +611,9 @@ b_members(ID, [_|T]) ->
 %
 % Check if a node is a member of a bucket list
 %
-b_is_member(ID, IP, Port, []) ->
+b_is_member(_, _, _, []) ->
     false;
-b_is_member(ID, IP, Port, [{Min, Max, Members}|T])
+b_is_member(ID, IP, Port, [{Min, Max, Members}|_])
 when ?in_range(ID, Min, Max) ->
     lists:member({ID, IP, Port}, Members);
 b_is_member(ID, IP, Port, [_|T]) ->
@@ -616,7 +624,7 @@ b_is_member(ID, IP, Port, [_|T]) ->
 %
 b_has_bucket({_, _}, []) ->
     false;
-b_has_bucket({Min, Max}, [{Min, Max, _}|T]) ->
+b_has_bucket({Min, Max}, [{Min, Max, _}|_]) ->
     true;
 b_has_bucket({Min, Max}, [{_, _, _}|T]) ->
     b_has_bucket({Min, Max}, T).
@@ -632,51 +640,70 @@ b_node_list([{_, _, Members}|T]) ->
 %
 % Return the range of the bucket that a node falls within
 %
-b_range(ID, [{Min, Max, _}|_])
-when ?in_range(ID, Min, Max) ->
+b_range(ID, [{Min, Max, _}|_]) when ?in_range(ID, Min, Max) ->
     {Min, Max};
 b_range(ID, [_|T]) ->
     b_range(ID, T).
 
 
 
-%
-% Return the last time of activity of the least recently
-% active node in the given node set. If the node set is
-% empty, return the current time. This will cause it to back off.
-%
-n_least_recent([], _) ->
-    now();
-n_least_recent(Nodes, AccessTimes) ->
-    lists:min([gb_trees:get({ID, IP, Port}, AccessTimes)
-             ||{ID, IP, Port} <- Nodes]).
+inactive_nodes(Nodes, Timeout, Timers) ->
+    [N || N <- Nodes, has_timed_out(N, Timeout, Timers)].
 
+timer_tree() ->
+    gb_trees:empty().
 
-init_bucket_timer(Range, Timeout, Timers) ->
+get_timer(Item, Timers) ->
+    gb_trees:get(Item, Timers).
+
+add_timer(Item, ATime, TRef, Timers) ->
+    TState = {ATime, TRef},
+    gb_trees:insert(Item, TState, Timers).
+
+del_timer(Item, Timers) ->
+    {_, TRef} = get_timer(Item, Timers),
+    _ = erlang:cancel_timer(TRef),
+    gb_trees:delete(Item, Timers).
+
+node_timer_from(Time, Timeout, {ID, IP, Port}) ->
+    Msg = {inactive_node, ID, IP, Port},
+    timer_from(Time, Timeout, Msg).
+
+bucket_timer_from(Time, BTimeout, LeastRecent, NTimeout, Range) ->
+    % In the best case, the bucket should time out N seconds
+    % after the first node in the bucket timed out. If that node
+    % can't be replaced, a bucket refresh should be performed
+    % at most every N seconds, based on when the bucket was last
+    % marked as active, instead of _constantly_.
     Msg = {inactive_bucket, Range},
-    Ref = erlang:send_after(Timeout, self(), Msg),
-    gb_trees:insert(Range, Ref, Timers).
+    if
+        LeastRecent <  Time ->
+            timer_from(Time, BTimeout, Msg);
+        LeastRecent >= Time ->
+            SumTimeout = NTimeout + NTimeout,
+            timer_from(LeastRecent, SumTimeout, Msg)
+    end.
+    
 
-init_bucket_timer(Range, LastActive, BTimeout, Timers) ->
-    MicroSince  = timer:now_diff(LastActive, now()),
-    MilliSince  = MicroSince div 1000,
-    NextTimeout = BTimeout - MilliSince,
-    init_bucket_timer(Range, NextTimeout, Timers).
+timer_from(Time, Timeout, Msg) ->
+    Interval = ms_between(Time, Timeout),
+    erlang:send_after(Interval, self(), Msg).
 
-%
-% Cancel the timer for a bucket, note that calling this function
-% is by no means a guarantee that this timer has not already fired
-% and left a message in our inbox already, don't trust it.
-%
-cancel_bucket_timer(Range, Timers) ->
-    Ref = gb_trees:get(Range, Timers),
-    erlang:cancel_timer(Ref),
-    gb_trees:delete(Range, Timers).
+ms_since(Time) ->
+    timer:now_diff(Time, now()) div 1000.
 
-%
-% Calculate the time in milliseconds until when the timer for a bucket
-% should fire. The return value is in milliseconds because that is what
-% erlang:send_after/3 expects.
-% 
-next_bucket_timeout(LastActive, Timeout) ->
-    Timeout - (timer:now_diff(LastActive, now()) div 1000).
+ms_between(Time, Timeout) ->
+    MS = Timeout - ms_since(Time),
+    if MS =< 0 -> Timeout;
+       MS >= 0 -> MS
+    end.
+
+has_timed_out(Item, Timeout, Times) ->
+    {LastActive, _} = get_timer(Item, Times),
+    ms_since(LastActive) > Timeout.
+
+least_recent([], _) ->
+    now();
+least_recent(Items, Times) ->
+    ATimes = [element(1, get_timer(I, Times)) || I <- Items],
+    lists:min(ATimes).
