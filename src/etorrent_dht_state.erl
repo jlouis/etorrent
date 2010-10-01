@@ -128,7 +128,11 @@ safe_insert_node(ID, IP, Port) ->
         false ->
             ok;
         true ->
-            case etorrent_dht_net:ping(IP, Port) of
+            % Since this clause will be reached every time this node
+            % receives a query from a node that is interesting, use the
+            % unsafe_ping function to avoid repeatedly issuing ping queries
+            % to nodes that won't reply to them.
+            case unsafe_ping(IP, Port) of
                 pang -> ok;
                 ID   -> unsafe_insert_node(ID, IP, Port);
                 _    -> ok
@@ -187,7 +191,7 @@ dump_state(Filename) ->
     gen_server:call(srv_name(), {dump_state, Filename}).
 
 keepalive(ID, IP, Port) ->
-    case etorrent_dht_net:ping(IP, Port) of
+    case safe_ping(IP, Port) of
         ID    -> log_request_success(ID, IP, Port);
         pang  -> log_request_timeout(ID, IP, Port);
         _     -> log_request_timeout(ID, IP, Port)
@@ -196,9 +200,61 @@ keepalive(ID, IP, Port) ->
 spawn_keepalive(ID, IP, Port) ->
     spawn(?MODULE, keepalive, [ID, IP, Port]).
 
+%
+% Issue a ping query to a node, this function should always be used
+% when checking if a node that is already a member of the routing table
+% is online.
+%
+safe_ping(IP, Port) ->
+    etorrent_dht_net:ping(IP, Port).
+
+%
+% unsafe_ping overrides the behaviour of etorrent_net:ping/2 by
+% avoiding to issue ping queries to nodes that are unlikely to
+% be reachable. If a node has not been queried before, a safe_ping
+% will always be performed.
+%
+unsafe_ping(IP, Port) ->
+    case ets:lookup(unreachable_tab(), {IP, Port}) of
+        [_|_] ->
+            pang;
+        [] ->
+            case safe_ping(IP, Port) of
+                pang ->
+                    RandNode = random_node_tag(),
+                    DelSpec = [{{'_', '_', RandNode}, [], [true]}],
+                    _ = ets:select_delete(unreachable_tab(), DelSpec),
+                    ets:insert(unreachable_tab(), {{IP, Port}, RandNode}),
+                    {error, timeout};
+                NodeID ->
+                    NodeID
+            end
+    end.
+    
+
+
+max_unreachable() ->
+    128.
+
+unreachable_tab() ->
+    etorrent_dht_unreachable_cache_tab.
+
+random_node_tag() ->
+    random:seed(now()),
+    random:uniform(max_unreachable()).
 
 
 init([StateFile]) ->
+    % Initialize the table of unreachable nodes when the server is started.
+    % The safe_ping and unsafe_ping functions aren't exported outside of
+    % of this module so they should fail unless the server is running.
+    _ = case ets:info(unreachable_tab()) of
+        undefined ->
+            ets:new(unreachable_tab(), [named_table, public, bag]);
+        _ -> ok
+    end,
+
+
     {NodeID, NodeList} = load_state(StateFile),
 
     % Insert any nodes loaded from the persistent state later
