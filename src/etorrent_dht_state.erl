@@ -60,6 +60,7 @@
          log_request_success/3,
          log_request_from/3,
          keepalive/3,
+         refresh/3,
          dump_state/0,
          dump_state/1,
          dump_state/3,
@@ -123,19 +124,23 @@ safe_insert_node(IP, Port) ->
 % a ping query to it first. This function must be used when we
 % want to verify the identify and status of a node.
 %
+% This function will return {error, timeout} if the node is unreachable
+% or has changed identity, false if the node is not interesting or wasnt
+% inserted into the routing table, true if the node was interesting and was
+% inserted into the routing table.
+%
 safe_insert_node(ID, IP, Port) ->
     case is_interesting(ID, IP, Port) of
-        false ->
-            ok;
+        false -> false;
         true ->
             % Since this clause will be reached every time this node
             % receives a query from a node that is interesting, use the
             % unsafe_ping function to avoid repeatedly issuing ping queries
             % to nodes that won't reply to them.
             case unsafe_ping(IP, Port) of
-                pang -> ok;
                 ID   -> unsafe_insert_node(ID, IP, Port);
-                _    -> ok
+                pang -> {error, timeout};
+                _    -> {error, timeout}
         end
     end.
 
@@ -147,10 +152,11 @@ safe_insert_nodes(NodeInfos) ->
 % Blindly insert a node into the routing table. Use this function when
 % inserting a node that was found and successfully queried in a find_node
 % or get_peers search.
-% 
+% This function returns a boolean value to indicate to the caller if the
+% node was actually inserted into the routing table or not.
 % 
 unsafe_insert_node(ID, IP, Port) ->
-    gen_server:call(srv_name(), {insert_node, ID, IP, Port}).
+    _WasInserted = gen_server:call(srv_name(), {insert_node, ID, IP, Port}).
 
 unsafe_insert_nodes(NodeInfos) ->
     [spawn_link(?MODULE, unsafe_insert_node, [ID, IP, Port])
@@ -230,7 +236,55 @@ unsafe_ping(IP, Port) ->
                     NodeID
             end
     end.
-    
+
+%
+% Refresh the contents of a bucket by issuing find_node queries to each node
+% in the bucket until enough nodes that falls within the range of the bucket
+% has been returned to replace the inactive nodes in the bucket.
+%
+refresh(Range, Inactive, Active) ->
+    % Try to refresh the routing table using the inactive nodes first, 
+    % If they turn out to be reachable the problem's solved.
+    do_refresh(Range, Inactive ++ Active, []).
+
+do_refresh(_, [], _) ->
+    ok; % TODO - perform a find_node_search here?
+do_refresh(Range, [{ID, IP, Port}|T], IDs) ->
+    Continue = case etorrent_dht_net:find_node(IP, Port, ID) of
+        {error, timeout} ->
+            true;
+        {_, CloseNodes} ->
+            do_refresh_inserts(Range, CloseNodes)
+    end,
+    case Continue of 
+        false -> ok;
+        true  -> do_refresh(Range, T, [ID|IDs])
+    end.
+
+do_refresh_inserts({_, _}, []) ->
+    true;
+do_refresh_inserts({Min, Max}=Range, [{ID, IP, Port}|T])
+when ?in_range(ID, Min, Max) ->
+    case safe_insert_node(ID, IP, Port) of
+        {error, timeout} ->
+            do_refresh_inserts(Range, T);
+        true ->
+            do_refresh_inserts(Range, T);
+        false ->
+            safe_insert_nodes(T),
+            false
+    end;
+
+do_refresh_inserts(Range, [{ID, IP, Port}|T]) ->
+    _ = safe_insert_node(ID, IP, Port),
+    do_refresh_inserts(Range, T).
+
+spawn_refresh(Range, InputInactive, InputActive) ->
+    Inactive = [{ensure_bin_id(ID), IP, Port}
+               || {ID, IP, Port} <- InputInactive],
+    Active   = [{ensure_bin_id(ID), IP, Port}
+               || {ID, IP, Port} <- InputActive],
+    spawn(?MODULE, refresh, [Range, Inactive, Active]).
 
 
 max_unreachable() ->
@@ -346,7 +400,7 @@ handle_call({insert_node, InputID, IP, Port}, _From, State) ->
     TmpNTimers = case Replace of
         none ->
             PrevNTimers;
-        [{_, _, _}=DNode|_] ->
+        {_, _, _}=DNode ->
             del_timer(DNode, PrevNTimers)
     end,
 
@@ -387,12 +441,12 @@ handle_call({insert_node, InputID, IP, Port}, _From, State) ->
                              Now, BTimeout, LRecent, NTimeout, Range),
                 add_timer(Range, Now, BTimer, Acc)
             end, DelBTimers, NewRanges)
-    end, 
+    end,
     NewState = State#state{
         buckets=NewBuckets,
         node_timers=NewNTimers,
         buck_timers=NewBTimers},
-    {reply, ok, NewState};
+    {reply, ((not IsPrevMember) and IsNewMember), NewState};
             
 
 
@@ -547,8 +601,11 @@ handle_info({inactive_bucket, Range}, State) ->
             State;
         {true, true} ->
             info_msg("Bucket timed out", []),
-            TmpBTimers = del_timer(Range, PrevBTimers),
             BMembers   = b_members(Range, Buckets),
+            _ = spawn_refresh(Range,
+                    inactive_nodes(BMembers, NTimeout, NTimers),
+                    active_nodes(BMembers, NTimeout, NTimers)),
+            TmpBTimers = del_timer(Range, PrevBTimers),
             LRecent    = least_recent(BMembers, NTimers),
             NewTimer   = bucket_timer_from(
                             Now, BTimeout, LRecent, NTimeout, Range),
