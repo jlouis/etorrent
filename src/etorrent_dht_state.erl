@@ -113,7 +113,7 @@ node_id() ->
 % don't know the node id of a node.
 %
 safe_insert_node(IP, Port) ->
-    case etorrent_dht_net:ping(IP, Port) of
+    case unsafe_ping(IP, Port) of
         pang -> {error, timeout};
         ID   -> unsafe_insert_node(ID, IP, Port)
     end.
@@ -247,7 +247,7 @@ random_node_tag() ->
 init([StateFile]) ->
     % Initialize the table of unreachable nodes when the server is started.
     % The safe_ping and unsafe_ping functions aren't exported outside of
-    % of this module so they should fail unless the server is running.
+    % of this module so they should fail unless the server is not running.
     _ = case ets:info(unreachable_tab()) of
         undefined ->
             ets:new(unreachable_tab(), [named_table, public, bag]);
@@ -397,12 +397,18 @@ handle_call({insert_node, InputID, IP, Port}, _From, State) ->
 
 
 
-handle_call({closest_to, InputNodeID, NumNodes}, _, State) ->
-    NodeID = ensure_int_id(InputNodeID),
-    #state{buckets=Buckets} = State,
-    Nodes = b_node_list(Buckets),
-    CloseNodes  = etorrent_dht:closest_to(NodeID, Nodes, NumNodes),
-    OutputClose = [{Dist, ensure_bin_id(OID), OIP, OPort} || {Dist, OID, OIP, OPort} <- CloseNodes],
+handle_call({closest_to, InputID, NumNodes}, _, State) ->
+    ID = ensure_int_id(InputID),
+    #state{
+        buckets=Buckets,
+        node_timers=NTimers,
+        node_timeout=NTimeout} = State,
+    AllNodes    = b_node_list(Buckets),
+    Active      = active_nodes(AllNodes, NTimeout, NTimers),
+    CloseNodes  = etorrent_dht:closest_to(ID, Active, NumNodes),
+    % TODO - don't return the distance from this node to each node
+    OutputClose = [{Dist, ensure_bin_id(OID), OIP, OPort}
+                  || {Dist, OID, OIP, OPort} <- CloseNodes],
     {reply, OutputClose, State};
 
 
@@ -706,6 +712,9 @@ b_range(ID, [_|T]) ->
 
 inactive_nodes(Nodes, Timeout, Timers) ->
     [N || N <- Nodes, has_timed_out(N, Timeout, Timers)].
+
+active_nodes(Nodes, Timeout, Timers) ->
+    [N || N <- Nodes, not has_timed_out(N, Timeout, Timers)].
 
 timer_tree() ->
     gb_trees:empty().
