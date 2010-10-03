@@ -1,6 +1,6 @@
 -module(etorrent_dht_state).
 -behaviour(gen_server).
--compile(export_all).
+-include("types.hrl").
 -import(ordsets, [add_element/2, del_element/2, subtract/2]).
 -import(error_logger, [info_msg/2, error_msg/2]).
 -define(K, 8). 
@@ -66,6 +66,24 @@
          dump_state/3,
          load_state/1]).
 
+-spec node_id() -> nodeid().
+-spec safe_insert_node(ipaddr(), portnum()) ->
+    {'error', 'timeout'} | boolean().
+-spec safe_insert_node(nodeid(), ipaddr(), portnum()) ->
+    {'error', 'timeout'} | boolean().
+-spec safe_insert_nodes(list(nodeinfo())) -> 'ok'.
+-spec unsafe_insert_node(nodeid(), ipaddr(), portnum()) ->
+    boolean().
+-spec unsafe_insert_nodes(list(nodeinfo())) -> 'ok'.
+-spec is_interesting(nodeid(), ipaddr(), portnum()) -> boolean().
+-spec closest_to(nodeid()) -> list(nodeinfo()).
+-spec closest_to(nodeid(), pos_integer()) -> list(nodeinfo()).
+-spec log_request_timeout(nodeid(), ipaddr(), portnum()) -> 'ok'.
+-spec log_request_success(nodeid(), ipaddr(), portnum()) -> 'ok'.
+-spec log_request_from(nodeid(), ipaddr(), portnum()) -> 'ok'.
+-spec keepalive(nodeid(), ipaddr(), portnum()) -> 'ok'.
+-spec refresh(any(), list(nodeinfo()), list(nodeinfo())) -> 'ok'.
+
 -export([init/1,
          handle_call/3,
          handle_cast/2,
@@ -93,11 +111,8 @@
 % rest of the program does that, run these functions whenever an ID
 % enters or leaves this process.
 %
-ensure_bin_id(ID) when is_integer(ID) -> <<ID:160>>;
-ensure_bin_id(ID) when is_binary(ID) -> ID.
-
-ensure_int_id(ID) when is_binary(ID) -> <<IntID:160>> = ID, IntID;
-ensure_int_id(ID) when is_integer(ID) -> ID.
+ensure_bin_id(ID) -> ID.
+ensure_int_id(ID) -> ID.
 
 srv_name() ->
     etorrent_dht_state_server.
@@ -146,7 +161,8 @@ safe_insert_node(ID, IP, Port) ->
 
 safe_insert_nodes(NodeInfos) ->
     [spawn_link(?MODULE, safe_insert_node, [ID, IP, Port])
-    || {ID, IP, Port} <- NodeInfos].
+    || {ID, IP, Port} <- NodeInfos],
+    ok.
 
 %
 % Blindly insert a node into the routing table. Use this function when
@@ -160,7 +176,8 @@ unsafe_insert_node(ID, IP, Port) ->
 
 unsafe_insert_nodes(NodeInfos) ->
     [spawn_link(?MODULE, unsafe_insert_node, [ID, IP, Port])
-    || {ID, IP, Port} <- NodeInfos].
+    || {ID, IP, Port} <- NodeInfos],
+    ok.
 
 %
 % Check if node would fit into the routing table. This
@@ -457,13 +474,10 @@ handle_call({closest_to, InputID, NumNodes}, _, State) ->
         buckets=Buckets,
         node_timers=NTimers,
         node_timeout=NTimeout} = State,
-    AllNodes    = b_node_list(Buckets),
-    Active      = active_nodes(AllNodes, NTimeout, NTimers),
-    CloseNodes  = etorrent_dht:closest_to(ID, Active, NumNodes),
-    % TODO - don't return the distance from this node to each node
-    OutputClose = [{Dist, ensure_bin_id(OID), OIP, OPort}
-                  || {Dist, OID, OIP, OPort} <- CloseNodes],
-    {reply, OutputClose, State};
+    AllNodes   = b_node_list(Buckets),
+    Active     = active_nodes(AllNodes, NTimeout, NTimers),
+    CloseNodes = etorrent_dht:closest_to(ID, Active, NumNodes),
+    {reply, CloseNodes, State};
 
 
 handle_call({request_timeout, InputID, IP, Port}, _, State) ->
