@@ -3,8 +3,6 @@
 -behaviour(gen_server).
 -import(etorrent_bcoding, [search_dict/2, search_dict_default/3]).
 -import(etorrent_dht, [distance/2]).
--define(is_infohash(Parameter),
-    (is_binary(Parameter) and (byte_size(Parameter) == 20))).
 
 %
 % Implementation notes
@@ -118,7 +116,7 @@ ping(IP, Port) ->
     case gen_server:call(srv_name(), {ping, IP, Port}) of
         timeout -> pang;
         Reply   ->
-            {string, LID} = search_dict({string, "id"}, Reply),
+            {string,LID} = search_dict({string, "id"}, Reply),
             etorrent_dht:integer_id(LID)
     end.
 
@@ -130,11 +128,10 @@ find_node(IP, Port, Target)  ->
         timeout ->
             {error, timeout};
         Values  ->
-            {string, LID} = search_dict({string, "id"}, Values),
+            {string,LID} = search_dict({string, "id"}, Values),
             ID = etorrent_dht:integer_id(LID),
-            {string, Compact} = search_dict({string, "nodes"}, Values),
-            BinCompact = list_to_binary(Compact),
-            Nodes = compact_to_node_infos(BinCompact),
+            {string,LCompact} = search_dict({string, "nodes"}, Values),
+            Nodes = compact_to_node_infos(list_to_binary(LCompact)),
             etorrent_dht_state:log_request_success(ID, IP, Port),
             {ID, Nodes}
     end.
@@ -235,26 +232,23 @@ get_peers(IP, Port, InfoHash)  ->
     case gen_server:call(srv_name(), {get_peers, IP, Port, InfoHash}) of
         timeout -> {error, timeout};
         Values  ->
-            {string, LID} = search_dict({string, "id"}, Values),
-            {string, LToken}  = search_dict({string, "token"}, Values),
+            {string,LID} = search_dict({string, "id"}, Values),
+            ID = etorrent_dht:integer_id(LID),
+            {string,LToken} = search_dict({string,"token"}, Values),
+            Token = list_to_binary(LToken),
             NoPeers = make_ref(),
-            MaybePeers = search_dict_default({string, "values"},
-                                           Values, NoPeers),
+            MaybePeers = search_dict_default({string,"values"}, Values, NoPeers),
             {Peers, Nodes} = case MaybePeers of
                 NoPeers ->
-                    {string, LCompact} = search_dict({string, "nodes"}, Values),
-                    Compact = list_to_binary(LCompact),
-                    INodes = compact_to_node_infos(Compact),
+                    {string,LCompact} = search_dict({string,"nodes"}, Values),
+                    INodes = compact_to_node_infos(list_to_binary(LCompact)),
                     {[], INodes};
                 {list, PeerStrings} ->
-                    BinPeers = [list_to_binary(S)
-                               || {string, S} <- PeerStrings],
+                    BinPeers = [list_to_binary(S) || {string,S} <- PeerStrings],
                     PeerLists = [compact_to_peers(N) || N <- BinPeers],
                     IPeers = lists:flatten(PeerLists),
                     {IPeers, []}
             end,
-            ID = etorrent_dht:integer_id(LID),
-            Token = list_to_binary(LToken),
             {ID, Token, Peers, Nodes}
     end.
 
