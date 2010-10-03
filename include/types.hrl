@@ -11,6 +11,7 @@
                | binteger()
                | {'list', [bcode()]}
                | {'dict', [{bstring(), bcode()}]}.
+-type bdict() :: {'dict', [{bstring(), bcode()}]}.
 
 % Event you can send to the tracker.
 -type tracker_event() :: completed | started | stopped.
