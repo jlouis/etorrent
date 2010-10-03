@@ -165,8 +165,13 @@ find_node_search(_Target, _Next, _Queried, Alive,
     AliveList = gb_sets:to_list(Alive),
     WithoutDist = [{ID, IP, Port} || {_, ID, IP, Port} <- AliveList],
     etorrent_dht_state:unsafe_insert_nodes(WithoutDist),
-    % Return all responsive nodes or at most Width?
-    AliveList;
+    WithoutDist;
+
+find_node_search(_, []=Next, _, Alive, _, _, _) ->
+    AliveList = gb_sets:to_list(Alive),
+    WithoutDist = [{ID, IP, Port} || {_, ID, IP, Port} <- AliveList],
+    etorrent_dht_state:unsafe_insert_nodes(WithoutDist),
+    WithoutDist;
 
 find_node_search(Target, Next, Queried, Alive,
                  Retries, MaxRetries, Width) ->
@@ -550,7 +555,7 @@ code_change(_, _, State) ->
 common_values(Self) ->
     [{{string, "id"}, {string, etorrent_dht:list_id(Self)}}].
 
--spec handle_query(dht_qtype(), _, ipaddr(),
+-spec handle_query(dht_qtype(), bdict(), ipaddr(),
                   portnum(), transaction(), nodeid(), _) -> 'ok'.
 
 handle_query('ping', _, IP, Port, MsgID, Self, _Tokens) ->
