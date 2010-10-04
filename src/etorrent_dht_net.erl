@@ -2,7 +2,7 @@
 -include("types.hrl").
 -behaviour(gen_server).
 -import(etorrent_bcoding, [search_dict/2, search_dict_default/3]).
--import(etorrent_dht, [distance/2]).
+-import(etorrent_dht, [distance/2, closest_to/3]).
 
 %
 % Implementation notes
@@ -49,8 +49,7 @@
 -spec get_peers(ipaddr(), portnum(), infohash()) ->
     {nodeid(), token(), list(peerinfo()), list(nodeinfo())}.
 -spec get_peers_search(infohash()) ->
-    {'closest', list(nodeinfo())}
-    | {'found_tracker', list(trackerinfo())}.
+    {list(trackerinfo()), list(peerinfo()), list(nodeinfo())}.
 -spec announce(ipaddr(), portnum(), infohash(), token(), portnum()) ->
     {'error', 'timeout'} | nodeid().
 -spec return(ipaddr(), portnum(), transaction(), list()) -> 'ok'.
@@ -136,6 +135,9 @@ find_node(IP, Port, Target)  ->
             {ID, Nodes}
     end.
 
+
+
+
 %
 % Recursively search for the 100 nodes that are the closest to
 % the local DHT node.
@@ -144,34 +146,38 @@ find_node(IP, Port, Target)  ->
 %     - Which nodes has been queried?
 %     - Which nodes has responded?
 %     - Which nodes has not been queried?
-find_node_search(Target)  ->
-    Width    = search_width(),
+find_node_search(NodeID) ->
+    Width = search_width(),
+    Retry = search_retries(),
+    dht_iter_search(find_node, NodeID, Width, Retry).
+
+get_peers_search(InfoHash) ->
+    Width = search_width(),
+    Retry = search_retries(),
+    dht_iter_search(get_peers, InfoHash, Width, Retry).
+
+dht_iter_search(SearchType, Target, Width, Retry)  ->
     Next     = etorrent_dht_state:closest_to(Target, Width),
     WithDist = [{distance(ID, Target), ID, IP, Port} || {ID, IP, Port} <- Next],
-    Queried  = gb_sets:empty(),
-    Alive    = gb_sets:empty(),
-    Retries  = 0,
-    MaxRetries = search_retries(),
-    find_node_search(Target, WithDist, Queried, Alive,
-                     Retries, MaxRetries, Width).
+    dht_iter_search(SearchType, Target, Width, Retry, 0, WithDist,
+                    gb_sets:empty(), gb_sets:empty(), []).
 
+dht_iter_search(SearchType, _, _, Retry, Retry, _,
+                _, Alive, WithPeers) ->
+    TmpAlive  = gb_sets:to_list(Alive),
+    AliveList = [{ID, IP, Port} || {_, ID, IP, Port} <- TmpAlive],
+    case SearchType of
+        find_node ->
+            AliveList;
+        get_peers ->
+            Trackers = [{ID, IP, Port, Token}
+                      ||{ID, IP, Port, Token, _} <- WithPeers],
+            Peers = [Peers || {_, _, _, _, Peers} <- WithPeers],
+            {Trackers, Peers, AliveList}
+    end;
 
-find_node_search(_Target, _Next, _Queried, Alive,
-                 MaxRetries, MaxRetries, _Width) ->
-    % Insert all responsive nodes into the routing table
-    AliveList = gb_sets:to_list(Alive),
-    WithoutDist = [{ID, IP, Port} || {_, ID, IP, Port} <- AliveList],
-    etorrent_dht_state:unsafe_insert_nodes(WithoutDist),
-    WithoutDist;
-
-find_node_search(_, []=Next, _, Alive, _, _, _) ->
-    AliveList = gb_sets:to_list(Alive),
-    WithoutDist = [{ID, IP, Port} || {_, ID, IP, Port} <- AliveList],
-    etorrent_dht_state:unsafe_insert_nodes(WithoutDist),
-    WithoutDist;
-
-find_node_search(Target, Next, Queried, Alive,
-                 Retries, MaxRetries, Width) ->
+dht_iter_search(SearchType, Target, Width, Retry, Retries,
+                Next, Queried, Alive, WithPeers) ->
 
     % Mark all nodes in the queue as queried
     AddQueried = [{ID, IP, Port} || {_, ID, IP, Port} <- Next],
@@ -179,36 +185,48 @@ find_node_search(Target, Next, Queried, Alive,
 
     % Query all nodes in the queue and generate a list of
     % {Dist, ID, IP, Port, Nodes} elements
-    SearchCalls = [{?MODULE, find_node, [IP, Port, Target]}
-                  || {_Dist, _ID, IP, Port} <- Next],
+    SearchCalls = [case SearchType of
+        find_node -> {?MODULE, find_node, [IP, Port, Target]};
+        get_peers -> {?MODULE, get_peers, [IP, Port, Target]}
+    end || {_, _, IP, Port} <- Next],
     ReturnValues = rpc:parallel_eval(SearchCalls),
     WithArgs = lists:zip(Next, ReturnValues),
 
-    Successful = [{Dist, ID, IP, Port, Nodes}
-                 ||{{Dist, ID, IP, Port},
-                    {NID, Nodes}} <- WithArgs, is_integer(NID)],
+    FailedCall = make_ref(),
+    TmpSuccessful = [case {repack, SearchType, RetVal} of
+        {repack, _, {error, timeout}} ->
+            FailedCall;
+        {repack, _, {error, response}} ->
+            FailedCall;
+        {repack, find_node, {NID, Nodes}} ->
+            {{Dist, NID, IP, Port}, Nodes};
+        {repack, get_peers, {NID, Token, Peers, Nodes}} ->
+            {{Dist, NID, IP, Port}, {Token, Peers, Nodes}}
+    end || {{Dist, ID, IP, Port}, RetVal} <- WithArgs],
+    Successful = [E || E <- TmpSuccessful, E =/= FailedCall],
 
     % Mark all nodes that responded as alive
-    AddAlive = [{Dist, ID, IP, Port}
-               ||{Dist, ID, IP, Port, _} <- Successful],
+    AddAlive = [N ||{{_, _, _, _}=N, _} <- Successful],
     NewAlive = gb_sets:union(Alive, gb_sets:from_list(AddAlive)),
 
     % Accumulate all nodes from the successful responses.
     % Calculate the relative distance to all of these nodes
     % and keep the closest nodes which has not already been
     % queried in a previous iteration
-    NodeLists = [Nodes || {_, _, _, _, Nodes} <- Successful],
+    NodeLists = [case {acc_nodes, {SearchType, Res}} of
+        {acc_nodes, {find_node, Nodes}} ->
+            Nodes;
+        {acc_nodes, {get_peers, {_, _, Nodes}}} ->
+            Nodes
+    end || {_, Res} <- Successful],
     AllNodes  = lists:flatten(NodeLists),
-
-    NewNodes  = [NodeInfo
-                || NodeInfo <- AllNodes
-                ,  not gb_sets:is_member(NodeInfo, NewQueried)],
-    NewNext =
-        [{distance(ID, Target), ID, IP, Port}
-        ||{ID, IP, Port} <- etorrent_dht:closest_to(Target, NewNodes, Width)],
+    NewNodes  = [Node || Node <- AllNodes, not gb_sets:is_member(Node, NewQueried)],
+    NewNext   = [{distance(ID, Target), ID, IP, Port}
+                ||{ID, IP, Port} <- closest_to(Target, NewNodes, Width)],
 
     % Check if the closest node in the work queue is closer
-    % to the infohash than the closest responsive node.
+    % to the target than the closest responsive node that was
+    % found in this iteration.
     {MinAliveDist, _, _, _} = gb_sets:smallest(NewAlive),
     MinQueueDist = case NewNext of
         [] ->
@@ -224,11 +242,26 @@ find_node_search(Target, Next, Queried, Alive,
         (MinQueueDist <  MinAliveDist) -> 0;
         (MinQueueDist >= MinAliveDist) -> Retries + 1 end,
 
-    find_node_search(Target, NewNext, NewQueried, NewAlive,
-                     NewRetries, MaxRetries, Width).
+    % Accumulate the trackers and peers found if this is a get_peers search.
+    NewWithPeers = case SearchType of
+        find_node -> []=WithPeers;
+        get_peers ->
+            Tmp=[{ID, IP, Port, Token, Peers}
+                || {{_, ID, IP, Port}, {Token, Peers, _}} <- Successful, Peers > []],
+            WithPeers ++ Tmp
+    end,
+
+    dht_iter_search(SearchType, Target, Width, Retry, NewRetries,
+                    NewNext, NewQueried, NewAlive, NewWithPeers).
 
 
 get_peers(IP, Port, InfoHash)  ->
+    case (catch do_get_peers(IP, Port, InfoHash)) of
+        {'EXIT', _} -> {error, response};
+        Other -> Other
+    end.
+
+do_get_peers(IP, Port, InfoHash) ->
     case gen_server:call(srv_name(), {get_peers, IP, Port, InfoHash}) of
         timeout -> {error, timeout};
         Values  ->
@@ -251,94 +284,6 @@ get_peers(IP, Port, InfoHash)  ->
             end,
             {ID, Token, Peers, Nodes}
     end.
-
-%
-% Search the DHT for the node closest to the info-hash,
-%
-get_peers_search(InfoHash)  ->
-    Width    = search_width(),
-    MaxRetry = search_retries(),
-    Queue    = etorrent_dht_state:closest_to(InfoHash, Width),
-    WithDist = [{distance(ID, InfoHash), ID, IP, Port} || {ID, IP, Port} <- Queue],
-    Queried  = gb_sets:empty(),
-    Alive    = gb_sets:empty(),
-    Retries  = 0,
-    get_peers_search(InfoHash, WithDist, Queried, Alive,
-                     Retries, MaxRetry, Width).
-
-
-%% Retries twice???
-get_peers_search(_InfoHash, _Queue, _Queried, Alive, _Retries, _Retries, _Width) ->
-    % If the search has failed to come up with a node that is
-    % closer to the infohash multiple times return a list of the
-    % nodes closest to the infohash.
-    AliveList = gb_sets:to_list(Alive),
-    % Insert all responsive nodes into the routing table
-    etorrent_dht_state:unsafe_insert_nodes(AliveList),
-    {closest, AliveList};
-
-get_peers_search(InfoHash, Queue, Queried, Alive,
-              Retries, MaxRetries, Width) ->
-    % Mark all nodes in the queue as queried
-    AddQueried = [{ID, IP, Port} || {_, ID, IP, Port} <- Queue],
-    NewQueried = gb_sets:union(Queried, gb_sets:from_list(AddQueried)),
-
-    % Query all nodes in the queue and generate a list of
-    % {Dist, ID, IP, Port, Peers, Nodes} elements
-    SearchCalls = [{?MODULE, get_peers, [IP, Port, InfoHash]}
-                  || {_Dist, _ID, IP, Port} <- Queue],
-    ReturnValues = rpc:parallel_eval(SearchCalls),
-    WithArgs = lists:zip(Queue, ReturnValues),
-
-    Successful = [{Dist, ID, IP, Port, Token, Peers, Nodes}
-                 || {{Dist, ID, IP, Port},
-                     {_, Token, Peers, Nodes}} <- WithArgs],
-
-    % Mark all nodes that responded as alive
-    AddAlive = [{Dist, ID, IP, Port}
-               ||{Dist, ID, IP, Port, _, _, _} <- Successful],
-    NewAlive = gb_sets:union(Alive, gb_sets:from_list(AddAlive)),
-
-    % Filter out results containing a non-empty list of peers
-    % Omit the Nodes column because it has no meaning in this context
-    HasPeers = [{ID, IP, Port, Token, Peers}
-              ||{_, ID, IP, Port, Token, Peers, _} <- Successful
-              , length(Peers) > 0],
-
-    % Accumulate all nodes from the successful responses.
-    % Calculate the relative distance to all of these nodes
-    % and keep the closest nodes which has not already been
-    % queried in a previous iteration
-    NodeLists = [Nodes || {_, _, _, _, _, _, Nodes} <- Successful],
-    AllNodes  = lists:flatten(NodeLists),
-
-    IsQueried = fun(N) -> gb_sets:is_member(N, NewQueried) end,
-    NewNodes  = [NodeInfo
-                || NodeInfo <- AllNodes
-                ,  not IsQueried(NodeInfo)],
-    NewQueue =
-        [{distance(ID, InfoHash), ID, IP, Port}
-        || {ID, IP, Port} <- etorrent_dht:closest_to(InfoHash, NewNodes, Width)],
-
-    % Check if the closest node in the work queue is closer
-    % to the infohash than the closest responsive node.
-    {MinAliveDist, _, _, _} = gb_sets:smallest(NewAlive),
-    {MinQueueDist, _, _, _} = lists:min(NewQueue),
-    NewRetries = if
-        (MinQueueDist <  MinAliveDist) -> 0;
-        (MinQueueDist >= MinAliveDist) -> Retries + 1 end,
-    if
-    (length(HasPeers) > 0) ->
-        {found_tracker, HasPeers};
-    (length(NewQueue) == 0) ->
-        {error, queue_empty};
-    (length(NewQueue) >  0) ->
-        get_peers_search(InfoHash, NewQueue, NewQueried,
-                         NewAlive, NewRetries, MaxRetries, Width)
-    end.
-
-
-
 
 %
 %

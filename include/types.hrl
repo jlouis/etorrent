@@ -25,7 +25,6 @@
 -type peerinfo() :: {ipaddr(), portnum()}.
 -type token() :: binary().
 -type transaction() :: binary().
--type trackerinfo() :: {nodeid(), ipaddr(), portnum(),
-                        token(), list(peerinfo())}.
+-type trackerinfo() :: {nodeid(), ipaddr(), portnum(), token()}.
 -type dht_qtype() :: 'ping' | 'find_node'
                    | 'get_peers' | 'announce'.
