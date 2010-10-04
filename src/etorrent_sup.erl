@@ -53,10 +53,13 @@ init([PeerId]) ->
     TorrentPool = {torrent_pool_sup,
                    {etorrent_t_pool_sup, start_link, []},
                    transient, infinity, supervisor, [etorrent_t_pool_sup]},
+    DHTSup = {dht_sup,
+                {etorrent_dht, start_link, [6882]},
+                permanent, infinity, supervisor, [etorrent_dht]},
 
     {ok, {{one_for_all, 3, 60},
           [Torrent, FSJanitor, TrackingMap, Peer,
            Counters, EventManager, PeerMgr, 
            FastResume, RateManager, PieceManager,
            ChunkManager, Choker, Listener, AcceptorSup,
-           TorrentMgr, DirWatcherSup, TorrentPool]}}.
+           TorrentMgr, DirWatcherSup, TorrentPool, DHTSup]}}.
