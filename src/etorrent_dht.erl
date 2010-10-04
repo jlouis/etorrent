@@ -1,12 +1,14 @@
 -module(etorrent_dht).
+-behaviour(supervisor).
 -include("types.hrl").
--export([start/1,
-         start/2,
+-export([start_link/1,
+         start_link/2,
          integer_id/1,
          list_id/1,
          random_id/0,
          closest_to/3,
-         distance/2]).
+         distance/2,
+         find_self/0]).
 
 -spec integer_id(list(byte())) -> nodeid().
 -spec list_id(nodeid()) -> list(byte()).
@@ -15,16 +17,31 @@
     list(nodeinfo()).
 -spec distance(nodeid(), nodeid()) -> nodeid().
 
--export([find_self/0]).
+% supervisor callbacks
+-export([init/1]).
 
-start(DHTPort) ->
-    start(DHTPort, "etorrent_dht.persistent").
+start_link(DHTPort) ->
+    start_link(DHTPort, "etorrent_dht.persistent").
 
-start(DHTPort, StateFile) ->
+
+
+start_link(DHTPort, StateFile) ->
     _ = etorrent_dht_tracker:start_link(),
-    {ok, _} = etorrent_dht_state:start_link(StateFile),
-    {ok, _} = etorrent_dht_net:start_link(DHTPort),
-    ok.
+    SupName = {local, etorrent_dht_sup},
+    SupArgs = [{port, DHTPort}, {file, StateFile}],
+    supervisor:start_link(SupName, ?MODULE, SupArgs).
+
+
+init(Args) ->
+    Port = proplists:get_value(port, Args),
+    File = proplists:get_value(file, Args),
+    {ok, {{one_for_one, 1, 60}, [
+        {dht_state_srv,
+            {etorrent_dht_state, start_link, [File]},
+            permanent, 2000, worker, dynamic},
+        {dht_socket_srv,
+            {etorrent_dht_net, start_link, [Port]},
+            permanent, 1000, worker, dynamic}]}}.
 
 find_self() ->
     Self = etorrent_dht_state:node_id(),
