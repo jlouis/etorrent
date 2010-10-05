@@ -1,7 +1,8 @@
 -module(etorrent_dht).
 -behaviour(supervisor).
 -include("types.hrl").
--export([start_link/1,
+-export([start_link/0,
+         start_link/1,
          start_link/2,
          integer_id/1,
          list_id/1,
@@ -19,6 +20,13 @@
 
 % supervisor callbacks
 -export([init/1]).
+
+start_link() ->
+    Port = case application:get_env(dht_port) of
+        undefined  -> 6882;
+        {ok,CPort} -> CPort
+    end,
+    start_link(Port).
 
 start_link(DHTPort) ->
     start_link(DHTPort, "etorrent_dht.persistent").
