@@ -26,6 +26,7 @@ so we can get it away.
 
 ## GETTING STARTED WITHOUT INSTALLING
 
+  0. Install rebar(!)
   1. Check Makefile.config for the right configuration options
   2. edit the file 'priv/etorrent.config'. Use the example 'priv/etorrent.config.example' as a start.
   3. 'rebar get-deps' to get the dependencies needed by the code.
