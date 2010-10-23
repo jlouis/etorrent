@@ -53,12 +53,17 @@ init(Args) ->
             permanent, 1000, worker, dynamic}]}}.
 
 add_torrent(InfoHash, TorrentID) ->
-    Info = integer_id(InfoHash),
-    SupName = etorrent_dht_sup,
-    supervisor:start_child(SupName,
-        {{tracker, Info},
-            {etorrent_dht_tracker, start_link, [Info, TorrentID]},
-            permanent, 5000, worker, dynamic}).
+    case application:get_env(dht) of
+        undefined -> ok;
+        {ok, false} -> ok;
+        {ok, true} ->
+            Info = integer_id(InfoHash),
+            SupName = etorrent_dht_sup,
+            supervisor:start_child(SupName,
+                {{tracker, Info},
+                    {etorrent_dht_tracker, start_link, [Info, TorrentID]},
+                    permanent, 5000, worker, dynamic})
+    end.
 
 find_self() ->
     Self = etorrent_dht_state:node_id(),

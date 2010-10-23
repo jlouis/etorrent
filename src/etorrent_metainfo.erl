@@ -15,7 +15,8 @@
 %% API
 -export([get_piece_length/1, get_length/1, get_pieces/1, get_url/1,
          get_infohash/1,
-         get_files/1, get_name/1]).
+         get_files/1, get_name/1,
+         get_http_urls/1, get_udp_urls/1, get_dht_urls/1]).
 
 
 %% ====================================================================
@@ -62,6 +63,18 @@ get_url(Torrent) ->
 						       Torrent),
 	    [[U]]
     end.
+
+-spec get_http_urls(bcode()) -> string().
+get_http_urls(Torrent) ->
+    [[U || "http://"++_=U <- T] || T <- get_url(Torrent)].
+
+-spec get_udp_urls(bcode()) -> string().
+get_udp_urls(Torrent) ->
+    [[U || "udp://"++_=U <- T] || T <- get_url(Torrent)].
+
+-spec get_dht_urls(bcode()) -> string().
+get_dht_urls(Torrent) ->
+    [[U || "dht://"++_=U <- T] || T <- get_url(Torrent)].
 
 % @doc Return the infohash for a torrent
 % @end
