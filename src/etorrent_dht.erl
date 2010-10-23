@@ -4,6 +4,7 @@
 -export([start_link/0,
          start_link/1,
          start_link/2,
+         add_torrent/2,
          integer_id/1,
          list_id/1,
          random_id/0,
@@ -11,7 +12,7 @@
          distance/2,
          find_self/0]).
 
--spec integer_id(list(byte())) -> nodeid().
+-spec integer_id(list(byte()) | binary()) -> nodeid().
 -spec list_id(nodeid()) -> list(byte()).
 -spec random_id() -> nodeid().
 -spec closest_to(nodeid(), list(nodeinfo()), integer()) ->
@@ -50,6 +51,14 @@ init(Args) ->
         {dht_socket_srv,
             {etorrent_dht_net, start_link, [Port]},
             permanent, 1000, worker, dynamic}]}}.
+
+add_torrent(InfoHash, TorrentID) ->
+    Info = integer_id(InfoHash),
+    SupName = etorrent_dht_sup,
+    supervisor:start_child(SupName,
+        {{tracker, Info},
+            {etorrent_dht_tracker, start_link, [Info, TorrentID]},
+            permanent, 5000, worker, dynamic}).
 
 find_self() ->
     Self = etorrent_dht_state:node_id(),

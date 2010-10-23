@@ -529,7 +529,7 @@ handle_query('get_peers', Params, IP, Port, MsgID, Self, Tokens) ->
 
 handle_query('announce', Params, IP, Port, MsgID, Self, Tokens) ->
     {string, LHash} = search_dict({string, "info_hash"}, Params),
-    InfoHash = list_to_binary(LHash),
+    InfoHash = etorrent_dht:integer_id(LHash),
     {integer, BTPort} = search_dict({string, "port"}, Params),
     {string, LToken} = search_dict({string, "token"}, Params),
     Token = list_to_binary(LToken),
