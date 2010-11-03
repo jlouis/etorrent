@@ -9,22 +9,25 @@ VER=1.0
 SHELL=/bin/sh
 ETORRENT_LIB=.
 ETORRENT_DEPS=-pa ./deps/gproc/ebin
-all: rebar
+all: compile
 
-rebar:
-	rebar compile
-
-etorrent:
-	$(ERL) -make
+compile:
+	./rebar compile
 
 tags:
 	cd src && $(MAKE) tags
 
-dialyzer: etorrent
-	$(DIALYZER) $(DIALYZER_OPTS) --verbose -I $(ETORRENT_LIB)/include -r $(ETORRENT_LIB)/ebin
+eunit:
+	./rebar eunit
 
-dialyzer-succ: etorrent
-	$(DIALYZER) --verbose --succ_typings -I $(ETORRENT_LIB)/include -r $(ETORRENT_LIB)
+dialyze: compile
+	./rebar skip_deps=true dialyze
+
+rel:
+	./rebar generate
+
+relclean:
+	rm -fr rel/etorrent
 
 run: rebar
 	erl -boot start_sasl $(ERL_FLAGS) $(ETORRENT_DEPS) -pa $(ETORRENT_LIB)/ebin \
@@ -36,5 +39,6 @@ tracer:
 	-sname tracer -s tr client
 
 clean:
-	rebar clean
+	./rebar clean
 
+.PHONY: all compile tags dialyze run tracer clean eunit
