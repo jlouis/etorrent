@@ -6,3 +6,4 @@ tracer.log
 webui/*.log
 deps/*
 /erl_crash.dump
+/priv/webui/*.log
