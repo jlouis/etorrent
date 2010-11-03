@@ -49,7 +49,7 @@ list() ->
                          percent_complete(R),
              DaysLeft, HoursLeft, MinutesLeft, SecondsLeft]),
               io:format("    ~s~n", [FN])
-                  end, A),
+      end, A),
     %io:format("Rate Up/Down: ~e / ~e~n", [UploadRate, DownloadRate]).
     io:format("Rate Up/Down: ~8.2f / ~8.2f~n", [UploadRate / 1024.0,
                                                 DownloadRate / 1024.0]).
