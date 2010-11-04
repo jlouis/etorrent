@@ -9,3 +9,5 @@ deps/*
 /priv/webui/*.log
 /apps/etorrent/ebin/etorrent.app
 /apps/etorrent/src/tags
+/rel/etorrent
+
