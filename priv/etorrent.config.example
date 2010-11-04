@@ -7,7 +7,7 @@
 
          % The dht entry enables the DHT subsystem, it is used to retrieve information
         % of which peers are available if there are no trackers available.
-        {dht, true},
+        {dht, false},
         % The DHT subsystem will also bind to all interfaces.
         {dht_port, 6882},
 
