@@ -125,7 +125,7 @@ initializing(timeout, S) ->
             {ok, TrackerPid} =
                 etorrent_t_sup:add_tracker(
                   S#state.parent_pid,
-                  etorrent_metainfo:get_url(Torrent),
+                  etorrent_metainfo:get_http_urls(Torrent),
                   etorrent_metainfo:get_infohash(Torrent),
                   S#state.peer_id,
                   S#state.id),

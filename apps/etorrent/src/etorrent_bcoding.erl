@@ -49,7 +49,6 @@ decode(String) when is_list(String) ->
 %% Function: search_dict/1
 %% Description: Search the dict for a key. Returns the value or crashes.
 %%--------------------------------------------------------------------
--type bdict() :: {'dict', [{bstring(), bcode()}]}.
 -spec search_dict(bstring(), bdict()) -> false | bcode().
 search_dict(Key, {dict, Elems}) ->
     case lists:keysearch(Key, 1, Elems) of

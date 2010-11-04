@@ -11,6 +11,20 @@
                | binteger()
                | {'list', [bcode()]}
                | {'dict', [{bstring(), bcode()}]}.
+-type bdict() :: {'dict', [{bstring(), bcode()}]}.
 
 % Event you can send to the tracker.
 -type tracker_event() :: completed | started | stopped.
+
+% Types used by the DHT subsystem
+-type ipaddr() :: {byte(), byte(), byte(), byte()}.
+-type portnum() :: 1..16#FFFF.
+-type infohash() :: pos_integer().
+-type nodeid() :: pos_integer().
+-type nodeinfo() :: {nodeid(), ipaddr(), portnum()}.
+-type peerinfo() :: {ipaddr(), portnum()}.
+-type token() :: binary().
+-type transaction() :: binary().
+-type trackerinfo() :: {nodeid(), ipaddr(), portnum(), token()}.
+-type dht_qtype() :: 'ping' | 'find_node'
+                   | 'get_peers' | 'announce'.

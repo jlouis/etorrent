@@ -33,6 +33,7 @@ start_link(File, Local_PeerId, Id) ->
 % @end
 -spec add_tracker(pid(), string(), binary(), binary(), integer()) -> {ok, pid()} | {ok, pid(), term()} | {error, term()}.
 add_tracker(Pid, UrlTiers, InfoHash, Local_Peer_Id, TorrentId) ->
+    _ = etorrent_dht:add_torrent(InfoHash, TorrentId),
     Tracker = {tracker_communication,
                {etorrent_tracker_communication, start_link,
                 [self(), UrlTiers, InfoHash, Local_Peer_Id, TorrentId]},
