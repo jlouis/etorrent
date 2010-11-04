@@ -7,3 +7,4 @@ webui/*.log
 deps/*
 /erl_crash.dump
 /priv/webui/*.log
+/apps/etorrent/ebin/etorrent.app
