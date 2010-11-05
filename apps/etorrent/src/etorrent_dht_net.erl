@@ -202,7 +202,7 @@ dht_iter_search(SearchType, Target, Width, Retry, Retries,
             {{Dist, NID, IP, Port}, Nodes};
         {repack, get_peers, {NID, Token, Peers, Nodes}} ->
             {{Dist, NID, IP, Port}, {Token, Peers, Nodes}}
-    end || {{Dist, ID, IP, Port}, RetVal} <- WithArgs],
+    end || {{Dist, _ID, IP, Port}, RetVal} <- WithArgs],
     Successful = [E || E <- TmpSuccessful, E =/= FailedCall],
 
     % Mark all nodes that responded as alive
@@ -694,161 +694,160 @@ node_infos_to_compact([{ID, {A0, A1, A2, A3}, Port}|T], Acc) ->
     CNode = <<ID:160, A0, A1, A2, A3, Port:16>>,
     node_infos_to_compact(T, <<Acc/binary, CNode/binary>>).
 
-%
-%
-%
-%query_ping_0_test() ->
-%    Enc = "d1:ad2:id20:abcdefghij0123456789e1:q4:ping1:t2:aa1:y1:qe",
-%    Res = bencode_to_query(Enc),
-%    {dht_query, ping, ID, Params} = Res,
-%    ?assertEqual(<<"aa">>, ID),
-%    ?assertEqual(<<"abcdefghij0123456789">>, fetch_id(Params)).
-%
-%query_find_node_0_test() ->
-%    Enc = "d1:ad2:id20:abcdefghij01234567896:"
-%        ++"target20:mnopqrstuvwxyz123456e1:q9:find_node1:t2:aa1:y1:qe",
-%    Res = bencode_to_query(Enc),
-%    {dht_query, find_node, ID, Params} = Res,
-%    ?assertEqual(<<"aa">>, ID),
-%    ?assertEqual(<<"abcdefghij0123456789">>, fetch_id(Params)),
-%    ?assertEqual(<<"mnopqrstuvwxyz123456">>, fetch_target(Params)).
-%
-%query_get_peers_0_test() ->
-%    Enc = "d1:ad2:id20:abcdefghij01234567899:info_hash"
-%        ++"20:mnopqrstuvwxyz123456e1:q9:get_peers1:t2:aa1:y1:qe",
-%    Res = bencode_to_query(Enc),
-%    {dht_query, get_peers, ID, Params} = Res,
-%    ?assertEqual(<<"aa">>, ID),
-%    ?assertEqual(<<"abcdefghij0123456789">>, fetch_id(Params)),
-%    ?assertEqual(<<"mnopqrstuvwxyz123456">>, fetch_info_hash(Params)).
-%
-%query_announce_peer_0_test() ->
-%    Enc = "d1:ad2:id20:abcdefghij01234567899:info_hash20:"
-%        ++"mnopqrstuvwxyz1234564:porti6881e5:token8:aoeusnthe1:"
-%        ++"q13:announce_peer1:t2:aa1:y1:qe",
-%    Res = bencode_to_query(Enc),
-%    {dht_query, announce, ID, Params} = Res,
-%    ?assertEqual(<<"aa">>, ID),
-%    ?assertEqual(<<"abcdefghij0123456789">>, fetch_id(Params)),
-%    ?assertEqual(<<"mnopqrstuvwxyz123456">>, fetch_info_hash(Params)),
-%    ?assertEqual(6881, fetch_port(Params)),
-%    ?assertEqual(<<"aoeusnth">>, fetch_token(Params)).
-%
-%resp_ping_0_test() ->
-%    Enc = "d1:rd2:id20:mnopqrstuvwxyz123456e1:t2:aa1:y1:re",
-%    Res = bencode_to_response(Enc),
-%    {dht_response, ID, Values} = Res,
-%    ?assertEqual(<<"aa">>, ID),
-%    ?assertEqual(<<"mnopqrstuvwxyz123456">>, fetch_id(Values)).
-%
-%resp_find_peer_0_test() ->
-%    Enc = "d1:rd2:id20:0123456789abcdefghij5:nodes0:e1:t2:aa1:y1:re",
-%    Res = bencode_to_response(Enc),
-%    {dht_response, ID, Values} = Res,
-%    ?assertEqual(<<"aa">>, ID),
-%    ?assertEqual(<<"0123456789abcdefghij">>, fetch_id(Values)),
-%    ?assertEqual([], fetch_nodes(Values)).
-%
-%resp_find_peer_1_test() ->
-%    Enc = "d1:rd2:id20:0123456789abcdefghij5:nodes6:"
-%        ++ [0,0,0,0,0,0] ++ "e1:t2:aa1:y1:re",
-%    Res = bencode_to_response(Enc),
-%    {dht_response, ID, Values} = Res,
-%    ?assertEqual(<<"aa">>, ID),
-%    ?assertEqual(<<"0123456789abcdefghij">>, fetch_id(Values)),
-%    ?assertEqual([{{0,0,0,0}, 0}], fetch_nodes(Values)).
-%
-%resp_get_peers_0_test() ->
-%    Enc = "d1:rd2:id20:abcdefghij01234567895:token8:aoeusnth6:valuesl6:axje.u6:idhtnmee1:t2:aa1:y1:re",
-%    Res = bencode_to_response(Enc),
-%    {dht_response, ID, Values} = Res,
-%    ?assertEqual(<<"aa">>, ID),
-%    ?assertEqual(<<"abcdefghij0123456789">>, fetch_id(Values)),
-%    ?assertEqual(<<"aoeusnth">>, fetch_token(Values)),
-%    ?assertEqual({true, [{{97,120,106,101},11893}, {{105,100,104,116}, 28269}]}, fetch_peers(Values)).
-%
-%resp_get_peers_1_test() ->
-%    Enc = "d1:rd2:id20:abcdefghij01234567895:nodes6:def4565:token8:aoeusnthe1:t2:aa1:y1:re",
-%    Res = bencode_to_response(Enc),
-%    {dht_response, ID, Values} = Res,
-%    ?assertEqual(<<"aa">>, ID),
-%    ?assertEqual(<<"abcdefghij0123456789">>, fetch_id(Values)),
-%    ?assertEqual(<<"aoeusnth">>, fetch_token(Values)),
-%    ?assertEqual({false, [{{100,101,102,52},13622}]}, fetch_peers(Values)).
-%
-%resp_announce_peer_0_test() ->
-%    Enc = "d1:rd2:id20:mnopqrstuvwxyz123456e1:t2:aa1:y1:re",
-%    Res = bencode_to_response(Enc),
-%    {dht_response, ID, Values} = Res,
-%    ?assertEqual(<<"aa">>, ID),
-%    ?assertEqual(<<"mnopqrstuvwxyz123456">>, fetch_id(Values)).
-%
-%%
-%% Also run a test which asserts that the properties
-%% defined in this module holds.
-%
-%properties_test() ->
-%    ?assert(?MODULE:check()).
-%
-%
-% Simple properties checking decode/encode functions
-%
-%octet() ->
-%    choose(0, 255).
-%
-%portnum() ->
-%    choose(0, 16#FFFF).
-%
-%dht_node() ->
-%    {{octet(), octet(), octet(), octet()}, portnum()}.
-%
-%node_id() ->
-%    binary(20).
-%
-%info_hash() ->
-%    binary(20).
-%
-%token() ->
-%    binary(20).
-%
-%transaction() ->
-%    binary(2).
-%
-%ping_query() ->
-%    {ping, [{<<"id">>, node_id()}]}.
-%
-%find_node_query() ->
-%    {find_node, [{<<"id">>, node_id()},
-%                 {<<"target">>, node_id()}]}.
-%
-%get_peers_query() ->
-%    {get_peers, [{<<"id">>, node_id()},
-%                 {<<"info_hash">>, node_id()}]}.
-%
-%announce_query() ->
-%    {announce, [{<<"id">>, node_id()},
-%                {<<"info_hash">>, node_id()},
-%                {<<"token">>, token()},
-%                {<<"port">>, portnum()}]}.
-%
-%dht_query() ->
-%    All = [ping_query(), find_node_query(), get_peers_query(), announce_query()],
-%    oneof([{dht_query, Method, transaction(), lists:sort(Params)}
-%          || {Method, Params} <- All]).
-%
-%
-%prop_inv_compact() ->
-%    ?FORALL(Input, list(dht_node()),
-%        begin
-%            Compact = peers_to_compact(Input),
-%            Output = compact_to_peers(iolist_to_binary(Compact)),
-%            Input =:= Output
-%        end).
-%
-%
-%prop_query_inv() ->
-%    ?FORALL(InQ, dht_query(),
-%        begin
-%            OutQ = bencode_to_query(query_to_bencode(InQ)),
-%            OutQ =:= InQ
-%        end).
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+
+fetch_id({dict, Params}) ->
+    proplists:get_value({string, "id"}, Params).
+
+query_ping_0_test() ->
+   Enc = "d1:ad2:id20:abcdefghij0123456789e1:q4:ping1:t2:aa1:y1:qe",
+   {ping, ID, Params} = decode_msg(Enc),
+   ?assertEqual(<<"aa">>, ID),
+   ?assertEqual({string, "abcdefghij0123456789"}, fetch_id(Params)).
+
+%% query_find_node_0_test() ->
+%%    Enc = "d1:ad2:id20:abcdefghij01234567896:"
+%%        ++"target20:mnopqrstuvwxyz123456e1:q9:find_node1:t2:aa1:y1:qe",
+%%    Res = decode_msg(Enc),
+%%    {dht_query, find_node, ID, Params} = Res,
+%%    ?assertEqual(<<"aa">>, ID),
+%%    ?assertEqual(<<"abcdefghij0123456789">>, fetch_id(Params)),
+%%    ?assertEqual(<<"mnopqrstuvwxyz123456">>, fetch_target(Params)).
+
+%% query_get_peers_0_test() ->
+%%    Enc = "d1:ad2:id20:abcdefghij01234567899:info_hash"
+%%        ++"20:mnopqrstuvwxyz123456e1:q9:get_peers1:t2:aa1:y1:qe",
+%%    Res = decode_msg(Enc),
+%%    {dht_query, get_peers, ID, Params} = Res,
+%%    ?assertEqual(<<"aa">>, ID),
+%%    ?assertEqual(<<"abcdefghij0123456789">>, fetch_id(Params)),
+%%    ?assertEqual(<<"mnopqrstuvwxyz123456">>, fetch_info_hash(Params)).
+
+%% query_announce_peer_0_test() ->
+%%    Enc = "d1:ad2:id20:abcdefghij01234567899:info_hash20:"
+%%        ++"mnopqrstuvwxyz1234564:porti6881e5:token8:aoeusnthe1:"
+%%        ++"q13:announce_peer1:t2:aa1:y1:qe",
+%%    Res = decode_msg(Enc),
+%%    {dht_query, announce, ID, Params} = Res,
+%%    ?assertEqual(<<"aa">>, ID),
+%%    ?assertEqual(<<"abcdefghij0123456789">>, fetch_id(Params)),
+%%    ?assertEqual(<<"mnopqrstuvwxyz123456">>, fetch_info_hash(Params)),
+%%    ?assertEqual(6881, fetch_port(Params)),
+%%    ?assertEqual(<<"aoeusnth">>, fetch_token(Params)).
+
+%% resp_ping_0_test() ->
+%%    Enc = "d1:rd2:id20:mnopqrstuvwxyz123456e1:t2:aa1:y1:re",
+%%    Res = bencode_to_response(Enc),
+%%    {dht_response, ID, Values} = Res,
+%%    ?assertEqual(<<"aa">>, ID),
+%%    ?assertEqual(<<"mnopqrstuvwxyz123456">>, fetch_id(Values)).
+
+%% resp_find_peer_0_test() ->
+%%    Enc = "d1:rd2:id20:0123456789abcdefghij5:nodes0:e1:t2:aa1:y1:re",
+%%    Res = bencode_to_response(Enc),
+%%    {dht_response, ID, Values} = Res,
+%%    ?assertEqual(<<"aa">>, ID),
+%%    ?assertEqual(<<"0123456789abcdefghij">>, fetch_id(Values)),
+%%    ?assertEqual([], fetch_nodes(Values)).
+
+%% resp_find_peer_1_test() ->
+%%    Enc = "d1:rd2:id20:0123456789abcdefghij5:nodes6:"
+%%        ++ [0,0,0,0,0,0] ++ "e1:t2:aa1:y1:re",
+%%    Res = bencode_to_response(Enc),
+%%    {dht_response, ID, Values} = Res,
+%%    ?assertEqual(<<"aa">>, ID),
+%%    ?assertEqual(<<"0123456789abcdefghij">>, fetch_id(Values)),
+%%    ?assertEqual([{{0,0,0,0}, 0}], fetch_nodes(Values)).
+
+%% resp_get_peers_0_test() ->
+%%    Enc = "d1:rd2:id20:abcdefghij01234567895:token8:aoeusnth6:valuesl6:axje.u6:idhtnmee1:t2:aa1:y1:re",
+%%    Res = bencode_to_response(Enc),
+%%    {dht_response, ID, Values} = Res,
+%%    ?assertEqual(<<"aa">>, ID),
+%%    ?assertEqual(<<"abcdefghij0123456789">>, fetch_id(Values)),
+%%    ?assertEqual(<<"aoeusnth">>, fetch_token(Values)),
+%%    ?assertEqual({true, [{{97,120,106,101},11893}, {{105,100,104,116}, 28269}]}, fetch_peers(Values)).
+
+%% resp_get_peers_1_test() ->
+%%    Enc = "d1:rd2:id20:abcdefghij01234567895:nodes6:def4565:token8:aoeusnthe1:t2:aa1:y1:re",
+%%    Res = bencode_to_response(Enc),
+%%    {dht_response, ID, Values} = Res,
+%%    ?assertEqual(<<"aa">>, ID),
+%%    ?assertEqual(<<"abcdefghij0123456789">>, fetch_id(Values)),
+%%    ?assertEqual(<<"aoeusnth">>, fetch_token(Values)),
+%%    ?assertEqual({false, [{{100,101,102,52},13622}]}, fetch_peers(Values)).
+
+%% resp_announce_peer_0_test() ->
+%%    Enc = "d1:rd2:id20:mnopqrstuvwxyz123456e1:t2:aa1:y1:re",
+%%    Res = bencode_to_response(Enc),
+%%    {dht_response, ID, {dict, Values}} = Res,
+%%    ?assertEqual(<<"aa">>, ID),
+%%    ?assertEqual(<<"mnopqrstuvwxyz123456">>, proplist:get_value("id", Values)).
+
+-ifdef(EQC).
+
+properties_test() ->
+   ?assert(?MODULE:check()).
+
+octet() ->
+   choose(0, 255).
+
+portnum() ->
+   choose(0, 16#FFFF).
+
+dht_node() ->
+   {{octet(), octet(), octet(), octet()}, portnum()}.
+
+node_id() ->
+   binary(20).
+
+info_hash() ->
+   binary(20).
+
+token() ->
+   binary(20).
+
+transaction() ->
+   binary(2).
+
+ping_query() ->
+   {ping, [{<<"id">>, node_id()}]}.
+
+find_node_query() ->
+   {find_node, [{<<"id">>, node_id()},
+                {<<"target">>, node_id()}]}.
+
+get_peers_query() ->
+   {get_peers, [{<<"id">>, node_id()},
+                {<<"info_hash">>, node_id()}]}.
+
+announce_query() ->
+   {announce, [{<<"id">>, node_id()},
+               {<<"info_hash">>, node_id()},
+               {<<"token">>, token()},
+               {<<"port">>, portnum()}]}.
+
+dht_query() ->
+   All = [ping_query(), find_node_query(), get_peers_query(), announce_query()],
+   oneof([{dht_query, Method, transaction(), lists:sort(Params)}
+         || {Method, Params} <- All]).
+
+prop_inv_compact() ->
+   ?FORALL(Input, list(dht_node()),
+       begin
+           Compact = peers_to_compact(Input),
+           Output = compact_to_peers(iolist_to_binary(Compact)),
+           Input =:= Output
+       end).
+
+
+prop_query_inv() ->
+   ?FORALL(InQ, dht_query(),
+       begin
+           OutQ = decode_msg(query_to_bencode(InQ)),
+           OutQ =:= InQ
+       end).
+
+-endif. %% EQC
+-endif. %% TEST
