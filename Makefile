@@ -24,7 +24,7 @@ relclean:
 clean:
 	./rebar clean
 
-console: rel
+console: clean relclean compile rel
 	cp ~/app.config rel/etorrent/etc
 	rel/etorrent/bin/etorrent console
 
