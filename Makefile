@@ -24,4 +24,8 @@ relclean:
 clean:
 	./rebar clean
 
+console: rel
+	cp ~/app.config rel/etorrent/etc
+	rel/etorrent/bin/etorrent console
+
 .PHONY: all compile tags dialyze run tracer clean eunit rel
