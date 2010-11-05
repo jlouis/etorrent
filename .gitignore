@@ -10,4 +10,4 @@ deps/*
 /apps/etorrent/ebin/etorrent.app
 /apps/etorrent/src/tags
 /rel/etorrent
-
+/apps/etorrent/.eunit
