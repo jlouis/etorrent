@@ -4,29 +4,29 @@
 all: compile
 
 compile:
-	./rebar compile
+	rebar compile
 
 tags:
 	cd apps/etorrent/src && $(MAKE) tags
 
 eunit:
-	./rebar skip_deps=true eunit
+	rebar skip_deps=true eunit
 
 dialyze: compile
-	./rebar skip_deps=true dialyze
+	rebar skip_deps=true dialyze
 
 rel:
-	./rebar generate
+	rebar generate
 
 relclean:
 	rm -fr rel/etorrent
 
 clean:
-	./rebar clean
+	rebar clean
 
 jlouis-dev:
 	mkdir -p dev
-	(cd rel && ../rebar generate target_dir=../dev/$@ overlay_vars=vars/$@_vars.config)
+	(cd rel && rebar generate target_dir=../dev/$@ overlay_vars=vars/$@_vars.config)
 
 devclean:
 	rm -fr dev
