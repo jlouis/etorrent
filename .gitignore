@@ -13,3 +13,4 @@ deps/*
 /apps/etorrent/.eunit
 /dev
 /rel/vars/jlouis-dev_vars.config
+.#*
