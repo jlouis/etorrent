@@ -26,7 +26,7 @@ so we can get it away.
 
 ## GETTING STARTED
 
-   0. 'make compile' - this compiles the source code
+   0. `make compile` - this compiles the source code
    1. 'make rel' - this creates an embedded release in *rel/etorrent* which
       can subsequently be moved to a location at your leisure.
    2. edit *rel/etorrent/etc/app.config* - there are a number of directories
