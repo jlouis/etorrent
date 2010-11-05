@@ -10,6 +10,7 @@
 -include("peer_state.hrl").
 -include("rate_mgr.hrl").
 -include("etorrent_rate.hrl").
+-include("log.hrl").
 
 -behaviour(gen_server).
 
@@ -117,7 +118,9 @@ send_rate(Id, Pid, Rate) ->
 
 -spec global_rate() -> {float(), float()}.
 global_rate() ->
-    gen_server:call(?SERVER, global_rate).
+    RR = sum_global_rate(etorrent_recv_state),
+    SR = sum_global_rate(etorrent_send_state),
+    {RR, SR}.
 
 %% ====================================================================
 
@@ -132,14 +135,9 @@ init([]) ->
                  global_recv = etorrent_rate:init(?RATE_FUDGE),
                  global_send = etorrent_rate:init(?RATE_FUDGE)}}.
 
-% @todo Lift these calls out of the process.
-handle_call(global_rate, _From, S) ->
-    RR = sum_global_rate(etorrent_recv_state),
-    SR = sum_global_rate(etorrent_send_state),
-    {reply, {RR, SR}, S};
-handle_call(_Request, _From, State) ->
-    Reply = ok,
-    {reply, Reply, State}.
+handle_call(Request, _From, State) ->
+    ?INFO([unknown_request, ?MODULE, Request]),
+    {reply, ok, State}.
 
 handle_cast({What, Id, Pid}, S) ->
     ok = alter_state(What, Id, Pid),
