@@ -10,7 +10,7 @@ tags:
 	cd apps/etorrent/src && $(MAKE) tags
 
 eunit:
-	./rebar eunit
+	./rebar skip_deps=true eunit
 
 dialyze: compile
 	./rebar skip_deps=true dialyze
