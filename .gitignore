@@ -11,3 +11,5 @@ deps/*
 /apps/etorrent/src/tags
 /rel/etorrent
 /apps/etorrent/.eunit
+/dev
+/rel/vars/jlouis-dev_vars.config
