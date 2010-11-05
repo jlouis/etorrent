@@ -103,7 +103,13 @@ recv_rate(Id, Pid, Rate, SnubState) ->
 
 -spec get_torrent_rate(integer(), leeching | seeding) -> {ok, float()}.
 get_torrent_rate(Id, Direction) ->
-    gen_server:call(?SERVER, {get_torrent_rate, Id, Direction}).
+    Tab = case Direction of
+            leeching -> etorrent_recv_state;
+            seeding  -> etorrent_send_state
+          end,
+    Objects = ets:match_object(Tab, #rate_mgr { pid = {Id, '_'}, _ = '_' }),
+    R = lists:sum([K#rate_mgr.rate || K <- Objects]),
+    {ok, R}.
 
 -spec send_rate(integer(), pid(), float()) -> ok.
 send_rate(Id, Pid, Rate) ->
@@ -131,14 +137,6 @@ handle_call(global_rate, _From, S) ->
     RR = sum_global_rate(etorrent_recv_state),
     SR = sum_global_rate(etorrent_send_state),
     {reply, {RR, SR}, S};
-handle_call({get_torrent_rate, Id, Direction}, _F, S) ->
-    Tab = case Direction of
-            leeching -> etorrent_recv_state;
-            seeding  -> etorrent_send_state
-          end,
-    Objects = ets:match_object(Tab, #rate_mgr { pid = {Id, '_'}, _ = '_' }),
-    R = lists:sum([K#rate_mgr.rate || K <- Objects]),
-    {reply, {ok, R}, S};
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
