@@ -24,25 +24,20 @@ so we can get it away.
    * BEP 12 - Multitracker Metadata Extension.
    * BEP 23 - Tracker Returns Compact Peer Lists.
 
-## GETTING STARTED WITHOUT INSTALLING
+## GETTING STARTED
 
-  0. Install rebar(!)
-  1. Check Makefile.config for the right configuration options
-  2. edit the file 'priv/etorrent.config'. Use the example 'priv/etorrent.config.example' as a start.
-  3. 'rebar get-deps' to get the dependencies needed by the code.
-  4. 'rebar compile' to compile the code into the BEAM format.
-  5. 'make run'
-  6. drop a .torrent file in the watched dir and see what happens.
-  7. call etorrent:help(). from the Erlang CLI to get a list of available
-     commands.
-  8. If you enabled the webui, you can try browsing to its location. By default the location is 'http://localhost:8080'.
-
-## GETTING STARTED WITH INSTALLING
-
-  1. edit 'Makefile.config' to suit your liking.
-  2. 'rebar compile'
-  3. 'rebar generate'
-  4. You should now have a standalone embedded node in the 'rel' directory.
+   0. 'make compile' - this compiles the source code
+   1. 'make rel' - this creates an embedded release in *rel/etorrent* which
+      can subsequently be moved to a location at your leisure.
+   2. edit *rel/etorrent/etc/app.config* - there are a number of directories
+      which must be set in order to make the system work.
+   3. check *rel/etorrent/etc/vm.args* - Erlang args to supply
+   4. If you enabled the webui, check *rel/etorrent/etc/webui.config*
+   5. run 'rel/etorrent/bin/etorrent console'
+   6. drop a .torrent file in the watched dir and see what happens.
+   7. call etorrent:help(). from the Erlang CLI to get a list of available
+      commands.
+   8. If you enabled the webui, you can try browsing to its location. By default the location is 'http://localhost:8080'.
 
 ## ISSUES
 
