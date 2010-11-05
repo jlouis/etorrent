@@ -24,6 +24,16 @@ relclean:
 clean:
 	./rebar clean
 
+jlouis-dev:
+	mkdir -p dev
+	(cd rel && ../rebar generate target_dir=../dev/$@ overlay_vars=vars/$@_vars.config)
+
+devclean:
+	rm -fr dev
+
+jlouis-cons:
+	dev/jlouis-dev/bin/etorrent console
+
 console: clean relclean compile rel
 	cp ~/app.config rel/etorrent/etc
 	rel/etorrent/bin/etorrent console
