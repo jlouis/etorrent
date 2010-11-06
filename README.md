@@ -39,6 +39,21 @@ so we can get it away.
       commands.
    8. If you enabled the webui, you can try browsing to its location. By default the location is 'http://localhost:8080'.
 
+## Setting up a development environment
+
+When developing for etorrent, you might end up generating a new
+environment quite often. So ease the configuration, the build
+infrastructure support this.
+
+   * Create a file `rel/vars/etorrent-dev_vars.config` based upon the file
+     `rel/vars.config`.
+   * run `make compile etorrent-dev`
+   * run `make console`
+
+Notice that we `-pa` add `../../apps/etorrent/ebin` so you can l(Mod) files
+from the shell directly into the running system after having
+recompiled them.
+
 ## ISSUES
 
 Either mail them to jesper.louis.andersen@gmail.com (We are
