@@ -1,3 +1,21 @@
+Version 1.1.2:
+
+Build system restructuring,
+
+  * This version adds support for a new build system. The README has
+    been updated with the information about how to build the software
+    now. Compared to earlier, we can now build a release which is a
+    stand-alone version of Erlang/OTP and etorrent bundled up nicely.
+  * Locations of log files has been vastly improved.
+  * Magnus Klaars work on DHT has been included. It is not prime-time
+    ready yet, but it is a start.
+
+Version 1.1.1:
+
+Small quick bugfix release,
+
+  * Include etorrent.erl, which was not tracked by the repository.
+
 Version 1.1.0:
 
 In this version, we have mostly cleaned up some code paths to make
