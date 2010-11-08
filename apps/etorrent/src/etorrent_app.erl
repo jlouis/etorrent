@@ -38,10 +38,18 @@ stop(_State) ->
 
 start_webui() ->
     Config = default_webui_configuration(),
-    inets:start(httpd, Config, inets).
+    {ok, _Pid} = inets:start(httpd, Config, inets).
+
+webui_port() ->
+    {ok, P} = application:get_env(etorrent, webui_port),
+    P.
+
+webui_bind_address() ->
+    {ok, A} = application:get_env(etorrent, webui_bind_address),
+    A.
 
 logger_dir() ->
-    {ok, Val} = application:get_env(etorrent, logger_dir),
+    {ok, Val} = application:get_env(etorrent, webui_logger_dir),
     Val.
 
 default_webui_configuration() ->
@@ -60,9 +68,9 @@ default_webui_configuration() ->
 		   {"css", "text/css"},
 		   {"js", "text/javascript"}]},
      {server_name,"etorrent_webui"},
-     {bind_address, {127,0,0,1}},
-     {server_root, filename:join([logger_dir(), "webui"])},
-     {port,8080},
+     {bind_address, webui_bind_address()},
+     {server_root, logger_dir()},
+     {port, webui_port()},
      {document_root, filename:join([code:priv_dir(etorrent), "webui", "htdocs"])},
      {directory_index, ["index.html"]},
      {erl_script_alias, {"/ajax", [etorrent_webui]}},
