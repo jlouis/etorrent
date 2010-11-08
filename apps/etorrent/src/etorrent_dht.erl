@@ -30,7 +30,12 @@ start_link() ->
     start_link(Port).
 
 start_link(DHTPort) ->
-    start_link(DHTPort, "etorrent_dht.persistent").
+    StateFile = case application:get_env(dht_state) of
+		    undefined -> "etorrent_dht.persistent";
+		    {ok, SFile} when is_list(SFile) ->
+			SFile
+		end,
+    start_link(DHTPort, StateFile).
 
 
 
