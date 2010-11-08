@@ -8,9 +8,10 @@
 -module(etorrent_rate).
 
 %% API
--export([init/0, init/1, update/2, now_secs/0, eta/2]).
+-export([init/0, init/1, update/2, now_secs/0, eta/2, format_eta/2]).
 
 -include("etorrent_rate.hrl").
+-include("log.hrl").
 
 -define(MAX_RATE_PERIOD, 20).
 
@@ -65,8 +66,22 @@ update(#peer_rate {rate = Rate,
 % @end
 -type eta() :: {integer(), {integer(), integer(), integer()}}.
 -spec eta(integer(), float()) -> eta().
-eta(Left, DownloadRate) ->
-        calendar:seconds_to_daystime(round(Left / DownloadRate)).
+eta(_Left, DR) when DR == 0 ->
+    unknown;
+eta(Left, DownloadRate) when is_integer(Left) ->
+    ?INFO([{left, Left}, {downrate, DownloadRate}]),
+    calendar:seconds_to_daystime(round(Left / DownloadRate));
+eta(unknown, _DownloadRate) ->
+    unknown.
+
+format_eta(Left, DownloadRate) ->
+    case eta(Left, DownloadRate) of
+	{DaysLeft, {HoursLeft, MinutesLeft, SecondsLeft}} ->
+	    io_lib:format("ETA: ~Bd ~Bh ~Bm ~Bs",
+			  [DaysLeft, HoursLeft, MinutesLeft, SecondsLeft]);
+	unknown ->
+	    "ETA: Unknown"
+    end.
 
 % @doc Returns the number of seconds elapsed as gregorian calendar seconds
 % @end
