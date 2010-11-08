@@ -65,7 +65,7 @@ update(#peer_rate {rate = Rate,
 % @doc Calculate estimated time of arrival.
 % @end
 -type eta() :: {integer(), {integer(), integer(), integer()}}.
--spec eta(integer(), float()) -> eta().
+-spec eta(integer(), float()) -> eta() | unknown.
 eta(_Left, DR) when DR == 0 ->
     unknown;
 eta(Left, DownloadRate) when is_integer(Left) ->
