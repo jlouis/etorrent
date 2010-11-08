@@ -24,6 +24,17 @@ so we can get it away.
    * BEP 12 - Multitracker Metadata Extension.
    * BEP 23 - Tracker Returns Compact Peer Lists.
 
+### Required software:
+
+   * rebar - you need a working rebar installation to build etorrent.
+   * Erlang/OTP R13B04 or R14 - the etorrent system is written in
+     Erlang and thus requires a working Erlang distribution to
+     work. It may work with older versions, but has mostly been tested
+     with newer versions.
+   * A proper operating system (e.g., some UNIX-derivative). Windows
+     support has never been tested (If you want to port, I'll be happy
+     to help).
+
 ## GETTING STARTED
 
    0. `make compile` - this compiles the source code
