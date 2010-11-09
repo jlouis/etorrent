@@ -51,8 +51,6 @@
                 rate = none,
                 choke = true,
                 interested = false, % Are we interested in the peer?
-                timer = none,
-                rate_timer = none,
                 parent = none,
                 torrent_id = none,
                 file_system_pid = none}).
@@ -235,15 +233,13 @@ code_change(_OldVsn, State, _Extra) ->
 %% gen_server callbacks
 %%====================================================================
 init([Socket, TorrentId, FastExtension]) ->
-    {ok, TRef} = timer:send_interval(?DEFAULT_KEEP_ALIVE_INTERVAL, self(), tick),
-    {ok, Tref2} = timer:send_interval(?RATE_UPDATE, self(), rate_update),
+    erlang:send_after(?DEFAULT_KEEP_ALIVE_INTERVAL, self(), tick),
+    erlang:send_after(?RATE_UPDATE, self(), rate_update),
     gproc:add_local_name({peer, Socket, sender}),
     FS = gproc:lookup_local_name({torrent, TorrentId, fs}),
     %% This may fail, but I want to check it
     {ok,
      #state{socket = Socket,
-            timer = TRef,
-            rate_timer = Tref2,
             requests = queue:new(),
             rate = etorrent_rate:init(),
             parent = {non_inited, foo},
@@ -256,10 +252,12 @@ init([Socket, TorrentId, FastExtension]) ->
 
 %% Whenever a tick is hit, we send out a keep alive message on the line.
 handle_info(tick, S) ->
+    erlang:send_after(?DEFAULT_KEEP_ALIVE_INTERVAL, self(), tick),
     send_message(keep_alive, S, 0);
 
 %% When we are requested to update our rate, we do it here.
 handle_info(rate_update, S) ->
+    erlang:send_after(?RATE_UPDATE, self(), rate_update),
     Rate = etorrent_rate:update(S#state.rate, 0),
     ok = etorrent_rate_mgr:send_rate(S#state.torrent_id,
                                      S#state.parent,

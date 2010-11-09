@@ -136,8 +136,9 @@ init([]) ->
                                    {keypos, 2}]),
     _ = ets:new(etorrent_c_pieces, [protected, named_table,
                                     {keypos, 2}]),
-    {ok, _} = timer:send_interval(timer:seconds(60),
-                                  rate_sparkline_update),
+    erlang:send_after(timer:seconds(60),
+		      self(),
+		      rate_sparkline_update),
     {ok, #state{ monitoring = dict:new() }}.
 
 handle_call({new, Id, {{uploaded, U}, {downloaded, D},
@@ -191,6 +192,7 @@ handle_info({'DOWN', Ref, _, _, _}, S) ->
     {noreply, S#state { monitoring = dict:erase(Ref, S#state.monitoring) }};
 handle_info(rate_sparkline_update, S) ->
     for_each_torrent(fun update_sparkline_rate/1),
+    erlang:send_after(timer:seconds(60), self(), rate_sparkline_update),
     {noreply, S};
 handle_info(_M, S) ->
     {noreply, S}.

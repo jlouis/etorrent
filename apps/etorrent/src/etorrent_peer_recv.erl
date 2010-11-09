@@ -18,7 +18,6 @@
                  rate = none,
                  last_piece_msg_count = 0,
                  id :: integer(),
-                 rate_timer = none,
                  controller = none,
                  % The MODE of the receiver. It is either a fast peer, in which
                  % case messaging is handled by the underlying erlang VM, or slow,
@@ -131,6 +130,7 @@ handle_info(timeout, S) ->
     end;
 handle_info(rate_update, OS) ->
     NR = etorrent_rate:update(OS#state.rate, 0),
+    erlang:send_after(?RATE_UPDATE, self(), rate_update),
     SnubState = is_snubbing_us(OS),
     ok = etorrent_rate_mgr:recv_rate(OS#state.id,
                                      self(),
@@ -176,10 +176,9 @@ code_change(_OldVsn, State, _Extra) ->
 
 init([TorrentId, Socket]) ->
     gproc:add_local_name({peer, Socket, receiver}),
-    {ok, TRef} = timer:send_interval(?RATE_UPDATE, self(), rate_update),
+    erlang:send_after(?RATE_UPDATE, self(), rate_update),
     {ok, #state { socket = Socket,
                   rate = etorrent_rate:init(?RATE_FUDGE),
-                  rate_timer = TRef,
                   id = TorrentId,
                   mode = slow
                 }, 0}.

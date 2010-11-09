@@ -66,7 +66,7 @@ is_bad_peer(IP, Port) ->
 %% ====================================================================
 
 init([OurPeerId]) ->
-    _Tref = timer:send_interval(?CHECK_TIME, self(), cleanup_table),
+    erlang:send_after(?CHECK_TIME, self(), cleanup_table),
     _Tid = ets:new(etorrent_bad_peer, [protected, named_table,
                                        {keypos, #bad_peer.ipport}]),
     {ok, #state{ our_peer_id = OurPeerId }}.
@@ -103,6 +103,7 @@ handle_info(cleanup_table, S) ->
                              [{'<','$1',{Bound}}],
                              [true]}]),
     gen_server:cast(?SERVER, {add_peers, []}),
+    erlang:send_after(?CHECK_TIME, self(), cleanup_table),
     {noreply, S};
 handle_info(_Info, State) ->
     {noreply, State}.

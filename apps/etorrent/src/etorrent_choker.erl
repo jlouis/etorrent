@@ -25,7 +25,6 @@
 -record(state, {our_peer_id = none,
                 info_hash = none,
 
-                timer_ref = none,
                 round = 0,
 
                 optimistic_unchoke_pid = none,
@@ -248,9 +247,8 @@ split_preferred_peers([P | Next], Downs, Leechs) ->
 %%====================================================================
 
 init([OurPeerId]) ->
-    {ok, Tref} = timer:send_interval(?ROUND_TIME, self(), round_tick),
-    {ok, #state{ our_peer_id = OurPeerId,
-                     timer_ref = Tref}}.
+    erlang:send_after(?ROUND_TIME, self(), round_tick),
+    {ok, #state{ our_peer_id = OurPeerId }}.
 
 handle_call({monitor, Pid}, _From, S) ->
     _Tref = erlang:monitor(process, Pid),
@@ -268,7 +266,7 @@ handle_cast(_Msg, State) ->
     {noreply, State}.
 
 handle_info(round_tick, S) ->
-    case S#state.round of
+    R = case S#state.round of
         0 ->
             {ok, NS} = advance_optimistic_unchoke(S),
             rechoke(NS),
@@ -276,7 +274,9 @@ handle_info(round_tick, S) ->
         N when is_integer(N) ->
             rechoke(S),
             {noreply, S#state{round = S#state.round - 1}}
-    end;
+    end,
+    erlang:send_after(?ROUND_TIME, self(), round_tick),
+    R;
 handle_info({'DOWN', _Ref, process, Pid, Reason}, S)
   when (Reason =:= normal) or (Reason =:= shutdown) ->
     % The peer shut down normally. Hence we just remove him and start up

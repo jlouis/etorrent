@@ -69,9 +69,10 @@ completed(Pid) ->
 %%--------------------------------------------------------------------
 init([ControlPid, UrlTiers, InfoHash, PeerId, TorrentId]) ->
     process_flag(trap_exit, true),
-    {ok, HardRef} = timer:send_after(0, hard_timeout),
-    {ok, SoftRef} = timer:send_after(timer:seconds(?DEFAULT_CONNECTION_TIMEOUT_INTERVAL),
-                                     soft_timeout),
+    HardRef = erlang:send_after(0, self(), hard_timeout),
+    SoftRef = erlang:send_after(timer:seconds(?DEFAULT_CONNECTION_TIMEOUT_INTERVAL),
+			       self(),
+			       soft_timeout),
     {ok, #state{control_pid = ControlPid,
                 torrent_id = TorrentId,
                 url = shuffle_tiers(UrlTiers),
@@ -262,25 +263,24 @@ handle_timeout(Interval, MinInterval, S) ->
               none ->
                   NS;
               I when is_integer(I) ->
-                  {ok, TRef} = timer:send_after(timer:seconds(I), hard_timeout),
+                  TRef = erlang:send_after(timer:seconds(I), self(), hard_timeout),
                   NS#state { hard_timer = TRef }
           end,
-    {ok, TRef2} = timer:send_after(timer:seconds(Interval), soft_timeout),
+    TRef2 = erlang:send_after(timer:seconds(Interval), self(), soft_timeout),
     NNS#state { soft_timer = TRef2 }.
 
 cancel_timers(S) ->
     NS = case S#state.hard_timer of
-             none ->
-                 S;
+             none -> S;
              TRef ->
-                 {ok, cancel} = timer:cancel(TRef),
+                 erlang:cancel_timer(TRef),
                  S#state { hard_timer = none }
          end,
     case NS#state.soft_timer of
         none ->
             NS;
         TRef2 ->
-            {ok, cancel} = timer:cancel(TRef2),
+            erlang:cancel_timer(TRef2),
             NS#state { soft_timer = none }
     end.
 

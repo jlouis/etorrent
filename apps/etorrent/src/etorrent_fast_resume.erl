@@ -20,7 +20,7 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
--record(state, { timer = none }).
+-record(state, {}).
 
 -define(SERVER, ?MODULE).
 -define(PERSIST_TIME, timer:seconds(300)). % Every 300 secs, may be done configurable.
@@ -84,8 +84,8 @@ init([]) ->
             ?INFO([fast_resume_no_data, E]),
             _ = ets:new(etorrent_fast_resume, [named_table, private])
     end,
-    {ok, TRef} = timer:send_interval(?PERSIST_TIME, self(), persist),
-    {ok, #state{ timer = TRef}}.
+    erlang:send_after(?PERSIST_TIME, self(), persist),
+    {ok, #state{}}.
 
 handle_call({query_state, Id}, _From, S) ->
     {atomic, [TM]} = etorrent_tracking_map:select(Id),
@@ -103,6 +103,7 @@ handle_cast(_Msg, State) ->
 handle_info(persist, S) ->
     ?INFO([persist_to_disk]),
     persist_to_disk(),
+    erlang:send_after(?PERSIST_TIME, self(), persist),
     {noreply, S};
 handle_info(_Info, State) ->
     {noreply, State}.
