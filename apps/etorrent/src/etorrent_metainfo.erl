@@ -65,9 +65,15 @@ get_url(Torrent) ->
 	    [[U]]
     end.
 
+-spec filter_tiers(bcode(), fun((string()) -> boolean())) -> [tier()].
+filter_tiers(Torrent, P) ->
+    [[U || U <- T, P(U)] || T <- get_url(Torrent)].
+
 -spec get_with_prefix(bcode(), string()) -> string().
 get_with_prefix(Torrent, P) ->
-    [[U || U <- T, lists:prefix(P, U)] || T <- get_url(Torrent)].
+    filter_tiers(Torrent, fun(U) ->
+				  lists:prefix(P, U)
+			  end).
 
 -spec get_http_urls(bcode()) -> string().
 get_http_urls(Torrent) ->
