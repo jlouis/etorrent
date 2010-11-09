@@ -65,17 +65,21 @@ get_url(Torrent) ->
 	    [[U]]
     end.
 
+-spec get_with_prefix(bcode(), string()) -> string().
+get_with_prefix(Torrent, P) ->
+    [[U || U <- T, lists:prefix(P, U)] || T <- get_url(Torrent)].
+
 -spec get_http_urls(bcode()) -> string().
 get_http_urls(Torrent) ->
-    [[U || "http://"++_=U <- T] || T <- get_url(Torrent)].
+    get_with_prefix(Torrent, "http://").
 
 -spec get_udp_urls(bcode()) -> string().
 get_udp_urls(Torrent) ->
-    [[U || "udp://"++_=U <- T] || T <- get_url(Torrent)].
+    get_with_prefix(Torrent, "udp://").
 
 -spec get_dht_urls(bcode()) -> string().
 get_dht_urls(Torrent) ->
-    [[U || "dht://"++_=U <- T] || T <- get_url(Torrent)].
+    get_with_prefix(Torrent, "dht://").
 
 % @doc Return the infohash for a torrent
 % @end
