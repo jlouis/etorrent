@@ -97,8 +97,7 @@ handle_cast(init_timer, State) ->
 handle_cast(announce, State) ->
     #state{
         infohash=InfoHash,
-        torrentid=TorrentID} = State,
-    
+        torrentid=_TorrentID} = State,
     {_, Peers, _} = etorrent_dht_net:get_peers_search(InfoHash),
     error_logger:info_msg("Found ~w peers", [length(Peers)]),
 

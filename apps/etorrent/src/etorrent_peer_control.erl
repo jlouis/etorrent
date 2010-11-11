@@ -128,7 +128,7 @@ incoming_msg(Pid, Msg) ->
 init([LocalPeerId, InfoHash, Id, {IP, Port}, Caps, Socket]) ->
     process_flag(trap_exit, true),
     %% TODO: Update the leeching state to seeding when peer finished torrent.
-    ok = etorrent_peer:new(IP, Port, Id, self(), leeching),
+    ok = etorrent_table:new_peer(IP, Port, Id, self(), leeching),
     ok = etorrent_choker:monitor(self()),
     {value, NumPieces} = etorrent_torrent:num_pieces(Id),
     gproc:add_local_name({peer, Socket, control}),
@@ -292,7 +292,7 @@ handle_message({bitfield, BitField},
         etorrent_proto_wire:decode_bitfield(Size, BitField),
     Left = Pieces_Left - gb_sets:size(PieceSet),
     case Left of
-        0  -> ok = etorrent_peer:statechange(self(), seeder);
+        0  -> ok = etorrent_table:statechange_peer(self(), seeder);
         _N -> ok
     end,
     case etorrent_piece_mgr:check_interest(Torrent_Id, PieceSet) of
@@ -369,12 +369,13 @@ handle_got_chunk(Index, Offset, Data, Len, S) ->
                         found ->
                             ok;
                         assigned ->
-                            etorrent_peer:broadcast_peers(S#state.torrent_id,
-                                fun(P) ->
-                                        endgame_got_chunk(
-                                            P,
-                                            {chunk, Index, Offset, Len})
-                                end)
+			    etorrent_table:foreach_peer(
+			      S#state.torrent_id,
+			      fun(P) ->
+				      endgame_got_chunk(
+					P,
+					{chunk, Index, Offset, Len})
+			      end)
                     end;
                 false ->
                     ok
@@ -398,7 +399,7 @@ unqueue_all_pieces(S) ->
     %% Put chunks back
     ok = etorrent_chunk_mgr:putback_chunks(self()),
     %% Tell other peers that there is 0xf00d!
-    etorrent_peer:broadcast_peers(S#state.torrent_id,
+    etorrent_table:foreach_peer(S#state.torrent_id,
         fun(P) -> try_queue_pieces(P) end),
     %% Clean up the request set.
     S#state{remote_request_set = gb_trees:empty()}.
@@ -544,7 +545,7 @@ peer_have(PN, S) ->
     end.
 
 peer_seeds(Id, 0) ->
-    ok = etorrent_peer:statechange(self(), seeder),
+    ok = etorrent_table:statechange_peer(self(), seeder),
     case etorrent_torrent:is_seeding(Id) of
         true  -> stop;
         false -> ok

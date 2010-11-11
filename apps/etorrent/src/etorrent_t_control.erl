@@ -88,7 +88,7 @@ completed(Pid) ->
 %% ====================================================================
 
 init([Parent, Id, Path, PeerId]) ->
-    etorrent_tracking_map:new(Path, Parent, Id),
+    etorrent_table:new_torrent(Path, Parent, Id),
     etorrent_chunk_mgr:new(Id),
     gproc:add_local_name({torrent, Id, control}),
     {ok, initializing, #state{id = Id,
@@ -97,7 +97,7 @@ init([Parent, Id, Path, PeerId]) ->
                               parent_pid = Parent}, 0}. % Force timeout instantly.
 
 initializing(timeout, S) ->
-    case etorrent_tracking_map:is_ready_for_checking(S#state.id) of
+    case etorrent_table:acquire_check_token(S#state.id) of
         false ->
             {next_state, initializing, S, ?CHECK_WAIT_TIME};
         true ->
@@ -111,8 +111,8 @@ initializing(timeout, S) ->
             etorrent_piece_mgr:add_monitor(self(), S#state.id),
             %% Update the tracking map. This torrent has been started, and we
             %%  know its infohash
-            etorrent_tracking_map:statechange(S#state.id, {infohash, InfoHash}),
-            etorrent_tracking_map:statechange(S#state.id, started),
+            etorrent_table:statechange_torrent(S#state.id, {infohash, InfoHash}),
+            etorrent_table:statechange_torrent(S#state.id, started),
 
             %% Add a torrent entry for this torrent.
             ok = etorrent_torrent:new(

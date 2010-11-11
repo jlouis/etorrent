@@ -4,7 +4,6 @@
 -module(etorrent_mgr).
 -behaviour(gen_server).
 
--include("etorrent_mnesia_table.hrl").
 -include("log.hrl").
 
 -export([start_link/1,
@@ -72,12 +71,11 @@ handle_cast({stop, F}, S) ->
     stop_torrent(F, S).
 
 handle_call(stop_all, _From, S) ->
-    {atomic, Torrents} = etorrent_tracking_map:all(),
-    lists:foreach(fun(#tracking_map { filename = F }) ->
-                          etorrent_t_pool_sup:stop_torrent(F),
-                          ok
-                  end,
-                  Torrents),
+    PLS = etorrent_table:all_torrents(),
+    [begin
+	 F = proplists:get_value(filename, PL),
+	 etorrent_t_pool_sup:stop_torrent(F)
+     end || PL <- PLS],
     {reply, ok, S};
 handle_call(_A, _B, S) ->
     {noreply, S}.
@@ -93,22 +91,22 @@ code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 %% =======================================================================
+%% TODO: Why the hell does this one pass state???
 stop_torrent(F, S) ->
     ?INFO([stopping, F]),
-    case etorrent_tracking_map:select({filename, F}) of
-        {atomic, [#tracking_map{}]} ->
-            etorrent_t_pool_sup:stop_torrent(F),
-            ok;
-        {atomic, []} ->
-            %% Was already removed, it is ok.
-            ok
+    case etorrent_table:get_torrent({filename, F}) of
+	not_found -> ok; % Was already removed, it is ok.
+	{value, _PL} ->
+	    etorrent_t_pool_sup:stop_torrent(F),
+	    ok
     end,
     {noreply, S}.
 
 
 torrent_duplicate(F) ->
-    case etorrent_tracking_map:select({filename, F}) of
-        {atomic, []} -> false;
-        {atomic, [T]} -> duplicate =:= T#tracking_map.state
+    case etorrent_table:get_torrent({filename, F}) of
+	not_found -> false;
+	{value, PL} ->
+	    duplicate =:= proplists:get_value(state, PL)
     end.
 

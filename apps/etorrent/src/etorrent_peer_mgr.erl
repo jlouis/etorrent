@@ -9,7 +9,6 @@
 %%% TODO: Monitor peers and retry them. In general, we need peer management here.
 -module(etorrent_peer_mgr).
 
--include("etorrent_mnesia_table.hrl").
 -include("etorrent_bad_peer.hrl").
 -include("types.hrl").
 
@@ -140,7 +139,7 @@ fill_peers(K, PeerId, [{TorrentId, {IP, Port}} | R]) ->
     end.
 
 guard_spawn_peer(K, PeerId, TorrentId, IP, Port, R) ->
-    case etorrent_peer:connected(IP, Port, TorrentId) of
+    case etorrent_table:connected_peer(IP, Port, TorrentId) of
         true ->
             % Already connected to the peer. This happens
             % when the peer connects back to us and the
@@ -148,44 +147,42 @@ guard_spawn_peer(K, PeerId, TorrentId, IP, Port, R) ->
             % still hands us the ip address.
             fill_peers(K, PeerId, R);
         false ->
-            case etorrent_tracking_map:select(TorrentId) of
-                {atomic, []} -> %% No such Torrent currently started, skip
-                    fill_peers(K, PeerId, R);
-                {atomic, [TM]} ->
-                    try_spawn_peer(K, PeerId, TM, TorrentId, IP, Port, R)
+            case etorrent_table:get_torrent(TorrentId) of
+		not_found -> %% No such Torrent currently started, skip
+		    fill_peers(K, PeerId, R);
+                {value, PL} ->
+                    try_spawn_peer(K, PeerId, PL, TorrentId, IP, Port, R)
             end
     end.
 
-try_spawn_peer(K, PeerId, TM, TorrentId, IP, Port, R) ->
-    spawn_peer(PeerId, TM, TorrentId, IP, Port),
+try_spawn_peer(K, PeerId, PL, TorrentId, IP, Port, R) ->
+    spawn_peer(PeerId, PL, TorrentId, IP, Port),
     fill_peers(K-1, PeerId, R).
 
-spawn_peer(PeerId, TM, TorrentId, IP, Port) ->
+spawn_peer(PeerId, PL, TorrentId, IP, Port) ->
     spawn(fun () ->
-                case gen_tcp:connect(IP, Port, [binary, {active, false}],
-                                     ?DEFAULT_CONNECT_TIMEOUT) of
-                  {ok, Socket} ->
-                      case etorrent_proto_wire:initiate_handshake(
-                              Socket,
-                              PeerId,
-                              TM#tracking_map.info_hash) of
-                          {ok, _Capabilities, PeerId} -> ok;
-                          {ok, Capabilities, RPID} ->
-                              {ok, RecvPid, ControlPid} = etorrent_t_sup:add_peer(
-                                  RPID,
-                                  TM#tracking_map.info_hash,
-                                  TorrentId,
-                                  {IP, Port},
-				  Capabilities,
-                                  Socket),
-                              ok = gen_tcp:controlling_process(Socket, RecvPid),
-                              etorrent_peer_control:initialize(ControlPid, outgoing),
-                              ok;
-                          {error, _Reason} ->
-                              ok
-                      end;
-                  {error, _Reason} ->
-                      ok
-                end
-        end).
-
+      case gen_tcp:connect(IP, Port, [binary, {active, false}],
+			   ?DEFAULT_CONNECT_TIMEOUT) of
+	  {ok, Socket} ->
+	      case etorrent_proto_wire:initiate_handshake(
+		     Socket,
+		     PeerId,
+		     proplists:get_value(info_hash, PL)) of
+		  {ok, _Capabilities, PeerId} -> ok;
+		  {ok, Capabilities, RPID} ->
+		      {ok, RecvPid, ControlPid} =
+			  etorrent_t_sup:add_peer(
+			    RPID,
+			    proplists:get_value(info_hash, PL),
+			    TorrentId,
+			    {IP, Port},
+			    Capabilities,
+			    Socket),
+		      ok = gen_tcp:controlling_process(Socket, RecvPid),
+		      etorrent_peer_control:initialize(ControlPid, outgoing),
+		      ok;
+		  {error, _Reason} -> ok
+	      end;
+	  {error, _Reason} -> ok
+      end
+   end).

@@ -22,7 +22,7 @@
     etorrent_t_pool_sup,
     etorrent_torrent
    ]},
-  {applications, [kernel, stdlib, inets, crypto, sasl, mnesia, gproc]},
+  {applications, [kernel, stdlib, inets, crypto, sasl, gproc]},
   {mod, {etorrent_app, []}},
   {env, []}
  ]

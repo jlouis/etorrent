@@ -30,10 +30,9 @@ start_link(PeerId) ->
 %% ====================================================================
 init([PeerId]) ->
     ?INFO([etorrent_supervisor_starting, PeerId]),
+    Tables       = ?CHILD(etorrent_table),
     Torrent      = ?CHILD(etorrent_torrent),
     FSJanitor    = ?CHILD(etorrent_fs_janitor),
-    TrackingMap  = ?CHILD(etorrent_tracking_map),
-    Peer         = ?CHILD(etorrent_peer),
     Counters     = ?CHILD(etorrent_counters),
     EventManager = ?CHILD(etorrent_event_mgr),
     PeerMgr      = ?CHILDP(etorrent_peer_mgr, [PeerId]),
@@ -54,7 +53,6 @@ init([PeerId]) ->
                    {etorrent_t_pool_sup, start_link, []},
                    transient, infinity, supervisor, [etorrent_t_pool_sup]},
 
-    
     % Make the DHT subsystem optional
     DHTSup = case application:get_env(etorrent, dht) of
         undefined -> [];
@@ -66,8 +64,8 @@ init([PeerId]) ->
     end,
 
     {ok, {{one_for_all, 3, 60},
-          [Torrent, FSJanitor, TrackingMap, Peer,
-           Counters, EventManager, PeerMgr, 
+          [Tables, Torrent, FSJanitor,
+           Counters, EventManager, PeerMgr,
            FastResume, RateManager, PieceManager,
            ChunkManager, Choker, Listener, AcceptorSup,
            TorrentMgr, DirWatcherSup, TorrentPool] ++ DHTSup}}.

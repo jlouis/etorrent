@@ -10,7 +10,6 @@
 -module(etorrent_fs).
 
 -include("etorrent_piece.hrl").
--include("etorrent_mnesia_table.hrl").
 -include("types.hrl").
 -include("log.hrl").
 
@@ -108,10 +107,11 @@ handle_cast({check_piece, Index}, S) ->
                    S#state.torrent_id,
                    Index,
                    fetched),
-            etorrent_peer:broadcast_peers(S#state.torrent_id,
-                    fun(P) ->
-                          etorrent_peer_control:have(P, Index)
-                    end),
+            etorrent_table:foreach_peer(
+	      S#state.torrent_id,
+	      fun(P) ->
+		      etorrent_peer_control:have(P, Index)
+	      end),
             {noreply, NS};
         false ->
             ok =
@@ -133,7 +133,7 @@ handle_info(Info, State) ->
 
 terminate(_Reason, S) ->
     ok = stop_all_fs_processes(S#state.file_process_dict),
-    ok = etorrent_path_map:delete(S#state.torrent_id),
+    ok = etorrent_table:delete_paths(S#state.torrent_id),
     ok.
 
 code_change(_OldVsn, State, _Extra) ->

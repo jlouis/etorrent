@@ -10,7 +10,6 @@
 %%%-------------------------------------------------------------------
 -module(etorrent_peer_send).
 
--include("etorrent_mnesia_table.hrl").
 -include("etorrent_rate.hrl").
 -include("log.hrl").
 

@@ -12,7 +12,6 @@
 %%%-------------------------------------------------------------------
 -module(etorrent_fs_process).
 
--include("etorrent_mnesia_table.hrl").
 -include("log.hrl").
 
 -behaviour(gen_server).
@@ -63,7 +62,7 @@ init([Id, TorrentId]) ->
     %% We'll clean up file descriptors gracefully on termination.
     process_flag(trap_exit, true),
     etorrent_fs_janitor:new_fs_process(self()),
-    #path_map { path = Path} = etorrent_path_map:select(Id, TorrentId),
+    {ok, Path} = etorrent_table:get_path(Id, TorrentId),
     {ok, Workdir} = application:get_env(etorrent, dir),
     FullPath = filename:join([Workdir, Path]),
     {ok, IODev} = file:open(FullPath, [read, write, binary, raw, read_ahead]),

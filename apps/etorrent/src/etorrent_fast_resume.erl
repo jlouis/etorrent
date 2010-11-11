@@ -9,7 +9,6 @@
 
 -behaviour(gen_server).
 
--include("etorrent_mnesia_table.hrl").
 -include("types.hrl").
 -include("log.hrl").
 
@@ -51,7 +50,7 @@ query_state(Id) ->
 %% ==================================================================
 
 %% Enter a torrent into the tracking table
-track_torrent(#tracking_map { id = Id, filename = FName}) ->
+track_torrent(Id, FName) ->
     case etorrent_torrent:state(Id) of
         not_found -> ignore;
         {value, unknown} -> ignore;
@@ -62,12 +61,13 @@ track_torrent(#tracking_map { id = Id, filename = FName}) ->
 
 %% Enter all torrents into a tracking table
 track_in_ets_table(Lst) when is_list(Lst) ->
-    [track_torrent(TM) || TM <- Lst].
+    [track_torrent(Id, FN) || {Id, FN} <- Lst].
 
 %% Run a persistence operation
 persist_to_disk() ->
-    {atomic, Torrents} = etorrent_tracking_map:all(),
-    _ = track_in_ets_table(Torrents),
+    PLS = etorrent_table:all_torrents(),
+    track_in_ets_table([{proplists:get_value(id, P),
+			 proplists:get_value(filename, P)} || P <- PLS]),
     {ok, F} = application:get_env(etorrent, fast_resume_file),
     ok = ets:tab2file(etorrent_fast_resume, F, [{extended_info, [object_count, md5sum]}]),
     ok.
@@ -88,8 +88,8 @@ init([]) ->
     {ok, #state{}}.
 
 handle_call({query_state, Id}, _From, S) ->
-    {atomic, [TM]} = etorrent_tracking_map:select(Id),
-    case ets:lookup(etorrent_fast_resume, TM#tracking_map.filename) of
+    {value, PL} = etorrent_table:get_torrent(Id),
+    case ets:lookup(etorrent_fast_resume, proplists:get_value(filename, PL)) of
         [] -> {reply, unknown, S};
         [{_, R}] -> {reply, R, S}
     end;

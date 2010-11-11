@@ -100,7 +100,7 @@ lookup_info(Seeding, Id, Pid) ->
 build_rechoke_info(_Seeding, []) ->
     [];
 build_rechoke_info(Seeding, [Pid | Next]) ->
-    case etorrent_peer:find(Pid) of
+    case etorrent_table:get_peer_info(Pid) of
         not_found -> build_rechoke_info(Seeding, Next);
         {peer_info, Kind, Id} ->
             {value, Snubbed, PeerState} = etorrent_rate_mgr:get_state(Id, Pid),
@@ -133,7 +133,7 @@ advance_optimistic_unchoke(S) ->
 move_cyclic_chain([]) -> [];
 move_cyclic_chain(Chain) ->
     F = fun (Pid) ->
-                case etorrent_peer:find(Pid) of
+                case etorrent_table:get_peer_info(Pid) of
                     not_found -> true;
                     {peer_info, _Kind, Id} ->
                         {value, T} = etorrent_rate_mgr:select_state(Id, Pid),
@@ -291,9 +291,9 @@ handle_info({'DOWN', _Ref, process, Pid, Reason}, S)
     {noreply, S#state { opt_unchoke_chain = NewChain }};
 handle_info({'DOWN', _Ref, process, Pid, _Reason}, S) ->
     % The peer shut down unexpectedly re-add him to the queue in the *back*
-    case etorrent_peer:select(Pid) of
-        [_Peer] -> ok = rechoke(S);
-             [] -> ok
+    case etorrent_table:get_peer_info(Pid) of
+	not_found -> ok;
+	_ -> ok = rechoke(S)
     end,
 
     NewChain = lists:delete(Pid, S#state.opt_unchoke_chain),

@@ -2,7 +2,6 @@
 
 -include("etorrent_version.hrl").
 -include("etorrent_torrent.hrl").
--include("etorrent_mnesia_table.hrl").
 
 -export([list/3, log/3]).
 
@@ -48,15 +47,14 @@ table_header() ->
 list_torrents() ->
     A = etorrent_torrent:all(),
     Rows = [begin
-                {atomic, [#tracking_map { filename = FN, _=_}]} =
-                    etorrent_tracking_map:select(R#torrent.id),
+                {value, PL} = etorrent_table:get_torrent(R#torrent.id),
             io_lib:format(
                     "<tr><td>~s</td><td>~3.B</td><td>~11.1f</td>" ++
                     "<td>~11.1f</td><td>~11.1f</td><td>~11.1f</td>"++
                     "<td>~3.B / ~3.B</td><td>~7.1f%</td>" ++
                     "<td><span id=\"~s\">~s</span>~9.B / ~9.B / ~9.B</td>" ++
                     "<td><span id=\"boxplot\">~s</td></tr>~n",
-                        [strip_torrent(FN),
+                        [strip_torrent(proplists:get_value(filename, PL)),
                          R#torrent.id,
                          R#torrent.total / (1024 * 1024),
                          R#torrent.left  / (1024 * 1024),

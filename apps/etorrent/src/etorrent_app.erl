@@ -15,8 +15,6 @@
 start(_Type, _Args) ->
     PeerId = generate_peer_id(),
     %% DB
-    etorrent_mnesia_init:init(),
-    etorrent_mnesia_init:wait(),
     case application:get_env(etorrent, webui) of
 	{ok, true} ->
 	    start_webui();

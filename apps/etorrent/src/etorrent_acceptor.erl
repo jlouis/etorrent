@@ -9,7 +9,6 @@
 
 -behaviour(gen_server).
 
--include("etorrent_mnesia_table.hrl").
 -include("log.hrl").
 
 %% API
@@ -115,12 +114,12 @@ handshake(Socket, S) ->
     end.
 
 lookup_infohash(Socket, Caps, InfoHash, PeerId, S) ->
-    case etorrent_tracking_map:select({infohash, InfoHash}) of
-        {atomic, [#tracking_map { _ = _}]} ->
-            start_peer(Socket, Caps, PeerId, InfoHash, S);
-        {atomic, []} ->
-            gen_tcp:close(Socket),
-            ok
+    case etorrent_table:get_torrent({infohash, InfoHash}) of
+	{value, _} ->
+	    start_peer(Socket, Caps, PeerId, InfoHash, S);
+	not_found ->
+	    gen_tcp:close(Socket),
+	    ok
     end.
 
 start_peer(Socket, Caps, PeerId, InfoHash, S) ->
@@ -149,12 +148,12 @@ new_incoming_peer(_Socket, _Caps, _IP, _Port, _InfoHash, PeerId,
     #state { our_peer_id = Our_Peer_Id }) when Our_Peer_Id == PeerId ->
         connect_to_ourselves;
 new_incoming_peer(Socket, Caps, IP, Port, InfoHash, _PeerId, S) ->
-    {atomic, [TM]} = etorrent_tracking_map:select({infohash, InfoHash}),
+    {value, PL} = etorrent_table:get_torrent({infohash, InfoHash}),
     case etorrent_peer_mgr:is_bad_peer(IP, Port) of
         true ->
             bad_peer;
         false ->
-            case etorrent_peer:connected(IP, Port, TM#tracking_map.id) of
+            case etorrent_table:connected_peer(IP, Port, proplists:get_value(id, PL)) of
                 true -> already_connected;
                 false -> start_new_incoming_peer(Socket, Caps, IP, Port, InfoHash, S)
             end
@@ -165,11 +164,11 @@ start_new_incoming_peer(Socket, Caps, IP, Port, InfoHash, S) ->
     case etorrent_counters:slots_left() of
         {value, 0} -> already_enough_connections;
         {value, K} when is_integer(K) ->
-            {atomic, [T]} = etorrent_tracking_map:select({infohash, InfoHash}),
+	    {value, PL} = etorrent_table:get_torrent({infohash, InfoHash}),
             etorrent_t_sup:add_peer(
 	      S#state.our_peer_id,
 	      InfoHash,
-	      T#tracking_map.id,
+	      proplists:get_value(id, PL),
 	      {IP, Port},
 	      Caps,
 	      Socket)

@@ -10,7 +10,6 @@
 -behaviour(gen_server).
 
 -include("etorrent_torrent.hrl").
--include("etorrent_mnesia_table.hrl").
 
 %% Counter for how many pieces is missing from this torrent
 -record(c_pieces, {id :: non_neg_integer(), % Torrent id

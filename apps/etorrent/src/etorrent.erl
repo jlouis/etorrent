@@ -9,7 +9,6 @@
 
 
 -include("etorrent_torrent.hrl").
--include("etorrent_mnesia_table.hrl").
 
 %% API
 -export([help/0, h/0, list/0, l/0, show/0, s/0, show/1, s/1, check/1]).
@@ -37,8 +36,7 @@ list() ->
       fun (R) ->
           {DaysLeft, {HoursLeft, MinutesLeft, SecondsLeft}} =
             etorrent_rate:eta(R#torrent.left, DownloadRate),
-              {atomic, [#tracking_map { filename = FN, _=_}]} =
-                  etorrent_tracking_map:select(R#torrent.id),
+	      {value, PL} = etorrent_table:get_torrent(R#torrent.id),
               io:format("~3.B ~11.B ~11.B ~11.B ~11.B ~3.B ~3.B ~7.3f% ETA: ~Bd ~Bh ~Bm ~Bs ~n",
                         [R#torrent.id,
                          R#torrent.total,
@@ -49,7 +47,7 @@ list() ->
                          R#torrent.seeders,
                          percent_complete(R),
              DaysLeft, HoursLeft, MinutesLeft, SecondsLeft]),
-              io:format("    ~s~n", [FN])
+              io:format("    ~s~n", [proplists:get_value(filename, PL)])
       end, A),
     %io:format("Rate Up/Down: ~e / ~e~n", [UploadRate, DownloadRate]).
     io:format("Rate Up/Down: ~8.2f / ~8.2f~n", [UploadRate / 1024.0,
@@ -64,11 +62,12 @@ show() ->
 %% @end
 show(Item) when is_integer(Item) ->
     %{atomic, Torrent} = etorrent_torrent:select(Item),
-    case etorrent_tracking_map:select(Item) of
-        {atomic, [R]} ->
+    case etorrent_table:get_torrent(Item) of
+        {value, PL} ->
             io:format("Id: ~3.B Name: ~s~n",
-                      [R#tracking_map.id, R#tracking_map.filename]);
-        {atomic, []} ->
+                      [proplists:get_value(id, PL),
+		       proplists:get_value(filename, PL)]);
+        not_found ->
             io:format("No such torrent Id~n")
     end;
 show(_) ->

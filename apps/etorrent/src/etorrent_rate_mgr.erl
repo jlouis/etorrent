@@ -54,22 +54,28 @@ start_link() ->
 
 %% Send state information
 -spec choke(integer(), pid()) -> ok.
-choke(Id, Pid) -> gen_server:cast(?SERVER, {choke, Id, Pid}).
+choke(Id, Pid) ->
+    alter_state(choke, Id, Pid).
 
 -spec unchoke(integer(), pid()) -> ok.
-unchoke(Id, Pid) -> gen_server:cast(?SERVER, {unchoke, Id, Pid}).
+unchoke(Id, Pid) ->
+    alter_state(unchoke, Id, Pid).
 
 -spec interested(integer(), pid()) -> ok.
-interested(Id, Pid) -> gen_server:cast(?SERVER, {interested, Id, Pid}).
+interested(Id, Pid) ->
+    alter_state(interested, Id, Pid).
 
 -spec not_interested(integer(), pid()) -> ok.
-not_interested(Id, Pid) -> gen_server:cast(?SERVER, {not_interested, Id, Pid}).
+not_interested(Id, Pid) ->
+    alter_state(not_interested, Id, Pid).
 
 -spec local_choke(integer(), pid()) -> ok.
-local_choke(Id, Pid) -> gen_server:cast(?SERVER, {local_choke, Id, Pid}).
+local_choke(Id, Pid) ->
+    alter_state(local_choke, Id, Pid).
 
 -spec local_unchoke(integer(), pid()) -> ok.
-local_unchoke(Id, Pid) -> gen_server:cast(?SERVER, {local_unchoke, Id, Pid}).
+local_unchoke(Id, Pid) ->
+    alter_state(local_unchoke, Id, Pid).
 
 -spec get_state(integer(), pid()) -> {value, boolean(), #peer_state{}}.
 get_state(Id, Who) ->
@@ -101,7 +107,11 @@ fetch_send_rate(Id, Pid) -> fetch_rate(etorrent_send_state, Id, Pid).
 
 -spec recv_rate(integer(), pid(), float(), normal | snubbed) -> ok.
 recv_rate(Id, Pid, Rate, SnubState) ->
-    gen_server:cast(?SERVER, {recv_rate, Id, Pid, Rate, SnubState}).
+    alter_state(recv_rate, Id, Pid, Rate, SnubState).
+
+-spec send_rate(integer(), pid(), float()) -> ok.
+send_rate(Id, Pid, Rate) ->
+    alter_state(send_rate, Id, Pid, Rate, unchanged).
 
 -spec get_torrent_rate(integer(), leeching | seeding) -> {ok, float()}.
 get_torrent_rate(Id, Direction) ->
@@ -113,10 +123,6 @@ get_torrent_rate(Id, Direction) ->
     R = lists:sum([K#rate_mgr.rate || K <- Objects]),
     {ok, R}.
 
--spec send_rate(integer(), pid(), float()) -> ok.
-send_rate(Id, Pid, Rate) ->
-    gen_server:cast(?SERVER, {send_rate, Id, Pid, Rate, unchanged}).
-
 -spec global_rate() -> {float(), float()}.
 global_rate() ->
     RR = sum_global_rate(etorrent_recv_state),
@@ -126,11 +132,11 @@ global_rate() ->
 %% ====================================================================
 
 init([]) ->
-    RTid = ets:new(etorrent_recv_state, [protected, named_table,
+    RTid = ets:new(etorrent_recv_state, [public, named_table,
                                          {keypos, #rate_mgr.pid}]),
-    STid = ets:new(etorrent_send_state, [protected, named_table,
+    STid = ets:new(etorrent_send_state, [public, named_table,
                                          {keypos, #rate_mgr.pid}]),
-    StTid = ets:new(etorrent_peer_state, [protected, named_table,
+    StTid = ets:new(etorrent_peer_state, [public, named_table,
                                          {keypos, #peer_state.pid}]),
     {ok, #state{ recv = RTid, send = STid, state = StTid,
                  global_recv = etorrent_rate:init(?RATE_FUDGE),
@@ -140,13 +146,11 @@ handle_call(Request, _From, State) ->
     ?INFO([unknown_request, ?MODULE, Request]),
     {reply, ok, State}.
 
-handle_cast({What, Id, Pid}, S) ->
-    ok = alter_state(What, Id, Pid),
+handle_cast({monitor, Pid}, S) ->
+    erlang:monitor(process, Pid),
     {noreply, S};
-handle_cast({What, Id, Who, Rate, SnubState}, S) ->
-    ok = alter_state(What, Id, Who, Rate, SnubState),
-    {noreply, S};
-handle_cast(_Msg, State) ->
+handle_cast(Msg, State) ->
+    ?INFO([unknown_cast, ?MODULE, Msg]),
     {noreply, State}.
 
 handle_info({'DOWN', _Ref, process, Pid, _Reason}, S) ->
@@ -169,15 +173,16 @@ sum_global_rate(Table) ->
     lists:sum([K#rate_mgr.rate || K <- Objs]).
 
 alter_state(What, Id, Pid) ->
-    _R = case ets:lookup(etorrent_peer_state, {Id, Pid}) of
+    case ets:lookup(etorrent_peer_state, {Id, Pid}) of
         [] ->
-            ets:insert(etorrent_peer_state,
-              alter_record(What,
-                           #peer_state { pid = {Id, Pid},
-                                         choke_state = choked,
-                                         interest_state = not_interested,
-                                         local_choke = true})),
-            erlang:monitor(process, Pid);
+	    ets:insert(etorrent_peer_state,
+		       alter_record(What,
+				    #peer_state {
+				      pid = {Id, Pid},
+				      choke_state = choked,
+				      interest_state = not_interested,
+				      local_choke = true})),
+	    add_monitor(Pid);
         [R] ->
             ets:insert(etorrent_peer_state,
                        alter_record(What, R))
@@ -205,24 +210,26 @@ alter_state(What, Id, Who, Rate, SnubState) ->
             recv_rate -> etorrent_recv_state;
             send_rate -> etorrent_send_state
         end,
-    _R = case ets:lookup(T, {Id, Who}) of
+    case ets:lookup(T, {Id, Who}) of
         [] ->
-            ets:insert(T,
-              #rate_mgr { pid = {Id, Who},
-                          snub_state = case SnubState of
-                                         snubbed -> snubbed;
-                                         normal  -> normal;
-                                         unchanged -> normal
-                                       end,
-                          rate = Rate }),
-            erlang:monitor(process, Who);
-        [R] ->
-            ets:insert(T, R#rate_mgr { rate = Rate,
-                                       snub_state =
-                                            case SnubState of
-                                              unchanged -> R#rate_mgr.snub_state;
-                                              X         -> X
-                                            end })
+	    ets:insert(T,
+		       #rate_mgr {
+			 pid = {Id, Who},
+			 snub_state = case SnubState of
+					  snubbed -> snubbed;
+					  normal  -> normal;
+					  unchanged -> normal
+				      end,
+			 rate = Rate }),
+	    add_monitor(Who);
+	[R] ->
+            ets:insert(T, R#rate_mgr {
+			    rate = Rate,
+			    snub_state =
+			    case SnubState of
+				unchanged -> R#rate_mgr.snub_state;
+				X         -> X
+			    end })
     end,
     ok.
 
@@ -235,4 +242,7 @@ fetch_rate(Where, Id, Pid) ->
             none;
         [R] -> R#rate_mgr.rate
     end.
+
+add_monitor(Pid) ->
+    gen_server:cast(?SERVER, {monitor, Pid}).
 
