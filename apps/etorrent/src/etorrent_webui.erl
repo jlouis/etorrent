@@ -6,6 +6,7 @@
 
 -export([list/3, log/3]).
 
+-ignore_xref([{list, 3}, {log, 3}]).
 %% =======================================================================
 % @doc Request retrieval of the in-memory log file
 % @end

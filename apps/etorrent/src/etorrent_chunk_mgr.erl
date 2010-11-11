@@ -33,6 +33,7 @@
 -define(PICK_CHUNKS_TIMEOUT, 20).
 -define(DEFAULT_CHUNK_SIZE, 16384).
 
+-ignore_xref([{start_link, 0}]).
 
 %%====================================================================
 %% API

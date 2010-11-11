@@ -14,6 +14,8 @@
 -include("etorrent_piece.hrl").
 -include("log.hrl").
 
+-ignore_xref([{'start_link', 3}, {start, 1}, {initializing, 2},
+	      {started, 2}, {stopped, 2}, {stop, 1}, {torrent_checked, 2}]).
 %% API
 -export([start_link/3, start/1, stop/1,
         torrent_checked/2, tracker_error_report/2, completed/1,

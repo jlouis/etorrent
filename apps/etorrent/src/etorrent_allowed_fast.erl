@@ -9,7 +9,6 @@
 
 %% API
 -export([allowed_fast/4]).
--export([test1/0, test2/0]).
 
 %%====================================================================
 %% API
@@ -67,10 +66,12 @@ cut(K, I, X, Sz, Set) ->
         false ->
             cut(K-1, I+1, X, Sz, sets:add_element(Index, Set))
     end.
-    
+
 %%====================================================================
 %% Tests
 %%====================================================================
+-ifdef(TEST).
+
 test1() ->
     N = 16#AA,
     InfoHash = list_to_binary(lists:duplicate(20, N)),
@@ -85,3 +86,4 @@ test2() ->
     Pieces = lists:sort(sets:to_list(PieceSet)),
     [287, 353, 376, 431, 508, 808, 1059, 1188, 1217] = Pieces.
 
+-endif.

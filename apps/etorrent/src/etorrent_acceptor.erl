@@ -22,6 +22,8 @@
 -record(state, { listen_socket = none,
                  our_peer_id}).
 
+-ignore_xref([{'start_link', 1}]).
+
 %% @doc Starts the server.
 %% @end
 -spec start_link(pid()) -> {ok, pid()} | ignore | {error, term()}.

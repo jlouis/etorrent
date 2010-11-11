@@ -24,7 +24,7 @@
 
 -define(SERVER, ?MODULE).
 -define(PERSIST_TIME, timer:seconds(300)). % Every 300 secs, may be done configurable.
-
+-ignore_xref([{start_link, 0}]).
 %%====================================================================
 %% @doc Start up the server
 %% @end

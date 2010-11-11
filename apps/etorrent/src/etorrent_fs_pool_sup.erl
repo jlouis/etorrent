@@ -16,7 +16,7 @@
 -export([init/1]).
 
 -define(SERVER, ?MODULE).
-
+-ignore_xref([{'start_link', 1}]).
 %% ====================================================================
 % @doc Start up the supervisor
 % @end

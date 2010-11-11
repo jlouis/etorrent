@@ -24,7 +24,7 @@
 
 -record(state, { our_peer_id,
                  available_peers = []}).
-
+-ignore_xref([{'start_link', 1}]).
 -define(SERVER, ?MODULE).
 -define(DEFAULT_BAD_COUNT, 2).
 -define(GRACE_TIME, 900).

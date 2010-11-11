@@ -16,7 +16,7 @@
          seeding_torrent/1]).
 
 -define(SERVER, ?MODULE).
-
+-ignore_xref([{start_link, 0}, {event, 1}]).
 %% =======================================================================
 -spec event(term()) -> ok.
 event(What) ->

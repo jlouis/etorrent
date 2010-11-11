@@ -14,7 +14,8 @@
 %% API
 -export([help/0, h/0, list/0, l/0, show/0, s/0, show/1, s/1, check/1]).
 
--ignore_xref([{h, 0}, {l, 0}, {s, 0}, {s, 1}, {check, 1}]).
+-ignore_xref([{h, 0}, {l, 0}, {s, 0}, {s, 1}, {check, 1},
+	      {help, 0}, {list, 0}, {show, 0}, {show, 1}]).
 
 %%====================================================================
 

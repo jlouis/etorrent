@@ -12,6 +12,8 @@
 -include_lib("stdlib/include/qlc.hrl").
 -include("etorrent_mnesia_table.hrl").
 
+
+
 %% API
 -export([start_link/0, all/0, new/3, select/1, statechange/2,
          is_ready_for_checking/1]).
@@ -23,6 +25,7 @@
 
 -define(SERVER, ?MODULE).
 
+-ignore_xref([{'start_link', 0}]).
 %% ====================================================================
 -spec start_link() -> {ok, pid()} | ignore | {error, term()}.
 start_link() ->

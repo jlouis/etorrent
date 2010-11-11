@@ -45,6 +45,7 @@
                  global_send}).
 
 -define(SERVER, ?MODULE).
+-ignore_xref([{'start_link', 0}]).
 
 %% ====================================================================
 -spec start_link() -> ignore | {ok, pid()} | {error, term()}.

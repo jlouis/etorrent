@@ -18,7 +18,7 @@
 
 %% Supervisor callbacks
 -export([init/1]).
-
+-ignore_xref([{'start_link', 3}]).
 %% =======================================================================
 % @doc Start up the supervisor
 % @end

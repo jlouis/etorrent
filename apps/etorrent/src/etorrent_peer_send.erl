@@ -16,7 +16,7 @@
 
 -behaviour(gen_server).
 
-
+-ignore_xref([{'start_link', 3}]).
 %% Apart from standard gen_server things, the main idea of this module is
 %% to serve as a mediator for the peer in the send direction. Precisely,
 %% we have a message we can send to the process, for each of the possible

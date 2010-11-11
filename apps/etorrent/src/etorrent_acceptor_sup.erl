@@ -18,6 +18,8 @@
 -define(DEFAULT_AMOUNT_OF_ACCEPTORS, 5).
 -define(SERVER, ?MODULE).
 
+-ignore_xref([{'start_link', 1}]).
+
 %%====================================================================
 %% @doc Starts the supervisor
 %% @end

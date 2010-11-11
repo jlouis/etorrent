@@ -29,6 +29,7 @@
 -define(SERVER, ?MODULE).
 -define(TAB, ?MODULE).
 -record(state, { monitoring }).
+-ignore_xref([{'start_link', 0}]).
 
 %% ====================================================================
 

@@ -28,6 +28,7 @@
                  file_pool = none,
                  file_process_dict = none}).
 
+-ignore_xref([{start_link, 1}]).
 %%====================================================================
 
 %% @doc Spawn and link a new file_system process

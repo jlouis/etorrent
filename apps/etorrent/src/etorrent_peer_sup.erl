@@ -11,7 +11,7 @@
 -export([init/1]).
 
 -define(SERVER, ?MODULE).
-
+-ignore_xref([{'start_link', 6}]).
 %% ====================================================================
 -spec start_link(binary(), binary(), integer(), {ip(), integer()},
 		 [capabilities()], port()) ->
