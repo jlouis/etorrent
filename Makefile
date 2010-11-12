@@ -21,12 +21,14 @@ rel:
 relclean:
 	rm -fr rel/etorrent
 
-clean:
+clean: relclean devclean
 	rebar clean
 
-etorrent-dev:
+etorrent-dev: compile
 	mkdir -p dev
 	(cd rel && rebar generate target_dir=../dev/$@ overlay_vars=vars/$@_vars.config)
+
+dev: etorrent-dev
 
 devclean:
 	rm -fr dev
@@ -34,4 +36,8 @@ devclean:
 console:
 	dev/etorrent-dev/bin/etorrent console -pa ../../apps/etorrent/ebin
 
-.PHONY: all compile tags dialyze run tracer clean eunit rel
+xref: compile
+	rebar skip_deps=true xref
+
+.PHONY: all compile tags dialyze run tracer clean eunit rel xref dev
+
