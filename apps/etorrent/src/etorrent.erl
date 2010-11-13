@@ -35,7 +35,7 @@ list() ->
     lists:foreach(
       fun (R) ->
           {DaysLeft, {HoursLeft, MinutesLeft, SecondsLeft}} =
-            etorrent_rate:eta(R#torrent.left, DownloadRate),
+	      Eta = etorrent_rate:format_eta(R#torrent.left, DownloadRate),
 	      {value, PL} = etorrent_table:get_torrent(R#torrent.id),
               io:format("~3.B ~11.B ~11.B ~11.B ~11.B ~3.B ~3.B ~7.3f% ETA: ~Bd ~Bh ~Bm ~Bs ~n",
                         [R#torrent.id,
@@ -46,10 +46,9 @@ list() ->
                          R#torrent.leechers,
                          R#torrent.seeders,
                          percent_complete(R),
-             DaysLeft, HoursLeft, MinutesLeft, SecondsLeft]),
+			 Eta]),
               io:format("    ~s~n", [proplists:get_value(filename, PL)])
       end, A),
-    %io:format("Rate Up/Down: ~e / ~e~n", [UploadRate, DownloadRate]).
     io:format("Rate Up/Down: ~8.2f / ~8.2f~n", [UploadRate / 1024.0,
                                                 DownloadRate / 1024.0]).
 

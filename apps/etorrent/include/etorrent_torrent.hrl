@@ -4,7 +4,7 @@
 %% A single torrent is represented as the 'torrent' record
 -record(torrent,
     {id :: non_neg_integer(), % Unique identifier of torrent, monotonically increasing
-     left :: non_neg_integer(), % How many bytes are there left before we have the
+     left = unknown :: non_neg_integer(), % How many bytes are there left before we have the
                                 % full torrent
      total  :: non_neg_integer(), % How many bytes are there in total
      uploaded :: non_neg_integer(), % How many bytes have we uploaded
