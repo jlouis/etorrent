@@ -64,8 +64,10 @@ list_torrents() ->
                          R#torrent.seeders,
                          percent_complete(R),
                          case R#torrent.state of
-                            leeching -> "sparkline-leech";
-                            seeding  -> "sparkline-seed"
+			     seeding  -> "sparkline-seed";
+			     leeching -> "sparkline-leech";
+			     endgame  -> "sparkline-leech";
+			     unknown ->  "sparkline-leech"
                          end,
                          show_sparkline(
                              lists:reverse(R#torrent.rate_sparkline)),
