@@ -69,7 +69,6 @@ update(#peer_rate {rate = Rate,
 eta(_Left, DR) when DR == 0 ->
     unknown;
 eta(Left, DownloadRate) when is_integer(Left) ->
-    ?INFO([{left, Left}, {downrate, DownloadRate}]),
     calendar:seconds_to_daystime(round(Left / DownloadRate));
 eta(unknown, _DownloadRate) ->
     unknown.

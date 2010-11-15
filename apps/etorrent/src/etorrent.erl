@@ -34,10 +34,9 @@ list() ->
 
     lists:foreach(
       fun (R) ->
-          {DaysLeft, {HoursLeft, MinutesLeft, SecondsLeft}} =
 	      Eta = etorrent_rate:format_eta(R#torrent.left, DownloadRate),
 	      {value, PL} = etorrent_table:get_torrent(R#torrent.id),
-              io:format("~3.B ~11.B ~11.B ~11.B ~11.B ~3.B ~3.B ~7.3f% ETA: ~Bd ~Bh ~Bm ~Bs ~n",
+              io:format("~3.B ~11.B ~11.B ~11.B ~11.B ~3.B ~3.B ~7.3f% ~s ~n",
                         [R#torrent.id,
                          R#torrent.total,
                          R#torrent.left,
