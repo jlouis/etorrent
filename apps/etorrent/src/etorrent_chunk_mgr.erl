@@ -269,27 +269,6 @@ chunkify_new_piece(Id, PieceSet) when is_integer(Id) ->
             ok
     end.
 
-%%--------------------------------------------------------------------
-%% Function: select_chunks_by_piecenum(Id, PieceNum, Num, Pid) ->
-%%     {ok, [{Offset, Len}], Remain}
-%% Description: Select up to Num chunks from PieceNum. Will return either
-%%  {ok, Chunks} if it got all chunks it wanted, or {partial, Chunks, Remain}
-%%  if it got some chunks and there is still Remain chunks left to pick.
-%%--------------------------------------------------------------------
-select_chunks_by_piecenum(Id, Index, Max, Pid) ->
-    R = ets:lookup(?TAB, {Id, Index, not_fetched}),
-    %% Get up to Max chunks
-    {Return, _Rest} = etorrent_utils:gsplit(Max, R),
-    [_|_] = Return, %% Assert.
-    %% Assign chunk to us
-    Chunks = [begin
-		  ets:delete_object(?TAB, C),
-		  ets:insert(?TAB,
-			     [C#chunk { idt = {Id, Index, {assigned, Pid}} }]),
-		  C#chunk.chunk
-	      end || C <- Return],
-    {ok, {Index, Chunks}, length(Return)}.
-
 %% Check the piece Idx on torrent Id for completion
 check_piece(FSPid, Id, Idx) ->
     etorrent_fs:check_piece(FSPid, Idx),
@@ -360,10 +339,12 @@ chunkify_piece(Id, #piece{ files = Files, state = State, idpn = IDPN }) ->
     etorrent_torrent:decrease_not_fetched(Id),
     ok.
 
-%%--------------------------------------------------------------------
-%% Function: find_chunked_chunks(Id, iterator_result()) -> none | PieceNum
-%% Description: Search an iterator for a chunked piece.
-%%--------------------------------------------------------------------
+%% @doc Search for piece chunks to download from a peer
+%%   We are given an iterator of the pieces the peer has. We search the
+%%   the iterator for a pieces we have already chunked and are downloading.
+%%   If found, return the #chunk{} object. Otherwise return 'none'
+%% @end
+-spec find_chunked_chunks(pos_integer(), term(), A) -> A | [#chunk{}].
 find_chunked_chunks(_Id, none, Res) -> Res;
 find_chunked_chunks(Id, {Pn, Next}, Res) ->
     case etorrent_piece_mgr:is_chunked(Id, Pn) of
@@ -371,8 +352,8 @@ find_chunked_chunks(Id, {Pn, Next}, Res) ->
             case ets:lookup(?TAB, {Id, Pn, not_fetched}) of
                 [] ->
                     find_chunked_chunks(Id, gb_sets:next(Next), found_chunked);
-                _ ->
-                    Pn
+                Objects ->
+                    Objects
             end;
         false ->
             find_chunked_chunks(Id, gb_sets:next(Next), Res)
@@ -412,13 +393,12 @@ pick_chunks(pick_chunked, {Pid, Id, PieceSet, SoFar, Remaining, Res}) ->
             pick_chunks(chunkify_piece, {Pid, Id, PieceSet, SoFar, Remaining, none});
         found_chunked ->
             pick_chunks(chunkify_piece, {Pid, Id, PieceSet, SoFar, Remaining, found_chunked});
-        PieceNum when is_integer(PieceNum) ->
-	    {ok, Chunks, Size} =
-                select_chunks_by_piecenum(Id, PieceNum,
-                                          Remaining, Pid),
+	Selected when is_list(Selected) ->
+	    {ok, {PieceNum, Chunks}, Size} =
+                select_chunks_by_piecenum(Selected, Remaining, Pid),
             pick_chunks(pick_chunked, {Pid, Id,
                                        gb_sets:del_element(PieceNum, PieceSet),
-                                       [Chunks | SoFar],
+                                       [{PieceNum, Chunks} | SoFar],
                                        Remaining - Size, Res})
     end;
 
@@ -441,6 +421,26 @@ pick_chunks(endgame, {Id, PieceSet, N}) ->
     Remaining = find_remaining_chunks(Id, PieceSet),
     Shuffled = etorrent_utils:shuffle(Remaining),
     {endgame, lists:sublist(Shuffled, N)}.
+
+%% @doc Choose up to Max chunks from Selected.
+%%  Will return {ok, {Index, Chunks}, size(Chunks)}.
+%% @end
+-spec select_chunks_by_piecenum([#chunk{}], pos_integer(), pid()) ->
+			   {ok, {pos_integer(), term()}, non_neg_integer()}.
+select_chunks_by_piecenum(Selected, Max, Pid) ->
+    %% Get up to Max chunks
+    {Return, _Rest} = etorrent_utils:gsplit(Max, Selected),
+    [H|_] = Return,
+    {Id, Index, _} = H#chunk.idt,
+    %% Assign chunk to us
+    Chunks = [begin
+		  ets:delete_object(?TAB, C),
+		  ets:insert(?TAB,
+			     [C#chunk {
+				idt = {Id, Index, {assigned, Pid}} }]),
+		  C#chunk.chunk
+	      end || C <- Return],
+    {ok, {Index, Chunks}, length(Chunks)}.
 
 -spec pick_chunks_endgame(integer(), gb_set(), integer(), X) -> X | {endgame, [#chunk{}]}.
 pick_chunks_endgame(Id, Set, Remaining, Ret) ->
