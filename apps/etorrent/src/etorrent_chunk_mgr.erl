@@ -285,9 +285,7 @@ select_chunks_by_piecenum(Id, Index, N, Pid) ->
     [ets:delete_object(?TAB, Ret) || Ret <- Return],
     ets:insert(?TAB, [C#chunk { idt = {Id, Index, {assigned, Pid}} }
 		      || C <- Return]),
-    %% Tell caller how much is remaning
-    Remaining = N - length(Return),
-    {ok, {Index, [E#chunk.chunk || E <- Return]}, Remaining}.
+    {ok, {Index, [E#chunk.chunk || E <- Return]}, length(Return)}.
 
 %% Check the piece Idx on torrent Id for completion
 check_piece(FSPid, Id, Idx) ->
@@ -412,13 +410,13 @@ pick_chunks(pick_chunked, {Pid, Id, PieceSet, SoFar, Remaining, Res}) ->
         found_chunked ->
             pick_chunks(chunkify_piece, {Pid, Id, PieceSet, SoFar, Remaining, found_chunked});
         PieceNum when is_integer(PieceNum) ->
-            {ok, Chunks, Left} =
+	    {ok, Chunks, Size} =
                 select_chunks_by_piecenum(Id, PieceNum,
                                           Remaining, Pid),
             pick_chunks(pick_chunked, {Pid, Id,
                                        gb_sets:del_element(PieceNum, PieceSet),
                                        [Chunks | SoFar],
-                                       Left, Res})
+                                       Remaining - Size, Res})
     end;
 
 %%
