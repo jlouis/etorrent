@@ -276,16 +276,19 @@ chunkify_new_piece(Id, PieceSet) when is_integer(Id) ->
 %%  {ok, Chunks} if it got all chunks it wanted, or {partial, Chunks, Remain}
 %%  if it got some chunks and there is still Remain chunks left to pick.
 %%--------------------------------------------------------------------
-select_chunks_by_piecenum(Id, Index, N, Pid) ->
+select_chunks_by_piecenum(Id, Index, Max, Pid) ->
     R = ets:lookup(?TAB, {Id, Index, not_fetched}),
-    %% Get up to N chunks
-    {Return, _Rest} = etorrent_utils:gsplit(N, R),
+    %% Get up to Max chunks
+    {Return, _Rest} = etorrent_utils:gsplit(Max, R),
     [_|_] = Return, %% Assert.
     %% Assign chunk to us
-    [ets:delete_object(?TAB, Ret) || Ret <- Return],
-    ets:insert(?TAB, [C#chunk { idt = {Id, Index, {assigned, Pid}} }
-		      || C <- Return]),
-    {ok, {Index, [E#chunk.chunk || E <- Return]}, length(Return)}.
+    Chunks = [begin
+		  ets:delete_object(?TAB, C),
+		  ets:insert(?TAB,
+			     [C#chunk { idt = {Id, Index, {assigned, Pid}} }]),
+		  C#chunk.chunk
+	      end || C <- Return],
+    {ok, {Index, Chunks}, length(Return)}.
 
 %% Check the piece Idx on torrent Id for completion
 check_piece(FSPid, Id, Idx) ->
