@@ -7,7 +7,6 @@
 %%%-------------------------------------------------------------------
 -module(etorrent_chunk_mgr).
 
--include("etorrent_piece.hrl").
 -include("etorrent_chunk.hrl").
 -include("types.hrl").
 -include("log.hrl").
@@ -31,7 +30,7 @@
 -define(TAB, etorrent_chunk_tbl).
 -define(STORE_CHUNK_TIMEOUT, 20).
 -define(PICK_CHUNKS_TIMEOUT, 20).
--define(DEFAULT_CHUNK_SIZE, 16384).
+
 
 -ignore_xref([{start_link, 0}]).
 
@@ -291,7 +290,7 @@ find_remaining_chunks(Id, PieceSet) ->
 chunkify_new_piece(Id, PieceSet) when is_integer(Id) ->
     case etorrent_piece_mgr:find_new(Id, PieceSet) of
         none -> none_eligible;
-        #piece{} = P ->
+        P ->
 	    gen_server:call(?SERVER, {chunkify_piece, {Id, P}})
     end.
 
@@ -300,68 +299,16 @@ check_piece(FSPid, Id, Idx) ->
     etorrent_fs:check_piece(FSPid, Idx),
     ets:match_delete(?TAB, #chunk { idt = {Id, Idx, '_'}, _ = '_'}).
 
-%% @doc Break a piece into logical chunks
-%%
-%%   From a list of operations to read/write a piece, construct
-%%   a list of chunks given by Offset of the chunk, Size of the chunk and
-%%   how to read/write that chunk.
-%% @end
--spec chunkify([operation()]) -> [{integer(), integer(), [operation()]}].
-%% First, we call the version of the function doing the grunt work.
-chunkify(Operations) ->
-    chunkify(0, 0, [], Operations, ?DEFAULT_CHUNK_SIZE).
-
-%% Suppose the next File operation on the piece has 0 bytes in size, then it
-%%  is exhausted and must be thrown away.
-chunkify(AtOffset, EatenBytes, Operations,
-         [{_Path, _Offset, 0} | Rest], Left) ->
-    chunkify(AtOffset, EatenBytes, Operations, Rest, Left);
-
-%% There are no more file operations to carry out. Hence we reached the end of
-%%   the piece and we just return the last chunk operation. Remember to reverse
-%%   the list of operations for that chunk as we build it in reverse.
-chunkify(AtOffset, EatenBytes, Operations, [], _Sz) ->
-    [{AtOffset, EatenBytes, lists:reverse(Operations)}];
-
-%% There are no more bytes left to add to this chunk. Recurse by calling
-%%   on the rest of the problem and add our chunk to the front when coming
-%%   back. Remember to reverse the Operations list built in reverse.
-chunkify(AtOffset, EatenBytes, Operations, OpsLeft, 0) ->
-    R = chunkify(AtOffset + EatenBytes, 0, [], OpsLeft, ?DEFAULT_CHUNK_SIZE),
-    [{AtOffset, EatenBytes, lists:reverse(Operations)} | R];
-
-%% The next file we are processing have a larger size than what is left for this
-%%   chunk. Hence we can just eat off that many bytes from the front file.
-chunkify(AtOffset, EatenBytes, Operations,
-         [{Path, Offset, Size} | Rest], Left) when Left =< Size ->
-    chunkify(AtOffset, EatenBytes + Left,
-             [{Path, Offset, Left} | Operations],
-             [{Path, Offset+Left, Size - Left} | Rest],
-             0);
-
-%% The next file does *not* have enough bytes left, so we eat all the bytes
-%%   we can get from it, and move on to the next file.
-chunkify(AtOffset, EatenBytes, Operations,
-        [{Path, Offset, Size} | Rest], Left) when Left > Size ->
-    chunkify(AtOffset, EatenBytes + Size,
-             [{Path, Offset, Size} | Operations],
-             Rest,
-             Left - Size).
 
 %% @doc Add a chunked piece to the chunk table
 %%   Given a PieceNumber, cut it up into chunks and add those
 %%   to the chunk table.
 %% @end
--spec chunkify_piece(integer(), #piece{}) -> ok.
-chunkify_piece(Id, #piece{ files = Files, state = State, idpn = IDPN }) ->
-    Chunks = chunkify(Files),
-    NumChunks = length(Chunks),
-    not_fetched = State,
-    {Id, Idx} = IDPN,
-    ok = etorrent_piece_mgr:chunk(Id, Idx, NumChunks),
-    ets:insert(?TAB,
-	       [#chunk { idt = {Id, Idx, not_fetched},
-			 chunk = CH } || CH <- Chunks]),
+-spec chunkify_piece(integer(), etorrent:piece_mgr_piece()) -> ok. %% TODO: term() is #piece{}, opaque export it
+chunkify_piece(Id, P) ->
+    {Id, Idx, Chunks} = etorrent_piece_mgr:chunkify_piece(Id, P),
+    ets:insert(?TAB, [#chunk { idt = {Id, Idx, not_fetched}, chunk = CH }
+		      || CH <- Chunks]),
     etorrent_torrent:decrease_not_fetched(Id),
     ok.
 
