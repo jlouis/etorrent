@@ -14,7 +14,7 @@
 
 %% API
 -export([start_link/0, decrease_missing_chunks/2, statechange/3,
-         is_chunked/2,
+         is_chunked/2, chunked_pieces/1,
          find_new/2, fetched/2, bitfield/1, select/1, select/2, valid/2, interesting/2,
          add_monitor/2, num_not_fetched/1, check_interest/2, add_pieces/2, chunk/3]).
 
@@ -26,6 +26,7 @@
 
 -record(state, { monitoring }).
 -define(SERVER, ?MODULE).
+-define(TAB, etorrent_piece_tbl).
 -ignore_xref([{'start_link', 0}]).
 %%====================================================================
 %% API
@@ -66,12 +67,12 @@ statechange(Id, PN, State) ->
     gen_server:call(?SERVER, {statechange, Id, PN, State}).
 
 fetched(Id, Idx) ->
-    [R] = ets:lookup(etorrent_piece_tbl, {Id, Idx}),
+    [R] = ets:lookup(?TAB, {Id, Idx}),
     R#piece.state =:= fetched.
 
 fetched(Id) ->
     MH = #piece { state = fetched, idpn = {Id, '$1'}, _ = '_'},
-    ets:select(etorrent_piece_tbl,
+    ets:select(?TAB,
                [{MH, [], ['$1']}]).
 
 bitfield(Id) when is_integer(Id) ->
@@ -92,7 +93,7 @@ add_monitor(Pid, Id) ->
 %%--------------------------------------------------------------------
 num_not_fetched(Id) when is_integer(Id) ->
     Q = qlc:q([R#piece.piece_number ||
-                  R <- ets:table(etorrent_piece_tbl),
+                  R <- ets:table(?TAB),
                   R#piece.id =:= Id,
                   R#piece.state =:= not_fetched]),
     length(qlc:e(Q)).
@@ -111,21 +112,21 @@ check_interest(Id, PieceSet) when is_integer(Id) ->
 %%--------------------------------------------------------------------
 select(Id) ->
     MatchHead = #piece { idpn = {Id, '_'}, _ = '_'},
-    ets:select(etorrent_piece_tbl, [{MatchHead, [], ['$_']}]).
+    ets:select(?TAB, [{MatchHead, [], ['$_']}]).
 
 %%--------------------------------------------------------------------
 %% Function: select(Id, PieceNumber) -> [#piece]
 %% Description: Return the piece PieceNumber for the Id torrent
 %%--------------------------------------------------------------------
 select(Id, PN) ->
-    ets:lookup(etorrent_piece_tbl, {Id, PN}).
+    ets:lookup(?TAB, {Id, PN}).
 
 %%--------------------------------------------------------------------
 %% Function: valid(Id, PieceNumber) -> bool()
 %% Description: Is the piece valid for this torrent?
 %%--------------------------------------------------------------------
 valid(Id, Pn) when is_integer(Id) ->
-    case ets:lookup(etorrent_piece_tbl, {Id, Pn}) of
+    case ets:lookup(?TAB, {Id, Pn}) of
         [] -> false;
         [_] -> true
     end.
@@ -135,7 +136,7 @@ valid(Id, Pn) when is_integer(Id) ->
 %% Description: Is the piece interesting?
 %%--------------------------------------------------------------------
 interesting(Id, Pn) when is_integer(Id) ->
-    [P] = ets:lookup(etorrent_piece_tbl, {Id, Pn}),
+    [P] = ets:lookup(?TAB, {Id, Pn}),
     P#piece.state =/= fetched.
 
 %% Search an iterator for a not_fetched piece. Return the #piece
@@ -148,18 +149,23 @@ find_new(Id, GBSet) ->
 
 find_new_worker(_Id, none) -> none;
 find_new_worker(Id, {PN, Nxt}) ->
-    case ets:lookup(etorrent_piece_tbl, {Id, PN}) of
+    case ets:lookup(?TAB, {Id, PN}) of
         [] ->
             find_new_worker(Id, gb_sets:next(Nxt));
         [#piece{ state = not_fetched } = P] -> P;
         [_P] -> find_new_worker(Id, gb_sets:next(Nxt))
     end.
 
+%% (TODO: Somewhat expensive, but we start here) Chunked pieces
+-spec chunked_pieces(pos_integer()) -> [pos_integer()].
+chunked_pieces(Id) ->
+    Objects = ets:match_object(?TAB, #piece { idpn = {Id, '_'}, state = chunked, _ = '_' }),
+    [I || #piece {idpn = {I, _}} <- Objects].
+
 %% Returns true if the piece in question is chunked.
 -spec is_chunked(integer(), integer()) -> boolean().
-
 is_chunked(Id, Pn) ->
-    [P] = ets:lookup(etorrent_piece_tbl, {Id, Pn}),
+    [P] = ets:lookup(?TAB, {Id, Pn}),
     P#piece.state == chunked.
 
 %%====================================================================
@@ -174,7 +180,7 @@ is_chunked(Id, Pn) ->
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
 init([]) ->
-    _Tid = ets:new(etorrent_piece_tbl, [set, protected, named_table,
+    _Tid = ets:new(?TAB, [set, protected, named_table,
                                         {keypos, #piece.idpn}]),
     {ok, #state{ monitoring = dict:new()}}.
 
@@ -190,7 +196,7 @@ init([]) ->
 handle_call({add_pieces, Id, Pieces}, _From, S) ->
     lists:foreach(
       fun({PN, Hash, Files, State}) ->
-              ets:insert(etorrent_piece_tbl,
+              ets:insert(?TAB,
                          #piece { idpn = {Id, PN},
                                   id = Id,
                                   piece_number = PN,
@@ -201,18 +207,18 @@ handle_call({add_pieces, Id, Pieces}, _From, S) ->
       Pieces),
     {reply, ok, S};
 handle_call({chunk, Id, Idx, N}, _From, S) ->
-    [P] = ets:lookup(etorrent_piece_tbl, {Id, Idx}),
-    ets:insert(etorrent_piece_tbl, P#piece { state = chunked, left = N}),
+    [P] = ets:lookup(?TAB, {Id, Idx}),
+    ets:insert(?TAB, P#piece { state = chunked, left = N}),
     {reply, ok, S};
 handle_call({decrease_missing, Id, Idx}, _From, S) ->
-    case ets:update_counter(etorrent_piece_tbl, {Id, Idx},
+    case ets:update_counter(?TAB, {Id, Idx},
                             {#piece.left, -1}) of
         0 -> {reply, full, S};
         N when is_integer(N) -> {reply, ok, S}
     end;
 handle_call({statechange, Id, Idx, State}, _From, S) ->
-    [P] = ets:lookup(etorrent_piece_tbl, {Id, Idx}),
-    ets:insert(etorrent_piece_tbl, P#piece { state = State }),
+    [P] = ets:lookup(?TAB, {Id, Idx}),
+    ets:insert(?TAB, P#piece { state = State }),
     {reply, ok, S};
 handle_call(_Request, _From, State) ->
     Reply = ok,
@@ -239,7 +245,7 @@ handle_cast(_Msg, State) ->
 handle_info({'DOWN', Ref, _, _, _}, S) ->
     {ok, Id} = dict:find(Ref, S#state.monitoring),
     MatchHead = #piece { idpn = {Id, '_'}, _ = '_'},
-    ets:select_delete(etorrent_piece_tbl, [{MatchHead, [], [true]}]),
+    ets:select_delete(?TAB, [{MatchHead, [], [true]}]),
     {noreply, S#state { monitoring = dict:erase(Ref, S#state.monitoring)}};
 handle_info(_Info, State) ->
     {noreply, State}.
@@ -269,7 +275,7 @@ find_interest_piece(_Id, none, []) ->
 find_interest_piece(_Id, none, Acc) ->
     {interested, Acc};
 find_interest_piece(Id, {Pn, Next}, Acc) ->
-    case ets:lookup(etorrent_piece_tbl, {Id, Pn}) of
+    case ets:lookup(?TAB, {Id, Pn}) of
         [] ->
             invalid_piece;
         [#piece{ state = State}] ->
