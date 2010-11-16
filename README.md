@@ -37,18 +37,19 @@ so we can get it away.
 
 ## GETTING STARTED
 
-   0. `make compile` - this compiles the source code
-   1. `make rel` - this creates an embedded release in *rel/etorrent* which
+   0. `make deps` - Pull the relevant dependencies into *deps/*
+   1. `make compile` - this compiles the source code
+   2. `make rel` - this creates an embedded release in *rel/etorrent* which
       can subsequently be moved to a location at your leisure.
-   2. edit `${EDITOR} rel/etorrent/etc/app.config` - there are a number of directories
+   3. edit `${EDITOR} rel/etorrent/etc/app.config` - there are a number of directories
       which must be set in order to make the system work.
-   3. check *rel/etorrent/etc/vm.args* - Erlang args to supply
-   4. If you enabled the webui, check *rel/etorrent/etc/webui.config*
-   5. run `rel/etorrent/bin/etorrent console`
-   6. drop a .torrent file in the watched dir and see what happens.
-   7. call `etorrent:help()`. from the Erlang CLI to get a list of available
+   4. check *rel/etorrent/etc/vm.args* - Erlang args to supply
+   5. If you enabled the webui, check *rel/etorrent/etc/webui.config*
+   6. run `rel/etorrent/bin/etorrent console`
+   7. drop a .torrent file in the watched dir and see what happens.
+   8. call `etorrent:help()`. from the Erlang CLI to get a list of available
       commands.
-   8. If you enabled the webui, you can try browsing to its location. By default the location is 'http://localhost:8080'.
+   9. If you enabled the webui, you can try browsing to its location. By default the location is 'http://localhost:8080'.
 
 ## Setting up a development environment
 

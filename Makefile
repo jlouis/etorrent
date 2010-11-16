@@ -3,6 +3,9 @@
 ## GNU-make
 all: compile
 
+deps:
+	rebar get-deps
+
 compile:
 	rebar compile
 
