@@ -286,12 +286,13 @@ find_remaining_chunks(Id, PieceSet) ->
 %%  if we can't find anything to chunk up in the PieceSet.
 %%
 %% @end
--spec chunkify_new_piece(integer(), gb_set()) -> ok | none_eligible.
+-spec chunkify_new_piece(integer(), gb_set()) -> {ok, pos_integer()} | none_eligible.
 chunkify_new_piece(Id, PieceSet) when is_integer(Id) ->
     case etorrent_piece_mgr:find_new(Id, PieceSet) of
         none -> none_eligible;
-        P ->
-	    gen_server:call(?SERVER, {chunkify_piece, {Id, P}})
+        {P, Pn} when is_integer(Pn) ->
+	    ok = gen_server:call(?SERVER, {chunkify_piece, {Id, P}}),
+	    {ok, Pn}
     end.
 
 %% Check the piece Idx on torrent Id for completion
@@ -354,9 +355,11 @@ pick_chunks(_Operation, {_Pid, _Id, _PieceSet, SoFar, 0, _Res}) ->
     {ok, SoFar};
 %%
 %% Pick chunks from the already chunked pieces
-pick_chunks(pick_chunked, {Pid, Id, PieceSet, SoFar, Remaining, Res}) ->
+pick_chunks(pick_chunked, Tup = {_, Id, _, _, _, _}) ->
     Candidates = etorrent_piece_mgr:chunked_pieces(Id),
     CandidateSet = gb_sets:from_list(Candidates),
+    pick_chunks({pick_among, CandidateSet}, Tup);
+pick_chunks({pick_among, CandidateSet}, {Pid, Id, PieceSet, SoFar, Remaining, Res}) ->
     Iter = gb_sets:iterator( gb_sets:intersection(CandidateSet, PieceSet) ),
     case find_chunked_chunks(Id, gb_sets:next(Iter), Res) of
         none ->
@@ -380,8 +383,9 @@ pick_chunks(pick_chunked, {Pid, Id, PieceSet, SoFar, Remaining, Res}) ->
 %% Find a new piece to chunkify. Give up if no more pieces can be chunkified
 pick_chunks(chunkify_piece, {Pid, Id, PieceSet, SoFar, Remaining, Res}) ->
     case chunkify_new_piece(Id, PieceSet) of
-        ok ->
-            pick_chunks(pick_chunked, {Pid, Id, PieceSet, SoFar, Remaining, Res});
+        {ok, P} ->
+	    CandidateSet = gb_sets:from_list([P]),
+            pick_chunks({pick_among, CandidateSet}, {Pid, Id, PieceSet, SoFar, Remaining, Res});
         none_eligible when SoFar =:= [], Res =:= none ->
             not_interested;
         none_eligible when SoFar =:= [], Res =:= found_chunked ->

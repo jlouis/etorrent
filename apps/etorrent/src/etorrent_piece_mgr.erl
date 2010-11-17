@@ -179,8 +179,7 @@ interesting(Id, Pn) when is_integer(Id) ->
 
 %% Search an iterator for a not_fetched piece. Return the #piece
 %%   record or none.
--spec find_new(integer(), gb_set()) -> none | #piece{}.
-
+-spec find_new(integer(), gb_set()) -> none | {#piece{}, pos_integer()}.
 find_new(Id, GBSet) ->
     Iter = gb_sets:iterator(GBSet),
     find_new_worker(Id, gb_sets:next(Iter)).
@@ -190,7 +189,7 @@ find_new_worker(Id, {PN, Nxt}) ->
     case ets:lookup(?TAB, {Id, PN}) of
         [] ->
             find_new_worker(Id, gb_sets:next(Nxt));
-        [#piece{ state = not_fetched } = P] -> P;
+        [#piece{ state = not_fetched } = P] -> {P, PN};
         [_P] -> find_new_worker(Id, gb_sets:next(Nxt))
     end.
 
