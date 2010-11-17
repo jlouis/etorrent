@@ -291,6 +291,7 @@ handle_info({'DOWN', Ref, _, _, _}, S) ->
     {ok, Id} = dict:find(Ref, S#state.monitoring),
     MatchHead = #piece { idpn = {Id, '_'}, _ = '_'},
     ets:select_delete(?TAB, [{MatchHead, [], [true]}]),
+    ets:delete(?CHUNKED_TAB, Id),
     {noreply, S#state { monitoring = dict:erase(Ref, S#state.monitoring)}};
 handle_info(_Info, State) ->
     {noreply, State}.
