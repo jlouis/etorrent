@@ -317,18 +317,14 @@ chunkify_piece(Id, P) ->
 %%   the iterator for a pieces we have already chunked and are downloading.
 %%   If found, return the #chunk{} object. Otherwise return 'none'
 %% @end
--spec find_chunked_chunks(pos_integer(), gb_set(), term(), A) -> A | pos_integer().
-find_chunked_chunks(_Id, _PS, [], Res) -> Res;
-find_chunked_chunks(Id, PS, [PN | Next], Res) ->
-    case gb_sets:is_element(PN, PS) of
+-spec find_chunked_chunks(pos_integer(), term(), A) -> A | pos_integer().
+find_chunked_chunks(_Id, none, Res) -> Res;
+find_chunked_chunks(Id, {Pn, Iter}, _Res) ->
+    case ets:member(?TAB, {Id, Pn, not_fetched}) of
+	false ->
+	    find_chunked_chunks(Id, gb_sets:next(Iter), found_chunked);
 	true ->
-            case ets:member(?TAB, {Id, PN, not_fetched}) of
-                false ->
-                    find_chunked_chunks(Id, PS, Next, found_chunked);
-		true -> PN
-            end;
-        false ->
-            find_chunked_chunks(Id, PS, Next, Res)
+	    Pn
     end.
 
 update_fetched(Id, Index, {Offset, _Len}) ->
@@ -360,7 +356,9 @@ pick_chunks(_Operation, {_Pid, _Id, _PieceSet, SoFar, 0, _Res}) ->
 %% Pick chunks from the already chunked pieces
 pick_chunks(pick_chunked, {Pid, Id, PieceSet, SoFar, Remaining, Res}) ->
     Candidates = etorrent_piece_mgr:chunked_pieces(Id),
-    case find_chunked_chunks(Id, PieceSet, Candidates, Res) of
+    CandidateSet = gb_sets:from_list(Candidates),
+    Iter = gb_sets:iterator( gb_sets:intersection(CandidateSet, PieceSet) ),
+    case find_chunked_chunks(Id, gb_sets:next(Iter), Res) of
         none ->
             pick_chunks(chunkify_piece, {Pid, Id, PieceSet, SoFar, Remaining, none});
         found_chunked ->
