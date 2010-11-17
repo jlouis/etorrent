@@ -42,6 +42,7 @@
 
 -define(SERVER, ?MODULE).
 -define(TAB, etorrent_piece_tbl).
+-define(CHUNKED_TAB, etorrent_chunked_tbl).
 -define(DEFAULT_CHUNK_SIZE, 16384).
 
 -ignore_xref([{'start_link', 0}]).
@@ -196,8 +197,8 @@ find_new_worker(Id, {PN, Nxt}) ->
 %% (TODO: Somewhat expensive, but we start here) Chunked pieces
 -spec chunked_pieces(pos_integer()) -> [pos_integer()].
 chunked_pieces(Id) ->
-    Objects = ets:match_object(?TAB, #piece { idpn = {Id, '_'}, state = chunked, _ = '_' }),
-    [I || #piece {idpn = {I, _}} <- Objects].
+    Objects = ets:lookup(?CHUNKED_TAB, Id),
+    [I || {_, I} <- Objects].
 
 %% Returns true if the piece in question is chunked.
 -spec is_chunked(integer(), integer()) -> boolean().
@@ -219,6 +220,8 @@ is_chunked(Id, Pn) ->
 init([]) ->
     _Tid = ets:new(?TAB, [set, protected, named_table,
                                         {keypos, #piece.idpn}]),
+    ets:new(?CHUNKED_TAB, [bag, protected, named_table,
+			   {keypos, 1}]),
     {ok, #state{ monitoring = dict:new()}}.
 
 %%--------------------------------------------------------------------
@@ -246,6 +249,7 @@ handle_call({add_pieces, Id, Pieces}, _From, S) ->
 handle_call({chunk, Id, Idx, N}, _From, S) ->
     [P] = ets:lookup(?TAB, {Id, Idx}),
     ets:insert(?TAB, P#piece { state = chunked, left = N}),
+    ets:insert(?CHUNKED_TAB, {Id, Idx}),
     {reply, ok, S};
 handle_call({decrease_missing, Id, Idx}, _From, S) ->
     case ets:update_counter(?TAB, {Id, Idx},
@@ -256,6 +260,10 @@ handle_call({decrease_missing, Id, Idx}, _From, S) ->
 handle_call({statechange, Id, Idx, State}, _From, S) ->
     [P] = ets:lookup(?TAB, {Id, Idx}),
     ets:insert(?TAB, P#piece { state = State }),
+    case State of
+	chunked -> ignore;
+	_ -> ets:delete_object(?CHUNKED_TAB, {Id, Idx})
+    end,
     {reply, ok, S};
 handle_call(_Request, _From, State) ->
     Reply = ok,
