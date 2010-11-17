@@ -14,13 +14,11 @@
 
 %% API
 -export([start_link/0, decrease_missing_chunks/2, statechange/3,
-         is_chunked/2, chunked_pieces/1, size_piece/1,
+         chunked_pieces/1, size_piece/1,
 	 piece_info/2, find_new/2, fetched/2, bitfield/1, piecehashes/1,
 	 get_operations/2, valid/2, interesting/2,
 	 chunkify_piece/2, select/1,
          add_monitor/2, num_not_fetched/1, check_interest/2, add_pieces/2, chunk/3]).
-
--export([fetched/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -198,12 +196,6 @@ find_new_worker(Id, {PN, Nxt}) ->
 chunked_pieces(Id) ->
     Objects = ets:lookup(?CHUNKED_TAB, Id),
     [I || {_, I} <- Objects].
-
-%% Returns true if the piece in question is chunked.
--spec is_chunked(integer(), integer()) -> boolean().
-is_chunked(Id, Pn) ->
-    [P] = ets:lookup(?TAB, {Id, Pn}),
-    P#piece.state == chunked.
 
 %%====================================================================
 %% gen_server callbacks

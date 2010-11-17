@@ -29,6 +29,8 @@
 % If no request has been received in this interval, close the server.
 -define(REQUEST_TIMEOUT, timer:seconds(60)).
 
+-ignore_xref({start_link, 2}).
+
 %% ====================================================================
 % @doc start a file-maintenance process
 %   <p>The file has Id in the path-map and belongs to TorrentId</p>
