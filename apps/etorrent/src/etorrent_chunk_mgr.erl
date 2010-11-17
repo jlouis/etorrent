@@ -168,7 +168,7 @@ handle_call({select_chunks_by_piecenum, {Id, Pn}, Max}, {Pid, _Tag}, S) ->
 				idt = {Id, Pn, {assigned, Pid}} }]),
 			  C#chunk.chunk
 		      end || C <- Return],
-	    {reply, {ok, {Pn, Chunks}, length(Chunks)}}
+	    {reply, {ok, {Pn, Chunks}, length(Chunks)}, S}
     end;
 handle_call({chunkify_piece, {Id, Pn}}, _From, S) ->
     chunkify_piece(Id, Pn),
