@@ -39,8 +39,11 @@ devclean:
 console:
 	dev/etorrent-dev/bin/etorrent console -pa ../../apps/etorrent/ebin
 
+console-perf:
+	perf record -- dev/etorrent-dev/bin/etorrent console -pa ../../apps/etorrent/ebin
+
 xref: compile
 	rebar skip_deps=true xref
 
-.PHONY: all compile tags dialyze run tracer clean eunit rel xref dev
+.PHONY: all compile tags dialyze run tracer clean eunit rel xref dev console console-perf
 
