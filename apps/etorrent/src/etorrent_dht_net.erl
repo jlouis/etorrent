@@ -1,5 +1,11 @@
 -module(etorrent_dht_net).
 -include("types.hrl").
+
+-ifdef(TEST).
+-include_lib("eqc/include/eqc.hrl").
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 -behaviour(gen_server).
 -import(etorrent_bcoding, [search_dict/2, search_dict_default/3]).
 -import(etorrent_dht, [distance/2, closest_to/3]).
@@ -694,8 +700,7 @@ node_infos_to_compact([{ID, {A0, A1, A2, A3}, Port}|T], Acc) ->
     CNode = <<ID:160, A0, A1, A2, A3, Port:16>>,
     node_infos_to_compact(T, <<Acc/binary, CNode/binary>>).
 
--ifdef(TEST).
--include_lib("eunit/include/eunit.hrl").
+-ifdef(EUNIT).
 
 fetch_id({dict, Params}) ->
     proplists:get_value({string, "id"}, Params).
@@ -787,6 +792,7 @@ query_ping_0_test() ->
 
 -ifdef(EQC).
 
+
 properties_test() ->
    ?assert(?MODULE:check()).
 
@@ -830,8 +836,8 @@ announce_query() ->
 
 dht_query() ->
    All = [ping_query(), find_node_query(), get_peers_query(), announce_query()],
-   oneof([{dht_query, Method, transaction(), lists:sort(Params)}
-         || {Method, Params} <- All]).
+    oneof([{dht_query, Method, transaction(), lists:sort(Params)}
+	       || {Method, Params} <- All]).
 
 prop_inv_compact() ->
    ?FORALL(Input, list(dht_node()),
@@ -842,12 +848,15 @@ prop_inv_compact() ->
        end).
 
 
+encoder({dht_query, Method, MsgId, Params}) ->
+    encode_query(Method, MsgId, Params).
+
 prop_query_inv() ->
    ?FORALL(InQ, dht_query(),
        begin
-           OutQ = decode_msg(query_to_bencode(InQ)),
+           OutQ = decode_msg(encoder(InQ)),
            OutQ =:= InQ
        end).
 
 -endif. %% EQC
--endif. %% TEST
+-endif.
