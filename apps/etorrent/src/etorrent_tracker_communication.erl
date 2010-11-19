@@ -451,6 +451,12 @@ swap_test() ->
 		  "udp://four.com", "http://two.com", "http://three.com"],
 		 Swapped).
 
+swap_urls_test() ->
+    Swapped = swap_urls(tier()),
+    ?assertEqual([["udp://one.com", "udp://two.com", "http://one.com"],
+		  ["udp://four.com", "http://two.com", "http://three.com"]],
+		 Swapped).
+
 should_swap_test() ->
     ?assertEqual(true, should_swap_for("http://foo.com", "udp://foo.com")),
     ?assertEqual(false, should_swap_for("http://foo.com", "udp://bar.com")),
