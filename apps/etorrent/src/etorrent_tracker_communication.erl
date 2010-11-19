@@ -417,37 +417,23 @@ swap_urls(Tiers) ->
 -spec swap([string()]) -> [string()].
 swap([]) -> [];
 swap([Url | R]) ->
-    case swap_in_tier(Url, R) of
-	none ->
-	    [Url | swap(R)];
-	{swapped, E, Q} ->
-	    [E | swap(Q)]
-    end.
+    {H, T} = swap_in_tier(Url, R, []),
+    [H | swap(T)].
 
--spec should_swap(string(), string()) -> boolean().
-should_swap(Url, Url2) ->
-    domain(Url) == domain(Url2).
-
--spec domain(string()) -> string().
-domain(Url) ->
-    {_Scheme, _UserInfo, Host, _Port, _Path, _Query} =
-	etorrent_http_uri:parse(Url),
-    Host.
-
--spec swap_in_tier(string(), [string()]) ->
-			  none | {swapped, string(), [string()]}.
-swap_in_tier(_Url, []) -> none;
-swap_in_tier(Url, [Url2 | R]) ->
-    case should_swap(Url, Url2) of
+swap_in_tier(Url, [], Acc) -> {Url, lists:reverse(Acc)};
+swap_in_tier(Url, [H | T], Acc) ->
+    case should_swap_for(Url, H) of
 	true ->
-	    {swapped, Url2, [Url | R]};
+	    {H, lists:reverse(Acc) ++ [Url | T]};
 	false ->
-	    case swap_in_tier(Url, R) of
-		none -> none;
-		{swapped, NE, L} ->
-		    {swapped, NE, [Url | L]}
-	    end
+	    swap_in_tier(Url, T, [H | Acc])
     end.
+
+-spec should_swap_for(string(), string()) -> boolean().
+should_swap_for(Url1, Url2) ->
+    {S1, _UserInfo, Host1, _Port, _Path, _Query} = etorrent_http_uri:parse(Url1),
+    {_S2, _, Host2, _, _, _} = etorrent_http_uri:parse(Url2),
+    Host1 == Host2 andalso S1 == http.
 
 -ifdef(EUNIT).
 
@@ -461,13 +447,20 @@ splice_test() ->
 
 swap_test() ->
     Swapped = swap(lists:concat(tier())),
+    ?assertEqual(["udp://one.com", "udp://two.com", "http://one.com",
+		  "udp://four.com", "http://two.com", "http://three.com"],
+		 Swapped).
+
+swap_urls_test() ->
+    Swapped = swap_urls(tier()),
     ?assertEqual([["udp://one.com", "udp://two.com", "http://one.com"],
 		  ["udp://four.com", "http://two.com", "http://three.com"]],
 		 Swapped).
 
 should_swap_test() ->
-    ?assertEqual(true, should_swap("http://foo.com", "http://foo.com")),
-    ?assertEqual(true, should_swap("http://foo.com", "udp://foo.com/something/more")).
+    ?assertEqual(true, should_swap_for("http://foo.com", "udp://foo.com")),
+    ?assertEqual(false, should_swap_for("http://foo.com", "udp://bar.com")),
+    ?assertEqual(true, should_swap_for("http://foo.com", "udp://foo.com/something/more")).
 
 -ifdef(EQC).
 
