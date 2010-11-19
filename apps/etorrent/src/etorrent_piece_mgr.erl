@@ -8,24 +8,41 @@
 -module(etorrent_piece_mgr).
 
 -include_lib("stdlib/include/qlc.hrl").
--include("etorrent_piece.hrl").
+-include("types.hrl").
 
 -behaviour(gen_server).
 
 %% API
 -export([start_link/0, decrease_missing_chunks/2, statechange/3,
-         is_chunked/2,
-         find_new/2, fetched/2, bitfield/1, select/1, select/2, valid/2, interesting/2,
+         chunked_pieces/1, size_piece/1,
+	 piece_info/2, find_new/2, fetched/2, bitfield/1, piecehashes/1,
+	 get_operations/2, valid/2, interesting/2,
+	 chunkify_piece/2, select/1,
          add_monitor/2, num_not_fetched/1, check_interest/2, add_pieces/2, chunk/3]).
-
--export([fetched/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
+%% Individual pieces are represented via the piece record
+-record(piece, {idpn, % {Id, PieceNumber} pair identifying the piece
+                hash, % Hash of piece
+                id, % (IDX) Id of this piece owning this piece, again for an index
+                piece_number, % Piece Number of piece, replicated for fast qlc access
+                files, % File operations to manipulate piece
+                left = unknown, % Number of chunks left...
+                state}). % (IDX) state is: fetched | not_fetched | chunked
+
+-type piece() :: #piece{}.
+-export_type([piece/0]).
+
 -record(state, { monitoring }).
+
 -define(SERVER, ?MODULE).
+-define(TAB, etorrent_piece_tbl).
+-define(CHUNKED_TAB, etorrent_chunked_tbl).
+-define(DEFAULT_CHUNK_SIZE, 16384).
+
 -ignore_xref([{'start_link', 0}]).
 %%====================================================================
 %% API
@@ -36,6 +53,12 @@
 %%--------------------------------------------------------------------
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
+
+%% @doc What is the size of a given piece
+size_piece(#piece{state = fetched}) -> 0;
+size_piece(#piece{state = not_fetched, files = Files}) ->
+    lists:sum([Sz || {_F, _O, Sz} <- Files]).
+
 
 %%--------------------------------------------------------------------
 %% Function: add_pieces(Id, FPList) -> void()
@@ -66,12 +89,12 @@ statechange(Id, PN, State) ->
     gen_server:call(?SERVER, {statechange, Id, PN, State}).
 
 fetched(Id, Idx) ->
-    [R] = ets:lookup(etorrent_piece_tbl, {Id, Idx}),
+    [R] = ets:lookup(?TAB, {Id, Idx}),
     R#piece.state =:= fetched.
 
 fetched(Id) ->
     MH = #piece { state = fetched, idpn = {Id, '$1'}, _ = '_'},
-    ets:select(etorrent_piece_tbl,
+    ets:select(?TAB,
                [{MH, [], ['$1']}]).
 
 bitfield(Id) when is_integer(Id) ->
@@ -92,7 +115,7 @@ add_monitor(Pid, Id) ->
 %%--------------------------------------------------------------------
 num_not_fetched(Id) when is_integer(Id) ->
     Q = qlc:q([R#piece.piece_number ||
-                  R <- ets:table(etorrent_piece_tbl),
+                  R <- ets:table(?TAB),
                   R#piece.id =:= Id,
                   R#piece.state =:= not_fetched]),
     length(qlc:e(Q)).
@@ -111,21 +134,35 @@ check_interest(Id, PieceSet) when is_integer(Id) ->
 %%--------------------------------------------------------------------
 select(Id) ->
     MatchHead = #piece { idpn = {Id, '_'}, _ = '_'},
-    ets:select(etorrent_piece_tbl, [{MatchHead, [], ['$_']}]).
+    ets:select(?TAB, [{MatchHead, [], ['$_']}]).
+
+piecehashes(Id) ->
+    Pieces = select(Id),
+    [{PN, Hash} || #piece { idpn = {_, PN}, hash = Hash} <- Pieces].
+
+piece_info(Id, PN) ->
+    case ets:lookup(?TAB, {Id, PN}) of
+	[#piece { hash = H, files = Ops }] ->
+	    {H, Ops}
+    end.
 
 %%--------------------------------------------------------------------
-%% Function: select(Id, PieceNumber) -> [#piece]
+%% Function: get_operations(Id, PieceNumber) -> {ok, [operation()]}, none
 %% Description: Return the piece PieceNumber for the Id torrent
 %%--------------------------------------------------------------------
-select(Id, PN) ->
-    ets:lookup(etorrent_piece_tbl, {Id, PN}).
+get_operations(Id, Pn) ->
+    case ets:lookup(?TAB, {Id, Pn}) of
+	[] ->
+	    none;
+	[P] -> {ok, P#piece.files}
+    end.
 
 %%--------------------------------------------------------------------
 %% Function: valid(Id, PieceNumber) -> bool()
 %% Description: Is the piece valid for this torrent?
 %%--------------------------------------------------------------------
 valid(Id, Pn) when is_integer(Id) ->
-    case ets:lookup(etorrent_piece_tbl, {Id, Pn}) of
+    case ets:lookup(?TAB, {Id, Pn}) of
         [] -> false;
         [_] -> true
     end.
@@ -135,32 +172,30 @@ valid(Id, Pn) when is_integer(Id) ->
 %% Description: Is the piece interesting?
 %%--------------------------------------------------------------------
 interesting(Id, Pn) when is_integer(Id) ->
-    [P] = ets:lookup(etorrent_piece_tbl, {Id, Pn}),
+    [P] = ets:lookup(?TAB, {Id, Pn}),
     P#piece.state =/= fetched.
 
 %% Search an iterator for a not_fetched piece. Return the #piece
 %%   record or none.
--spec find_new(integer(), gb_set()) -> none | #piece{}.
-
+-spec find_new(integer(), gb_set()) -> none | {#piece{}, pos_integer()}.
 find_new(Id, GBSet) ->
     Iter = gb_sets:iterator(GBSet),
     find_new_worker(Id, gb_sets:next(Iter)).
 
 find_new_worker(_Id, none) -> none;
 find_new_worker(Id, {PN, Nxt}) ->
-    case ets:lookup(etorrent_piece_tbl, {Id, PN}) of
+    case ets:lookup(?TAB, {Id, PN}) of
         [] ->
             find_new_worker(Id, gb_sets:next(Nxt));
-        [#piece{ state = not_fetched } = P] -> P;
+        [#piece{ state = not_fetched } = P] -> {P, PN};
         [_P] -> find_new_worker(Id, gb_sets:next(Nxt))
     end.
 
-%% Returns true if the piece in question is chunked.
--spec is_chunked(integer(), integer()) -> boolean().
-
-is_chunked(Id, Pn) ->
-    [P] = ets:lookup(etorrent_piece_tbl, {Id, Pn}),
-    P#piece.state == chunked.
+%% (TODO: Somewhat expensive, but we start here) Chunked pieces
+-spec chunked_pieces(pos_integer()) -> [pos_integer()].
+chunked_pieces(Id) ->
+    Objects = ets:lookup(?CHUNKED_TAB, Id),
+    [I || {_, I} <- Objects].
 
 %%====================================================================
 %% gen_server callbacks
@@ -174,8 +209,10 @@ is_chunked(Id, Pn) ->
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
 init([]) ->
-    _Tid = ets:new(etorrent_piece_tbl, [set, protected, named_table,
+    _Tid = ets:new(?TAB, [set, protected, named_table,
                                         {keypos, #piece.idpn}]),
+    ets:new(?CHUNKED_TAB, [bag, protected, named_table,
+			   {keypos, 1}]),
     {ok, #state{ monitoring = dict:new()}}.
 
 %%--------------------------------------------------------------------
@@ -190,7 +227,7 @@ init([]) ->
 handle_call({add_pieces, Id, Pieces}, _From, S) ->
     lists:foreach(
       fun({PN, Hash, Files, State}) ->
-              ets:insert(etorrent_piece_tbl,
+              ets:insert(?TAB,
                          #piece { idpn = {Id, PN},
                                   id = Id,
                                   piece_number = PN,
@@ -201,18 +238,23 @@ handle_call({add_pieces, Id, Pieces}, _From, S) ->
       Pieces),
     {reply, ok, S};
 handle_call({chunk, Id, Idx, N}, _From, S) ->
-    [P] = ets:lookup(etorrent_piece_tbl, {Id, Idx}),
-    ets:insert(etorrent_piece_tbl, P#piece { state = chunked, left = N}),
+    [P] = ets:lookup(?TAB, {Id, Idx}),
+    ets:insert(?TAB, P#piece { state = chunked, left = N}),
+    ets:insert(?CHUNKED_TAB, {Id, Idx}),
     {reply, ok, S};
 handle_call({decrease_missing, Id, Idx}, _From, S) ->
-    case ets:update_counter(etorrent_piece_tbl, {Id, Idx},
+    case ets:update_counter(?TAB, {Id, Idx},
                             {#piece.left, -1}) of
         0 -> {reply, full, S};
         N when is_integer(N) -> {reply, ok, S}
     end;
 handle_call({statechange, Id, Idx, State}, _From, S) ->
-    [P] = ets:lookup(etorrent_piece_tbl, {Id, Idx}),
-    ets:insert(etorrent_piece_tbl, P#piece { state = State }),
+    [P] = ets:lookup(?TAB, {Id, Idx}),
+    ets:insert(?TAB, P#piece { state = State }),
+    case State of
+	chunked -> ignore;
+	_ -> ets:delete_object(?CHUNKED_TAB, {Id, Idx})
+    end,
     {reply, ok, S};
 handle_call(_Request, _From, State) ->
     Reply = ok,
@@ -239,7 +281,8 @@ handle_cast(_Msg, State) ->
 handle_info({'DOWN', Ref, _, _, _}, S) ->
     {ok, Id} = dict:find(Ref, S#state.monitoring),
     MatchHead = #piece { idpn = {Id, '_'}, _ = '_'},
-    ets:select_delete(etorrent_piece_tbl, [{MatchHead, [], [true]}]),
+    ets:select_delete(?TAB, [{MatchHead, [], [true]}]),
+    ets:delete(?CHUNKED_TAB, Id),
     {noreply, S#state { monitoring = dict:erase(Ref, S#state.monitoring)}};
 handle_info(_Info, State) ->
     {noreply, State}.
@@ -269,7 +312,7 @@ find_interest_piece(_Id, none, []) ->
 find_interest_piece(_Id, none, Acc) ->
     {interested, Acc};
 find_interest_piece(Id, {Pn, Next}, Acc) ->
-    case ets:lookup(etorrent_piece_tbl, {Id, Pn}) of
+    case ets:lookup(?TAB, {Id, Pn}) of
         [] ->
             invalid_piece;
         [#piece{ state = State}] ->
@@ -280,3 +323,60 @@ find_interest_piece(Id, {Pn, Next}, Acc) ->
                     find_interest_piece(Id, gb_sets:next(Next), [Pn | Acc])
             end
     end.
+
+chunkify_piece(Id, #piece{ files = Files, state = State, idpn = IDPN }) ->
+    Chunks = chunkify(Files),
+    NumChunks = length(Chunks),
+    not_fetched = State,
+    {Id, Idx} = IDPN,
+    ok = etorrent_piece_mgr:chunk(Id, Idx, NumChunks),
+    {Id, Idx, Chunks}.
+
+%% @doc Break a piece into logical chunks
+%%
+%%   From a list of operations to read/write a piece, construct
+%%   a list of chunks given by Offset of the chunk, Size of the chunk and
+%%   how to read/write that chunk.
+%% @end
+-spec chunkify([operation()]) -> [{integer(), integer(), [operation()]}].
+%% First, we call the version of the function doing the grunt work.
+chunkify(Operations) ->
+    chunkify(0, 0, [], Operations, ?DEFAULT_CHUNK_SIZE).
+
+%% Suppose the next File operation on the piece has 0 bytes in size, then it
+%%  is exhausted and must be thrown away.
+chunkify(AtOffset, EatenBytes, Operations,
+         [{_Path, _Offset, 0} | Rest], Left) ->
+    chunkify(AtOffset, EatenBytes, Operations, Rest, Left);
+
+%% There are no more file operations to carry out. Hence we reached the end of
+%%   the piece and we just return the last chunk operation. Remember to reverse
+%%   the list of operations for that chunk as we build it in reverse.
+chunkify(AtOffset, EatenBytes, Operations, [], _Sz) ->
+    [{AtOffset, EatenBytes, lists:reverse(Operations)}];
+
+%% There are no more bytes left to add to this chunk. Recurse by calling
+%%   on the rest of the problem and add our chunk to the front when coming
+%%   back. Remember to reverse the Operations list built in reverse.
+chunkify(AtOffset, EatenBytes, Operations, OpsLeft, 0) ->
+    R = chunkify(AtOffset + EatenBytes, 0, [], OpsLeft, ?DEFAULT_CHUNK_SIZE),
+    [{AtOffset, EatenBytes, lists:reverse(Operations)} | R];
+
+%% The next file we are processing have a larger size than what is left for this
+%%   chunk. Hence we can just eat off that many bytes from the front file.
+chunkify(AtOffset, EatenBytes, Operations,
+         [{Path, Offset, Size} | Rest], Left) when Left =< Size ->
+    chunkify(AtOffset, EatenBytes + Left,
+             [{Path, Offset, Left} | Operations],
+             [{Path, Offset+Left, Size - Left} | Rest],
+             0);
+
+%% The next file does *not* have enough bytes left, so we eat all the bytes
+%%   we can get from it, and move on to the next file.
+chunkify(AtOffset, EatenBytes, Operations,
+        [{Path, Offset, Size} | Rest], Left) when Left > Size ->
+    chunkify(AtOffset, EatenBytes + Size,
+             [{Path, Offset, Size} | Operations],
+             Rest,
+             Left - Size).
+

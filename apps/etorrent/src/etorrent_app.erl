@@ -21,7 +21,18 @@ start(_Type, _Args) ->
 	{ok, false} ->
 	    ignore
     end,
+    consider_profiling(),
     etorrent_sup:start_link(PeerId).
+
+%% Consider if the profiling should be enabled.
+consider_profiling() ->
+    case application:get_env(etorrent, profiling) of
+	{ok, true} ->
+	    eprof:start(),
+	    eprof:start_profiling([self()]);
+	{ok, false} ->
+	    ignore
+    end.
 
 %% @doc Application callback.
 %% @end

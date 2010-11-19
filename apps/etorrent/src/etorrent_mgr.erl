@@ -18,6 +18,7 @@
 
 
 -record(state, {local_peer_id}).
+-ignore_xref([{start_link, 1}]).
 
 %% API
 

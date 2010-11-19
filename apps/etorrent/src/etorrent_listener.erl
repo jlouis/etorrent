@@ -22,6 +22,8 @@
 -define(SERVER, ?MODULE).
 -define(DEFAULT_SOCKET_INCREASE, 10).
 
+-ignore_xref({start_link, 0}).
+
 %% ====================================================================
 -spec start_link() -> {ok, pid()} | ignore | {error, term()}.
 start_link() ->

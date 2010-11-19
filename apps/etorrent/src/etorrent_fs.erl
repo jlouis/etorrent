@@ -9,7 +9,6 @@
 %%%-------------------------------------------------------------------
 -module(etorrent_fs).
 
--include("etorrent_piece.hrl").
 -include("types.hrl").
 -include("log.hrl").
 
@@ -73,13 +72,11 @@ init([IDHandle]) when is_integer(IDHandle) ->
                 torrent_id = IDHandle}}.
 
 handle_call({read_piece, PieceNum}, _From, S) ->
-    [#piece { files = Operations}] =
-        etorrent_piece_mgr:select(S#state.torrent_id, PieceNum),
+    {ok, Operations} = etorrent_piece_mgr:get_operations(S#state.torrent_id, PieceNum),
     {Data, NS} = read_pieces_and_assemble(Operations, S),
     {reply, {ok, Data}, NS};
 handle_call({read_chunk, Pn, Offset, Len}, _From, S) ->
-    [#piece { files = Operations}] =
-        etorrent_piece_mgr:select(S#state.torrent_id, Pn),
+    {ok, Operations} = etorrent_piece_mgr:get_operations(S#state.torrent_id, Pn),
     {Reply, NS} = read_chunk_and_assemble(Operations, Offset, Len, S),
     {reply, Reply, NS};
 handle_call(Msg, From, S) ->
@@ -87,16 +84,14 @@ handle_call(Msg, From, S) ->
     {noreply, S}.
 
 handle_cast({write_chunk, {Index, Data, Ops}}, S) ->
-    case etorrent_piece_mgr:select(S#state.torrent_id, Index) of
-        [#piece { state = fetched }] ->
-            {noreply, S};
-        [_] ->
+    case etorrent_piece_mgr:fetched(S#state.torrent_id, Index) of
+	true -> {noreply, S};
+	false ->
             NS = fs_write(Data, Ops, S),
-            {noreply, NS}
+	    {noreply, NS}
     end;
 handle_cast({check_piece, Index}, S) ->
-    [#piece { hash = Hash, files = Operations}] =
-        etorrent_piece_mgr:select(S#state.torrent_id, Index),
+    {Hash, Operations} = etorrent_piece_mgr:piece_info(S#state.torrent_id, Index),
     {Data, NS} = read_pieces_and_assemble(Operations, S),
     DataSize = byte_size(Data),
     case Hash == crypto:sha(Data) of

@@ -3,7 +3,7 @@
 -behaviour(gen_server).
 -include("log.hrl").
 
--export([start_link/0, fs_maybe_collect/0, bump/1, new_fs_process/1]).
+-export([start_link/0, bump/1, new_fs_process/1]).
 
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
@@ -11,6 +11,8 @@
 -define(HIGH, 128).
 -define(LOW, 100).
 -define(SERVER, ?MODULE).
+
+-ignore_xref({start_link, 0}).
 
 -record(state, { high, low }).
 
