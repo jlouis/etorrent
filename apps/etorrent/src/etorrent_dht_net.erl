@@ -794,7 +794,10 @@ query_ping_0_test() ->
 
 
 properties_test() ->
-   ?assert(?MODULE:check()).
+    eqc:start(),
+    %% ?assert(eqc:quickcheck(prop_query_inv())),
+    ?assert(eqc:quickcheck(prop_inv_compact())).
+
 
 octet() ->
    choose(0, 255).
