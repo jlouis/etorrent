@@ -794,8 +794,6 @@ query_ping_0_test() ->
 
 
 properties_test() ->
-    eqc:start(),
-    %% ?assert(eqc:quickcheck(prop_query_inv())),
     ?assert(eqc:quickcheck(prop_inv_compact())).
 
 
