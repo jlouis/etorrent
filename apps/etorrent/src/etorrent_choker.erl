@@ -30,8 +30,8 @@
                 opt_unchoke_chain = []}).
 
 -record(rechoke_info, {pid :: pid(),
-                       kind :: 'seeding' | 'leeching',
-                       state :: 'seeding' | 'leeching' ,
+                       peer_state :: 'seeding' | 'leeching', % Is the peer seeding or leeching
+                       state :: 'seeding' | 'leeching' , % Are we seeding or leeching the torrent of the peer
                        snubbed :: boolean(),
                        r_interest_state :: 'interested' | 'not_interested',
                        r_choke_state :: 'choked' | 'unchoked' ,
@@ -96,22 +96,26 @@ lookup_info(Seeding, Id, Pid) ->
             end
     end.
 
+%% Gather information about each Peer so we can choose which peers to
+%%  bet on for great download/upload speeds. Produces a #rechoke_info{}
+%%  list out of peers containing all information necessary for the choice.
+-spec build_rechoke_info(set(), [pid()]) -> [#rechoke_info{}].
 build_rechoke_info(_Seeding, []) -> [];
 build_rechoke_info(Seeding, [Pid | Next]) ->
     case etorrent_table:get_peer_info(Pid) of
         not_found -> build_rechoke_info(Seeding, Next);
-        {peer_info, Kind, Id} ->
-            {value, Snubbed, PeerState} = etorrent_rate_mgr:get_state(Id, Pid),
+        {peer_info, PeerState, Id} ->
+            {value, Snubbed, St} = etorrent_rate_mgr:get_state(Id, Pid),
             case lookup_info(Seeding, Id, Pid) of
                 none -> build_rechoke_info(Seeding, Next);
-                {S, R} -> [#rechoke_info {
+                {State, R} -> [#rechoke_info {
                                     pid = Pid,
-                                    kind = Kind,
-                                    state = S,
-                                    rate = R,
-                                    r_interest_state = proplists:get_value(interest_state, PeerState),
-                                    r_choke_state    = proplists:get_value(choke_state, PeerState),
-                                    l_choke          = proplists:get_value(local_choke, PeerState),
+                                    peer_state = PeerState,
+                                    state = State,
+                                    rate = R, % TODO: Rate is negative if leeching! Investigate!
+                                    r_interest_state = proplists:get_value(interest_state, St),
+                                    r_choke_state    = proplists:get_value(choke_state, St),
+                                    l_choke          = proplists:get_value(local_choke, St),
                                     snubbed = Snubbed } |
                             build_rechoke_info(Seeding, Next)]
             end
@@ -212,7 +216,7 @@ rechoke_choke([P | Next], Count, Optimistics) when Count >= Optimistics ->
     etorrent_peer_control:choke(P#rechoke_info.pid),
     rechoke_choke(Next, Count, Optimistics);
 rechoke_choke([P | Next], Count, Optimistics) ->
-    case P#rechoke_info.kind =:= seeding of
+    case P#rechoke_info.peer_state =:= seeding of
         true ->
             etorrent_peer_control:choke(P#rechoke_info.pid),
             rechoke_choke(Next, Count, Optimistics);
@@ -226,19 +230,26 @@ rechoke_choke([P | Next], Count, Optimistics) ->
             end
     end.
 
-split_preferred_peers([], Downs, Leechs) ->
-    {Downs, Leechs};
-split_preferred_peers([P | Next], Downs, Leechs) ->
-    case P#rechoke_info.kind =:= seeding
-          orelse P#rechoke_info.r_interest_state =:= not_interested of
+%% Split the peers we are connected to into two groups:
+%%  - Those we are Leeching from
+%%  - Those we are Seeding to
+%% But in the process, skip over any peer which is unintersting
+split_preferred_peers([], L, S) -> {L, S};
+split_preferred_peers([#rechoke_info { peer_state = PeerState, r_interest_state = RemoteInterest,
+				       state = State, snubbed = Snubbed } = P | Next],
+		      WeLeech, WeSeed) ->
+    case PeerState == seeding orelse RemoteInterest == not_interested of
         true ->
-            split_preferred_peers(Next, Downs, Leechs);
-        false when P#rechoke_info.state =:= seeding ->
-            split_preferred_peers(Next, Downs, [P | Leechs]);
-        false when P#rechoke_info.snubbed =:= true ->
-            split_preferred_peers(Next, Downs, Leechs);
+	    %% Peer is seeding a torrent and we are connected to a peer not interested
+	    %% in downloading anything. Unchoking him would not help anything, skip.
+            split_preferred_peers(Next, WeLeech, WeSeed);
+        false when State =:= seeding ->
+	    %% We are seeding this torrent, so throw the Peer into the group of peers we seed to
+            split_preferred_peers(Next, WeLeech, [P | WeSeed]);
+        false when Snubbed =:= true ->
+            split_preferred_peers(Next, WeLeech, WeSeed);
         false ->
-            split_preferred_peers(Next, [P | Downs], Leechs)
+            split_preferred_peers(Next, [P | WeLeech], WeSeed)
     end.
 
 %%====================================================================
