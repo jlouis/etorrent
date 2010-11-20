@@ -75,10 +75,6 @@ rechoke(Chain) ->
     ToChoke = rechoke_unchoke(Peers, PreferredSet),
     rechoke_choke(ToChoke, 0, optimistics(PreferredSet)).
 
-build_rechoke_info(Peers) ->
-    {value, Seeding} = etorrent_torrent:seeding(),
-    SeederSet = sets:from_list(Seeding),
-    build_rechoke_info(SeederSet, Peers).
 
 -spec lookup_info(set(), integer(), pid()) -> none | {seeding, float()}
                                                    | {leeching, float()}.
@@ -95,6 +91,11 @@ lookup_info(Seeding, Id, Pid) ->
                 Rate -> {leeching, -Rate}
             end
     end.
+
+build_rechoke_info(Peers) ->
+    {value, Seeding} = etorrent_torrent:seeding(),
+    SeederSet = sets:from_list(Seeding),
+    build_rechoke_info(SeederSet, Peers).
 
 %% Gather information about each Peer so we can choose which peers to
 %%  bet on for great download/upload speeds. Produces a #rechoke_info{}
