@@ -269,7 +269,8 @@ handle_info(rate_update, S) ->
 %% @todo Consider if this can be simplified. It looks wrong here.
 handle_info(timeout, #state{ parent = {non_inited, _},
 			     socket = Sock } = S) ->
-    RecvPid = gproc:lookup_local_name({peer, Sock, receiver}),
+    {RecvPid, _} = gproc:await({n,l,{peer, Sock, receiver}}), % TODO: Change to a timeout later on, when gproc has been fixed
+    false = RecvPid == undefined,
     {noreply, S#state { parent = RecvPid }, 0};
 handle_info(timeout, #state { choke = true} = S) ->
     {noreply, S};
