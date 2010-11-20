@@ -40,6 +40,8 @@
                 control_pid = none,
                 torrent_id = none}).
 
+-type tier() :: [string()].
+
 -define(DEFAULT_REQUEST_TIMEOUT, 180).
 -define(DEFAULT_CONNECTION_TIMEOUT_INTERVAL, 1800).
 -define(DEFAULT_CONNECTION_TIMEOUT_MIN_INTERVAL, 60).
@@ -179,7 +181,7 @@ contact_tracker(Event, #state { url = Tiers } = S) ->
 	{ok, NS, NewTiers} ->
 	    NS #state { url = NewTiers }
     end.
--type tier() :: [string()].
+
 -spec contact_tracker([tier()], tracker_event() | none, #state{}) ->
 			     {none, #state{}} | {ok, #state{}, [tier()]}.
 contact_tracker([], _Event, #state { torrent_id = Id} = S) ->
@@ -394,7 +396,6 @@ fetch_error_message(BC) ->
 fetch_warning_message(BC) ->
     etorrent_bcoding:search_dict_default({string, "warning message"}, BC, none).
 
--spec shuffle_tiers([tier()]) -> [tier()].
 shuffle_tiers(Tiers) ->
     [etorrent_utils:shuffle(T) || T <- Tiers].
 
@@ -406,13 +407,11 @@ unsplice([K | KR], List) ->
     {F, R} = lists:split(K, List),
     [F | unsplice(KR, R)].
 
--spec swap_urls([tier()]) -> [tier()].
 swap_urls(Tiers) ->
     {Breaks, CL} = splice(Tiers),
     NCL = swap(CL),
     unsplice(Breaks, NCL).
 
--spec swap([string()]) -> [string()].
 swap([]) -> [];
 swap([Url | R]) ->
     {H, T} = swap_in_tier(Url, R, []),
@@ -427,7 +426,6 @@ swap_in_tier(Url, [H | T], Acc) ->
 	    swap_in_tier(Url, T, [H | Acc])
     end.
 
--spec should_swap_for(string(), string()) -> boolean().
 should_swap_for(Url1, Url2) ->
     {S1, _UserInfo, Host1, _Port, _Path, _Query} = etorrent_http_uri:parse(Url1),
     {_S2, _, Host2, _, _, _} = etorrent_http_uri:parse(Url2),
