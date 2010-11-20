@@ -81,7 +81,7 @@ handle_call({write, Offset, Data}, _From, #state { iodev = IODev } = S) ->
     ok = file:pwrite(IODev, Offset, Data),
     {reply, ok, S, ?REQUEST_TIMEOUT};
 handle_call(Msg, _From, S) ->
-    ?WARN({unknown_msg, ?MODULE, Msg}),
+    ?WARN([{unknown_msg, ?MODULE, Msg}]),
     {reply, ok, S, ?REQUEST_TIMEOUT}.
 
 handle_cast(stop, S) ->
