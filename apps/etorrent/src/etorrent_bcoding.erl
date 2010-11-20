@@ -38,11 +38,7 @@ encode(BString) ->
 -spec decode(string() | binary()) -> bcode().
 decode(Bin) when is_binary(Bin) -> decode(binary_to_list(Bin));
 decode(String) when is_list(String) ->
-    {Res, E} = decode_b(String),
-    case E of
-        [] -> ok;
-        X  -> ?INFO([spurious_extra_decoded, X])
-    end,
+    {Res, _Extra} = decode_b(String),
     Res.
 
 %%--------------------------------------------------------------------

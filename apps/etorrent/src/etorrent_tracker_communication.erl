@@ -197,7 +197,6 @@ contact_tracker_tier([], _Event, _S) ->
     none;
 contact_tracker_tier([Url | Next], Event, S) ->
     RequestUrl = build_tracker_url(Url, Event, S),
-    ?INFO([{contacting_tracker, RequestUrl}]),
     case http_gzip:request(RequestUrl) of
         {ok, {{_, 200, _}, _, Body}} ->
 	    {ok,
