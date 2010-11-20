@@ -101,7 +101,6 @@ handle_cast(_Msg, State) ->
     {noreply, State}.
 
 handle_info(persist, S) ->
-    ?INFO([persist_to_disk]),
     persist_to_disk(),
     erlang:send_after(?PERSIST_TIME, self(), persist),
     {noreply, S};

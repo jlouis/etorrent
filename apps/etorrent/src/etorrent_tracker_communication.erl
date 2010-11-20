@@ -197,7 +197,6 @@ contact_tracker_tier([], _Event, _S) ->
     none;
 contact_tracker_tier([Url | Next], Event, S) ->
     RequestUrl = build_tracker_url(Url, Event, S),
-    ?INFO([{contacting_tracker, RequestUrl}]),
     case http_gzip:request(RequestUrl) of
         {ok, {{_, 200, _}, _, Body}} ->
 	    {ok,
@@ -355,8 +354,7 @@ decode_ips(<<>>, Accum) ->
 decode_ips(<<B1:8, B2:8, B3:8, B4:8, Port:16/big, Rest/binary>>, Accum) ->
     decode_ips(Rest, [{{B1, B2, B3, B4}, Port} | Accum]);
 decode_ips(Odd, Accum) ->
-    ?INFO([tracker_wrong_ip_decode, Odd]),
-    Accum.
+    Accum. % This case is to handle wrong tracker returns. Ignore spurious bytes.
 
 
 response_ips(BC) ->
