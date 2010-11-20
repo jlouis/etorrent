@@ -32,7 +32,7 @@
 -record(rechoke_info, {pid :: pid(),
                        peer_state :: 'seeding' | 'leeching', % Is the peer seeding or leeching
                        state :: 'seeding' | 'leeching' , % Are we seeding or leeching the torrent of the peer
-                       snubbed :: boolean(),
+                       peer_snubs :: boolean(),
                        r_interest_state :: 'interested' | 'not_interested',
                        r_choke_state :: 'choked' | 'unchoked' ,
                        l_choke :: boolean(),
@@ -116,7 +116,7 @@ build_rechoke_info(Seeding, [Pid | Next]) ->
                                     r_interest_state = proplists:get_value(interest_state, St),
                                     r_choke_state    = proplists:get_value(choke_state, St),
                                     l_choke          = proplists:get_value(local_choke, St),
-                                    snubbed = Snubbed } |
+                                    peer_snubs = Snubbed } |
                             build_rechoke_info(Seeding, Next)]
             end
     end.
@@ -236,7 +236,7 @@ rechoke_choke([P | Next], Count, Optimistics) ->
 %% But in the process, skip over any peer which is unintersting
 split_preferred_peers([], L, S) -> {L, S};
 split_preferred_peers([#rechoke_info { peer_state = PeerState, r_interest_state = RemoteInterest,
-				       state = State, snubbed = Snubbed } = P | Next],
+				       state = State, peer_snubs = Snubbed } = P | Next],
 		      WeLeech, WeSeed) ->
     case PeerState == seeding orelse RemoteInterest == not_interested of
         true ->
@@ -247,8 +247,13 @@ split_preferred_peers([#rechoke_info { peer_state = PeerState, r_interest_state 
 	    %% We are seeding this torrent, so throw the Peer into the group of peers we seed to
             split_preferred_peers(Next, WeLeech, [P | WeSeed]);
         false when Snubbed =:= true ->
+	    %% The peer has not sent us anything for 30 seconds, so we
+	    %% regard the peer as snubbing us. Thus, unchoking the peer would
+	    %% be rather insane. We'd rather use the slot for someone else.
             split_preferred_peers(Next, WeLeech, WeSeed);
         false ->
+	    %% If none of the other cases match, we have a Peer we are leeching
+	    %% from, so throw the peer into the leecher set.
             split_preferred_peers(Next, [P | WeLeech], WeSeed)
     end.
 
