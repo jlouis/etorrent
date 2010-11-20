@@ -69,8 +69,8 @@ monitor(Pid) ->
 %% Function: rechoke(State) -> ok
 %% Description: Recalculate the choke/unchoke state of peers
 %%--------------------------------------------------------------------
-rechoke(S) ->
-    Peers = build_rechoke_info(S#state.opt_unchoke_chain),
+rechoke(Chain) ->
+    Peers = build_rechoke_info(Chain),
     {PreferredDown, PreferredSeed} = split_preferred(Peers),
     PreferredSet = prune_preferred_peers(PreferredDown, PreferredSeed),
     ToChoke = rechoke_unchoke(Peers, PreferredSet),
@@ -261,8 +261,8 @@ handle_call(Request, _From, State) ->
     ?ERR([unknown_peer_group_call, Request]),
     Reply = ok,
     {reply, Reply, State}.
-handle_cast(rechoke, S) ->
-    rechoke(S),
+handle_cast(rechoke, #state { opt_unchoke_chain = Chain } = S) ->
+    rechoke(Chain),
     {noreply, S};
 handle_cast(_Msg, State) ->
     {noreply, State}.
@@ -271,10 +271,10 @@ handle_info(round_tick, S) ->
     R = case S#state.round of
         0 ->
             {ok, NS} = advance_optimistic_unchoke(S),
-            rechoke(NS),
+            rechoke(NS#state.opt_unchoke_chain),
             {noreply, NS#state { round = 2}};
         N when is_integer(N) ->
-            rechoke(S),
+            rechoke(S#state.opt_unchoke_chain),
             {noreply, S#state{round = S#state.round - 1}}
     end,
     erlang:send_after(?ROUND_TIME, self(), round_tick),
@@ -285,7 +285,7 @@ handle_info({'DOWN', _Ref, process, Pid, Reason}, S)
     %  other peers. Eventually the tracker will re-add him to the peer list
 
     % XXX: We might have to do something else
-    rechoke(S),
+    rechoke(S#state.opt_unchoke_chain),
 
     NewChain = lists:delete(Pid, S#state.opt_unchoke_chain),
     {noreply, S#state { opt_unchoke_chain = NewChain }};
@@ -293,7 +293,7 @@ handle_info({'DOWN', _Ref, process, Pid, _Reason}, S) ->
     % The peer shut down unexpectedly re-add him to the queue in the *back*
     case etorrent_table:get_peer_info(Pid) of
 	not_found -> ok;
-	_ -> ok = rechoke(S)
+	_ -> ok = rechoke(S#state.opt_unchoke_chain)
     end,
 
     NewChain = lists:delete(Pid, S#state.opt_unchoke_chain),
