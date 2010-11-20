@@ -7,7 +7,6 @@
 %%%-------------------------------------------------------------------
 -module(etorrent_rate_mgr).
 
--include("peer_state.hrl").
 -include("rate_mgr.hrl").
 -include("etorrent_rate.hrl").
 -include("log.hrl").
@@ -29,13 +28,18 @@
 
          fetch_recv_rate/2,
          fetch_send_rate/2,
-         select_state/2,
+         select_state/2, pids_interest/2,
 
          global_rate/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
+
+-record(peer_state, {pid :: {pos_integer() | '_', pid() | '_'},
+                     choke_state = choked :: choked | unchoked | '_',
+                     interest_state = not_interested :: interested | not_interested | '_',
+                     local_choke = true :: boolean() | '_'}).
 
 -record(state, { recv,
                  send,
@@ -77,24 +81,36 @@ local_choke(Id, Pid) ->
 local_unchoke(Id, Pid) ->
     alter_state(local_unchoke, Id, Pid).
 
--spec get_state(integer(), pid()) -> {value, boolean(), #peer_state{}}.
+-spec get_state(integer(), pid()) -> {value, boolean(), [{atom(), term()}]}.
 get_state(Id, Who) ->
     P = case ets:lookup(etorrent_peer_state, {Id, Who}) of
             [] -> #peer_state{}; % Pick defaults
             [Ps] -> Ps
         end,
+    RP = [{pid, P#peer_state.pid},
+	  {choke_state, P#peer_state.choke_state},
+	  {interest_state, P#peer_state.interest_state},
+	  {local_choke, P#peer_state.local_choke}],
     Snubbed = case ets:lookup(etorrent_recv_state, {Id, Who}) of
                 [] -> false;
                 [#rate_mgr { snub_state = normal}] -> false;
                 [#rate_mgr { snub_state = snubbed}] -> true
               end,
-    {value, Snubbed, P}.
+    {value, Snubbed, RP}.
 
 -spec select_state(integer(), pid()) -> {value, #peer_state{}}.
 select_state(Id, Who) ->
     case ets:lookup(etorrent_peer_state, {Id, Who}) of
         [] -> {value, #peer_state { }}; % Pick defaults
         [P] -> {value, P}
+    end.
+
+pids_interest(Id, Pid) ->
+    case ets:lookup(etorrent_peer_state, {Id, Pid}) of
+	[] -> [{interested, false},
+	       {choking, true}];
+	[P] -> [{interested, P#peer_state.interest_state},
+		{choking, P#peer_state.choke_state}]
     end.
 
 -spec fetch_recv_rate(integer(), pid()) ->

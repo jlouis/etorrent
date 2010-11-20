@@ -12,7 +12,6 @@
 -behaviour(gen_server).
 
 -include("rate_mgr.hrl").
--include("peer_state.hrl").
 -include("log.hrl").
 
 %% API
@@ -66,7 +65,7 @@ monitor(Pid) ->
 %%--------------------------------------------------------------------
 
 %%--------------------------------------------------------------------
-%% Function: rechoke(State) -> ok
+%% Function: rechoke(Chain) -> ok
 %% Description: Recalculate the choke/unchoke state of peers
 %%--------------------------------------------------------------------
 rechoke(Chain) ->
@@ -97,8 +96,7 @@ lookup_info(Seeding, Id, Pid) ->
             end
     end.
 
-build_rechoke_info(_Seeding, []) ->
-    [];
+build_rechoke_info(_Seeding, []) -> [];
 build_rechoke_info(Seeding, [Pid | Next]) ->
     case etorrent_table:get_peer_info(Pid) of
         not_found -> build_rechoke_info(Seeding, Next);
@@ -111,9 +109,9 @@ build_rechoke_info(Seeding, [Pid | Next]) ->
                                     kind = Kind,
                                     state = S,
                                     rate = R,
-                                    r_interest_state = PeerState#peer_state.interest_state,
-                                    r_choke_state    = PeerState#peer_state.choke_state,
-                                    l_choke          = PeerState#peer_state.local_choke,
+                                    r_interest_state = proplists:get_value(interest_state, PeerState),
+                                    r_choke_state    = proplists:get_value(choke_state, PeerState),
+                                    l_choke          = proplists:get_value(local_choke, PeerState),
                                     snubbed = Snubbed } |
                             build_rechoke_info(Seeding, Next)]
             end
@@ -136,9 +134,9 @@ move_cyclic_chain(Chain) ->
                 case etorrent_table:get_peer_info(Pid) of
                     not_found -> true;
                     {peer_info, _Kind, Id} ->
-                        {value, T} = etorrent_rate_mgr:select_state(Id, Pid),
-                            not (T#peer_state.interest_state =:= interested
-                                 andalso T#peer_state.choke_state =:= choked)
+                        PL = etorrent_rate_mgr:pids_interest(Id, Pid),
+			not (proplists:get_value(interested, PL) == interested
+			     andalso proplists:get_value(choking, PL) == choked)
                 end
         end,
     {Front, Back} = lists:splitwith(F, Chain),
@@ -191,8 +189,7 @@ prune_preferred_peers(SDowns, SLeechs) ->
                            lists:sublist(SLeechs, SUP3)},
     sets:union(sets:from_list(TSDowns), sets:from_list(TSLeechs)).
 
-rechoke_unchoke([], _PS) ->
-    [];
+rechoke_unchoke([], _PS) -> [];
 rechoke_unchoke([P | Next], PSet) ->
     case sets:is_element(P, PSet) of
         true ->
