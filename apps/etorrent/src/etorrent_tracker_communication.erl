@@ -361,7 +361,7 @@ decode_ips(<<>>, Accum) ->
     Accum;
 decode_ips(<<B1:8, B2:8, B3:8, B4:8, Port:16/big, Rest/binary>>, Accum) ->
     decode_ips(Rest, [{{B1, B2, B3, B4}, Port} | Accum]);
-decode_ips(Odd, Accum) ->
+decode_ips(_Odd, Accum) ->
     Accum. % This case is to handle wrong tracker returns. Ignore spurious bytes.
 
 
