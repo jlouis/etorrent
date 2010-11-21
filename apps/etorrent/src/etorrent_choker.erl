@@ -176,23 +176,34 @@ split_preferred(Peers) ->
     {lists:keysort(#rechoke_info.rate, Downs),
      lists:keysort(#rechoke_info.rate, Leechs)}.
 
+%% Given S slots for seeding and D slots for leeching, figure out how many
+%% D slots we will need to fill all downloaders. If we need all of them --
+%% there are more eligible downloaders then we have slots, leave the slots
+%% unchanged. Otherwise, shuffle some of the D slots onto the S slots.
+shuffle_leecher_slots(S, D, Len) ->
+    case lists:max([0, D - Len ]) of
+	0 -> {S, D};
+	N -> {S + N, D - N}
+    end.
+
+%% Given S slots for seeding and D slots for leeching, where we have already
+%% used shuffle_leecher_slots/3 to move excess slots from D to S, we figure out
+%% how many slots we need for S. If we need all of them, we simply return.
+%% Otherwise, We have K excess slots we can move from S to D.
+shuffle_seeder_slots(S, D, SLen) ->
+    case lists:max([0, S - SLen]) of
+	0 -> {S, D};
+	K -> {S - K, D + K}
+    end.
+
 prune_preferred_peers(SDowns, SLeechs) ->
     MaxUploads = upload_slots(),
-    DUploads = lists:max([1, round(MaxUploads * 0.7)]),
-    SUploads = lists:max([1, round(MaxUploads * 0.3)]),
-    {SUP2, DUP2} =
-        case lists:max([0, DUploads - length(SDowns)]) of
-            0 -> {SUploads, DUploads};
-            N -> {SUploads + N, DUploads - N}
-        end,
-    {SUP3, DUP3} =
-        case lists:max([0, SUP2 - length(SLeechs)]) of
-            0 -> {SUP2, DUP2};
-            K ->
-                {SUP2 - K, lists:min([DUP2 + K, length(SDowns)])}
-        end,
-    {TSDowns, TSLeechs} = {lists:sublist(SDowns, DUP3),
-                           lists:sublist(SLeechs, SUP3)},
+    DSlots = lists:max([1, round(MaxUploads * 0.7)]),
+    SSlots = lists:max([1, round(MaxUploads * 0.3)]),
+    {SSlots2, DSlots2} = shuffle_leecher_slots(SSlots, DSlots, length(SDowns)),
+    {SSlots3, DSlots3} = shuffle_seeder_slots(SSlots2, DSlots2, length(SLeechs)),
+    {TSDowns, TSLeechs} = {lists:sublist(SDowns, DSlots3),
+                           lists:sublist(SLeechs, SSlots3)},
     sets:union(sets:from_list(TSDowns), sets:from_list(TSLeechs)).
 
 rechoke_unchoke([], _PS) -> [];
