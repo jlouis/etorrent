@@ -305,27 +305,13 @@ handle_info(round_tick, S) ->
     end,
     erlang:send_after(?ROUND_TIME, self(), round_tick),
     R;
-handle_info({'DOWN', _Ref, process, Pid, Reason}, S)
-  when (Reason =:= normal) or (Reason =:= shutdown) ->
-    % The peer shut down normally. Hence we just remove him and start up
-    %  other peers. Eventually the tracker will re-add him to the peer list
-
-    % XXX: We might have to do something else
-    rechoke(S#state.opt_unchoke_chain),
-
-    NewChain = lists:delete(Pid, S#state.opt_unchoke_chain),
-    {noreply, S#state { opt_unchoke_chain = NewChain }};
 handle_info({'DOWN', _Ref, process, Pid, _Reason}, S) ->
-    % The peer shut down unexpectedly re-add him to the queue in the *back*
-    case etorrent_table:get_peer_info(Pid) of
-	not_found -> ok;
-	_ -> ok = rechoke(S#state.opt_unchoke_chain)
-    end,
-
     NewChain = lists:delete(Pid, S#state.opt_unchoke_chain),
-    {noreply, S#state{opt_unchoke_chain = NewChain}};
+    %% Rechoke the chain if the peer was among the unchoked
+    rechoke(NewChain),
+    {noreply, S#state { opt_unchoke_chain = NewChain }};
 handle_info(Info, State) ->
-    ?ERR([unknown_info_peer_group, Info]),
+    ?INFO([unknown_info_msg, ?MODULE, Info]),
     {noreply, State}.
 
 terminate(_Reason, _S) ->
