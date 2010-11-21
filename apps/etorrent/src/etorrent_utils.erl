@@ -3,6 +3,7 @@
 %%% Author  : User Jlouis <jesper.louis.andersen@gmail.com>
 %%% License : See COPYING
 %%% Description : A selection of utilities used throughout the code
+%%%               Should probably be standard library in Erlang some of them
 %%%
 %%% Created : 17 Apr 2007 by User Jlouis <jesper.louis.andersen@gmail.com>
 %%%-------------------------------------------------------------------
@@ -10,7 +11,7 @@
 
 %% API
 -export([queue_remove/2, queue_remove_check/2,
-         build_encoded_form_rfc1738/1, shuffle/1, gsplit/2,
+	 group/1, build_encoded_form_rfc1738/1, shuffle/1, gsplit/2,
          date_str/1]).
 
 %%====================================================================
@@ -136,3 +137,14 @@ merge_shuffle([Item]) ->
 merge_shuffle(List) ->
     {A, B} = partition(List),
     merge(merge_shuffle(A), merge_shuffle(B)).
+
+
+group([]) -> [];
+group([E | L]) ->
+    group(E, 1, L).
+
+group(E, K, []) -> [{E, K}];
+group(E, K, [F | R]) when E == F ->
+    group(E, K+1, R);
+group(E, K, [F | R]) ->
+    [{E, K} | group(F, 1, R)].

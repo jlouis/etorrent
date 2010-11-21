@@ -794,7 +794,8 @@ query_ping_0_test() ->
 
 
 properties_test() ->
-   ?assert(?MODULE:check()).
+    ?assert(eqc:quickcheck(prop_inv_compact())).
+
 
 octet() ->
    choose(0, 255).
@@ -846,7 +847,6 @@ prop_inv_compact() ->
            Output = compact_to_peers(iolist_to_binary(Compact)),
            Input =:= Output
        end).
-
 
 encoder({dht_query, Method, MsgId, Params}) ->
     encode_query(Method, MsgId, Params).

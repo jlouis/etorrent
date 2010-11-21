@@ -11,7 +11,6 @@
 
 -behaviour(gen_fsm).
 
--include("etorrent_piece.hrl").
 -include("log.hrl").
 
 -ignore_xref([{'start_link', 3}, {start, 1}, {initializing, 2},
@@ -180,11 +179,7 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 %% --------------------------------------------------------------------
 calculate_amount_left(Id) when is_integer(Id) ->
     Pieces = etorrent_piece_mgr:select(Id),
-    lists:sum([size_piece(P) || P <- Pieces]).
-
-size_piece(#piece{state = fetched}) -> 0;
-size_piece(#piece{state = not_fetched, files = Files}) ->
-    lists:sum([Sz || {_F, _O, Sz} <- Files]).
+    lists:sum([etorrent_piece_mgr:size_piece(P) || P <- Pieces]).
 
 
 

@@ -7,7 +7,6 @@
 %%%-------------------------------------------------------------------
 -module(etorrent_chunk_mgr).
 
--include("etorrent_piece.hrl").
 -include("etorrent_chunk.hrl").
 -include("types.hrl").
 -include("log.hrl").
@@ -31,7 +30,7 @@
 -define(TAB, etorrent_chunk_tbl).
 -define(STORE_CHUNK_TIMEOUT, 20).
 -define(PICK_CHUNKS_TIMEOUT, 20).
--define(DEFAULT_CHUNK_SIZE, 16384).
+
 
 -ignore_xref([{start_link, 0}]).
 
@@ -92,8 +91,11 @@ endgame_remove_chunk(SendPid, Id, {Index, Offset, Len}) ->
 pick_chunks(_Id, unknown, _N) ->
     none_eligible;
 pick_chunks(Id, Set, N) ->
-    gen_server:call(?SERVER, {pick_chunks, Id, Set, N},
-                    timer:seconds(?PICK_CHUNKS_TIMEOUT)).
+    case pick_chunks(pick_chunked, {self(), Id, Set, [], N, none}) of
+	not_interested -> pick_chunks_endgame(Id, Set, N, not_interested);
+	{ok, []}       -> pick_chunks_endgame(Id, Set, N, none_eligible);
+	{ok, Items}    -> {ok, Items}
+    end.
 
 % @doc Request the managing of a new torrent identified by Id
 % <p>Note that the calling Pid is tracked as being the owner of the torrent.
@@ -102,6 +104,17 @@ pick_chunks(Id, Set, N) ->
 -spec new(integer()) -> ok.
 new(Id) ->
     gen_server:call(?SERVER, {new, Id}).
+
+%% ----------------------------------------------------------------------
+
+%% @doc Choose up to Max chunks from Selected.
+%%  Will return {ok, {Index, Chunks}, size(Chunks)}.
+%% @end
+-spec select_chunks_by_piecenum({pos_integer(), pos_integer()}, pos_integer()) ->
+			   {ok, {pos_integer(), term()}, non_neg_integer()} | {error, already_taken}.
+select_chunks_by_piecenum({TorrentId, Pn}, Max) ->
+    gen_server:call(?SERVER, {select_chunks_by_piecenum, {TorrentId, Pn}, Max}).
+
 
 %%====================================================================
 %% gen_server callbacks
@@ -140,19 +153,32 @@ handle_call({mark_fetched, Id, Index, Offset, _Len}, _From, S) ->
 		 {reply, found, S}
     end;
 %% @todo: If we have an idt with {assigned, pid()}, do we have chunk = Offset?
+handle_call({select_chunks_by_piecenum, {Id, Pn}, Max}, {Pid, _Tag}, S) ->
+    case ets:lookup(?TAB, {Id, Pn, not_fetched}) of
+	[] ->
+	    {reply, {error, already_taken}, S};
+	Selected when is_list(Selected) ->
+	    %% Get up to Max chunks
+	    {Return, _Rest} = etorrent_utils:gsplit(Max, Selected),
+	    %% Assign chunk to Pid
+	    Chunks = [begin
+			  ets:delete_object(?TAB, C),
+			  ets:insert(?TAB,
+				     [C#chunk {
+				idt = {Id, Pn, {assigned, Pid}} }]),
+			  C#chunk.chunk
+		      end || C <- Return],
+	    {reply, {ok, {Pn, Chunks}, length(Chunks)}, S}
+    end;
+handle_call({chunkify_piece, {Id, Pn}}, _From, S) ->
+    chunkify_piece(Id, Pn),
+    {reply, ok, S};
 handle_call({endgame_remove_chunk, SendPid, Id, {Index, Offset, _Len}},
             _From, S) ->
     ets:match_delete(?TAB,
 		      #chunk { idt = {Id, Index, {assigned, SendPid}},
 			       chunk = Offset }),
     {reply, ok, S};
-handle_call({pick_chunks, Id, Set, Remaining}, {Pid, _Tag}, S) ->
-    R = case pick_chunks(pick_chunked, {Pid, Id, Set, [], Remaining, none}) of
-            not_interested -> pick_chunks_endgame(Id, Set, Remaining, not_interested);
-            {ok, []}       -> pick_chunks_endgame(Id, Set, Remaining, none_eligible);
-            {ok, Items}    -> {ok, Items}
-        end,
-    {reply, R, S};
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -260,121 +286,46 @@ find_remaining_chunks(Id, PieceSet) ->
 %%  if we can't find anything to chunk up in the PieceSet.
 %%
 %% @end
--spec chunkify_new_piece(integer(), gb_set()) -> ok | none_eligible.
+-spec chunkify_new_piece(integer(), gb_set()) -> {ok, pos_integer()} | none_eligible.
 chunkify_new_piece(Id, PieceSet) when is_integer(Id) ->
     case etorrent_piece_mgr:find_new(Id, PieceSet) of
         none -> none_eligible;
-        #piece{} = P ->
-            chunkify_piece(Id, P),
-            ok
+        {P, Pn} when is_integer(Pn) ->
+	    ok = gen_server:call(?SERVER, {chunkify_piece, {Id, P}}),
+	    {ok, Pn}
     end.
-
-%%--------------------------------------------------------------------
-%% Function: select_chunks_by_piecenum(Id, PieceNum, Num, Pid) ->
-%%     {ok, [{Offset, Len}], Remain}
-%% Description: Select up to Num chunks from PieceNum. Will return either
-%%  {ok, Chunks} if it got all chunks it wanted, or {partial, Chunks, Remain}
-%%  if it got some chunks and there is still Remain chunks left to pick.
-%%--------------------------------------------------------------------
-select_chunks_by_piecenum(Id, Index, N, Pid) ->
-    R = ets:lookup(?TAB, {Id, Index, not_fetched}),
-    %% Get up to N chunks
-    {Return, _Rest} = etorrent_utils:gsplit(N, R),
-    [_|_] = Return, %% Assert.
-    %% Assign chunk to us
-    [ets:delete_object(?TAB, Ret) || Ret <- Return],
-    ets:insert(?TAB, [C#chunk { idt = {Id, Index, {assigned, Pid}} }
-		      || C <- Return]),
-    %% Tell caller how much is remaning
-    Remaining = N - length(Return),
-    {ok, {Index, [E#chunk.chunk || E <- Return]}, Remaining}.
 
 %% Check the piece Idx on torrent Id for completion
 check_piece(FSPid, Id, Idx) ->
     etorrent_fs:check_piece(FSPid, Idx),
     ets:match_delete(?TAB, #chunk { idt = {Id, Idx, '_'}, _ = '_'}).
 
-%% @doc Break a piece into logical chunks
-%%
-%%   From a list of operations to read/write a piece, construct
-%%   a list of chunks given by Offset of the chunk, Size of the chunk and
-%%   how to read/write that chunk.
-%% @end
--spec chunkify([operation()]) -> [{integer(), integer(), [operation()]}].
-%% First, we call the version of the function doing the grunt work.
-chunkify(Operations) ->
-    chunkify(0, 0, [], Operations, ?DEFAULT_CHUNK_SIZE).
-
-%% Suppose the next File operation on the piece has 0 bytes in size, then it
-%%  is exhausted and must be thrown away.
-chunkify(AtOffset, EatenBytes, Operations,
-         [{_Path, _Offset, 0} | Rest], Left) ->
-    chunkify(AtOffset, EatenBytes, Operations, Rest, Left);
-
-%% There are no more file operations to carry out. Hence we reached the end of
-%%   the piece and we just return the last chunk operation. Remember to reverse
-%%   the list of operations for that chunk as we build it in reverse.
-chunkify(AtOffset, EatenBytes, Operations, [], _Sz) ->
-    [{AtOffset, EatenBytes, lists:reverse(Operations)}];
-
-%% There are no more bytes left to add to this chunk. Recurse by calling
-%%   on the rest of the problem and add our chunk to the front when coming
-%%   back. Remember to reverse the Operations list built in reverse.
-chunkify(AtOffset, EatenBytes, Operations, OpsLeft, 0) ->
-    R = chunkify(AtOffset + EatenBytes, 0, [], OpsLeft, ?DEFAULT_CHUNK_SIZE),
-    [{AtOffset, EatenBytes, lists:reverse(Operations)} | R];
-
-%% The next file we are processing have a larger size than what is left for this
-%%   chunk. Hence we can just eat off that many bytes from the front file.
-chunkify(AtOffset, EatenBytes, Operations,
-         [{Path, Offset, Size} | Rest], Left) when Left =< Size ->
-    chunkify(AtOffset, EatenBytes + Left,
-             [{Path, Offset, Left} | Operations],
-             [{Path, Offset+Left, Size - Left} | Rest],
-             0);
-
-%% The next file does *not* have enough bytes left, so we eat all the bytes
-%%   we can get from it, and move on to the next file.
-chunkify(AtOffset, EatenBytes, Operations,
-        [{Path, Offset, Size} | Rest], Left) when Left > Size ->
-    chunkify(AtOffset, EatenBytes + Size,
-             [{Path, Offset, Size} | Operations],
-             Rest,
-             Left - Size).
 
 %% @doc Add a chunked piece to the chunk table
 %%   Given a PieceNumber, cut it up into chunks and add those
 %%   to the chunk table.
 %% @end
--spec chunkify_piece(integer(), #piece{}) -> ok.
-chunkify_piece(Id, #piece{ files = Files, state = State, idpn = IDPN }) ->
-    Chunks = chunkify(Files),
-    NumChunks = length(Chunks),
-    not_fetched = State,
-    {Id, Idx} = IDPN,
-    ok = etorrent_piece_mgr:chunk(Id, Idx, NumChunks),
-    ets:insert(?TAB,
-	       [#chunk { idt = {Id, Idx, not_fetched},
-			 chunk = CH } || CH <- Chunks]),
+-spec chunkify_piece(integer(), etorrent:piece_mgr_piece()) -> ok. %% TODO: term() is #piece{}, opaque export it
+chunkify_piece(Id, P) ->
+    {Id, Idx, Chunks} = etorrent_piece_mgr:chunkify_piece(Id, P),
+    ets:insert(?TAB, [#chunk { idt = {Id, Idx, not_fetched}, chunk = CH }
+		      || CH <- Chunks]),
     etorrent_torrent:decrease_not_fetched(Id),
     ok.
 
-%%--------------------------------------------------------------------
-%% Function: find_chunked_chunks(Id, iterator_result()) -> none | PieceNum
-%% Description: Search an iterator for a chunked piece.
-%%--------------------------------------------------------------------
+%% @doc Search for piece chunks to download from a peer
+%%   We are given an iterator of the pieces the peer has. We search the
+%%   the iterator for a pieces we have already chunked and are downloading.
+%%   If found, return the #chunk{} object. Otherwise return 'none'
+%% @end
+-spec find_chunked_chunks(pos_integer(), term(), A) -> A | pos_integer().
 find_chunked_chunks(_Id, none, Res) -> Res;
-find_chunked_chunks(Id, {Pn, Next}, Res) ->
-    case etorrent_piece_mgr:is_chunked(Id, Pn) of
-        true ->
-            case ets:lookup(?TAB, {Id, Pn, not_fetched}) of
-                [] ->
-                    find_chunked_chunks(Id, gb_sets:next(Next), found_chunked);
-                _ ->
-                    Pn
-            end;
-        false ->
-            find_chunked_chunks(Id, gb_sets:next(Next), Res)
+find_chunked_chunks(Id, {Pn, Iter}, _Res) ->
+    case ets:member(?TAB, {Id, Pn, not_fetched}) of
+	false ->
+	    find_chunked_chunks(Id, gb_sets:next(Iter), found_chunked);
+	true ->
+	    Pn
     end.
 
 update_fetched(Id, Index, {Offset, _Len}) ->
@@ -404,29 +355,37 @@ pick_chunks(_Operation, {_Pid, _Id, _PieceSet, SoFar, 0, _Res}) ->
     {ok, SoFar};
 %%
 %% Pick chunks from the already chunked pieces
-pick_chunks(pick_chunked, {Pid, Id, PieceSet, SoFar, Remaining, Res}) ->
-    Iterator = gb_sets:iterator(PieceSet),
-    case find_chunked_chunks(Id, gb_sets:next(Iterator), Res) of
+pick_chunks(pick_chunked, Tup = {_, Id, _, _, _, _}) ->
+    Candidates = etorrent_piece_mgr:chunked_pieces(Id),
+    CandidateSet = gb_sets:from_list(Candidates),
+    pick_chunks({pick_among, CandidateSet}, Tup);
+pick_chunks({pick_among, CandidateSet}, {Pid, Id, PieceSet, SoFar, Remaining, Res}) ->
+    Iter = gb_sets:iterator( gb_sets:intersection(CandidateSet, PieceSet) ),
+    case find_chunked_chunks(Id, gb_sets:next(Iter), Res) of
         none ->
             pick_chunks(chunkify_piece, {Pid, Id, PieceSet, SoFar, Remaining, none});
         found_chunked ->
             pick_chunks(chunkify_piece, {Pid, Id, PieceSet, SoFar, Remaining, found_chunked});
-        PieceNum when is_integer(PieceNum) ->
-            {ok, Chunks, Left} =
-                select_chunks_by_piecenum(Id, PieceNum,
-                                          Remaining, Pid),
-            pick_chunks(pick_chunked, {Pid, Id,
-                                       gb_sets:del_element(PieceNum, PieceSet),
-                                       [Chunks | SoFar],
-                                       Left, Res})
+	PN when is_integer(PN) ->
+	    case select_chunks_by_piecenum({Id, PN}, Remaining) of
+		{ok, {PieceNum, Chunks}, Size} ->
+		    pick_chunks(pick_chunked, {Pid, Id,
+					       gb_sets:del_element(PieceNum, PieceSet),
+					       [{PieceNum, Chunks} | SoFar],
+					       Remaining - Size, Res});
+		{error, already_taken} ->
+		    %% So somebody else took this, try again
+		    pick_chunks(pick_chunked, {Pid, Id, PieceSet, SoFar, Remaining, Res})
+	    end
     end;
 
 %%
 %% Find a new piece to chunkify. Give up if no more pieces can be chunkified
 pick_chunks(chunkify_piece, {Pid, Id, PieceSet, SoFar, Remaining, Res}) ->
     case chunkify_new_piece(Id, PieceSet) of
-        ok ->
-            pick_chunks(pick_chunked, {Pid, Id, PieceSet, SoFar, Remaining, Res});
+        {ok, P} ->
+	    CandidateSet = gb_sets:from_list([P]),
+            pick_chunks({pick_among, CandidateSet}, {Pid, Id, PieceSet, SoFar, Remaining, Res});
         none_eligible when SoFar =:= [], Res =:= none ->
             not_interested;
         none_eligible when SoFar =:= [], Res =:= found_chunked ->
@@ -434,12 +393,14 @@ pick_chunks(chunkify_piece, {Pid, Id, PieceSet, SoFar, Remaining, Res}) ->
         none_eligible ->
             {ok, SoFar}
     end;
+%% TODO: Go through from here and check if it can be parallelized!
 %%
 %% Handle the endgame for a torrent gracefully
 pick_chunks(endgame, {Id, PieceSet, N}) ->
     Remaining = find_remaining_chunks(Id, PieceSet),
     Shuffled = etorrent_utils:shuffle(Remaining),
     {endgame, lists:sublist(Shuffled, N)}.
+
 
 -spec pick_chunks_endgame(integer(), gb_set(), integer(), X) -> X | {endgame, [#chunk{}]}.
 pick_chunks_endgame(Id, Set, Remaining, Ret) ->

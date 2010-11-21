@@ -10,8 +10,13 @@
 
 -behaviour(gen_server).
 -include("log.hrl").
-
 -include("types.hrl").
+
+-ifdef(TEST).
+-include_lib("eqc/include/eqc.hrl").
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 %% API
 -export([start_link/5, completed/1]).
 -ignore_xref([{'start_link', 5}]).
@@ -19,6 +24,9 @@
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
+
+%% Dummy exports
+-export([swap_urls/1]).
 
 -record(state, {queued_message = none,
                 %% The hard timer is the time we *must* wait on the tracker.
@@ -44,7 +52,7 @@
 %% Function: start_link() -> {ok,Pid} | ignore | {error,Error}
 %% Description: Starts the server
 %%--------------------------------------------------------------------
--spec start_link(pid(), string(), binary(), integer(), integer()) ->
+-spec start_link(pid(), [tier()], binary(), integer(), integer()) ->
     ignore | {ok, pid()} | {error, any()}.
 start_link(ControlPid, UrlTiers, InfoHash, PeerId, TorrentId) ->
     gen_server:start_link(?MODULE,
@@ -386,5 +394,94 @@ fetch_error_message(BC) ->
 fetch_warning_message(BC) ->
     etorrent_bcoding:search_dict_default({string, "warning message"}, BC, none).
 
+-spec shuffle_tiers([tier()]) -> [tier()].
 shuffle_tiers(Tiers) ->
     [etorrent_utils:shuffle(T) || T <- Tiers].
+
+splice(L) ->
+    {[length(T) || T <- L], lists:concat(L)}.
+
+unsplice([], []) -> [];
+unsplice([K | KR], List) ->
+    {F, R} = lists:split(K, List),
+    [F | unsplice(KR, R)].
+
+-spec swap_urls([tier()]) -> [tier()].
+swap_urls(Tiers) ->
+    {Breaks, CL} = splice(Tiers),
+    NCL = swap(CL),
+    unsplice(Breaks, NCL).
+
+-spec swap([string()]) -> [string()].
+swap([]) -> [];
+swap([Url | R]) ->
+    {H, T} = swap_in_tier(Url, R, []),
+    [H | swap(T)].
+
+swap_in_tier(Url, [], Acc) -> {Url, lists:reverse(Acc)};
+swap_in_tier(Url, [H | T], Acc) ->
+    case should_swap_for(Url, H) of
+	true ->
+	    {H, lists:reverse(Acc) ++ [Url | T]};
+	false ->
+	    swap_in_tier(Url, T, [H | Acc])
+    end.
+
+-spec should_swap_for(string(), string()) -> boolean().
+should_swap_for(Url1, Url2) ->
+    {S1, _UserInfo, Host1, _Port, _Path, _Query} = etorrent_http_uri:parse(Url1),
+    {_S2, _, Host2, _, _, _} = etorrent_http_uri:parse(Url2),
+    Host1 == Host2 andalso S1 == http.
+
+-ifdef(EUNIT).
+
+tier() ->
+    [["http://one.com", "http://two.com", "udp://one.com"],
+     ["udp://four.com", "udp://two.com", "http://three.com"]].
+
+splice_test() ->
+    {L, Concat} = splice(tier()),
+    ?assertEqual({[3,3], lists:concat(tier())}, {L, Concat}).
+
+swap_test() ->
+    Swapped = swap(lists:concat(tier())),
+    ?assertEqual(["udp://one.com", "udp://two.com", "http://one.com",
+		  "udp://four.com", "http://two.com", "http://three.com"],
+		 Swapped).
+
+swap_urls_test() ->
+    Swapped = swap_urls(tier()),
+    ?assertEqual([["udp://one.com", "udp://two.com", "http://one.com"],
+		  ["udp://four.com", "http://two.com", "http://three.com"]],
+		 Swapped).
+
+should_swap_test() ->
+    ?assertEqual(true, should_swap_for("http://foo.com", "udp://foo.com")),
+    ?assertEqual(false, should_swap_for("http://foo.com", "udp://bar.com")),
+    ?assertEqual(true, should_swap_for("http://foo.com", "udp://foo.com/something/more")).
+
+-ifdef(EQC).
+
+scheme() -> oneof([http, udp]).
+
+host() -> oneof(["one.com", "two.com", "three.com", "four.com", "five.com"]).
+
+url() ->
+    ?LET({Scheme, Host}, {scheme(), host()},
+	 atom_to_list(Scheme) ++ "://" ++ Host).
+
+g_tier() -> list(url()).
+g_tiers() -> list(g_tier()).
+
+prop_splice_unsplice_inv() ->
+    ?FORALL(In, g_tiers(),
+	    begin
+		{K, Spliced} = splice(In),
+		In =:= unsplice(K, Spliced)
+	    end).
+
+eqc_test() ->
+    ?assert(eqc:quickcheck(prop_splice_unsplice_inv())).
+
+-endif.
+-endif.

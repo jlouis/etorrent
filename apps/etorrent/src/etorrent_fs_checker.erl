@@ -8,7 +8,6 @@
 %%%-------------------------------------------------------------------
 -module(etorrent_fs_checker).
 
--include("etorrent_piece.hrl").
 -include("types.hrl").
 
 %% API
@@ -20,18 +19,17 @@
 % <p>We will check a torrent, Id, backed by filesystem pid FS and report a
 %   list of bad pieces.</p>
 % @end
--spec check_torrent(integer()) -> [{integer(), integer()}].
+-spec check_torrent(integer()) -> [pos_integer()].
 check_torrent(Id) ->
     FS = gproc:lookup_local_name({torrent, Id, fs}),
-    Pieces = etorrent_piece_mgr:select(Id),
+    PieceHashes = etorrent_piece_mgr:piecehashes(Id),
     PieceCheck =
-        fun (#piece { idpn = {_, PN}, hash = Hash}) ->
+        fun (PN, Hash) ->
                 {ok, Data} = etorrent_fs:read_piece(FS, PN),
                 Hash =/= crypto:sha(Data)
         end,
-    [P#piece.idpn || P <- Pieces,
-                     PieceCheck(P)].
-
+    [PN || {PN, Hash} <- PieceHashes,
+	   PieceCheck(PN, Hash)].
 
 % @doc Read and check a torrent
 % <p>The torrent given by Id, at Path (the .torrent file) and a supervisor

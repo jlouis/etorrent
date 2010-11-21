@@ -29,6 +29,8 @@
 % If no request has been received in this interval, close the server.
 -define(REQUEST_TIMEOUT, timer:seconds(60)).
 
+-ignore_xref({start_link, 2}).
+
 %% ====================================================================
 % @doc start a file-maintenance process
 %   <p>The file has Id in the path-map and belongs to TorrentId</p>
@@ -65,34 +67,23 @@ init([Id, TorrentId]) ->
     {ok, Path} = etorrent_table:get_path(Id, TorrentId),
     {ok, Workdir} = application:get_env(etorrent, dir),
     FullPath = filename:join([Workdir, Path]),
-    {ok, IODev} = file:open(FullPath, [read, write, binary, raw, read_ahead]),
+    {ok, IODev} = file:open(FullPath, [read, write, binary, raw, read_ahead,
+				       {delayed_write, 1024*1024, 3000}]),
     {ok, #state{iodev = IODev,
                 path = FullPath}, ?REQUEST_TIMEOUT}.
 
-%%--------------------------------------------------------------------
-%% Function: %% handle_call(Request, From, State) -> {reply, Reply, State} |
-%%                                      {reply, Reply, State, Timeout} |
-%%                                      {noreply, State} |
-%%                                      {noreply, State, Timeout} |
-%%                                      {stop, Reason, Reply, State} |
-%%                                      {stop, Reason, State}
-%% Description: Handling call messages
-%%--------------------------------------------------------------------
-handle_call({read, Offset, Size}, _From, State) ->
+handle_call({read, Offset, Size}, _From, #state { iodev = IODev} = State) ->
     etorrent_fs_janitor:bump(self()),
-    Data = read_request(Offset, Size, State),
+    {ok, Data} = file:pread(IODev, Offset, Size),
     {reply, {ok, Data}, State, ?REQUEST_TIMEOUT};
-handle_call({write, Offset, Data}, _From, S) ->
+handle_call({write, Offset, Data}, _From, #state { iodev = IODev } = S) ->
     etorrent_fs_janitor:bump(self()),
-    ok = write_request(Offset, Data, S),
+    ok = file:pwrite(IODev, Offset, Data),
+    {reply, ok, S, ?REQUEST_TIMEOUT};
+handle_call(Msg, _From, S) ->
+    ?WARN({unknown_msg, ?MODULE, Msg}),
     {reply, ok, S, ?REQUEST_TIMEOUT}.
 
-%%--------------------------------------------------------------------
-%% Function: handle_cast(Msg, State) -> {noreply, State} |
-%%                                      {noreply, State, Timeout} |
-%%                                      {stop, Reason, State}
-%% Description: Handling cast messages
-%%--------------------------------------------------------------------
 handle_cast(stop, S) ->
     {stop, normal, S};
 handle_cast(Msg, State) ->
@@ -111,44 +102,7 @@ terminate(_Reason, State) ->
         E -> ?WARN([cant_close_file, E]), ok
     end.
 
-%%--------------------------------------------------------------------
-%% Func: code_change(OldVsn, State, Extra) -> {ok, NewState}
-%% Description: Convert process state when code is changed
-%%--------------------------------------------------------------------
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
-%%--------------------------------------------------------------------
-%%% Internal functions
-%%--------------------------------------------------------------------
-
-%%--------------------------------------------------------------------
-%% Func: read_request(Offset, Size, State) -> {ok, Data}
-%%                                          | {read_error, posix()}
-%%                                          | {pos_error, posix()}
-%% Description: Attempt to read at Offset; Size bytes. Either returns
-%%  ok or an error from the positioning or reading with a posix()
-%%  error message.
-%%--------------------------------------------------------------------
-read_request(Offset, Size, State) ->
-    {ok, NP} = file:position(State#state.iodev, Offset),
-    Offset = NP,
-    {ok, Data} = file:read(State#state.iodev, Size),
-    Data.
-
-%%--------------------------------------------------------------------
-%% Func: write_request(Offset, Bytes, State) -> ok
-%%                                            | {pos_error, posix()}
-%%                                            | {write_error, posix()}
-%% Description: Attempt to write Bytes at offset Offset. Either returns
-%%   ok, or an error from positioning or writing which is posix().
-%%--------------------------------------------------------------------
-write_request(Offset, Bytes, State) ->
-    {ok, NP} = file:position(State#state.iodev, Offset),
-    Offset = NP,
-    ok = file:write(State#state.iodev, Bytes).
-
-%%--------------------------------------------------------------------
-%% Func:
-%% Description:
 %%--------------------------------------------------------------------
