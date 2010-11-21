@@ -29,7 +29,7 @@
 %%%  API
 %%%=========================================================================
 -spec parse(string()) -> {error, term()}
-    | {http | https, string(), string(), integer(), string(), string()}.
+    | {http | https | udp, string(), string(), integer(), string(), string()}.
 parse(AbsURI) ->
     case parse_scheme(AbsURI) of
         {error, Reason} ->

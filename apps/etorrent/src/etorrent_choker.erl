@@ -12,7 +12,6 @@
 -behaviour(gen_server).
 
 -include("rate_mgr.hrl").
--include("peer_state.hrl").
 -include("log.hrl").
 
 %% API
@@ -31,9 +30,9 @@
                 opt_unchoke_chain = []}).
 
 -record(rechoke_info, {pid :: pid(),
-                       kind :: 'seeding' | 'leeching',
-                       state :: 'seeding' | 'leeching' ,
-                       snubbed :: boolean(),
+                       peer_state :: 'seeding' | 'leeching', % Is the peer seeding or leeching
+                       state :: 'seeding' | 'leeching' , % Are we seeding or leeching the torrent of the peer
+                       peer_snubs :: boolean(),
                        r_interest_state :: 'interested' | 'not_interested',
                        r_choke_state :: 'choked' | 'unchoked' ,
                        l_choke :: boolean(),
@@ -66,20 +65,16 @@ monitor(Pid) ->
 %%--------------------------------------------------------------------
 
 %%--------------------------------------------------------------------
-%% Function: rechoke(State) -> ok
+%% Function: rechoke(Chain) -> ok
 %% Description: Recalculate the choke/unchoke state of peers
 %%--------------------------------------------------------------------
-rechoke(S) ->
-    Peers = build_rechoke_info(S#state.opt_unchoke_chain),
+rechoke(Chain) ->
+    Peers = build_rechoke_info(Chain),
     {PreferredDown, PreferredSeed} = split_preferred(Peers),
     PreferredSet = prune_preferred_peers(PreferredDown, PreferredSeed),
     ToChoke = rechoke_unchoke(Peers, PreferredSet),
     rechoke_choke(ToChoke, 0, optimistics(PreferredSet)).
 
-build_rechoke_info(Peers) ->
-    {value, Seeding} = etorrent_torrent:seeding(),
-    SeederSet = sets:from_list(Seeding),
-    build_rechoke_info(SeederSet, Peers).
 
 -spec lookup_info(set(), integer(), pid()) -> none | {seeding, float()}
                                                    | {leeching, float()}.
@@ -88,33 +83,41 @@ lookup_info(Seeding, Id, Pid) ->
         true ->
             case etorrent_rate_mgr:fetch_send_rate(Id, Pid) of
                 none -> none;
-                Rate -> {seeding, Rate}
+                Rate -> {seeding, -Rate} % Negative rate so keysort works
             end;
         false ->
             case etorrent_rate_mgr:fetch_recv_rate(Id, Pid) of
                 none -> none;
-                Rate -> {leeching, -Rate}
+                Rate -> {leeching, -Rate} % Negative rate so keysort works
             end
     end.
 
-build_rechoke_info(_Seeding, []) ->
-    [];
+build_rechoke_info(Peers) ->
+    {value, Seeding} = etorrent_torrent:seeding(),
+    SeederSet = sets:from_list(Seeding),
+    build_rechoke_info(SeederSet, Peers).
+
+%% Gather information about each Peer so we can choose which peers to
+%%  bet on for great download/upload speeds. Produces a #rechoke_info{}
+%%  list out of peers containing all information necessary for the choice.
+-spec build_rechoke_info(set(), [pid()]) -> [#rechoke_info{}].
+build_rechoke_info(_Seeding, []) -> [];
 build_rechoke_info(Seeding, [Pid | Next]) ->
     case etorrent_table:get_peer_info(Pid) of
         not_found -> build_rechoke_info(Seeding, Next);
-        {peer_info, Kind, Id} ->
-            {value, Snubbed, PeerState} = etorrent_rate_mgr:get_state(Id, Pid),
+        {peer_info, PeerState, Id} ->
+            {value, Snubbed, St} = etorrent_rate_mgr:get_state(Id, Pid),
             case lookup_info(Seeding, Id, Pid) of
                 none -> build_rechoke_info(Seeding, Next);
-                {S, R} -> [#rechoke_info {
+                {State, R} -> [#rechoke_info {
                                     pid = Pid,
-                                    kind = Kind,
-                                    state = S,
+                                    peer_state = PeerState,
+                                    state = State,
                                     rate = R,
-                                    r_interest_state = PeerState#peer_state.interest_state,
-                                    r_choke_state    = PeerState#peer_state.choke_state,
-                                    l_choke          = PeerState#peer_state.local_choke,
-                                    snubbed = Snubbed } |
+                                    r_interest_state = proplists:get_value(interest_state, St),
+                                    r_choke_state    = proplists:get_value(choke_state, St),
+                                    l_choke          = proplists:get_value(local_choke, St),
+                                    peer_snubs = Snubbed } |
                             build_rechoke_info(Seeding, Next)]
             end
     end.
@@ -136,9 +139,9 @@ move_cyclic_chain(Chain) ->
                 case etorrent_table:get_peer_info(Pid) of
                     not_found -> true;
                     {peer_info, _Kind, Id} ->
-                        {value, T} = etorrent_rate_mgr:select_state(Id, Pid),
-                            not (T#peer_state.interest_state =:= interested
-                                 andalso T#peer_state.choke_state =:= choked)
+                        PL = etorrent_rate_mgr:pids_interest(Id, Pid),
+			not (proplists:get_value(interested, PL) == interested
+			     andalso proplists:get_value(choking, PL) == choked)
                 end
         end,
     {Front, Back} = lists:splitwith(F, Chain),
@@ -169,30 +172,41 @@ upload_slots() ->
 
 split_preferred(Peers) ->
     {Downs, Leechs} = split_preferred_peers(Peers, [], []),
+    %% Notice that the rate on which we sort is negative, so the fastest peer is actually first in the list
     {lists:keysort(#rechoke_info.rate, Downs),
      lists:keysort(#rechoke_info.rate, Leechs)}.
 
+%% Given S slots for seeding and D slots for leeching, figure out how many
+%% D slots we will need to fill all downloaders. If we need all of them --
+%% there are more eligible downloaders then we have slots, leave the slots
+%% unchanged. Otherwise, shuffle some of the D slots onto the S slots.
+shuffle_leecher_slots(S, D, Len) ->
+    case lists:max([0, D - Len ]) of
+	0 -> {S, D};
+	N -> {S + N, D - N}
+    end.
+
+%% Given S slots for seeding and D slots for leeching, where we have already
+%% used shuffle_leecher_slots/3 to move excess slots from D to S, we figure out
+%% how many slots we need for S. If we need all of them, we simply return.
+%% Otherwise, We have K excess slots we can move from S to D.
+shuffle_seeder_slots(S, D, SLen) ->
+    case lists:max([0, S - SLen]) of
+	0 -> {S, D};
+	K -> {S - K, D + K}
+    end.
+
 prune_preferred_peers(SDowns, SLeechs) ->
     MaxUploads = upload_slots(),
-    DUploads = lists:max([1, round(MaxUploads * 0.7)]),
-    SUploads = lists:max([1, round(MaxUploads * 0.3)]),
-    {SUP2, DUP2} =
-        case lists:max([0, DUploads - length(SDowns)]) of
-            0 -> {SUploads, DUploads};
-            N -> {SUploads + N, DUploads - N}
-        end,
-    {SUP3, DUP3} =
-        case lists:max([0, SUP2 - length(SLeechs)]) of
-            0 -> {SUP2, DUP2};
-            K ->
-                {SUP2 - K, lists:min([DUP2 + K, length(SDowns)])}
-        end,
-    {TSDowns, TSLeechs} = {lists:sublist(SDowns, DUP3),
-                           lists:sublist(SLeechs, SUP3)},
+    DSlots = lists:max([1, round(MaxUploads * 0.7)]),
+    SSlots = lists:max([1, round(MaxUploads * 0.3)]),
+    {SSlots2, DSlots2} = shuffle_leecher_slots(SSlots, DSlots, length(SDowns)),
+    {SSlots3, DSlots3} = shuffle_seeder_slots(SSlots2, DSlots2, length(SLeechs)),
+    {TSDowns, TSLeechs} = {lists:sublist(SDowns, DSlots3),
+                           lists:sublist(SLeechs, SSlots3)},
     sets:union(sets:from_list(TSDowns), sets:from_list(TSLeechs)).
 
-rechoke_unchoke([], _PS) ->
-    [];
+rechoke_unchoke([], _PS) -> [];
 rechoke_unchoke([P | Next], PSet) ->
     case sets:is_element(P, PSet) of
         true ->
@@ -215,7 +229,7 @@ rechoke_choke([P | Next], Count, Optimistics) when Count >= Optimistics ->
     etorrent_peer_control:choke(P#rechoke_info.pid),
     rechoke_choke(Next, Count, Optimistics);
 rechoke_choke([P | Next], Count, Optimistics) ->
-    case P#rechoke_info.kind =:= seeding of
+    case P#rechoke_info.peer_state =:= seeding of
         true ->
             etorrent_peer_control:choke(P#rechoke_info.pid),
             rechoke_choke(Next, Count, Optimistics);
@@ -229,19 +243,31 @@ rechoke_choke([P | Next], Count, Optimistics) ->
             end
     end.
 
-split_preferred_peers([], Downs, Leechs) ->
-    {Downs, Leechs};
-split_preferred_peers([P | Next], Downs, Leechs) ->
-    case P#rechoke_info.kind =:= seeding
-          orelse P#rechoke_info.r_interest_state =:= not_interested of
+%% Split the peers we are connected to into two groups:
+%%  - Those we are Leeching from
+%%  - Those we are Seeding to
+%% But in the process, skip over any peer which is unintersting
+split_preferred_peers([], L, S) -> {L, S};
+split_preferred_peers([#rechoke_info { peer_state = PeerState, r_interest_state = RemoteInterest,
+				       state = State, peer_snubs = Snubbed } = P | Next],
+		      WeLeech, WeSeed) ->
+    case PeerState == seeding orelse RemoteInterest == not_interested of
         true ->
-            split_preferred_peers(Next, Downs, Leechs);
-        false when P#rechoke_info.state =:= seeding ->
-            split_preferred_peers(Next, Downs, [P | Leechs]);
-        false when P#rechoke_info.snubbed =:= true ->
-            split_preferred_peers(Next, Downs, Leechs);
+	    %% Peer is seeding a torrent and we are connected to a peer not interested
+	    %% in downloading anything. Unchoking him would not help anything, skip.
+            split_preferred_peers(Next, WeLeech, WeSeed);
+        false when State =:= seeding ->
+	    %% We are seeding this torrent, so throw the Peer into the group of peers we seed to
+            split_preferred_peers(Next, WeLeech, [P | WeSeed]);
+        false when Snubbed =:= true ->
+	    %% The peer has not sent us anything for 30 seconds, so we
+	    %% regard the peer as snubbing us. Thus, unchoking the peer would
+	    %% be rather insane. We'd rather use the slot for someone else.
+            split_preferred_peers(Next, WeLeech, WeSeed);
         false ->
-            split_preferred_peers(Next, [P | Downs], Leechs)
+	    %% If none of the other cases match, we have a Peer we are leeching
+	    %% from, so throw the peer into the leecher set.
+            split_preferred_peers(Next, [P | WeLeech], WeSeed)
     end.
 
 %%====================================================================
@@ -261,8 +287,8 @@ handle_call(Request, _From, State) ->
     ?ERR([unknown_peer_group_call, Request]),
     Reply = ok,
     {reply, Reply, State}.
-handle_cast(rechoke, S) ->
-    rechoke(S),
+handle_cast(rechoke, #state { opt_unchoke_chain = Chain } = S) ->
+    rechoke(Chain),
     {noreply, S};
 handle_cast(_Msg, State) ->
     {noreply, State}.
@@ -271,35 +297,21 @@ handle_info(round_tick, S) ->
     R = case S#state.round of
         0 ->
             {ok, NS} = advance_optimistic_unchoke(S),
-            rechoke(NS),
+            rechoke(NS#state.opt_unchoke_chain),
             {noreply, NS#state { round = 2}};
         N when is_integer(N) ->
-            rechoke(S),
+            rechoke(S#state.opt_unchoke_chain),
             {noreply, S#state{round = S#state.round - 1}}
     end,
     erlang:send_after(?ROUND_TIME, self(), round_tick),
     R;
-handle_info({'DOWN', _Ref, process, Pid, Reason}, S)
-  when (Reason =:= normal) or (Reason =:= shutdown) ->
-    % The peer shut down normally. Hence we just remove him and start up
-    %  other peers. Eventually the tracker will re-add him to the peer list
-
-    % XXX: We might have to do something else
-    rechoke(S),
-
-    NewChain = lists:delete(Pid, S#state.opt_unchoke_chain),
-    {noreply, S#state { opt_unchoke_chain = NewChain }};
 handle_info({'DOWN', _Ref, process, Pid, _Reason}, S) ->
-    % The peer shut down unexpectedly re-add him to the queue in the *back*
-    case etorrent_table:get_peer_info(Pid) of
-	not_found -> ok;
-	_ -> ok = rechoke(S)
-    end,
-
     NewChain = lists:delete(Pid, S#state.opt_unchoke_chain),
-    {noreply, S#state{opt_unchoke_chain = NewChain}};
+    %% Rechoke the chain if the peer was among the unchoked
+    rechoke(NewChain),
+    {noreply, S#state { opt_unchoke_chain = NewChain }};
 handle_info(Info, State) ->
-    ?ERR([unknown_info_peer_group, Info]),
+    ?INFO([unknown_info_msg, ?MODULE, Info]),
     {noreply, State}.
 
 terminate(_Reason, _S) ->

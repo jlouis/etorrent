@@ -16,6 +16,7 @@
 -record(state, { socket = none,
                  packet_continuation = none,
                  rate = none,
+		 control_pid = none,
                  last_piece_msg_count = 0,
                  id :: integer(),
                  controller = none,
@@ -176,10 +177,12 @@ code_change(_OldVsn, State, _Extra) ->
 
 init([TorrentId, Socket]) ->
     gproc:add_local_name({peer, Socket, receiver}),
+    {CPid, _} = gproc:await({n,l,{peer, Socket, control}}),
     erlang:send_after(?RATE_UPDATE, self(), rate_update),
     {ok, #state { socket = Socket,
                   rate = etorrent_rate:init(?RATE_FUDGE),
                   id = TorrentId,
-                  mode = slow
+                  mode = slow,
+		  control_pid = CPid
                 }, 0}.
 

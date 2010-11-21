@@ -401,7 +401,6 @@ pick_chunks(endgame, {Id, PieceSet, N}) ->
     Shuffled = etorrent_utils:shuffle(Remaining),
     {endgame, lists:sublist(Shuffled, N)}.
 
-
 -spec pick_chunks_endgame(integer(), gb_set(), integer(), X) -> X | {endgame, [#chunk{}]}.
 pick_chunks_endgame(Id, Set, Remaining, Ret) ->
     case etorrent_torrent:is_endgame(Id) of

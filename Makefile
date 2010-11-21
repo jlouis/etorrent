@@ -24,8 +24,10 @@ rel:
 relclean:
 	rm -fr rel/etorrent
 
-clean: relclean devclean
+clean:
 	rebar clean
+
+distclean: clean relclean devclean
 
 etorrent-dev: compile
 	mkdir -p dev
