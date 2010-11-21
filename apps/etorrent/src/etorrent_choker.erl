@@ -83,12 +83,12 @@ lookup_info(Seeding, Id, Pid) ->
         true ->
             case etorrent_rate_mgr:fetch_send_rate(Id, Pid) of
                 none -> none;
-                Rate -> {seeding, Rate}
+                Rate -> {seeding, -Rate} % Negative rate so keysort works
             end;
         false ->
             case etorrent_rate_mgr:fetch_recv_rate(Id, Pid) of
                 none -> none;
-                Rate -> {leeching, -Rate}
+                Rate -> {leeching, -Rate} % Negative rate so keysort works
             end
     end.
 
@@ -113,7 +113,7 @@ build_rechoke_info(Seeding, [Pid | Next]) ->
                                     pid = Pid,
                                     peer_state = PeerState,
                                     state = State,
-                                    rate = R, % TODO: Rate is negative if leeching! Investigate!
+                                    rate = R,
                                     r_interest_state = proplists:get_value(interest_state, St),
                                     r_choke_state    = proplists:get_value(choke_state, St),
                                     l_choke          = proplists:get_value(local_choke, St),
@@ -172,6 +172,7 @@ upload_slots() ->
 
 split_preferred(Peers) ->
     {Downs, Leechs} = split_preferred_peers(Peers, [], []),
+    %% Notice that the rate on which we sort is negative, so the fastest peer is actually first in the list
     {lists:keysort(#rechoke_info.rate, Downs),
      lists:keysort(#rechoke_info.rate, Leechs)}.
 
