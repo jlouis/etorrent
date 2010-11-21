@@ -3,7 +3,7 @@
 
 -include("etorrent_version.hrl").
 
--export([start/2, stop/1, prep_stop/1]).
+-export([start/2, stop/1, prep_stop/1, profile_output/0]).
 
 
 -ignore_xref([{'prep_stop', 1}, {stop, 0}, {check, 1}]).
@@ -33,6 +33,13 @@ consider_profiling() ->
 	{ok, false} ->
 	    ignore
     end.
+
+profile_output() ->
+    eprof:stop_profiling(),
+    eprof:log("procs.profile"),
+    eprof:analyze(procs),
+    eprof:log("total.profile"),
+    eprof:analyze(total).
 
 %% @doc Application callback.
 %% @end
