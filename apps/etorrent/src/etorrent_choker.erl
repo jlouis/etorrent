@@ -140,8 +140,11 @@ move_cyclic_chain(Chain) ->
                     not_found -> true;
                     {peer_info, _Kind, Id} ->
                         PL = etorrent_rate_mgr:pids_interest(Id, Pid),
-			not (proplists:get_value(interested, PL) == interested
-			     andalso proplists:get_value(choking, PL) == choked)
+			%% Peers not interested in us are skipped. Optimistically unchoking these
+			%% would not help as they would request nothing. Peers already not choking
+			%% us are in the valuation game, so they are also skipped.
+			( proplists:get_value(interested, PL) == not_interested
+			  orelse proplists:get_value(choking, PL) == unchoked )
                 end
         end,
     {Front, Back} = lists:splitwith(F, Chain),
