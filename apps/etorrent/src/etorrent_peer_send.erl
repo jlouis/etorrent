@@ -46,11 +46,10 @@
 
                 mode = slow :: mode(),
 
-                controller = none,
+		control_pid = none,
                 rate = none,
                 choke = true,
                 interested = false, % Are we interested in the peer?
-                parent = none,
                 torrent_id = none,
                 file_system_pid = none}).
 
@@ -218,7 +217,7 @@ empty_requests({{value, {Index, Offset, Len}}, Next}, S) ->
 
 local_choke(S) ->
     etorrent_rate_mgr:local_choke(S#state.torrent_id,
-                                  S#state.parent).
+                                  S#state.control_pid).
 
 %% Unused callbacks
 handle_call(_Request, _From, State) ->
@@ -236,17 +235,16 @@ init([Socket, TorrentId, FastExtension]) ->
     erlang:send_after(?RATE_UPDATE, self(), rate_update),
     gproc:add_local_name({peer, Socket, sender}),
     FS = gproc:lookup_local_name({torrent, TorrentId, fs}),
+    {CPid, _} = gproc:await({n,l,{peer, Socket, control}}), % TODO: Change to a timeout later on, when gproc has been fixed
     %% This may fail, but I want to check it
-    {ok,
-     #state{socket = Socket,
-            requests = queue:new(),
-            rate = etorrent_rate:init(),
-            parent = {non_inited, foo},
-            controller = none,
-            torrent_id = TorrentId,
-            fast_extension = FastExtension,
-            file_system_pid = FS},
-     0}. %% Quickly enter a timeout.
+    false = CPid == undefined,
+    {ok, #state{socket = Socket,
+		requests = queue:new(),
+		rate = etorrent_rate:init(),
+		control_pid = CPid,
+		torrent_id = TorrentId,
+		fast_extension = FastExtension,
+		file_system_pid = FS}}. %% Quickly enter a timeout.
 
 
 %% Whenever a tick is hit, we send out a keep alive message on the line.
@@ -259,7 +257,7 @@ handle_info(rate_update, S) ->
     erlang:send_after(?RATE_UPDATE, self(), rate_update),
     Rate = etorrent_rate:update(S#state.rate, 0),
     ok = etorrent_rate_mgr:send_rate(S#state.torrent_id,
-                                     S#state.parent,
+                                     S#state.control_pid,
                                      Rate#peer_rate.rate),
     {noreply, S#state { rate = Rate }};
 
@@ -267,11 +265,6 @@ handle_info(rate_update, S) ->
 %% When we are choking the peer and the piece cache is empty, garbage_collect() to reclaim
 %% space quickly rather than waiting for it to happen.
 %% @todo Consider if this can be simplified. It looks wrong here.
-handle_info(timeout, #state{ parent = {non_inited, _},
-			     socket = Sock } = S) ->
-    {RecvPid, _} = gproc:await({n,l,{peer, Sock, receiver}}), % TODO: Change to a timeout later on, when gproc has been fixed
-    false = RecvPid == undefined,
-    {noreply, S#state { parent = RecvPid }, 0};
 handle_info(timeout, #state { choke = true} = S) ->
     {noreply, S};
 handle_info(timeout, #state { choke = false, requests = Reqs} = S) ->
@@ -290,8 +283,8 @@ handle_info(Msg, S) ->
 handle_cast(choke, S) -> perform_choke(S);
 handle_cast(unchoke, #state { choke = false } = S) -> {noreply, S, 0};
 handle_cast(unchoke,
-        #state { choke = true, torrent_id = Torrent_Id, parent = Parent } = S) ->
-    ok = etorrent_rate_mgr:local_unchoke(Torrent_Id, Parent),
+        #state { choke = true, torrent_id = Torrent_Id, control_pid = ControlPid } = S) ->
+    ok = etorrent_rate_mgr:local_unchoke(Torrent_Id, ControlPid),
     send_message(unchoke, S#state{choke = false});
 
 %% A request to check the current choke state and ask for a rechoking
