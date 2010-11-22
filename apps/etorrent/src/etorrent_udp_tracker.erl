@@ -36,6 +36,10 @@ announce(Pid, Proplist) ->
 
 %% TODO: consider changing this to the gproc call rather than Pid
 announce(Pid, Proplist, Timeout) ->
+    %% TODO: This should probably be a gen_fsm:sync_event with a timeout and a
+    %% async reply. That way, the interface to the system is much simpler. We can
+    %% capture the timeout explicitly and handle it by converting it to a value.
+
     %% TODO: Consider hauling the TRef with us as well so we can cancel the timer
     TRef = erlang:send_after(Timeout, self(), announce_timeout),
     gen_fsm:send_event(Pid, {announce, self(), Proplist, TRef}),

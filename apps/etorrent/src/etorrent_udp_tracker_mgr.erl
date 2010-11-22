@@ -5,7 +5,10 @@
 -include("log.hrl").
 
 %% API
--export([start_link/0, lookup_transaction/1, lookup/1, msg/1, reg_tr_id/1,
+-export([start_link/0, announce/2]).
+
+%% Internal API
+-export([lookup_transaction/1, lookup/1, msg/1, reg_tr_id/1,
 	 unreg_tr_id/1]).
 
 %% gen_server callbacks
@@ -21,6 +24,12 @@
 %%====================================================================
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
+
+announce(Tracker, PropList) ->
+    Pid = lookup(Tracker),
+    etorrent_udp_tracker:announce(Pid, PropList).
+
+%%--------------------------------------------------------------------
 
 lookup_transaction(Tid) ->
     case ets:lookup(?TAB, Tid) of
@@ -61,7 +70,7 @@ handle_call({new_tracker, {IP, Port}}, _From, S) ->
 	[]  ->
 	    {ok, Pid} = etorrent_udp_pool_sup:add_udp_tracker({IP, Port}),
 	    erlang:monitor(process, Pid),
-	    gproc:await({udp_tracker, {IP, Port}}),
+	    gproc:await({n,l,{udp_tracker, {IP, Port}}}),
 	    {reply, ok, S}
     end;
 handle_call(Request, _From, State) ->
