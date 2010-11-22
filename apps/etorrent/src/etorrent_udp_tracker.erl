@@ -12,7 +12,7 @@
 -behaviour(gen_fsm).
 
 %% API
--export([start_link/1, announce/2, announce/3]).
+-export([start_link/1, announce/3]).
 
 %% Internally used calls
 -export([msg/2]).
@@ -30,20 +30,16 @@
 start_link(Tracker) ->
     gen_fsm:start_link(?MODULE, [Tracker], []).
 
-
-announce(Pid, Proplist) ->
-    announce(Pid, Proplist, timer:seconds(60)).
-
-%% TODO: consider changing this to the gproc call rather than Pid
+%% @doc carry out an announce request and block until message or timeout
+%%  if timeout, the caller is obliged to get a late reply as {ref(), term()}
+%%  in its inbox, which it may either consume or ignore.
+%% @end
 announce(Pid, Proplist, Timeout) ->
-    %% TODO: This should probably be a gen_fsm:sync_event with a timeout and a
-    %% async reply. That way, the interface to the system is much simpler. We can
-    %% capture the timeout explicitly and handle it by converting it to a value.
-
-    %% TODO: Consider hauling the TRef with us as well so we can cancel the timer
-    TRef = erlang:send_after(Timeout, self(), announce_timeout),
-    gen_fsm:send_event(Pid, {announce, self(), Proplist, TRef}),
-    {ok, TRef}.
+    case catch gen_fsm:sync_send_event(Pid, {announce, Proplist}, Timeout) of
+	{'EXIT', {timeout, _}} ->
+	    timeout;
+	R -> {ok, R}
+    end.
 
 %%====================================================================
 %% Retrieve a message from the socket.
@@ -61,10 +57,6 @@ idle({msg, {TID, {announce_response, Peers, Status}}}, #state { response = R} = 
     PL = proplists:delete(TID, R),
     {next_state, idle, S#state { response = PL }, timer:seconds(3600)};
 %% The idle state is when we have no outstanding requests running with the server
-idle({announce, Requestor, PL, R}, #state { announce_stack = Q } = S) ->
-    Tid = request_connid(0),
-    {next_state, request_conn, S#state { announce_stack = [{announce, Requestor, PL, R} | Q],
-				         conn_id = {req, Tid} }};
 idle(Event, S) ->
     ?INFO([unknown_msg, idle, Event, ?MODULE]),
     {next_state, idle, S, timer:seconds(3600)}.
@@ -81,16 +73,12 @@ request_conn({msg, {TID, {announce_response, Peers, Status}}}, #state { response
     announce_reply(Peers, Status, proplists:lookup(TID, R)),
     PL = proplists:delete(TID, R),
     {next_state, request_conn, S#state { response = PL }};
-request_conn({announce, Requestor, PL, R}, #state { announce_stack = Q } = S) ->
-    {next_state, request_conn, S#state { announce_stack = [{announce, Requestor, PL, R} | Q]}};
 request_conn(Event, S) ->
     ?INFO([unknown_msg, request_conn, Event, ?MODULE]),
     {next_state, request_conn, S}.
 
+%% TODO: Move this down to sync_send_event handler
 %% The has_conn is when we currently have a live conn ID from the server
-has_conn({announce, _, _, _} = M, #state { response = Resp } = S) ->
-    Ares = announce_requests(S#state.conn_id, [M]),
-    {next_state, has_conn, S#state { response = Ares ++ Resp }};
 has_conn({msg, {TID, {announce_response, Peers, Status}}}, #state { response = R} = S) ->
     announce_reply(Peers, Status, proplists:lookup(TID, R)),
     PL = proplists:delete(TID, R),
@@ -99,12 +87,23 @@ has_conn(Event, S) ->
     ?INFO([unknown_msg, has_conn, Event, ?MODULE]),
     {next_state, has_conn, S}.
 
+idle({announce, PL}, From, #state { announce_stack = Q } = S) ->
+    Tid = request_connid(0),
+    {next_state, request_conn,
+     S#state { announce_stack = [{announce, PL, From} | Q],
+	       conn_id = {req, Tid} }};
 idle(_Event, _F, S) ->
     {reply, ok, idle, S}.
 
+request_conn({announce, PL}, From, #state { announce_stack = Q } = S) ->
+    {next_state, request_conn,
+     S#state { announce_stack = [{announce, PL, From} | Q]}};
 request_conn(_E, _F, S) ->
     {reply, ok, request_conn, S}.
 
+has_conn({announce, PL}, From, #state { response = Resp } = S) ->
+    Ares = announce_requests(S#state.conn_id, [{announce, PL, From}]),
+    {next_state, has_conn, S#state { response = Ares ++ Resp }};
 has_conn(_E, _F, S) ->
     {reply, ok, has_conn, S}.
 
@@ -128,7 +127,7 @@ handle_info({announce_timeout, N, Tid}, has_conn,
 	none ->
 	    %% Stray
 	    {next_state, has_conn, S};
-	{announce, _, _, _} = AnnReq ->
+	{announce, _, _} = AnnReq ->
 	    NPL = proplists:delete(Tid, R),
 	    NewReq = announce_requests(ConnId, [AnnReq], N),
 	    %% TODO: Consider messaging back the fail here
@@ -140,7 +139,7 @@ handle_info({announce_timeout, _N, Tid}, SN, #state { response = R,
     case proplists:lookup(Tid, R) of
 	none ->
 	    {next_state, has_conn, S};
-	{announce, _, _, _} = AnnReq ->
+	{announce, _, _} = AnnReq ->
 	    NPL = proplists:delete(Tid, R),
 	    %% If idle, grab hold of a conn_id!
 	    NewTid = case SN of
@@ -186,8 +185,8 @@ expire_time(N) ->
       15 * trunc(math:pow(2,N))).
 
 announce_reply(_Peers, _Status, none) -> ignore;
-announce_reply(Peers, Status, {announce, Requestor, _PL, Ref}) ->
-    Requestor ! {announce, Peers, Status, Ref}.
+announce_reply(Peers, Status, {announce, _PL, From}) ->
+    gen_fsm:reply(From, {announce, Peers, Status}).
 
 announce_requests(ConnID, ReqL) ->
     announce_requests(ConnID, ReqL, 0).
@@ -196,7 +195,7 @@ announce_requests(ConnID, ReqL, N) ->
     [begin
 	 Tid = announce_req(N, ConnID, PL),
 	 {Tid, AnnReq}
-     end || {announce, _Req, PL, _Ref} = AnnReq <- ReqL].
+     end || {announce, PL, _From} = AnnReq <- ReqL].
 
 announce_req(N, ConnID, PropL) ->
     [IH, PeerId, Down, Left, Up, Event, IPAddr, Key, Port] =
