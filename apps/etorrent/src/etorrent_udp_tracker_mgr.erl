@@ -5,7 +5,7 @@
 -include("log.hrl").
 
 %% API
--export([start_link/0, announce/2]).
+-export([start_link/0, announce/2, announce/3]).
 
 %% Internal API
 -export([lookup_transaction/1, lookup/1, msg/1, reg_tr_id/1,
@@ -25,9 +25,12 @@
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
-announce(Tracker, PropList) ->
+announce(Tr, PL) ->
+    announce(Tr, PL, timer:seconds(60)).
+
+announce(Tracker, PropList, Timeout) ->
     Pid = lookup(Tracker),
-    etorrent_udp_tracker:announce(Pid, PropList).
+    etorrent_udp_tracker:announce(Pid, PropList, Timeout).
 
 %%--------------------------------------------------------------------
 
