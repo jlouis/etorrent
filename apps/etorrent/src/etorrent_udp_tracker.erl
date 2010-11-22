@@ -8,10 +8,14 @@
 -module(etorrent_udp_tracker).
 
 -include("types.hrl").
+-include("log.hrl").
 -behaviour(gen_fsm).
 
 %% API
--export([start_link/1, announce/2, announce/3, msg/2]).
+-export([start_link/1, announce/2, announce/3]).
+
+%% Internally used calls
+-export([msg/2]).
 
 %% gen_fsm callbacks
 -export([init/1, idle/2, idle/3, request_conn/2, request_conn/3, has_conn/2, has_conn/3,
@@ -19,48 +23,47 @@
 
 -record(state, { conn_id = none,
 		 response = [],
-		 scrape_stack,
-	         announce_stack }).
+	         announce_stack = [] }).
 
 %%====================================================================
 -spec start_link({ip(), port()}) -> {ok, pid()}.
 start_link(Tracker) ->
     gen_fsm:start_link(?MODULE, [Tracker], []).
 
-msg(Pid, M) ->
-    gen_fsm:send_event(Pid, {msg, M}).
 
 announce(Pid, Proplist) ->
-    announce(Pid, Proplist, timer:seconds(600)).
+    announce(Pid, Proplist, timer:seconds(60)).
 
 %% TODO: consider changing this to the gproc call rather than Pid
 announce(Pid, Proplist, Timeout) ->
-    R = make_ref(),
     %% TODO: Consider hauling the TRef with us as well so we can cancel the timer
-    _TRef = erlang:send_after(Timeout, self(), {announce_timeout, R}),
-    gen_fsm:send_event(Pid, {announce, self(), Proplist, R}),
-    {ok, R}.
+    TRef = erlang:send_after(Timeout, self(), announce_timeout),
+    gen_fsm:send_event(Pid, {announce, self(), Proplist, TRef}),
+    {ok, TRef}.
 
 %%====================================================================
+%% Retrieve a message from the socket.
+msg(Pid, M) ->
+    gen_fsm:send_event(Pid, {msg, M}).
+
 init([Tracker]) ->
     gproc:add_local_name({udp_tracker, Tracker}),
-    {ok, idle, #state{ conn_id = none,
-		       scrape_stack = [],
-		       announce_stack = [] }, timer:seconds(3600)}.
+    {ok, idle, #state{}, timer:seconds(3600)}.
 
 idle({msg, {_TID, {conn_response, _ConnID}}}, S) ->
-    {next_state, idle, S};
+    {next_state, idle, S, timer:seconds(3600)};
 idle({msg, {TID, {announce_response, Peers, Status}}}, #state { response = R} = S) ->
     announce_reply(Peers, Status, proplists:lookup(TID, R)),
     PL = proplists:delete(TID, R),
-    {next_state, idle, S#state { response = PL }};
+    {next_state, idle, S#state { response = PL }, timer:seconds(3600)};
 %% The idle state is when we have no outstanding requests running with the server
 idle({announce, Requestor, PL, R}, #state { announce_stack = Q } = S) ->
     Tid = request_connid(0),
-    {next_state, request_conn, S#state { scrape_stack = [{announce, Requestor, PL, R} | Q],
+    {next_state, request_conn, S#state { announce_stack = [{announce, Requestor, PL, R} | Q],
 				         conn_id = {req, Tid} }};
-idle(_Event, S) ->
-    {next_state, idle, S}.
+idle(Event, S) ->
+    ?INFO([unknown_msg, idle, Event, ?MODULE]),
+    {next_state, idle, S, timer:seconds(3600)}.
 
 %% The request_conn state is when we have requested a connection ID from the server
 request_conn({msg, {TID, {conn_response, ConnID}}}, S) ->
@@ -68,28 +71,29 @@ request_conn({msg, {TID, {conn_response, ConnID}}}, S) ->
     erlang:send_after(timer:seconds(60), self(), connid_expired),
     ARes = announce_requests(ConnID, S#state.announce_stack),
     {next_state, has_conn, #state { conn_id = ConnID,
-			        scrape_stack = [],
-			        announce_stack = [],
-			        response = S#state.response ++ ARes }};
+				    announce_stack = [],
+				    response = S#state.response ++ ARes }};
 request_conn({msg, {TID, {announce_response, Peers, Status}}}, #state { response = R} = S) ->
     announce_reply(Peers, Status, proplists:lookup(TID, R)),
     PL = proplists:delete(TID, R),
     {next_state, request_conn, S#state { response = PL }};
 request_conn({announce, Requestor, PL, R}, #state { announce_stack = Q } = S) ->
-    {next_state, request_conn, S#state { scrape_stack = [{announce, Requestor, PL, R} | Q]}};
-request_conn(_Event, S) ->
-    {next_state, request_tr, S}.
+    {next_state, request_conn, S#state { announce_stack = [{announce, Requestor, PL, R} | Q]}};
+request_conn(Event, S) ->
+    ?INFO([unknown_msg, request_conn, Event, ?MODULE]),
+    {next_state, request_conn, S}.
 
 %% The has_conn is when we currently have a live conn ID from the server
 has_conn({announce, _, _, _} = M, #state { response = Resp } = S) ->
     Ares = announce_requests(S#state.conn_id, [M]),
-    {next_state, has_conn, S#state { response = [Ares | Resp] }};
+    {next_state, has_conn, S#state { response = Ares ++ Resp }};
 has_conn({msg, {TID, {announce_response, Peers, Status}}}, #state { response = R} = S) ->
     announce_reply(Peers, Status, proplists:lookup(TID, R)),
     PL = proplists:delete(TID, R),
     {next_state, has_conn, S#state { response = PL }};
-has_conn(_Event, S) ->
-    {next_state, has_tr, S}.
+has_conn(Event, S) ->
+    ?INFO([unknown_msg, has_conn, Event, ?MODULE]),
+    {next_state, has_conn, S}.
 
 idle(_Event, _F, S) ->
     {reply, ok, idle, S}.
@@ -115,6 +119,7 @@ handle_info(connid_expired, SN, S) ->
     {stop, {state_inconsistent, {connid_expired, SN, S}}, idle};
 handle_info({announce_timeout, N, Tid}, has_conn,
 	    #state { response = R, conn_id = ConnId} = S) ->
+    etorrent_udp_tracker_mgr:unreg_tr_id(Tid),
     case proplists:lookup(Tid, R) of
 	none ->
 	    %% Stray
@@ -122,17 +127,26 @@ handle_info({announce_timeout, N, Tid}, has_conn,
 	{announce, _, _, _} = AnnReq ->
 	    NPL = proplists:delete(Tid, R),
 	    NewReq = announce_requests(ConnId, [AnnReq], N),
+	    %% TODO: Consider messaging back the fail here
 	    {next_state, has_conn, S#state { response = NewReq ++ NPL }}
     end;
 handle_info({announce_timeout, _N, Tid}, SN, #state { response = R,
 						      announce_stack = Stack } = S) ->
+    etorrent_udp_tracker_mgr:unreg_tr_id(Tid),
     case proplists:lookup(Tid, R) of
 	none ->
 	    {next_state, has_conn, S};
 	{announce, _, _, _} = AnnReq ->
 	    NPL = proplists:delete(Tid, R),
-	    {next_state, SN, S#state { response = NPL,
-				       announce_stack = [AnnReq | Stack] }}
+	    %% If idle, grab hold of a conn_id!
+	    NewTid = case SN of
+			 request_conn -> S#state.conn_id;
+			 idle -> Tid = request_connid(0),
+				 {req, Tid}
+		     end,
+	    {next_state, request_conn, S#state { response = NPL,
+						 conn_id = NewTid,
+						 announce_stack = [AnnReq | Stack] }}
     end;
 handle_info({transaction_timeout, N, Tid}, request_conn,
 	    #state { conn_id = {req, Tid} } = S) ->
