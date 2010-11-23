@@ -52,9 +52,11 @@ stop(File) ->
 
 %% Callbacks
 init([PeerId]) ->
+    process_flag(trap_exit, true),
     {ok, #state { local_peer_id = PeerId}}.
 
 handle_cast({start, F}, S) ->
+    ?INFO([starting, F]),
     case torrent_duplicate(F) of
         true -> {noreply, S};
         false ->
@@ -69,14 +71,11 @@ handle_cast({check, Id}, S) ->
     etorrent_t_control:check_torrent(Child),
     {noreply, S};
 handle_cast({stop, F}, S) ->
-    stop_torrent(F, S).
+    stop_torrent(F),
+    {noreply, S}.
 
 handle_call(stop_all, _From, S) ->
-    PLS = etorrent_table:all_torrents(),
-    [begin
-	 F = proplists:get_value(filename, PL),
-	 etorrent_t_pool_sup:stop_torrent(F)
-     end || PL <- PLS],
+    stop_all(),
     {reply, ok, S};
 handle_call(_A, _B, S) ->
     {noreply, S}.
@@ -85,6 +84,9 @@ handle_info(Info, State) ->
     ?WARN([unknown_info, Info]),
     {noreply, State}.
 
+terminate(Event, _S) when Event == normal orelse Event == shutdown ->
+    stop_all(),
+    ok;
 terminate(_Foo, _State) ->
     ok.
 
@@ -92,17 +94,21 @@ code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 %% =======================================================================
-%% TODO: Why the hell does this one pass state???
-stop_torrent(F, S) ->
+stop_torrent(F) ->
     ?INFO([stopping, F]),
     case etorrent_table:get_torrent({filename, F}) of
 	not_found -> ok; % Was already removed, it is ok.
 	{value, _PL} ->
 	    etorrent_t_pool_sup:stop_torrent(F),
 	    ok
-    end,
-    {noreply, S}.
+    end.
 
+stop_all() ->
+    PLS = etorrent_table:all_torrents(),
+    [begin
+	 F = proplists:get_value(filename, PL),
+	 stop_torrent(F)
+     end || PL <- PLS].
 
 torrent_duplicate(F) ->
     case etorrent_table:get_torrent({filename, F}) of
