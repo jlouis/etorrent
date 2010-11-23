@@ -10,7 +10,7 @@
 -behaviour(supervisor).
 
 %% API
--export([start_link/0, add_udp_tracker/1]).
+-export([start_link/0, start_requestor/2, start_announce/3]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -21,15 +21,18 @@
 start_link() ->
     supervisor:start_link({local, ?SERVER}, ?MODULE, []).
 
-add_udp_tracker(Tracker) ->
-    Sup = gproc:lookup_local_name(udp_tracker_pool),
+start_requestor(Tr, N) ->
     {ok, Pid} =
-	supervisor:start_child(Sup, [Tracker]),
+	supervisor:start_child(?SERVER, [requestor, Tr, N]),
+    {ok, Pid}.
+
+start_announce(From, Tracker, PL) ->
+    {ok, Pid} =
+	supervisor:start_child(?SERVER, [announce, From, Tracker, PL]),
     {ok, Pid}.
 
 %%====================================================================
 init([]) ->
-    gproc:add_local_name(udp_tracker_pool),
     ChildSpec = {child,
 		 {etorrent_udp_tracker, start_link, []},
 		 temporary, 5000, worker, [etorrent_udp_tracker]},
