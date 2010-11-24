@@ -3,8 +3,9 @@ How to get a new version of etorrent out:
 - Make sure the master branch has everything you want it to have
 
 - Edit version.hrl
-
 - Edit webui version tag.
+- Edit apps/etorrent/src/etorrent.app.src version
+- Edit rel/reltool.config version
 
 - Write NEWS if not already up-to-date
 

@@ -18,7 +18,7 @@ eunit:
 dialyze: compile
 	rebar skip_deps=true dialyze
 
-rel:
+rel: compile
 	rebar generate
 
 relclean:
