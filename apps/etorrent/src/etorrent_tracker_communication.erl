@@ -62,8 +62,7 @@ start_link(ControlPid, UrlTiers, InfoHash, PeerId, TorrentId) ->
                             UrlTiers, InfoHash, PeerId, TorrentId],
                           []).
 
--spec completed(pid()) ->
-		        ok.
+-spec completed(pid()) -> ok.
 completed(Pid) ->
     gen_server:cast(Pid, completed).
 
@@ -84,9 +83,10 @@ init([ControlPid, UrlTiers, InfoHash, PeerId, TorrentId]) ->
     SoftRef = erlang:send_after(timer:seconds(?DEFAULT_CONNECTION_TIMEOUT_INTERVAL),
 			       self(),
 			       soft_timeout),
+    Url = swap_urls(shuffle_tiers(UrlTiers)),
     {ok, #state{control_pid = ControlPid,
                 torrent_id = TorrentId,
-                url = shuffle_tiers(UrlTiers),
+                url = Url,
                 info_hash = InfoHash,
                 peer_id = PeerId,
 
@@ -141,6 +141,9 @@ handle_info(soft_timeout, S) ->
     %% Soft timeout
     NS = contact_tracker(S),
     {noreply, NS};
+handle_info({Ref, _M}, State) when is_reference(Ref) ->
+    %% Quench late messages arriving
+    {noreply, State};
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -178,40 +181,91 @@ contact_tracker(Event, #state { url = Tiers } = S) ->
     case contact_tracker(Tiers, Event, S) of
 	{none, NS} ->
 	    NS;
-	{ok, NS, NewTiers} ->
-	    NS #state { url = NewTiers }
+	{ok, NS} ->
+	    NS
     end.
 
--spec contact_tracker([tier()], tracker_event() | none, #state{}) ->
-			     {none, #state{}} | {ok, #state{}, [tier()]}.
-contact_tracker([], _Event, #state { torrent_id = Id} = S) ->
-    ?INFO([no_trackers_could_be_contacted, Id]),
+-spec contact_tracker([[string()]], term(), #state{}) ->
+			      {none, #state{}} | {ok, #state{}}.
+contact_tracker(Tiers, Event, S) ->
+    contact_tracker(Tiers, Event, S, []).
+
+contact_tracker([], _Event, S, _Acc) ->
     {none, handle_timeout(S)};
-contact_tracker([Tier | NextTier], Event, S) ->
+contact_tracker([Tier | NextTier], Event, S, Acc) ->
     case contact_tracker_tier(Tier, Event, S) of
-	{ok, NS, MoveToFrontUrl, Rest} ->
-	    NewTier = [MoveToFrontUrl | Rest],
-	    {ok, NS, [NewTier | NextTier]};
+	{ok, NS, NewTier} ->
+	    {ok, NS#state { url = lists:reverse(Acc) ++ [NewTier | NextTier] }};
 	none ->
-	    case contact_tracker(NextTier, Event, S) of
-		{ok, NS, TierUrls} ->
-		    {ok, NS, [Tier | TierUrls]};
-		{none, NS} ->
-		    {none, NS}
-	    end
+	    contact_tracker(NextTier, Event, S, [Tier | Acc])
     end.
 
--spec contact_tracker_tier([string()], tracker_event() | none, #state{}) ->
-				  none | {ok, #state{}, string(), [string()]}.
-contact_tracker_tier([], _Event, _S) ->
+-spec contact_tracker_tier([string()], #state{}, term) -> {ok, #state{}} | none.
+contact_tracker_tier(Tier, S, Event) ->
+    contact_tracker_tier(Tier, S, Event, []).
+
+contact_tracker_tier([], _Event, _S, _Acc) ->
     none;
-contact_tracker_tier([Url | Next], Event, S) ->
+contact_tracker_tier([Url | Next], Event, S, Acc) ->
+    case
+	case identify_url_type(Url) of
+	    http -> contact_tracker_http(Url, Event, S);
+	    {udp, IP, Port}  -> contact_tracker_udp(IP, Port, Event, S)
+	end
+    of
+	{ok, NS} ->
+	    {ok, NS, [Url] ++ lists:reverse(Acc) ++ Next};
+	error ->
+	    contact_tracker_tier(Next, Event, S, [Url | Acc])
+    end.
+
+-spec identify_url_type(string()) -> http | {udp, string(), integer()}.
+identify_url_type(Url) ->
+    case etorrent_http_uri:parse(Url) of
+	{S1, _UserInfo, Host, Port, _Path, _Query} ->
+	    case S1 of
+		http ->
+		    http;
+		udp ->
+		    {udp, Host, Port}
+	    end;
+	{error, Reason} ->
+	    ?WARN([Reason, Url]),
+	    exit(identify_url_type)
+
+    end.
+
+
+contact_tracker_udp(IP, Port, Event, #state { torrent_id = Id,
+					      info_hash = InfoHash,
+					      peer_id = PeerId } = S) ->
+    {torrent_info, Uploaded, Downloaded, Left} = % Change this to a proplist
+	etorrent_torrent:find(Id),
+    PropList = [{info_hash, InfoHash},
+		{peer_id, list_to_binary(PeerId)},
+		{up, Uploaded},
+		{down, Downloaded},
+		{left, Left},
+		{port, Port},
+		{key, 0}, %% @todo: Actually process the key correctly for private tracking
+		{event, Event}],
+    ?INFO([announcing_via_udp]),
+    case etorrent_udp_tracker_mgr:announce({IP, Port}, PropList, timer:seconds(60)) of
+	{ok, {announce, Peers, Status}} ->
+	    ?INFO([udp_reply_handled]),
+	    {I, MI} = handle_udp_response(Id, Peers, Status),
+	    {ok, handle_timeout(I, MI, S)};
+	timeout ->
+	    error
+    end.
+
+%% @todo: consider not passing around the state here!
+contact_tracker_http(Url, Event, S) ->
     RequestUrl = build_tracker_url(Url, Event, S),
     case http_gzip:request(RequestUrl) of
         {ok, {{_, 200, _}, _, Body}} ->
 	    {ok,
-	     handle_tracker_response(etorrent_bcoding:decode(Body), S),
-	     Url, Next};
+	     handle_tracker_response(etorrent_bcoding:decode(Body), S)};
         {error, Type} ->
 	    case Type of
 		etimedout -> ignore;
@@ -221,11 +275,7 @@ contact_tracker_tier([Url | Next], Event, S) ->
 		    error_logger:error_report([contact_tracker_error, Err]),
 		    ignore
 	    end,
-	    case contact_tracker_tier(Next, Event, S) of
-		{ok, NS, MoveToFrontUrl, Rest} ->
-		    {ok, NS, MoveToFrontUrl, [Url | Rest]};
-		none -> none
-	    end
+	    error
     end.
 
 -spec handle_tracker_response(bcode(), #state{}) -> #state{}.
@@ -254,10 +304,18 @@ handle_tracker_response(BC, none, none, S) ->
     TrackerId = tracker_id(BC),
     handle_timeout(BC, S#state { trackerid = TrackerId }).
 
+handle_udp_response(Id, Peers, Status) ->
+    etorrent_peer_mgr:add_peers(Id, Peers),
+    etorrent_torrent:statechange(Id,
+				 [{tracker_report,
+				   proplists:get_value(seeders, Status),
+				   proplists:get_value(leechers, Status)}]),
+    {proplists:get_value(interval, Status), ?DEFAULT_CONNECTION_TIMEOUT_MIN_INTERVAL}.
+
 -spec handle_timeout(#state{}) -> #state{}.
 handle_timeout(S) ->
-    Interval = timer:seconds(?DEFAULT_CONNECTION_TIMEOUT_INTERVAL),
-    MinInterval = timer:seconds(?DEFAULT_CONNECTION_TIMEOUT_MIN_INTERVAL),
+    Interval = ?DEFAULT_CONNECTION_TIMEOUT_INTERVAL,
+    MinInterval = ?DEFAULT_CONNECTION_TIMEOUT_MIN_INTERVAL,
     handle_timeout(Interval, MinInterval, S).
 
 -spec handle_timeout(bcode(), #state{}) ->
@@ -303,6 +361,7 @@ construct_headers([{Key, Value}], HeaderLines) ->
 construct_headers([{Key, Value} | Rest], HeaderLines) ->
     Data = lists:concat([Key, "=", Value, "&"]),
     construct_headers(Rest, [Data | HeaderLines]).
+
 
 build_tracker_url(Url, Event,
 		  #state { torrent_id = Id,

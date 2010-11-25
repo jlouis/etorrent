@@ -44,7 +44,7 @@ start_link(InfoHash, TorrentID) ->
 
 announce(TrackerPid) ->
     gen_server:cast(TrackerPid, announce).
-    
+
 
 %
 % Register a peer as a member of a swarm. If the maximum number of
@@ -59,8 +59,6 @@ announce(InfoHash, {_,_,_,_}=IP, Port) when is_integer(InfoHash), is_integer(Por
     DelSpec  = [{{InfoHash,'$1','$2',RandPeer},[],[true]}],
     _ = ets:select_delete(tab_name(), DelSpec),
     ets:insert(tab_name(), {InfoHash, IP, Port, RandPeer}).
-       
-   
 
 %
 % Get the peers that are registered as members of this swarm.

@@ -57,7 +57,7 @@ start_link() ->
 
 % @doc Return everything we are currently tracking by their ids
 % @end
--spec all_torrents() -> [term()]. % TODO: Fix as proplists
+-spec all_torrents() -> [term()]. % @todo: Fix as proplists
 all_torrents() ->
     Objs = ets:match_object(tracking_map, '_'),
     [proplistify_tmap(O) || O <- Objs].
@@ -73,7 +73,7 @@ statechange_torrent(Id, What) ->
     ok.
 
 -spec get_torrent({infohash, binary()} | {filename, string()} | integer()) ->
-			  not_found | {value, term()}. % TODO: Change term() to proplist()
+			  not_found | {value, term()}. % @todo: Change term() to proplist()
 get_torrent(Id) when is_integer(Id) ->
     case ets:lookup(tracking_map, Id) of
 	[O] ->

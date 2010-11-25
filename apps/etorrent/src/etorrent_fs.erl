@@ -186,6 +186,7 @@ read_pieces_and_assemble([{Id, Offset, Size} | Rest], SoFar, S) ->
 %% @doc Write data defined by Operations. Returns new State
 %%   maintaining the file_process_dict.
 %% @end
+%% @todo rewrite this code, it is somewhat braindead
 -spec fs_write(binary(), [operation()], #state{}) -> #state{}.
 fs_write(<<>>, [], S) -> S;
 fs_write(Data, [{Id, Offset, Size} | Rest], S) ->

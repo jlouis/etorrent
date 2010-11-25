@@ -130,7 +130,7 @@ incoming_msg(Pid, Msg) ->
 %%--------------------------------------------------------------------
 init([LocalPeerId, InfoHash, Id, {IP, Port}, Caps, Socket]) ->
     process_flag(trap_exit, true),
-    %% TODO: Update the leeching state to seeding when peer finished torrent.
+    %% @todo: Update the leeching state to seeding when peer finished torrent.
     ok = etorrent_table:new_peer(IP, Port, Id, self(), leeching),
     ok = etorrent_choker:monitor(self()),
     {value, NumPieces} = etorrent_torrent:num_pieces(Id),
@@ -152,7 +152,7 @@ init([LocalPeerId, InfoHash, Id, {IP, Port}, Caps, Socket]) ->
 %%                                      {stop, Reason, State}
 %% Description: Handling cast messages
 %%--------------------------------------------------------------------
-%% TODO: This ought to be handled elsewhere. For now, it is ok to have here,
+%% @todo: This ought to be handled elsewhere. For now, it is ok to have here,
 %%  but it should be a temporary process which tries to make a connection and
 %%  sets the initial stuff up.
 handle_cast({initialize, Way}, S) ->

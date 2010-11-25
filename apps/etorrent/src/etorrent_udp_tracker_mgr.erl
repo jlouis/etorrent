@@ -8,14 +8,15 @@
 -export([start_link/0, announce/2, announce/3]).
 
 %% Internal API
--export([lookup_transaction/1, lookup/1, msg/1, reg_tr_id/1,
-	 unreg_tr_id/1]).
+-export([msg/2, reg_connid_gather/1, reg_tr_id/1, unreg_tr_id/1,
+	 lookup_transaction/1, distribute_connid/2, reg_announce/2,
+	 need_requestor/2, reg_connid/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3]).
 
--record(state, { socket }).
+-record(state, { socket }). % Might not be needed at all
 
 -define(SERVER, ?MODULE).
 -define(TAB, etorrent_udp_transact).
@@ -28,73 +29,133 @@ start_link() ->
 announce(Tr, PL) ->
     announce(Tr, PL, timer:seconds(60)).
 
-announce(Tracker, PropList, Timeout) ->
-    Pid = lookup(Tracker),
-    etorrent_udp_tracker:announce(Pid, PropList, Timeout).
+announce({IP, Port}, PropList, Timeout) ->
+    case catch gen_server:call(?MODULE, {announce, {IP, Port}, PropList}, Timeout) of
+	{'EXIT', {timeout, _}} ->
+	    gen_server:cast(?MODULE, {announce_cancel, {IP, Port}, PropList}),
+	    timeout;
+	Response -> {ok, Response}
+    end.
 
-%%--------------------------------------------------------------------
+distribute_connid(Tracker, ConnID) ->
+    gen_server:cast(?MODULE, {distribute_connid, Tracker, ConnID}).
+
+need_requestor(Tracker, N) ->
+    gen_server:cast(?MODULE, {need_requestor, Tracker, N}).
 
 lookup_transaction(Tid) ->
     case ets:lookup(?TAB, Tid) of
-	[] -> none;
-	[{_, Pid}] -> {ok, Pid}
+	[] ->
+	    none;
+	[{_, Pid}] ->
+	    {ok, Pid}
     end.
 
-msg(Msg) ->
-    gen_server:cast(?SERVER, {msg, Msg}).
+reg_connid_gather(Tracker) ->
+    ets:insert(?TAB, [{{conn_id_req, Tracker}, self()},
+		      {self(), {conn_id_req, Tracker}}]).
 
 reg_tr_id(Tid) ->
-    ets:insert_new(?TAB, {Tid, self()}).
+    true = ets:insert(?TAB, [{Tid, self()}, {self(), Tid}]).
 
 unreg_tr_id(Tid) ->
-    true = ets:delete(?TAB, Tid),
-    ok.
+    [true] = delete_object(?TAB, [{Tid, self()}, {self(), Tid}]).
 
-lookup(Tracker) ->
-    case gproc:lookup_pids({udp_tracker, Tracker}) of
-	[] ->
-	    new_tracker(Tracker),
-	    lookup(Tracker);
-	[Pid] ->
-	    Pid
-    end.
+reg_announce(Tracker, PL) ->
+    true = ets:insert(?TAB, [{{announce, Tracker}, self()},
+			     {{Tracker, PL}, self()},
+			     {self(), {Tracker, PL}}]).
+
+reg_connid(Tracker, ConnID) ->
+    ets:insert(?TAB, [{{conn_id, Tracker}, ConnID}]).
+
+msg(Tr, M) ->
+    gen_server:cast(?MODULE, {msg, Tr, M}).
 
 %%====================================================================
 init([]) ->
-    ets:new(?TAB, [named_table, public, {keypos, 1}]),
+    ets:new(?TAB, [named_table, public, {keypos, 1}, bag]),
     {ok, Port} = application:get_env(etorrent, udp_port),
     {ok, Socket} = gen_udp:open(Port, [binary, {active, true}, inet, inet6]),
     {ok, #state{ socket = Socket }}.
 
-handle_call({new_tracker, {IP, Port}}, _From, S) ->
-    %% Guard that multiple incoming messages request the same UDP tracker
-    case gproc:lookup_pids({udp_tracker, {IP, Port}}) of
-	[_] -> {reply, ok, S}; % It has already been created
-	[]  ->
-	    {ok, Pid} = etorrent_udp_pool_sup:add_udp_tracker({IP, Port}),
-	    erlang:monitor(process, Pid),
-	    gproc:await({n,l,{udp_tracker, {IP, Port}}}),
-	    {reply, ok, S}
+handle_call({announce, Tracker, PL}, From, S) ->
+    case ets:lookup(?TAB, {conn_id, Tracker}) of
+	[] ->
+	    spawn_announce(From, Tracker, PL),
+	    spawn_requestor(Tracker),
+	    {noreply, S};
+	[ConnId] ->
+	    {ok, Pid} = spawn_announce(From, Tracker, PL),
+	    etorrent_udp_tracker:connid(Pid, ConnId),
+	    {noreply, S}
     end;
 handle_call(Request, _From, State) ->
     ?WARN([unknown_call, Request]),
     Reply = ok,
     {reply, Reply, State}.
 
-handle_cast({msg, M}, S) ->
+
+handle_cast({need_requestor, Tracker, N}, S) ->
+    case ets:lookup(?TAB, {conn_id_req, Tracker}) of
+	[] ->
+	    spawn_requestor(Tracker, N);
+	[_|_] ->
+	    ignore
+    end,
+    {noreply, S};
+handle_cast({announce_cancel, Tracker, PL}, S) ->
+    case ets:lookup(?TAB, {Tracker, PL}) of
+	[] ->
+	    %% Already done
+	    {noreply, S};
+	[{_, Pid}] ->
+	    etorrent_udp_tracker:cancel(Pid),
+	    {noreply, S}
+    end;
+handle_cast({distribute_connid, Tracker, ConnID}, S) ->
+    Pids = ets:lookup(?TAB, {announce, Tracker}),
+    [etorrent_udp_tracker:connid(P, ConnID) || {_, P} <- Pids],
+    {noreply, S};
+handle_cast({msg, {IP, Port}, M}, S) ->
     Encoded = etorrent_udp_tracker_proto:encode(M),
-    gen_udp:send(S#state.socket, Encoded),
+    ok = gen_udp:send(S#state.socket, IP, Port, Encoded),
     {noreply, S};
 handle_cast(Msg, State) ->
     ?WARN([unknown_msg, Msg]),
     {noreply, State}.
 
-handle_info({'DOWN', _Ref, process, Pid, _Reason}, S) ->
-    ets:match_delete(?TAB, {'_', Pid}),
-    {noreply, S};
-handle_info({packet, Packet}, S) ->
-    %% If we get a packet in, send it on to the protocol decoder.
+handle_info({udp, _, _IP, _Port, Packet}, S) ->
+    ?INFO([got_packet]),
     etorrent_udp_tracker_proto:decode_dispatch(Packet),
+    {noreply, S};
+handle_info({remove_connid, Tracker, ConnID}, S) ->
+    ets:delete_object(?TAB, {{conn_id, Tracker}, ConnID}),
+    Pids = ets:lookup(?TAB, {announce, Tracker}),
+    [etorrent_udp_tracker:cancel_connid(P, ConnID) || {_, P} <- Pids],
+    {noreply, S};
+handle_info({'DOWN', _, _, Pid, _}, S) ->
+    Objects = ets:lookup(?TAB, Pid),
+    R = [case Obj of
+	     {Pid, Tid} when is_binary(Tid) ->
+		 [true] = delete_object(?TAB, [{Pid, Tid}, {Tid, Pid}]),
+		 none;
+	     {Pid, {conn_id_req, Tracker}} = Obj ->
+		 [true] = delete_object(?TAB, [Obj,
+					       {{conn_id_req, Tracker}, Pid}]),
+		 {announce, Tracker};
+	     {Pid, {Tracker, PL}} = Obj ->
+		 [true] = delete_object(?TAB, [Obj,
+					       {{Tracker, PL}, Pid},
+					       {{announce, Tracker}, Pid}]),
+		 {announce, Tracker}
+	 end || Obj <- Objects],
+    [case ets:lookup(?TAB, {announce, Tr}) of
+	 [] ->
+	     cancel_conn_id_req(Tr);
+	 [_|_] ->
+	     ignore
+     end || {announce, Tr} <- lists:usort(R)],
     {noreply, S};
 handle_info(Info, State) ->
     ?WARN([unknown_info, Info]),
@@ -107,8 +168,28 @@ code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 %%--------------------------------------------------------------------
-new_tracker(Tracker) ->
-    %% This call synchronizes udp tracker process creation, so multiple
-    %% simultaneous executions does not matter.
-    gen_server:call(?SERVER, {new_tracker, Tracker}).
+spawn_requestor(Tr) ->
+    spawn_requestor(Tr, 0).
+
+spawn_requestor(Tr, N) ->
+    {ok, Pid} = etorrent_udp_pool_sup:start_requestor(Tr, N),
+    erlang:monitor(process, Pid),
+    {ok, Pid}.
+
+spawn_announce(From, Tr, PL) ->
+    {ok, Pid} = etorrent_udp_pool_sup:start_announce(From, Tr, PL),
+    erlang:monitor(process, Pid),
+    {ok, Pid}.
+
+cancel_conn_id_req(Tr) ->
+    case ets:lookup(?TAB, {conn_id_req, Tr}) of
+	[] ->
+	    ignore;
+	[{_, Pid}] ->
+	    etorrent_udp_tracker:cancel(Pid)
+    end.
+
+delete_object(Tbl, Lst) ->
+    Res = [ets:delete_object(Tbl, Item) || Item <- Lst],
+    lists:usort(Res).
 

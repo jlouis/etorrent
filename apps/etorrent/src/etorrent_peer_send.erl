@@ -172,7 +172,7 @@ send_piece(Index, Offset, Len, S) ->
 send_message(Msg, S) ->
     send_message(Msg, S, 0).
 
-%% TODO: Think about the stop messages here. They are definitely wrong.
+%% @todo: Think about the stop messages here. They are definitely wrong.
 send_message(Msg, S, Timeout) ->
     case send(Msg, S) of
         {ok, NS} -> {noreply, NS, Timeout};
@@ -235,7 +235,7 @@ init([Socket, TorrentId, FastExtension]) ->
     erlang:send_after(?RATE_UPDATE, self(), rate_update),
     gproc:add_local_name({peer, Socket, sender}),
     FS = gproc:lookup_local_name({torrent, TorrentId, fs}),
-    {CPid, _} = gproc:await({n,l,{peer, Socket, control}}), % TODO: Change to a timeout later on, when gproc has been fixed
+    {CPid, _} = gproc:await({n,l,{peer, Socket, control}}), % @todo: Change to a timeout later on, when gproc has been fixed
     %% This may fail, but I want to check it
     false = CPid == undefined,
     {ok, #state{socket = Socket,

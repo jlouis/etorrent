@@ -33,7 +33,7 @@
 -type t_udp_packet() ::
 	  {conn_request, action(), pos_integer()}
 	| {conn_response, action(), pos_integer(), pos_integer()}
-	| {announce_request, pos_integer(), pos_integer(), binary(),
+	| {announce_request, pos_integer(), binary(), binary(),
 	                     binary(),
 	                     {pos_integer(), pos_integer(), pos_integer()},
 	                     event(), ip(), pos_integer(), pos_integer()}
@@ -53,33 +53,26 @@ new_tid() ->
     crypto:rand_bytes(4).
 
 %% Only allows encoding of the packet types we send to the server
--spec encode(t_udp_packet()) -> binary().
 encode(P) ->
+    ?INFO({packet, P}),
     case P of
 	{conn_request, Tid} ->
-	    <<4497486125440:64/big, ?CONNECT:32/big, Tid:32/big>>;
+	    <<4497486125440:64/big, ?CONNECT:32/big, Tid/binary>>;
 	{announce_request, ConnID, Tid, InfoHash, PeerId,
-	   {Down, Left, Up}, Event, IPAddr, Key, Port} ->
+	   {Down, Left, Up}, Event, Key, Port} ->
 	    true = is_binary(PeerId),
 	    true = is_binary(InfoHash),
 	    20 = byte_size(InfoHash),
 	    20 = byte_size(PeerId),
 	    EventN = encode_event(Event),
-	    IPN = encode_ip(IPAddr),
-	    <<ConnID:64/big, ?ANNOUNCE:32/big, Tid:32/big,
+	    <<ConnID:64/big, ?ANNOUNCE:32/big, Tid/binary,
 	      InfoHash/binary, PeerId/binary,
 	      Down:64/big, Left:64/big, Up:64/big,
 	      EventN:32/big,
-	      IPN/binary,
+	      0:32/big,
 	      Key:32/big,
 	      (-1):32/big,
-	      Port:16/big>>;
-	{scrape_request, ConnID, Tid, InfoHashes} ->
-	    BinHashes = iolist_to_binary(InfoHashes),
-	    <<ConnID:64/big,
-	      ?SCRAPE:32/big,
-	      Tid:32/big,
-	      BinHashes/binary>>
+	      Port:16/big>>
     end.
 
 decode_dispatch(Packet) ->
@@ -155,7 +148,7 @@ code_change(_OldVsn, State, _Extra) ->
 
 %%--------------------------------------------------------------------
 decode(Packet) ->
-    <<Ty:32/big, TID:32/big, Rest/binary>> = Packet,
+    <<Ty:32/big, TID:4/binary, Rest/binary>> = Packet,
     Action = decode_action(Ty),
     case Action of
 	    connect ->
@@ -177,9 +170,10 @@ decode(Packet) ->
 	end.
 
 dispatch({Tid, Msg}) ->
+    ?DEBUGP({Tid, Msg}),
     case etorrent_udp_tracker_mgr:lookup_transaction(Tid) of
 	{ok, Pid} ->
-	    etorrent_udp_tracker:msg(Pid, Msg);
+	    etorrent_udp_tracker:msg(Pid, {Tid, Msg});
 	none ->
 	    ?INFO({ignoring_udp_message, Msg}),
 	    ignore %% Too old a message to care about it
@@ -192,9 +186,6 @@ encode_event(Event) ->
 	started -> 2;
 	stopped -> 3
     end.
-
-encode_ip({B1, B2, B3, B4}) ->
-    <<B1:8, B2:8, B3:8, B4:8>>.
 
 decode_action(I) ->
     case I of
