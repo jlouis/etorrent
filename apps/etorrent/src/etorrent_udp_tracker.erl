@@ -113,16 +113,16 @@ handle_info(timeout, #state { tracker=Tracker,
 	    etorrent_udp_tracker_mgr:need_requestor(Tracker, N),
 	    {noreply, S#state { tid = none, try_count = 0 }};
 	K when is_integer(K) ->
-	    Tid = announce_request(Tracker, ConnID, S#state.properties, N+1),
-	    {noreply, S#state { tid = Tid, try_count=N+1}}
+	    Tid = announce_request(Tracker, ConnID, S#state.properties, inc(N)),
+	    {noreply, S#state { tid = Tid, try_count = inc(N)}}
     end;
 handle_info(timeout, #state { tracker=Tracker, try_count=N, ty = connid_gather, tid = OldTid } = S) ->
     case OldTid of
 	none -> ignore;
 	T when is_binary(T) -> etorrent_udp_tracker_mgr:unreg_tr_id(OldTid)
     end,
-    Tid = request_connid(Tracker, N+1),
-    {noreply, S#state { tid = Tid, try_count = N+1 }};
+    Tid = request_connid(Tracker, inc(N)),
+    {noreply, S#state { tid = Tid, try_count = inc(N) }};
 handle_info(Info, State) ->
     ?WARN([unknown, Info]),
     {noreply, State}.
@@ -163,32 +163,6 @@ expire_time(N) ->
 announce_reply(From, Peers, Status) ->
     gen_server:reply(From, {announce, Peers, Status}).
 
-%% @todo: It has been deemed it is easier to create a process per request and then
-%%  message among those processes to figure out what is happening in the system.
-%%  this solution seem much much much better than the current one where we have a large
-%%  gen_fsm keeping a lot of internal state.
-%%
-%%  The thing to plan is: What do we need to track in the ETS table, i.e., what mappings
-%%  are needed.
-%%
-%%  We need to have a mapping {announce, Tracker} -> Pid -- those waiting on a conn_id
-%%                    mapping {conn_id_req, Tracker} -> Pid -- currently living requestor
-%%                    mapping {conn_id, Tracker}  -> ConnId -- where the conn_id is
-%%                    mapping Tid -> Pid -- Who is the receiver of a transaction
-%%                    mapping {Tracker, PL} -> Pid -- Who is handling it (for cancel)
-%%                    mapping Pid -> {Tracker, PL}, Pid -> Tid?
-%%
-%%  What happens on 'DOWN'?
-%%     DOWN of conn_id_req...
-%%       Are there anybody waiting? Yes: Rerun. No. Accept.
-%%            cleanup: Tid mappings, {conn_id_req, Tracker} (Inverse mapping could be nice)
-%%     DOWN of announce...
-%%       Cleanup: Remove Tid mapping, remove {announce, Tracker} mapping -- if last, kill conn_id_req
-%%                Remove {Tracker, PL} as well
-%%     announce_cancel:
-%%       Use {Tracker, PL} to identify Pid. Remove him.
-%%     conn_id expire: Tell users
-%%     announce timeout, let it move again!
-%%     connid_gatherer dies
-%%     announcer dies
-
+inc(8) -> 8;
+inc(N) when is_integer(N), N < 8 ->
+    N+1.
