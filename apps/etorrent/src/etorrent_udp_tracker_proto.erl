@@ -54,7 +54,6 @@ new_tid() ->
 
 %% Only allows encoding of the packet types we send to the server
 encode(P) ->
-    ?INFO({packet, P}),
     case P of
 	{conn_request, Tid} ->
 	    <<4497486125440:64/big, ?CONNECT:32/big, Tid/binary>>;
@@ -170,7 +169,6 @@ decode(Packet) ->
 	end.
 
 dispatch({Tid, Msg}) ->
-    ?DEBUGP({Tid, Msg}),
     case etorrent_udp_tracker_mgr:lookup_transaction(Tid) of
 	{ok, Pid} ->
 	    etorrent_udp_tracker:msg(Pid, {Tid, Msg});

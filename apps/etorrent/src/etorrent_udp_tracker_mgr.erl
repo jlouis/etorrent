@@ -126,7 +126,6 @@ handle_cast(Msg, State) ->
     {noreply, State}.
 
 handle_info({udp, _, _IP, _Port, Packet}, S) ->
-    ?INFO([got_packet]),
     etorrent_udp_tracker_proto:decode_dispatch(Packet),
     {noreply, S};
 handle_info({remove_connid, Tracker, ConnID}, S) ->
