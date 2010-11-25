@@ -247,7 +247,7 @@ contact_tracker_udp(IP, Port, Event, #state { torrent_id = Id,
 		{down, Downloaded},
 		{left, Left},
 		{port, Port},
-		{key, 0}, %% TODO: Actually process the key correctly for private tracking
+		{key, 0}, %% @todo: Actually process the key correctly for private tracking
 		{event, Event}],
     ?INFO([announcing_via_udp]),
     case etorrent_udp_tracker_mgr:announce({IP, Port}, PropList, timer:seconds(60)) of
@@ -259,7 +259,7 @@ contact_tracker_udp(IP, Port, Event, #state { torrent_id = Id,
 	    error
     end.
 
-%% TODO: consider not passing around the state here!
+%% @todo: consider not passing around the state here!
 contact_tracker_http(Url, Event, S) ->
     RequestUrl = build_tracker_url(Url, Event, S),
     case http_gzip:request(RequestUrl) of

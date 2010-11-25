@@ -265,7 +265,7 @@ refresh(Range, Inactive, Active) ->
     do_refresh(Range, Inactive ++ Active, []).
 
 do_refresh(_, [], _) ->
-    ok; % TODO - perform a find_node_search here?
+    ok; % @todo - perform a find_node_search here?
 do_refresh(Range, [{ID, IP, Port}|T], IDs) ->
     Continue = case etorrent_dht_net:find_node(IP, Port, ID) of
         {error, timeout} ->

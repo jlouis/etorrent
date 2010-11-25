@@ -163,7 +163,7 @@ expire_time(N) ->
 announce_reply(From, Peers, Status) ->
     gen_server:reply(From, {announce, Peers, Status}).
 
-%% TODO: It has been deemed it is easier to create a process per request and then
+%% @todo: It has been deemed it is easier to create a process per request and then
 %%  message among those processes to figure out what is happening in the system.
 %%  this solution seem much much much better than the current one where we have a large
 %%  gen_fsm keeping a lot of internal state.

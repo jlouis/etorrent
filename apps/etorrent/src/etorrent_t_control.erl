@@ -100,7 +100,7 @@ initializing(timeout, S) ->
         false ->
             {next_state, initializing, S, ?CHECK_WAIT_TIME};
         true ->
-            %% TODO: Try to coalesce some of these operations together.
+            %% @todo: Try to coalesce some of these operations together.
 
             %% Read the torrent, check its contents for what we are missing
             etorrent_event_mgr:checking_torrent(S#state.id),

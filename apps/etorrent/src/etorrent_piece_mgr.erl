@@ -191,7 +191,7 @@ find_new_worker(Id, {PN, Nxt}) ->
         [_P] -> find_new_worker(Id, gb_sets:next(Nxt))
     end.
 
-%% (TODO: Somewhat expensive, but we start here) Chunked pieces
+%% (@todo: Somewhat expensive, but we start here) Chunked pieces
 -spec chunked_pieces(pos_integer()) -> [pos_integer()].
 chunked_pieces(Id) ->
     Objects = ets:lookup(?CHUNKED_TAB, Id),
