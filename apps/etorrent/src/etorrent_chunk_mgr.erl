@@ -398,7 +398,7 @@ pick_chunks(chunkify_piece, {Pid, Id, PieceSet, SoFar, Remaining, Res}) ->
 %% Handle the endgame for a torrent gracefully
 pick_chunks(endgame, {Id, PieceSet, N}) ->
     Remaining = find_remaining_chunks(Id, PieceSet),
-    Shuffled = etorrent_utils:shuffle(Remaining),
+    Shuffled = etorrent_utils:list_shuffle(Remaining),
     {endgame, lists:sublist(Shuffled, N)}.
 
 -spec pick_chunks_endgame(integer(), gb_set(), integer(), X) -> X | {endgame, [#chunk{}]}.

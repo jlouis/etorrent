@@ -382,7 +382,7 @@ build_tracker_url(Url, Event,
 %%% BEP 12 stuff
 %%% ----------------------------------------------------------------------
 shuffle_tiers(Tiers) ->
-    [etorrent_utils:shuffle(T) || T <- Tiers].
+    [etorrent_utils:list_shuffle(T) || T <- Tiers].
 
 splice(L) ->
     {[length(T) || T <- L], lists:concat(L)}.

@@ -11,11 +11,16 @@
 %%%-------------------------------------------------------------------
 -module(etorrent_utils).
 
+-ifdef(TEST).
+-include_lib("eqc/include/eqc.hrl").
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 %% API
 
 %% "stdlib-like" functions
--export([gsplit/2, queue_remove/2, queue_remove_check/2, group/1,
-	 shuffle/1, date_str/1]).
+-export([gsplit/2, queue_remove/2, group/1,
+	 list_shuffle/1, date_str/1]).
 
 %% "bittorrent-like" functions
 -export([decode_ips/1]).
@@ -38,24 +43,10 @@ gsplit(0, L1, Rest) ->
 gsplit(N, [H|T], Rest) ->
     gsplit(N-1, T, [H | Rest]).
 
-%% @doc Remove items from a queue
-%% If Item is present in queue(), remove the first
-%% occurence and return it as {ok, Q2}. If the item can not be found
-%% return false.
-%% Note: Inefficient implementation. Converts to/from lists.
-%% @end
--spec queue_remove_check(term(), queue()) -> queue().
-queue_remove_check(Item, Q) ->
-    QList = queue:to_list(Q),
-    true = lists:member(Item, QList),
-    List = lists:delete(Item, QList),
-    queue:from_list(List).
-
-%% @doc
-%% Remove first occurence of Item in queue() if present.
-%% Note: This function assumes the representation of queue is opaque
-%% and thus the function is quite ineffective. We can build a much
-%% much faster version if we create our own queues.
+%% @doc Remove first occurence of Item in queue() if present.
+%%   Note: This function assumes the representation of queue is opaque
+%%   and thus the function is quite ineffective. We can build a much
+%%   much faster version if we create our own queues.
 %% @end
 -spec queue_remove(term(), queue()) -> queue().
 queue_remove(Item, Q) ->
@@ -66,8 +57,8 @@ queue_remove(Item, Q) ->
 %% @doc Permute List1 randomly. Returns the permuted list.
 %%  Implementation error: The shuffle is not fair and should be corrected
 %% @end
--spec shuffle([term()]) -> [term()].
-shuffle(List) ->
+-spec list_shuffle([term()]) -> [term()].
+list_shuffle(List) ->
     merge_shuffle(List).
 
 -spec date_str({{integer(), integer(), integer()},
@@ -151,4 +142,34 @@ merge_shuffle(List) ->
     {A, B} = partition(List),
     merge(merge_shuffle(A), merge_shuffle(B)).
 
+-ifdef(EUNIT).
+-ifdef(EQC).
 
+prop_gsplit_split() ->
+    ?FORALL({N, Ls}, {nat(), list(int())},
+	    if
+		N >= length(Ls) ->
+		    {Ls, []} =:= gsplit(N, Ls);
+		true ->
+		    lists:split(N, Ls) =:= gsplit(N, Ls)
+	    end).
+
+prop_group_count() ->
+    ?FORALL(Ls, list(int()),
+	    begin
+		Sorted = lists:sort(Ls),
+		Grouped = group(Sorted),
+		lists:all(
+		  fun({Item, Count}) ->
+			  length([E || E <- Ls,
+				       E =:= Item]) == Count
+		  end,
+		  Grouped)
+	    end).
+
+eqc_test() ->
+    ?assert(eqc:quickcheck(prop_group_count())),
+    ?assert(eqc:quickcheck(prop_gsplit_split())).
+
+-endif.
+-endif.
