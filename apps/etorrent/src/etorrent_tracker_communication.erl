@@ -42,7 +42,7 @@
 
 -type tier() :: [string()].
 
--define(DEFAULT_REQUEST_TIMEOUT, 180).
+
 -define(DEFAULT_CONNECTION_TIMEOUT_INTERVAL, 1800).
 -define(DEFAULT_CONNECTION_TIMEOUT_MIN_INTERVAL, 60).
 -define(DEFAULT_TRACKER_OVERLOAD_INTERVAL, 300).
@@ -281,8 +281,8 @@ contact_tracker_http(Url, Event, S) ->
 -spec handle_tracker_response(bcode(), #state{}) -> #state{}.
 handle_tracker_response(BC, S) ->
     handle_tracker_response(BC,
-                            fetch_error_message(BC),
-                            fetch_warning_message(BC),
+                            etorrent_metainfo:fetch_error_message(BC),
+                            etorrent_metainfo:fetch_warning_message(BC),
                             S).
 
 handle_tracker_response(BC, {string, E}, _WM, S) ->
@@ -294,14 +294,14 @@ handle_tracker_response(BC, none, {string, W}, S) ->
 handle_tracker_response(BC, none, none, S) ->
     %% Add new peers
     etorrent_peer_mgr:add_peers(S#state.torrent_id,
-                                response_ips(BC)),
+                                etorrent_metainfo:response_ips(BC)),
     %% Update the state of the torrent
     ok = etorrent_torrent:statechange(S#state.torrent_id,
                                       [{tracker_report,
-                                       decode_integer("complete", BC),
-                                       decode_integer("incomplete", BC)}]),
+					etorrent_metainfo:decode_integer("complete", BC),
+					etorrent_metainfo:decode_integer("incomplete", BC)}]),
     %% Timeout
-    TrackerId = tracker_id(BC),
+    TrackerId = etorrent_metainfo:tracker_id(BC),
     handle_timeout(BC, S#state { trackerid = TrackerId }).
 
 handle_udp_response(Id, Peers, Status) ->
@@ -321,8 +321,8 @@ handle_timeout(S) ->
 -spec handle_timeout(bcode(), #state{}) ->
 			    #state{}.
 handle_timeout(BC, S) ->
-    Interval = response_interval(BC),
-    MinInterval = response_mininterval(BC),
+    Interval = etorrent_metainfo:response_interval(BC),
+    MinInterval = etorrent_metainfo:response_mininterval(BC),
     handle_timeout(Interval, MinInterval, S).
 
 handle_timeout(Interval, MinInterval, S) ->
@@ -377,51 +377,6 @@ build_tracker_url(Url, Event,
     lists:concat([Url, "?", etorrent_http:mk_header(EReq)]).
 
 %%% Tracker response lookup functions
-response_interval(BC) ->
-    {integer, R} = etorrent_bcoding:search_dict_default({string, "interval"},
-                                                  BC,
-                                                  {integer,
-                                                   ?DEFAULT_REQUEST_TIMEOUT}),
-    R.
-
-response_mininterval(BC) ->
-    X = etorrent_bcoding:search_dict_default({string, "min interval"},
-                                             BC,
-                                             none),
-    case X of
-        {integer, R} -> R;
-        none -> none
-    end.
-
-
-response_ips(BC) ->
-    case etorrent_bcoding:search_dict_default({string, "peers"}, BC, none) of
-        {list, Ips} ->
-            etorrent_utils:decode_ips(Ips);
-        {string, Ips} ->
-            etorrent_utils:decode_ips(list_to_binary(Ips));
-        none ->
-            []
-    end.
-
-decode_integer(Target, BC) ->
-    case etorrent_bcoding:search_dict_default({string, Target}, BC, none) of
-        {integer, N} ->
-            N;
-        none ->
-            0
-    end.
-
-tracker_id(BC) ->
-    etorrent_bcoding:search_dict_default({string, "trackerid"},
-                                BC,
-                                tracker_id_not_given).
-
-fetch_error_message(BC) ->
-    etorrent_bcoding:search_dict_default({string, "failure reason"}, BC, none).
-
-fetch_warning_message(BC) ->
-    etorrent_bcoding:search_dict_default({string, "warning message"}, BC, none).
 
 
 %%% BEP 12 stuff

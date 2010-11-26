@@ -18,8 +18,59 @@
          get_files/1, get_name/1,
          get_http_urls/1, get_udp_urls/1, get_dht_urls/1]).
 
+-export([response_interval/1, response_mininterval/1, response_ips/1,
+	 tracker_id/1, fetch_error_message/1, fetch_warning_message/1,
+	 decode_integer/2]).
 
+-define(DEFAULT_REQUEST_TIMEOUT, 180). %% This should be moved!
 %% ====================================================================
+
+response_interval(BC) ->
+    {integer, R} = etorrent_bcoding:search_dict_default({string, "interval"},
+                                                  BC,
+                                                  {integer,
+                                                   ?DEFAULT_REQUEST_TIMEOUT}),
+    R.
+
+response_mininterval(BC) ->
+    X = etorrent_bcoding:search_dict_default({string, "min interval"},
+                                             BC,
+                                             none),
+    case X of
+        {integer, R} -> R;
+        none -> none
+    end.
+
+
+response_ips(BC) ->
+    case etorrent_bcoding:search_dict_default({string, "peers"}, BC, none) of
+        {list, Ips} ->
+            etorrent_utils:decode_ips(Ips);
+        {string, Ips} ->
+            etorrent_utils:decode_ips(list_to_binary(Ips));
+        none ->
+            []
+    end.
+
+decode_integer(Target, BC) ->
+    case etorrent_bcoding:search_dict_default({string, Target}, BC, none) of
+        {integer, N} ->
+            N;
+        none ->
+            0
+    end.
+
+tracker_id(BC) ->
+    etorrent_bcoding:search_dict_default({string, "trackerid"},
+                                BC,
+                                tracker_id_not_given).
+
+fetch_error_message(BC) ->
+    etorrent_bcoding:search_dict_default({string, "failure reason"}, BC, none).
+
+fetch_warning_message(BC) ->
+    etorrent_bcoding:search_dict_default({string, "warning message"}, BC, none).
+
 
 % @doc Search a torrent file, return the piece length
 % @end
