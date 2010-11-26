@@ -4,15 +4,21 @@
 %%% License : See COPYING
 %%% Description : A selection of utilities used throughout the code
 %%%               Should probably be standard library in Erlang some of them
+%%%               If a function does not really fit into another module, they
+%%%               tend to go here if general enough.
 %%%
 %%% Created : 17 Apr 2007 by User Jlouis <jesper.louis.andersen@gmail.com>
 %%%-------------------------------------------------------------------
 -module(etorrent_utils).
 
 %% API
--export([queue_remove/2, queue_remove_check/2,
-	 group/1, build_encoded_form_rfc1738/1, shuffle/1, gsplit/2,
-         date_str/1]).
+
+%% "stdlib-like" functions
+-export([gsplit/2, queue_remove/2, queue_remove_check/2, group/1,
+	 shuffle/1, date_str/1]).
+
+%% "bittorrent-like" functions
+-export([decode_ips/1]).
 
 %%====================================================================
 
@@ -57,25 +63,8 @@ queue_remove(Item, Q) ->
     List = lists:delete(Item, QList),
     queue:from_list(List).
 
-%% @doc Convert the list into RFC1738 encoding (URL-encoding).
-%% @end
--spec build_encoded_form_rfc1738(string()) -> string().
-build_encoded_form_rfc1738(List) when is_list(List) ->
-    Unreserved = rfc_3986_unreserved_characters_set(),
-    F = fun (E) ->
-                case sets:is_element(E, Unreserved) of
-                    true ->
-                        E;
-                    false ->
-                        lists:concat(
-                          ["%", io_lib:format("~2.16.0B", [E])])
-                end
-        end,
-    lists:flatten([F(E) || E <- List]);
-build_encoded_form_rfc1738(Binary) when is_binary(Binary) ->
-    build_encoded_form_rfc1738(binary_to_list(Binary)).
-
 %% @doc Permute List1 randomly. Returns the permuted list.
+%%  Implementation error: The shuffle is not fair and should be corrected
 %% @end
 -spec shuffle([term()]) -> [term()].
 shuffle(List) ->
@@ -87,15 +76,39 @@ date_str({{Y, Mo, D}, {H, Mi, S}}) ->
     lists:flatten(io_lib:format("~w-~2.2.0w-~2.2.0w ~2.2.0w:"
                                 "~2.2.0w:~2.2.0w",
                                 [Y,Mo,D,H,Mi,S])).
+
+%% @doc Decode the IP response from the tracker
+%% @end
+decode_ips(D) ->
+    decode_ips(D, []).
+
+decode_ips([], Accum) ->
+    Accum;
+decode_ips([IPDict | Rest], Accum) ->
+    {string, IP} = etorrent_bcoding:search_dict({string, "ip"}, IPDict),
+    {integer, Port} = etorrent_bcoding:search_dict({string, "port"},
+                                                   IPDict),
+    decode_ips(Rest, [{IP, Port} | Accum]);
+decode_ips(<<>>, Accum) ->
+    Accum;
+decode_ips(<<B1:8, B2:8, B3:8, B4:8, Port:16/big, Rest/binary>>, Accum) ->
+    decode_ips(Rest, [{{B1, B2, B3, B4}, Port} | Accum]);
+decode_ips(_Odd, Accum) ->
+    Accum. % This case is to handle wrong tracker returns. Ignore spurious bytes.
+
+%% @doc Group a sorted list
+%%  if the input is a sorted list L, the output is [{E, C}] where E is an element
+%%  occurring in L and C is a number stating how many times E occurred.
+%% @end
+group([]) -> [];
+group([E | L]) ->
+    group(E, 1, L).
+
+group(E, K, []) -> [{E, K}];
+group(E, K, [E | R]) -> group(E, K+1, R);
+group(E, K, [F | R]) -> [{E, K} | group(F, 1, R)].
+
 %%====================================================================
-
-rfc_3986_unreserved_characters() ->
-    % jlouis: I deliberately killed ~ from the list as it seems the Mainline
-    %  client doesn't announce this.
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_./".
-
-rfc_3986_unreserved_characters_set() ->
-    sets:from_list(rfc_3986_unreserved_characters()).
 
 %%
 %% Flip a coin randomly
@@ -139,12 +152,3 @@ merge_shuffle(List) ->
     merge(merge_shuffle(A), merge_shuffle(B)).
 
 
-group([]) -> [];
-group([E | L]) ->
-    group(E, 1, L).
-
-group(E, K, []) -> [{E, K}];
-group(E, K, [F | R]) when E == F ->
-    group(E, K+1, R);
-group(E, K, [F | R]) ->
-    [{E, K} | group(F, 1, R)].

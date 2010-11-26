@@ -158,7 +158,7 @@ decode(Packet) ->
 		  Leechers:32/big,
 		  Seeders:32/big,
 		  IPs/binary>> = Rest,
-		{TID, {announce_response, decode_ips(IPs),
+		{TID, {announce_response, etorrent_utils:decode_ips(IPs),
 		       [{interval, Interval},
 			{leechers, Leechers},
 			{seeders, Seeders}]}};
@@ -198,7 +198,3 @@ decode_scrape(<<Seeders:32/big, Completed:32/big, Leechers:32/big, SCLL/binary>>
     [[{seeders, Seeders},
       {completed, Completed},
       {leechers, Leechers}] | decode_scrape(SCLL)].
-
-decode_ips(<<>>) -> [];
-decode_ips(<<B1:8, B2:8, B3:8, B4:8, P:16/big, Rest/binary>>) ->
-    [{{B1, B2, B3, B4}, P} | decode_ips(Rest)].

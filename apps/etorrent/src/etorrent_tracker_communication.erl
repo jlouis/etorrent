@@ -352,17 +352,6 @@ cancel_timers(S) ->
             NS#state { soft_timer = none }
     end.
 
-
-construct_headers([], HeaderLines) ->
-    lists:concat(lists:reverse(HeaderLines));
-construct_headers([{Key, Value}], HeaderLines) ->
-    Data = lists:concat([Key, "=", Value]),
-    construct_headers([], [Data | HeaderLines]);
-construct_headers([{Key, Value} | Rest], HeaderLines) ->
-    Data = lists:concat([Key, "=", Value, "&"]),
-    construct_headers(Rest, [Data | HeaderLines]).
-
-
 build_tracker_url(Url, Event,
 		  #state { torrent_id = Id,
 			   info_hash = InfoHash,
@@ -371,9 +360,9 @@ build_tracker_url(Url, Event,
                 etorrent_torrent:find(Id),
     {ok, Port} = application:get_env(etorrent, port),
     Request = [{"info_hash",
-                etorrent_utils:build_encoded_form_rfc1738(InfoHash)},
+                etorrent_http:build_encoded_form_rfc1738(InfoHash)},
                {"peer_id",
-                etorrent_utils:build_encoded_form_rfc1738(PeerId)},
+                etorrent_http:build_encoded_form_rfc1738(PeerId)},
                {"uploaded", Uploaded},
                {"downloaded", Downloaded},
                {"left", Left},
@@ -385,7 +374,7 @@ build_tracker_url(Url, Event,
                stopped -> [{"event", "stopped"} | Request];
                completed -> [{"event", "completed"} | Request]
            end,
-    lists:concat([Url, "?", construct_headers(EReq, [])]).
+    lists:concat([Url, "?", etorrent_http:mk_header(EReq)]).
 
 %%% Tracker response lookup functions
 response_interval(BC) ->
@@ -404,42 +393,16 @@ response_mininterval(BC) ->
         none -> none
     end.
 
-%%--------------------------------------------------------------------
-%% Function: decode_ips(IpData) -> [{IP, Port}]
-%% Description: Decode the IP response from the tracker
-%%--------------------------------------------------------------------
-decode_ips(D) ->
-    decode_ips(D, []).
-
-decode_ips([], Accum) ->
-    Accum;
-decode_ips([IPDict | Rest], Accum) ->
-    {string, IP} = etorrent_bcoding:search_dict({string, "ip"}, IPDict),
-    {integer, Port} = etorrent_bcoding:search_dict({string, "port"},
-                                                   IPDict),
-    decode_ips(Rest, [{IP, Port} | Accum]);
-decode_ips(<<>>, Accum) ->
-    Accum;
-decode_ips(<<B1:8, B2:8, B3:8, B4:8, Port:16/big, Rest/binary>>, Accum) ->
-    decode_ips(Rest, [{{B1, B2, B3, B4}, Port} | Accum]);
-decode_ips(_Odd, Accum) ->
-    Accum. % This case is to handle wrong tracker returns. Ignore spurious bytes.
-
 
 response_ips(BC) ->
     case etorrent_bcoding:search_dict_default({string, "peers"}, BC, none) of
         {list, Ips} ->
-            decode_ips(Ips);
+            etorrent_utils:decode_ips(Ips);
         {string, Ips} ->
-            decode_ips(list_to_binary(Ips));
+            etorrent_utils:decode_ips(list_to_binary(Ips));
         none ->
             []
     end.
-
-tracker_id(BC) ->
-    etorrent_bcoding:search_dict_default({string, "trackerid"},
-                                BC,
-                                tracker_id_not_given).
 
 decode_integer(Target, BC) ->
     case etorrent_bcoding:search_dict_default({string, Target}, BC, none) of
@@ -449,12 +412,20 @@ decode_integer(Target, BC) ->
             0
     end.
 
+tracker_id(BC) ->
+    etorrent_bcoding:search_dict_default({string, "trackerid"},
+                                BC,
+                                tracker_id_not_given).
+
 fetch_error_message(BC) ->
     etorrent_bcoding:search_dict_default({string, "failure reason"}, BC, none).
 
 fetch_warning_message(BC) ->
     etorrent_bcoding:search_dict_default({string, "warning message"}, BC, none).
 
+
+%%% BEP 12 stuff
+%%% ----------------------------------------------------------------------
 shuffle_tiers(Tiers) ->
     [etorrent_utils:shuffle(T) || T <- Tiers].
 
@@ -490,6 +461,8 @@ should_swap_for(Url1, Url2) ->
     {_S2, _, Host2, _, _, _} = etorrent_http_uri:parse(Url2),
     Host1 == Host2 andalso S1 == http.
 
+%%% Test
+%%% ----------------------------------------------------------------------
 -ifdef(EUNIT).
 
 tier() ->
