@@ -55,20 +55,20 @@ get_url(Torrent) ->
 	    [[binary_to_list(X) || X <- Tier] || Tier <- L]
     end.
 
--spec filter_tiers(bcode(), fun((string()) -> boolean())) -> [tier()].
 filter_tiers(Torrent, P) ->
-    [[binary_to_list(U) || U <- T, P(U)] || T <- get_url(Torrent)].
+    F = fun(Tier) ->
+		[binary_to_list(U) || U <- Tier, P(U)]
+	end,
+    Tiers = get_url(Torrent),
+    [F(T) || T <- Tiers].
 
--spec get_with_prefix(bcode(), string()) -> string().
 get_with_prefix(Torrent, P) ->
-    filter_tiers(Torrent, fun(U) -> lists:prefix(P, U) end).
+    filter_tiers(Torrent, fun(U) -> lists:prefix(binary_to_list(P),
+						 binary_to_list(U)) end).
 
--spec get_http_urls(bcode()) -> string().
--spec get_udp_urls(bcode()) -> string().
--spec get_dht_urls(bcode()) -> string().
-get_http_urls(Torrent) -> get_with_prefix(Torrent, "http://").
-get_udp_urls(Torrent)  -> get_with_prefix(Torrent, "udp://").
-get_dht_urls(Torrent)  -> get_with_prefix(Torrent, "dht://").
+get_http_urls(Torrent) -> get_with_prefix(Torrent, <<"http://">>).
+get_udp_urls(Torrent)  -> get_with_prefix(Torrent, <<"udp://">>).
+get_dht_urls(Torrent)  -> get_with_prefix(Torrent, <<"dht://">>).
 
 % @doc Return the infohash for a torrent
 % @end
