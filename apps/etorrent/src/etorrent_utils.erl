@@ -76,10 +76,9 @@ decode_ips(D) ->
 decode_ips([], Accum) ->
     Accum;
 decode_ips([IPDict | Rest], Accum) ->
-    {string, IP} = etorrent_bcoding:search_dict({string, "ip"}, IPDict),
-    {integer, Port} = etorrent_bcoding:search_dict({string, "port"},
-                                                   IPDict),
-    decode_ips(Rest, [{IP, Port} | Accum]);
+    IP = etorrent_bcoding:get_value("ip", IPDict),
+    Port = etorrent_bcoding:get_value("port", IPDict),
+    decode_ips(Rest, [{binary_to_list(IP), Port} | Accum]);
 decode_ips(<<>>, Accum) ->
     Accum;
 decode_ips(<<B1:8, B2:8, B3:8, B4:8, Port:16/big, Rest/binary>>, Accum) ->

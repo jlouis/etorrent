@@ -11,96 +11,86 @@
 -include("types.hrl").
 -include("log.hrl").
 
--export([encode/1, decode/1, search_dict/2, search_dict_default/3,
-        parse/1]).
+-ifdef(TEST).
+-include_lib("eqc/include/eqc.hrl").
+-include_lib("eunit/include/eunit.hrl").
+-endif.
 
+%% API
+% Encoding and parsing
+-export([encode/1, decode/1, parse_file/1]).
+
+% Retrieval
+-export([get_value/2, get_value/3, get_info_value/2, get_info_value/3]).
 
 %%====================================================================
 %% API
 %%====================================================================
-%%--------------------------------------------------------------------
-%% Function: encode/1
-%% Description: Encode an erlang term into a String
-%%--------------------------------------------------------------------
--spec encode(bcode()) -> string().
-encode(BString) ->
-    case BString of
-        {string, String} -> encode_string(String);
-        {integer, Integer} -> encode_integer(Integer);
-        {list, Items} -> encode_list([encode(I) || I <- Items]);
-        {dict, Items} -> encode_dict(encode_dict_items(Items))
-    end.
 
-%%--------------------------------------------------------------------
-%% Function: decode/1
-%% Description: Decode a string to an erlang term.
-%%--------------------------------------------------------------------
+%% @doc Encode a bcode structure to an iolist()
+%%  two special-cases empty_list and empty_dict designates the difference
+%%  between an empty list and dict for a client for which it matter. We don't
+%%  care and take both to be []
+%% @end
+-spec encode(bcode() | empty_list | empty_dict) -> iolist().
+encode(N) when is_integer(N) -> ["i", integer_to_list(N), "e"];
+encode(B) when is_binary(B) -> [integer_to_list(byte_size(B)), ":", B];
+encode(empty_dict) -> "de";
+encode([{B,_}|_] = D) when is_binary(B) ->
+    ["d", [[encode(K), encode(V)] || {K,V} <- D], "e"];
+encode(empty_list) -> "le";
+encode([]) -> exit(empty_list_in_bcode);
+encode(L) when is_list(L) -> ["l", [encode(I) || I <- L], "e"].
+
+%% @doc Decode a string or binary to a bcode() structure
+%% @end
 -spec decode(string() | binary()) -> bcode().
 decode(Bin) when is_binary(Bin) -> decode(binary_to_list(Bin));
 decode(String) when is_list(String) ->
     {Res, _Extra} = decode_b(String),
     Res.
 
-%%--------------------------------------------------------------------
-%% Function: search_dict/1
-%% Description: Search the dict for a key. Returns the value or crashes.
-%%--------------------------------------------------------------------
--spec search_dict(bstring(), bdict()) -> false | bcode().
-search_dict(Key, {dict, Elems}) ->
-    case lists:keysearch(Key, 1, Elems) of
-        {value, {_, V}} ->
-            V;
-        false ->
-            false
-    end.
+%% @doc Get a value from the dictionary
+%% @end
+get_value(Key, PL) when is_list(Key) ->
+    get_value(list_to_binary(Key), PL);
+get_value(Key, PL) when is_binary(Key) ->
+    proplists:get_value(Key, PL).
 
--spec search_dict_default(bstring(), bdict(), X) -> bcode() | X.
-search_dict_default(Key, Dict, Default) ->
-    case search_dict(Key, Dict) of
-        false ->
-            Default;
-        X ->
-            X
-    end.
+%% @doc Get a value from the dictionary returning Default on error
+%% @end
+get_value(Key, PL, Default) when is_list(Key) ->
+    get_value(list_to_binary(Key), PL, Default);
+get_value(Key, PL, Default) when is_binary(Key) ->
+    proplists:get_value(Key, PL, Default).
 
-%%--------------------------------------------------------------------
-%% Function: parse/1
-%% Description: Parse a file into a Torrent structure.
-%%--------------------------------------------------------------------
--spec parse(string()) -> bcode().
-parse(File) ->
-    {ok, IODev} = file:open(File, [read]),
-    Data = read_data(IODev),
-    ok = file:close(IODev),
-    decode(Data).
+
+%% @doc Get a value from the "info" part of the dictionary
+%% @end
+get_info_value(Key, PL) when is_list(Key) ->
+    get_info_value(list_to_binary(Key), PL);
+get_info_value(Key, PL) when is_binary(Key) ->
+    PL2 = proplists:get_value(<<"info">>, PL),
+    proplists:get_value(Key, PL2).
+
+%% @doc Get a value from the "info" part of the dictionary, returning Default on err.
+%%   the 'info' dictionary is expected to be present.
+%% @end
+get_info_value(Key, PL, Def) when is_list(Key) ->
+    get_info_value(list_to_binary(Key), PL, Def);
+get_info_value(Key, PL, Def) when is_binary(Key) ->
+    PL2 = proplists:get_value(<<"info">>, PL),
+    proplists:get_value(Key, PL2, Def).
+
+
+%% @doc Parse a file into a Torrent structure.
+%% @end
+-spec parse_file(string()) -> bcode().
+parse_file(File) ->
+    {ok, Bin} = file:read_file(File),
+    decode(Bin).
 
 %%====================================================================
-%% Internal functions
-%%====================================================================
-
-%% Encode a string.
-encode_string(Str) ->
-    L = length(Str),
-    lists:concat([L, ':', Str]).
-
-encode_integer(Int) ->
-    lists:concat(['i', Int, 'e']).
-
-encode_list(Items) ->
-    lists:concat(["l", lists:concat(Items), "e"]).
-
-encode_dict(Items) ->
-    lists:concat(["d", lists:concat(Items), "e"]).
-
-encode_dict_items([]) ->
-    [];
-encode_dict_items([{I1, I2} | Rest]) ->
-    I = encode(I1),
-    J = encode(I2),
-    [I, J | encode_dict_items(Rest)].
-
-decode_b([]) ->
-    empty_string;
 decode_b([H | Rest]) ->
     case H of
         $i ->
@@ -125,16 +115,16 @@ attempt_string_decode(String) ->
     {ParsedNumber, _} = string:to_integer(Number),
     Rest1 = tl(Data),
     {StrData, Rest} = lists:split(ParsedNumber, Rest1),
-    {{string, StrData}, Rest}.
+    {list_to_binary(StrData), Rest}.
 
 decode_integer(String) ->
     {IntegerPart, RestPart} = lists:splitwith(charPred($e), String),
     {Int, _} = string:to_integer(IntegerPart),
-    {{integer, Int}, tl(RestPart)}.
+    {Int, tl(RestPart)}.
 
 decode_list(String) ->
     {ItemTree, Rest} = decode_list_items(String, []),
-    {{list, ItemTree}, Rest}.
+    {ItemTree, Rest}.
 
 decode_list_items([], Accum) -> {lists:reverse(Accum), []};
 decode_list_items(Items, Accum) ->
@@ -146,25 +136,41 @@ decode_list_items(Items, Accum) ->
 
 decode_dict(String) ->
     {Items, Rest} = decode_dict_items(String, []),
-    {{dict, lists:reverse(Items)}, Rest}.
+    {lists:reverse(Items), Rest}.
 
 decode_dict_items([], Accum) ->
     {Accum, []};
 decode_dict_items(String, Accum) ->
     case decode_b(String) of
-        {end_of_data, Rest} ->
-            {Accum, Rest};
+        {end_of_data, Rest} -> {Accum, Rest};
         {Key, Rest1} -> {Value, Rest2} = decode_b(Rest1),
                         decode_dict_items(Rest2, [{Key, Value} | Accum])
     end.
 
-read_data(IODev) ->
-    eat_lines(IODev, []).
+-ifdef(EUNIT).
+-ifdef(EQC).
 
-eat_lines(IODev, Accum) ->
-    case io:get_chars(IODev, ">", 8192) of
-        eof ->
-            lists:concat(lists:reverse(Accum));
-        String ->
-            eat_lines(IODev, [String | Accum])
-    end.
+dict() ->
+    non_empty(list([{binary(), ?LAZY(bcode())}])).
+
+bcode() ->
+    ?SIZED(Sz,
+	   oneof([int(),
+		  non_empty(binary()),
+		  resize(Sz div 4, non_empty(list(bcode()))),
+		  resize(Sz div 4, dict())])).
+
+prop_inv() ->
+    ?FORALL(BC, bcode(),
+	    begin
+		Enc = iolist_to_binary(encode(BC)),
+		Dec = decode(Enc),
+		encode(BC) =:= encode(Dec)
+	    end).
+
+eqc_test() ->
+    ?assert(eqc:quickcheck(prop_inv())).
+
+
+-endif.
+-endif.
