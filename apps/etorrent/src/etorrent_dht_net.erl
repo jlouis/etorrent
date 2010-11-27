@@ -284,7 +284,7 @@ do_get_peers(IP, Port, InfoHash) ->
 			INodes = compact_to_node_infos(list_to_binary(LCompact)),
 			{[], INodes};
 		    PeerStrings when is_list(PeerStrings) ->
-			BinPeers = [list_to_binary(S) || {string,S} <- PeerStrings],
+			BinPeers = [list_to_binary(S) || S <- PeerStrings],
 			PeerLists = [compact_to_peers(N) || N <- BinPeers],
 			IPeers = lists:flatten(PeerLists),
 			{IPeers, []}
@@ -328,36 +328,25 @@ cancel_timeout(TimeoutRef) ->
     erlang:cancel_timer(TimeoutRef).
 
 handle_call({ping, IP, Port}, From, State) ->
-    Self = etorrent_dht_state:node_id(),
-    LSelf = etorrent_dht:list_id(Self),
-    Args = [{{string, "id"}, {string, LSelf}}],
+    Args = common_values(),
     do_send_query('ping', Args, IP, Port, From, State);
 
 handle_call({find_node, IP, Port, Target}, From, State) ->
-    Self = etorrent_dht_state:node_id(),
-    LSelf = etorrent_dht:list_id(Self),
     LTarget = etorrent_dht:list_id(Target),
-    Args = [{{string, "id"}, {string, LSelf}},
-            {{string, "target"}, {string, LTarget}}],
+    Args = [{<<"target">>, list_to_binary(LTarget)} | common_values()],
     do_send_query('find_node', Args, IP, Port, From, State);
 
 handle_call({get_peers, IP, Port, InfoHash}, From, State) ->
-    Self = etorrent_dht_state:node_id(),
-    LSelf = etorrent_dht:list_id(Self),
     LHash = etorrent_dht:list_id(InfoHash),
-    Args = [{{string, "id"}, {string, LSelf}},
-            {{string, "info_hash"}, {string, LHash}}],
+    Args = [{{string, "info_hash"}, {string, LHash}} | common_values()],
     do_send_query('get_peers', Args, IP, Port, From, State);
 
 handle_call({announce, IP, Port, InfoHash, Token, BTPort}, From, State) ->
-    Self = etorrent_dht_state:node_id(),
-    LSelf = etorrent_dht:list_id(Self),
     LHash = etorrent_dht:list_id(InfoHash),
     LToken = binary_to_list(Token),
-    Args = [{{string, "id"}, {string, LSelf}},
-            {{string, "info_hash"}, {string, LHash}},
-            {{string, "port"}, {integer, BTPort}},
-            {{string, "token"}, {string, LToken}}],
+    Args = [{<<"info_hash">>, LHash},
+	    {<<"port">>, BTPort},
+            {<<"token">>, LToken} | common_values()],
     do_send_query('announce', Args, IP, Port, From, State);
 
 handle_call({return, IP, Port, ID, Values}, _From, State) ->
@@ -498,8 +487,14 @@ terminate(_, State) ->
 code_change(_, _, State) ->
     {ok, State}.
 
+%% Default args. Returns a proplist of default args
+common_values() ->
+    Self = etorrent_dht_state:node_id(),
+    common_values(Self).
+
 common_values(Self) ->
-    [{{string, "id"}, {string, etorrent_dht:list_id(Self)}}].
+    LSelf = etorrent_dht:list_id(Self),
+    [{<<"id">>, list_to_binary(LSelf)}].
 
 -spec handle_query(dht_qtype(), bdict(), ipaddr(),
                   portnum(), transaction(), nodeid(), _) -> 'ok'.
@@ -577,11 +572,7 @@ tval(Client, TimeoutRef) ->
     {Client, TimeoutRef}.
 
 get_string(What, PL) ->
-    case etorrent_bcoding:get_value(What, PL) of
-	undefined ->
-	    undefined;
-	B when is_binary(B) -> binary_to_list(B)
-    end.
+    etorrent_bcoding:get_string_value(What, PL).
 
 %
 % Generate a random token value. A token value is used to filter out bogus announce

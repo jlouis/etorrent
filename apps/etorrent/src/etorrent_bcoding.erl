@@ -21,7 +21,9 @@
 -export([encode/1, decode/1, parse_file/1]).
 
 % Retrieval
--export([get_value/2, get_value/3, get_info_value/2, get_info_value/3]).
+-export([get_value/2, get_value/3, get_info_value/2, get_info_value/3,
+	 get_binary_value/2, get_binary_value/3,
+	 get_string_value/2, get_string_value/3]).
 
 %%====================================================================
 %% API
@@ -82,6 +84,23 @@ get_info_value(Key, PL, Def) when is_binary(Key) ->
     PL2 = proplists:get_value(<<"info">>, PL),
     proplists:get_value(Key, PL2, Def).
 
+get_binary_value(Key, PL) ->
+    V = get_value(Key, PL),
+    true = is_binary(V),
+    V.
+
+get_binary_value(Key, PL, Default) ->
+    case get_value(Key, PL) of
+	undefined -> Default;
+	B when is_binary(B) -> B
+    end.
+
+get_string_value(Key, PL) -> binary_to_list(get_binary_value(Key, PL)).
+get_string_value(Key, PL, Default) ->
+    case get_value(Key, PL) of
+	undefined -> Default;
+	V when is_binary(V) -> binary_to_list(V)
+    end.
 
 %% @doc Parse a file into a Torrent structure.
 %% @end

@@ -33,15 +33,12 @@
                 %% soft timer may be overridden if we want to change state.
                 soft_timer = none,
                 hard_timer = none,
-                url = none,
+                url = [[]] :: [tier()],
                 info_hash = none,
                 peer_id = none,
                 trackerid = none,
                 control_pid = none,
                 torrent_id = none}).
-
--type tier() :: [string()].
-
 
 -define(DEFAULT_CONNECTION_TIMEOUT_INTERVAL, 1800).
 -define(DEFAULT_CONNECTION_TIMEOUT_MIN_INTERVAL, 60).
@@ -55,7 +52,7 @@
 %% Description: Starts the server
 %%--------------------------------------------------------------------
 -spec start_link(pid(), [tier()], binary(), integer(), integer()) ->
-    ignore | {ok, pid()} | {error, any()}.
+    ignore | {ok, pid()} | {error, term()}.
 start_link(ControlPid, UrlTiers, InfoHash, PeerId, TorrentId) ->
     gen_server:start_link(?MODULE,
                           [ControlPid,
@@ -169,14 +166,9 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 %%% Internal functions
 %%--------------------------------------------------------------------
-
--spec contact_tracker(#state{}) ->
-			     #state{}.
 contact_tracker(S) ->
     contact_tracker(none, S).
 
--spec contact_tracker(tracker_event() | none, #state{}) ->
-			     #state{}.
 contact_tracker(Event, #state { url = Tiers } = S) ->
     case contact_tracker(Tiers, Event, S) of
 	{none, NS} ->
@@ -185,8 +177,6 @@ contact_tracker(Event, #state { url = Tiers } = S) ->
 	    NS
     end.
 
--spec contact_tracker([[string()]], term(), #state{}) ->
-			      {none, #state{}} | {ok, #state{}}.
 contact_tracker(Tiers, Event, S) ->
     contact_tracker(Tiers, Event, S, []).
 
@@ -200,7 +190,6 @@ contact_tracker([Tier | NextTier], Event, S, Acc) ->
 	    contact_tracker(NextTier, Event, S, [Tier | Acc])
     end.
 
--spec contact_tracker_tier([string()], #state{}, term) -> {ok, #state{}} | none.
 contact_tracker_tier(Tier, S, Event) ->
     contact_tracker_tier(Tier, S, Event, []).
 
@@ -219,7 +208,6 @@ contact_tracker_tier([Url | Next], Event, S, Acc) ->
 	    contact_tracker_tier(Next, Event, S, [Url | Acc])
     end.
 
--spec identify_url_type(string()) -> http | {udp, string(), integer()}.
 identify_url_type(Url) ->
     case etorrent_http_uri:parse(Url) of
 	{S1, _UserInfo, Host, Port, _Path, _Query} ->
@@ -278,19 +266,12 @@ contact_tracker_http(Url, Event, S) ->
 	    error
     end.
 
--spec handle_tracker_response(bcode(), #state{}) -> #state{}.
 handle_tracker_response(BC, S) ->
-    handle_tracker_response(BC,
-			    get_string("failure reason", BC),
-			    get_string("warning message", BC),
-                            S).
-
-get_string(What, BC) ->
-    case etorrent_bcoding:get_value(What, BC) of
-	undefined -> none;
-	B when is_binary(B) -> binary_to_list(B)
-    end.
-
+    handle_tracker_response(
+      BC,
+      etorrent_bcoding:get_string_value("failure reason", BC, none),
+      etorrent_bcoding:get_string_value("warning message", BC, none),
+      S).
 
 handle_tracker_response(BC, E, _WM, S) when is_binary(E) ->
     etorrent_t_control:tracker_error_report(S#state.control_pid, E),
@@ -320,14 +301,11 @@ handle_udp_response(Id, Peers, Status) ->
 				   proplists:get_value(leechers, Status, 0)}]),
     {proplists:get_value(interval, Status), ?DEFAULT_CONNECTION_TIMEOUT_MIN_INTERVAL}.
 
--spec handle_timeout(#state{}) -> #state{}.
 handle_timeout(S) ->
     Interval = ?DEFAULT_CONNECTION_TIMEOUT_INTERVAL,
     MinInterval = ?DEFAULT_CONNECTION_TIMEOUT_MIN_INTERVAL,
     handle_timeout(Interval, MinInterval, S).
 
--spec handle_timeout(bcode(), #state{}) ->
-			    #state{}.
 handle_timeout(BC, S) ->
     Interval = etorrent_bcoding:get_value("interval", BC, ?DEFAULT_REQUEST_TIMEOUT),
     MinInterval = etorrent_bcoding:get_value("min interval", BC, none),
