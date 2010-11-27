@@ -40,9 +40,6 @@
                 control_pid = none,
                 torrent_id = none}).
 
--type tier() :: [string()].
-
-
 -define(DEFAULT_CONNECTION_TIMEOUT_INTERVAL, 1800).
 -define(DEFAULT_CONNECTION_TIMEOUT_MIN_INTERVAL, 60).
 -define(DEFAULT_TRACKER_OVERLOAD_INTERVAL, 300).

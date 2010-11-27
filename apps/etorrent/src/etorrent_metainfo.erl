@@ -46,7 +46,6 @@ get_pieces(Torrent) ->
 
 % @doc Return the URL of a torrent
 % @end
--type tier() :: [string()].
 -spec get_url(bcode()) -> [tier()].
 get_url(Torrent) ->
     case etorrent_bcoding:get_value("announce-list", Torrent, none) of
