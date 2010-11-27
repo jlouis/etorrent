@@ -250,7 +250,7 @@ contact_tracker_udp(IP, Port, Event, #state { torrent_id = Id,
 %% @todo: consider not passing around the state here!
 contact_tracker_http(Url, Event, S) ->
     RequestUrl = build_tracker_url(Url, Event, S),
-    case http_gzip:request(RequestUrl) of
+    case etorrent_http:request(RequestUrl) of
         {ok, {{_, 200, _}, _, Body}} ->
 	    {ok,
 	     handle_tracker_response(etorrent_bcoding:decode(Body), S)};
