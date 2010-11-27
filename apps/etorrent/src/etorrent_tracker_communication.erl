@@ -277,17 +277,11 @@ contact_tracker_http(Url, Event, S) ->
 
 -spec handle_tracker_response(bcode(), #state{}) -> #state{}.
 handle_tracker_response(BC, S) ->
-    handle_tracker_response(BC,
-			    get_string("failure reason", BC),
-			    get_string("warning message", BC),
-                            S).
-
-get_string(What, BC) ->
-    case etorrent_bcoding:get_value(What, BC) of
-	undefined -> none;
-	B when is_binary(B) -> binary_to_list(B)
-    end.
-
+    handle_tracker_response(
+      BC,
+      etorrent_bcoding:get_string_value("failure reason", BC, none),
+      etorrent_bcoding:get_string_value("warning message", BC, none),
+      S).
 
 handle_tracker_response(BC, E, _WM, S) when is_binary(E) ->
     etorrent_t_control:tracker_error_report(S#state.control_pid, E),

@@ -342,7 +342,7 @@ handle_call({get_peers, IP, Port, InfoHash}, From, State) ->
     do_send_query('get_peers', Args, IP, Port, From, State);
 
 handle_call({announce, IP, Port, InfoHash, Token, BTPort}, From, State) ->
-    LHash = binary_to_list(etorrent_dht:list_id(InfoHash)),
+    LHash = etorrent_dht:list_id(InfoHash),
     LToken = binary_to_list(Token),
     Args = [{<<"info_hash">>, LHash},
 	    {<<"port">>, BTPort},
@@ -572,11 +572,7 @@ tval(Client, TimeoutRef) ->
     {Client, TimeoutRef}.
 
 get_string(What, PL) ->
-    case etorrent_bcoding:get_value(What, PL) of
-	undefined ->
-	    undefined;
-	B when is_binary(B) -> binary_to_list(B)
-    end.
+    etorrent_bcoding:get_string_value(What, PL).
 
 %
 % Generate a random token value. A token value is used to filter out bogus announce
