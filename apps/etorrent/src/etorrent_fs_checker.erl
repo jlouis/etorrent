@@ -69,7 +69,7 @@ initialize_dictionary(Id, Path) ->
 load_torrent(Path) ->
     {ok, Workdir} = application:get_env(etorrent, dir),
     P = filename:join([Workdir, Path]),
-    Torrent = etorrent_bcoding:parse(P),
+    Torrent = etorrent_bcoding:parse_file(P),
     Files = etorrent_metainfo:get_files(Torrent),
     Name = etorrent_metainfo:get_name(Torrent),
     InfoHash = etorrent_metainfo:get_infohash(Torrent),

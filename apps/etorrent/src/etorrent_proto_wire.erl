@@ -396,9 +396,10 @@ extended_msg_contents() ->
     extended_msg_contents(Port, ?AGENT_TRACKER_STRING, 250).
 
 extended_msg_contents(Port, ClientVersion, ReqQ) ->
-    iolist_to_binary(etorrent_bcoding:encode(
-      {dict, [{{string, "p"}, {integer, Port}},
-	      {{string, "v"}, {string, ClientVersion}},
-	      {{string, "reqq"}, {integer, ReqQ}},
-	      {{string, "m"}, {dict, []}}]})).
+    iolist_to_binary(
+      etorrent_bcoding:encode(
+	[{<<"p">>, Port},
+	 {<<"v">>, list_to_binary(ClientVersion)},
+	 {<<"reqq">>, ReqQ},
+	 {<<"m">>, empty_dict}])).
 

@@ -1,15 +1,16 @@
 %%%-------------------------------------------------------------------
 %%% File    : http_gzip.erl
 %%% Author  : Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
-%%% Description : Wrapper around http to honor gzip.
+%%% Description : Etorrents http helpers
 %%%
 %%% Created :  7 Aug 2007 by Jesper Louis Andersen <>
 %%%-------------------------------------------------------------------
--module(http_gzip).
+-module(etorrent_http).
 
+-include("log.hrl").
 -include("etorrent_version.hrl").
 %% API
--export([request/1]).
+-export([request/1, build_encoded_form_rfc1738/1, mk_header/1]).
 
 %% ====================================================================
 
@@ -40,7 +41,35 @@ request(URL) ->
             E
     end.
 
+%% @doc Turn a proplist into a header string
+%% @end
+mk_header(PropList) ->
+    Items = [string:join([Key, header_conv(Value)], "=") ||
+		{Key, Value} <- PropList],
+    string:join(Items, "&").
+
+%% @doc Convert the list into RFC1738 encoding (URL-encoding).
+%% @end
+-spec build_encoded_form_rfc1738(string()) -> string().
+build_encoded_form_rfc1738(List) when is_list(List) ->
+    Unreserved = rfc_3986_unreserved_characters_set(),
+    F = fun (E) ->
+                case sets:is_element(E, Unreserved) of
+                    true ->
+                        E;
+                    false ->
+                        lists:concat(
+                          ["%", io_lib:format("~2.16.0B", [E])])
+                end
+        end,
+    lists:flatten([F(E) || E <- List]);
+build_encoded_form_rfc1738(Binary) when is_binary(Binary) ->
+    build_encoded_form_rfc1738(binary_to_list(Binary)).
+
 %% ====================================================================
+
+header_conv(N) when is_integer(N) -> integer_to_list(N);
+header_conv(Str) when is_list(Str) -> Str.
 
 % Variant that decodes the content headers, handling compression.
 decode_content_encoding(Headers) ->
@@ -77,3 +106,12 @@ find_http_module() ->
 	_ ->
 	    http
     end.
+
+rfc_3986_unreserved_characters() ->
+    % jlouis: I deliberately killed ~ from the list as it seems the Mainline
+    %  client doesn't announce this.
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_./".
+
+rfc_3986_unreserved_characters_set() ->
+    sets:from_list(rfc_3986_unreserved_characters()).
+
