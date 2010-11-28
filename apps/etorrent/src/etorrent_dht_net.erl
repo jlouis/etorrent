@@ -245,10 +245,17 @@ dht_iter_search(SearchType, Target, Width, Retry, Retries,
     % Check if the closest node in the work queue is closer
     % to the target than the closest responsive node that was
     % found in this iteration.
-    {MinAliveDist, _, _, _} = gb_sets:smallest(NewAlive),
+    MinAliveDist = case gb_sets:size(NewAlive) of
+        0 ->
+            infinity;
+        _ ->
+            {IMinAliveDist, _, _, _} = gb_sets:smallest(NewAlive),
+            IMinAliveDist
+    end,
+
     MinQueueDist = case NewNext of
         [] ->
-            2 * MinAliveDist;
+            infinity;
         Other ->
             {MinDist, _, _, _} = lists:min(Other),
             MinDist
@@ -258,7 +265,8 @@ dht_iter_search(SearchType, Target, Width, Retry, Retries,
     % to the infohash than the closest responsive node.
     NewRetries = if
         (MinQueueDist <  MinAliveDist) -> 0;
-        (MinQueueDist >= MinAliveDist) -> Retries + 1 end,
+        (MinQueueDist >= MinAliveDist) -> Retries + 1
+    end,
 
     % Accumulate the trackers and peers found if this is a get_peers search.
     NewWithPeers = case SearchType of
@@ -483,43 +491,36 @@ handle_query('ping', _, IP, Port, MsgID, Self, _Tokens) ->
     return(IP, Port, MsgID, common_values(Self));
 
 handle_query('find_node', Params, IP, Port, MsgID, Self, _Tokens) ->
-    LTarget = get_string("target", Params),
-    Target = etorrent_dht:integer_id(LTarget),
+    Target = etorrent_dht:integer_id(get_value(<<"target">>, Params)),
     CloseNodes = etorrent_dht_state:closest_to(Target),
     BinCompact = node_infos_to_compact(CloseNodes),
-    LCompact = binary_to_list(BinCompact),
-    Values = [{{string, "nodes"}, {string, LCompact}}],
+    Values = [{<<"nodes">>, BinCompact}],
     return(IP, Port, MsgID, common_values(Self) ++ Values);
 
 handle_query('get_peers', Params, IP, Port, MsgID, Self, Tokens) ->
-    LHash = get_string("info_hash", Params),
-    InfoHash = etorrent_dht:integer_id(LHash),
+    InfoHash = etorrent_dht:integer_id(get_value(<<"info_hash">>, Params)),
     Values = case etorrent_dht_tracker:get_peers(InfoHash) of
         [] ->
             Nodes = etorrent_dht_state:closest_to(InfoHash),
             BinCompact = node_infos_to_compact(Nodes),
-            LCompact = binary_to_list(BinCompact),
-            [{{string, "nodes"}, {string, LCompact}}];
+            [{<<"nodes">>, BinCompact}];
         Peers ->
-            PeerBins = [peers_to_compact([P]) || P <- Peers],
-            PeerList = {list, [{string, binary_to_list(P)} || P <- PeerBins]},
-            [{{string, "values"}, PeerList}]
+            PeerList = [peers_to_compact([P]) || P <- Peers],
+            [{<<"values">>, PeerList}]
     end,
-    LToken = binary_to_list(token_value(IP, Port, Tokens)),
-    TokenVals = [{{string, "token"}, {string, LToken}}],
-    return(IP, Port, MsgID, common_values(Self) ++ TokenVals ++ Values);
+    Token = [{<<"token">>, token_value(IP, Port, Tokens)}],
+    return(IP, Port, MsgID, common_values(Self) ++ Token ++ Values);
 
 handle_query('announce', Params, IP, Port, MsgID, Self, Tokens) ->
-    LHash = get_string("info_hash", Params),
-    InfoHash = etorrent_dht:integer_id(LHash),
-    BTPort = get_value("port", Params),
-    LToken = get_string("token", Params),
-    Token = list_to_binary(LToken),
+    InfoHash = etorrent_dht:integer_id(get_value(<<"info_hash">>, Params)),
+    BTPort = get_value(<<"port">>,   Params),
+    Token = get_string(<<"token">>, Params),
     _ = case is_valid_token(Token, IP, Port, Tokens) of
         true ->
             etorrent_dht_tracker:announce(InfoHash, IP, BTPort);
         false ->
-            error_logger:error_msg("Invalid token from ~w:~w ~w", [IP, Port, Token])
+            FmtArgs = [IP, Port, Token],
+            error_logger:error_msg("Invalid token from ~w:~w ~w", FmtArgs)
     end,
     return(IP, Port, MsgID, common_values(Self)).
 
