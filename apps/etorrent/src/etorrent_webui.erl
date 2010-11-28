@@ -41,7 +41,7 @@ list_rates() ->
 
 table_header() ->
     "<table id=\"torrent_table\"><thead>" ++
-    "<tr><th>Id</th><th>FName</th><th>Id</th><th>Total (MiB)</th><th>Left (MiB)</th><th>Uploaded (MiB)</th><th>Downloaded (MiB)</th>" ++
+    "<tr><th>Id</th><th>FName</th><th>Total (MiB)</th><th>Left (MiB)</th><th>Uploaded (MiB)</th><th>Downloaded (MiB)</th>" ++
     "<th>L/S</th><th>Complete</th><th>Rate</th><th>Boxplot</th></tr></thead><tbody>".
 
 list_torrents() ->
