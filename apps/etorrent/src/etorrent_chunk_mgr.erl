@@ -305,7 +305,7 @@ check_piece(FSPid, Id, Idx) ->
 %%   Given a PieceNumber, cut it up into chunks and add those
 %%   to the chunk table.
 %% @end
--spec chunkify_piece(integer(), etorrent:piece_mgr_piece()) -> ok. %% TODO: term() is #piece{}, opaque export it
+-spec chunkify_piece(integer(), etorrent:piece_mgr_piece()) -> ok. %% @todo: term() is #piece{}, opaque export it
 chunkify_piece(Id, P) ->
     {Id, Idx, Chunks} = etorrent_piece_mgr:chunkify_piece(Id, P),
     ets:insert(?TAB, [#chunk { idt = {Id, Idx, not_fetched}, chunk = CH }
@@ -393,7 +393,7 @@ pick_chunks(chunkify_piece, {Pid, Id, PieceSet, SoFar, Remaining, Res}) ->
         none_eligible ->
             {ok, SoFar}
     end;
-%% TODO: Go through from here and check if it can be parallelized!
+%% @todo: Go through from here and check if it can be parallelized!
 %%
 %% Handle the endgame for a torrent gracefully
 pick_chunks(endgame, {Id, PieceSet, N}) ->
