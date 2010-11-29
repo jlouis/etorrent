@@ -25,9 +25,10 @@ start_link(Id) -> supervisor:start_link(?MODULE, [Id]).
 
 % @doc Add a new process for maintaining a file.
 % @end
--spec add_file_process(pid(), integer(), string()) -> {ok, pid()} | {error, term()} | {ok, pid(), term()}.
-add_file_process(Pid, TorrentId, Path) ->
-    supervisor:start_child(Pid, [Path, TorrentId]).
+-spec add_file_process(pid(), integer(), string(), pid()) ->
+          {ok, pid()} | {error, term()} | {ok, pid(), term()}.
+add_file_process(Pid, TorrentId, Path, ParentPid) ->
+    supervisor:start_child(Pid, [Path, TorrentId, ParentPid]).
 
 %% ====================================================================
 init([Id]) ->

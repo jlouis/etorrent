@@ -127,7 +127,6 @@ handle_info(Info, State) ->
     {noreply, State}.
 
 terminate(_Reason, S) ->
-    ok = stop_all_fs_processes(S#state.file_process_dict),
     ok = etorrent_table:delete_paths(S#state.torrent_id),
     ok.
 
@@ -137,7 +136,8 @@ code_change(_OldVsn, State, _Extra) ->
 %% =======================================================================
 create_file_process(Id, S) ->
     {ok, Pid} = etorrent_fs_pool_sup:add_file_process(S#state.file_pool,
-                                                      S#state.torrent_id, Id),
+                                                      S#state.torrent_id,
+                                                      Id, self()),
     erlang:monitor(process, Pid),
     NewDict = dict:store(Id, Pid, S#state.file_process_dict),
     {ok, Pid, S#state{ file_process_dict = NewDict }}.
@@ -214,8 +214,3 @@ remove_file_process(Pid, Dict) ->
         [] ->
             Dict
     end.
-
-stop_all_fs_processes(Dict) ->
-    lists:foreach(fun({_, Pid}) -> etorrent_fs_process:stop(Pid) end,
-                  dict:to_list(Dict)),
-    ok.
