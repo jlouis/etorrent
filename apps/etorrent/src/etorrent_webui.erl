@@ -40,9 +40,16 @@ list_rates() ->
     {ok, R2}.
 
 table_header() ->
-    "<table id=\"torrent_table\"><thead>" ++
-    "<tr><th>Id</th><th>FName</th><th>Id</th><th>Total (MiB)</th><th>Left (MiB)</th><th>Uploaded (MiB)</th><th>Downloaded (MiB)</th>" ++
-    "<th>L/S</th><th>Complete</th><th>Rate</th><th>Boxplot</th></tr></thead><tbody>".
+    ["<table id=\"torrent_table\"><thead>",
+     "<tr><th>Id</th>","<th>FName</th>",
+     "<th>Total (MiB)</th>","<th>Left (MiB)</th>",
+     "<th>Uploaded/Downloaded (MiB)</th>",
+     "<th>Ratio</th>",
+     "<th>L/S</th><th>Complete</th>",
+     "<th>Rate</th><th>Boxplot</th></tr></thead><tbody>"].
+
+ratio(_Up, 0.0) -> 0.0;
+ratio(Up, Down) -> Up / Down.
 
 list_torrents() ->
     A = etorrent_torrent:all(),
@@ -50,7 +57,8 @@ list_torrents() ->
                 {value, PL} = etorrent_table:get_torrent(R#torrent.id),
             io_lib:format(
 	      "<tr><td>~3.B</td><td>~s</td><td>~11.1f</td>" ++
-	      "<td>~11.1f</td><td>~11.1f</td><td>~11.1f</td>"++
+	      "<td>~11.1f</td><td>~11.1f / ~11.1f</td>"++
+	      "<td>~.3f</td>"++
 	      "<td>~3.B / ~3.B</td><td>~7.1f%</td>" ++
 	      "<td><span id=\"~s\">~s</span>~9.B / ~9.B / ~9.B</td>" ++
 	      "<td><span id=\"boxplot\">~s</td></tr>~n",
@@ -60,6 +68,7 @@ list_torrents() ->
 	       R#torrent.left  / (1024 * 1024),
 	       R#torrent.uploaded / (1024 * 1024),
 	       R#torrent.downloaded / (1024 * 1024),
+	       ratio(R#torrent.uploaded, R#torrent.downloaded),
 	       R#torrent.leechers,
 	       R#torrent.seeders,
 	       percent_complete(R),
