@@ -10,7 +10,7 @@
 
 -spec start_link(infohash(), integer()) -> {'ok', pid()}.
 -spec announce(pid()) -> 'ok'.
--spec announce(infohash(), ipaddr(), portnum()) -> 'ok'.
+-spec announce(infohash(), ipaddr(), portnum()) -> 'true'.
 -spec get_peers(infohash()) -> list(peerinfo()).
 
 -record(state, {

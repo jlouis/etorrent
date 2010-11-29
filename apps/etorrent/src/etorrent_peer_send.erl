@@ -314,8 +314,8 @@ handle_cast({have, Pn}, S) ->
 handle_cast({cancel, Idx, Offset, Len},
         #state { fast_extension = true, requests = Requests} = S) ->
     try
-        NQ = etorrent_utils:queue_remove_check({Idx, Offset, Len},
-                                               Requests),
+	true = queue:member({Idx, Offset, Len}, Requests),
+        NQ = etorrent_utils:queue_remove({Idx, Offset, Len}, Requests),
         {noreply, S#state { requests = NQ}, 0}
     catch
         exit:badmatch -> {stop, normal, S}
@@ -340,6 +340,8 @@ handle_cast({remote_request, Index, Offset, Len},
         true ->
             {stop, max_queue_len_exceeded, S};
         false ->
+	    %% @todo consider to make a check here if the request is already
+	    %%  on queue. I don't think we will have that, except if stray.
             NQ = queue:in({Index, Offset, Len}, S#state.requests),
             {noreply, S#state{requests = NQ}, 0}
     end;

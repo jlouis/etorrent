@@ -1,5 +1,5 @@
 %% Various types spanning multiple modules.
-
+-type tier() :: [string()].
 -type operation() :: {integer(), integer(), integer()}.
 -type bitfield() :: binary().
 -type ip() :: {integer(), integer(), integer(), integer()}.
@@ -7,11 +7,11 @@
 % The bcode() type:
 -type bstring() :: {'string', string()}.
 -type binteger() :: {'integer', integer()}.
--type bcode() :: bstring()
-               | binteger()
-               | {'list', [bcode()]}
-               | {'dict', [{bstring(), bcode()}]}.
--type bdict() :: {'dict', [{bstring(), bcode()}]}.
+-type bcode() :: integer()
+	       | binary()
+	       | [bcode()]
+	       | [{string(), bcode()}].
+-type bdict() :: [{string(), bcode()}].
 
 % Event you can send to the tracker.
 -type tracker_event() :: completed | started | stopped.

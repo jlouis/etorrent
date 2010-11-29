@@ -7,7 +7,7 @@
 -endif.
 
 -behaviour(gen_server).
--import(etorrent_bcoding, [search_dict/2, search_dict_default/3]).
+-import(etorrent_bcoding, [get_value/2, get_value/3]).
 -import(etorrent_dht, [distance/2, closest_to/3]).
 
 %
@@ -121,7 +121,7 @@ ping(IP, Port) ->
     case gen_server:call(srv_name(), {ping, IP, Port}) of
         timeout -> pang;
         Reply   ->
-            {string,LID} = search_dict({string, "id"}, Reply),
+	    LID = get_string("id", Reply),
             etorrent_dht:integer_id(LID)
     end.
 
@@ -133,9 +133,9 @@ find_node(IP, Port, Target)  ->
         timeout ->
             {error, timeout};
         Values  ->
-            {string,LID} = search_dict({string, "id"}, Values),
+            LID = get_string("id", Values),
             ID = etorrent_dht:integer_id(LID),
-            {string,LCompact} = search_dict({string, "nodes"}, Values),
+            LCompact = get_string("nodes", Values),
             Nodes = compact_to_node_infos(list_to_binary(LCompact)),
             etorrent_dht_state:log_request_success(ID, IP, Port),
             {ID, Nodes}
@@ -271,23 +271,24 @@ do_get_peers(IP, Port, InfoHash) ->
     case gen_server:call(srv_name(), {get_peers, IP, Port, InfoHash}) of
         timeout -> {error, timeout};
         Values  ->
-            {string,LID} = search_dict({string, "id"}, Values),
+            LID = get_string("id", Values),
             ID = etorrent_dht:integer_id(LID),
-            {string,LToken} = search_dict({string,"token"}, Values),
+            LToken = get_string("token", Values),
             Token = list_to_binary(LToken),
             NoPeers = make_ref(),
-            MaybePeers = search_dict_default({string,"values"}, Values, NoPeers),
-            {Peers, Nodes} = case MaybePeers of
-                NoPeers ->
-                    {string,LCompact} = search_dict({string,"nodes"}, Values),
-                    INodes = compact_to_node_infos(list_to_binary(LCompact)),
-                    {[], INodes};
-                {list, PeerStrings} ->
-                    BinPeers = [list_to_binary(S) || {string,S} <- PeerStrings],
-                    PeerLists = [compact_to_peers(N) || N <- BinPeers],
-                    IPeers = lists:flatten(PeerLists),
-                    {IPeers, []}
-            end,
+            MaybePeers = get_value("values", Values, NoPeers),
+            {Peers, Nodes} =
+		case MaybePeers of
+		    NoPeers when is_reference(NoPeers) ->
+			LCompact = get_string("nodes", Values),
+			INodes = compact_to_node_infos(list_to_binary(LCompact)),
+			{[], INodes};
+		    PeerStrings when is_list(PeerStrings) ->
+			BinPeers = [list_to_binary(S) || S <- PeerStrings],
+			PeerLists = [compact_to_peers(N) || N <- BinPeers],
+			IPeers = lists:flatten(PeerLists),
+			{IPeers, []}
+		end,
             {ID, Token, Peers, Nodes}
     end.
 
@@ -299,7 +300,7 @@ announce(IP, Port, InfoHash, Token, BTPort) ->
     case gen_server:call(srv_name(), Announce) of
         timeout -> {error, timeout};
         Reply   ->
-            {string, LID} = search_dict({string, "id"}, Reply),
+            LID = get_string("id", Reply),
             etorrent_dht:integer_id(LID)
     end.
 
@@ -327,36 +328,25 @@ cancel_timeout(TimeoutRef) ->
     erlang:cancel_timer(TimeoutRef).
 
 handle_call({ping, IP, Port}, From, State) ->
-    Self = etorrent_dht_state:node_id(),
-    LSelf = etorrent_dht:list_id(Self),
-    Args = [{{string, "id"}, {string, LSelf}}],
+    Args = common_values(),
     do_send_query('ping', Args, IP, Port, From, State);
 
 handle_call({find_node, IP, Port, Target}, From, State) ->
-    Self = etorrent_dht_state:node_id(),
-    LSelf = etorrent_dht:list_id(Self),
     LTarget = etorrent_dht:list_id(Target),
-    Args = [{{string, "id"}, {string, LSelf}},
-            {{string, "target"}, {string, LTarget}}],
+    Args = [{<<"target">>, list_to_binary(LTarget)} | common_values()],
     do_send_query('find_node', Args, IP, Port, From, State);
 
 handle_call({get_peers, IP, Port, InfoHash}, From, State) ->
-    Self = etorrent_dht_state:node_id(),
-    LSelf = etorrent_dht:list_id(Self),
     LHash = etorrent_dht:list_id(InfoHash),
-    Args = [{{string, "id"}, {string, LSelf}},
-            {{string, "info_hash"}, {string, LHash}}],
+    Args = [{{string, "info_hash"}, {string, LHash}} | common_values()],
     do_send_query('get_peers', Args, IP, Port, From, State);
 
 handle_call({announce, IP, Port, InfoHash, Token, BTPort}, From, State) ->
-    Self = etorrent_dht_state:node_id(),
-    LSelf = etorrent_dht:list_id(Self),
     LHash = etorrent_dht:list_id(InfoHash),
     LToken = binary_to_list(Token),
-    Args = [{{string, "id"}, {string, LSelf}},
-            {{string, "info_hash"}, {string, LHash}},
-            {{string, "port"}, {integer, BTPort}},
-            {{string, "token"}, {string, LToken}}],
+    Args = [{<<"info_hash">>, LHash},
+	    {<<"port">>, BTPort},
+            {<<"token">>, LToken} | common_values()],
     do_send_query('announce', Args, IP, Port, From, State);
 
 handle_call({return, IP, Port, ID, Values}, _From, State) ->
@@ -473,7 +463,7 @@ handle_info({udp, _Socket, IP, Port, Packet}, State) ->
                     NewSent = clear_sent_query(IP, Port, ID, Sent),
                     State#state{sent=NewSent};
                 error ->
-                    {string, SNID} = search_dict({string, "id"}, Params),
+                    SNID = get_string("id", Params),
                     NID = etorrent_dht:integer_id(SNID),
                     spawn_link(etorrent_dht_state, safe_insert_node, [NID, IP, Port]),
                     HandlerArgs = [Method, Params, IP, Port, ID, Self, Tokens],
@@ -497,8 +487,14 @@ terminate(_, State) ->
 code_change(_, _, State) ->
     {ok, State}.
 
+%% Default args. Returns a proplist of default args
+common_values() ->
+    Self = etorrent_dht_state:node_id(),
+    common_values(Self).
+
 common_values(Self) ->
-    [{{string, "id"}, {string, etorrent_dht:list_id(Self)}}].
+    LSelf = etorrent_dht:list_id(Self),
+    [{<<"id">>, list_to_binary(LSelf)}].
 
 -spec handle_query(dht_qtype(), bdict(), ipaddr(),
                   portnum(), transaction(), nodeid(), _) -> 'ok'.
@@ -507,7 +503,7 @@ handle_query('ping', _, IP, Port, MsgID, Self, _Tokens) ->
     return(IP, Port, MsgID, common_values(Self));
 
 handle_query('find_node', Params, IP, Port, MsgID, Self, _Tokens) ->
-    {string, LTarget} = search_dict({string, "target"}, Params),
+    LTarget = get_string("target", Params),
     Target = etorrent_dht:integer_id(LTarget),
     CloseNodes = etorrent_dht_state:closest_to(Target),
     BinCompact = node_infos_to_compact(CloseNodes),
@@ -516,7 +512,7 @@ handle_query('find_node', Params, IP, Port, MsgID, Self, _Tokens) ->
     return(IP, Port, MsgID, common_values(Self) ++ Values);
 
 handle_query('get_peers', Params, IP, Port, MsgID, Self, Tokens) ->
-    {string, LHash} = search_dict({string, "info_hash"}, Params),
+    LHash = get_string("info_hash", Params),
     InfoHash = etorrent_dht:integer_id(LHash),
     Values = case etorrent_dht_tracker:get_peers(InfoHash) of
         [] ->
@@ -534,10 +530,10 @@ handle_query('get_peers', Params, IP, Port, MsgID, Self, Tokens) ->
     return(IP, Port, MsgID, common_values(Self) ++ TokenVals ++ Values);
 
 handle_query('announce', Params, IP, Port, MsgID, Self, Tokens) ->
-    {string, LHash} = search_dict({string, "info_hash"}, Params),
+    LHash = get_string("info_hash", Params),
     InfoHash = etorrent_dht:integer_id(LHash),
-    {integer, BTPort} = search_dict({string, "port"}, Params),
-    {string, LToken} = search_dict({string, "token"}, Params),
+    BTPort = get_value("port", Params),
+    LToken = get_string("token", Params),
     Token = list_to_binary(LToken),
     _ = case is_valid_token(Token, IP, Port, Tokens) of
         true ->
@@ -574,6 +570,9 @@ tkey(IP, Port, ID) ->
 
 tval(Client, TimeoutRef) ->
     {Client, TimeoutRef}.
+
+get_string(What, PL) ->
+    etorrent_bcoding:get_string_value(What, PL).
 
 %
 % Generate a random token value. A token value is used to filter out bogus announce
@@ -625,37 +624,35 @@ renew_token(Tokens) ->
 
 decode_msg(InMsg) ->
     Msg = etorrent_bcoding:decode(InMsg),
-    {string, SMsgID} = search_dict({string, "t"}, Msg),
+    SMsgID = get_string("t", Msg),
     MsgID = list_to_binary(SMsgID),
-    case search_dict({string, "y"}, Msg) of
+    case get_value("y", Msg) of
         {string, "q"} ->
-            {string, MString} = search_dict({string, "q"}, Msg),
-            {dict, Params}    = search_dict({string, "a"}, Msg),
+            {string, MString} = get_value("q", Msg),
+            {dict, Params}    = get_value("a", Msg),
             Method  = string_to_method(MString),
             {Method, MsgID, {dict, Params}};
         {string, "r"} ->
-            {dict, Values} = search_dict({string, "r"}, Msg),
+            {dict, Values} = get_value("r", Msg),
             {response, MsgID, {dict, Values}};
         {string, "e"} ->
-            {list, Error} = search_dict({string, "e"}, Msg),
+            {list, Error} = get_value("e", Msg),
             [{integer, ECode}, {string, EMsg}] = Error,
             {error, MsgID, ECode, EMsg}
     end.
 
 
 encode_query(Method, MsgID, Params) ->
-    Msg = {dict, [
-              {{string, "y"}, {string, "q"}},
-              {{string, "q"}, {string, method_to_string(Method)}},
-              {{string, "t"}, {string, binary_to_list(MsgID)}},
-              {{string, "a"}, {dict, Params}}]},
+    Msg = [{<<"y">>, <<"q">>},
+	   {<<"q">>, list_to_binary(method_to_string(Method))},
+	   {<<"t">>, MsgID},
+	   {<<"a">>, Params}],
     etorrent_bcoding:encode(Msg).
 
 encode_response(MsgID, Values) ->
-    Msg = {dict, [
-              {{string, "y"}, {string, "r"}},
-              {{string, "t"}, {string, binary_to_list(MsgID)}},
-              {{string, "r"}, {dict, Values}}]},
+    Msg = [{<<"y">>, <<"r">>},
+	   {<<"t">>, MsgID},
+	   {<<"r">>, Values}],
     etorrent_bcoding:encode(Msg).
 
 method_to_string(ping) -> "ping";
