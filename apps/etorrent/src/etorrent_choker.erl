@@ -167,7 +167,7 @@ upload_slots() ->
                 N when N  < 15 -> 3;
                 N when N  < 42 -> 4;
                 N ->
-                    round(math:sqrt(N * 0.6))
+                    round(math:sqrt(N * 0.8))
             end;
         {ok, N} when is_integer(N) ->
             N
