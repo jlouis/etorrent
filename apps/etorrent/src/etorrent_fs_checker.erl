@@ -25,7 +25,7 @@ check_torrent(Id) ->
     PieceHashes = etorrent_piece_mgr:piecehashes(Id),
     PieceCheck =
         fun (PN, Hash) ->
-                {ok, Data} = etorrent_fs:read_piece(FS, PN),
+                {ok, Data} = etorrent_io:read_piece(Id, PN),
                 Hash =/= crypto:sha(Data)
         end,
     [PN || {PN, Hash} <- PieceHashes,
@@ -74,7 +74,7 @@ load_torrent(Path) ->
     Name = etorrent_metainfo:get_name(Torrent),
     InfoHash = etorrent_metainfo:get_infohash(Torrent),
     FilesToCheck =
-        [{filename:join([Name, Filename]), Size} ||
+        [{filename:join([Filename]), Size} ||
             {Filename, Size} <- Files],
     {ok, Torrent, FilesToCheck, InfoHash}.
 
@@ -113,7 +113,7 @@ initialize_pieces_from_bitfield(Id, BitField, NumPieces, FilePieceList) ->
 
 initialize_pieces_from_disk(FS, Id, FilePieceList) ->
     F = fun(PN, Hash, Files) ->
-                {ok, Data} = etorrent_fs:read_piece(FS, PN),
+                {ok, Data} = etorrent_io:read_piece(Id, PN),
                 State = case Hash =:= crypto:sha(Data) of
                             true -> fetched;
                             false -> not_fetched

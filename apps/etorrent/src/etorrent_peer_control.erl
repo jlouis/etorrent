@@ -135,7 +135,7 @@ init([LocalPeerId, InfoHash, Id, {IP, Port}, Caps, Socket]) ->
     ok = etorrent_choker:monitor(self()),
     {value, NumPieces} = etorrent_torrent:num_pieces(Id),
     gproc:add_local_name({peer, Socket, control}),
-    FS = gproc:lookup_local_name({torrent, Id, fs}),
+    %% FS = gproc:lookup_local_name({torrent, Id, fs}),
     {ok, #state{
        socket = Socket,
        pieces_left = NumPieces,
@@ -143,8 +143,8 @@ init([LocalPeerId, InfoHash, Id, {IP, Port}, Caps, Socket]) ->
        remote_request_set = gb_trees:empty(),
        info_hash = InfoHash,
        torrent_id = Id,
-       extended_messaging = proplists:get_bool(extended_messaging, Caps),
-       file_system_pid = FS}}.
+       extended_messaging = proplists:get_bool(extended_messaging, Caps)}}.
+       %% file_system_pid = FS}}.
 
 %%--------------------------------------------------------------------
 %% Function: handle_cast(Msg, State) -> {noreply, State} |

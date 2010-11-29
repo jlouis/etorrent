@@ -163,7 +163,7 @@ go_slow(Pid) ->
 %% Send off a piece message
 send_piece(Index, Offset, Len, S) ->
     {ok, PieceData} =
-        etorrent_fs:read_chunk(S#state.file_system_pid, Index, Offset, Len),
+        etorrent_io:read_chunk(S#state.torrent_id, Index, Offset, Len),
     Msg = {piece, Index, Offset, PieceData},
     ok = etorrent_torrent:statechange(S#state.torrent_id,
                                         [{add_upload, Len}]),
