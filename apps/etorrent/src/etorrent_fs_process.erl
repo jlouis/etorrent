@@ -17,14 +17,16 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/2, read/3, write/4, stop/1]).
+-export([start_link/3, read/3, write/4, stop/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
 -record(state, {path = none,
-                iodev = none}).
+                iodev = none,
+                parent = none,
+                parent_monitor = none}).
 
 % If no request has been received in this interval, close the server.
 -define(REQUEST_TIMEOUT, timer:seconds(60)).
@@ -35,9 +37,10 @@
 % @doc start a file-maintenance process
 %   <p>The file has Id in the path-map and belongs to TorrentId</p>
 % @end
--spec start_link(string(), integer()) -> 'ignore' | {'ok', pid()} | {'error', any()}.
-start_link(Id, TorrentId) ->
-    gen_server:start_link(?MODULE, [Id, TorrentId], []).
+-spec start_link(string(), integer(), pid()) ->
+          'ignore' | {'ok', pid()} | {'error', any()}.
+start_link(Id, TorrentId, ParentPid) ->
+    gen_server:start_link(?MODULE, [Id, TorrentId, ParentPid], []).
 
 % @doc Read data the file maintained by Pid at Offset and Size bytes
 % from that offset point. 
@@ -60,7 +63,7 @@ stop(Pid) ->
     gen_server:cast(Pid, stop).
 
 %% ====================================================================
-init([Id, TorrentId]) ->
+init([Id, TorrentId, ParentPid]) ->
     %% We'll clean up file descriptors gracefully on termination.
     process_flag(trap_exit, true),
     etorrent_fs_janitor:new_fs_process(self()),
@@ -70,7 +73,10 @@ init([Id, TorrentId]) ->
     {ok, IODev} = file:open(FullPath, [read, write, binary, raw, read_ahead,
 				       {delayed_write, 1024*1024, 3000}]),
     {ok, #state{iodev = IODev,
-                path = FullPath}, ?REQUEST_TIMEOUT}.
+                path = FullPath,
+                parent=ParentPid,
+                parent_monitor=erlang:monitor(process, ParentPid)},
+         ?REQUEST_TIMEOUT}.
 
 handle_call({read, Offset, Size}, _From, #state { iodev = IODev} = State) ->
     etorrent_fs_janitor:bump(self()),
@@ -91,6 +97,8 @@ handle_cast(Msg, State) ->
     {noreply, State, ?REQUEST_TIMEOUT}.
 
 handle_info(timeout, State) ->
+    {stop, normal, State};
+handle_info({'DOWN', PRef, _, _, _}, #state{parent_monitor=PRef}=State) ->
     {stop, normal, State};
 handle_info(Info, State) ->
     ?WARN([unknown_info_msg, Info]),

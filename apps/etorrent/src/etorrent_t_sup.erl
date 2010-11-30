@@ -62,15 +62,16 @@ add_peer(PeerId, InfoHash, TorrentId, {IP, Port}, Capabilities, Socket) ->
 %% ====================================================================
 init([Path, PeerId, Id]) ->
     FSPool = {fs_pool,
-              {etorrent_fs_pool_sup, start_link, [Id]},
-              transient, infinity, supervisor, [etorrent_fs_pool_sup]},
-    FS = {fs,
-          {etorrent_fs, start_link, [Id]},
-          permanent, 2000, worker, [etorrent_fs]},
+              {etorrent_io_sup, start_link, [Id, Path]},
+              transient, infinity, supervisor, [etorrent_io_sup]},
+    %FS = {fs,
+    %      {etorrent_fs, start_link, [Id]},
+    %      permanent, 2000, worker, [etorrent_fs]},
     Control = {control,
                {etorrent_t_control, start_link, [Id, Path, PeerId]},
                permanent, 20000, worker, [etorrent_t_control]},
     PeerPool = {peer_pool_sup,
                 {etorrent_peer_pool_sup, start_link, [Id]},
                 transient, infinity, supervisor, [etorrent_peer_pool_sup]},
-    {ok, {{one_for_all, 1, 60}, [FSPool, FS, Control, PeerPool]}}.
+    %{ok, {{one_for_all, 1, 60}, [FSPool, FS, Control, PeerPool]}}.
+    {ok, {{one_for_all, 1, 60}, [Control, FSPool, PeerPool]}}.

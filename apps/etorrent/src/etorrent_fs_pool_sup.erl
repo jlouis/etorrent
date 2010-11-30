@@ -10,7 +10,7 @@
 -behaviour(supervisor).
 
 %% API
--export([start_link/1, add_file_process/3]).
+-export([start_link/1, add_file_process/4]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -25,9 +25,10 @@ start_link(Id) -> supervisor:start_link(?MODULE, [Id]).
 
 % @doc Add a new process for maintaining a file.
 % @end
--spec add_file_process(pid(), integer(), string()) -> {ok, pid()} | {error, term()} | {ok, pid(), term()}.
-add_file_process(Pid, TorrentId, Path) ->
-    supervisor:start_child(Pid, [Path, TorrentId]).
+-spec add_file_process(pid(), integer(), string(), pid()) ->
+          {ok, pid()} | {error, term()} | {ok, pid(), term()}.
+add_file_process(Pid, TorrentId, Path, ParentPid) ->
+    supervisor:start_child(Pid, [Path, TorrentId, ParentPid]).
 
 %% ====================================================================
 init([Id]) ->

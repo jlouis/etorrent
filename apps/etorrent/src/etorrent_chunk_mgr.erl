@@ -190,7 +190,7 @@ handle_call(_Request, _From, State) ->
 %% Description: Handling cast messages
 %%--------------------------------------------------------------------
 handle_cast({store_chunk, Id, Pid, {Index, Data, Ops}, {Offset, Len}, FSPid}, S) ->
-    ok = etorrent_fs:write_chunk(FSPid, {Index, Data, Ops}),
+    ok = etorrent_io:write_chunk(Id, Index, Offset, Data),
     %% Add the newly fetched data to the fetched list
     Present = update_fetched(Id, Index, {Offset, Len}),
     %% Update chunk assignment
