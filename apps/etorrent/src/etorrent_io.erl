@@ -36,8 +36,6 @@
          code_change/3]).
 
 
--type block_offset() :: pos_integer().
--type block_len() :: pos_integer().
 -type block_pos() :: {string(), block_offset(), block_len()}.
 
 %%

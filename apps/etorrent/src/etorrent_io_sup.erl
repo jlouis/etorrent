@@ -1,9 +1,11 @@
 -module(etorrent_io_sup).
 -behaviour(supervisor).
+-include("types.hrl").
 
 -export([start_link/2]).
 -export([init/1]).
 
+-spec start_link(torrent_id(), file_path()) -> {'ok', pid()}.
 start_link(TorrentID, TorrentFile) ->
     supervisor:start_link(?MODULE, [TorrentID, TorrentFile]).
 

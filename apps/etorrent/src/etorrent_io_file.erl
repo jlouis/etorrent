@@ -1,5 +1,6 @@
 -module(etorrent_io_file).
 -behaviour(gen_server).
+-include("types.hrl").
 
 %%
 %% Server that wraps a file-handle and exposes an interface
@@ -18,12 +19,15 @@
          code_change/3]).
 
 
+-spec start_link(torrent_id(), file_path(), file_path()) -> {'ok', pid()}.
 start_link(TorrentID, Path, FullPath) ->
     gen_server:start_link(?MODULE, [TorrentID, Path, FullPath], []).
 
+-spec read(pid(), block_offset(), block_len()) -> {ok, block_bin()}.
 read(FilePid, Offset, Length) ->
     gen_server:call(FilePid, {read, Offset, Length}).
 
+-spec write(pid(), block_offset(), block_bin()) -> 'ok'.
 write(FilePid, Offset, Chunk) ->
     gen_server:call(FilePid, {write, Offset, Chunk}).
 
