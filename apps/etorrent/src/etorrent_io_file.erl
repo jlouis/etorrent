@@ -8,6 +8,8 @@
 %%
 
 -export([start_link/3,
+         open/1,
+         close/1,
          read/3,
          write/3]).
 
@@ -18,34 +20,78 @@
          terminate/2,
          code_change/3]).
 
+-record(state, {
+    torrent :: torrent_id(),
+    handle=closed :: 'closed' | io_device(),
+    relpath=file_path(),
+    fullpath=file_path()}).
+
 
 -spec start_link(torrent_id(), file_path(), file_path()) -> {'ok', pid()}.
 start_link(TorrentID, Path, FullPath) ->
     gen_server:start_link(?MODULE, [TorrentID, Path, FullPath], []).
 
--spec read(pid(), block_offset(), block_len()) -> {ok, block_bin()}.
+-spec open(pid()) -> 'ok'.
+open(FilePid) ->
+    gen_server:cast(FilePid, open).
+
+-spec(close(pid()) -> 'ok'.
+    gen_server:cast(FilePid, close).
+
+-spec read(pid(), block_offset(), block_len()) ->
+          {ok, block_bin()} | {error, eagain}.
 read(FilePid, Offset, Length) ->
     gen_server:call(FilePid, {read, Offset, Length}).
 
--spec write(pid(), block_offset(), block_bin()) -> 'ok'.
+-spec write(pid(), block_offset(), block_bin()) ->
+          ok | {error, eagain}.
 write(FilePid, Offset, Chunk) ->
     gen_server:call(FilePid, {write, Offset, Chunk}).
 
-init([TorrentID, Path, FullPath]) ->
-    etorrent_io:register_file_server(TorrentID, Path),
-    FileOpts = [read, write, binary, raw,
-                read_ahead, {delayed_write, 1024*1024, 3000}],
-    {ok, FD} = file:open(FullPath, FileOpts).
+init([TorrentID, RelPath, FullPath]) ->
+    _ = etorrent_io:register_file_server(TorrentID, RelPath),
+    InitState = #state{
+        torrent=TorrentID,
+        handle=closed,
+        relpath=RelPath,
+        fullpath=FullPath},
+    {ok, InitState}.
 
-handle_call({read, Offset, Length}, _, FD) ->
-    {ok, Chunk} = file:pread(FD, Offset, Length),
+handle_call({read, _, _}, _ State) when State#state.handle == closed ->
+    {reply, {error, eagain}, State};
+handle_call({write, _, _}, _ State) when State#state.handle == closed ->
+    {reply, {error, eagain}, State};
+handle_call({read, Offset, Length}, _, State) ->
+    #state{handle=Handle} = State,
+    {ok, Chunk} = file:pread(Handle, Offset, Length),
     {reply, {ok, Chunk}, FD};
 handle_call({write, Offset, Chunk}, _, FD) ->
     ok = file:pwrite(FD, Offset, Chunk),
     {reply, ok, FD}.
 
-handle_cast(_, State) ->
-    {noreply, State}.
+handle_cast(open, State) ->
+    #state{
+        torrent=Torrent,
+        handle=closed,
+        relpath=RelPath,
+        fullpath=FullPath} = State,
+    _ = etorrent_io:register_open_file(Torrent, RelPath),
+    FileOpts = [read, write, binary, raw, read_ahead,
+                {delayed_write, 1024*1024, 3000}],
+    {ok, Handle} = file:open(FullPath, FileOpts).
+    NewState = State#state{handle=Handle},
+    {noreply, NewState};
+
+handle_cast(close, State) ->
+    #state{
+        torrent=Torrent,
+        handle=Handle,
+        relpath=RelPath,
+        fullpath=FullPath} = State,
+    _ = etorrent_io:unregister_open_file(Torrent, RelPath),
+    ok = file:close(Handle),
+    NewState = #state{handle=closed},
+    {noreply, NewState}.
 
 handle_info(_, State) ->
     {noreply, State}.
