@@ -23,9 +23,9 @@ file_server_spec(TorrentID, Workdir, Path) ->
     Fullpath = filename:join(Workdir, Path),
     {{TorrentID, Path},
         {etorrent_io_file, start_link, [TorrentID, Path, Fullpath]},
-        transient, 2000, worker, [etorrent_io_file]}.
+        permanent, 2000, worker, [etorrent_io_file]}.
 
 directory_server_spec(TorrentID, Torrent) ->
     {{TorrentID, directory},
         {etorrent_io, start_link, [TorrentID, Torrent]},
-        transient, 2000, worker, [etorrent_io]}.
+        permanent, 2000, worker, [etorrent_io]}.
