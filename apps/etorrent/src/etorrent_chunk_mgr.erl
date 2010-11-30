@@ -25,7 +25,8 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
--record(state, { torrent_dict }).
+-record(state, { torrent_dict,
+	         monitored_peers = gb_sets:empty() }).
 -define(SERVER, ?MODULE).
 -define(TAB, etorrent_chunk_tbl).
 -define(STORE_CHUNK_TIMEOUT, 20).
@@ -168,7 +169,10 @@ handle_call({select_chunks_by_piecenum, {Id, Pn}, Max}, {Pid, _Tag}, S) ->
 				idt = {Id, Pn, {assigned, Pid}} }]),
 			  C#chunk.chunk
 		      end || C <- Return],
-	    {reply, {ok, {Pn, Chunks}, length(Chunks)}, S}
+	    MP = ensure_monitor(Pid, S#state.monitored_peers),
+	    {reply,
+	     {ok, {Pn, Chunks}, length(Chunks)},
+	     S#state { monitored_peers = MP }}
     end;
 handle_call({chunkify_piece, {Id, Pn}}, _From, S) ->
     chunkify_piece(Id, Pn),
@@ -182,6 +186,15 @@ handle_call({endgame_remove_chunk, SendPid, Id, {Index, Offset, _Len}},
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
+
+ensure_monitor(Pid, Set) ->
+    case gb_sets:is_member(Pid, Set) of
+	true ->
+	    Set;
+	false ->
+	    erlang:monitor(process, Pid),
+	    gb_sets:add(Pid, Set)
+    end.
 
 %%--------------------------------------------------------------------
 %% Function: handle_cast(Msg, State) -> {noreply, State} |
@@ -208,20 +221,11 @@ handle_cast({store_chunk, Id, Pid, {Index, Data, Ops}, {Offset, Len}, FSPid}, S)
     {noreply, S};
 % @todo This only works if {assigned, pid()} has chunks as a 3-tuple
 handle_cast({putback_chunks, Pid}, S) ->
-    for_each_chunk(
-      Pid,
-      fun(C) ->
-              {Id, Idx, _} = C#chunk.idt,
-	      ets:insert(?TAB,
-			 #chunk { idt = {Id, Idx, not_fetched},
-				  chunk = C#chunk.chunk }),
-              ets:delete_object(?TAB, C)
-      end),
+    remove_chunks_for_pid(Pid),
     {noreply, S};
 handle_cast(Msg, State) ->
     ?WARN([unknown_msg, Msg]),
     {noreply, State}.
-
 
 %%--------------------------------------------------------------------
 %% Function: handle_info(Info, State) -> {noreply, State} |
@@ -230,10 +234,18 @@ handle_cast(Msg, State) ->
 %% Description: Handling all non call/cast messages
 %%--------------------------------------------------------------------
 handle_info({'DOWN', _Ref, process, Pid, _Reason}, S) ->
-    {ok, Id} = dict:find(Pid, S#state.torrent_dict),
-    clear_torrent_entries(Id),
-    ManageDict = dict:erase(Pid, S#state.torrent_dict),
-    {noreply, S#state { torrent_dict = ManageDict }};
+    case dict:find(Pid, S#state.torrent_dict) of
+	{ok, Id} ->
+	    clear_torrent_entries(Id),
+	    ManageDict = dict:erase(Pid, S#state.torrent_dict),
+	    {noreply, S#state { torrent_dict = ManageDict }};
+	error ->
+	    %% Not found, assume it is a Pid of a process
+	    remove_chunks_for_pid(Pid),
+	    {noreply, S#state { monitored_peers =
+				  gb_sets:del_element(Pid,
+						      S#state.monitored_peers) }}
+    end;
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -407,6 +419,17 @@ pick_chunks_endgame(Id, Set, Remaining, Ret) ->
         false -> Ret; %% No endgame yet
         true -> pick_chunks(endgame, {Id, Set, Remaining})
     end.
+
+remove_chunks_for_pid(Pid) ->
+    for_each_chunk(
+      Pid,
+      fun(C) ->
+	      {Id, Idx, _} = C#chunk.idt,
+	      ets:insert(?TAB,
+			 #chunk { idt = {Id, Idx, not_fetched},
+				  chunk = C#chunk.chunk }),
+	      ets:delete_object(?TAB, C)
+      end).
 
 for_each_chunk(Pid, F) when is_pid(Pid) ->
     MatchHead = #chunk { idt = {'_', '_', {assigned, Pid}}, _ = '_'},
