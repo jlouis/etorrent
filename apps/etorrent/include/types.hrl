@@ -13,12 +13,19 @@
 	       | [{string(), bcode()}].
 -type bdict() :: [{string(), bcode()}].
 -type torrent_id() :: integer().
+-type file_path() :: string().
+
+% There are three types of blocks, define types for
+% all three to make it easier to distinguish which type
+% a function works with.
 -type piece_index() :: pos_integer().
 -type piece_bin() :: binary().
 -type chunk_offset() :: pos_integer().
 -type chunk_len() :: pos_integer().
 -type chunk_bin() :: binary().
--type file_path() :: string().
+-type block_len() :: pos_integer().
+-type block_offset() :: pos_integer().
+-type block_bin() :: binary().
 
 % Event you can send to the tracker.
 -type tracker_event() :: completed | started | stopped.
