@@ -26,7 +26,9 @@
          write_chunk/4,
          file_paths/1,
          register_directory/1,
+         lookup_directory/1,
          register_file_server/2,
+         lookup_file_server/2,
          register_open_file/2,
          unregister_open_file/2,
          await_open_file/2]).
