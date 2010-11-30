@@ -184,8 +184,11 @@ unregister_open_file(TorrentID, Path) ->
 %% Wait for the file server responsible for the given file
 %% to enter a state where it is able to perform IO operations.
 %%
+-spec await_open_file(torrent_id(), file_path()) -> {ok, pid()}.
 await_open_file(TorrentID, Path) ->
-    gproc:await({n, l {etorrent, TorrentID, Path, file, open}}).
+    Name = {etorrent, TorrentID, Path, file, open},
+    {FilePid, undefined} = gproc:await({n, l Name}),
+    {ok, FilePid}.
 
 %%
 %% Fetch the positions and length of the file blocks where
