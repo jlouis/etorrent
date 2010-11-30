@@ -26,7 +26,10 @@
          write_chunk/4,
          file_paths/1,
          register_directory/1,
-         register_file_server/2]).
+         register_file_server/2,
+         register_open_file/2,
+         unregister_open_file/2,
+         await_open_file/2]).
 
 -export([init/1,
          handle_call/3,
@@ -132,7 +135,9 @@ register_directory(TorrentID) ->
 
 %%
 %% Register the current process as the file server for the
-%% given file-path in the given server.
+%% given file-path in the given server. A process being registered
+%% as a file server does not imply that it can perform IO
+%% operations on the behalf of IO clients.
 %%
 -spec register_file_server(torrent_id(), file_path()) -> 'ok'.
 register_file_server(TorrentID, Path) ->
@@ -158,6 +163,31 @@ lookup_file_server(TorrentID, Path) ->
     gproc:lookup_local_name({etorrent, TorrentID, Path, file}).
 
 %%
+%% Register the current process as a file server as being
+%% in a state where it is ready to perform IO operations
+%% on behalf of clients.
+%%
+-spec register_open_file(torrent_id(), file_path()) -> ok.
+register_open_file(TorrentID, Path) ->
+    gproc:add_local_name({etorrent, TorrentID, Path, file, open}).
+
+%%
+%% Register that the current process is a file server that
+%% is not in a state where it can (successfully) perform
+%% IO operations on behalf of clients.
+%%
+-spec unregister_open_file(torrent_id(), file_path()) -> ok.
+unregister_open_file(TorrentID, Path) ->
+    gproc:unreg({n, l, {etorrent, TorrentID, Path, file, open}}).
+
+%%
+%% Wait for the file server responsible for the given file
+%% to enter a state where it is able to perform IO operations.
+%%
+await_open_file(TorrentID, Path) ->
+    gproc:await({n, l {etorrent, TorrentID, Path, file, open}}).
+
+%%
 %% Fetch the positions and length of the file blocks where
 %% Piece is located in the files of the torrent that this
 %% directory server is responsible for.
@@ -165,6 +195,8 @@ lookup_file_server(TorrentID, Path) ->
 -spec get_positions(pid(), piece_index()) -> {'ok', list(block_pos())}.
 get_positions(DirPid, Piece) ->
     gen_server:call(DirPid, {get_positions, Piece}).
+
+
 
 
 
