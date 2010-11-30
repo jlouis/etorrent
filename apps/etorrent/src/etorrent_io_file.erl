@@ -24,7 +24,8 @@
     torrent :: torrent_id(),
     handle=closed :: 'closed' | file:io_device(),
     relpath :: file_path(),
-    fullpath :: file_path()}).
+    fullpath :: file_path(),
+    dir_monitor :: reference()}).
 
 
 -spec start_link(torrent_id(), file_path(), file_path()) -> {'ok', pid()}.
@@ -50,12 +51,15 @@ write(FilePid, Offset, Chunk) ->
     gen_server:call(FilePid, {write, Offset, Chunk}).
 
 init([TorrentID, RelPath, FullPath]) ->
+    {ok, DirPid} = etorrent_io:await_directory(TorrentID),
+    DirMonitor = etorrent:monitor(process, DirPid),
     _ = etorrent_io:register_file_server(TorrentID, RelPath),
     InitState = #state{
         torrent=TorrentID,
         handle=closed,
         relpath=RelPath,
-        fullpath=FullPath},
+        fullpath=FullPath,
+        dir_monitor=DirMonitor},
     {ok, InitState}.
 
 handle_call({read, _, _}, _, State) when State#state.handle == closed ->
@@ -94,8 +98,15 @@ handle_cast(close, State) ->
     NewState = #state{handle=closed},
     {noreply, NewState}.
 
-handle_info(_, State) ->
-    {noreply, State}.
+handle_info({'DOWN', Dir, _, _, _}, State) when Dir== State#state.dir_monitor ->
+    #state{handle=Handle} = State,
+    case Handle of
+        closed ->
+            {noreply, State};
+        Handle ->
+            NewState = State#state{handle=closed},
+            {noreply, NewState}
+    end.
 
 terminate(_, _) ->
     not_implemented.
