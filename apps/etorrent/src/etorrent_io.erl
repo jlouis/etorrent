@@ -101,10 +101,15 @@ write_chunk(TorrentID, Piece, Offset, Chunk) ->
 -spec read_file_blocks(torrent_id(), list(block_pos())) -> iolist().
 read_file_blocks(_, []) ->
     [];
-read_file_blocks(TorrentID, [{Path, Offset, Length}|T]) ->
-    FilePid = lookup_file_server(TorrentID, Path),
-    {ok, Block} = etorrent_io_file:read(FilePid, Offset, Length),
-    [Block|read_file_blocks(TorrentID, T)].
+read_file_blocks(TorrentID, [{Path, Offset, Length}|T]=L) ->
+    {ok, FilePid} = await_open_file(TorrentID, Path),
+    case etorrent_io_file:read(FilePid, Offset, Length) of
+        {error, eagain} ->
+            %% XXX - potential race condition
+            read_file_blocks(TorrentID, L);
+        {ok, Block} ->
+            [Block|read_file_blocks(TorrentID, T)]
+    end.
 
 %%
 %% Write blocks of a chunk seqeuntially to the file servers
@@ -114,11 +119,16 @@ read_file_blocks(TorrentID, [{Path, Offset, Length}|T]) ->
 -spec write_file_blocks(torrent_id(), chunk_bin(), list(block_pos())) -> 'ok'.
 write_file_blocks(TorrentID, <<>>, []) ->
     ok;
-write_file_blocks(TorrentID, Chunk, [{Path, Offset, Length}|T]) ->
-    FilePid = lookup_file_server(TorrentID, Path),
+write_file_blocks(TorrentID, Chunk, [{Path, Offset, Length}|T]=L) ->
+    {ok, FilePid} = await_open_file(TorrentID, Path),
     <<Block:Length/binary, Rest/binary>> = Chunk,
-    ok = etorrent_io_file:write(FilePid, Offset, Block),
-    write_file_blocks(TorrentID, Rest, T).
+    case etorrent_io_file:write(FilePid, Offset, Block) of
+        {error, eagain} ->
+            %% XXX - potential race condition
+            write_file_blocks(TorrentID, Chunk, L);
+        ok ->
+            write_file_blocks(TorrentID, Rest, T)
+    end.
 
 
 file_paths(Torrent) ->
@@ -187,7 +197,7 @@ unregister_open_file(TorrentID, Path) ->
 -spec await_open_file(torrent_id(), file_path()) -> {ok, pid()}.
 await_open_file(TorrentID, Path) ->
     Name = {etorrent, TorrentID, Path, file, open},
-    {FilePid, undefined} = gproc:await({n, l Name}),
+    {FilePid, undefined} = gproc:await({n, l, Name}),
     {ok, FilePid}.
 
 %%
