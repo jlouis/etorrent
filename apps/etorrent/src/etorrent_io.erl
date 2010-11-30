@@ -28,6 +28,7 @@
          register_directory/1,
          lookup_directory/1,
          await_directory/1,
+         await_new_directory/1,
          register_file_server/2,
          lookup_file_server/2,
          register_open_file/2,
@@ -167,14 +168,26 @@ lookup_directory(TorrentID) ->
     gproc:lookup_local_name({etorrent, TorrentID, directory}).
 
 %%
-%% Wait for the directory server for this torrnet to appear
+%% Wait for the directory server for this torrent to appear
 %% in the directory, this way file servers can create a monitor
 %% while initializing.
 %%
+-spec await_directory(torrent_id()) -> {ok, pid()}.
 await_directory(TorrentID) ->
     Name = {etorrent, TorrentID, directory},
     {DirPid, undefined} = gproc:await({n, l, Name}),
     {ok, DirPid}.
+
+%%
+%% Subscribe to receiving a notification when a process
+%% registers as the directory for this server. This is to
+%% allow file servers to restore their directory monitor
+%% after the directory crashes while still being able to
+%% serve errors to io clients.
+%%
+-spec await_new_directory(torrent_id()) -> reference().
+await_new_directory(TorrentID) ->
+    gproc:nb_await({etorrent, TorrentID, directory}).
 
 %%
 %% Lookup the process id of the file server responsible for
