@@ -12,6 +12,13 @@
 	       | [bcode()]
 	       | [{string(), bcode()}].
 -type bdict() :: [{string(), bcode()}].
+-type torrent_id() :: integer().
+-type piece_index() :: pos_integer().
+-type piece_bin() :: binary().
+-type chunk_offset() :: pos_integer().
+-type chunk_len() :: pos_integer().
+-type chunk_bin() :: binary().
+-type file_path() :: string().
 
 % Event you can send to the tracker.
 -type tracker_event() :: completed | started | stopped.

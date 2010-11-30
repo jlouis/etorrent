@@ -1,5 +1,6 @@
 -module(etorrent_io).
 -behaviour(gen_server).
+-include("types.hrl").
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -34,6 +35,11 @@
          terminate/2,
          code_change/3]).
 
+
+-type block_offset() :: pos_integer().
+-type block_len() :: pos_integer().
+-type block_pos() :: {string(), block_offset(), block_len()}.
+
 %%
 %% Keep a mapping from Piece to {Path, Offset, Length}.
 %%
@@ -43,6 +49,7 @@
 %%
 %% TODO - comment and spec
 %%
+-spec start_link(torrent_id(), bcode()) -> {'ok', pid()}.
 start_link(TorrentID, Torrent) ->
     gen_server:start_link(?MODULE, [TorrentID, Torrent], []).
 
@@ -50,6 +57,7 @@ start_link(TorrentID, Torrent) ->
 %%
 %% Read a piece into memory.
 %%
+-spec read_piece(torrent_id(), piece_index()) -> {'ok', piece_bin()}.
 read_piece(TorrentID, Piece) ->
     DirPid = lookup_directory(TorrentID),
     {ok, Positions} = get_positions(DirPid, Piece),
@@ -61,6 +69,8 @@ read_piece(TorrentID, Piece) ->
 %% Read a chunk from a piece by reading each of the file
 %% blocks that make up the chunk and concatenating them.
 %%
+-spec read_chunk(torrent_id(), piece_index(),
+                 chunk_offset(), chunk_len()) -> {'ok', chunk_bin()}.
 read_chunk(TorrentID, Piece, Offset, Length) ->
     DirPid = lookup_directory(TorrentID),
     {ok, Positions} = get_positions(DirPid, Piece),
@@ -72,6 +82,8 @@ read_chunk(TorrentID, Piece, Offset, Length) ->
 %% Write a chunk to a piece by writing parts of the block
 %% to each file that the block occurs in.
 %%
+-spec write_chunk(torrent_id(), piece_index(),
+                  chunk_offset(), chunk_bin()) -> 'ok'.
 write_chunk(TorrentID, Piece, Offset, Chunk) ->
     DirPid = lookup_directory(TorrentID),
     {ok, Positions} = get_positions(DirPid, Piece),
@@ -85,6 +97,7 @@ write_chunk(TorrentID, Piece, Offset, Chunk) ->
 %% servers in this directory responsible for each path the
 %% is included in the list of positions.
 %%
+-spec read_file_blocks(torrent_id(), list(block_pos())) -> iolist().
 read_file_blocks(_, []) ->
     [];
 read_file_blocks(TorrentID, [{Path, Offset, Length}|T]) ->
@@ -97,6 +110,7 @@ read_file_blocks(TorrentID, [{Path, Offset, Length}|T]) ->
 %% in this directory responsible for each path that is included
 %% in the lists of positions at which the block appears.
 %%
+-spec write_file_blocks(torrent_id(), chunk_bin(), list(block_pos())) -> 'ok'.
 write_file_blocks(TorrentID, <<>>, []) ->
     ok;
 write_file_blocks(TorrentID, Chunk, [{Path, Offset, Length}|T]) ->
@@ -114,6 +128,7 @@ file_paths(Torrent) ->
 %% Register the current process as the directory server for
 %% the given torrent.
 %%
+-spec register_directory(torrent_id()) -> 'ok'.
 register_directory(TorrentID) ->
     gproc:add_local_name({etorrent, TorrentID, directory}).
 
@@ -121,6 +136,7 @@ register_directory(TorrentID) ->
 %% Register the current process as the file server for the
 %% given file-path in the given server.
 %%
+-spec register_file_server(torrent_id(), file_path()) -> 'ok'.
 register_file_server(TorrentID, Path) ->
     gproc:add_local_name({etorrent, TorrentID, Path, file}).
 
@@ -130,6 +146,7 @@ register_file_server(TorrentID, Path) ->
 %% for the given torrent. If there is no such server registered
 %% this function will crash.
 %%
+-spec lookup_directory(torrent_id()) -> pid().
 lookup_directory(TorrentID) ->
     gproc:lookup_local_name({etorrent, TorrentID, directory}).
 
@@ -138,6 +155,7 @@ lookup_directory(TorrentID) ->
 %% performing IO operations on this path. If there is no such
 %% server registered this function will crash.
 %%
+-spec lookup_file_server(torrent_id(), file_path()) -> pid().
 lookup_file_server(TorrentID, Path) ->
     gproc:lookup_local_name({etorrent, TorrentID, Path, file}).
 
@@ -146,6 +164,7 @@ lookup_file_server(TorrentID, Path) ->
 %% Piece is located in the files of the torrent that this
 %% directory server is responsible for.
 %%
+-spec get_positions(pid(), piece_index()) -> {'ok', list(block_pos())}.
 get_positions(DirPid, Piece) ->
     gen_server:call(DirPid, {get_positions, Piece}).
 
