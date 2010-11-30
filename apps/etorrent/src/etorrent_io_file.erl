@@ -22,10 +22,11 @@
 
 -record(state, {
     torrent :: torrent_id(),
-    handle=closed :: 'closed' | file:io_device(),
+    handle=closed :: closed | file:io_device(),
     relpath :: file_path(),
     fullpath :: file_path(),
-    dir_monitor :: reference()}).
+    dir_monitor=none :: none | reference(),
+    await_ref=none :: none | reference()}).
 
 
 -spec start_link(torrent_id(), file_path(), file_path()) -> {'ok', pid()}.
@@ -52,14 +53,15 @@ write(FilePid, Offset, Chunk) ->
 
 init([TorrentID, RelPath, FullPath]) ->
     {ok, DirPid} = etorrent_io:await_directory(TorrentID),
-    DirMonitor = etorrent:monitor(process, DirPid),
+    DirMonitor = erlang:monitor(process, DirPid),
     _ = etorrent_io:register_file_server(TorrentID, RelPath),
     InitState = #state{
         torrent=TorrentID,
         handle=closed,
         relpath=RelPath,
         fullpath=FullPath,
-        dir_monitor=DirMonitor},
+        dir_monitor=DirMonitor,
+        await_ref=none},
     {ok, InitState}.
 
 handle_call({read, _, _}, _, State) when State#state.handle == closed ->
@@ -75,7 +77,7 @@ handle_call({write, Offset, Chunk}, _, State) ->
     ok = file:pwrite(Handle, Offset, Chunk),
     {reply, ok, State}.
 
-handle_cast(open, State) ->
+handle_cast(open, State) when State#state.dir_monitor =/= none ->
     #state{
         torrent=Torrent,
         handle=closed,
@@ -88,7 +90,7 @@ handle_cast(open, State) ->
     NewState = State#state{handle=Handle},
     {noreply, NewState};
 
-handle_cast(close, State) ->
+handle_cast(close, State) when State#state.dir_monitor =/= none ->
     #state{
         torrent=Torrent,
         handle=Handle,
@@ -98,15 +100,36 @@ handle_cast(close, State) ->
     NewState = #state{handle=closed},
     {noreply, NewState}.
 
-handle_info({'DOWN', Dir, _, _, _}, State) when Dir== State#state.dir_monitor ->
-    #state{handle=Handle} = State,
+handle_info({'DOWN', DirMon, _, _, _}, State)
+when DirMon == State#state.dir_monitor ->
+    #state{
+        torrent=Torrent,
+        handle=Handle} = State,
+    AwaitRef = erlang_io:await_new_directory(Torrent),
     case Handle of
         closed ->
-            {noreply, State};
+            NewState = State#state{
+                dir_monitor=none,
+                await_ref=AwaitRef},
+            {noreply, NewState};
         Handle ->
-            NewState = State#state{handle=closed},
+            ok = file:close(Handle),
+            NewState = State#state{
+                handle=closed,
+                dir_monitor=none,
+                await_ref=AwaitRef},
             {noreply, NewState}
-    end.
+    end;
+
+handle_info({gproc, AwaitRef, registered, {_, DirPid, _}}, State)
+when AwaitRef == State#state.await_ref ->
+    DirMon = erlang:monitor(process, DirPid),
+    NewState = #state{
+        dir_monitor=DirMon,
+        await_ref=none},
+    {noreply, NewState}.
+
+
 
 terminate(_, _) ->
     not_implemented.
