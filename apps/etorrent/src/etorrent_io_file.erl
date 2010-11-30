@@ -22,9 +22,9 @@
 
 -record(state, {
     torrent :: torrent_id(),
-    handle=closed :: 'closed' | io_device(),
-    relpath=file_path(),
-    fullpath=file_path()}).
+    handle=closed :: 'closed' | file:io_device(),
+    relpath :: file_path(),
+    fullpath :: file_path()}).
 
 
 -spec start_link(torrent_id(), file_path(), file_path()) -> {'ok', pid()}.
@@ -35,7 +35,8 @@ start_link(TorrentID, Path, FullPath) ->
 open(FilePid) ->
     gen_server:cast(FilePid, open).
 
--spec(close(pid()) -> 'ok'.
+-spec close(pid()) -> 'ok'.
+close(FilePid) ->
     gen_server:cast(FilePid, close).
 
 -spec read(pid(), block_offset(), block_len()) ->
@@ -57,17 +58,18 @@ init([TorrentID, RelPath, FullPath]) ->
         fullpath=FullPath},
     {ok, InitState}.
 
-handle_call({read, _, _}, _ State) when State#state.handle == closed ->
+handle_call({read, _, _}, _, State) when State#state.handle == closed ->
     {reply, {error, eagain}, State};
-handle_call({write, _, _}, _ State) when State#state.handle == closed ->
+handle_call({write, _, _}, _, State) when State#state.handle == closed ->
     {reply, {error, eagain}, State};
 handle_call({read, Offset, Length}, _, State) ->
     #state{handle=Handle} = State,
     {ok, Chunk} = file:pread(Handle, Offset, Length),
-    {reply, {ok, Chunk}, FD};
-handle_call({write, Offset, Chunk}, _, FD) ->
-    ok = file:pwrite(FD, Offset, Chunk),
-    {reply, ok, FD}.
+    {reply, {ok, Chunk}, State};
+handle_call({write, Offset, Chunk}, _, State) ->
+    #state{handle=Handle} = State,
+    ok = file:pwrite(Handle, Offset, Chunk),
+    {reply, ok, State}.
 
 handle_cast(open, State) ->
     #state{
@@ -78,7 +80,7 @@ handle_cast(open, State) ->
     _ = etorrent_io:register_open_file(Torrent, RelPath),
     FileOpts = [read, write, binary, raw, read_ahead,
                 {delayed_write, 1024*1024, 3000}],
-    {ok, Handle} = file:open(FullPath, FileOpts).
+    {ok, Handle} = file:open(FullPath, FileOpts),
     NewState = State#state{handle=Handle},
     {noreply, NewState};
 
@@ -86,8 +88,7 @@ handle_cast(close, State) ->
     #state{
         torrent=Torrent,
         handle=Handle,
-        relpath=RelPath,
-        fullpath=FullPath} = State,
+        relpath=RelPath} = State,
     _ = etorrent_io:unregister_open_file(Torrent, RelPath),
     ok = file:close(Handle),
     NewState = #state{handle=closed},
