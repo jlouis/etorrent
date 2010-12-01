@@ -45,8 +45,13 @@ read_and_check_torrent(Id, Path) ->
     %% Check the contents of the torrent, updates the state of the piecemap
     FS = gproc:lookup_local_name({torrent, Id, fs}),
     case etorrent_fast_resume:query_state(Id) of
-        seeding -> initialize_pieces_seed(Id, FilePieceList);
-        {bitfield, BF} -> initialize_pieces_from_bitfield(Id, BF, NumberOfPieces, FilePieceList);
+	{value, PL} ->
+	    case proplists:get_value(state, PL) of
+		seeding -> initialize_pieces_seed(Id, FilePieceList);
+		{bitfield, BF} ->
+		    initialize_pieces_from_bitfield(Id, BF,
+						    NumberOfPieces, FilePieceList)
+	    end;
         %% XXX: The next one here could initialize with not_fetched all over
         unknown ->
             ok = etorrent_piece_mgr:add_pieces(

@@ -1,8 +1,6 @@
 -module(etorrent_webui).
 
 -include("etorrent_version.hrl").
--include("etorrent_torrent.hrl").
-
 -export([list/3, log/3]).
 
 -ignore_xref([{list, 3}, {log, 3}]).
@@ -48,13 +46,16 @@ table_header() ->
      "<th>L/S</th><th>Complete</th>",
      "<th>Rate</th><th>Boxplot</th></tr></thead><tbody>"].
 
+ratio(_Up, 0)   -> 0.0;
 ratio(_Up, 0.0) -> 0.0;
 ratio(Up, Down) -> Up / Down.
 
 list_torrents() ->
     A = etorrent_torrent:all(),
     Rows = [begin
-                {value, PL} = etorrent_table:get_torrent(R#torrent.id),
+		Id = proplists:get_value(id, R),
+		SL = proplists:get_value(rate_sparkline, R),
+                {value, PL} = etorrent_table:get_torrent(Id),
             io_lib:format(
 	      "<tr><td>~3.B</td><td>~s</td><td>~11.1f</td>" ++
 	      "<td>~11.1f</td><td>~11.1f / ~11.1f</td>"++
@@ -62,38 +63,39 @@ list_torrents() ->
 	      "<td>~3.B / ~3.B</td><td>~7.1f%</td>" ++
 	      "<td><span id=\"~s\">~s</span>~9.B / ~9.B / ~9.B</td>" ++
 	      "<td><span id=\"boxplot\">~s</td></tr>~n",
-	      [R#torrent.id,
+	      [Id,
 	       strip_torrent(proplists:get_value(filename, PL)),
-	       R#torrent.total / (1024 * 1024),
-	       R#torrent.left  / (1024 * 1024),
-	       R#torrent.uploaded / (1024 * 1024),
-	       R#torrent.downloaded / (1024 * 1024),
-	       ratio(R#torrent.uploaded, R#torrent.downloaded),
-	       R#torrent.leechers,
-	       R#torrent.seeders,
+	       proplists:get_value(total, R) / (1024 * 1024),
+	       proplists:get_value(left, R) / (1024 * 1024),
+	       proplists:get_value(uploaded, R) / (1024 * 1024),
+	       proplists:get_value(downloaded, R) / (1024 * 1024),
+	       ratio(proplists:get_value(uploaded, R),
+		     proplists:get_value(downloaded, R)),
+	       proplists:get_value(leechers, R),
+	       proplists:get_value(seeders, R),
 	       percent_complete(R),
-	       case R#torrent.state of
+	       case proplists:get_value(state, R) of
 		   seeding  -> "sparkline-seed";
 		   leeching -> "sparkline-leech";
 		   endgame  -> "sparkline-leech";
 		   unknown ->  "sparkline-leech"
 	       end,
-	       show_sparkline(
-		 lists:reverse(R#torrent.rate_sparkline)),
-	       round(lists:max(R#torrent.rate_sparkline) / 1024),
-	       case R#torrent.rate_sparkline of
-		   []      -> 0;
+	       show_sparkline(lists:reverse(SL)),
+	       round(lists:max(SL) / 1024),
+	       case SL of
+		   %% []      -> 0;
 		   [F | _] -> round(F / 1024)
 	       end,
-	       round(lists:min(R#torrent.rate_sparkline) / 1024),
-	       show_sparkline(
-		 lists:reverse(R#torrent.rate_sparkline))])
+	       round(lists:min(SL) / 1024),
+	       show_sparkline(lists:reverse(SL))])
 	    end || R <- A],
     {ok, Rows}.
 
 percent_complete(R) ->
     %% left / complete * 100 = % done
-    (R#torrent.total - R#torrent.left) / R#torrent.total * 100.
+    T = proplists:get_value(total, R),
+    L = proplists:get_value(left, R),
+    (T - L) / T * 100.
 
 table_footer() ->
     "</tbody></table>".
