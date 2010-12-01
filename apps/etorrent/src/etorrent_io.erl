@@ -45,11 +45,16 @@
 
 -type block_pos() :: {string(), block_offset(), block_len()}.
 
-%%
-%% Keep a mapping from Piece to {Path, Offset, Length}.
-%%
+-record(io_file, {
+    rel_path :: file_path(),
+    process  :: pid(),
+    monitor  :: reference(),
+    accessed :: {integer(), integer(), integer()}}).
+
 -record(state, {
-    pieces}).
+    torrent :: torrent_id(),
+    pieces  :: array(),
+    files_open :: list(#io_file{})}).
 
 %%
 %% TODO - comment and spec
@@ -106,6 +111,7 @@ write_chunk(TorrentID, Piece, Offset, Chunk) ->
 read_file_blocks(_, []) ->
     [];
 read_file_blocks(TorrentID, [{Path, Offset, Length}|T]=L) ->
+    ok = schedule_io_operation(TorrentID, Path),
     {ok, FilePid} = await_open_file(TorrentID, Path),
     case etorrent_io_file:read(FilePid, Offset, Length) of
         {error, eagain} ->
@@ -121,9 +127,10 @@ read_file_blocks(TorrentID, [{Path, Offset, Length}|T]=L) ->
 %% in the lists of positions at which the block appears.
 %%
 -spec write_file_blocks(torrent_id(), chunk_bin(), list(block_pos())) -> 'ok'.
-write_file_blocks(TorrentID, <<>>, []) ->
+write_file_blocks(_, <<>>, []) ->
     ok;
 write_file_blocks(TorrentID, Chunk, [{Path, Offset, Length}|T]=L) ->
+    ok = schedule_io_operation(TorrentID, Path),
     {ok, FilePid} = await_open_file(TorrentID, Path),
     <<Block:Length/binary, Rest/binary>> = Chunk,
     case etorrent_io_file:write(FilePid, Offset, Block) of
@@ -216,6 +223,16 @@ register_open_file(TorrentID, Path) ->
 unregister_open_file(TorrentID, Path) ->
     gproc:unreg({n, l, {etorrent, TorrentID, Path, file, open}}).
 
+
+%%
+%% Wait for the file server responsible for the given file to start
+%%
+-spec await_file_server(torrent_id(), file_path()) -> {ok, pid()}.
+await_file_server(TorrentID, Path) ->
+    Name = {etorrent, TorrentID, Path, file},
+    {FilePid, undefined} = gproc:await({n, l, Name}),
+    {ok, FilePid}.
+
 %%
 %% Wait for the file server responsible for the given file
 %% to enter a state where it is able to perform IO operations.
@@ -235,26 +252,102 @@ await_open_file(TorrentID, Path) ->
 get_positions(DirPid, Piece) ->
     gen_server:call(DirPid, {get_positions, Piece}).
 
-
-
+%%
+%% Notify the directory server that the current process intends
+%% to perform an IO-operation on a file. This is so that the directory
+%% can notify the file server to open it's file.
+%%
+-spec schedule_io_operation(torrent_id(), file_path()) -> ok.
+schedule_io_operation(Directory, RelPath) ->
+    {ok, DirPid} = await_directory(Directory),
+    gen_server:cast(DirPid, {schedule_operation, RelPath}).
 
 
 init([TorrentID, Torrent]) ->
     register_directory(TorrentID),
     PieceMap  = make_piece_map(Torrent),
-    InitState = #state{pieces=PieceMap},
+    InitState = #state{
+        torrent=TorrentID,
+        pieces=PieceMap,
+        files_open=[]},
     {ok, InitState}.
+
+%%
+%% Add a no-op implementation of the the file-server protocol.
+%% This enables the directory server to unlock io-clients waiting
+%% for a file server to enter the open state when the file server
+%% crashed before it could enter the open state.
+%%
+handle_call({read, _, _}, _, State) ->
+    {reply, {error, eagain}, State};
+handle_call({write, _, _}, _, State) ->
+    {reply, {error, eagain}, State};
 
 handle_call({get_positions, Piece}, _, State) ->
     #state{pieces=PieceMap} = State,
     Positions = array:get(Piece, PieceMap),
     {reply, {ok, Positions}, State}.
 
-handle_cast(_, State) ->
-    {noreply, State}.
+handle_cast({schedule_operation, RelPath}, State) ->
+    %% TODO - validate path or not?
+    #state{
+        torrent=TorrentID,
+        files_open=FilesOpen} = State,
 
-handle_info(_, State) ->
-    {noreply, State}.
+    FileInfo  = lists:keysearch(RelPath, #io_file.rel_path, FilesOpen),
+    AtLimit   = length(FilesOpen) > 128,
+
+    %% If the file that the client intends to operate on is not open and
+    %% the quota on the number of open files has been met, tell the least
+    %% recently used file complete all outstanding requests
+    OpenAfterClose = case {FileInfo, AtLimit} of
+        {_, false} ->
+            FilesOpen;
+        {false, true} ->
+            ByAccess = lists:keysort(#io_file.accessed, FilesOpen),
+            [LeastRecent|FilesToKeep] = lists:reverse(ByAccess),
+            #io_file{
+                process=ClosePid,
+                monitor=CloseMon} = LeastRecent,
+            ok = etorrent_io_file:close(ClosePid),
+            _  = erlang:demonitor(CloseMon, [flush]),
+            FilesToKeep
+    end,
+
+    %% If the file that the client intends to operate on is not open;
+    %% Always tell the file server to open the file as soon as possbile.
+    %% If the file is open, just update the access time.
+    WithNewFile = case FileInfo of
+        {value, InfoRec} ->
+            UpdatedFile = InfoRec#io_file{accessed=now()},
+            lists:keyreplace(RelPath, #io_file.rel_path, OpenAfterClose, UpdatedFile);
+        false ->
+            {ok, NewPid} = await_file_server(TorrentID, RelPath),
+            NewMon = erlang:monitor(process, NewPid),
+            ok = etorrent_io_file:open(NewPid),
+            NewFile = #io_file{
+                rel_path=RelPath,
+                process=NewPid,
+                monitor=NewMon,
+                accessed=now()},
+            [NewFile|OpenAfterClose]
+    end,
+    NewState = State#state{files_open=WithNewFile},
+    {noreply, NewState}.
+
+handle_info({'DOWN', FileMon, _, _, _}, State) ->
+    #state{
+        torrent=TorrentID,
+        files_open=FilesOpen} = State,
+    {value, ClosedFile} = lists:keysearch(FileMon, #io_file.monitor, FilesOpen),
+    #io_file{rel_path=RelPath} = ClosedFile,
+    %% Unlock clients that called schedule_io_operation before this
+    %% file server crashed and the file server received the open-notification.
+    ok = register_open_file(TorrentID, RelPath),
+    ok = unregister_open_file(TorrentID, RelPath),
+    NewFilesOpen = lists:keydelete(FileMon, #io_file.monitor, FilesOpen),
+    NewState = State#state{files_open=NewFilesOpen},
+    {noreply, NewState}.
 
 terminate(_, _) ->
     not_implemented.
