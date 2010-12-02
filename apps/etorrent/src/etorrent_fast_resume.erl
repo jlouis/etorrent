@@ -97,7 +97,7 @@ init([]) ->
         {ok, etorrent_fast_resume} -> true;
         E ->
             ?INFO([fast_resume_no_data, E]),
-            _ = ets:new(etorrent_fast_resume, [named_table, private])
+            _ = ets:new(etorrent_fast_resume, [named_table, protected])
     end,
     erlang:send_after(?PERSIST_TIME, self(), persist),
     {ok, #state{}}.
