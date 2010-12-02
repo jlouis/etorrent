@@ -6,6 +6,8 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
+-define(AWAIT_TIMEOUT, 10*1000).
+
 %%
 %% File I/O subsystem.
 %%
@@ -155,7 +157,7 @@ file_paths(Torrent) ->
 %% Register the current process as the directory server for
 %% the given torrent.
 %%
--spec register_directory(torrent_id()) -> 'ok'.
+-spec register_directory(torrent_id()) -> true.
 register_directory(TorrentID) ->
     gproc:add_local_name({etorrent, TorrentID, directory}).
 
@@ -165,7 +167,7 @@ register_directory(TorrentID) ->
 %% as a file server does not imply that it can perform IO
 %% operations on the behalf of IO clients.
 %%
--spec register_file_server(torrent_id(), file_path()) -> 'ok'.
+-spec register_file_server(torrent_id(), file_path()) -> true.
 register_file_server(TorrentID, Path) ->
     gproc:add_local_name({etorrent, TorrentID, Path, file}).
 
@@ -187,9 +189,9 @@ lookup_directory(TorrentID) ->
 -spec await_directory(torrent_id()) -> {ok, pid()}.
 await_directory(TorrentID) ->
     Name = {etorrent, TorrentID, directory},
-    error_logger:info_msg("~w awaiting directory", [self()]),
-    {DirPid, undefined} = gproc:await({n, l, Name}),
-    error_logger:info_msg("~w directory alive", [self()]),
+    %error_logger:info_msg("~w awaiting directory", [self()]),
+    {DirPid, undefined} = gproc:await({n, l, Name}, ?AWAIT_TIMEOUT),
+    %error_logger:info_msg("~w directory alive", [self()]),
     {ok, DirPid}.
 
 %%
@@ -217,7 +219,7 @@ lookup_file_server(TorrentID, Path) ->
 %% in a state where it is ready to perform IO operations
 %% on behalf of clients.
 %%
--spec register_open_file(torrent_id(), file_path()) -> ok.
+-spec register_open_file(torrent_id(), file_path()) -> true.
 register_open_file(TorrentID, Path) ->
     gproc:add_local_name({etorrent, TorrentID, Path, file, open}).
 
@@ -226,7 +228,7 @@ register_open_file(TorrentID, Path) ->
 %% is not in a state where it can (successfully) perform
 %% IO operations on behalf of clients.
 %%
--spec unregister_open_file(torrent_id(), file_path()) -> ok.
+-spec unregister_open_file(torrent_id(), file_path()) -> true.
 unregister_open_file(TorrentID, Path) ->
     gproc:unreg({n, l, {etorrent, TorrentID, Path, file, open}}).
 
@@ -237,9 +239,9 @@ unregister_open_file(TorrentID, Path) ->
 -spec await_file_server(torrent_id(), file_path()) -> {ok, pid()}.
 await_file_server(TorrentID, Path) ->
     Name = {etorrent, TorrentID, Path, file},
-    error_logger:info_msg("~w awaiting file ~w", [self(), Path]),
-    {FilePid, undefined} = gproc:await({n, l, Name}),
-    error_logger:info_msg("~w file alive ~w", [self(), Path]),
+    %error_logger:info_msg("~w awaiting file ~s", [self(), Path]),
+    {FilePid, undefined} = gproc:await({n, l, Name}, ?AWAIT_TIMEOUT),
+    %error_logger:info_msg("~w file alive ~s", [self(), Path]),
     {ok, FilePid}.
 
 %%
@@ -249,9 +251,9 @@ await_file_server(TorrentID, Path) ->
 -spec await_open_file(torrent_id(), file_path()) -> {ok, pid()}.
 await_open_file(TorrentID, Path) ->
     Name = {etorrent, TorrentID, Path, file, open},
-    error_logger:info_msg("~w awaiting open file ~w", [self(), Path]),
-    {FilePid, undefined} = gproc:await({n, l, Name}),
-    error_logger:info_msg("~w open file alive ~w", [self(), Path]),
+    %error_logger:info_msg("~w awaiting open file ~s", [self(), Path]),
+    {FilePid, undefined} = gproc:await({n, l, Name}, ?AWAIT_TIMEOUT),
+    %error_logger:info_msg("~w open file alive ~s", [self(), Path]),
     {ok, FilePid}.
 
 %%
@@ -275,7 +277,7 @@ schedule_io_operation(Directory, RelPath) ->
 
 
 init([TorrentID, Torrent]) ->
-    register_directory(TorrentID),
+    true = register_directory(TorrentID),
     PieceMap  = make_piece_map(Torrent),
     InitState = #state{
         torrent=TorrentID,
@@ -300,21 +302,18 @@ handle_call({get_positions, Piece}, _, State) ->
     {reply, {ok, Positions}, State}.
 
 handle_cast({schedule_operation, RelPath}, State) ->
-    %% TODO - validate path or not?
     #state{
         torrent=TorrentID,
         files_open=FilesOpen} = State,
 
-    FileInfo  = lists:keysearch(RelPath, #io_file.rel_path, FilesOpen),
-    AtLimit   = length(FilesOpen) > 128,
+    FileInfo  = lists:keyfind(RelPath, #io_file.rel_path, FilesOpen),
+    AtLimit   = length(FilesOpen) >= 128,
 
     %% If the file that the client intends to operate on is not open and
     %% the quota on the number of open files has been met, tell the least
     %% recently used file complete all outstanding requests
     OpenAfterClose = case {FileInfo, AtLimit} of
         {_, false} ->
-            FilesOpen;
-        {{value, _}, true} ->
             FilesOpen;
         {false, true} ->
             ByAccess = lists:keysort(#io_file.accessed, FilesOpen),
@@ -324,16 +323,15 @@ handle_cast({schedule_operation, RelPath}, State) ->
                 monitor=CloseMon} = LeastRecent,
             ok = etorrent_io_file:close(ClosePid),
             _  = erlang:demonitor(CloseMon, [flush]),
-            FilesToKeep
+            FilesToKeep;
+        {_, true} ->
+            FilesOpen
     end,
 
     %% If the file that the client intends to operate on is not open;
     %% Always tell the file server to open the file as soon as possbile.
     %% If the file is open, just update the access time.
     WithNewFile = case FileInfo of
-        {value, InfoRec} ->
-            UpdatedFile = InfoRec#io_file{accessed=now()},
-            lists:keyreplace(RelPath, #io_file.rel_path, OpenAfterClose, UpdatedFile);
         false ->
             {ok, NewPid} = await_file_server(TorrentID, RelPath),
             NewMon = erlang:monitor(process, NewPid),
@@ -343,7 +341,10 @@ handle_cast({schedule_operation, RelPath}, State) ->
                 process=NewPid,
                 monitor=NewMon,
                 accessed=now()},
-            [NewFile|OpenAfterClose]
+            [NewFile|OpenAfterClose];
+        _ ->
+            UpdatedFile = FileInfo#io_file{accessed=now()},
+            lists:keyreplace(RelPath, #io_file.rel_path, OpenAfterClose, UpdatedFile)
     end,
     NewState = State#state{files_open=WithNewFile},
     {noreply, NewState}.
@@ -352,12 +353,12 @@ handle_info({'DOWN', FileMon, _, _, _}, State) ->
     #state{
         torrent=TorrentID,
         files_open=FilesOpen} = State,
-    {value, ClosedFile} = lists:keysearch(FileMon, #io_file.monitor, FilesOpen),
+    ClosedFile = lists:keyfind(FileMon, #io_file.monitor, FilesOpen),
     #io_file{rel_path=RelPath} = ClosedFile,
     %% Unlock clients that called schedule_io_operation before this
     %% file server crashed and the file server received the open-notification.
-    ok = register_open_file(TorrentID, RelPath),
-    ok = unregister_open_file(TorrentID, RelPath),
+    true = register_open_file(TorrentID, RelPath),
+    true = unregister_open_file(TorrentID, RelPath),
     NewFilesOpen = lists:keydelete(FileMon, #io_file.monitor, FilesOpen),
     NewState = State#state{files_open=NewFilesOpen},
     {noreply, NewState}.

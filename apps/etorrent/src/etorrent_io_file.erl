@@ -50,7 +50,7 @@ write(FilePid, Offset, Chunk) ->
     gen_server:call(FilePid, {write, Offset, Chunk}).
 
 init([TorrentID, RelPath, FullPath]) ->
-    _ = etorrent_io:register_file_server(TorrentID, RelPath),
+    true = etorrent_io:register_file_server(TorrentID, RelPath),
     InitState = #state{
         torrent=TorrentID,
         handle=closed,
@@ -77,7 +77,7 @@ handle_cast(open, State) ->
         handle=closed,
         relpath=RelPath,
         fullpath=FullPath} = State,
-    _ = etorrent_io:register_open_file(Torrent, RelPath),
+    true = etorrent_io:register_open_file(Torrent, RelPath),
     FileOpts = [read, write, binary, raw, read_ahead,
                 {delayed_write, 1024*1024, 3000}],
     {ok, Handle} = file:open(FullPath, FileOpts),
@@ -89,9 +89,9 @@ handle_cast(close, State) ->
         torrent=Torrent,
         handle=Handle,
         relpath=RelPath} = State,
-    _ = etorrent_io:unregister_open_file(Torrent, RelPath),
+    true = etorrent_io:unregister_open_file(Torrent, RelPath),
     ok = file:close(Handle),
-    NewState = #state{handle=closed},
+    NewState = State#state{handle=closed},
     {noreply, NewState}.
 
 handle_info(_, _) ->
