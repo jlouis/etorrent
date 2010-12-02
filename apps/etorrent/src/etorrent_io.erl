@@ -69,7 +69,7 @@ start_link(TorrentID, Torrent) ->
 %%
 -spec read_piece(torrent_id(), piece_index()) -> {'ok', piece_bin()}.
 read_piece(TorrentID, Piece) ->
-    DirPid = lookup_directory(TorrentID),
+    {ok, DirPid} = await_directory(TorrentID),
     {ok, Positions} = get_positions(DirPid, Piece),
     BlockList = read_file_blocks(TorrentID, Positions),
     {ok, iolist_to_binary(BlockList)}.
@@ -82,7 +82,7 @@ read_piece(TorrentID, Piece) ->
 -spec read_chunk(torrent_id(), piece_index(),
                  chunk_offset(), chunk_len()) -> {'ok', chunk_bin()}.
 read_chunk(TorrentID, Piece, Offset, Length) ->
-    DirPid = lookup_directory(TorrentID),
+    {ok, DirPid} = await_directory(TorrentID),
     {ok, Positions} = get_positions(DirPid, Piece),
     ChunkPositions  = chunk_positions(Offset, Length, Positions),
     BlockList = read_file_blocks(TorrentID, ChunkPositions),
@@ -95,7 +95,7 @@ read_chunk(TorrentID, Piece, Offset, Length) ->
 -spec write_chunk(torrent_id(), piece_index(),
                   chunk_offset(), chunk_bin()) -> 'ok'.
 write_chunk(TorrentID, Piece, Offset, Chunk) ->
-    DirPid = lookup_directory(TorrentID),
+    {ok, DirPid} = await_directory(TorrentID),
     {ok, Positions} = get_positions(DirPid, Piece),
     Length = byte_size(Chunk),
     ChunkPositions = chunk_positions(Offset, Length, Positions),
@@ -132,13 +132,18 @@ write_file_blocks(_, <<>>, []) ->
 write_file_blocks(TorrentID, Chunk, [{Path, Offset, Length}|T]=L) ->
     ok = schedule_io_operation(TorrentID, Path),
     {ok, FilePid} = await_open_file(TorrentID, Path),
-    <<Block:Length/binary, Rest/binary>> = Chunk,
-    case etorrent_io_file:write(FilePid, Offset, Block) of
-        {error, eagain} ->
-            %% XXX - potential race condition
-            write_file_blocks(TorrentID, Chunk, L);
-        ok ->
-            write_file_blocks(TorrentID, Rest, T)
+    case Chunk of
+        <<Block:Length/binary, Rest/binary>> ->
+            case etorrent_io_file:write(FilePid, Offset, Block) of
+                {error, eagain} ->
+                    %% XXX - potential race condition
+                    write_file_blocks(TorrentID, Chunk, L);
+                ok ->
+                    write_file_blocks(TorrentID, Rest, T)
+            end;
+        _ ->
+            error_logger:error_msg("Could not match chunk of length(~w) to block of length(~w)~n", [byte_size(Chunk), Length]),
+            write_file_blocks(TorrentID, Chunk, L)
     end.
 
 
@@ -303,6 +308,8 @@ handle_cast({schedule_operation, RelPath}, State) ->
     OpenAfterClose = case {FileInfo, AtLimit} of
         {_, false} ->
             FilesOpen;
+        {{value, _}, true} ->
+            FilesOpen;
         {false, true} ->
             ByAccess = lists:keysort(#io_file.accessed, FilesOpen),
             [LeastRecent|FilesToKeep] = lists:reverse(ByAccess),
@@ -410,16 +417,23 @@ make_piece_map_(PieceLen, PieceOffs, Piece, FileOffs, [{Path, Len}|T]=L) ->
 %%
 chunk_positions(_, _, []) ->
     [];
-chunk_positions(PieceOffs, ChunkLen, [{Path, FileOffs, PieceLen}|T]) ->
-    EffectiveOffs = FileOffs + PieceOffs,
-    if  %% The chunk ends at the end of this file block
-        (PieceOffs + ChunkLen) =< PieceLen ->
+
+chunk_positions(ChunkOffs, ChunkLen, [{Path, FileOffs, BlockLen}|T]) ->
+    LastBlockByte = FileOffs + BlockLen,
+    EffectiveOffs = FileOffs + ChunkOffs,
+    LastChunkByte = EffectiveOffs + ChunkLen,
+    if  %% The first byte of the chunk is in the next file
+        ChunkOffs > BlockLen ->
+            NewChunkOffs = ChunkOffs - BlockLen,
+            chunk_positions(NewChunkOffs, ChunkLen, T);
+        %% The chunk ends at the end of this file block
+        LastChunkByte =< LastBlockByte -> % false
             [{Path, EffectiveOffs, ChunkLen}];
         %% This chunk ends in the next file block
-        (PieceOffs + ChunkLen) > PieceLen ->
-            BlockLen    = PieceLen - PieceOffs,
-            NewChunkLen = ChunkLen - BlockLen,
-            Entry = {Path, EffectiveOffs, BlockLen},
+        LastChunkByte > LastBlockByte ->
+            OutBlockLen = LastBlockByte - EffectiveOffs,
+            NewChunkLen = ChunkLen - OutBlockLen,
+            Entry = {Path, EffectiveOffs, OutBlockLen},
             [Entry|chunk_positions(0, NewChunkLen, T)]
     end.
             
@@ -465,4 +479,11 @@ chunk_pos_2_test() ->
     Pos  = [{a, 5, 1}, {b, 0, 8}],
     ?assertEqual(Pos, chunk_positions(Offs, Len, Map)). 
 
+chunk_post_3_test() ->
+    Offs = 8,
+    Len  = 5,
+    Map  = [{a, 0, 3}, {b, 0, 13}],
+    Pos  = [{b, 5, 5}],
+    ?assertEqual(Pos, chunk_positions(Offs, Len, Map)). 
+    
 -endif.
