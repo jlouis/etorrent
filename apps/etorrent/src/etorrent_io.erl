@@ -187,7 +187,9 @@ lookup_directory(TorrentID) ->
 -spec await_directory(torrent_id()) -> {ok, pid()}.
 await_directory(TorrentID) ->
     Name = {etorrent, TorrentID, directory},
+    error_logger:info_msg("~w awaiting directory", [self()]),
     {DirPid, undefined} = gproc:await({n, l, Name}),
+    error_logger:info_msg("~w directory alive", [self()]),
     {ok, DirPid}.
 
 %%
@@ -235,7 +237,9 @@ unregister_open_file(TorrentID, Path) ->
 -spec await_file_server(torrent_id(), file_path()) -> {ok, pid()}.
 await_file_server(TorrentID, Path) ->
     Name = {etorrent, TorrentID, Path, file},
+    error_logger:info_msg("~w awaiting file ~w", [self(), Path]),
     {FilePid, undefined} = gproc:await({n, l, Name}),
+    error_logger:info_msg("~w file alive ~w", [self(), Path]),
     {ok, FilePid}.
 
 %%
@@ -245,7 +249,9 @@ await_file_server(TorrentID, Path) ->
 -spec await_open_file(torrent_id(), file_path()) -> {ok, pid()}.
 await_open_file(TorrentID, Path) ->
     Name = {etorrent, TorrentID, Path, file, open},
+    error_logger:info_msg("~w awaiting open file ~w", [self(), Path]),
     {FilePid, undefined} = gproc:await({n, l, Name}),
+    error_logger:info_msg("~w open file alive ~w", [self(), Path]),
     {ok, FilePid}.
 
 %%
