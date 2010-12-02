@@ -134,18 +134,12 @@ write_file_blocks(_, <<>>, []) ->
 write_file_blocks(TorrentID, Chunk, [{Path, Offset, Length}|T]=L) ->
     ok = schedule_io_operation(TorrentID, Path),
     {ok, FilePid} = await_open_file(TorrentID, Path),
-    case Chunk of
-        <<Block:Length/binary, Rest/binary>> ->
-            case etorrent_io_file:write(FilePid, Offset, Block) of
-                {error, eagain} ->
-                    %% XXX - potential race condition
-                    write_file_blocks(TorrentID, Chunk, L);
-                ok ->
-                    write_file_blocks(TorrentID, Rest, T)
-            end;
-        _ ->
-            error_logger:error_msg("Could not match chunk of length(~w) to block of length(~w)~n", [byte_size(Chunk), Length]),
-            write_file_blocks(TorrentID, Chunk, L)
+    <<Block:Length/binary, Rest/binary>> = Chunk,
+    case etorrent_io_file:write(FilePid, Offset, Block) of
+        {error, eagain} ->
+            write_file_blocks(TorrentID, Chunk, L);
+        ok ->
+            write_file_blocks(TorrentID, Rest, T)
     end.
 
 
