@@ -6,6 +6,16 @@ speed. ETORRENT is mostly meant for unattended operation, where one
 just specifies what files to download and gets a notification when
 they are.
 
+## Flag days
+
+Flag days are when you need to do something to your setup
+
+   * *2010-12-02* The fast-resume-file format has been updated. You
+     may have to delete your fast_resume_file though the system was
+     configured to do a silent system upgrade.
+
+## Why
+
 ETORRENT was mostly conceived as an experiment in how easy it would be
 to write a bittorrent client in Erlang. The hypothesis is that the
 code will be cleaner and smaller than comparative bittorrent clients.
@@ -17,14 +27,14 @@ unless you are able to fix eventual problems. If you've noticed any bad
 behavior it is definitely a bug and should be reported as soon as possible
 so we can get it away.
 
-### Currently supported BEPs:
+## Currently supported BEPs:
 
    * BEP 03 - The BitTorrent Protocol Specification.
    * BEP 04 - Known Number Allocations.
    * BEP 12 - Multitracker Metadata Extension.
    * BEP 23 - Tracker Returns Compact Peer Lists.
 
-### Required software:
+## Required software:
 
    * rebar - you need a working rebar installation to build etorrent.
    * Erlang/OTP R13B04 or R14 - the etorrent system is written in
