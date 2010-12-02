@@ -7,6 +7,8 @@
 -endif.
 
 -define(AWAIT_TIMEOUT, 10*1000).
+-define(MAXFD_PARAM, fs_watermark_high).
+-define(MAXFD_DEFAULT, 128).
 
 %%
 %% File I/O subsystem.
@@ -56,7 +58,8 @@
 -record(state, {
     torrent :: torrent_id(),
     pieces  :: array(),
-    files_open :: list(#io_file{})}).
+    files_open :: list(#io_file{}),
+    files_max  :: pos_integer()}).
 
 %%
 %% TODO - comment and spec
@@ -265,12 +268,20 @@ schedule_io_operation(Directory, RelPath) ->
 
 
 init([TorrentID, Torrent]) ->
+    % Let the user define a limit on the amount of files
+    % that will be open at the same time
+    MaxFiles = case application:get_env(etorrent, ?MAXFD_PARAM) of
+        {ok, UserDefined} -> UserDefined;
+        undefined -> ?MAXFD_DEFAULT
+    end,
+
     true = register_directory(TorrentID),
     PieceMap  = make_piece_map(Torrent),
     InitState = #state{
         torrent=TorrentID,
         pieces=PieceMap,
-        files_open=[]},
+        files_open=[],
+        files_max=MaxFiles},
     {ok, InitState}.
 
 %%
@@ -292,10 +303,11 @@ handle_call({get_positions, Piece}, _, State) ->
 handle_cast({schedule_operation, RelPath}, State) ->
     #state{
         torrent=TorrentID,
-        files_open=FilesOpen} = State,
+        files_open=FilesOpen,
+        files_max=MaxFiles} = State,
 
     FileInfo  = lists:keyfind(RelPath, #io_file.rel_path, FilesOpen),
-    AtLimit   = length(FilesOpen) >= 128,
+    AtLimit   = length(FilesOpen) >= MaxFiles,
 
     %% If the file that the client intends to operate on is not open and
     %% the quota on the number of open files has been met, tell the least
