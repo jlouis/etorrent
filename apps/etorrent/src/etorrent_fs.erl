@@ -16,7 +16,7 @@
 
 %% API
 -export([start_link/1,
-         read_piece/2, read_chunk/4, write_chunk/2, check_piece/2]).
+         read_piece/2, read_chunk/4, write_chunk/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -48,12 +48,7 @@ read_chunk(Pid, Pn, Offset, Len) ->
 read_piece(Pid, Pn) when is_integer(Pn) ->
     gen_server:call(Pid, {read_piece, Pn}).
 
-%% @doc Search the mnesia tables for the Piece with Index and
-%%   write it back to disk.
-%% @end
--spec check_piece(pid(), integer()) -> ok.
-check_piece(Pid, Index) ->
-    gen_server:cast(Pid, {check_piece, Index}).
+
 
 %% @doc writes a chunk, {Index, Data, Ops} back to disk. Pid is the FS Pid
 %%   which should carry out the writing operation.
@@ -90,31 +85,7 @@ handle_cast({write_chunk, {Index, Data, Ops}}, S) ->
             NS = fs_write(Data, Ops, S),
 	    {noreply, NS}
     end;
-handle_cast({check_piece, Index}, S) ->
-    {Hash, Operations} = etorrent_piece_mgr:piece_info(S#state.torrent_id, Index),
-    {Data, NS} = read_pieces_and_assemble(Operations, S),
-    DataSize = byte_size(Data),
-    case Hash == crypto:sha(Data) of
-        true ->
-            ok = etorrent_torrent:statechange(
-                S#state.torrent_id, [{subtract_left, DataSize}]),
-            ok = etorrent_piece_mgr:statechange(
-                   S#state.torrent_id,
-                   Index,
-                   fetched),
-            etorrent_table:foreach_peer(
-	      S#state.torrent_id,
-	      fun(P) ->
-		      etorrent_peer_control:have(P, Index)
-	      end),
-            {noreply, NS};
-        false ->
-            ok =
-                etorrent_piece_mgr:statechange(S#state.torrent_id,
-                                               Index,
-                                               not_fetched),
-            {noreply, NS}
-    end;
+
 handle_cast(Msg, State) ->
     ?WARN([unknown_msg, Msg]),
     {noreply, State}.
