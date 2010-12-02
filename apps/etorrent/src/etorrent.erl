@@ -33,13 +33,17 @@ list() ->
       fun (R) ->
 	      Eta = etorrent_rate:format_eta(proplists:get_value(left, R),
 					     DownloadRate),
+	      Uploaded = proplists:get_value(uploaded, R) +
+			 proplists:get_value(all_time_uploaded, R),
+	      Downloaded = proplists:get_value(downloaded, R) +
+		           proplists:get_value(all_time_downloaded, R),
 	      {value, PL} = etorrent_table:get_torrent(proplists:get_value(id, R)),
               io:format("~3.B ~11.B ~11.B ~11.B ~11.B ~3.B ~3.B ~7.3f% ~s ~n",
                         [proplists:get_value(id, R),
 			 proplists:get_value(total, R),
 			 proplists:get_value(left, R),
-			 proplists:get_value(uploaded, R),
-			 proplists:get_value(downloaded, R),
+			 Uploaded,
+			 Downloaded,
 			 proplists:get_value(leechers, R),
 			 proplists:get_value(seeders, R),
                          percent_complete(R),

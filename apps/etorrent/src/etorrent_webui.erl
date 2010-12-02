@@ -56,38 +56,41 @@ list_torrents() ->
 		Id = proplists:get_value(id, R),
 		SL = proplists:get_value(rate_sparkline, R),
                 {value, PL} = etorrent_table:get_torrent(Id),
-            io_lib:format(
-	      "<tr><td>~3.B</td><td>~s</td><td>~11.1f</td>" ++
-	      "<td>~11.1f</td><td>~11.1f / ~11.1f</td>"++
-	      "<td>~.3f</td>"++
-	      "<td>~3.B / ~3.B</td><td>~7.1f%</td>" ++
-	      "<td><span id=\"~s\">~s</span>~9.B / ~9.B / ~9.B</td>" ++
-	      "<td><span id=\"boxplot\">~s</td></tr>~n",
-	      [Id,
-	       strip_torrent(proplists:get_value(filename, PL)),
-	       proplists:get_value(total, R) / (1024 * 1024),
-	       proplists:get_value(left, R) / (1024 * 1024),
-	       proplists:get_value(uploaded, R) / (1024 * 1024),
-	       proplists:get_value(downloaded, R) / (1024 * 1024),
-	       ratio(proplists:get_value(uploaded, R),
-		     proplists:get_value(downloaded, R)),
-	       proplists:get_value(leechers, R),
-	       proplists:get_value(seeders, R),
-	       percent_complete(R),
-	       case proplists:get_value(state, R) of
-		   seeding  -> "sparkline-seed";
-		   leeching -> "sparkline-leech";
-		   endgame  -> "sparkline-leech";
-		   unknown ->  "sparkline-leech"
-	       end,
-	       show_sparkline(lists:reverse(SL)),
-	       round(lists:max(SL) / 1024),
-	       case SL of
-		   %% []      -> 0;
-		   [F | _] -> round(F / 1024)
-	       end,
-	       round(lists:min(SL) / 1024),
-	       show_sparkline(lists:reverse(SL))])
+		Uploaded = proplists:get_value(uploaded, R) +
+		           proplists:get_value(all_time_uploaded, R),
+		Downloaded = proplists:get_value(downloaded, R) +
+		             proplists:get_value(all_time_downloaded, R),
+		io_lib:format(
+		  "<tr><td>~3.B</td><td>~s</td><td>~11.1f</td>" ++
+		  "<td>~11.1f</td><td>~11.1f / ~11.1f</td>"++
+		  "<td>~.3f</td>"++
+		  "<td>~3.B / ~3.B</td><td>~7.1f%</td>" ++
+		  "<td><span id=\"~s\">~s</span>~9.B / ~9.B / ~9.B</td>" ++
+		  "<td><span id=\"boxplot\">~s</td></tr>~n",
+		  [Id,
+		   strip_torrent(proplists:get_value(filename, PL)),
+		   proplists:get_value(total, R) / (1024 * 1024),
+		   proplists:get_value(left, R) / (1024 * 1024),
+		   Uploaded / (1024 * 1024),
+		   Downloaded / (1024 * 1024),
+		   ratio(Uploaded, Downloaded),
+		   proplists:get_value(leechers, R),
+		   proplists:get_value(seeders, R),
+		   percent_complete(R),
+		   case proplists:get_value(state, R) of
+		       seeding  -> "sparkline-seed";
+		       leeching -> "sparkline-leech";
+		       endgame  -> "sparkline-leech";
+		       unknown ->  "sparkline-leech"
+		   end,
+		   show_sparkline(lists:reverse(SL)),
+		   round(lists:max(SL) / 1024),
+		   case SL of
+		       %% []      -> 0;
+		       [F | _] -> round(F / 1024)
+		   end,
+		   round(lists:min(SL) / 1024),
+		   show_sparkline(lists:reverse(SL))])
 	    end || R <- A],
     {ok, Rows}.
 
