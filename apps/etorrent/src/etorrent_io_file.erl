@@ -27,6 +27,8 @@
     fullpath :: file_path()}).
 
 
+-define(CALL_TIMEOUT, timer:seconds(30)).
+
 -spec start_link(torrent_id(), file_path(), file_path()) -> {'ok', pid()}.
 start_link(TorrentID, Path, FullPath) ->
     gen_server:start_link(?MODULE, [TorrentID, Path, FullPath], []).
@@ -42,12 +44,12 @@ close(FilePid) ->
 -spec read(pid(), block_offset(), block_len()) ->
           {ok, block_bin()} | {error, eagain}.
 read(FilePid, Offset, Length) ->
-    gen_server:call(FilePid, {read, Offset, Length}).
+    gen_server:call(FilePid, {read, Offset, Length}, ?CALL_TIMEOUT).
 
 -spec write(pid(), block_offset(), block_bin()) ->
           ok | {error, eagain}.
 write(FilePid, Offset, Chunk) ->
-    gen_server:call(FilePid, {write, Offset, Chunk}).
+    gen_server:call(FilePid, {write, Offset, Chunk}, ?CALL_TIMEOUT).
 
 init([TorrentID, RelPath, FullPath]) ->
     true = etorrent_io:register_file_server(TorrentID, RelPath),
