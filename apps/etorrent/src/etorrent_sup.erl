@@ -32,7 +32,6 @@ init([PeerId]) ->
     ?INFO([etorrent_supervisor_starting, PeerId]),
     Tables       = ?CHILD(etorrent_table),
     Torrent      = ?CHILD(etorrent_torrent),
-    FSJanitor    = ?CHILD(etorrent_fs_janitor),
     Counters     = ?CHILD(etorrent_counters),
     EventManager = ?CHILD(etorrent_event_mgr),
     PeerMgr      = ?CHILDP(etorrent_peer_mgr, [PeerId]),
@@ -69,7 +68,7 @@ init([PeerId]) ->
     end,
 
     {ok, {{one_for_all, 3, 60},
-          [Tables, Torrent, FSJanitor,
+          [Tables, Torrent,
            Counters, EventManager, PeerMgr,
            FastResume, RateManager, PieceManager,
            ChunkManager, Choker, Listener, AcceptorSup,
