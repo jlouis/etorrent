@@ -32,7 +32,6 @@
          register_directory/1,
          lookup_directory/1,
          await_directory/1,
-         await_new_directory/1,
          register_file_server/2,
          lookup_file_server/2,
          register_open_file/2,
@@ -69,9 +68,9 @@ start_link(TorrentID, Torrent) ->
     gen_server:start_link(?MODULE, [TorrentID, Torrent], []).
 
 
-%%
-%% Read a piece into memory.
-%%
+%% @doc
+%% Read a piece into memory from disc.
+%% @end
 -spec read_piece(torrent_id(), piece_index()) -> {'ok', piece_bin()}.
 read_piece(TorrentID, Piece) ->
     {ok, DirPid} = await_directory(TorrentID),
@@ -80,10 +79,10 @@ read_piece(TorrentID, Piece) ->
     {ok, iolist_to_binary(BlockList)}.
 
 
-%%
+%% @doc
 %% Read a chunk from a piece by reading each of the file
 %% blocks that make up the chunk and concatenating them.
-%%
+%% @end
 -spec read_chunk(torrent_id(), piece_index(),
                  chunk_offset(), chunk_len()) -> {'ok', chunk_bin()}.
 read_chunk(TorrentID, Piece, Offset, Length) ->
@@ -93,10 +92,10 @@ read_chunk(TorrentID, Piece, Offset, Length) ->
     BlockList = read_file_blocks(TorrentID, ChunkPositions),
     {ok, iolist_to_binary(BlockList)}.
 
-%%
+%% @doc
 %% Write a chunk to a piece by writing parts of the block
 %% to each file that the block occurs in.
-%%
+%% @end
 -spec write_chunk(torrent_id(), piece_index(),
                   chunk_offset(), chunk_bin()) -> 'ok'.
 write_chunk(TorrentID, Piece, Offset, Chunk) ->
@@ -107,11 +106,11 @@ write_chunk(TorrentID, Piece, Offset, Chunk) ->
     ok = write_file_blocks(TorrentID, Chunk, ChunkPositions).
 
 
-%%
-%% Read a list of block positions sequentially from the file
+%% @doc
+%% Read a list of block sequentially from the file
 %% servers in this directory responsible for each path the
 %% is included in the list of positions.
-%%
+%% @end
 -spec read_file_blocks(torrent_id(), list(block_pos())) -> iolist().
 read_file_blocks(_, []) ->
     [];
@@ -126,11 +125,11 @@ read_file_blocks(TorrentID, [{Path, Offset, Length}|T]=L) ->
             [Block|read_file_blocks(TorrentID, T)]
     end.
 
-%%
-%% Write blocks of a chunk seqeuntially to the file servers
+%% @doc
+%% Write a list of blocks of a chunk seqeuntially to the file servers
 %% in this directory responsible for each path that is included
 %% in the lists of positions at which the block appears.
-%%
+%% @end
 -spec write_file_blocks(torrent_id(), chunk_bin(), list(block_pos())) -> 'ok'.
 write_file_blocks(_, <<>>, []) ->
     ok;
@@ -150,117 +149,105 @@ file_paths(Torrent) ->
     [Path || {Path, _} <- etorrent_metainfo:get_files(Torrent)].   
 
 
-%%
+%% @doc
 %% Register the current process as the directory server for
 %% the given torrent.
-%%
+%% @end
 -spec register_directory(torrent_id()) -> true.
 register_directory(TorrentID) ->
     gproc:add_local_name({etorrent, TorrentID, directory}).
 
-%%
+%% @end
 %% Register the current process as the file server for the
-%% given file-path in the given server. A process being registered
+%% file-path in the directory. A process being registered
 %% as a file server does not imply that it can perform IO
 %% operations on the behalf of IO clients.
-%%
+%% @doc
 -spec register_file_server(torrent_id(), file_path()) -> true.
 register_file_server(TorrentID, Path) ->
     gproc:add_local_name({etorrent, TorrentID, Path, file}).
 
 
-%%
+%% @doc
 %% Lookup the process id of the directory server responsible
 %% for the given torrent. If there is no such server registered
 %% this function will crash.
-%%
+%% @end
 -spec lookup_directory(torrent_id()) -> pid().
 lookup_directory(TorrentID) ->
     gproc:lookup_local_name({etorrent, TorrentID, directory}).
 
-%%
+%% @doc
 %% Wait for the directory server for this torrent to appear
-%% in the directory, this way file servers can create a monitor
-%% while initializing.
-%%
+%% in the process registry.
+%% @end
 -spec await_directory(torrent_id()) -> {ok, pid()}.
 await_directory(TorrentID) ->
     Name = {etorrent, TorrentID, directory},
     {DirPid, undefined} = gproc:await({n, l, Name}, ?AWAIT_TIMEOUT),
     {ok, DirPid}.
 
-%%
-%% Subscribe to receiving a notification when a process
-%% registers as the directory for this server. This is to
-%% allow file servers to restore their directory monitor
-%% after the directory crashes while still being able to
-%% serve errors to io clients.
-%%
--spec await_new_directory(torrent_id()) -> reference().
-await_new_directory(TorrentID) ->
-    gproc:nb_await({etorrent, TorrentID, directory}).
-
-%%
+%% @doc
 %% Lookup the process id of the file server responsible for
 %% performing IO operations on this path. If there is no such
 %% server registered this function will crash.
-%%
+%% @end
 -spec lookup_file_server(torrent_id(), file_path()) -> pid().
 lookup_file_server(TorrentID, Path) ->
     gproc:lookup_local_name({etorrent, TorrentID, Path, file}).
 
-%%
+%% @doc
 %% Register the current process as a file server as being
 %% in a state where it is ready to perform IO operations
 %% on behalf of clients.
-%%
+%% @end
 -spec register_open_file(torrent_id(), file_path()) -> true.
 register_open_file(TorrentID, Path) ->
     gproc:add_local_name({etorrent, TorrentID, Path, file, open}).
 
-%%
+%% @doc
 %% Register that the current process is a file server that
 %% is not in a state where it can (successfully) perform
 %% IO operations on behalf of clients.
-%%
+%% @end
 -spec unregister_open_file(torrent_id(), file_path()) -> true.
 unregister_open_file(TorrentID, Path) ->
     gproc:unreg({n, l, {etorrent, TorrentID, Path, file, open}}).
 
 
-%%
+%% @doc
 %% Wait for the file server responsible for the given file to start
-%%
+%% and return the process id of the file server.
+%% @end
 -spec await_file_server(torrent_id(), file_path()) -> {ok, pid()}.
 await_file_server(TorrentID, Path) ->
     Name = {etorrent, TorrentID, Path, file},
     {FilePid, undefined} = gproc:await({n, l, Name}, ?AWAIT_TIMEOUT),
     {ok, FilePid}.
 
-%%
+%% @doc
 %% Wait for the file server responsible for the given file
 %% to enter a state where it is able to perform IO operations.
-%%
+%% @end
 -spec await_open_file(torrent_id(), file_path()) -> {ok, pid()}.
 await_open_file(TorrentID, Path) ->
     Name = {etorrent, TorrentID, Path, file, open},
     {FilePid, undefined} = gproc:await({n, l, Name}, ?AWAIT_TIMEOUT),
     {ok, FilePid}.
 
-%%
-%% Fetch the positions and length of the file blocks where
-%% Piece is located in the files of the torrent that this
-%% directory server is responsible for.
-%%
+%% @doc
+%% Fetch the offsets and length of the file blocks of the piece
+%% from this directory server.
+%% @end
 -spec get_positions(pid(), piece_index()) -> {'ok', list(block_pos())}.
 get_positions(DirPid, Piece) ->
     gen_server:call(DirPid, {get_positions, Piece}).
 
-%%
+%% @doc
 %% Notify the directory server that the current process intends
 %% to perform an IO-operation on a file. This is so that the directory
-%% can notify the file server to open it's file.
-%%
+%% can notify the file server to open it's file if needed.
+%% @end
 -spec schedule_io_operation(torrent_id(), file_path()) -> ok.
 schedule_io_operation(Directory, RelPath) ->
     {ok, DirPid} = await_directory(Directory),
