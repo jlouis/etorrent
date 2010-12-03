@@ -7,8 +7,6 @@
 -endif.
 
 -define(AWAIT_TIMEOUT, 10*1000).
--define(MAXFD_PARAM, fs_watermark_high).
--define(MAXFD_DEFAULT, 128).
 
 %%
 %% File I/O subsystem.
@@ -270,11 +268,7 @@ schedule_io_operation(Directory, RelPath) ->
 init([TorrentID, Torrent]) ->
     % Let the user define a limit on the amount of files
     % that will be open at the same time
-    MaxFiles = case application:get_env(etorrent, ?MAXFD_PARAM) of
-        {ok, UserDefined} -> UserDefined;
-        undefined -> ?MAXFD_DEFAULT
-    end,
-
+    MaxFiles = etorrent_config:max_files(),
     true = register_directory(TorrentID),
     PieceMap  = make_piece_map(Torrent),
     InitState = #state{

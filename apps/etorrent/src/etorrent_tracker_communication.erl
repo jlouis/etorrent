@@ -344,7 +344,7 @@ build_tracker_url(Url, Event,
 			   peer_id = PeerId }) ->
     {torrent_info, Uploaded, Downloaded, Left} =
                 etorrent_torrent:find(Id),
-    {ok, Port} = application:get_env(etorrent, port),
+    Port = etorrent_config:listen_port(),
     Request = [{"info_hash",
                 etorrent_http:build_encoded_form_rfc1738(InfoHash)},
                {"peer_id",

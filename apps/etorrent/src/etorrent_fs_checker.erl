@@ -71,7 +71,7 @@ check_piece(TorrentID, PieceIndex) ->
             _  = etorrent_table:foreach_peer(TorrentID,
                      fun(Pid) -> etorrent_peer_control:have(Pid, PieceIndex) end),
             ok;
-        false ->
+        _ ->
             ok = etorrent_piece_mgr:statechange(TorrentID, PieceIndex, not_fetched)
     end.
 
@@ -85,7 +85,7 @@ initialize_dictionary(Id, Path) ->
     {ok, Torrent, IH, FPList, NumPieces}.
 
 load_torrent(Path) ->
-    {ok, Workdir} = application:get_env(etorrent, dir),
+    Workdir = etorrent_config:work_dir(),
     P = filename:join([Workdir, Path]),
     Torrent = etorrent_bcoding:parse_file(P),
     Files = etorrent_metainfo:get_files(Torrent),
@@ -97,7 +97,7 @@ load_torrent(Path) ->
     {ok, Torrent, FilesToCheck, InfoHash}.
 
 ensure_file_sizes_correct(Files) ->
-    {ok, Workdir} = application:get_env(etorrent, dir),
+    Workdir = etorrent_config:work_dir(),
     lists:foreach(
       fun ({Pth, ISz}) ->
               F = filename:join([Workdir, Pth]),

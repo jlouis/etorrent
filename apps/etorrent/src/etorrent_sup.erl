@@ -59,10 +59,9 @@ init([PeerId]) ->
                   transient, infinity, supervisor, [etorrent_dirwatcher_sup]},
 
     % Make the DHT subsystem optional
-    DHTSup = case application:get_env(etorrent, dht) of
-        undefined -> [];
-        {ok, false} -> [];
-        {ok, true} ->
+    DHTSup = case etorrent_config:dht() of
+        false -> [];
+        true ->
             [{dht_sup,
                 {etorrent_dht, start_link, []},
                 permanent, infinity, supervisor, [etorrent_dht]}]

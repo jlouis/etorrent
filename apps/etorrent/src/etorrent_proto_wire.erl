@@ -392,7 +392,7 @@ encode_fastset([Idx | Rest]) ->
     <<R/binary, Idx:32>>.
 
 extended_msg_contents() ->
-    {ok, Port} = application:get_env(etorrent, port),
+    Port = etorrent_config:listen_port(),
     extended_msg_contents(Port, ?AGENT_TRACKER_STRING, 250).
 
 extended_msg_contents(Port, ClientVersion, ReqQ) ->

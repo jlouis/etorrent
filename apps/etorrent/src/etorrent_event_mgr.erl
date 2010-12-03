@@ -37,8 +37,8 @@ completed_torrent(Id) -> event({completed_torrent, Id}).
 %% ====================================================================
 start_link() ->
     {ok, Pid} = gen_event:start_link({local, ?SERVER}),
-    {ok, Dir} = application:get_env(etorrent, logger_dir),
-    {ok, Fname} = application:get_env(etorrent, logger_fname),
+    Dir   = etorrent_config:logger_dir(),
+    Fname = etorrent_config:logger_file(),
     Args = etorrent_file_logger:init(Dir, Fname),
     gen_event:add_handler(?SERVER, etorrent_file_logger, Args),
     gen_event:add_handler(?SERVER, etorrent_memory_logger, []),
