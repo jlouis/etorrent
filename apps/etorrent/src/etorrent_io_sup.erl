@@ -12,20 +12,19 @@ start_link(TorrentID, TorrentFile) ->
 init([TorrentID, TorrentFile]) ->
     {ok, Workdir} = application:get_env(etorrent, dir),
     FullPath = filename:join([Workdir, TorrentFile]),
-    io:format(FullPath, []),
-    Torrent    = etorrent_bcoding:parse_file(FullPath),
-    Files      = etorrent_io:file_paths(Torrent),
-    FileSpecs  = [file_server_spec(TorrentID, Workdir, Path) || Path <- Files],
-    DirSpec    = directory_server_spec(TorrentID, Torrent),
-    {ok, {{one_for_one, 1, 60}, FileSpecs ++ [DirSpec]}}.
-
-file_server_spec(TorrentID, Workdir, Path) ->
-    Fullpath = filename:join(Workdir, Path),
-    {{TorrentID, Path},
-        {etorrent_io_file, start_link, [TorrentID, Path, Fullpath]},
-        permanent, 2000, worker, [etorrent_io_file]}.
+    Torrent   = etorrent_bcoding:parse_file(FullPath),
+    Files     = etorrent_io:file_paths(Torrent),
+    DirServer = directory_server_spec(TorrentID, Torrent),
+    FileSup   = file_server_sup_spec(TorrentID, Workdir, Files),
+    {ok, {{one_for_one, 1, 60}, [DirServer, FileSup]}}.
 
 directory_server_spec(TorrentID, Torrent) ->
     {{TorrentID, directory},
         {etorrent_io, start_link, [TorrentID, Torrent]},
         permanent, 2000, worker, [etorrent_io]}.
+
+file_server_sup_spec(TorrentID, Workdir, Files) ->
+    Args = [TorrentID, Workdir, Files],
+    {{TorrentID, file_server_sup},
+        {etorrent_io_file_sup, start_link, Args},
+        permanent, 2000, supervisor, [etorrent_file_io_sup]}.
