@@ -11,18 +11,46 @@
 -define(MAXFD_DEFAULT, 128).
 
 %%
-%% File I/O subsystem.
+%% #File I/O subsystem.
 %%
-%%    A directory server (this module) is responsible for maintaining
-%%    a file server (etorrent_io_file) for each file included in a torrent.
+%% A directory server (this module) is responsible for maintaining
+%% the opened/closed state for each file in a torrent.
 %%
-%%    The directory server maps chunk specifications ({Piece, Offset, Length})
-%%    to [{Path, Offset, Length}]. It is the responsibility of the client to
-%%    gather and assemble the sub-chunks from the file servers.
+%% ## Pieces
+%% The directory server is responsible for mapping each piece to a set
+%% of file-blocks. A piece is only mapped to multiple blocks if it spans
+%% multiple files.
 %%
-%%    Registered names:
-%%        {etorrent_io_directory, TorrentID}
-%%        {etorrent_io_file, TorrentID, FilePath}
+%% ## Chunks
+%% Chunks are mapped to a set of file blocks based on the file blocks that
+%% contain the piece that the chunk is a member of.
+%%
+%% ## Scheduling
+%% Because there is a limit on the number of file descriptors that an
+%% OS-process can have open at the same time the directory server
+%% attempts to limit the amount of file servers that hold an actual
+%% file handle to the file it is resonsible for.
+%%
+%% Each time a client intends to read/write to a file it notifies the
+%% directory server. If the file is not a member of the set of open files
+%% the server the file server to open a file handle to the file.
+%% 
+%% When the limit on file servers keeping open file handles has been reached
+%% the file server will notify the least recently used file server to close
+%% its file handle for each notification for a file that is not in the set
+%% of open files.
+%%
+%% ## Guarantees
+%% The protocol between the directory server and the file servers is
+%% asynchronous, there is no guarantee that the number of open file handles
+%% will never be larger than the specified number.
+%%
+%% ## Synchronization
+%% The gproc application is used to keep a registry of the process ids of
+%% directory servers and file servers. A file server registers under a second
+%% name when it has an open file handle. The support in gproc for waiting until a
+%% name is registered is used to notify clients when the file server has an
+%% open file handle.
 %%
 -export([start_link/2,
          read_piece/2,
