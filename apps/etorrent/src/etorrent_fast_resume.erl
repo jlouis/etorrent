@@ -106,7 +106,8 @@ handle_call({query_state, Id}, _From, S) ->
     {value, PL} = etorrent_table:get_torrent(Id),
     case ets:lookup(etorrent_fast_resume, proplists:get_value(filename, PL)) of
         [] -> {reply, unknown, S};
-        [{_, FSPL}] -> {reply, {value, FSPL}, S}
+        [{_, FSPL}] when is_list(FSPL) -> {reply, {value, FSPL}, S};
+	[{_, St}] -> {reply, {value, upgrade(1, St)}, S}
     end;
 handle_call(_Request, _From, State) ->
     Reply = ok,
@@ -131,3 +132,12 @@ terminate(_Reason, _State) ->
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
+
+upgrade(1, St) ->
+    upgrade1(St).
+
+%% Upgrade from version 1
+upgrade1(St) ->
+    [{state, St},
+     {uploaded, 0},
+     {downloaded, 0}].
