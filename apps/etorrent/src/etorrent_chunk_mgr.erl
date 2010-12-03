@@ -36,28 +36,19 @@
 -ignore_xref([{start_link, 0}]).
 
 %%====================================================================
-%% API
-%%====================================================================
-%%--------------------------------------------------------------------
-%% Function: start_link() -> {ok,Pid} | ignore | {error,Error}
-%% Description: Starts the server
-%%--------------------------------------------------------------------
 -spec start_link() -> ignore | {ok, pid()} | {error, any()}.
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
-%%--------------------------------------------------------------------
-%% Function: mark_fetched/2
-%% Args:  Id  ::= integer() - torrent id
-%%        IOL ::= {integer(), integer(), integer()} - {Index, Offs, Len}
-%% Description: Mark a given chunk as fetched.
-%%--------------------------------------------------------------------
+%% @doc Mark a given chunk as fetched.
+%% @end
 -spec mark_fetched(integer(), {integer(), integer(), integer()}) -> found | assigned.
 mark_fetched(Id, {Index, Offset, Len}) ->
     gen_server:call(?SERVER, {mark_fetched, Id, Index, Offset, Len}).
 
-% @doc Store the chunk in the chunk table. As a side-effect, check the piece if it
-% is fully fetched.
+%% @doc Store the chunk in the chunk table.
+%%   As a side-effect, check the piece if it is fully fetched.
+%% @end
 -spec store_chunk(integer(), {integer(), binary(), term()}, {integer(), integer()}, pid()) ->
                 ok.
 store_chunk(Id, {Index, D, Ops}, {Offset, Len}, FSPid) ->
@@ -81,7 +72,8 @@ putback_chunks(Pid) ->
 %%--------------------------------------------------------------------
 -spec endgame_remove_chunk(pid(), integer(), {integer(), integer(), integer()}) -> ok.
 endgame_remove_chunk(SendPid, Id, {Index, Offset, Len}) ->
-    gen_server:call(?SERVER, {endgame_remove_chunk, SendPid, Id, {Index, Offset, Len}}).
+    gen_server:call(?SERVER, {endgame_remove_chunk, SendPid, Id, {Index, Offset, Len}},
+		    infinity).
 
 %% @doc Return some chunks for downloading.
 %% @end
@@ -104,7 +96,7 @@ pick_chunks(Id, Set, N) ->
 % @end
 -spec new(integer()) -> ok.
 new(Id) ->
-    gen_server:call(?SERVER, {new, Id}).
+    gen_server:call(?SERVER, {new, Id}, infinity).
 
 %% ----------------------------------------------------------------------
 
@@ -114,34 +106,16 @@ new(Id) ->
 -spec select_chunks_by_piecenum({pos_integer(), pos_integer()}, pos_integer()) ->
 			   {ok, {pos_integer(), term()}, non_neg_integer()} | {error, already_taken}.
 select_chunks_by_piecenum({TorrentId, Pn}, Max) ->
-    gen_server:call(?SERVER, {select_chunks_by_piecenum, {TorrentId, Pn}, Max}).
+    gen_server:call(?SERVER, {select_chunks_by_piecenum, {TorrentId, Pn}, Max},
+		    infinity).
 
 
 %%====================================================================
-%% gen_server callbacks
-%%====================================================================
-
-%%--------------------------------------------------------------------
-%% Function: init(Args) -> {ok, State} |
-%%                         {ok, State, Timeout} |
-%%                         ignore               |
-%%                         {stop, Reason}
-%% Description: Initiates the server
-%%--------------------------------------------------------------------
 init([]) ->
     _Tid = ets:new(?TAB, [bag, protected, named_table, {keypos, #chunk.idt}]),
     D = dict:new(),
     {ok, #state{ torrent_dict = D }}.
 
-%%--------------------------------------------------------------------
-%% Function: %% handle_call(Request, From, State) -> {reply, Reply, State} |
-%%                                      {reply, Reply, State, Timeout} |
-%%                                      {noreply, State} |
-%%                                      {noreply, State, Timeout} |
-%%                                      {stop, Reason, Reply, State} |
-%%                                      {stop, Reason, State}
-%% Description: Handling call messages
-%%--------------------------------------------------------------------
 handle_call({new, Id}, {Pid, _Tag}, S) ->
     ManageDict = dict:store(Pid, Id, S#state.torrent_dict),
     _ = erlang:monitor(process, Pid),
@@ -196,12 +170,6 @@ ensure_monitor(Pid, Set) ->
 	    gb_sets:add(Pid, Set)
     end.
 
-%%--------------------------------------------------------------------
-%% Function: handle_cast(Msg, State) -> {noreply, State} |
-%%                                      {noreply, State, Timeout} |
-%%                                      {stop, Reason, State}
-%% Description: Handling cast messages
-%%--------------------------------------------------------------------
 handle_cast({store_chunk, Id, Pid, {Index, Data, Ops}, {Offset, Len}, FSPid}, S) ->
     ok = etorrent_io:write_chunk(Id, Index, Offset, Data),
     %% Add the newly fetched data to the fetched list
@@ -227,12 +195,6 @@ handle_cast(Msg, State) ->
     ?WARN([unknown_msg, Msg]),
     {noreply, State}.
 
-%%--------------------------------------------------------------------
-%% Function: handle_info(Info, State) -> {noreply, State} |
-%%                                       {noreply, State, Timeout} |
-%%                                       {stop, Reason, State}
-%% Description: Handling all non call/cast messages
-%%--------------------------------------------------------------------
 handle_info({'DOWN', _Ref, process, Pid, _Reason}, S) ->
     case dict:find(Pid, S#state.torrent_dict) of
 	{ok, Id} ->
@@ -249,26 +211,13 @@ handle_info({'DOWN', _Ref, process, Pid, _Reason}, S) ->
 handle_info(_Info, State) ->
     {noreply, State}.
 
-%%--------------------------------------------------------------------
-%% Function: terminate(Reason, State) -> void()
-%% Description: This function is called by a gen_server when it is about to
-%% terminate. It should be the opposite of Module:init/1 and do any necessary
-%% cleaning up. When it returns, the gen_server terminates with Reason.
-%% The return value is ignored.
-%%--------------------------------------------------------------------
 terminate(_Reason, _State) ->
     ok.
 
-%%--------------------------------------------------------------------
-%% Func: code_change(OldVsn, State, Extra) -> {ok, NewState}
-%% Description: Convert process state when code is changed
-%%--------------------------------------------------------------------
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 
-%%--------------------------------------------------------------------
-%%% Internal functions
 %%--------------------------------------------------------------------
 
 %% @doc Find all entries for a given torrent file and clear them out
@@ -303,7 +252,8 @@ chunkify_new_piece(Id, PieceSet) when is_integer(Id) ->
     case etorrent_piece_mgr:find_new(Id, PieceSet) of
         none -> none_eligible;
         {P, Pn} when is_integer(Pn) ->
-	    ok = gen_server:call(?SERVER, {chunkify_piece, {Id, P}}),
+	    ok = gen_server:call(?SERVER, {chunkify_piece, {Id, P}},
+				 infinity),
 	    {ok, Pn}
     end.
 
