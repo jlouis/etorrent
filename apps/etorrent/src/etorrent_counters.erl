@@ -19,7 +19,6 @@
 
 -record(state, {}).
 -define(SERVER, ?MODULE).
--define(DEFAULT_MAX_PEER_PROCESSES, 40).
 
 -ignore_xref([{start_link, 0}]).
 
@@ -80,7 +79,7 @@ handle_call({next, Seq}, _From, S) ->
     {reply, N, S};
 handle_call(obtain_peer_slot, {Pid, _Tag}, S) ->
     [{peer_slots, K}] = ets:lookup(etorrent_counters, peer_slots),
-    case K >= max_peer_processes() of
+    case K >= etorrent_config:max_peers() of
         true ->
             {reply, full, S};
         false ->
@@ -90,7 +89,7 @@ handle_call(obtain_peer_slot, {Pid, _Tag}, S) ->
     end;
 handle_call(slots_left, _From, S) ->
     [{peer_slots, K}] = ets:lookup(etorrent_counters, peer_slots),
-    {reply, {value, max_peer_processes() - K}, S};
+    {reply, {value, etorrent_config:max_peers() - K}, S};
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -140,11 +139,3 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 %%% Internal functions
 %%--------------------------------------------------------------------
--spec max_peer_processes() -> integer().
-max_peer_processes() ->
-    case application:get_env(etorrent, max_peers) of
-        {ok, N} when is_integer(N) ->
-            N;
-        undefined ->
-            ?DEFAULT_MAX_PEER_PROCESSES
-    end.

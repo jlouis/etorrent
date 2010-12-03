@@ -79,7 +79,7 @@ sweep(Key) ->
 
 %%====================================================================
 init([]) ->
-    {ok, Dir} = application:get_env(etorrent, dir),
+    Dir = etorrent_config:work_dir(),
     _Tid = ets:new(etorrent_dirwatcher, [named_table, private]),
     {ok, #state{dir = Dir}, 0}.
 

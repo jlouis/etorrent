@@ -49,7 +49,7 @@ find_listen_socket(Port, N) ->
 %% ====================================================================
 
 init([]) ->
-    {ok, Port} = application:get_env(etorrent, port),
+    Port = etorrent_config:listen_port(),
     {ok, ListenSocket} = find_listen_socket(Port, ?DEFAULT_SOCKET_INCREASE),
     {ok, #state{ listen_socket = ListenSocket}}.
 

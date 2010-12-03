@@ -83,7 +83,7 @@ persist_to_disk() ->
     PLS = etorrent_table:all_torrents(),
     track_in_ets_table([{proplists:get_value(id, P),
 			 proplists:get_value(filename, P)} || P <- PLS]),
-    {ok, F} = application:get_env(etorrent, fast_resume_file),
+    F  = etorrent_config:fast_resume_file(),
     ok = filelib:ensure_dir(F),
     ok = ets:tab2file(etorrent_fast_resume, F, [{extended_info, [object_count, md5sum]}]),
     ok.
@@ -92,7 +92,7 @@ persist_to_disk() ->
 
 init([]) ->
     process_flag(trap_exit, true),
-    {ok, F} = application:get_env(etorrent, fast_resume_file),
+    F = etorrent_config:fast_resume_file(),
     X = ets:file2tab(F, [{verify, true}]),
     _ = case X of
         {ok, etorrent_fast_resume} -> true;

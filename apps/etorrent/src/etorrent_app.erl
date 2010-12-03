@@ -15,23 +15,21 @@
 start(_Type, _Args) ->
     PeerId = generate_peer_id(),
     %% DB
-    case application:get_env(etorrent, webui) of
-	{ok, true} ->
-	    start_webui();
-	{ok, false} ->
-	    ignore
+    case etorrent_config:webui() of
+	    true -> start_webui();
+	    false -> ignore
     end,
     consider_profiling(),
     etorrent_sup:start_link(PeerId).
 
 %% Consider if the profiling should be enabled.
 consider_profiling() ->
-    case application:get_env(etorrent, profiling) of
-	{ok, true} ->
-	    eprof:start(),
-	    eprof:start_profiling([self()]);
-	{ok, false} ->
-	    ignore
+    case etorrent_config:profiling() of
+	    true ->
+            eprof:start(),
+            eprof:start_profiling([self()]);
+	    false ->
+	        ignore
     end.
 
 profile_output() ->
@@ -56,18 +54,6 @@ start_webui() ->
     Config = default_webui_configuration(),
     {ok, _Pid} = inets:start(httpd, Config, inets).
 
-webui_port() ->
-    {ok, P} = application:get_env(etorrent, webui_port),
-    P.
-
-webui_bind_address() ->
-    {ok, A} = application:get_env(etorrent, webui_bind_address),
-    A.
-
-logger_dir() ->
-    {ok, Val} = application:get_env(etorrent, webui_logger_dir),
-    Val.
-
 default_webui_configuration() ->
     [{modules,
       [mod_alias,
@@ -84,9 +70,9 @@ default_webui_configuration() ->
 		   {"css", "text/css"},
 		   {"js", "text/javascript"}]},
      {server_name,"etorrent_webui"},
-     {bind_address, webui_bind_address()},
-     {server_root, logger_dir()},
-     {port, webui_port()},
+     {bind_address, etorrent_config:webui_address()},
+     {server_root,  etorrent_config:webui_log_dir()},
+     {port,         etorrent_config:webui_port()},
      {document_root, filename:join([code:priv_dir(etorrent), "webui", "htdocs"])},
      {directory_index, ["index.html"]},
      {erl_script_alias, {"/ajax", [etorrent_webui]}},

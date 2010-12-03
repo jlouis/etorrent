@@ -158,9 +158,9 @@ insert_new_peer_into_chain(Pid, Chain) ->
     Front ++ [Pid | Back].
 
 upload_slots() ->
-    case application:get_env(etorrent, max_upload_slots) of
-        {ok, auto} ->
-            {ok, Rate} = application:get_env(etorrent, max_upload_rate),
+    case etorrent_config:max_upload_slots() of
+        auto ->
+            Rate = etorrent_config:max_upload_rate(),
             case Rate of
                 N when N =<  0 -> 7; %% Educated guess
                 N when N  <  9 -> 2;
@@ -169,7 +169,7 @@ upload_slots() ->
                 N ->
                     round(math:sqrt(N * 0.8))
             end;
-        {ok, N} when is_integer(N) ->
+        N when is_integer(N) ->
             N
     end.
 

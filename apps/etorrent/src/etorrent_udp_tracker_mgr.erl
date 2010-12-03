@@ -75,7 +75,7 @@ msg(Tr, M) ->
 %%====================================================================
 init([]) ->
     ets:new(?TAB, [named_table, public, {keypos, 1}, bag]),
-    {ok, Port} = application:get_env(etorrent, udp_port),
+    Port = etorrent_config:udp_port(),
     {ok, Socket} = gen_udp:open(Port, [binary, {active, true}, inet, inet6]),
     {ok, #state{ socket = Socket }}.
 
