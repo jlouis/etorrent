@@ -64,8 +64,8 @@ check_piece(TorrentID, PieceIndex) ->
     {InfoHash, _} = etorrent_piece_mgr:piece_info(TorrentID, PieceIndex),
     {ok, PieceBin} = etorrent_io:read_piece(TorrentID, PieceIndex),
     PieceSize = byte_size(PieceBin),
-    case crypto:sha(PieceBin) of
-        InfoHash ->
+    case crypto:sha(PieceBin) == InfoHash of
+        true ->
             ok = etorrent_torrent:statechange(TorrentID, [{subtract_left, PieceSize}]),
             ok = etorrent_piece_mgr:statechange(TorrentID, PieceIndex, fetched),
             _  = etorrent_table:foreach_peer(TorrentID,
