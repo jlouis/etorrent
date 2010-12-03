@@ -129,7 +129,6 @@ incoming_msg(Pid, Msg) ->
 %% Description: Initiates the server
 %%--------------------------------------------------------------------
 init([LocalPeerId, InfoHash, Id, {IP, Port}, Caps, Socket]) ->
-    process_flag(trap_exit, true),
     %% @todo: Update the leeching state to seeding when peer finished torrent.
     ok = etorrent_table:new_peer(IP, Port, Id, self(), leeching),
     ok = etorrent_choker:monitor(self()),
@@ -221,9 +220,7 @@ handle_info(Info, State) ->
 %% cleaning up. When it returns, the gen_server terminates with Reason.
 %% The return value is ignored.
 %%--------------------------------------------------------------------
-terminate(_Reason, S) ->
-    _NS = unqueue_all_pieces(S),
-    gen_tcp:close(S#state.socket),
+terminate(_Reason, _S) ->
     ok.
 
 %%--------------------------------------------------------------------
@@ -405,7 +402,7 @@ unqueue_all_pieces(S) ->
     etorrent_table:foreach_peer(S#state.torrent_id,
         fun(P) -> try_queue_pieces(P) end),
     %% Clean up the request set.
-    S#state{remote_request_set = gb_trees:empty()}.
+    S#state{ remote_request_set = gb_trees:empty() }.
 
 %%--------------------------------------------------------------------
 %% Function: try_to_queue_up_requests(state()) -> {ok, state()}

@@ -151,9 +151,11 @@ handle_info(_Info, State) ->
 %% cleaning up. When it returns, the gen_server terminates with Reason.
 %% The return value is ignored.
 %%--------------------------------------------------------------------
-%% XXX: Cancel timers for completeness.
-terminate(_Reason, S) ->
+terminate(Reason, S) when Reason =:= shutdown; Reason =:= normal ->
     _NS = contact_tracker(stopped, S),
+    ok;
+terminate(Reason, _S) ->
+    ?WARN([terminating_due_to, Reason]),
     ok.
 
 %%--------------------------------------------------------------------

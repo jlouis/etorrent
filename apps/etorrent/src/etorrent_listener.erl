@@ -49,7 +49,6 @@ find_listen_socket(Port, N) ->
 %% ====================================================================
 
 init([]) ->
-    process_flag(trap_exit, true),
     {ok, Port} = application:get_env(etorrent, port),
     {ok, ListenSocket} = find_listen_socket(Port, ?DEFAULT_SOCKET_INCREASE),
     {ok, #state{ listen_socket = ListenSocket}}.
@@ -67,8 +66,7 @@ handle_info(_Info, State) ->
     {noreply, State}.
 
 %% Make sure we close the socket again.
-terminate(_Reason, State) ->
-    gen_tcp:close(State#state.listen_socket),
+terminate(_Reason, _State) ->
     ok.
 
 code_change(_OldVsn, State, _Extra) ->
