@@ -46,8 +46,10 @@
          ping/2,
          find_node/3,
          find_node_search/1,
+         find_node_search/2,
          get_peers/3,
          get_peers_search/1,
+         get_peers_search/2,
          announce/5,
          return/4]).
 
@@ -56,9 +58,12 @@
 -spec find_node(ipaddr(), portnum(), nodeid()) ->
     {'error', 'timeout'} | {nodeid(), list(nodeinfo())}.
 -spec find_node_search(nodeid()) -> list(nodeinfo()).
+-spec find_node_search(nodeid(), list(nodeinfo())) -> list(nodeinfo()).
 -spec get_peers(ipaddr(), portnum(), infohash()) ->
     {nodeid(), token(), list(peerinfo()), list(nodeinfo())}.
 -spec get_peers_search(infohash()) ->
+    {list(trackerinfo()), list(peerinfo()), list(nodeinfo())}.
+-spec get_peers_search(infohash(), list(nodeinfo())) ->
     {list(trackerinfo()), list(peerinfo()), list(nodeinfo())}.
 -spec announce(ipaddr(), portnum(), infohash(), token(), portnum()) ->
     {'error', 'timeout'} | nodeid().
@@ -167,16 +172,28 @@ get_peers(IP, Port, InfoHash)  ->
 find_node_search(NodeID) ->
     Width = search_width(),
     Retry = search_retries(),
-    dht_iter_search(find_node, NodeID, Width, Retry).
+    Nodes = etorrent_dht_state:closest_to(NodeID, Width),
+    dht_iter_search(find_node, NodeID, Width, Retry, Nodes).
+
+find_node_search(NodeID, Nodes) ->
+    Width = search_width(),
+    Retry = search_retries(),
+    dht_iter_search(find_node, NodeID, Width, Retry, Nodes).
 
 get_peers_search(InfoHash) ->
     Width = search_width(),
     Retry = search_retries(),
-    dht_iter_search(get_peers, InfoHash, Width, Retry).
+    Nodes = etorrent_dht_state:closest_to(InfoHash, Width), 
+    dht_iter_search(get_peers, InfoHash, Width, Retry, Nodes).
 
-dht_iter_search(SearchType, Target, Width, Retry)  ->
-    Next     = etorrent_dht_state:closest_to(Target, Width),
-    WithDist = [{distance(ID, Target), ID, IP, Port} || {ID, IP, Port} <- Next],
+get_peers_search(InfoHash, Nodes) ->
+    Width = search_width(),
+    Retry = search_retries(),
+    dht_iter_search(get_peers, InfoHash, Width, Retry, Nodes).
+    
+
+dht_iter_search(SearchType, Target, Width, Retry, Nodes)  ->
+    WithDist = [{distance(ID, Target), ID, IP, Port} || {ID, IP, Port} <- Nodes],
     dht_iter_search(SearchType, Target, Width, Retry, 0, WithDist,
                     gb_sets:empty(), gb_sets:empty(), []).
 
@@ -325,16 +342,16 @@ handle_call({find_node, IP, Port, Target}, From, State) ->
     do_send_query('find_node', Args, IP, Port, From, State);
 
 handle_call({get_peers, IP, Port, InfoHash}, From, State) ->
-    LHash = etorrent_dht:list_id(InfoHash),
-    Args = [{{string, "info_hash"}, {string, LHash}} | common_values()],
+    LHash = list_to_binary(etorrent_dht:list_id(InfoHash)),
+    Args  = [{<<"info_hash">>, LHash}| common_values()],
     do_send_query('get_peers', Args, IP, Port, From, State);
 
 handle_call({announce, IP, Port, InfoHash, Token, BTPort}, From, State) ->
-    LHash = etorrent_dht:list_id(InfoHash),
-    LToken = binary_to_list(Token),
-    Args = [{<<"info_hash">>, LHash},
+    LHash = list_to_binary(etorrent_dht:list_id(InfoHash)),
+    Args = [
+        {<<"info_hash">>, LHash},
         {<<"port">>, BTPort},
-            {<<"token">>, LToken} | common_values()],
+        {<<"token">>, Token} | common_values()],
     do_send_query('announce', Args, IP, Port, From, State);
 
 handle_call({return, IP, Port, ID, Values}, _From, State) ->
@@ -465,12 +482,7 @@ handle_info(_Msg, State) ->
     {noreply, State}.
 
 terminate(_, State) ->
-    (catch gen_udp:close(State#state.socket)),
-    #state{sent=Sent} = State,
-    LSent = gb_trees:values(Sent),
-    _ = [catch gen_server:reply(Client, timeout) || {Client, _} <- LSent],
-    _ = [catch cancel_timeout(TRef) || {_, TRef} <- LSent],
-    {ok, State}.
+    ok.
 
 code_change(_, _, State) ->
     {ok, State}.
@@ -513,8 +525,8 @@ handle_query('get_peers', Params, IP, Port, MsgID, Self, Tokens) ->
 
 handle_query('announce', Params, IP, Port, MsgID, Self, Tokens) ->
     InfoHash = etorrent_dht:integer_id(get_value(<<"info_hash">>, Params)),
-    BTPort = get_value(<<"port">>,   Params),
-    Token = get_string(<<"token">>, Params),
+    BTPort   = get_value(<<"port">>,   Params),
+    Token    = get_value(<<"token">>, Params),
     _ = case is_valid_token(Token, IP, Port, Tokens) of
         true ->
             etorrent_dht_tracker:announce(InfoHash, IP, BTPort);
