@@ -7,9 +7,6 @@
 %%%-------------------------------------------------------------------
 -module(etorrent).
 
-
--include("etorrent_torrent.hrl").
-
 %% API
 -export([help/0, h/0, list/0, l/0, show/0, s/0, show/1, s/1, check/1]).
 
@@ -34,16 +31,21 @@ list() ->
 
     lists:foreach(
       fun (R) ->
-	      Eta = etorrent_rate:format_eta(R#torrent.left, DownloadRate),
-	      {value, PL} = etorrent_table:get_torrent(R#torrent.id),
+	      Eta = etorrent_rate:format_eta(proplists:get_value(left, R),
+					     DownloadRate),
+	      Uploaded = proplists:get_value(uploaded, R) +
+			 proplists:get_value(all_time_uploaded, R),
+	      Downloaded = proplists:get_value(downloaded, R) +
+		           proplists:get_value(all_time_downloaded, R),
+	      {value, PL} = etorrent_table:get_torrent(proplists:get_value(id, R)),
               io:format("~3.B ~11.B ~11.B ~11.B ~11.B ~3.B ~3.B ~7.3f% ~s ~n",
-                        [R#torrent.id,
-                         R#torrent.total,
-                         R#torrent.left,
-                         R#torrent.uploaded,
-                         R#torrent.downloaded,
-                         R#torrent.leechers,
-                         R#torrent.seeders,
+                        [proplists:get_value(id, R),
+			 proplists:get_value(total, R),
+			 proplists:get_value(left, R),
+			 Uploaded,
+			 Downloaded,
+			 proplists:get_value(leechers, R),
+			 proplists:get_value(seeders, R),
                          percent_complete(R),
 			 Eta]),
               io:format("    ~s~n", [proplists:get_value(filename, PL)])
@@ -101,6 +103,10 @@ s() -> show().
 s(Item) -> show(Item).
 
 %%=====================================================================
+%% @todo Move this function (and its webui friend) to etorrent_torrent.
 percent_complete(R) ->
     %% left / complete * 100 = % done
-    (R#torrent.total - R#torrent.left) / R#torrent.total * 100.
+    T = proplists:get_value(total, R),
+    L = proplists:get_value(left, R),
+    (T - L) / T * 100.
+

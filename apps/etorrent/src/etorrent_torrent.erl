@@ -9,8 +9,6 @@
 
 -behaviour(gen_server).
 
--include("etorrent_torrent.hrl").
-
 %% Counter for how many pieces is missing from this torrent
 -record(c_pieces, {id :: non_neg_integer(), % Torrent id
                    missing :: non_neg_integer()}). % Number of missing pieces
@@ -19,11 +17,37 @@
          new/3, all/0, statechange/2,
          num_pieces/1, decrease_not_fetched/1,
          is_seeding/1, seeding/0,
-         state/1,
-         find/1, is_endgame/1]).
+         lookup/1, is_endgame/1]).
 
 -export([init/1, handle_call/3, handle_cast/2, code_change/3,
          handle_info/2, terminate/2]).
+
+%% The type of torrent records.
+
+-type(torrent_state() :: 'leeching' | 'seeding' | 'endgame' | 'unknown').
+%% A single torrent is represented as the 'torrent' record
+-record(torrent,
+	{ %% Unique identifier of torrent, monotonically increasing
+	  id :: non_neg_integer(),
+	  %% How many bytes are there left before we have the full torrent
+	  left = unknown :: non_neg_integer(),
+	  %% How many bytes are there in total
+	  total  :: non_neg_integer(),
+	  %% How many bytes have we uploaded
+	  uploaded :: non_neg_integer(),
+	  %% How many bytes have we downloaded
+	  downloaded :: non_neg_integer(),
+	  %% Uploaded and downloaded bytes, all time
+	  all_time_uploaded = 0 :: non_neg_integer(),
+	  all_time_downloaded = 0 :: non_neg_integer(),
+	  %% Number of pieces in torrent
+	  pieces = unknown :: non_neg_integer() | 'unknown',
+	  %% How many people have a completed file?
+	  seeders = 0 :: non_neg_integer(),
+	  %% How many people are downloaded
+	  leechers = 0 :: non_neg_integer(),
+	  rate_sparkline = [0.0],
+	  state :: torrent_state()}).
 
 -define(SERVER, ?MODULE).
 -define(TAB, ?MODULE).
@@ -45,6 +69,8 @@ start_link() ->
 -spec new(integer(),
        {{uploaded, integer()},
         {downloaded, integer()},
+	{all_time_uploaded, non_neg_integer()},
+	{all_time_downloaded, non_neg_integer()},
         {left, integer()},
         {total, integer()}}, integer()) -> ok.
 new(Id, Info, NPieces) ->
@@ -52,7 +78,7 @@ new(Id, Info, NPieces) ->
 
 % @doc Return all torrents, sorted by Id
 % @end
--spec all() -> [#torrent{}].
+-spec all() -> [[{term(), term()}]].
 all() ->
     gen_server:call(?SERVER, all).
 
@@ -77,40 +103,31 @@ statechange(Id, What) ->
 num_pieces(Id) ->
     gen_server:call(?SERVER, {num_pieces, Id}).
 
-% @doc Return the current state of the torrent identified by Id
-% @end
--spec state(integer()) -> not_found | {value, seeding | leeching | unknown}.
-state(Id) ->
+%% @doc Return a property list of the torrent identified by Id
+%% @end
+-spec lookup(integer()) ->
+		    not_found | {value, [{term(), term()}]}.
+lookup(Id) ->
     case ets:lookup(?TAB, Id) of
-        [] -> not_found;
-        [M] -> {value, M#torrent.state}
+	[] -> not_found;
+	[M] -> {value, proplistify(M)}
     end.
 
 % @doc Returns true if the torrent is a seeding torrent
 % @end
 -spec is_seeding(integer()) -> boolean().
 is_seeding(Id) ->
-    {value, S} = state(Id),
-    S =:= seeding.
+    {value, S} = lookup(Id),
+    proplists:get_value(state, S) =:= seeding.
 
 % @doc Returns all torrents which are currently seeding
 % @end
 -spec seeding() -> {value, [integer()]}.
 seeding() ->
     Torrents = all(),
-    {value, [T#torrent.id || T <- Torrents,
-                    T#torrent.state =:= seeding]}.
-
-% @doc Return a torrent_info block for a given torrent
-% @end
--spec find(integer()) ->
-    {torrent_info, undefined | integer(),
-                   undefined | integer(),
-                   undefined | integer()}.
-find(Id) ->
-    [T] = ets:lookup(?TAB, Id),
-    {torrent_info, T#torrent.uploaded, T#torrent.downloaded, T#torrent.left}.
-
+    {value, [proplists:get_value(id, T) ||
+		T <- Torrents,
+		proplists:get_value(state, T) =:= seeding]}.
 
 % @doc Track that we downloaded a piece
 %  <p>As a side-effect, this call eventually updates the endgame state</p>
@@ -142,6 +159,8 @@ init([]) ->
     {ok, #state{ monitoring = dict:new() }}.
 
 handle_call({new, Id, {{uploaded, U}, {downloaded, D},
+		       {all_time_uploaded, AU},
+		       {all_time_downloaded, AD},
                        {left, L}, {total, T}}, NPieces}, {Pid, _Tag}, S) ->
     State = case L of
                 0 -> etorrent_event_mgr:seeding_torrent(Id),
@@ -154,6 +173,8 @@ handle_call({new, Id, {{uploaded, U}, {downloaded, D},
                            total = T,
                            uploaded = U,
                            downloaded = D,
+			   all_time_uploaded = AU,
+			   all_time_downloaded = AD,
                            pieces = NPieces,
                            state = State }),
     Missing = etorrent_piece_mgr:num_not_fetched(Id),
@@ -211,13 +232,28 @@ terminate(_Reason, _S) ->
 %%--------------------------------------------------------------------
 all(Pos) ->
     Objects = ets:match_object(?TAB, '$1'),
-    lists:keysort(Pos, Objects).
+    lists:keysort(Pos, Objects),
+    [proplistify(O) || O <- Objects].
+
+proplistify(T) ->
+    [{id, T#torrent.id},
+     {total, T#torrent.total},
+     {left,  T#torrent.left},
+     {uploaded, T#torrent.uploaded},
+     {downloaded, T#torrent.downloaded},
+     {all_time_downloaded, T#torrent.all_time_downloaded},
+     {all_time_uploaded,   T#torrent.all_time_uploaded},
+     {leechers, T#torrent.leechers},
+     {seeders, T#torrent.seeders},
+     {state, T#torrent.state},
+     {rate_sparkline, T#torrent.rate_sparkline}].
+
 
 %% @doc Run function F on each torrent
 %% @end
 for_each_torrent(F) ->
-    Rows = all(2),
-    lists:foreach(F, Rows).
+    Objects = ets:match_object(?TAB, '$1'),
+    lists:foreach(F, Objects).
 
 %% @doc Update the rate_sparkline field in the #torrent{} record.
 %% @end

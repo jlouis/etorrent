@@ -227,8 +227,10 @@ identify_url_type(Url) ->
 contact_tracker_udp(IP, Port, Event, #state { torrent_id = Id,
 					      info_hash = InfoHash,
 					      peer_id = PeerId } = S) ->
-    {torrent_info, Uploaded, Downloaded, Left} = % Change this to a proplist
-	etorrent_torrent:find(Id),
+    {value, PL} = etorrent_torrent:lookup(Id),
+    Uploaded   = proplists:get_value(uploaded, PL),
+    Downloaded = proplists:get_value(downloaded, PL),
+    Left       = proplists:get_value(left, PL),
     PropList = [{info_hash, InfoHash},
 		{peer_id, list_to_binary(PeerId)},
 		{up, Uploaded},
@@ -342,8 +344,10 @@ build_tracker_url(Url, Event,
 		  #state { torrent_id = Id,
 			   info_hash = InfoHash,
 			   peer_id = PeerId }) ->
-    {torrent_info, Uploaded, Downloaded, Left} =
-                etorrent_torrent:find(Id),
+    {value, PL} = etorrent_torrent:lookup(Id),
+    Uploaded   = proplists:get_value(uploaded, PL),
+    Downloaded = proplists:get_value(downloaded, PL),
+    Left       = proplists:get_value(left, PL),
     {ok, Port} = application:get_env(etorrent, port),
     Request = [{"info_hash",
                 etorrent_http:build_encoded_form_rfc1738(InfoHash)},

@@ -113,11 +113,20 @@ initializing(timeout, S) ->
             etorrent_table:statechange_torrent(S#state.id, {infohash, InfoHash}),
             etorrent_table:statechange_torrent(S#state.id, started),
 
+	    {AU, AD} =
+		case etorrent_fast_resume:query_state(S#state.id) of
+		    unknown -> {0,0};
+		    {value, PL} ->
+			{proplists:get_value(uploaded, PL),
+			 proplists:get_value(downloaded, PL)}
+		end,
             %% Add a torrent entry for this torrent.
             ok = etorrent_torrent:new(
                    S#state.id,
                    {{uploaded, 0},
                     {downloaded, 0},
+		    {all_time_uploaded, AU},
+		    {all_time_downloaded, AD},
                     {left, calculate_amount_left(S#state.id)},
                     {total, etorrent_metainfo:get_length(Torrent)}},
                    NumberOfPieces),
