@@ -10,6 +10,8 @@ they are.
 
 Flag days are when you need to do something to your setup
 
+   * *2010-12-06* We now depend on riak_err. You will need to regrab
+     dependencies.
    * *2010-12-02* The fast-resume-file format has been updated. You
      may have to delete your fast_resume_file though the system was
      configured to do a silent system upgrade.
