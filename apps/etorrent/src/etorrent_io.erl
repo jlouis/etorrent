@@ -145,10 +145,16 @@ write_file_blocks(TorrentID, Chunk, [{Path, Offset, Length}|T]=L) ->
             write_file_blocks(TorrentID, Rest, T)
     end.
 
+file_path_len(T) ->
+    case etorrent_metainfo:get_files(T) of
+	[One] -> [One];
+	More when is_list(More) ->
+	    Name = etorrent_metainfo:get_name(T),
+	    [{filename:join([Name, Path]), Len} || {Path, Len} <- More]
+    end.
 
-file_paths(Torrent) ->
-    [Path || {Path, _} <- etorrent_metainfo:get_files(Torrent)].   
-
+file_paths(T) ->
+    [Path || {Path, _} <- file_path_len(T)].
 
 %%
 %% Register the current process as the directory server for
@@ -373,7 +379,7 @@ code_change(_, _, _) ->
 %%
 make_piece_map(Torrent) ->
     PieceLength = etorrent_metainfo:get_piece_length(Torrent),
-    FileLengths = etorrent_metainfo:get_files(Torrent),
+    FileLengths = file_path_len(Torrent),
     MapEntries  = make_piece_map_(PieceLength, FileLengths),
     lists:foldl(fun({Path, Piece, Offset, Length}, Acc) ->
         Prev = array:get(Piece, Acc),

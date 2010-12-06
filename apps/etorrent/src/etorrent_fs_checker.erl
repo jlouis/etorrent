@@ -92,8 +92,12 @@ load_torrent(Path) ->
     Name = etorrent_metainfo:get_name(Torrent),
     InfoHash = etorrent_metainfo:get_infohash(Torrent),
     FilesToCheck =
-        [{filename:join([Filename]), Size} ||
-            {Filename, Size} <- Files],
+	case Files of
+	    [_] -> Files;
+	    [_|_] ->
+		[{filename:join([Name, Filename]), Size}
+		 || {Filename, Size} <- Files]
+	end,
     {ok, Torrent, FilesToCheck, InfoHash}.
 
 ensure_file_sizes_correct(Files) ->
