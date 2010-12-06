@@ -90,8 +90,6 @@ get_files(Torrent) ->
     [process_file_entry(Path) || Path <- FilesEntries].
 
 % @doc Get the name of a torrent.
-% <p>Returns either {ok, N} for for a valid name or {error, security_violation,
-% N} for something that violates the security limitations.</p>
 % @end
 -spec get_name(bcode()) -> string().
 get_name(Torrent) ->
