@@ -14,6 +14,11 @@
 -include("log.hrl").
 -include("types.hrl").
 
+-ifdef(TEST).
+-include_lib("eqc/include/eqc.hrl").
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 %% API
 %% Metainfo
 -export([get_piece_length/1, get_length/1, get_pieces/1, get_url/1,
@@ -57,18 +62,17 @@ get_url(Torrent) ->
 
 filter_tiers(Torrent, P) ->
     F = fun(Tier) ->
-		[binary_to_list(U) || U <- Tier, P(U)]
+		[U || U <- Tier, P(U)]
 	end,
     Tiers = get_url(Torrent),
     [F(T) || T <- Tiers].
 
 get_with_prefix(Torrent, P) ->
-    filter_tiers(Torrent, fun(U) -> lists:prefix(binary_to_list(P),
-						 binary_to_list(U)) end).
+    filter_tiers(Torrent, fun(U) -> lists:prefix(P, U) end).
 
-get_http_urls(Torrent) -> get_with_prefix(Torrent, <<"http://">>).
-get_udp_urls(Torrent)  -> get_with_prefix(Torrent, <<"udp://">>).
-get_dht_urls(Torrent)  -> get_with_prefix(Torrent, <<"dht://">>).
+get_http_urls(Torrent) -> get_with_prefix(Torrent, "http://").
+get_udp_urls(Torrent)  -> get_with_prefix(Torrent, "udp://").
+get_dht_urls(Torrent)  -> get_with_prefix(Torrent, "dht://").
 
 % @doc Return the infohash for a torrent
 % @end
@@ -130,6 +134,35 @@ get_files_section(Torrent) ->
 	      {<<"length">>, L}]];
 	V -> V
     end.
+
+
+-ifdef(EUNIT).
+
+test_torrent() ->
+    [{<<"announce">>,
+      <<"http://torrent.ubuntu.com:6969/announce">>},
+     {<<"announce-list">>,
+      [[<<"http://torrent.ubuntu.com:6969/announce">>],
+       [<<"http://ipv6.torrent.ubuntu.com:6969/announce">>]]},
+     {<<"comment">>,<<"Ubuntu CD releases.ubuntu.com">>},
+     {<<"creation date">>,1286702721},
+     {<<"info">>,
+      [{<<"length">>,728754176},
+       {<<"name">>,<<"ubuntu-10.10-desktop-amd64.iso">>},
+       {<<"piece length">>,524288},
+       {<<"pieces">>,
+	<<34,129,182,214,148,202,7,93,69,98,198,49,204,47,61,
+	  110>>}]}].
+
+get_http_urls_test() ->
+    ?assertEqual([["http://torrent.ubuntu.com:6969/announce"],
+		  ["http://ipv6.torrent.ubuntu.com:6969/announce"]],
+		 get_http_urls(test_torrent())).
+
+
+-endif.
+
+
 
 %%--------------------------------------------------------------------
 %% Function: valid_path(Path)
