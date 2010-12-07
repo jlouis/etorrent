@@ -62,9 +62,9 @@ init([TorrentID, RelPath, FullPath]) ->
     {ok, InitState}.
 
 handle_call({read, _, _}, _, State) when State#state.handle == closed ->
-    {reply, {error, eagain}, State};
+    {reply, {error, eagain}, State, ?GC_TIMEOUT};
 handle_call({write, _, _}, _, State) when State#state.handle == closed ->
-    {reply, {error, eagain}, State};
+    {reply, {error, eagain}, State, ?GC_TIMEOUT};
 handle_call({read, Offset, Length}, _, State) ->
     #state{handle=Handle} = State,
     {ok, Chunk} = file:pread(Handle, Offset, Length),
@@ -86,7 +86,7 @@ handle_cast(open, State) ->
     ok = filelib:ensure_dir(FullPath),
     {ok, Handle} = file:open(FullPath, FileOpts),
     NewState = State#state{handle=Handle},
-    {noreply, NewState};
+    {noreply, NewState, ?GC_TIMEOUT};
 
 handle_cast(close, State) ->
     #state{
@@ -96,7 +96,7 @@ handle_cast(close, State) ->
     true = etorrent_io:unregister_open_file(Torrent, RelPath),
     ok = file:close(Handle),
     NewState = State#state{handle=closed},
-    {noreply, NewState}.
+    {noreply, NewState, ?GC_TIMEOUT}.
 
 handle_info(timeout, State) ->
     true = erlang:garbage_collect(),
