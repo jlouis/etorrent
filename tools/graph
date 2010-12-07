@@ -1,0 +1,38 @@
+#!/usr/bin/env escript
+% -*- Mode: Erlang; -*-
+-import(lists, [prefix/2]).
+
+a2l(Atom) ->
+    atom_to_list(Atom).
+
+write_to(Dir, Filename, Prefix) ->
+    xref:start(s),
+    xref:add_directory(s, Dir),
+    {ok, Calls} = xref:q(s, "XC"),
+
+    AllMods = [{a2l(From), a2l(To)} || {{From,_,_}, {To,_,_}} <- Calls],
+    PrefMods = [{F, T} || {F, T} <- AllMods,
+               prefix(Prefix, F), prefix(Prefix, T)],
+    Mods = ordsets:from_list(PrefMods),
+
+    Graph =
+        [[$\t, From, " -> ", To, " ; ", $\n] || {From, To} <- Mods],
+
+    file:write_file(
+      Filename,
+      ["digraph G { ", $\n,
+       header(),
+       Graph,
+       [" }", $\n]]).
+
+header() ->
+    ["rankdir=LR;",
+     "node [fontname=\"URW Gothic L\",fontsize=12,shape=plaintext,labelfontname=Helvetica];",
+     "labeljust = l;",
+     "labelloc = t;",
+     "fontsize = 24;",
+     "fontname=\"URW Gothic L\";",
+     "label = \"Etorrent dependency graph\""].
+
+main([Dir, Filename, Prefix]) ->
+    write_to(Dir, Filename, Prefix).
