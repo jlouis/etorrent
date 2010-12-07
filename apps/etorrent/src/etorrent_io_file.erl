@@ -83,6 +83,7 @@ handle_cast(open, State) ->
     true = etorrent_io:register_open_file(Torrent, RelPath),
     FileOpts = [read, write, binary, raw, read_ahead,
                 {delayed_write, 1024*1024, 3000}],
+    ok = filelib:ensure_dir(FullPath),
     {ok, Handle} = file:open(FullPath, FileOpts),
     NewState = State#state{handle=Handle},
     {noreply, NewState};
