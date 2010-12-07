@@ -16,8 +16,7 @@
 %% ====================================================================
 
 % @doc Check the contents of torrent Id
-% <p>We will check a torrent, Id, backed by filesystem pid FS and report a
-%   list of bad pieces.</p>
+% <p>We will check a torrent, Id, and report a list of bad pieces.</p>
 % @end
 -spec check_torrent(integer()) -> [pos_integer()].
 check_torrent(Id) ->
@@ -32,10 +31,10 @@ check_torrent(Id) ->
 	   PieceCheck(PN, Hash)].
 
 % @doc Read and check a torrent
-% <p>The torrent given by Id, at Path (the .torrent file) and a supervisor
-% given as SupervisorPid %    will be checked for correctness. We return a tuple
-% with various information about said torrent: The decoded Torrent dictionary,
-% the FS pid, the info hash and the number of pieces in the torrent.</p>
+% <p>The torrent given by Id, at Path (the .torrent file) will be checked for
+%  correctness. We return a tuple
+%  with various information about said torrent: The decoded Torrent dictionary,
+%  the info hash and the number of pieces in the torrent.</p>
 % @end
 -spec read_and_check_torrent(integer(), string()) -> {ok, bcode(), binary(), integer()}.
 read_and_check_torrent(Id, Path) ->
