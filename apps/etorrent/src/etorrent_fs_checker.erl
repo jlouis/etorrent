@@ -11,7 +11,7 @@
 -include("types.hrl").
 
 %% API
--export([read_and_check_torrent/2, check_torrent/1]).
+-export([read_and_check_torrent/2, check_torrent/1, check_piece/2]).
 
 %% ====================================================================
 
@@ -21,11 +21,10 @@
 % @end
 -spec check_torrent(integer()) -> [pos_integer()].
 check_torrent(Id) ->
-    FS = gproc:lookup_local_name({torrent, Id, fs}),
     PieceHashes = etorrent_piece_mgr:piecehashes(Id),
     PieceCheck =
         fun (PN, Hash) ->
-                {ok, Data} = etorrent_fs:read_piece(FS, PN),
+                {ok, Data} = etorrent_io:read_piece(Id, PN),
                 Hash =/= crypto:sha(Data)
         end,
     [PN || {PN, Hash} <- PieceHashes,
@@ -62,6 +61,25 @@ read_and_check_torrent(Id, Path) ->
 
     {ok, Torrent, Infohash, NumberOfPieces}.
 
+%% @doc Search the mnesia tables for the Piece with Index and
+%%      write it back to disk.
+%% @end
+-spec check_piece(torrent_id(), integer()) -> ok.
+check_piece(TorrentID, PieceIndex) ->
+    {InfoHash, _} = etorrent_piece_mgr:piece_info(TorrentID, PieceIndex),
+    {ok, PieceBin} = etorrent_io:read_piece(TorrentID, PieceIndex),
+    PieceSize = byte_size(PieceBin),
+    case crypto:sha(PieceBin) == InfoHash of
+        true ->
+            ok = etorrent_torrent:statechange(TorrentID, [{subtract_left, PieceSize}]),
+            ok = etorrent_piece_mgr:statechange(TorrentID, PieceIndex, fetched),
+            _  = etorrent_table:foreach_peer(TorrentID,
+                     fun(Pid) -> etorrent_peer_control:have(Pid, PieceIndex) end),
+            ok;
+        false ->
+            ok = etorrent_piece_mgr:statechange(TorrentID, PieceIndex, not_fetched)
+    end.
+
 %% =======================================================================
 
 initialize_dictionary(Id, Path) ->
@@ -79,8 +97,12 @@ load_torrent(Path) ->
     Name = etorrent_metainfo:get_name(Torrent),
     InfoHash = etorrent_metainfo:get_infohash(Torrent),
     FilesToCheck =
-        [{filename:join([Name, Filename]), Size} ||
-            {Filename, Size} <- Files],
+	case Files of
+	    [_] -> Files;
+	    [_|_] ->
+		[{filename:join([Name, Filename]), Size}
+		 || {Filename, Size} <- Files]
+	end,
     {ok, Torrent, FilesToCheck, InfoHash}.
 
 ensure_file_sizes_correct(Files) ->
@@ -116,9 +138,9 @@ initialize_pieces_from_bitfield(Id, BitField, NumPieces, FilePieceList) ->
     Pieces = [{PN, Hash, Files, F(PN)} || {PN, {Hash, Files}} <- FilePieceList],
     etorrent_piece_mgr:add_pieces(Id, Pieces).
 
-initialize_pieces_from_disk(FS, Id, FilePieceList) ->
+initialize_pieces_from_disk(_, Id, FilePieceList) ->
     F = fun(PN, Hash, Files) ->
-                {ok, Data} = etorrent_fs:read_piece(FS, PN),
+                {ok, Data} = etorrent_io:read_piece(Id, PN),
                 State = case Hash =:= crypto:sha(Data) of
                             true -> fetched;
                             false -> not_fetched

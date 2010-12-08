@@ -158,7 +158,7 @@ handle_call(_Request, _From, State) ->
     {reply, Reply, State}.
 
 handle_cast({store_chunk, Id, Pid, {Index, Data, Ops}, {Offset, Len}, FSPid}, S) ->
-    ok = etorrent_fs:write_chunk(FSPid, {Index, Data, Ops}),
+    ok = etorrent_io:write_chunk(Id, Index, Offset, Data),
     %% Add the newly fetched data to the fetched list
     Present = update_fetched(Id, Index, {Offset, Len}),
     %% Update chunk assignment
@@ -246,8 +246,8 @@ chunkify_new_piece(Id, PieceSet) when is_integer(Id) ->
     end.
 
 %% Check the piece Idx on torrent Id for completion
-check_piece(FSPid, Id, Idx) ->
-    etorrent_fs:check_piece(FSPid, Idx),
+check_piece(_, Id, Idx) ->
+    _ = spawn_link(etorrent_fs_checker, check_piece, [Id, Idx]),
     ets:match_delete(?TAB, #chunk { idt = {Id, Idx, '_'}, _ = '_'}).
 
 

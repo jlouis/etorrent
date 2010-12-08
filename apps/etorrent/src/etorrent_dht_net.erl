@@ -6,6 +6,10 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
+-ifdef(EQC).
+-export([prop_query_inv/0, prop_inv_compact/0]).
+-endif.
+
 -behaviour(gen_server).
 -import(etorrent_bcoding, [get_value/2, get_value/3]).
 -import(etorrent_dht, [distance/2, closest_to/3]).
@@ -120,9 +124,8 @@ node_port() ->
 ping(IP, Port) ->
     case gen_server:call(srv_name(), {ping, IP, Port}) of
         timeout -> pang;
-        Reply   ->
-	    LID = get_string("id", Reply),
-            etorrent_dht:integer_id(LID)
+        Values ->
+            ID = decode_response(ping, Values)
     end.
 
 %
@@ -133,12 +136,21 @@ find_node(IP, Port, Target)  ->
         timeout ->
             {error, timeout};
         Values  ->
-            LID = get_string("id", Values),
-            ID = etorrent_dht:integer_id(LID),
-            LCompact = get_string("nodes", Values),
-            Nodes = compact_to_node_infos(list_to_binary(LCompact)),
+            {ID, Nodes} = decode_response(find_node, Values),
             etorrent_dht_state:log_request_success(ID, IP, Port),
             {ID, Nodes}
+    end.
+
+%
+%
+%
+get_peers(IP, Port, InfoHash)  ->
+    Call = {get_peers, IP, Port, InfoHash},
+    case gen_server:call(srv_name(), Call) of
+        timeout ->
+            {error, timeout};
+        Values ->
+            decode_response(get_peers, Values)
     end.
 
 
@@ -233,10 +245,17 @@ dht_iter_search(SearchType, Target, Width, Retry, Retries,
     % Check if the closest node in the work queue is closer
     % to the target than the closest responsive node that was
     % found in this iteration.
-    {MinAliveDist, _, _, _} = gb_sets:smallest(NewAlive),
+    MinAliveDist = case gb_sets:size(NewAlive) of
+        0 ->
+            infinity;
+        _ ->
+            {IMinAliveDist, _, _, _} = gb_sets:smallest(NewAlive),
+            IMinAliveDist
+    end,
+
     MinQueueDist = case NewNext of
         [] ->
-            2 * MinAliveDist;
+            infinity;
         Other ->
             {MinDist, _, _, _} = lists:min(Other),
             MinDist
@@ -246,7 +265,8 @@ dht_iter_search(SearchType, Target, Width, Retry, Retries,
     % to the infohash than the closest responsive node.
     NewRetries = if
         (MinQueueDist <  MinAliveDist) -> 0;
-        (MinQueueDist >= MinAliveDist) -> Retries + 1 end,
+        (MinQueueDist >= MinAliveDist) -> Retries + 1
+    end,
 
     % Accumulate the trackers and peers found if this is a get_peers search.
     NewWithPeers = case SearchType of
@@ -261,37 +281,6 @@ dht_iter_search(SearchType, Target, Width, Retry, Retries,
                     NewNext, NewQueried, NewAlive, NewWithPeers).
 
 
-get_peers(IP, Port, InfoHash)  ->
-    case (catch do_get_peers(IP, Port, InfoHash)) of
-        {'EXIT', _} -> {error, response};
-        Other -> Other
-    end.
-
-do_get_peers(IP, Port, InfoHash) ->
-    case gen_server:call(srv_name(), {get_peers, IP, Port, InfoHash}) of
-        timeout -> {error, timeout};
-        Values  ->
-            LID = get_string("id", Values),
-            ID = etorrent_dht:integer_id(LID),
-            LToken = get_string("token", Values),
-            Token = list_to_binary(LToken),
-            NoPeers = make_ref(),
-            MaybePeers = get_value("values", Values, NoPeers),
-            {Peers, Nodes} =
-		case MaybePeers of
-		    NoPeers when is_reference(NoPeers) ->
-			LCompact = get_string("nodes", Values),
-			INodes = compact_to_node_infos(list_to_binary(LCompact)),
-			{[], INodes};
-		    PeerStrings when is_list(PeerStrings) ->
-			BinPeers = [list_to_binary(S) || S <- PeerStrings],
-			PeerLists = [compact_to_peers(N) || N <- BinPeers],
-			IPeers = lists:flatten(PeerLists),
-			{IPeers, []}
-		end,
-            {ID, Token, Peers, Nodes}
-    end.
-
 %
 %
 %
@@ -299,9 +288,8 @@ announce(IP, Port, InfoHash, Token, BTPort) ->
     Announce = {announce, IP, Port, InfoHash, Token, BTPort},
     case gen_server:call(srv_name(), Announce) of
         timeout -> {error, timeout};
-        Reply   ->
-            LID = get_string("id", Reply),
-            etorrent_dht:integer_id(LID)
+        Values ->
+            decode_response(announce, Values)
     end.
 
 %
@@ -345,7 +333,7 @@ handle_call({announce, IP, Port, InfoHash, Token, BTPort}, From, State) ->
     LHash = etorrent_dht:list_id(InfoHash),
     LToken = binary_to_list(Token),
     Args = [{<<"info_hash">>, LHash},
-	    {<<"port">>, BTPort},
+        {<<"port">>, BTPort},
             {<<"token">>, LToken} | common_values()],
     do_send_query('announce', Args, IP, Port, From, State);
 
@@ -503,43 +491,36 @@ handle_query('ping', _, IP, Port, MsgID, Self, _Tokens) ->
     return(IP, Port, MsgID, common_values(Self));
 
 handle_query('find_node', Params, IP, Port, MsgID, Self, _Tokens) ->
-    LTarget = get_string("target", Params),
-    Target = etorrent_dht:integer_id(LTarget),
+    Target = etorrent_dht:integer_id(get_value(<<"target">>, Params)),
     CloseNodes = etorrent_dht_state:closest_to(Target),
     BinCompact = node_infos_to_compact(CloseNodes),
-    LCompact = binary_to_list(BinCompact),
-    Values = [{{string, "nodes"}, {string, LCompact}}],
+    Values = [{<<"nodes">>, BinCompact}],
     return(IP, Port, MsgID, common_values(Self) ++ Values);
 
 handle_query('get_peers', Params, IP, Port, MsgID, Self, Tokens) ->
-    LHash = get_string("info_hash", Params),
-    InfoHash = etorrent_dht:integer_id(LHash),
+    InfoHash = etorrent_dht:integer_id(get_value(<<"info_hash">>, Params)),
     Values = case etorrent_dht_tracker:get_peers(InfoHash) of
         [] ->
             Nodes = etorrent_dht_state:closest_to(InfoHash),
             BinCompact = node_infos_to_compact(Nodes),
-            LCompact = binary_to_list(BinCompact),
-            [{{string, "nodes"}, {string, LCompact}}];
+            [{<<"nodes">>, BinCompact}];
         Peers ->
-            PeerBins = [peers_to_compact([P]) || P <- Peers],
-            PeerList = {list, [{string, binary_to_list(P)} || P <- PeerBins]},
-            [{{string, "values"}, PeerList}]
+            PeerList = [peers_to_compact([P]) || P <- Peers],
+            [{<<"values">>, PeerList}]
     end,
-    LToken = binary_to_list(token_value(IP, Port, Tokens)),
-    TokenVals = [{{string, "token"}, {string, LToken}}],
-    return(IP, Port, MsgID, common_values(Self) ++ TokenVals ++ Values);
+    Token = [{<<"token">>, token_value(IP, Port, Tokens)}],
+    return(IP, Port, MsgID, common_values(Self) ++ Token ++ Values);
 
 handle_query('announce', Params, IP, Port, MsgID, Self, Tokens) ->
-    LHash = get_string("info_hash", Params),
-    InfoHash = etorrent_dht:integer_id(LHash),
-    BTPort = get_value("port", Params),
-    LToken = get_string("token", Params),
-    Token = list_to_binary(LToken),
+    InfoHash = etorrent_dht:integer_id(get_value(<<"info_hash">>, Params)),
+    BTPort = get_value(<<"port">>,   Params),
+    Token = get_string(<<"token">>, Params),
     _ = case is_valid_token(Token, IP, Port, Tokens) of
         true ->
             etorrent_dht_tracker:announce(InfoHash, IP, BTPort);
         false ->
-            error_logger:error_msg("Invalid token from ~w:~w ~w", [IP, Port, Token])
+            FmtArgs = [IP, Port, Token],
+            error_logger:error_msg("Invalid token from ~w:~w ~w", FmtArgs)
     end,
     return(IP, Port, MsgID, common_values(Self)).
 
@@ -624,46 +605,73 @@ renew_token(Tokens) ->
 
 decode_msg(InMsg) ->
     Msg = etorrent_bcoding:decode(InMsg),
-    SMsgID = get_string("t", Msg),
-    MsgID = list_to_binary(SMsgID),
-    case get_value("y", Msg) of
-        {string, "q"} ->
-            {string, MString} = get_value("q", Msg),
-            {dict, Params}    = get_value("a", Msg),
+    MsgID = get_value(<<"t">>, Msg),
+    case get_value(<<"y">>, Msg) of
+        <<"q">> ->
+            MString = get_value(<<"q">>, Msg),
             Method  = string_to_method(MString),
-            {Method, MsgID, {dict, Params}};
-        {string, "r"} ->
-            {dict, Values} = get_value("r", Msg),
-            {response, MsgID, {dict, Values}};
-        {string, "e"} ->
-            {list, Error} = get_value("e", Msg),
-            [{integer, ECode}, {string, EMsg}] = Error,
+            Params  = get_value(<<"a">>, Msg),
+            {Method, MsgID, Params};
+        <<"r">> ->
+            Values = get_value(<<"r">>, Msg),
+            {response, MsgID, Values};
+        <<"e">> ->
+            [ECode, EMsg] = get_value(<<"e">>, Msg),
             {error, MsgID, ECode, EMsg}
     end.
 
+decode_response(ping, Values) ->
+     etorrent_dht:integer_id(get_value(<<"id">>, Values));
+decode_response(find_node, Values) ->
+    ID = etorrent_dht:integer_id(get_value(<<"id">>, Values)),
+    BinNodes = get_value(<<"nodes">>, Values),
+    Nodes = compact_to_node_infos(BinNodes),
+    {ID, Nodes};
+decode_response(get_peers, Values) ->
+    ID = etorrent_dht:integer_id(get_value(<<"id">>, Values)),
+    Token = get_value(<<"token">>, Values),
+    NoPeers = make_ref(),
+    MaybePeers = get_value(<<"values">>, Values, NoPeers),
+    {Peers, Nodes} = case MaybePeers of
+        NoPeers when is_reference(NoPeers) ->
+            BinCompact = get_value(<<"nodes">>, Values),
+            INodes = compact_to_node_infos(BinCompact),
+            {[], INodes};
+        BinPeers when is_list(BinPeers) ->
+            PeerLists = [compact_to_peers(N) || N <- BinPeers],
+            IPeers = lists:flatten(PeerLists),
+            {IPeers, []}
+    end,
+    {ID, Token, Peers, Nodes};
+decode_response(announce, Values) ->
+    etorrent_dht:integer_id(get_value(<<"id">>, Values)).
+
+
 
 encode_query(Method, MsgID, Params) ->
-    Msg = [{<<"y">>, <<"q">>},
-	   {<<"q">>, list_to_binary(method_to_string(Method))},
-	   {<<"t">>, MsgID},
-	   {<<"a">>, Params}],
+    Msg = [
+       {<<"y">>, <<"q">>},
+       {<<"q">>, method_to_string(Method)},
+       {<<"t">>, MsgID},
+       {<<"a">>, Params}],
     etorrent_bcoding:encode(Msg).
 
 encode_response(MsgID, Values) ->
-    Msg = [{<<"y">>, <<"r">>},
-	   {<<"t">>, MsgID},
-	   {<<"r">>, Values}],
+    Msg = [
+       {<<"y">>, <<"r">>},
+       {<<"t">>, MsgID},
+       {<<"r">>, Values}],
     etorrent_bcoding:encode(Msg).
 
-method_to_string(ping) -> "ping";
-method_to_string(find_node) -> "find_node";
-method_to_string(get_peers) -> "get_peers";
-method_to_string(announce) -> "announce_peer".
+method_to_string(ping) -> <<"ping">>;
+method_to_string(find_node) -> <<"find_node">>;
+method_to_string(get_peers) -> <<"get_peers">>;
+method_to_string(announce) -> <<"announce_peer">>.
 
-string_to_method("ping") -> ping;
-string_to_method("find_node") -> find_node;
-string_to_method("get_peers") -> get_peers;
-string_to_method("announce_peer") -> announce.
+string_to_method(<<"ping">>) -> ping;
+string_to_method(<<"find_node">>) -> find_node;
+string_to_method(<<"get_peers">>) -> get_peers;
+string_to_method(<<"announce_peer">>) -> announce.
 
 
 
@@ -699,100 +707,99 @@ node_infos_to_compact([{ID, {A0, A1, A2, A3}, Port}|T], Acc) ->
 
 -ifdef(EUNIT).
 
-fetch_id({dict, Params}) ->
-    proplists:get_value({string, "id"}, Params).
+fetch_id(Params) ->
+    get_value(<<"id">>, Params).
 
 query_ping_0_test() ->
    Enc = "d1:ad2:id20:abcdefghij0123456789e1:q4:ping1:t2:aa1:y1:qe",
    {ping, ID, Params} = decode_msg(Enc),
    ?assertEqual(<<"aa">>, ID),
-   ?assertEqual({string, "abcdefghij0123456789"}, fetch_id(Params)).
+   ?assertEqual(<<"abcdefghij0123456789">>, fetch_id(Params)).
 
-%% query_find_node_0_test() ->
-%%    Enc = "d1:ad2:id20:abcdefghij01234567896:"
-%%        ++"target20:mnopqrstuvwxyz123456e1:q9:find_node1:t2:aa1:y1:qe",
-%%    Res = decode_msg(Enc),
-%%    {dht_query, find_node, ID, Params} = Res,
-%%    ?assertEqual(<<"aa">>, ID),
-%%    ?assertEqual(<<"abcdefghij0123456789">>, fetch_id(Params)),
-%%    ?assertEqual(<<"mnopqrstuvwxyz123456">>, fetch_target(Params)).
+query_find_node_0_test() ->
+    Enc = "d1:ad2:id20:abcdefghij01234567896:"
+        ++"target20:mnopqrstuvwxyz123456e1:q9:find_node1:t2:aa1:y1:qe",
+    Res = decode_msg(Enc),
+    {find_node, ID, Params} = Res,
+    ?assertEqual(<<"aa">>, ID),
+    ?assertEqual(<<"abcdefghij0123456789">>, fetch_id(Params)),
+    ?assertEqual(<<"mnopqrstuvwxyz123456">>, get_value(<<"target">>, Params)).
 
-%% query_get_peers_0_test() ->
-%%    Enc = "d1:ad2:id20:abcdefghij01234567899:info_hash"
-%%        ++"20:mnopqrstuvwxyz123456e1:q9:get_peers1:t2:aa1:y1:qe",
-%%    Res = decode_msg(Enc),
-%%    {dht_query, get_peers, ID, Params} = Res,
-%%    ?assertEqual(<<"aa">>, ID),
-%%    ?assertEqual(<<"abcdefghij0123456789">>, fetch_id(Params)),
-%%    ?assertEqual(<<"mnopqrstuvwxyz123456">>, fetch_info_hash(Params)).
+query_get_peers_0_test() ->
+    Enc = "d1:ad2:id20:abcdefghij01234567899:info_hash"
+        ++"20:mnopqrstuvwxyz123456e1:q9:get_peers1:t2:aa1:y1:qe",
+    Res = decode_msg(Enc),
+    {get_peers, ID, Params} = Res,
+    ?assertEqual(<<"aa">>, ID),
+    ?assertEqual(<<"abcdefghij0123456789">>, fetch_id(Params)),
+    ?assertEqual(<<"mnopqrstuvwxyz123456">>, get_value(<<"info_hash">>,Params)).
 
-%% query_announce_peer_0_test() ->
-%%    Enc = "d1:ad2:id20:abcdefghij01234567899:info_hash20:"
-%%        ++"mnopqrstuvwxyz1234564:porti6881e5:token8:aoeusnthe1:"
-%%        ++"q13:announce_peer1:t2:aa1:y1:qe",
-%%    Res = decode_msg(Enc),
-%%    {dht_query, announce, ID, Params} = Res,
-%%    ?assertEqual(<<"aa">>, ID),
-%%    ?assertEqual(<<"abcdefghij0123456789">>, fetch_id(Params)),
-%%    ?assertEqual(<<"mnopqrstuvwxyz123456">>, fetch_info_hash(Params)),
-%%    ?assertEqual(6881, fetch_port(Params)),
-%%    ?assertEqual(<<"aoeusnth">>, fetch_token(Params)).
+query_announce_peer_0_test() ->
+    Enc = "d1:ad2:id20:abcdefghij01234567899:info_hash20:"
+        ++"mnopqrstuvwxyz1234564:porti6881e5:token8:aoeusnthe1:"
+        ++"q13:announce_peer1:t2:aa1:y1:qe",
+    Res = decode_msg(Enc),
+    {announce, ID, Params} = Res,
+    ?assertEqual(<<"aa">>, ID),
+    ?assertEqual(<<"abcdefghij0123456789">>, fetch_id(Params)),
+    ?assertEqual(<<"mnopqrstuvwxyz123456">>, get_value(<<"info_hash">>,Params)),
+    ?assertEqual(<<"aoeusnth">>, get_value(<<"token">>, Params)),
+    ?assertEqual(6881, get_value(<<"port">>, Params)).
 
-%% resp_ping_0_test() ->
-%%    Enc = "d1:rd2:id20:mnopqrstuvwxyz123456e1:t2:aa1:y1:re",
-%%    Res = bencode_to_response(Enc),
-%%    {dht_response, ID, Values} = Res,
-%%    ?assertEqual(<<"aa">>, ID),
-%%    ?assertEqual(<<"mnopqrstuvwxyz123456">>, fetch_id(Values)).
+resp_ping_0_test() ->
+    Enc = "d1:rd2:id20:mnopqrstuvwxyz123456e1:t2:aa1:y1:re",
+    Res = decode_msg(Enc),
+    {response, MsgID, Values} = Res,
+    ID = decode_response(ping, Values),
+    ?assertEqual(<<"aa">>, MsgID),
+    ?assertEqual(etorrent_dht:integer_id(<<"mnopqrstuvwxyz123456">>), ID).
 
-%% resp_find_peer_0_test() ->
-%%    Enc = "d1:rd2:id20:0123456789abcdefghij5:nodes0:e1:t2:aa1:y1:re",
-%%    Res = bencode_to_response(Enc),
-%%    {dht_response, ID, Values} = Res,
-%%    ?assertEqual(<<"aa">>, ID),
-%%    ?assertEqual(<<"0123456789abcdefghij">>, fetch_id(Values)),
-%%    ?assertEqual([], fetch_nodes(Values)).
+resp_find_node_0_test() ->
+    Enc = "d1:rd2:id20:0123456789abcdefghij5:nodes0:e1:t2:aa1:y1:re",
+    {response, _, Values} = decode_msg(Enc),
+    {ID, Nodes} = decode_response(find_node, Values),
+    ?assertEqual(etorrent_dht:integer_id(<<"0123456789abcdefghij">>), ID),
+    ?assertEqual([], Nodes).
 
-%% resp_find_peer_1_test() ->
-%%    Enc = "d1:rd2:id20:0123456789abcdefghij5:nodes6:"
-%%        ++ [0,0,0,0,0,0] ++ "e1:t2:aa1:y1:re",
-%%    Res = bencode_to_response(Enc),
-%%    {dht_response, ID, Values} = Res,
-%%    ?assertEqual(<<"aa">>, ID),
-%%    ?assertEqual(<<"0123456789abcdefghij">>, fetch_id(Values)),
-%%    ?assertEqual([{{0,0,0,0}, 0}], fetch_nodes(Values)).
+resp_find_node_1_test() ->
+    Enc = "d1:rd2:id20:0123456789abcdefghij5:nodes26:"
+         ++ "0123456789abcdefghij" ++ [0,0,0,0,0,0] ++ "e1:t2:aa1:y1:re",
+    Res = decode_msg(Enc),
+    {response, _, Values} = Res,
+    {_, Nodes} = decode_response(find_node, Values),
+    ?assertEqual([{etorrent_dht:integer_id("0123456789abcdefghij"),
+                   {0,0,0,0}, 0}], Nodes).
 
-%% resp_get_peers_0_test() ->
-%%    Enc = "d1:rd2:id20:abcdefghij01234567895:token8:aoeusnth6:valuesl6:axje.u6:idhtnmee1:t2:aa1:y1:re",
-%%    Res = bencode_to_response(Enc),
-%%    {dht_response, ID, Values} = Res,
-%%    ?assertEqual(<<"aa">>, ID),
-%%    ?assertEqual(<<"abcdefghij0123456789">>, fetch_id(Values)),
-%%    ?assertEqual(<<"aoeusnth">>, fetch_token(Values)),
-%%    ?assertEqual({true, [{{97,120,106,101},11893}, {{105,100,104,116}, 28269}]}, fetch_peers(Values)).
+resp_get_peers_0_test() ->
+    Enc = "d1:rd2:id20:abcdefghij01234567895:token8:aoeusnth6:values"
+        ++ "l6:axje.u6:idhtnmee1:t2:aa1:y1:re",
+    Res = decode_msg(Enc),
+    {response, _, Values} = Res,
+    {ID, Token, Peers, Nodes} = decode_response(get_peers, Values),
+    ?assertEqual(etorrent_dht:integer_id(<<"abcdefghij0123456789">>), ID),
+    ?assertEqual(<<"aoeusnth">>, Token),
+    ?assertEqual([{{97,120,106,101},11893}, {{105,100,104,116}, 28269}], Peers).
 
-%% resp_get_peers_1_test() ->
-%%    Enc = "d1:rd2:id20:abcdefghij01234567895:nodes6:def4565:token8:aoeusnthe1:t2:aa1:y1:re",
-%%    Res = bencode_to_response(Enc),
-%%    {dht_response, ID, Values} = Res,
-%%    ?assertEqual(<<"aa">>, ID),
-%%    ?assertEqual(<<"abcdefghij0123456789">>, fetch_id(Values)),
-%%    ?assertEqual(<<"aoeusnth">>, fetch_token(Values)),
-%%    ?assertEqual({false, [{{100,101,102,52},13622}]}, fetch_peers(Values)).
+resp_get_peers_1_test() ->
+    Enc = "d1:rd2:id20:abcdefghij01234567895:nodes26:"
+        ++ "0123456789abcdefghijdef4565:token8:aoeusnthe"
+        ++ "1:t2:aa1:y1:re",
+    Res = decode_msg(Enc),
+    {response, _, Values} = Res,
+    {ID, Token, Peers, Nodes} = decode_response(get_peers, Values),
+    ?assertEqual(etorrent_dht:integer_id(<<"abcdefghij0123456789">>), ID),
+    ?assertEqual(<<"aoeusnth">>, Token),
+    ?assertEqual([{etorrent_dht:integer_id(<<"0123456789abcdefghij">>),
+                   {100,101,102,52},13622}], Nodes).
 
-%% resp_announce_peer_0_test() ->
-%%    Enc = "d1:rd2:id20:mnopqrstuvwxyz123456e1:t2:aa1:y1:re",
-%%    Res = bencode_to_response(Enc),
-%%    {dht_response, ID, {dict, Values}} = Res,
-%%    ?assertEqual(<<"aa">>, ID),
-%%    ?assertEqual(<<"mnopqrstuvwxyz123456">>, proplist:get_value("id", Values)).
+resp_announce_peer_0_test() ->
+    Enc = "d1:rd2:id20:mnopqrstuvwxyz123456e1:t2:aa1:y1:re",
+    Res = decode_msg(Enc),
+    {response, _, Values} = Res,
+    ID = decode_response(announce, Values),
+    ?assertEqual(etorrent_dht:integer_id(<<"mnopqrstuvwxyz123456">>), ID).
 
 -ifdef(EQC).
-
-
-properties_test() ->
-    ?assert(eqc:quickcheck(prop_inv_compact())).
-
 
 octet() ->
    choose(0, 255).
@@ -803,11 +810,14 @@ portnum() ->
 dht_node() ->
    {{octet(), octet(), octet(), octet()}, portnum()}.
 
+integer_id() ->
+    ?LET(ID, binary(20), etorrent_dht:integer_id(ID)). 
+
 node_id() ->
-   binary(20).
+    integer_id().
 
 info_hash() ->
-   binary(20).
+    integer_id().
 
 token() ->
    binary(20).
@@ -824,18 +834,18 @@ find_node_query() ->
 
 get_peers_query() ->
    {get_peers, [{<<"id">>, node_id()},
-                {<<"info_hash">>, node_id()}]}.
+                {<<"info_hash">>, info_hash()}]}.
 
 announce_query() ->
    {announce, [{<<"id">>, node_id()},
-               {<<"info_hash">>, node_id()},
+               {<<"info_hash">>, info_hash()},
                {<<"token">>, token()},
                {<<"port">>, portnum()}]}.
 
 dht_query() ->
    All = [ping_query(), find_node_query(), get_peers_query(), announce_query()],
-    oneof([{dht_query, Method, transaction(), lists:sort(Params)}
-	       || {Method, Params} <- All]).
+    oneof([{Method, transaction(), lists:sort(Params)}
+           || {Method, Params} <- All]).
 
 prop_inv_compact() ->
    ?FORALL(Input, list(dht_node()),
@@ -845,15 +855,20 @@ prop_inv_compact() ->
            Input =:= Output
        end).
 
-encoder({dht_query, Method, MsgId, Params}) ->
-    encode_query(Method, MsgId, Params).
+prop_inv_compact_test() ->
+    ?assert(eqc:quickcheck(prop_inv_compact())).
 
 prop_query_inv() ->
    ?FORALL(InQ, dht_query(),
        begin
-           OutQ = decode_msg(encoder(InQ)),
+           {Method, MsgId, Params} = InQ,
+           EncQ = iolist_to_binary(encode_query(Method, MsgId, Params)),
+           OutQ = decode_msg(EncQ),
            OutQ =:= InQ
        end).
+
+prop_query_inv_test() ->
+    ?assert(eqc:quickcheck(prop_query_inv())).
 
 -endif. %% EQC
 -endif.
