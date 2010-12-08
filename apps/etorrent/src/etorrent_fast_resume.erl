@@ -84,6 +84,7 @@ persist_to_disk() ->
     track_in_ets_table([{proplists:get_value(id, P),
 			 proplists:get_value(filename, P)} || P <- PLS]),
     {ok, F} = application:get_env(etorrent, fast_resume_file),
+    ok = filelib:ensure_dir(F),
     ok = ets:tab2file(etorrent_fast_resume, F, [{extended_info, [object_count, md5sum]}]),
     ok.
 
