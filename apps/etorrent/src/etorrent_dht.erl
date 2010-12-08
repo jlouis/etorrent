@@ -23,18 +23,11 @@
 -export([init/1]).
 
 start_link() ->
-    Port = case application:get_env(dht_port) of
-        undefined  -> 6882;
-        {ok,CPort} -> CPort
-    end,
+    Port = etorrent_config:dht_port(),
     start_link(Port).
 
 start_link(DHTPort) ->
-    StateFile = case application:get_env(dht_state) of
-		    undefined -> "etorrent_dht.persistent";
-		    {ok, SFile} when is_list(SFile) ->
-			SFile
-		end,
+    StateFile = etorrent_config:dht_state_file(),
     start_link(DHTPort, StateFile).
 
 
@@ -58,10 +51,9 @@ init(Args) ->
             permanent, 1000, worker, dynamic}]}}.
 
 add_torrent(InfoHash, TorrentID) ->
-    case application:get_env(dht) of
-        undefined -> ok;
-        {ok, false} -> ok;
-        {ok, true} ->
+    case etorrent_config:dht() of
+        false -> ok;
+        true ->
             Info = integer_id(InfoHash),
             SupName = etorrent_dht_sup,
             supervisor:start_child(SupName,

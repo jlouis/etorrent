@@ -10,8 +10,8 @@ start_link(TorrentID, TorrentFile) ->
     supervisor:start_link(?MODULE, [TorrentID, TorrentFile]).
 
 init([TorrentID, TorrentFile]) ->
-    {ok, Workdir} = application:get_env(etorrent, dir),
-    FullPath = filename:join([Workdir, TorrentFile]),
+    Workdir   = etorrent_config:work_dir(),
+    FullPath  = filename:join([Workdir, TorrentFile]),
     Torrent   = etorrent_bcoding:parse_file(FullPath),
     Files     = etorrent_io:file_paths(Torrent),
     DirServer = directory_server_spec(TorrentID, Torrent),
