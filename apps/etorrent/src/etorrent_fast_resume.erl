@@ -124,7 +124,7 @@ handle_info(_Info, State) ->
     {noreply, State}.
 
 
-terminate(normal, _State) ->
+terminate(Reason, _State) when Reason =:= normal; Reason =:= shutdown ->
     persist_to_disk(),
     ok;
 terminate(_Reason, _State) ->
