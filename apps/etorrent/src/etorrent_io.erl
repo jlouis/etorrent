@@ -11,18 +11,46 @@
 -define(MAXFD_DEFAULT, 128).
 
 %%
-%% File I/O subsystem.
+%% #File I/O subsystem.
 %%
-%%    A directory server (this module) is responsible for maintaining
-%%    a file server (etorrent_io_file) for each file included in a torrent.
+%% A directory server (this module) is responsible for maintaining
+%% the opened/closed state for each file in a torrent.
 %%
-%%    The directory server maps chunk specifications ({Piece, Offset, Length})
-%%    to [{Path, Offset, Length}]. It is the responsibility of the client to
-%%    gather and assemble the sub-chunks from the file servers.
+%% ## Pieces
+%% The directory server is responsible for mapping each piece to a set
+%% of file-blocks. A piece is only mapped to multiple blocks if it spans
+%% multiple files.
 %%
-%%    Registered names:
-%%        {etorrent_io_directory, TorrentID}
-%%        {etorrent_io_file, TorrentID, FilePath}
+%% ## Chunks
+%% Chunks are mapped to a set of file blocks based on the file blocks that
+%% contain the piece that the chunk is a member of.
+%%
+%% ## Scheduling
+%% Because there is a limit on the number of file descriptors that an
+%% OS-process can have open at the same time the directory server
+%% attempts to limit the amount of file servers that hold an actual
+%% file handle to the file it is resonsible for.
+%%
+%% Each time a client intends to read/write to a file it notifies the
+%% directory server. If the file is not a member of the set of open files
+%% the server the file server to open a file handle to the file.
+%% 
+%% When the limit on file servers keeping open file handles has been reached
+%% the file server will notify the least recently used file server to close
+%% its file handle for each notification for a file that is not in the set
+%% of open files.
+%%
+%% ## Guarantees
+%% The protocol between the directory server and the file servers is
+%% asynchronous, there is no guarantee that the number of open file handles
+%% will never be larger than the specified number.
+%%
+%% ## Synchronization
+%% The gproc application is used to keep a registry of the process ids of
+%% directory servers and file servers. A file server registers under a second
+%% name when it has an open file handle. The support in gproc for waiting until a
+%% name is registered is used to notify clients when the file server has an
+%% open file handle.
 %%
 -export([start_link/2,
          read_piece/2,
@@ -32,7 +60,6 @@
          register_directory/1,
          lookup_directory/1,
          await_directory/1,
-         await_new_directory/1,
          register_file_server/2,
          lookup_file_server/2,
          register_open_file/2,
@@ -69,9 +96,9 @@ start_link(TorrentID, Torrent) ->
     gen_server:start_link(?MODULE, [TorrentID, Torrent], []).
 
 
-%%
-%% Read a piece into memory.
-%%
+%% @doc
+%% Read a piece into memory from disc.
+%% @end
 -spec read_piece(torrent_id(), piece_index()) -> {'ok', piece_bin()}.
 read_piece(TorrentID, Piece) ->
     {ok, DirPid} = await_directory(TorrentID),
@@ -80,10 +107,10 @@ read_piece(TorrentID, Piece) ->
     {ok, iolist_to_binary(BlockList)}.
 
 
-%%
+%% @doc
 %% Read a chunk from a piece by reading each of the file
 %% blocks that make up the chunk and concatenating them.
-%%
+%% @end
 -spec read_chunk(torrent_id(), piece_index(),
                  chunk_offset(), chunk_len()) -> {'ok', chunk_bin()}.
 read_chunk(TorrentID, Piece, Offset, Length) ->
@@ -93,10 +120,10 @@ read_chunk(TorrentID, Piece, Offset, Length) ->
     BlockList = read_file_blocks(TorrentID, ChunkPositions),
     {ok, iolist_to_binary(BlockList)}.
 
-%%
+%% @doc
 %% Write a chunk to a piece by writing parts of the block
 %% to each file that the block occurs in.
-%%
+%% @end
 -spec write_chunk(torrent_id(), piece_index(),
                   chunk_offset(), chunk_bin()) -> 'ok'.
 write_chunk(TorrentID, Piece, Offset, Chunk) ->
@@ -107,11 +134,11 @@ write_chunk(TorrentID, Piece, Offset, Chunk) ->
     ok = write_file_blocks(TorrentID, Chunk, ChunkPositions).
 
 
-%%
-%% Read a list of block positions sequentially from the file
+%% @doc
+%% Read a list of block sequentially from the file
 %% servers in this directory responsible for each path the
 %% is included in the list of positions.
-%%
+%% @end
 -spec read_file_blocks(torrent_id(), list(block_pos())) -> iolist().
 read_file_blocks(_, []) ->
     [];
@@ -126,11 +153,11 @@ read_file_blocks(TorrentID, [{Path, Offset, Length}|T]=L) ->
             [Block|read_file_blocks(TorrentID, T)]
     end.
 
-%%
-%% Write blocks of a chunk seqeuntially to the file servers
+%% @doc
+%% Write a list of blocks of a chunk seqeuntially to the file servers
 %% in this directory responsible for each path that is included
 %% in the lists of positions at which the block appears.
-%%
+%% @end
 -spec write_file_blocks(torrent_id(), chunk_bin(), list(block_pos())) -> 'ok'.
 write_file_blocks(_, <<>>, []) ->
     ok;
@@ -145,122 +172,116 @@ write_file_blocks(TorrentID, Chunk, [{Path, Offset, Length}|T]=L) ->
             write_file_blocks(TorrentID, Rest, T)
     end.
 
+file_path_len(T) ->
+    case etorrent_metainfo:get_files(T) of
+	[One] -> [One];
+	More when is_list(More) ->
+	    Name = etorrent_metainfo:get_name(T),
+	    [{filename:join([Name, Path]), Len} || {Path, Len} <- More]
+    end.
 
-file_paths(Torrent) ->
-    [Path || {Path, _} <- etorrent_metainfo:get_files(Torrent)].   
+file_paths(T) ->
+    [Path || {Path, _} <- file_path_len(T)].
 
-
-%%
+%% @doc
 %% Register the current process as the directory server for
 %% the given torrent.
-%%
+%% @end
 -spec register_directory(torrent_id()) -> true.
 register_directory(TorrentID) ->
     gproc:add_local_name({etorrent, TorrentID, directory}).
 
-%%
+%% @end
 %% Register the current process as the file server for the
-%% given file-path in the given server. A process being registered
+%% file-path in the directory. A process being registered
 %% as a file server does not imply that it can perform IO
 %% operations on the behalf of IO clients.
-%%
+%% @doc
 -spec register_file_server(torrent_id(), file_path()) -> true.
 register_file_server(TorrentID, Path) ->
     gproc:add_local_name({etorrent, TorrentID, Path, file}).
 
 
-%%
+%% @doc
 %% Lookup the process id of the directory server responsible
 %% for the given torrent. If there is no such server registered
 %% this function will crash.
-%%
+%% @end
 -spec lookup_directory(torrent_id()) -> pid().
 lookup_directory(TorrentID) ->
     gproc:lookup_local_name({etorrent, TorrentID, directory}).
 
-%%
+%% @doc
 %% Wait for the directory server for this torrent to appear
-%% in the directory, this way file servers can create a monitor
-%% while initializing.
-%%
+%% in the process registry.
+%% @end
 -spec await_directory(torrent_id()) -> {ok, pid()}.
 await_directory(TorrentID) ->
     Name = {etorrent, TorrentID, directory},
     {DirPid, undefined} = gproc:await({n, l, Name}, ?AWAIT_TIMEOUT),
     {ok, DirPid}.
 
-%%
-%% Subscribe to receiving a notification when a process
-%% registers as the directory for this server. This is to
-%% allow file servers to restore their directory monitor
-%% after the directory crashes while still being able to
-%% serve errors to io clients.
-%%
--spec await_new_directory(torrent_id()) -> reference().
-await_new_directory(TorrentID) ->
-    gproc:nb_await({etorrent, TorrentID, directory}).
-
-%%
+%% @doc
 %% Lookup the process id of the file server responsible for
 %% performing IO operations on this path. If there is no such
 %% server registered this function will crash.
-%%
+%% @end
 -spec lookup_file_server(torrent_id(), file_path()) -> pid().
 lookup_file_server(TorrentID, Path) ->
     gproc:lookup_local_name({etorrent, TorrentID, Path, file}).
 
-%%
+%% @doc
 %% Register the current process as a file server as being
 %% in a state where it is ready to perform IO operations
 %% on behalf of clients.
-%%
+%% @end
 -spec register_open_file(torrent_id(), file_path()) -> true.
 register_open_file(TorrentID, Path) ->
     gproc:add_local_name({etorrent, TorrentID, Path, file, open}).
 
-%%
+%% @doc
 %% Register that the current process is a file server that
 %% is not in a state where it can (successfully) perform
 %% IO operations on behalf of clients.
-%%
+%% @end
 -spec unregister_open_file(torrent_id(), file_path()) -> true.
 unregister_open_file(TorrentID, Path) ->
     gproc:unreg({n, l, {etorrent, TorrentID, Path, file, open}}).
 
 
-%%
+%% @doc
 %% Wait for the file server responsible for the given file to start
-%%
+%% and return the process id of the file server.
+%% @end
 -spec await_file_server(torrent_id(), file_path()) -> {ok, pid()}.
 await_file_server(TorrentID, Path) ->
     Name = {etorrent, TorrentID, Path, file},
     {FilePid, undefined} = gproc:await({n, l, Name}, ?AWAIT_TIMEOUT),
     {ok, FilePid}.
 
-%%
+%% @doc
 %% Wait for the file server responsible for the given file
 %% to enter a state where it is able to perform IO operations.
-%%
+%% @end
 -spec await_open_file(torrent_id(), file_path()) -> {ok, pid()}.
 await_open_file(TorrentID, Path) ->
     Name = {etorrent, TorrentID, Path, file, open},
     {FilePid, undefined} = gproc:await({n, l, Name}, ?AWAIT_TIMEOUT),
     {ok, FilePid}.
 
-%%
-%% Fetch the positions and length of the file blocks where
-%% Piece is located in the files of the torrent that this
-%% directory server is responsible for.
-%%
+%% @doc
+%% Fetch the offsets and length of the file blocks of the piece
+%% from this directory server.
+%% @end
 -spec get_positions(pid(), piece_index()) -> {'ok', list(block_pos())}.
 get_positions(DirPid, Piece) ->
     gen_server:call(DirPid, {get_positions, Piece}).
 
-%%
+%% @doc
 %% Notify the directory server that the current process intends
 %% to perform an IO-operation on a file. This is so that the directory
-%% can notify the file server to open it's file.
-%%
+%% can notify the file server to open it's file if needed.
+%% @end
 -spec schedule_io_operation(torrent_id(), file_path()) -> ok.
 schedule_io_operation(Directory, RelPath) ->
     {ok, DirPid} = await_directory(Directory),
@@ -373,7 +394,7 @@ code_change(_, _, _) ->
 %%
 make_piece_map(Torrent) ->
     PieceLength = etorrent_metainfo:get_piece_length(Torrent),
-    FileLengths = etorrent_metainfo:get_files(Torrent),
+    FileLengths = file_path_len(Torrent),
     MapEntries  = make_piece_map_(PieceLength, FileLengths),
     lists:foldl(fun({Path, Piece, Offset, Length}, Acc) ->
         Prev = array:get(Piece, Acc),

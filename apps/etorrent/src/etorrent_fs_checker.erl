@@ -68,8 +68,8 @@ check_piece(TorrentID, PieceIndex) ->
     {InfoHash, _} = etorrent_piece_mgr:piece_info(TorrentID, PieceIndex),
     {ok, PieceBin} = etorrent_io:read_piece(TorrentID, PieceIndex),
     PieceSize = byte_size(PieceBin),
-    case crypto:sha(PieceBin) of
-        InfoHash ->
+    case crypto:sha(PieceBin) == InfoHash of
+        true ->
             ok = etorrent_torrent:statechange(TorrentID, [{subtract_left, PieceSize}]),
             ok = etorrent_piece_mgr:statechange(TorrentID, PieceIndex, fetched),
             _  = etorrent_table:foreach_peer(TorrentID,
@@ -96,8 +96,12 @@ load_torrent(Path) ->
     Name = etorrent_metainfo:get_name(Torrent),
     InfoHash = etorrent_metainfo:get_infohash(Torrent),
     FilesToCheck =
-        [{filename:join([Filename]), Size} ||
-            {Filename, Size} <- Files],
+	case Files of
+	    [_] -> Files;
+	    [_|_] ->
+		[{filename:join([Name, Filename]), Size}
+		 || {Filename, Size} <- Files]
+	end,
     {ok, Torrent, FilesToCheck, InfoHash}.
 
 ensure_file_sizes_correct(Files) ->
