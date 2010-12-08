@@ -32,7 +32,7 @@
 
 -spec start_link(torrent_id(), file_path(), file_path()) -> {'ok', pid()}.
 start_link(TorrentID, Path, FullPath) ->
-    gen_server:start_link(?MODULE, [TorrentID, Path, FullPath], [{fullsweep_after, 0}]).
+    gen_server:start_link(?MODULE, [TorrentID, Path, FullPath], [{spawn_opt, [{fullsweep_after, 0}]}]).
 
 -spec open(pid()) -> 'ok'.
 open(FilePid) ->
