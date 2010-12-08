@@ -1,0 +1,59 @@
+#!/usr/bin/env escript
+% -*- Mode: Erlang; -*-
+-import(lists, [prefix/2]).
+
+a2l(Atom) ->
+    atom_to_list(Atom).
+
+write_to(Dir, Filename, Prefix) ->
+    xref:start(s),
+    xref:add_directory(s, Dir),
+    {ok, Calls} = xref:q(s, "XC"),
+
+    AllMods = [{a2l(From), a2l(To)} || {{From,_,_}, {To,_,_}} <- Calls],
+    PrefMods = prefixed(Prefix, AllMods),
+    Mods = ordsets:from_list(PrefMods),
+
+    {Remaining, Clusters} = build_cluster(Mods, ["etorrent_dht",
+						 "etorrent_io",
+						 "etorrent_udp",
+						 "etorrent_peer",
+						 "etorrent_fs"], []),
+    Graph = graph(Remaining),
+
+    file:write_file(
+      Filename,
+      ["digraph G { ", $\n,
+       header(),
+       Clusters,
+       Graph,
+       [" }", $\n]]).
+
+prefixed(P, All) ->
+     [{F, T} || {F, T} <- All,
+		prefix(P, F), prefix(P, T)].
+
+graph(Mods) ->
+    [[$\t, From, " -> ", To, " ; ", $\n] || {From, To} <- Mods].
+
+build_cluster(Mods, [], Acc) -> {Mods, Acc};
+build_cluster(Mods, [Cls | R], Acc) ->
+    NM = prefixed(Cls, Mods),
+    Txt = ["subgraph cluster_", Cls, " {",
+	   "label = ", Cls, $;,
+	   "color = deepskyblue4;",
+	   "fontsize = 14",
+	   graph(NM), $}, $\n],
+    build_cluster(Mods -- NM, R, [Txt | Acc]).
+
+header() ->
+    ["rankdir=LR;",
+     "node [fontname=\"URW Gothic L\",fontsize=12,shape=plaintext,labelfontname=Helvetica];",
+     "labeljust = l;",
+     "labelloc = t;",
+     "fontsize = 24;",
+     "fontname=\"URW Gothic L\";",
+     "label = \"Etorrent dependency graph\""].
+
+main([Dir, Filename, Prefix]) ->
+    write_to(Dir, Filename, Prefix).
