@@ -1,3 +1,6 @@
+; -*- Mode: Markdown; -*-
+; vim: filetype=none tw=76 expandtab
+
 # ETORRENT
 
 ETORRENT is a bittorrent client written in Erlang. The focus is on
@@ -106,5 +109,3 @@ currently lacking a mailing list) or use the issue tracker:
      because it acts somewhat as a historic remark and a side channel. Note
      that there are some commentary on these pages which can be disputed
      quite a lot.
-
-; vim: filetype=none tw=76 expandtab
