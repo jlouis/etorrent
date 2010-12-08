@@ -180,15 +180,15 @@ interesting(Id, Pn) when is_integer(Id) ->
 -spec find_new(integer(), gb_set()) -> none | {#piece{}, pos_integer()}.
 find_new(Id, GBSet) ->
     Iter = gb_sets:iterator(GBSet),
-    find_new_worker(Id, gb_sets:next(Iter)).
+    find_new_1(Id, gb_sets:next(Iter)).
 
-find_new_worker(_Id, none) -> none;
-find_new_worker(Id, {PN, Nxt}) ->
+find_new_1(_Id, none) -> none;
+find_new_1(Id, {PN, Nxt}) ->
     case ets:lookup(?TAB, {Id, PN}) of
         [] ->
-            find_new_worker(Id, gb_sets:next(Nxt));
+            find_new_1(Id, gb_sets:next(Nxt));
         [#piece{ state = not_fetched } = P] -> {P, PN};
-        [_P] -> find_new_worker(Id, gb_sets:next(Nxt))
+        [_P] -> find_new_1(Id, gb_sets:next(Nxt))
     end.
 
 %% (@todo: Somewhat expensive, but we start here) Chunked pieces
