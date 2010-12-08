@@ -20,6 +20,8 @@
 	 chunkify_piece/2, select/1,
          add_monitor/2, num_not_fetched/1, check_interest/2, add_pieces/2, chunk/3]).
 
+-export([increase_count/2, decrease_count/2]).
+
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
@@ -31,6 +33,7 @@
                 piece_number, % Piece Number of piece, replicated for fast qlc access
                 files, % File operations to manipulate piece
                 left = unknown, % Number of chunks left...
+		count = 0, % How many peers has this piece
                 state}). % (IDX) state is: fetched | not_fetched | chunked
 
 -type piece() :: #piece{}.
@@ -71,6 +74,12 @@ add_pieces(Id, Pieces) ->
 
 chunk(Id, Idx, N) ->
     gen_server:call(?SERVER, {chunk, Id, Idx, N}).
+
+increase_count(Id, PN) ->
+    alter_count(Id, PN, 1).
+
+decrease_count(Id, PN) ->
+    alter_count(Id, PN, -1).
 
 %%--------------------------------------------------------------------
 %% Function: t_decrease_missing_chunks/2
@@ -380,3 +389,7 @@ chunkify(AtOffset, EatenBytes, Operations,
              Rest,
              Left - Size).
 
+alter_count(I, PN, C) ->
+    R = ets:update_counter(?TAB, {I, PN}, {#piece.count, C}),
+    true = R =< 0,
+    ok.

@@ -17,33 +17,37 @@
 -export([get_path/2, insert_path/2, delete_paths/1]).
 -export([get_peer_info/1, new_peer/5, connected_peer/3,
 	 foreach_peer/2, statechange_peer/2]).
--export([all_torrents/0, statechange_torrent/2, get_torrent/1, acquire_check_token/1,
-	 new_torrent/3]).
+
+-export([all_torrents/0, statechange_torrent/2, get_torrent/1,
+	 acquire_check_token/1, new_torrent/3]).
+
+%% Histogram handling code
+-export([histogram_enter/2, histogram/1, histogram_delete/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3]).
 
 %% The path map tracks file system paths and maps them to integers.
--record(path_map, {id :: {'_' | '$1' | non_neg_integer(), '_' | non_neg_integer()},
-                   path :: string() | '_'}). % (IDX) File system path minus work dir
+-record(path_map, {id :: {'_' | '$1' | non_neg_integer(), '_'
+			      | non_neg_integer()},
+                   path :: string() | '_'}). % File system path -- work dir
 
 -record(peer, {pid :: pid() | '_' | '$1', % We identify each peer with it's pid.
                ip :: ip() | '_',  % Ip of peer in question
                port :: non_neg_integer() | '_', % Port of peer in question
-               torrent_id :: non_neg_integer() | '_', % (IDX) Torrent Id this peer belongs to
+               torrent_id :: non_neg_integer() | '_', % Torrent Id for peer
                state :: 'seeding' | 'leeching' | '_'}).
 
 -type(tracking_map_state() :: 'started' | 'stopped' | 'checking' | 'awaiting' | 'duplicate').
 
-%% The tracking map tracks torrent id's to filenames, etc. It is the high-level view
+%% The tracking map tracks torrent id's to filenames, etc. It is the
+%% high-level view
 -record(tracking_map, {id :: '_' | integer(), %% Unique identifier of torrent
                        filename :: '_' | string(),    %% The filename
-                       supervisor_pid :: '_' | pid(), %% The Pid of who is supervising
+                       supervisor_pid :: '_' | pid(), %% Who is supervising
                        info_hash :: '_' | binary() | 'unknown',
                        state :: '_' | tracking_map_state()}).
-
-
 
 -record(state, { monitoring :: dict() }).
 
@@ -100,6 +104,24 @@ proplistify_tmap(#tracking_map { id = Id, filename = FN, supervisor_pid = SPid,
 				 info_hash = IH, state = S }) ->
     [proplists:property(K,V) || {K, V} <- [{id, Id}, {filename, FN}, {supervisor, SPid},
 					   {info_hash, IH}, {state, S}]].
+
+%% @doc Enter a Piece Number in the histogram
+%% @end
+-spec histogram_enter(pid(), pos_integer()) -> true.
+histogram_enter(Pid, PN) ->
+    ets:insert_new(histogram, {Pid, PN}).
+
+%% @doc Return the histogram part of the peer represented by Pid
+%% @end
+-spec histogram(pid()) -> [pos_integer()].
+histogram(Pid) ->
+    ets:lookup_element(histogram, Pid, 2).
+
+%% @doc Delete the histogram for a Pid
+%% @end
+-spec histogram_delete(pid()) -> true.
+histogram_delete(Pid) ->
+    ets:delete(histogram, Pid).
 
 % @doc Map a {PathId, TorrentId} pair to a Path (string()).
 % @end
@@ -212,6 +234,7 @@ init([]) ->
     ets:new(path_map, [public, {keypos, #path_map.id}, named_table]),
     ets:new(peers, [named_table, {keypos, #peer.pid}, public]),
     ets:new(tracking_map, [named_table, {keypos, #tracking_map.id}, public]),
+    ets:new(histogram, [named_table, {keypos, 1}, public, bag]),
     {ok, #state{ monitoring = dict:new() }}.
 
 handle_call({monitor_pid, Type, Pid}, _From, S) ->

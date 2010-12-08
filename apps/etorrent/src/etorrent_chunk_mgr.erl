@@ -194,6 +194,7 @@ handle_cast(Msg, State) ->
 handle_info({'DOWN', _Ref, process, Pid, _Reason}, S) ->
     {ok, Id} = dict:find(Pid, S#state.torrent_dict),
     clear_torrent_entries(Id),
+    remove_counts(Id, Pid),
     ManageDict = dict:erase(Pid, S#state.torrent_dict),
     {noreply, S#state { torrent_dict = ManageDict }};
 handle_info(_Info, State) ->
@@ -365,3 +366,10 @@ for_each_chunk(MatchHead, F) ->
     Rows = ets:select(?TAB, [{MatchHead, [], ['$_']}]),
     lists:foreach(F, Rows),
     ok.
+
+remove_counts(Id, Pid) ->
+    PNumbers = etorrent_table:histogram(Pid),
+    [etorrent_piece_mgr:decrease_count(Id, PN) || PN <- PNumbers],
+    true = etorrent_table:histogram_delete(Pid).
+
+
