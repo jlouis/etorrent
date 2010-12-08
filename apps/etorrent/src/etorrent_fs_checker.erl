@@ -221,6 +221,42 @@ fill_file_ensure_path(Path, Missing) ->
     end.
 
 fill_file(FD, Missing) ->
+    case application:get_env(etorrent, preallocation_strategy) of
+	undefined -> fill_file_sparse(FD, Missing);
+	{ok, sparse} -> fill_file_sparse(FD, Missing);
+	{ok, preallocate} -> fill_file_prealloc(FD, Missing)
+    end.
+
+fill_file_sparse(FD, Missing) ->
     {ok, _NP} = file:position(FD, {eof, Missing-1}),
-    file:write(FD, <<0>>),
-    file:close(FD).
+    ok = file:write(FD, <<0>>),
+    ok = file:close(FD).
+
+fill_file_prealloc(FD, N) ->
+    {ok, _NP} = file:position(FD, eof),
+    SZ4 = N div 4,
+    Rem = (N rem 4) * 8,
+    create_file(FD, 0, SZ4),
+    ok = file:write(FD, <<0:Rem/unsigned>>).
+
+create_file(_FD, M, M) ->
+           ok;
+create_file(FD, M, N) when M + 1024 =< N ->
+    create_file(FD, M, M + 1024, []),
+    create_file(FD, M + 1024, N);
+create_file(FD, M, N) ->
+    create_file(FD, M, N, []).
+
+create_file(FD, M, M, R) ->
+    ok = file:write(FD, R);
+create_file(FD, M, N0, R) when M + 8 =< N0 ->
+    N1  = N0-1,  N2  = N0-2,  N3  = N0-3,  N4  = N0-4,
+    N5  = N0-5,  N6  = N0-6,  N7  = N0-7,  N8  = N0-8,
+    create_file(FD, M, N8,
+		[<<N8:32/unsigned,  N7:32/unsigned,
+		   N6:32/unsigned,  N5:32/unsigned,
+		   N4:32/unsigned,  N3:32/unsigned,
+		   N2:32/unsigned,  N1:32/unsigned>> | R]);
+create_file(FD, M, N0, R) ->
+    N1 = N0-1,
+    create_file(FD, M, N1, [<<N1:32/unsigned>> | R]).
