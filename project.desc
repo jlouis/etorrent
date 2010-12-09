@@ -3,7 +3,7 @@
  {maintainer, "Jesper Louis Andersen <jesper.louis.andersen@gmail.com>"},
  {synopsis,
   "Etorrent is a bittorrent client implementation in Erlang"
-  ++ "focusing on fault-tolerance"},
+  "focusing on fault-tolerance"},
  {build_system, rebar},
  {license, bsd2, "COPYING"},
  {stability, stable},
@@ -13,4 +13,4 @@
      {etorrent, ".*", {git, "git://github.com/jlouis/etorrent.git", "v1.2.0"}}},
     {development,
      {etorrent, ".*", {git, "git://github.com/jlouis/etorrent.git", "master"}}}]}
-]
+].
