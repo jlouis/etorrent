@@ -1,3 +1,39 @@
+Version 1.2.0:
+
+This version sees a number of new highlights:
+
+ Highlights:
+   * (Magnus Klaar) A complete DHT implementation. This is outstanding
+     work. Note that it should be disabled if you use private
+     trackers. We don't heed the private-flag yet (BEP-27)
+   * (Magnus Klaar) A completely new disk IO layer which is more parallel
+     than the old one. Needless to say, it is much faster.
+   * Further work via rebars release handler now lets us build proper releases,
+     for production and/or development (See the README.md file for
+     instructions).
+   * Support for BEP-15: Udp tracker protocol
+   * Support for BEP-12: Multitracker protocol
+   * Numerous improvement to the webUI.
+   * Etorrent now persists the amount of upload and download over sessions.
+     This fixes correct ratios even across stops/starts of etorrent.
+   * Use the riak_err error handler. This plugs a bug where death of many
+     processes would make SASL use too much memory.
+
+ Fixes:
+   * Remove mnesia from the code base. The new system is running entirely on
+     ETS.
+   * Performance improvements in hot parts of the code.
+   * Begin adding tests to the code, EUnit and Erlang QuickCheck mini.
+   * Add profiling via eprof as a tunable knob.
+   * Fix an outstanding bug in the choker code. Etorrent is now much better
+     at giving back.
+   * Fix a race condition on the gproc table.
+   * Improve supervisor tree shutdown
+   * Change the bcoding module to be less defensive and more erlang-like
+   * Change from uwiger/gproc to esl/gproc.
+   * Numerous fixes to robustness regarding slow disks.
+
+
 Version 1.1.2:
 
 Build system restructuring,
