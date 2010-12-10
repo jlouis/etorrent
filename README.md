@@ -65,7 +65,8 @@ so we can get it away.
    3. edit `${EDITOR} rel/etorrent/etc/app.config` - there are a number of directories
       which must be set in order to make the system work.
    4. check *rel/etorrent/etc/vm.args* - Erlang args to supply
-   5. If you enabled the webui, check *rel/etorrent/etc/webui.config*
+   5. be sure to protect the erlang cookie or anybody can connect to
+      your erlang system! See the Erlang user manual in [distributed operation](http://www.erlang.org/doc/reference_manual/distributed.html)
    6. run `rel/etorrent/bin/etorrent console`
    7. drop a .torrent file in the watched dir and see what happens.
    8. call `etorrent:help()`. from the Erlang CLI to get a list of available
