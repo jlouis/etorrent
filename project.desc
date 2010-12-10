@@ -4,6 +4,7 @@
  {synopsis,
   "Etorrent is a bittorrent client implementation in Erlang"
   "focusing on fault-tolerance"},
+ {homepage, "http://github.com/jlouis/etorrent"},
  {build_system, rebar},
  {license, bsd2, "COPYING"},
  {stability, stable},
