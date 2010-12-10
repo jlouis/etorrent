@@ -277,10 +277,10 @@ handle_tracker_response(BC, S) ->
       etorrent_bcoding:get_string_value("warning message", BC, none),
       S).
 
-handle_tracker_response(BC, E, _WM, S) when is_binary(E) ->
+handle_tracker_response(BC, E, _WM, S) when is_list(E) ->
     etorrent_t_control:tracker_error_report(S#state.control_pid, E),
     handle_timeout(BC, S);
-handle_tracker_response(BC, none, W, S) when is_binary(W) ->
+handle_tracker_response(BC, none, W, S) when is_list(W) ->
     etorrent_t_control:tracker_warning_report(S#state.control_pid, W),
     handle_tracker_response(BC, none, none, S);
 handle_tracker_response(BC, none, none, S) ->
