@@ -13,6 +13,8 @@ they are.
 
 Flag days are when you need to do something to your setup
 
+   * *2010-12-10* You will need a rebar with commit 618b292c3d84 as we
+     got some fixes into rebar.
    * *2010-12-06* We now depend on riak_err. You will need to regrab
      dependencies.
    * *2010-12-02* The fast-resume-file format has been updated. You
@@ -42,6 +44,7 @@ so we can get it away.
 ## Required software:
 
    * rebar - you need a working rebar installation to build etorrent.
+     The rebar must have commit 618b292c3d84.
    * Erlang/OTP R13B04 or R14 - the etorrent system is written in
      Erlang and thus requires a working Erlang distribution to
      work. It may work with older versions, but has mostly been tested
