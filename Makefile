@@ -47,5 +47,5 @@ console-perf:
 xref: compile
 	rebar skip_deps=true xref
 
-.PHONY: all compile tags dialyze run tracer clean eunit rel xref dev console console-perf
+.PHONY: all deps compile tags dialyze run tracer clean eunit rel xref dev console console-perf
 
