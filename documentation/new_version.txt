@@ -6,6 +6,7 @@ How to get a new version of etorrent out:
 - Edit webui version tag.
 - Edit apps/etorrent/src/etorrent.app.src version
 - Edit rel/reltool.config version
+- Edit project.desc version
 
 - Write NEWS if not already up-to-date
 

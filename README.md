@@ -73,6 +73,11 @@ so we can get it away.
       commands.
    9. If you enabled the webui, you can try browsing to its location. By default the location is 'http://localhost:8080'.
 
+## QUESTIONS??
+
+You can either mail them to `jesper.louis.andersen@gmail.com` or you
+can come by on IRC #etorrent/freenode and ask.
+
 ## Setting up a development environment
 
 When developing for etorrent, you might end up generating a new
