@@ -132,36 +132,19 @@ send_msg(Socket, Msg, Mode) ->
 %% @doc Decode a binary bitfield into a pieceset
 %% @end
 -spec decode_bitfield(integer(), binary()) ->
-    {ok, gb_set()} | {error, term()}.
-decode_bitfield(Size, BinaryLump) ->
-    ByteList = binary_to_list(BinaryLump),
-    Numbers = decode_bytes(0, ByteList),
-    PieceSet = gb_sets:from_list(lists:flatten(Numbers)),
-    case max_element(PieceSet) < Size of
-        true ->
-            {ok, PieceSet};
-        false ->
-            {error, bitfield_had_wrong_padding}
-    end.
+    {ok, etorrent_pieceset:pieceset()}.
+decode_bitfield(Size, Bin) ->
+    PieceSet = etorrent_pieceset:from_binary(Size, Bin),
+    {ok, PieceSet}.
 
-%% @doc Encode a pieceset into a binary bitfield
-%% <p>The Size entry is the full size of the bitfield, so the function knows
-%% how much and when to pad
-%% </p>
-%% @end
--spec encode_bitfield(integer(), gb_set()) -> binary().
-encode_bitfield(Size, PieceSet) ->
-    PadBits = 8 - (Size rem 8),
-    F = fun(N) ->
-                case gb_sets:is_element(N, PieceSet) of
-                    true -> 1;
-                    false -> 0
-                end
-        end,
-    Bits = [F(N) || N <- lists:seq(0, Size-1)] ++
-           [0 || _N <- lists:seq(1,PadBits)],
-    0 = length(Bits) rem 8,
-    list_to_binary(build_bytes(Bits)).
+% @doc Encode a pieceset into a binary bitfield
+% <p>The Size entry is the full size of the bitfield, so the function knows
+% how much and when to pad
+% </p>
+% @end
+-spec encode_bitfield(integer(), etorrent_pieceset:pieceset()) -> binary().
+encode_bitfield(_Size, Pieceset) ->
+    etorrent_pieceset:to_binary(Pieceset).
 
 %% @doc Decode a message from the wire
 %% <p>This function take a binary input, assumed to be a wire protocol
@@ -377,41 +360,6 @@ decode_proto_caps(N) ->
       []),
     [Cap || {_, Cap} <- Decoded].
 
-
-build_bytes(BitField) ->
-    build_bytes(BitField, []).
-
-build_bytes([], Acc) ->
-    lists:reverse(Acc);
-build_bytes(L, Acc) ->
-    {Byte, Rest} = lists:split(8, L),
-    build_bytes(Rest, [bytify(Byte) | Acc]).
-
-bytify([B1, B2, B3, B4, B5, B6, B7, B8]) ->
-    <<B1:1/integer, B2:1/integer, B3:1/integer, B4:1/integer,
-      B5:1/integer, B6:1/integer, B7:1/integer, B8:1/integer>>.
-
-
-max_element(Set) ->
-    gb_sets:fold(fun(E, Max) ->
-                         case E > Max of
-                             true ->
-                                 E;
-                             false ->
-                                 Max
-                         end
-                 end, 0, Set).
-
-decode_byte(B, Add) ->
-    <<B1:1/integer, B2:1/integer, B3:1/integer, B4:1/integer,
-      B5:1/integer, B6:1/integer, B7:1/integer, B8:1/integer>> = <<B>>,
-    Bytes = [{B1, 0}, {B2, 1}, {B3, 2}, {B4, 3},
-             {B5, 4}, {B6, 5}, {B7, 6}, {B8, 7}],
-    [N+Add || {K, N} <- Bytes, K =:= 1].
-
-decode_bytes(_SoFar, []) -> [];
-decode_bytes(SoFar, [B | Rest]) ->
-    [decode_byte(B, SoFar) | decode_bytes(SoFar + 8, Rest)].
 
 %% FASTSET COMPUTATION
 
