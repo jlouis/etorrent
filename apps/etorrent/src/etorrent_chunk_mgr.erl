@@ -57,7 +57,7 @@
 
 %% @todo: What pid is the chunk recording pid? Control or SendPid?
 %% API
--export([start_link/0, store_chunk/4, putback_chunks/1,
+-export([start_link/0, store_chunk/3, putback_chunks/1,
          mark_fetched/2, pick_chunks/3,
          new/1, endgame_remove_chunk/3]).
 
@@ -91,10 +91,9 @@ mark_fetched(Id, {Index, Offset, Len}) ->
 %% @doc Store the chunk in the chunk table.
 %%   As a side-effect, check the piece if it is fully fetched.
 %% @end
--spec store_chunk(integer(), {integer(), binary(), term()}, {integer(), integer()}, pid()) ->
-                ok.
-store_chunk(Id, {Index, D, Ops}, {Offset, Len}, FSPid) ->
-    gen_server:cast(?SERVER, {store_chunk, Id, self(), {Index, D, Ops}, {Offset, Len}, FSPid}).
+-spec store_chunk(integer(), {integer(), integer(), binary()}, pid()) -> ok.
+store_chunk(Id, {Index, Offset, D}, FSPid) ->
+    gen_server:cast(?SERVER, {store_chunk, Id, self(), {Index, Offset, D}, FSPid}).
 
 %% @doc Find all chunks assigned to Pid and mark them as not_fetched
 %%   This is called by a peer when the remote chokes.
@@ -115,7 +114,7 @@ endgame_remove_chunk(SendPid, Id, {Index, Offset, Len}) ->
 
 %% @doc Return some chunks for downloading.
 %% @end
--type chunk_lst1() :: [{integer(), integer(), integer(), [operation()]}].
+-type chunk_lst1() :: [{integer(), integer(), integer()}].
 -type chunk_lst2() :: [{integer(), [#chunk{}]}].
 -spec pick_chunks(integer(), unknown | gb_set(), integer()) ->
     none_eligible | not_interested | {ok | endgame, chunk_lst1() | chunk_lst2()}.
@@ -162,7 +161,7 @@ handle_call({new, Id}, {Pid, _Tag}, S) ->
     {reply, ok, S#state { torrent_dict = ManageDict }};
 handle_call({mark_fetched, Id, Index, Offset, _Len}, _From, S) ->
     case ets:match_object(?TAB, #chunk { idt = {Id, Index, not_fetched},
-					 chunk = {Offset, '_', '_'} }) of
+					 chunk = {Offset, '_'} }) of
 	[] -> {reply, assigned, S};
 	[Obj] -> ets:delete_object(?TAB, Obj),
 		 {reply, found, S}
@@ -211,12 +210,12 @@ ensure_monitor(Pid, Set) ->
     end.
 
 %% @private
-handle_cast({store_chunk, Id, Pid, {Index, Data, Ops}, {Offset, Len}, FSPid}, S) ->
+handle_cast({store_chunk, Id, Pid, {Index, Offset, Data}, FSPid}, S) ->
     ok = etorrent_io:write_chunk(Id, Index, Offset, Data),
     %% Add the newly fetched data to the fetched list
-    Present = update_fetched(Id, Index, {Offset, Len}),
+    Present = update_fetched(Id, Index, {Offset, byte_size(Data)}),
     %% Update chunk assignment
-    update_chunk_assignment(Id, Index, Pid, {Offset, Len}),
+    update_chunk_assignment(Id, Index, Pid, {Offset, byte_size(Data)}),
     %% Countdown number of missing chunks
     case Present of
         fetched -> ok;
@@ -273,7 +272,7 @@ clear_torrent_entries(Id) ->
 %% @end
 %% @todo Consider using ets:fun2ms here to parse-transform the matches
 -spec find_remaining_chunks(integer(), set()) ->
-    [{integer(), integer(), integer(), [operation()]}].
+    [{integer(), integer(), integer()}].
 find_remaining_chunks(Id, PieceSet) ->
     %% Note that the chunk table is often very small.
     MatchHeadAssign = #chunk { idt = {Id, '$1', {assigned, '_'}}, chunk = '$2'},
@@ -282,7 +281,7 @@ find_remaining_chunks(Id, PieceSet) ->
     RowsN = ets:select(?TAB, [{MatchHeadNotFetch, [], [{{'$1', '$2'}}]}]),
     Eligible = [{PN, Chunk} || {PN, Chunk} <- RowsA ++ RowsN,
                                 gb_sets:is_element(PN, PieceSet)],
-    [{PN, Os, Sz, Ops} || {PN, {Os, Sz, Ops}} <- Eligible].
+    [{PN, Os, Sz} || {PN, {Os, Sz}} <- Eligible].
 
 %% @doc Chunkify a new piece.
 %%
@@ -353,7 +352,7 @@ update_fetched(Id, Index, {Offset, _Len}) ->
 update_chunk_assignment(Id, Index, Pid,
                         {Offset, _Len}) ->
     ets:match_delete(?TAB, #chunk { idt = {Id, Index, {assigned, Pid}},
-				    chunk = {Offset, '_', '_'} }).
+				    chunk = {Offset, '_'} }).
 
 %%
 %% There are 0 remaining chunks to be desired, return the chunks so far
