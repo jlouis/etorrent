@@ -78,6 +78,13 @@ so we can get it away.
 You can either mail them to `jesper.louis.andersen@gmail.com` or you
 can come by on IRC #etorrent/freenode and ask.
 
+# Development
+
+## PATCHES
+
+To submit patches, we have documentation in `documentation/git.md`,
+giving tips to patch submitters.
+
 ## Setting up a development environment
 
 When developing for etorrent, you might end up generating a new
@@ -95,10 +102,8 @@ recompiled them.
 
 ## ISSUES
 
-Either mail them to jesper.louis.andersen@gmail.com (We are
-currently lacking a mailing list) or use the issue tracker:
-
-  http://github.com/jlouis/etorrent/issues
+Either mail them to `jesper.louis.andersen@gmail.com` (We are
+currently lacking a mailing list) or use the [issue tracker](http://github.com/jlouis/etorrent/issues)
 
 ## Reading material for hacking Etorrent:
 

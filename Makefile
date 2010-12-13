@@ -55,7 +55,8 @@ depgraph.dot: compile
 
 
 .PHONY: all compile tags dialyze run tracer clean \
-	 eunit rel xref dev console console-perf graph
+	eunit rel xref dev console console-perf graph \
+	deps
 
 %.png: %.dot
 	dot -Tpng $< > $@

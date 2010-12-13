@@ -11,7 +11,7 @@
  {tested, [otp_r14b, otp_r14b01, otp_r13b04]},
  {repository,
    [{release,
-     {etorrent, ".*", {git, "git://github.com/jlouis/etorrent.git", "v1.2.0"}}},
+     {etorrent, ".*", {git, "git://github.com/jlouis/etorrent.git", {tag, "v1.2.0"}}}},
     {development,
      {etorrent, ".*", {git, "git://github.com/jlouis/etorrent.git", "master"}}}]}
 ].
