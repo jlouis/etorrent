@@ -14,14 +14,16 @@
 
 -record(pieceset, {
     size :: pos_integer(),
-    elements :: pos_integer()}).
+    elements :: binary()}).
 
 %% @doc
 %% Create an empty set of piece indexes. The set of pieces
 %% is limited to contain pieces indexes from 0 to Size-1.
 %% @end
 new(Size) ->
-    #pieceset{size=Size, elements=0}.
+    PaddingLen = paddinglen(Size),
+    Elements = <<0:Size, 0:PaddingLen>>,
+    #pieceset{size=Size, elements=Elements}.
 
 %% @doc
 %% Create a piece set based on a bitfield. The bitfield is
@@ -32,22 +34,21 @@ new(Size) ->
 %% @end
 from_binary(Bin, Size) when is_binary(Bin) ->
     PaddingLen = paddinglen(Size),
-    <<Elements:Size, PaddingValue:PaddingLen>> = Bin,
+    <<_:Size, PaddingValue:PaddingLen>> = Bin,
     %% All bits used for padding must be set to 0
     case PaddingValue of
         0 -> ok;
         _ -> error(badarg)
     end,
-    #pieceset{size=Size, elements=Elements}.
+    #pieceset{size=Size, elements=Bin}.
 
 %% @doc
 %% Convert a piece set to a bitfield, the bitfield will
 %% be padded with at most 7 bits set to zero.
 %% @end
 to_binary(Pieceset) ->
-    #pieceset{size=Size, elements=Elements} = Pieceset,
-    PaddingLen = paddinglen(Size),
-    <<Elements:Size, 0:PaddingLen>>.
+    #pieceset{elements=Elements} = Pieceset,
+    Elements.
 
 %% @doc
 %% Returns true if the piece is a member of the piece set,
@@ -62,7 +63,9 @@ is_member(PieceIndex, Pieceset) ->
         false ->
             error(badarg);
         true ->
-            (Elements band piecemask(PieceIndex, Size)) > 0
+            PaddingLen = paddinglen(PieceIndex + 1),
+            <<_:PieceIndex, Status:1, _:PaddingLen, _/binary>> = Elements,
+            Status > 0
     end.
 
 %% @doc
@@ -78,8 +81,10 @@ insert(PieceIndex, Pieceset) ->
         false ->
             error(badarg);
         true ->
-            NewElements = Elements bor piecemask(PieceIndex, Size),
-            Pieceset#pieceset{elements=NewElements}
+            PaddingLen = paddinglen(PieceIndex + 1),
+            <<Low:PieceIndex, _:1, Padding:PaddingLen, High/binary>> = Elements,
+            Updated = <<Low:PieceIndex, 1:1, Padding:PaddingLen, High/binary>>,
+            Pieceset#pieceset{elements=Updated}
     end.
 
 %% @doc
@@ -93,14 +98,13 @@ intersection(Set0, Set1) ->
         false ->
             error(badarg);
         true ->
-            Intersection = Elements0 band Elements1,
+            PaddingLen = paddinglen(Size0),
+            <<E0:Size0, 0:PaddingLen>> = Elements0,
+            <<E1:Size0, 0:PaddingLen>> = Elements1,
+            Shared = E0 band E1,
+            Intersection = <<Shared:Size0, 0:PaddingLen>>,
             #pieceset{size=Size0, elements=Intersection}
     end.
-    
-    
-
-piecemask(PieceIndex, Size) ->
-    1 bsl (Size - PieceIndex - 1).
 
 paddinglen(Size) ->
     Length = 8 - (Size rem 8),
