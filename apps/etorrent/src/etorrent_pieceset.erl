@@ -9,7 +9,8 @@
          from_binary/2,
          to_binary/1,
          is_member/2,
-         insert/2]).
+         insert/2,
+         intersection/2]).
 
 -record(pieceset, {
     size :: pos_integer(),
@@ -80,6 +81,22 @@ insert(PieceIndex, Pieceset) ->
             NewElements = Elements bor piecemask(PieceIndex, Size),
             Pieceset#pieceset{elements=NewElements}
     end.
+
+%% @doc
+%% Return a piece set where each member is a member of both sets.
+%% If both sets are not of the same size this function exits with badarg.
+%% @end
+intersection(Set0, Set1) ->
+    #pieceset{size=Size0, elements=Elements0} = Set0,
+    #pieceset{size=Size1, elements=Elements1} = Set1,
+    case Size0 == Size1 of
+        false ->
+            error(badarg);
+        true ->
+            Intersection = Elements0 band Elements1,
+            #pieceset{size=Size0, elements=Intersection}
+    end.
+    
     
 
 piecemask(PieceIndex, Size) ->
@@ -165,6 +182,19 @@ insert_max_min_test() ->
     ?assert(?set:is_member(4, Set)),
     ?assert(?set:is_member(0, Set)),
     ?assertEqual(<<1:1, 0:3, 1:1, 0:3>>, ?set:to_binary(Set)).
+
+intersection_size_test() ->
+    Set0 = ?set:new(5),
+    Set1 = ?set:new(6),
+    ?assertError(badarg, ?set:intersection(Set0, Set1)).
+
+intersection_test() ->
+    Set0  = ?set:from_binary(<<1:1, 0:7,      1:1, 0:7>>, 16),
+    Set1  = ?set:from_binary(<<1:1, 1:1, 0:6, 1:1, 0:7>>, 16),
+    Inter = ?set:intersection(Set0, Set1),
+    Bitfield = <<1:1, 0:1, 0:6, 1:1, 0:7>>,
+    ?assertEqual(Bitfield, ?set:to_binary(Inter)).
+
 
 %%
 %% Conversion from piecesets to bitfields should produce valid bitfields.
