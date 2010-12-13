@@ -16,6 +16,9 @@
     size :: pos_integer(),
     elements :: binary()}).
 
+-opaque pieceset() :: #pieceset{}.
+-export_type([pieceset/0]).
+
 %% @doc
 %% Create an empty set of piece indexes. The set of pieces
 %% is limited to contain pieces indexes from 0 to Size-1.
