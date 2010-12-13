@@ -49,7 +49,7 @@ on submitting patches.
 
 # Submitting patches
 
-## Configuring gets user information
+## Configuring gits user information
 
 First, configure git so the patches have the right names in them:
 
@@ -63,14 +63,14 @@ First, configure git so the patches have the right names in them:
     information)
   * Setup a remote, `upstream` to point to the main repository:
 
-    git remote add upstream git://github.com/jlouis/etorrent
+        git remote add upstream git://github.com/jlouis/etorrent
 
   * Now, create a topic-branch to hold your changes. You should pick
     the most stable branch which will support them. This is usually
-    `master` though at times, it will be `next`. Never use `pu` or any
-    other branch, as they may be rewound and rewritten. If you *must*,
-    make sure that the owner of the branch knows you are doing it, to
-    avoid troubles later.
+    `master` though at times, it will be `next` or `maint`. Never use
+    `pu` or any other branch, as they may be rewound and rewritten. If
+    you *must*, make sure that the owner of the branch knows you are
+    doing it, to avoid troubles later.
 
     You should pick a name for your topic branch which is as precise
     as you can make it.
@@ -97,7 +97,7 @@ First, configure git so the patches have the right names in them:
 
   * Publishing a branch is done with
 
-    git push origin topic-feature-name
+        git push origin topic-feature-name
 
     I will usually first pull it to next and let it cook there for a
     couple of days before moving the patch further on to master --
@@ -106,7 +106,7 @@ First, configure git so the patches have the right names in them:
 
   * Cleanup after the patch graduated to master is done with
 
-    git push origin :topic-feature-name
+        git push origin :topic-feature-name
 
     this makes it easier for all of us to track what is still alive
     and what is not.
