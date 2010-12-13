@@ -15,9 +15,20 @@
     size :: pos_integer(),
     elements :: pos_integer()}).
 
+%% @doc
+%% Create an empty set of piece indexes. The set of pieces
+%% is limited to contain pieces indexes from 0 to Size-1.
+%% @end
 new(Size) ->
     #pieceset{size=Size, elements=0}.
 
+%% @doc
+%% Create a piece set based on a bitfield. The bitfield is
+%% expected to contain at most Size pieces. The piece set
+%% returned by this function is limited to contain at most
+%% Size pieces, as a set returned from new/1 is.
+%% The bitfield is expected to not be padded with more than 7 bits.
+%% @end
 from_binary(Bin, Size) when is_binary(Bin) ->
     PaddingLen = paddinglen(Size),
     <<Elements:Size, PaddingValue:PaddingLen>> = Bin,
@@ -28,17 +39,36 @@ from_binary(Bin, Size) when is_binary(Bin) ->
     end,
     #pieceset{size=Size, elements=Elements}.
 
+%% @doc
+%% Convert a piece set to a bitfield, the bitfield will
+%% be padded with at most 7 bits set to zero.
+%% @end
 to_binary(Pieceset) ->
     #pieceset{size=Size, elements=Elements} = Pieceset,
     PaddingLen = paddinglen(Size),
     <<Elements:Size, 0:PaddingLen>>.
 
+%% @doc
+%% Returns true if the piece is a member of the piece set,
+%% false if not. If the piece index is negative or is larger
+%% than the size of this piece set, the function exits with badarg.
+%% @end
 is_member(PieceIndex, _) when PieceIndex < 0 ->
     error(badarg);
 is_member(PieceIndex, Pieceset) ->
     #pieceset{size=Size, elements=Elements} = Pieceset,
-    (Elements band piecemask(PieceIndex, Size)) > 0.
+    case PieceIndex < Size of
+        false ->
+            error(badarg);
+        true ->
+            (Elements band piecemask(PieceIndex, Size)) > 0
+    end.
 
+%% @doc
+%% Insert a piece into the piece index. If the piece index is
+%% negative or larger than the size of this piece set, this
+%% function exists with the reason badarg.
+%% @end
 insert(PieceIndex, _) when PieceIndex < 0 ->
     error(badarg);
 insert(PieceIndex, Pieceset) ->
@@ -88,7 +118,7 @@ byte_boundry_test() ->
 padding_test() ->
     Set = ?set:from_binary(<<0:8, 0:6, 1:1, 0:1>>, 15),
     ?assert(?set:is_member(14, Set)),
-    ?assert(not ?set:is_member(15, Set)).
+    ?assertError(badarg, ?set:is_member(15, Set)).
 
 %% If the padding is invalid, the conversion from
 %% bitfield to pieceset should crash.
@@ -98,6 +128,11 @@ invalid_padding_test() ->
 %% Piece indexes can never be less than zero
 negative_index_test() ->
     ?assertError(badarg, ?set:is_member(-1, undefined)).
+
+%% Piece indexes that fall outside of the index range should fail
+too_high_member_test() ->
+    Set = ?set:new(8),
+    ?assertError(badarg, ?set:is_member(8, Set)).
 
 %%
 %% Modifying the contents of a pieceset
