@@ -33,7 +33,7 @@
 
                  local_interested = false,
 
-                 remote_request_set = none,
+                 remote_request_set = gb_sets:empty() :: gb_set(),
 
                  piece_set = unknown,
                  piece_request = [],
@@ -139,7 +139,7 @@ init([LocalPeerId, InfoHash, Id, {IP, Port}, Caps, Socket]) ->
        socket = Socket,
        pieces_left = NumPieces,
        local_peer_id = LocalPeerId,
-       remote_request_set = gb_trees:empty(),
+       remote_request_set = gb_sets:empty(),
        info_hash = InfoHash,
        torrent_id = Id,
        extended_messaging = proplists:get_bool(extended_messaging, Caps)}}.
@@ -329,10 +329,10 @@ handle_message(Unknown, S) ->
 %%   not to download it here if we can avoid it.
 %%--------------------------------------------------------------------
 handle_endgame_got_chunk({chunk, Index, Offset, Len}, S) ->
-    case gb_trees:is_defined({Index, Offset, Len}, S#state.remote_request_set) of
+    case gb_sets:is_element({Index, Offset, Len}, S#state.remote_request_set) of
         true ->
             %% Delete the element from the request set.
-            RS = gb_trees:delete({Index, Offset, Len}, S#state.remote_request_set),
+            RS = gb_sets:del_element({Index, Offset, Len}, S#state.remote_request_set),
             etorrent_peer_send:cancel(S#state.send_pid,
                                         Index,
                                         Offset,
@@ -354,12 +354,12 @@ handle_endgame_got_chunk({chunk, Index, Offset, Len}, S) ->
 %% Description: We just got some chunk data. Store it in the mnesia DB
 %%--------------------------------------------------------------------
 handle_got_chunk(Index, Offset, Data, Len, S) ->
-    case gb_trees:lookup({Index, Offset, Len},
+    case gb_sets:is_element({Index, Offset, Len},
                          S#state.remote_request_set) of
-        {value, Ops} ->
+	true ->
+	    Len = byte_size(Data), %% Destroy ourselves if this is not true
             ok = etorrent_chunk_mgr:store_chunk(S#state.torrent_id,
-                                                {Index, Data, Ops},
-                                                {Offset, Len},
+                                                {Index, Offset, Data},
                                                 S#state.file_system_pid),
             %% Tell other peers we got the chunk if in endgame
             case S#state.endgame of
@@ -380,9 +380,9 @@ handle_got_chunk(Index, Offset, Data, Len, S) ->
                 false ->
                     ok
             end,
-            RS = gb_trees:delete_any({Index, Offset, Len}, S#state.remote_request_set),
+            RS = gb_sets:del_element({Index, Offset, Len}, S#state.remote_request_set),
             {ok, S#state { remote_request_set = RS }};
-        none ->
+        false ->
             %% Stray piece, we could try to get hold of it but for now we just
             %%   throw it on the floor.
             {ok, S}
@@ -402,7 +402,7 @@ unqueue_all_pieces(S) ->
     etorrent_table:foreach_peer(S#state.torrent_id,
         fun(P) -> try_queue_pieces(P) end),
     %% Clean up the request set.
-    S#state{ remote_request_set = gb_trees:empty() }.
+    S#state{ remote_request_set = gb_sets:empty() }.
 
 %%--------------------------------------------------------------------
 %% Function: try_to_queue_up_requests(state()) -> {ok, state()}
@@ -411,7 +411,7 @@ unqueue_all_pieces(S) ->
 try_to_queue_up_pieces(#state { remote_choked = true } = S) ->
     {ok, S};
 try_to_queue_up_pieces(S) ->
-    case gb_trees:size(S#state.remote_request_set) of
+    case gb_sets:size(S#state.remote_request_set) of
         N when N > ?LOW_WATERMARK ->
             {ok, S};
         %% Optimization: Only replenish pieces modulo some N
@@ -430,37 +430,38 @@ try_to_queue_up_pieces(S) ->
 %% @doc Send chunk messages for each chunk we decided to queue.
 %%   also add these chunks to the piece request set.
 %% @end
--type chunk() :: {integer(), integer(), [operation()]}.
+-type chunk() :: {integer(), integer()}.
 -spec queue_items([chunk()], #state{}) -> {ok, #state{}}.
 queue_items(ChunkList, S) ->
     RSet = queue_items(ChunkList, S#state.send_pid, S#state.remote_request_set),
     {ok, S#state { remote_request_set = RSet }}.
 
--spec queue_items([{integer(), [chunk()]}], pid(), gb_tree()) -> gb_tree().
-queue_items([], _SendPid, Tree) -> Tree;
-queue_items([{Pn, Chunks} | Rest], SendPid, Tree) ->
+-spec queue_items([{integer(), [chunk()]}], pid(), gb_set()) -> gb_set().
+queue_items([], _SendPid, Set) -> Set;
+queue_items([{Pn, Chunks} | Rest], SendPid, Set) ->
     NT = lists:foldl(
-      fun ({Offset, Size, Ops}, T) ->
-              case gb_trees:is_defined({Pn, Offset, Size}, T) of
+      fun ({Offset, Size}, T) ->
+              case gb_sets:is_element({Pn, Offset, Size}, T) of
                   true ->
-                      Tree;
+                      Set;
                   false ->
                       etorrent_peer_send:local_request(SendPid,
                                                          {Pn, Offset, Size}),
-                      gb_trees:enter({Pn, Offset, Size}, Ops, T)
+                      gb_sets:add_element({Pn, Offset, Size}, T)
               end
       end,
-      Tree,
+      Set,
       Chunks),
     queue_items(Rest, SendPid, NT);
-queue_items([{Pn, Offset, Size, Ops} | Rest], SendPid, Tree) ->
-    NT = case gb_trees:is_defined({Pn, Offset, Size}, Tree) of
+% @todo: Is this variant used anymore?
+queue_items([{Pn, Offset, Size} | Rest], SendPid, Set) ->
+    NT = case gb_sets:is_element({Pn, Offset, Size}, Set) of
              true ->
-                 Tree;
+                 Set;
              false ->
                  etorrent_peer_send:local_request(SendPid,
                                                     {Pn, Offset, Size}),
-                 gb_trees:enter({Pn, Offset, Size}, Ops, Tree)
+                 gb_sets:add_element({Pn, Offset, Size}, Set)
          end,
     queue_items(Rest, SendPid, NT).
 
