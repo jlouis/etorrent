@@ -114,10 +114,9 @@ endgame_remove_chunk(SendPid, Id, {Index, Offset, Len}) ->
 
 %% @doc Return some chunks for downloading.
 %% @end
--type chunk_lst1() :: [{integer(), integer(), integer()}].
--type chunk_lst2() :: [{integer(), [#chunk{}]}].
+-type chunk_lst() :: [{integer(), [{integer(), integer()}]}].
 -spec pick_chunks(integer(), unknown | gb_set(), integer()) ->
-    none_eligible | not_interested | {ok | endgame, chunk_lst1() | chunk_lst2()}.
+    none_eligible | not_interested | {ok | endgame, chunk_lst()}.
 pick_chunks(_Id, unknown, _N) ->
     none_eligible;
 pick_chunks(Id, Set, N) ->
@@ -398,13 +397,27 @@ pick_chunks(chunkify_piece, {Pid, Id, PieceSet, SoFar, Remaining, Res}) ->
         none_eligible ->
             {ok, SoFar}
     end;
-%% @todo: Go through from here and check if it can be parallelized!
-%%
 %% Handle the endgame for a torrent gracefully
 pick_chunks(endgame, {Id, PieceSet, N}) ->
     Remaining = find_remaining_chunks(Id, PieceSet),
     Shuffled = etorrent_utils:list_shuffle(Remaining),
-    {endgame, lists:sublist(Shuffled, N)}.
+    Grouped = gather(
+		lists:sort(
+		  lists:sublist(Shuffled, N))),
+    {endgame, etorrent_utils:list_shuffle(Grouped)}.
+
+%% Gather like pieces in the endgame
+gather([]) -> [];
+gather([{PN, Off, Sz} | R]) ->
+    gather(PN, [{Off, Sz}], R).
+
+gather(PN, Item, []) ->
+    [{PN, lists:sort(Item)}];
+gather(PN, Items, [{PN, Off, Sz} | Next]) ->
+    gather(PN, [{Off, Sz} | Items], Next);
+gather(PN, Items, [{PN2, Off, Sz} | Next]) ->
+    [{PN, lists:sort(Items)} | gather(PN2, [{Off, Sz}], Next)].
+
 
 -spec pick_chunks_endgame(integer(), gb_set(), integer(), X) -> X | {endgame, [#chunk{}]}.
 pick_chunks_endgame(Id, Set, Remaining, Ret) ->

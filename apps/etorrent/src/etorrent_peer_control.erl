@@ -425,7 +425,7 @@ try_to_queue_up_pieces(S) ->
 %%   also add these chunks to the piece request set.
 %% @end
 -type chunk() :: {integer(), integer()}.
--spec queue_items([chunk()], #state{}) -> {ok, #state{}}.
+-spec queue_items([{integer(), [chunk()]}], #state{}) -> {ok, #state{}}.
 queue_items(ChunkList, S) ->
     RSet = queue_items(ChunkList, S#state.send_pid, S#state.remote_request_set),
     {ok, S#state { remote_request_set = RSet }}.
@@ -446,19 +446,7 @@ queue_items([{Pn, Chunks} | Rest], SendPid, Set) ->
       end,
       Set,
       Chunks),
-    queue_items(Rest, SendPid, NT);
-% @todo: Is this variant used anymore?
-queue_items([{Pn, Offset, Size} | Rest], SendPid, Set) ->
-    NT = case gb_sets:is_element({Pn, Offset, Size}, Set) of
-             true ->
-                 Set;
-             false ->
-                 etorrent_peer_send:local_request(SendPid,
-                                                    {Pn, Offset, Size}),
-                 gb_sets:add_element({Pn, Offset, Size}, Set)
-         end,
     queue_items(Rest, SendPid, NT).
-
 
 % @doc Initialize the connection, depending on the way the connection is
 connection_initialize(Way, S) ->
