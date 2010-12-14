@@ -47,7 +47,6 @@
 %%-------------------------------------------------------------------
 -module(etorrent_chunk_mgr).
 
--include("etorrent_chunk.hrl").
 -include("types.hrl").
 -include("log.hrl").
 
@@ -65,8 +64,15 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
+%% A mapping containing the chunks tracking
+-record(chunk, {idt :: {integer() | '_' | '$1',
+			integer() | '_' | '$1',
+			not_fetched | fetched | {assigned, pid() | '_'} | '_'},
+                chunk :: integer() | {integer() | '_', integer() | '_'} | '_' | '$2'}).
+
 -record(state, { torrent_dict,
 	         monitored_peers = gb_sets:empty() }).
+
 -define(SERVER, ?MODULE).
 -define(TAB, etorrent_chunk_tbl).
 -define(STORE_CHUNK_TIMEOUT, 20).
