@@ -1,10 +1,11 @@
-%%%-------------------------------------------------------------------
-%%% File    : etorrent.erl
-%%% Author  : Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
-%%% Description : Etorrent call API
-%%%
-%%% Created :  3 Sep 2010 by Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
-%%%-------------------------------------------------------------------
+%% @author Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
+%% @doc Etorrent Command line interface
+%% <p>This module implements the CLI of etorrent. It is the intended
+%% entry-point for a human  being to query etorrent for what it is
+%% doing right now. A number of commands exist, which can be asked for
+%% with the help/0 call. From there the rest of the commands can be
+%% perused.</p>
+%% @end
 -module(etorrent).
 
 %% API
@@ -97,9 +98,13 @@ help() ->
     ok.
 
 %%--------------------------------------------------------------------
+%% @equiv help()
 h() -> help().
+%% @equiv list()
 l() -> list().
+%% @equiv show()
 s() -> show().
+%% @equiv show(Item)
 s(Item) -> show(Item).
 
 %%=====================================================================
