@@ -56,7 +56,7 @@
 
 %% @todo: What pid is the chunk recording pid? Control or SendPid?
 %% API
--export([start_link/0, store_chunk/3, putback_chunks/1,
+-export([start_link/0, store_chunk/2, putback_chunks/1,
          mark_fetched/2, pick_chunks/3,
          new/1, endgame_remove_chunk/3]).
 
@@ -97,9 +97,9 @@ mark_fetched(Id, {Index, Offset, Len}) ->
 %% @doc Store the chunk in the chunk table.
 %%   As a side-effect, check the piece if it is fully fetched.
 %% @end
--spec store_chunk(integer(), {integer(), integer(), binary()}, pid()) -> ok.
-store_chunk(Id, {Index, Offset, D}, FSPid) ->
-    gen_server:cast(?SERVER, {store_chunk, Id, self(), {Index, Offset, D}, FSPid}).
+-spec store_chunk(integer(), {integer(), integer(), binary()}) -> ok.
+store_chunk(Id, {Index, Offset, D}) ->
+    gen_server:cast(?SERVER, {store_chunk, Id, self(), {Index, Offset, D}}).
 
 %% @doc Find all chunks assigned to Pid and mark them as not_fetched
 %%   This is called by a peer when the remote chokes.
@@ -215,7 +215,7 @@ ensure_monitor(Pid, Set) ->
     end.
 
 %% @private
-handle_cast({store_chunk, Id, Pid, {Index, Offset, Data}, FSPid}, S) ->
+handle_cast({store_chunk, Id, Pid, {Index, Offset, Data}}, S) ->
     ok = etorrent_io:write_chunk(Id, Index, Offset, Data),
     %% Add the newly fetched data to the fetched list
     Present = update_fetched(Id, Index, {Offset, byte_size(Data)}),
@@ -227,7 +227,7 @@ handle_cast({store_chunk, Id, Pid, {Index, Offset, Data}, FSPid}, S) ->
         true    -> ok;
         false   ->
             case etorrent_piece_mgr:decrease_missing_chunks(Id, Index) of
-                full -> check_piece(FSPid, Id, Index);
+                full -> check_piece(Id, Index);
                 X    -> X
             end
     end,
@@ -306,7 +306,7 @@ chunkify_new_piece(Id, PieceSet) when is_integer(Id) ->
     end.
 
 %% Check the piece Idx on torrent Id for completion
-check_piece(_, Id, Idx) ->
+check_piece(Id, Idx) ->
     _ = spawn_link(etorrent_fs_checker, check_piece, [Id, Idx]),
     ets:match_delete(?TAB, #chunk { idt = {Id, Idx, '_'}, _ = '_'}).
 
