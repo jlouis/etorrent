@@ -130,7 +130,7 @@ ping(IP, Port) ->
     case gen_server:call(srv_name(), {ping, IP, Port}) of
         timeout -> pang;
         Values ->
-            ID = decode_response(ping, Values)
+            decode_response(ping, Values)
     end.
 
 %
@@ -525,9 +525,9 @@ handle_query('get_peers', Params, IP, Port, MsgID, Self, Tokens) ->
 
 handle_query('announce', Params, IP, Port, MsgID, Self, Tokens) ->
     InfoHash = etorrent_dht:integer_id(get_value(<<"info_hash">>, Params)),
-    BTPort   = get_value(<<"port">>,   Params),
-    Token    = get_value(<<"token">>, Params),
-    _ = case is_valid_token(Token, IP, Port, Tokens) of
+    BTPort = get_value(<<"port">>,   Params),
+    Token = get_string(<<"token">>, Params),
+    case is_valid_token(Token, IP, Port, Tokens) of
         true ->
             etorrent_dht_tracker:announce(InfoHash, IP, BTPort);
         false ->
