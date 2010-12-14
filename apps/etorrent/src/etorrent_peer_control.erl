@@ -185,8 +185,11 @@ handle_cast({have, PN}, #state { piece_set = PS, send_pid = SPid } = S) ->
     Pruned = gb_sets:delete_any(PN, PS),
     {noreply, S#state { piece_set = Pruned }};
 handle_cast({endgame_got_chunk, Chunk}, S) ->
-    NS = handle_endgame_got_chunk(Chunk, S),
-    {noreply, NS};
+    RSet = handle_endgame_got_chunk(Chunk,
+				    S#state.torrent_id,
+				    S#state.send_pid,
+				    S#state.remote_request_set),
+    {noreply, S#state { remote_request_set = RSet }};
 handle_cast(try_queue_pieces, S) ->
     {ok, NS} = try_to_queue_up_pieces(S),
     {noreply, NS};
@@ -323,30 +326,27 @@ handle_message(Unknown, S) ->
     ?WARN([unknown_message, Unknown]),
     {stop, normal, S}.
 
-%%--------------------------------------------------------------------
-%% Func: handle_endgame_got_chunk({chunk, Index, Offset, Len}, S) -> S
-%% Description: Some other peer just downloaded {Index, Offset, Len} so try
-%%   not to download it here if we can avoid it.
-%%--------------------------------------------------------------------
-handle_endgame_got_chunk({chunk, Index, Offset, Len}, S) ->
-    case gb_sets:is_element({Index, Offset, Len}, S#state.remote_request_set) of
+
+%% @doc handle the case where we get a chunk while in endgame mode.
+handle_endgame_got_chunk({chunk, Index, Offset, Len}, TorrentId, SendPid, RSet) ->
+    case gb_sets:is_element({Index, Offset, Len}, RSet) of
         true ->
             %% Delete the element from the request set.
-            RS = gb_sets:del_element({Index, Offset, Len}, S#state.remote_request_set),
-            etorrent_peer_send:cancel(S#state.send_pid,
-                                        Index,
-                                        Offset,
-                                        Len),
-            etorrent_chunk_mgr:endgame_remove_chunk(S#state.send_pid,
-                                                    S#state.torrent_id,
+            RS = gb_sets:del_element({Index, Offset, Len}, RSet),
+            etorrent_peer_send:cancel(SendPid,
+				      Index,
+				      Offset,
+				      Len),
+            etorrent_chunk_mgr:endgame_remove_chunk(SendPid,
+                                                    TorrentId,
                                                     {Index, Offset, Len}),
-            S#state { remote_request_set = RS };
+	    RS;
         false ->
             %% Not an element in the request queue, ignore
-            etorrent_chunk_mgr:endgame_remove_chunk(S#state.send_pid,
-                                                    S#state.torrent_id,
+            etorrent_chunk_mgr:endgame_remove_chunk(SendPid,
+                                                    TorrentId,
                                                     {Index, Offset, Len}),
-            S
+            RSet
     end.
 
 %%--------------------------------------------------------------------
