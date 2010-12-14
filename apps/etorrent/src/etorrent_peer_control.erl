@@ -149,7 +149,6 @@ init([LocalPeerId, InfoHash, Id, {IP, Port}, Caps, Socket]) ->
        info_hash = InfoHash,
        torrent_id = Id,
        extended_messaging = proplists:get_bool(extended_messaging, Caps)}}.
-       %% file_system_pid = FS}}.
 
 %% @private
 handle_cast({initialize, Way}, S) ->
@@ -233,7 +232,14 @@ handle_message(choke, S) ->
     ok = etorrent_peer_states:set_choke(S#state.torrent_id, self()),
     NS = case S#state.fast_extension of
              true -> S;
-             false -> unqueue_all_pieces(S)
+	     false ->
+		 %% Put chunks back
+		 ok = etorrent_chunk_mgr:putback_chunks(self()),
+		 %% Tell other peers that there is 0xf00d!
+		 etorrent_table:foreach_peer(S#state.torrent_id,
+					     fun(P) -> try_queue_pieces(P) end),
+		 %% Clean up the request set.
+		 S#state{ remote_request_set = gb_sets:empty() }
          end,
     {ok, NS#state { remote_choked = true }};
 handle_message(unchoke, S) ->
@@ -389,14 +395,6 @@ handle_got_chunk(Index, Offset, Data, Len, S) ->
 %%   the earlier queued items at the end to compensate for quick
 %%   choke/unchoke problems and live data.
 %%--------------------------------------------------------------------
-unqueue_all_pieces(S) ->
-    %% Put chunks back
-    ok = etorrent_chunk_mgr:putback_chunks(self()),
-    %% Tell other peers that there is 0xf00d!
-    etorrent_table:foreach_peer(S#state.torrent_id,
-        fun(P) -> try_queue_pieces(P) end),
-    %% Clean up the request set.
-    S#state{ remote_request_set = gb_sets:empty() }.
 
 %%--------------------------------------------------------------------
 %% Function: try_to_queue_up_requests(state()) -> {ok, state()}
