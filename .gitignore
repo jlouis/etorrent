@@ -14,4 +14,4 @@ err.*log
 *.swp
 tracer.log
 webui/*.log
-
+/apps/etorrent/doc
