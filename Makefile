@@ -15,6 +15,9 @@ tags:
 eunit:
 	rebar skip_deps=true eunit
 
+doc:
+	rebar skip_deps=true doc
+
 dialyze: compile
 	rebar skip_deps=true dialyze
 
