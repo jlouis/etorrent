@@ -1,10 +1,50 @@
-%%%-------------------------------------------------------------------
-%%% File    : etorrent_chunk_mgr.erl
-%%% Author  : Jesper Louis Andersen <jlouis@ogre.home>
-%%% Description : Chunk manager of etorrent.
-%%%
-%%% Created : 20 Jul 2008 by Jesper Louis Andersen <jlouis@ogre.home>
-%%%-------------------------------------------------------------------
+%%
+%% @author Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
+%% @doc Chunk manager of a torrent.
+%% <p>This module implement a manager of chunks for the etorrent
+%% application. When we download from multiple peers, each peer will have
+%% different pieces. Say for instance that A has pieces [1,2] while B has
+%% [1,3]. In this case, we can download 2 from A, 3 from B and 1 from
+%% either of them.</p>
+%% <p>The bittorrent protocol, however, does not transfer
+%% pieces. Instead it transfers slices of pieces, 16 Kilobytes in size
+%% -- mostly to battle the problem that no other message would be able
+%% to get through otherwise. We call these slices for "chunks" and it
+%% is the responsibility of the chunk_mgr to keep track of chunks that
+%% has not been downloaded yet.</p>
+%% <p>A chunk must only be downloaded from one peer at a time in order
+%% not to waste bandwidth. Thus we keep track of which peer got a
+%% chunk at any given time. If the peer dies, a monitor() keeps track
+%% of him, so we can give back all pieces.</p>
+%% <p>We systematically select pieces for chunking and then serve
+%% chunks to peers. We have the invariant chunked ==
+%% someone-is-downloading (almost always, there is an exception if a
+%% peer is the only one with a piece and that peer dies). The goal is
+%% to "close" a piece as fast as possible when it is chunked by
+%% downloading all remaining chunks on it. This in turn will trigger a
+%% HAVE message to all peers and we can begin serving that piece to others.</p>
+%% <p>The selection criteria is this:
+%% <ul>
+%%   <li>A peer asks for N chunks. See first if there are chunks among
+%% the already chunked pieces that can be used for that peer.</li>
+%%   <li>If we exhaust all chunk attempts either because none are
+%% eligible or all are assigned, we try to find a new piece to chunkify.</li>
+%%   <li>If there is a piece we can chunkify, we use that to serve the
+%% peer. If not, we report back to the peer if we are interested. We
+%% are interested if there was interesting pieces, but the chunks are
+%% currently on assignment to other peers. If no interesting pieces
+%% are there, we report back we don't have any interest in the peer.</li>
+%% </ul></p>
+%% <h4>The endgame:</h4>
+%% <p>When there are only chunked pieces left (there are no pieces
+%% left we haven't begun fetching), we enter <em>endgame mode</em> in
+%% which we randomly shuffle the pieces and ask for the same chunks on
+%% all peers. As soon as we get in a chunk, we aggressively CANCEL it
+%% at all other places, hoping we waste as little bandwidth as
+%% possible. Endgame mode in etorrent usually lasts some 10-30 seconds
+%% on a torrent.</p>
+%% @end
+%%-------------------------------------------------------------------
 -module(etorrent_chunk_mgr).
 
 -include("etorrent_chunk.hrl").
@@ -36,6 +76,8 @@
 -ignore_xref([{start_link, 0}]).
 
 %%====================================================================
+%% @doc Spawn the process and register it.
+%% @end
 -spec start_link() -> ignore | {ok, pid()} | {error, any()}.
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
@@ -54,22 +96,18 @@ mark_fetched(Id, {Index, Offset, Len}) ->
 store_chunk(Id, {Index, D, Ops}, {Offset, Len}, FSPid) ->
     gen_server:cast(?SERVER, {store_chunk, Id, self(), {Index, D, Ops}, {Offset, Len}, FSPid}).
 
-%%--------------------------------------------------------------------
-%% Function: putback_chunks(Pid) -> transaction
-%% Description: Find all chunks assigned to Pid and mark them as not_fetched
-%%--------------------------------------------------------------------
+%% @doc Find all chunks assigned to Pid and mark them as not_fetched
+%%   This is called by a peer when the remote chokes.
+%% @end
 -spec putback_chunks(pid()) -> ok.
 putback_chunks(Pid) ->
     gen_server:cast(?SERVER, {putback_chunks, Pid}).
 
-%%--------------------------------------------------------------------
-%% Function: endgame_remove_chunk/3
-%% Args:  Pid ::= pid()     - pid of caller
-%%        Id  ::= integer() - torrent id
-%%        IOL ::= {integer(), integer(), integer()} - {Index, Offs, Len}
-%% Description: Remove a chunk in the endgame from its assignment to a
-%%   given pid
-%%--------------------------------------------------------------------
+%% @doc Remove a chunk in the endgame from its assignment
+%% <p>This call forces the removal of a chunk from its assigned pid()
+%% in endgame mode. It makes sure we strike out chunks which are being
+%% downloaded by other peers than the peer it was originally assigned to.</p>
+%% @end.
 -spec endgame_remove_chunk(pid(), integer(), {integer(), integer(), integer()}) -> ok.
 endgame_remove_chunk(SendPid, Id, {Index, Offset, Len}) ->
     gen_server:call(?SERVER, {endgame_remove_chunk, SendPid, Id, {Index, Offset, Len}},
@@ -100,7 +138,7 @@ new(Id) ->
 
 %% ----------------------------------------------------------------------
 
-%% @doc Choose up to Max chunks from Selected.
+%% @doc Choose up to Max chunks from a given {TorrentID, PieceNum} pair.
 %%  Will return {ok, {Index, Chunks}, size(Chunks)}.
 %% @end
 -spec select_chunks_by_piecenum({pos_integer(), pos_integer()}, pos_integer()) ->
@@ -111,11 +149,13 @@ select_chunks_by_piecenum({TorrentId, Pn}, Max) ->
 
 
 %%====================================================================
+%% @private
 init([]) ->
     _Tid = ets:new(?TAB, [bag, protected, named_table, {keypos, #chunk.idt}]),
     D = dict:new(),
     {ok, #state{ torrent_dict = D }}.
 
+%% @private
 handle_call({new, Id}, {Pid, _Tag}, S) ->
     ManageDict = dict:store(Pid, Id, S#state.torrent_dict),
     _ = erlang:monitor(process, Pid),
@@ -170,6 +210,7 @@ ensure_monitor(Pid, Set) ->
 	    gb_sets:add(Pid, Set)
     end.
 
+%% @private
 handle_cast({store_chunk, Id, Pid, {Index, Data, Ops}, {Offset, Len}, FSPid}, S) ->
     ok = etorrent_io:write_chunk(Id, Index, Offset, Data),
     %% Add the newly fetched data to the fetched list
@@ -195,6 +236,7 @@ handle_cast(Msg, State) ->
     ?WARN([unknown_msg, Msg]),
     {noreply, State}.
 
+%% @private
 handle_info({'DOWN', _Ref, process, Pid, _Reason}, S) ->
     case dict:find(Pid, S#state.torrent_dict) of
 	{ok, Id} ->
@@ -211,9 +253,11 @@ handle_info({'DOWN', _Ref, process, Pid, _Reason}, S) ->
 handle_info(_Info, State) ->
     {noreply, State}.
 
+%% @private
 terminate(_Reason, _State) ->
     ok.
 
+%% @private
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
