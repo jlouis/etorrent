@@ -1,10 +1,9 @@
-%%%-------------------------------------------------------------------
-%%% File    : etorrent_udp_tracker_sup.erl
-%%% Author  : Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
-%%% Description : Manage the UDP tracker parts of the system
-%%%
-%%% Created : 18 Nov 2010 by Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
-%%%-------------------------------------------------------------------
+%% @author Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
+%% @doc Supervise the UDP tracker communication
+%% <p>This supervisor is responsible for managing communication with
+%% one or more UDP trackers. It manager a protocol decoder, a general
+%% manager (which is the entry point for API users) and a Supervisor
+%% pool of processes that handles a specific UDP tracker communictation.</p>
 -module(etorrent_udp_tracker_sup).
 
 -behaviour(supervisor).
@@ -18,6 +17,9 @@
 -define(SERVER, ?MODULE).
 
 %%====================================================================
+
+%% @doc Start the supervisor
+%% @end
 start_link() ->
     supervisor:start_link({local, ?SERVER}, ?MODULE, []).
 
