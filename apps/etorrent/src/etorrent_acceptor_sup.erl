@@ -1,10 +1,7 @@
-%%%-------------------------------------------------------------------
-%%% File    : etorrent_acceptor_sup.erl
-%%% Author  : Jesper Louis Andersen <>
-%%% Description : Supervise a set of acceptor processes.
-%%%
-%%% Created : 25 Aug 2007 by Jesper Louis Andersen <>
-%%%-------------------------------------------------------------------
+%% @author Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
+%% @doc Supervise the pool of acceptors
+%% <p>This module supervises 5 acceptor processes</p>
+%% @end
 -module(etorrent_acceptor_sup).
 
 -behaviour(supervisor).
@@ -20,7 +17,6 @@
 
 -ignore_xref([{'start_link', 1}]).
 
-%%====================================================================
 %% @doc Starts the supervisor
 %% @end
 -spec start_link(string()) -> {ok, pid()} | ignore | {error, term()}.
@@ -28,17 +24,8 @@ start_link(PeerId) ->
     supervisor:start_link({local, ?SERVER}, ?MODULE, [PeerId]).
 
 %%====================================================================
-%% Supervisor callbacks
-%%====================================================================
-%%--------------------------------------------------------------------
-%% Func: init(Args) -> {ok,  {SupFlags,  [ChildSpec]}} |
-%%                     ignore                          |
-%%                     {error, Reason}
-%% Description: Whenever a supervisor is started using
-%% supervisor:start_link/[2,3], this function is called by the new process
-%% to find out about restart strategy, maximum restart frequency and child
-%% specifications.
-%%--------------------------------------------------------------------
+
+%% @private
 init([PeerId]) ->
     Children = build_children(PeerId, ?DEFAULT_AMOUNT_OF_ACCEPTORS),
     {ok, {{one_for_one, 1, 60}, Children}}.
