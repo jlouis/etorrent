@@ -160,8 +160,12 @@ started(completed, #state { id = Id, tracker_pid = TrackerPid } = S) ->
     etorrent_event_mgr:completed_torrent(Id),
     etorrent_tracker_communication:completed(TrackerPid),
     {next_state, started, S};
+% @todo hoist these reports so they are part of the event system!
 started({tracker_error_report, Reason}, S) ->
     io:format("Got tracker error: ~s~n", [Reason]),
+    {next_state, started, S};
+started({tracker_warning_report, Reason}, S) ->
+    io:format("Got tracker warning report: ~s~n", [Reason]),
     {next_state, started, S}.
 
 stopped(start, S) ->
