@@ -1,12 +1,8 @@
-%%%-------------------------------------------------------------------
-%%% File    : dirwatcher.erl
-%%% Author  : Jesper Louis Andersen <jlouis@succubus>
-%%% License : See COPYING
-%%% Description : Watch a directory for the presence of torrent files.
-%%%               Send commands when files are added and removed.
-%%%
-%%% Created : 24 Jan 2007 by Jesper Louis Andersen <jlouis@succubus>
-%%%-------------------------------------------------------------------
+%% @author Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
+%% @doc Watch a directory for presence of torrent files.
+%% <p>This module implements a periodic mark'n'sweep over the watched
+%% directory and reports upwards any added or removed file.</p>
+%% @end
 -module(etorrent_dirwatcher).
 -author("Jesper Louis Andersen <jesper.louis.andersen@gmail.com>").
 -behaviour(gen_server).
@@ -78,26 +74,33 @@ sweep(Key) ->
     sweep(Next).
 
 %%====================================================================
+
+%% @private
 init([]) ->
     {ok, Dir} = application:get_env(etorrent, dir),
     _Tid = ets:new(etorrent_dirwatcher, [named_table, private]),
     {ok, #state{dir = Dir}, 0}.
 
+%% @private
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State, ?WATCH_WAIT_TIME}.
 
+%% @private
 handle_cast(_Request, S) ->
     {noreply, S, ?WATCH_WAIT_TIME}.
 
+%% @private
 handle_info(timeout, S) ->
     watch_directories(S),
     {noreply, S, ?WATCH_WAIT_TIME};
 handle_info(_Info, State) ->
     {noreply, State, ?WATCH_WAIT_TIME}.
 
+%% @private
 terminate(_Reason, _State) ->
     ok.
 
+%% @private
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
