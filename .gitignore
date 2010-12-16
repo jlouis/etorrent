@@ -14,7 +14,7 @@ err.*log
 *.swp
 tracer.log
 webui/*.log
-
 /depgraph.dot
 /depgraph.pdf
 /depgraph.png
+/apps/etorrent/doc

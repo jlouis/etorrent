@@ -1,26 +1,27 @@
-%%%-------------------------------------------------------------------
-%%% File    : etorrent_allowed_fast.erl
-%%% Author  : Jesper Louis Andersen <jlouis@ogre.home>
-%%% Description : 
-%%%
-%%% Created :  3 Aug 2008 by Jesper Louis Andersen <jlouis@ogre.home>
-%%%-------------------------------------------------------------------
+%% @author Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
+%% @doc Compute the set of ALLOWED_FAST for the FAST-EXTENSION.
+%% <p><b>This module is currently not in use</b></p>
+%% <p>This module has a single function, to compute the allowed fast
+%% set of a peer basic on the IP address of the peer in question.</p>
 -module(etorrent_allowed_fast).
+
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
+-include("log.hrl").
 
 %% API
 -export([allowed_fast/4]).
 
 %%====================================================================
-%% API
-%%====================================================================
-%%--------------------------------------------------------------------
-%% Function: allowed_fast/3
-%% Args:   Sz ::= integer() - number of pieces in torrent
-%%         Ip ::= integer() - 32 bit
-%%         K  ::= integer() - number of pieces we want in the set
-%%         InfoHash ::= binary() - infohash of torrent.
-%% Description: Compute the allowed fast set for a peer
-%%--------------------------------------------------------------------
+
+%% @doc Compute the allowed fast set for a peer
+%% <p>We are given Sz - the number of pieces, an IP-tuple, K - the number of
+%% pieces to compute and the InfoHash of the torrent. We compute the
+%% allowed fast set - a small set of pieces a peer has exclusive
+%% access to always when it wants to request.</p>
+%% @end
 -type ip() :: {integer(), integer(), integer(), integer()}.
 -spec allowed_fast(integer(), ip() | binary(), integer(), binary()) -> {value, set()}.
 allowed_fast(Sz, {B1, B2, B3, B4}, K, InfoHash) ->
@@ -38,8 +39,7 @@ allowed_fast(Sz, <<B1:8/integer, B2:8/integer, B3:8/integer, _B4:8/integer>>,
     rnd(K, X, Sz, sets:new()).
 
 %%====================================================================
-%% Internal functions
-%%====================================================================
+
 rnd(0, _X, _Sz, Set) -> {value, Set};
 rnd(K, X, Sz, Set) ->
     %% Start a new round. Each round hashes the previous round to gen.
@@ -50,7 +50,7 @@ rnd(K, X, Sz, Set) ->
 
 cut(0, _I, _X, _Sz, Set) ->
     %% nNo more pieces wanted
-    Set;
+    {value, Set};
 cut(K, 5, X, Sz, Set) ->
     %% We exhausted the X binary. Start a new round.
     rnd(K, X, Sz, Set);
@@ -70,20 +70,20 @@ cut(K, I, X, Sz, Set) ->
 %%====================================================================
 %% Tests
 %%====================================================================
--ifdef(TEST).
+-ifdef(EUNIT).
 
-test1() ->
+allowed_fast_1_test() ->
     N = 16#AA,
     InfoHash = list_to_binary(lists:duplicate(20, N)),
     {value, PieceSet} = allowed_fast(1313, {80,4,4,200}, 7, InfoHash),
     Pieces = lists:sort(sets:to_list(PieceSet)),
-    [287, 376, 431, 808, 1059, 1188, 1217] = Pieces.
+    ?assertEqual([287, 376, 431, 808, 1059, 1188, 1217], Pieces).
 
-test2() ->
+allowed_fast_2_test() ->
     N = 16#AA,
     InfoHash = list_to_binary(lists:duplicate(20, N)),
     {value, PieceSet} = allowed_fast(1313, {80,4,4,200}, 9, InfoHash),
     Pieces = lists:sort(sets:to_list(PieceSet)),
-    [287, 353, 376, 431, 508, 808, 1059, 1188, 1217] = Pieces.
+    ?assertEqual([287, 353, 376, 431, 508, 808, 1059, 1188, 1217], Pieces).
 
 -endif.

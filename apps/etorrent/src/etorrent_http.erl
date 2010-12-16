@@ -18,6 +18,7 @@
 % <p>As http:request/1 in the inets application, but also handles gzip. The
 % request headers are explicitly handled to deal with badly and poorly
 % implemented trackers (most of them)
+% </p>
 % @end
 -type http_response() :: {{string(), integer(), string()}, string(), string()}.
 -spec request(string()) -> {error, term()} | {ok, http_response()}.

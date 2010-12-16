@@ -1,14 +1,6 @@
-%%%-------------------------------------------------------------------
-%%% File    : etorrent_utils.erl
-%%% Author  : User Jlouis <jesper.louis.andersen@gmail.com>
-%%% License : See COPYING
-%%% Description : A selection of utilities used throughout the code
-%%%               Should probably be standard library in Erlang some of them
-%%%               If a function does not really fit into another module, they
-%%%               tend to go here if general enough.
-%%%
-%%% Created : 17 Apr 2007 by User Jlouis <jesper.louis.andersen@gmail.com>
-%%%-------------------------------------------------------------------
+%% @author Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
+%% @doc Various miscellaneous utilities not fitting into other places
+%% @end
 -module(etorrent_utils).
 
 -ifdef(TEST).
@@ -61,6 +53,8 @@ queue_remove(Item, Q) ->
 list_shuffle(List) ->
     merge_shuffle(List).
 
+%% @doc A Date formatter for {{Y, Mo, D}, {H, Mi, S}}.
+%% @end
 -spec date_str({{integer(), integer(), integer()},
                 {integer(), integer(), integer()}}) -> string().
 date_str({{Y, Mo, D}, {H, Mi, S}}) ->
