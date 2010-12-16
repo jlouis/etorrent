@@ -26,6 +26,7 @@ relclean:
 
 clean:
 	rebar clean
+	rm -f depgraph.dot depgraph.png depgraph.pdf
 
 distclean: clean relclean devclean
 
@@ -47,5 +48,18 @@ console-perf:
 xref: compile
 	rebar skip_deps=true xref
 
-.PHONY: all deps compile tags dialyze run tracer clean eunit rel xref dev console console-perf
+graph: depgraph.png depgraph.pdf
+
+depgraph.dot: compile
+	./tools/graph apps/etorrent/ebin $@ etorrent
+
+
+.PHONY: all compile tags dialyze run tracer clean \
+	 deps eunit rel xref dev console console-perf graph
+
+%.png: %.dot
+	dot -Tpng $< > $@
+
+%.pdf: %.dot
+	dot -Tpdf $< > $@
 
