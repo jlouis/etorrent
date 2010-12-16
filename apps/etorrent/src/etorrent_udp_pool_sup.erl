@@ -1,10 +1,9 @@
-%%%-------------------------------------------------------------------
-%%% File    : etorrent_udp_pool_sup.erl
-%%% Author  : Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
-%%% Description : Track a number of tracker_udp gen_fsm systems
-%%%
-%%% Created : 18 Nov 2010 by Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
-%%%-------------------------------------------------------------------
+%% @author Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
+%% @doc Supervise Request Event processes.
+%% <p>A simple_one_for_one supervisor controlling a set of udp_tracker gen_servers.
+%% </p>
+%% @end
+%%-------------------------------------------------------------------
 -module(etorrent_udp_pool_sup).
 
 -behaviour(supervisor).
@@ -18,20 +17,29 @@
 -define(SERVER, ?MODULE).
 
 %%====================================================================
+
+%% @doc Start the supervisor
+%% @end
 start_link() ->
     supervisor:start_link({local, ?SERVER}, ?MODULE, []).
 
+%% @doc Start a new requestor child under the supervisor
+%% @end
 start_requestor(Tr, N) ->
     {ok, Pid} =
 	supervisor:start_child(?SERVER, [requestor, Tr, N]),
     {ok, Pid}.
 
+%% @doc Start a new announcer child under the supervisor
+%% @end
 start_announce(From, Tracker, PL) ->
     {ok, Pid} =
 	supervisor:start_child(?SERVER, [announce, From, Tracker, PL]),
     {ok, Pid}.
 
 %%====================================================================
+
+%% @private
 init([]) ->
     ChildSpec = {child,
 		 {etorrent_udp_tracker, start_link, []},
