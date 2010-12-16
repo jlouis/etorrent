@@ -1,3 +1,19 @@
+%% @author Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
+%% @doc Track an UDP request event and handle its communication/timeout.
+%% <p>This gen_server tracks a single announce-request for a tracker
+%% client. There are actually two different types of requestors baked
+%% into the gen-server. One for getting hold of a Connection ID, and
+%% one for doing actual requests.</p>
+%% <p>It is also the case that these processes are the ones that reply
+%% back to the client. So the clients request goes through the
+%% tracker_mgr process and ends up here. When we have data, they get
+%% sent back via a gen_server:reply. Also note that protocol decoding
+%% is separately handled by the trakcer_proto process. The proto looks
+%% up the relevant recipient - a gen_server from this module and sends
+%% the message to it.</p>
+%% <p>The API is mostly internal, assumed to be used with the other
+%% udp_tracker processes.</p>
+%%@end
 -module(etorrent_udp_tracker).
 -include("types.hrl").
 -include("log.hrl").
@@ -29,25 +45,44 @@
 %%====================================================================
 
 %%====================================================================
+
+%% @doc Start a request for a ConnId on Tracker.
+%%   The given N is used as a retry-count
+%% @end
 start_link(requestor, Tracker, N) ->
     gen_server:start_link(?MODULE, [{connid_gather, Tracker, N}], []).
 
+%% @doc Start a normal announce-request
+%%   We are given to whom we should reply back in From, what Tracker
+%%   to call up, and a list of properties to send forth.
+%% @end
 start_link(announce, From, Tracker, PL) ->
     gen_server:start_link(?MODULE, [{announce, From, Tracker, PL}], []).
 
+%% This internal function is used to forward a working connid to an announcer
+%% @private
 connid(Pid, ConnID) ->
     gen_server:cast(Pid, {connid, ConnID}).
 
+%% @doc Cancel a request event process
+%% @end
 cancel(Pid) ->
     gen_server:cast(Pid, cancel).
 
+%% Sent when a connid expires (60 seconds per spec)
+%% @private
 cancel_connid(Pid, ConnID) ->
     gen_server:cast(Pid, {cancel, ConnID}).
 
+%% Used internally for the proto_decoder to inject a message to an
+%% event handler process
+%% @private
 msg(Pid, M) ->
     gen_server:cast(Pid, {msg, M}).
 
 %%====================================================================
+
+%% @private
 init([{announce, From, Tracker, PL}]) ->
     etorrent_udp_tracker_mgr:reg_announce(Tracker, PL),
     {ok, #state { tracker = Tracker, ty = announce, reply = From, properties = PL }};
@@ -55,25 +90,12 @@ init([{connid_gather, Tracker, N}]) ->
     etorrent_udp_tracker_mgr:reg_connid_gather(Tracker),
     {ok, #state { tracker = Tracker, ty = connid_gather, try_count = N}, 0}.
 
-%%--------------------------------------------------------------------
-%% Function: %% handle_call(Request, From, State) -> {reply, Reply, State} |
-%%                                      {reply, Reply, State, Timeout} |
-%%                                      {noreply, State} |
-%%                                      {noreply, State, Timeout} |
-%%                                      {stop, Reason, Reply, State} |
-%%                                      {stop, Reason, State}
-%% Description: Handling call messages
-%%--------------------------------------------------------------------
+%% @private
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
 
-%%--------------------------------------------------------------------
-%% Function: handle_cast(Msg, State) -> {noreply, State} |
-%%                                      {noreply, State, Timeout} |
-%%                                      {stop, Reason, State}
-%% Description: Handling cast messages
-%%--------------------------------------------------------------------
+%% @private
 handle_cast(cancel, S) ->
     {stop, normal, S};
 handle_cast({connid, ConnID}, #state { ty = announce,
@@ -99,6 +121,7 @@ handle_cast(Msg, State) ->
     ?WARN([unknown_msg, Msg]),
     {noreply, State}.
 
+%% @private
 handle_info(timeout, #state { tracker=Tracker,
 			      try_count=N,
 			      ty = announce,
@@ -127,10 +150,11 @@ handle_info(Info, State) ->
     ?WARN([unknown, Info]),
     {noreply, State}.
 
-
+%% @private
 terminate(_Reason, _State) ->
     ok.
 
+%% @private
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
