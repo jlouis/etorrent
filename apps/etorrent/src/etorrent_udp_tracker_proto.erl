@@ -1,10 +1,13 @@
-%%%-------------------------------------------------------------------
-%%% File    : udp_tracker_proto.erl
-%%% Author  : Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
-%%% Description : An UDP protocol decoder process
-%%%
-%%% Created : 18 Nov 2010 by Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
-%%%-------------------------------------------------------------------
+%% @author Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
+%% @doc A gen_server for UDP tracker decoding/encoding and dispatch.
+%% <p>This gen_server can decode tracker messages when those messages
+%% are in BEP-15/UDP form. It also has the relevant code for encoding
+%% messages for trackers.</p>
+%% <p>Note that message decoding includes message dispatch on
+%% succesful decodes. In other words, if we decode successfully, we
+%% look up the recepient to Transaction ID and forward the message to
+%% the recepient.</p>
+%% @end
 -module(etorrent_udp_tracker_proto).
 
 -include("log.hrl").
@@ -46,13 +49,22 @@
 -define(SERVER, ?MODULE).
 
 %%====================================================================
+
+%% @doc Start the decoder process
+%% @end
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
+%% @doc Generate a new unique transaction id
+%% @end
 new_tid() ->
     crypto:rand_bytes(4).
 
 %% Only allows encoding of the packet types we send to the server
+%% @doc Encode a packet in term format to wire format
+%%   <p>Note we do not handle all formats, but only those we have been
+%% needing up until now</p>
+%% @end
 encode(P) ->
     case P of
 	{conn_request, Tid} ->
@@ -74,6 +86,11 @@ encode(P) ->
 	      Port:16/big>>
     end.
 
+%% @doc Decode packet and dispatch it.
+%%   <p>Dispatch will try to look up a receiver of the message by its
+%%   transaction id. If this succeeds the message is
+%%   forwarded. Otherwise it is silently discarded</p>
+%% @end
 decode_dispatch(Packet) ->
     %% If the protocol decoder is down, we regard it as if the UDP packet
     %% has been lost in transit. This ought to work.
@@ -83,69 +100,37 @@ decode_dispatch(Packet) ->
 %% gen_server callbacks
 %%====================================================================
 
-%%--------------------------------------------------------------------
-%% Function: init(Args) -> {ok, State} |
-%%                         {ok, State, Timeout} |
-%%                         ignore               |
-%%                         {stop, Reason}
-%% Description: Initiates the server
-%%--------------------------------------------------------------------
+%% @private
 init([]) ->
     gproc:add_local_name(udp_tracker_proto_decoder),
     {ok, #state{}}.
 
-%%--------------------------------------------------------------------
-%% Function: %% handle_call(Request, From, State) -> {reply, Reply, State} |
-%%                                      {reply, Reply, State, Timeout} |
-%%                                      {noreply, State} |
-%%                                      {noreply, State, Timeout} |
-%%                                      {stop, Reason, Reply, State} |
-%%                                      {stop, Reason, State}
-%% Description: Handling call messages
-%%--------------------------------------------------------------------
+%% @private
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
 
-%%--------------------------------------------------------------------
-%% Function: handle_cast(Msg, State) -> {noreply, State} |
-%%                                      {noreply, State, Timeout} |
-%%                                      {stop, Reason, State}
-%% Description: Handling cast messages
-%%--------------------------------------------------------------------
+%% @private
 handle_cast({decode, Packet}, S) ->
     dispatch(decode(Packet)),
     {noreply, S};
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-%%--------------------------------------------------------------------
-%% Function: handle_info(Info, State) -> {noreply, State} |
-%%                                       {noreply, State, Timeout} |
-%%                                       {stop, Reason, State}
-%% Description: Handling all non call/cast messages
-%%--------------------------------------------------------------------
+%% @private
 handle_info(_Info, State) ->
     {noreply, State}.
 
-%%--------------------------------------------------------------------
-%% Function: terminate(Reason, State) -> void()
-%% Description: This function is called by a gen_server when it is about to
-%% terminate. It should be the opposite of Module:init/1 and do any necessary
-%% cleaning up. When it returns, the gen_server terminates with Reason.
-%% The return value is ignored.
-%%--------------------------------------------------------------------
+%% @private
 terminate(_Reason, _State) ->
     ok.
 
-%%--------------------------------------------------------------------
-%% Func: code_change(OldVsn, State, Extra) -> {ok, NewState}
-%% Description: Convert process state when code is changed
-%%--------------------------------------------------------------------
+%% @private
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 %%--------------------------------------------------------------------
+
 decode(Packet) ->
     <<Ty:32/big, TID:4/binary, Rest/binary>> = Packet,
     Action = decode_action(Ty),

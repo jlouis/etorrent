@@ -1,11 +1,19 @@
-%%%-------------------------------------------------------------------
-%%% File    : bcoding.erl
-%%% Author  : Jesper Louis Andersen <jlouis@succubus>
-%%% License : See COPYING
-%%% Description : Functions for handling bcoded values
-%%%
-%%% Created : 24 Jan 2007 by Jesper Louis Andersen <jlouis@succubus>
-%%%-------------------------------------------------------------------
+%% @author Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
+%% @doc Encode/Decode bcoded data.
+%% <p>This module implements an optimistic bcoding encoder and
+%% decoder. It is optimistic, because it will crash in the event that
+%% an encoding can not be completed. The decoder decodes bcoded data
+%% into normal, untagged erlang-terms. There is a slight important
+%% point to make: The empty dict and the empty list is encoded as []
+%% both. To make up for this, the encoder is augmented so it can
+%% produce the right kind of construction if needed. Our code doesn't
+%% really care there is a clash, but other, typed, clients might do.</p>
+%% <p>The module is used practically all over etorrent, in every
+%% creviche where it is necessary to encode or decode bcoded
+%% string/binaries.</p>
+%% <p>The decoder will silently ignore excess characters from a
+%% decode. This is to fix errors with trackers which have errors in
+%% their encoding.</p>
 -module(etorrent_bcoding).
 -author("Jesper Louis Andersen <jesper.louis.andersen@gmail.com>").
 -include("types.hrl").
@@ -84,18 +92,29 @@ get_info_value(Key, PL, Def) when is_binary(Key) ->
     PL2 = proplists:get_value(<<"info">>, PL),
     proplists:get_value(Key, PL2, Def).
 
+%% @doc Read a binary Value indexed by Key from the PL dict
+%% @end
 get_binary_value(Key, PL) ->
     V = get_value(Key, PL),
     true = is_binary(V),
     V.
 
+%% @doc Read a binary Value indexed by Key from the PL dict with default.
+%%   <p>Will return Default upon non-existence</p>
+%% @end
 get_binary_value(Key, PL, Default) ->
     case get_value(Key, PL) of
 	undefined -> Default;
 	B when is_binary(B) -> B
     end.
 
+%% @doc Read a string Value indexed by Key from the PL dict
+%% @end
 get_string_value(Key, PL) -> binary_to_list(get_binary_value(Key, PL)).
+
+%% @doc Read a binary Value indexed by Key from the PL dict with default.
+%%   <p>Will return Default upon non-existence</p>
+%% @end
 get_string_value(Key, PL, Default) ->
     case get_value(Key, PL) of
 	undefined -> Default;
@@ -110,6 +129,7 @@ parse_file(File) ->
     decode(Bin).
 
 %%====================================================================
+
 decode_b([H | Rest]) ->
     case H of
         $i ->
