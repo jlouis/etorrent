@@ -1,3 +1,9 @@
+%% @author Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
+%% @doc Top level application entry point.
+%% <p>This module is intended to be used by the application module of
+%% OTP and not by a user. Its only interesting clal is
+%% profile_output/0 which can be used to do profiling.</p>
+%% @end
 -module(etorrent_app).
 -behaviour(application).
 
@@ -10,8 +16,7 @@
 
 -define(RANDOM_MAX_SIZE, 999999999999).
 
-%% @doc Application callback.
-%% @end
+%% @private
 start(_Type, _Args) ->
     PeerId = generate_peer_id(),
     %% DB
@@ -34,6 +39,10 @@ consider_profiling() ->
 	    ignore
     end.
 
+%% @doc Output profile information
+%% <p>If profiling was enabled, output profile information in
+%% "procs.profile" and "total.profile"</p>
+%% @end
 profile_output() ->
     eprof:stop_profiling(),
     eprof:log("procs.profile"),
@@ -41,14 +50,12 @@ profile_output() ->
     eprof:log("total.profile"),
     eprof:analyze(total).
 
-%% @doc Application callback.
-%% @end
+%% @private
 prep_stop(_S) ->
     io:format("Shutting down etorrent~n"),
     ok.
 
-%% @doc Application callback.
-%% @end
+%% @private
 stop(_State) ->
     ok.
 
