@@ -242,19 +242,22 @@ contact_tracker_http(Url, Event, S) ->
     end.
 
 handle_tracker_response(BC, S) ->
-    handle_tracker_response(
-      BC,
-      etorrent_bcoding:get_string_value("failure reason", BC, none),
-      etorrent_bcoding:get_string_value("warning message", BC, none),
-      S).
+    case etorrent_bcoding:get_string_value("failure reason", BC, none) of
+	none ->
+	    report_warning(
+	      S#state.torrent_id,
+	      etorrent_bcoding:get_string_value("warning message", BC, none)),
+	    handle_tracker_bcoding(BC, S);
+	Err ->
+	    etorrent_event:notify({tracker_error, S#state.torrent_id, Err}),
+	    handle_timeout(BC, S)
+    end.
 
-handle_tracker_response(BC, E, _WM, S) when is_list(E) ->
-    etorrent_event:notify({tracker_error, S#state.torrent_id, E}),
-    handle_timeout(BC, S);
-handle_tracker_response(BC, none, W, S) when is_list(W) ->
-    etorrent_event:notify({tracker_warning, S#state.torrent_id, W}),
-    handle_tracker_response(BC, none, none, S);
-handle_tracker_response(BC, none, none, S) ->
+report_warning(_Id, none) -> ok;
+report_warning(Id, Warn) ->
+    etorrent_event:notify({tracker_warning, Id, Warn}).
+
+handle_tracker_bcoding(BC, S) ->
     %% Add new peers
     etorrent_peer_mgr:add_peers(S#state.torrent_id,
                                 response_ips(BC)),
@@ -287,31 +290,18 @@ handle_timeout(BC, S) ->
     handle_timeout(Interval, MinInterval, S).
 
 handle_timeout(Interval, MinInterval, S) ->
-    NS = cancel_timers(S),
-    NNS = case MinInterval of
-              none ->
-                  NS;
-              I when is_integer(I) ->
-                  TRef = erlang:send_after(timer:seconds(I), self(), hard_timeout),
-                  NS#state { hard_timer = TRef }
-          end,
+    cancel_timer(S#state.hard_timer),
+    cancel_timer(S#state.soft_timer),
     TRef2 = erlang:send_after(timer:seconds(Interval), self(), soft_timeout),
-    NNS#state { soft_timer = TRef2 }.
+    S#state { soft_timer = TRef2,
+              hard_timer = handle_min_interval(MinInterval) }.
 
-cancel_timers(S) ->
-    NS = case S#state.hard_timer of
-             none -> S;
-             TRef ->
-                 erlang:cancel_timer(TRef),
-                 S#state { hard_timer = none }
-         end,
-    case NS#state.soft_timer of
-        none ->
-            NS;
-        TRef2 ->
-            erlang:cancel_timer(TRef2),
-            NS#state { soft_timer = none }
-    end.
+handle_min_interval(none) -> none;
+handle_min_interval(I) when is_integer(I) ->
+    erlang:send_after(timer:seconds(I), self(), hard_timeout).
+
+cancel_timer(none) -> ok;
+cancel_timer(TRef) -> erlang:cancel_timer(TRef).
 
 build_tracker_url(Url, Event,
 		  #state { torrent_id = Id,
