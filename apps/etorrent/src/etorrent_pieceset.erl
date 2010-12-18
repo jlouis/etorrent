@@ -8,9 +8,13 @@
 -export([new/1,
          from_binary/2,
          to_binary/1,
+         from_list/2,
+         to_list/1,
          is_member/2,
          insert/2,
-         intersection/2]).
+         intersection/2,
+         difference/2,
+         size/1]).
 
 -record(pieceset, {
     size :: pos_integer(),
@@ -23,6 +27,7 @@
 %% Create an empty set of piece indexes. The set of pieces
 %% is limited to contain pieces indexes from 0 to Size-1.
 %% @end
+-spec new(pos_integer()) -> pieceset().
 new(Size) ->
     PaddingLen = paddinglen(Size),
     Elements = <<0:Size, 0:PaddingLen>>,
@@ -35,6 +40,7 @@ new(Size) ->
 %% Size pieces, as a set returned from new/1 is.
 %% The bitfield is expected to not be padded with more than 7 bits.
 %% @end
+-spec from_binary(binary(), pos_integer()) -> pieceset().
 from_binary(Bin, Size) when is_binary(Bin) ->
     PaddingLen = paddinglen(Size),
     <<_:Size, PaddingValue:PaddingLen>> = Bin,
@@ -49,15 +55,47 @@ from_binary(Bin, Size) when is_binary(Bin) ->
 %% Convert a piece set to a bitfield, the bitfield will
 %% be padded with at most 7 bits set to zero.
 %% @end
+-spec to_binary(pieceset()) -> binary().
 to_binary(Pieceset) ->
     #pieceset{elements=Elements} = Pieceset,
     Elements.
+
+%% @doc
+%% Convert an ordered list of piece indexes to a piece set.
+%% @end
+-spec from_list(list(pos_integer()), pos_integer()) -> pieceset().
+from_list(List, Size) ->
+    Pieceset = new(Size),
+    from_list_(List, Pieceset).
+
+from_list_([], Pieceset) ->
+    Pieceset;
+from_list_([H|T], Pieceset) ->
+    from_list_(T, insert(H, Pieceset)).
+
+
+%% @doc
+%% Convert a piece set to an ordered list of the piece indexes
+%% that are members of this set.
+%% @end
+-spec to_list(pieceset()) -> list(pos_integer()).
+to_list(Pieceset) ->
+    #pieceset{elements=Elements} = Pieceset,
+    to_list(Elements, 0).
+
+to_list(<<1:1, Rest/bitstring>>, Index) ->
+    [Index|to_list(Rest, Index + 1)];
+to_list(<<0:1, Rest/bitstring>>, Index) ->
+    to_list(Rest, Index + 1);
+to_list(<<>>, _) ->
+    [].
 
 %% @doc
 %% Returns true if the piece is a member of the piece set,
 %% false if not. If the piece index is negative or is larger
 %% than the size of this piece set, the function exits with badarg.
 %% @end
+-spec is_member(pos_integer(), pieceset()) -> boolean().
 is_member(PieceIndex, _) when PieceIndex < 0 ->
     error(badarg);
 is_member(PieceIndex, Pieceset) ->
@@ -76,6 +114,7 @@ is_member(PieceIndex, Pieceset) ->
 %% negative or larger than the size of this piece set, this
 %% function exists with the reason badarg.
 %% @end
+-spec insert(pos_integer(), pieceset()) -> pieceset().
 insert(PieceIndex, _) when PieceIndex < 0 ->
     error(badarg);
 insert(PieceIndex, Pieceset) ->
@@ -94,6 +133,7 @@ insert(PieceIndex, Pieceset) ->
 %% Return a piece set where each member is a member of both sets.
 %% If both sets are not of the same size this function exits with badarg.
 %% @end
+-spec intersection(pieceset(), pieceset()) -> pieceset().
 intersection(Set0, Set1) ->
     #pieceset{size=Size0, elements=Elements0} = Set0,
     #pieceset{size=Size1, elements=Elements1} = Set1,
@@ -108,6 +148,42 @@ intersection(Set0, Set1) ->
             Intersection = <<Shared:Size0, 0:PaddingLen>>,
             #pieceset{size=Size0, elements=Intersection}
     end.
+
+%% @doc
+%% Return a piece set where each member is a member of the first
+%% but not a member of the second set.
+%% If both sets are not of the same size this function exits with badarg.
+%% @end
+difference(Set0, Set1) ->
+    #pieceset{size=Size0, elements=Elements0} = Set0,
+    #pieceset{size=Size1, elements=Elements1} = Set1,
+    case Size0 == Size1 of
+        false ->
+            error(badarg);
+        true ->
+            PaddingLen = paddinglen(Size0),
+            <<E0:Size0, 0:PaddingLen>> = Elements0,
+            <<E1:Size0, 0:PaddingLen>> = Elements1,
+            Unique = (E0 bxor E1) band E0,
+            Difference = <<Unique:Size0, 0:PaddingLen>>,
+            #pieceset{size=Size0, elements=Difference}
+    end.
+
+
+%% @doc
+%% Return the number of pieces that are members of the set.
+%% @end
+-spec size(pieceset()) -> pos_integer().
+size(Pieceset) ->
+    #pieceset{elements=Elements} = Pieceset,
+    size(Elements, 0).
+
+size(<<1:1, Rest/bitstring>>, Acc) ->
+    size(Rest, Acc + 1);
+size(<<0:1, Rest/bitstring>>, Acc) ->
+    size(Rest, Acc);
+size(<<>>, Acc) ->
+    Acc.
 
 paddinglen(Size) ->
     Length = 8 - (Size rem 8),
@@ -158,6 +234,38 @@ too_high_member_test() ->
     Set = ?set:new(8),
     ?assertError(badarg, ?set:is_member(8, Set)).
 
+%% An empty piece set should contain 0 pieces
+empty_size_test() ->
+    ?assertEqual(0, ?set:size(?set:new(8))),
+    ?assertEqual(0, ?set:size(?set:new(14))).
+
+full_size_test() ->
+    Set0 = ?set:from_binary(<<255:8>>, 8),
+    ?assertEqual(8, ?set:size(Set0)),
+    Set1 = ?set:from_binary(<<255:8, 1:1, 0:7>>, 9),
+    ?assertEqual(9, ?set:size(Set1)).
+
+%% An empty set should be converted to an empty list
+empty_list_test() ->
+    Set = ?set:new(8),
+    ?assertEqual([], ?set:to_list(Set)).
+
+%% Expect the list to be ordered from smallest to largest
+list_order_test() ->
+    Set = ?set:from_binary(<<1:1, 0:7, 1:1, 0:7>>, 9),
+    ?assertEqual([0,8], ?set:to_list(Set)).
+
+%% Expect an empty list to be converted to an empty set
+from_empty_list_test() ->
+    Set0 = ?set:new(8),
+    Set1 = ?set:from_list([], 8),
+    ?assertEqual(Set0, Set1).
+
+from_full_list_test() ->
+    Set0 = ?set:from_binary(<<255:8>>, 8),
+    Set1 = ?set:from_list(lists:seq(0,7), 8),
+    ?assertEqual(Set0, Set1).
+
 %%
 %% Modifying the contents of a pieceset
 %%
@@ -202,6 +310,16 @@ intersection_test() ->
     Bitfield = <<1:1, 0:1, 0:6, 1:1, 0:7>>,
     ?assertEqual(Bitfield, ?set:to_binary(Inter)).
 
+difference_size_test() ->
+    Set0 = ?set:new(5),
+    Set1 = ?set:new(6),
+    ?assertError(badarg, ?set:difference(Set0, Set1)).
+
+difference_test() ->
+    Set0  = ?set:from_list([0,1,    4,5,6,7], 8),
+    Set1  = ?set:from_list([  1,2,3,4,  6,7], 8),
+    Inter = ?set:difference(Set0, Set1),
+    ?assertEqual([0,5], ?set:to_list(Inter)).
 
 %%
 %% Conversion from piecesets to bitfields should produce valid bitfields.
