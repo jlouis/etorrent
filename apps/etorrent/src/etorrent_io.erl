@@ -51,9 +51,9 @@
 -define(AWAIT_TIMEOUT, 10*1000).
 
 -export([start_link/2,
-	 allocate/1,
+	     allocate/1,
+         piece_size/2,
          read_piece/2,
-	 piece_size/2,
          read_chunk/4,
          write_chunk/4,
          register_directory/1,
@@ -124,6 +124,7 @@ allocate(TorrentId, FilePath, BytesToWrite) ->
     ok = schedule_io_operation(TorrentId, FilePath),
     {ok, FilePid} = await_open_file(TorrentId, FilePath),
     ok = etorrent_io_file:allocate(FilePid, BytesToWrite).
+
 
 %% @doc
 %% Read a piece into memory from disc.
