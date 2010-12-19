@@ -1,10 +1,10 @@
-%%%-------------------------------------------------------------------
-%%% File    : acceptor.erl
-%%% Author  : Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
-%%% Description : Accept new connections from the network.
-%%%
-%%% Created : 30 Jul 2007 by Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
-%%%-------------------------------------------------------------------
+%% @author Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
+%% @doc Accept new connections from the network.
+%% <p>This function will accept a new connection from the network and
+%% then perform the initial part of the handshake. If successful, the
+%% process will spawn a real controller process and hand off the
+%% socket to that process.</p>
+%% @end
 -module(etorrent_acceptor).
 
 -behaviour(gen_server).
@@ -12,7 +12,7 @@
 -include("log.hrl").
 
 %% API
--export([start_link/1]).
+-export([start_link/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -21,82 +21,47 @@
 -record(state, { listen_socket = none,
                  our_peer_id}).
 
--ignore_xref([{'start_link', 1}]).
-
 %% @doc Starts the server.
 %% @end
--spec start_link(pid()) -> {ok, pid()} | ignore | {error, term()}.
-start_link(OurPeerId) ->
-    gen_server:start_link(?MODULE, [OurPeerId], []).
+%% @todo Type of listen socket!
+-spec start_link(pid(), term()) -> {ok, pid()} | ignore | {error, term()}.
+start_link(OurPeerId, LSock) ->
+    gen_server:start_link(?MODULE, [OurPeerId, LSock], []).
 
 %%====================================================================
-%% gen_server callbacks
-%%====================================================================
 
-%%--------------------------------------------------------------------
-%% Function: init(Args) -> {ok, State} |
-%%                         {ok, State, Timeout} |
-%%                         ignore               |
-%%                         {stop, Reason}
-%% Description: Initiates the server
-%%--------------------------------------------------------------------
-init([OurPeerId]) ->
-    {ok, ListenSocket} = etorrent_listener:get_socket(),
-    {ok, #state{ listen_socket = ListenSocket,
-                 our_peer_id = OurPeerId}, 0}.
+%% @private
+init([PeerId, LSock]) ->
+    {ok, #state{ listen_socket = LSock,
+                 our_peer_id = PeerId }, 0}.
 
-%%--------------------------------------------------------------------
-%% Function: %% handle_call(Request, From, State) -> {reply, Reply, State} |
-%%                                      {reply, Reply, State, Timeout} |
-%%                                      {noreply, State} |
-%%                                      {noreply, State, Timeout} |
-%%                                      {stop, Reason, Reply, State} |
-%%                                      {stop, Reason, State}
-%% Description: Handling call messages
-%%--------------------------------------------------------------------
+%% @private
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
 
-%%--------------------------------------------------------------------
-%% Function: handle_cast(Msg, State) -> {noreply, State} |
-%%                                      {noreply, State, Timeout} |
-%%                                      {stop, Reason, State}
-%% Description: Handling cast messages
-%%--------------------------------------------------------------------
+%% @private
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-%%--------------------------------------------------------------------
-%% Function: handle_info(Info, State) -> {noreply, State} |
-%%                                       {noreply, State, Timeout} |
-%%                                       {stop, Reason, State}
-%% Description: Handling all non call/cast messages
-%%--------------------------------------------------------------------
-handle_info(timeout, S) ->
+%% @private
+handle_info(timeout, #state { our_peer_id = PeerId } = S) ->
     case gen_tcp:accept(S#state.listen_socket) of
-        {ok, Socket} -> handshake(Socket, S),
-                        {noreply, S, 0};
-        {error, closed}       -> {noreply, S, 0};
-        {error, econnaborted} -> {noreply, S, 0};
-        {error, enotconn}     -> {noreply, S, 0};
-        {error, E}            -> {stop, E, S}
-    end.
+        {ok, Socket} ->
+	    {ok, _Pid} = etorrent_listen_sup:start_child(),
+	    handshake(Socket, PeerId);
+        {error, closed}       -> ok;
+        {error, econnaborted} -> ok;
+        {error, enotconn}     -> ok;
+        {error, E}            -> ?WARN([{error, E}]), ok
+    end,
+    {stop, normal, S}.
 
-%%--------------------------------------------------------------------
-%% Function: terminate(Reason, State) -> void()
-%% Description: This function is called by a gen_server when it is about to
-%% terminate. It should be the opposite of Module:init/1 and do any necessary
-%% cleaning up. When it returns, the gen_server terminates with Reason.
-%% The return value is ignored.
-%%--------------------------------------------------------------------
+%% @private
 terminate(_Reason, _State) ->
     ok.
 
-%%--------------------------------------------------------------------
-%% Func: code_change(OldVsn, State, Extra) -> {ok, NewState}
-%% Description: Convert process state when code is changed
-%%--------------------------------------------------------------------
+%% @private
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
@@ -104,27 +69,27 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%--------------------------------------------------------------------
 
-handshake(Socket, S) ->
+handshake(Socket, PeerId) ->
     case etorrent_proto_wire:receive_handshake(Socket) of
-        {ok, Caps, InfoHash, PeerId} ->
-            lookup_infohash(Socket, Caps, InfoHash, PeerId, S);
+        {ok, Caps, InfoHash, HisPeerId} ->
+            lookup_infohash(Socket, Caps, InfoHash, HisPeerId, PeerId);
         {error, _Reason} ->
             gen_tcp:close(Socket),
             ok
     end.
 
-lookup_infohash(Socket, Caps, InfoHash, PeerId, S) ->
+lookup_infohash(Socket, Caps, InfoHash, HisPeerId, OurPeerId) ->
     case etorrent_table:get_torrent({infohash, InfoHash}) of
 	{value, _} ->
-	    start_peer(Socket, Caps, PeerId, InfoHash, S);
+	    start_peer(Socket, Caps, HisPeerId, InfoHash, OurPeerId);
 	not_found ->
 	    gen_tcp:close(Socket),
 	    ok
     end.
 
-start_peer(Socket, Caps, PeerId, InfoHash, S) ->
+start_peer(Socket, Caps, HisPeerId, InfoHash, OurPeerId) ->
     {ok, {Address, Port}} = inet:peername(Socket),
-    case new_incoming_peer(Socket, Caps, Address, Port, InfoHash, PeerId, S) of
+    case new_incoming_peer(Socket, Caps, Address, Port, InfoHash, HisPeerId, OurPeerId) of
         {ok, RPid, CPid} ->
             case gen_tcp:controlling_process(Socket, RPid) of
                 ok -> etorrent_peer_control:initialize(CPid, incoming),
@@ -139,15 +104,14 @@ start_peer(Socket, Caps, PeerId, InfoHash, S) ->
             gen_tcp:close(Socket),
             ok;
         bad_peer ->
-            ?INFO([peer_id_is_bad, PeerId]),
+            ?INFO([peer_id_is_bad, HisPeerId]),
             gen_tcp:close(Socket),
             ok
     end.
 
-new_incoming_peer(_Socket, _Caps, _IP, _Port, _InfoHash, PeerId,
-    #state { our_peer_id = Our_Peer_Id }) when Our_Peer_Id == PeerId ->
+new_incoming_peer(_Socket, _Caps, _IP, _Port, _InfoHash, PeerId, PeerId) ->
         connect_to_ourselves;
-new_incoming_peer(Socket, Caps, IP, Port, InfoHash, _PeerId, S) ->
+new_incoming_peer(Socket, Caps, IP, Port, InfoHash, _HisPeerId, OurPeerId) ->
     {value, PL} = etorrent_table:get_torrent({infohash, InfoHash}),
     case etorrent_peer_mgr:is_bad_peer(IP, Port) of
         true ->
@@ -155,18 +119,18 @@ new_incoming_peer(Socket, Caps, IP, Port, InfoHash, _PeerId, S) ->
         false ->
             case etorrent_table:connected_peer(IP, Port, proplists:get_value(id, PL)) of
                 true -> already_connected;
-                false -> start_new_incoming_peer(Socket, Caps, IP, Port, InfoHash, S)
+                false -> start_new_incoming_peer(Socket, Caps, IP, Port, InfoHash, OurPeerId)
             end
     end.
 
 
-start_new_incoming_peer(Socket, Caps, IP, Port, InfoHash, S) ->
+start_new_incoming_peer(Socket, Caps, IP, Port, InfoHash, OurPeerId) ->
     case etorrent_counters:slots_left() of
         {value, 0} -> already_enough_connections;
         {value, K} when is_integer(K) ->
 	    {value, PL} = etorrent_table:get_torrent({infohash, InfoHash}),
             etorrent_t_sup:add_peer(
-	      S#state.our_peer_id,
+	      OurPeerId,
 	      InfoHash,
 	      proplists:get_value(id, PL),
 	      {IP, Port},
