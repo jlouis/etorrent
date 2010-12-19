@@ -1,11 +1,10 @@
-%%%-------------------------------------------------------------------
-%%% File    : etorrent.erl
-%%% Author  : User Jlouis <jesper.louis.andersen@gmail.com>
-%%% License : See COPYING
-%%% Description : Start up etorrent and supervise it.
-%%%
-%%% Created : 30 Jan 2007 by User Jlouis <jesper.louis.andersen@gmail.com>
-%%%-------------------------------------------------------------------
+%% @author Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
+%% @doc Main etorrent supervisor
+%% <p>This Supervisor is the top-level supervisor of etorrent. It
+%% starts well over 10 processes when it is initially started. It
+%% will restart parts of etorrent, should they suddenly die
+%% unexpectedly, but it is assumed that many of these processes do not die.</p>
+%% @end
 -module(etorrent_sup).
 
 -behaviour(supervisor).
@@ -22,12 +21,17 @@
 -define(SERVER, ?MODULE).
 
 %% ====================================================================
+
+%% @doc Start the supervisor
+%% @end
 -spec start_link([binary()]) -> {ok, pid()} | ignore | {error, term()}.
 start_link(PeerId) ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, [PeerId]).
 
 
 %% ====================================================================
+
+%% @private
 init([PeerId]) ->
     ?INFO([etorrent_supervisor_starting, PeerId]),
     Tables       = ?CHILD(etorrent_table),
