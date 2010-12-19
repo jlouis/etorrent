@@ -299,7 +299,7 @@ handle_message({bitfield, BitField},
     {value, Size} = etorrent_torrent:num_pieces(Torrent_Id),
     {ok, PieceSet} =
         etorrent_proto_wire:decode_bitfield(Size, BitField),
-    Left = Pieces_Left - gb_sets:size(PieceSet),
+    Left = Pieces_Left - etorrent_pieceset:size(PieceSet),
     case Left of
         0  -> ok = etorrent_table:statechange_peer(self(), seeder);
         _N -> ok
