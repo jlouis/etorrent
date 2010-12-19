@@ -1,11 +1,7 @@
-%%%-------------------------------------------------------------------
-%%% File    : dirwatcher_sup.erl
-%%% Author  : Jesper Louis Andersen <jlouis@succubus.local.domain>
-%%% License : See COPYING
-%%% Description : Supervise the dirwatcher.
-%%%
-%%% Created : 11 Jul 2007 by Jesper Louis Andersen <jlouis@succubus.local.domain>
-%%%-------------------------------------------------------------------
+%% @author Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
+%% @doc Supervise the dirwatcher
+%% <p>Minimal supervisor for maintaining the dirwatcher gen_server</p>
+%% @end
 -module(etorrent_dirwatcher_sup).
 
 -behaviour(supervisor).
@@ -19,10 +15,14 @@
 -define(SERVER, ?MODULE).
 
 %% ====================================================================
+
+%% @doc Start the supervisor
+%% @end
 -spec start_link() -> {ok, pid()} | ignore | {error, term()}.
 start_link() ->
     supervisor:start_link({local, ?SERVER}, ?MODULE, []).
 
+%% @private
 init([]) ->
     DirWatcher = {etorrent_dirwatcher,
                   {etorrent_dirwatcher, start_link, []},

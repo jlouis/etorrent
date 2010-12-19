@@ -1,10 +1,14 @@
-%%%-------------------------------------------------------------------
-%%% File    : http_gzip.erl
-%%% Author  : Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
-%%% Description : Etorrents http helpers
-%%%
-%%% Created :  7 Aug 2007 by Jesper Louis Andersen <>
-%%%-------------------------------------------------------------------
+%% @author Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
+%% @doc HTTP protocol helpers
+%% <p>Etorrent uses the HTTP protocol for tracker communication. What
+%% is surprising though is the lack of proper HTTP 1.1 handling at the
+%% trackers. They are usually quick hacks to make them work as
+%% expected.</p>
+%% <p>One of the problems is that content are returned as gzip'ed,
+%% even though we did not request it to be such. This module captures
+%% the condition and fixes it by ungzipping data as needed.</p>
+%% <p>The module is also home to other small HTTP-like helpers</p>
+%% @end
 -module(etorrent_http).
 
 -include("log.hrl").

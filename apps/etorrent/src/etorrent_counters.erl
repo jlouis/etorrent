@@ -1,10 +1,8 @@
-%%%-------------------------------------------------------------------
-%%% File    : etorrent_counters.erl
-%%% Author  : Jesper Louis Andersen <jlouis@ogre.home>
-%%% Description : Various global counters in etorrent
-%%%
-%%% Created : 29 Jul 2008 by Jesper Louis Andersen <jlouis@ogre.home>
-%%%-------------------------------------------------------------------
+%% @author Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
+%% @doc Global counters in etorrent
+%% <p>This module is used for global counters in etorrent. It counts
+%% some simple things, like identifiers for torrents and the like</p>
+%% @end
 -module(etorrent_counters).
 
 -behaviour(gen_server).
@@ -24,41 +22,36 @@
 -ignore_xref([{start_link, 0}]).
 
 %%====================================================================
-%% API
-%%====================================================================
-%%--------------------------------------------------------------------
-%% Function: start_link() -> {ok,Pid} | ignore | {error,Error}
-%% Description: Starts the server
-%%--------------------------------------------------------------------
+
+%% @doc Start the counter server.
+%% @end
 -spec start_link() -> ignore | {ok, pid()} | {error, any()}.
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
-%% @doc Obtain the next integer in the sequence Sequence
+%% @doc Obtain the next integer in the sequence Sequence.
+%% @end
 -spec next(atom()) -> integer().
 next(Sequence) ->
     gen_server:call(?SERVER, {next, Sequence}).
 
 %% @doc Obtain a peer slot to work with.
+%%   <p>This function returns either 'ok' or 'full' if too many slots
+%%      are in use</p>
+%% @end
 -spec obtain_peer_slot() -> ok | full.
 obtain_peer_slot() ->
     gen_server:call(?SERVER, obtain_peer_slot).
 
+%% @doc Return the number of slots there are left
+%% @end
 -spec slots_left() -> {value, integer()}.
 slots_left() ->
     gen_server:call(?SERVER, slots_left).
 
 %%====================================================================
-%% gen_server callbacks
-%%====================================================================
 
-%%--------------------------------------------------------------------
-%% Function: init(Args) -> {ok, State} |
-%%                         {ok, State, Timeout} |
-%%                         ignore               |
-%%                         {stop, Reason}
-%% Description: Initiates the server
-%%--------------------------------------------------------------------
+%% @private
 init([]) ->
     _Tid = ets:new(etorrent_counters, [named_table, protected]),
     ets:insert(etorrent_counters, [{torrent, 0},
@@ -66,15 +59,7 @@ init([]) ->
                                    {peer_slots, 0}]),
     {ok, #state{}}.
 
-%%--------------------------------------------------------------------
-%% Function: %% handle_call(Request, From, State) -> {reply, Reply, State} |
-%%                                      {reply, Reply, State, Timeout} |
-%%                                      {noreply, State} |
-%%                                      {noreply, State, Timeout} |
-%%                                      {stop, Reason, Reply, State} |
-%%                                      {stop, Reason, State}
-%% Description: Handling call messages
-%%--------------------------------------------------------------------
+%% @private
 handle_call({next, Seq}, _From, S) ->
     N = ets:update_counter(etorrent_counters, Seq, 1),
     {reply, N, S};
@@ -95,21 +80,11 @@ handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
 
-%%--------------------------------------------------------------------
-%% Function: handle_cast(Msg, State) -> {noreply, State} |
-%%                                      {noreply, State, Timeout} |
-%%                                      {stop, Reason, State}
-%% Description: Handling cast messages
-%%--------------------------------------------------------------------
+%% @private
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-%%--------------------------------------------------------------------
-%% Function: handle_info(Info, State) -> {noreply, State} |
-%%                                       {noreply, State, Timeout} |
-%%                                       {stop, Reason, State}
-%% Description: Handling all non call/cast messages
-%%--------------------------------------------------------------------
+%% @private
 handle_info({'DOWN', _Ref, process, _Pid, _Reason}, S) ->
     K = ets:update_counter(etorrent_counters, peer_slots, {2, -1, 0, 0}),
     if
@@ -120,25 +95,14 @@ handle_info({'DOWN', _Ref, process, _Pid, _Reason}, S) ->
 handle_info(_Info, State) ->
     {noreply, State}.
 
-%%--------------------------------------------------------------------
-%% Function: terminate(Reason, State) -> void()
-%% Description: This function is called by a gen_server when it is about to
-%% terminate. It should be the opposite of Module:init/1 and do any necessary
-%% cleaning up. When it returns, the gen_server terminates with Reason.
-%% The return value is ignored.
-%%--------------------------------------------------------------------
+%% @private
 terminate(_Reason, _State) ->
     ok.
 
-%%--------------------------------------------------------------------
-%% Func: code_change(OldVsn, State, Extra) -> {ok, NewState}
-%% Description: Convert process state when code is changed
-%%--------------------------------------------------------------------
+%% @private
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
-%%--------------------------------------------------------------------
-%%% Internal functions
 %%--------------------------------------------------------------------
 -spec max_peer_processes() -> integer().
 max_peer_processes() ->
