@@ -28,7 +28,9 @@ start_child() ->
 
 init([PeerId]) ->
     Port = etorrent_config:listen_port(),
-    {ok, LSock} = find_listen_socket(Port, ?DEFAULT_SOCKET_INCREASE),
+    ListenOpts = [binary, inet, {active, false},
+		 {reuseaddr, true}],
+    {ok, LSock} = gen_tcp:listen(Port, ListenOpts),
     AcceptChild =
 	{accept_child, {etorrent_acceptor, start_link,
 			[PeerId, LSock]},
@@ -38,12 +40,3 @@ init([PeerId]) ->
 
 %%====================================================================
 
-find_listen_socket(_Port, 0) ->
-    {error, could_not_find_free_socket};
-find_listen_socket(Port, N) ->
-    case gen_tcp:listen(Port, [binary, inet, {active, false}]) of
-        {ok, Socket} ->
-            {ok, Socket};
-        {error, eaddrinuse} ->
-            find_listen_socket(Port+1, N-1)
-    end.
