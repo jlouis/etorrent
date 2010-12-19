@@ -134,7 +134,7 @@ send_msg(Socket, Msg, Mode) ->
 -spec decode_bitfield(integer(), binary()) ->
     {ok, etorrent_pieceset:pieceset()}.
 decode_bitfield(Size, Bin) ->
-    PieceSet = etorrent_pieceset:from_binary(Size, Bin),
+    PieceSet = etorrent_pieceset:from_binary(Bin, Size),
     {ok, PieceSet}.
 
 % @doc Encode a pieceset into a binary bitfield
