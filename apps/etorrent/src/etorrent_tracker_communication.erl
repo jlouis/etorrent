@@ -1,11 +1,12 @@
-%%%-------------------------------------------------------------------
-%%% File    : tracker_delegate.erl
-%%% Author  : Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
-%%% License : See COPYING
-%%% Description : Handles communication with the tracker
-%%%
-%%% Created : 17 Jul 2007 by Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
-%%%-------------------------------------------------------------------
+%% @author Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
+%% @doc Handle communication with trackers
+%% <p>This module handles all communication with a tracker. It will
+%% periodically announce to the tracker for an update. Eventual errors
+%% and new Peers are fed back into the Peer Manager process so they
+%% can be processed to completion.</p>
+%% <p>For UDP tracking, we delegate the work to the UDP tracker
+%% system.</p>
+%% @end
 -module(etorrent_tracker_communication).
 
 -behaviour(gen_server).
@@ -25,9 +26,6 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
-%% Dummy exports
--export([swap_urls/1]).
-
 -record(state, {queued_message = none,
                 %% The hard timer is the time we *must* wait on the tracker.
                 %% soft timer may be overridden if we want to change state.
@@ -45,12 +43,15 @@
 -define(DEFAULT_TRACKER_OVERLOAD_INTERVAL, 300).
 -define(DEFAULT_REQUEST_TIMEOUT, 240).
 %%====================================================================
-%% API
-%%====================================================================
-%%--------------------------------------------------------------------
-%% Function: start_link() -> {ok,Pid} | ignore | {error,Error}
-%% Description: Starts the server
-%%--------------------------------------------------------------------
+
+%% @doc Start the server
+%% <p>Start the server. We are given a large amount of
+%% information. The `ControlPid' refers to the Pid of the controller
+%% process. The `UrlTiers' are a list of lists of string() parameters,
+%% each a URL. Next comes the `Infohash' as a binary(), the `PeerId'
+%% parameter and finally the `TorrentId': the identifier of the torrent.</p> 
+%% @end
+%% @todo What module, precisely do the control pid come from?
 -spec start_link(pid(), [tier()], binary(), integer(), integer()) ->
     ignore | {ok, pid()} | {error, term()}.
 start_link(ControlPid, UrlTiers, InfoHash, PeerId, TorrentId) ->
@@ -59,21 +60,15 @@ start_link(ControlPid, UrlTiers, InfoHash, PeerId, TorrentId) ->
                             UrlTiers, InfoHash, PeerId, TorrentId],
                           []).
 
+%% @doc Prod the tracker and tell it we completed to torrent
+%% @end
 -spec completed(pid()) -> ok.
 completed(Pid) ->
     gen_server:cast(Pid, completed).
 
 %%====================================================================
-%% gen_server callbacks
-%%====================================================================
 
-%%--------------------------------------------------------------------
-%% Function: init(Args) -> {ok, State} |
-%%                         {ok, State, Timeout} |
-%%                         ignore               |
-%%                         {stop, Reason}
-%% Description: Initiates the server
-%%--------------------------------------------------------------------
+%% @private
 init([ControlPid, UrlTiers, InfoHash, PeerId, TorrentId]) ->
     process_flag(trap_exit, true),
     HardRef = erlang:send_after(0, self(), hard_timeout),
@@ -92,25 +87,12 @@ init([ControlPid, UrlTiers, InfoHash, PeerId, TorrentId]) ->
 
                 queued_message = started}}.
 
-%%--------------------------------------------------------------------
-%% Function: %% handle_call(Request, From, State) -> {reply, Reply, State} |
-%%                                      {reply, Reply, State, Timeout} |
-%%                                      {noreply, State} |
-%%                                      {noreply, State, Timeout} |
-%%                                      {stop, Reason, Reply, State} |
-%%                                      {stop, Reason, State}
-%% Description: Handling call messages
-%%--------------------------------------------------------------------
+%% @private
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
 
-%%--------------------------------------------------------------------
-%% Function: handle_cast(Msg, State) -> {noreply, State} |
-%%                                      {noreply, State, Timeout} |
-%%                                      {stop, Reason, State}
-%% Description: Handling cast messages
-%%---------------------------------------------------------------------
+%% @private
 handle_cast(completed, S) ->
     NS = contact_tracker(completed, S),
     {noreply, NS};
@@ -121,12 +103,7 @@ handle_cast(Msg, S) ->
     ?ERR([unknown_msg, Msg]),
     {noreply, S}.
 
-%%--------------------------------------------------------------------
-%% Function: handle_info(Info, State) -> {noreply, State} |
-%%                                       {noreply, State, Timeout} |
-%%                                       {stop, Reason, State}
-%% Description: Handling all non call/cast messages
-%%--------------------------------------------------------------------
+%% @private
 handle_info(hard_timeout,
     #state { queued_message = none } = S) ->
     %% There is nothing to do with the hard_timer, just ignore this
@@ -144,13 +121,7 @@ handle_info({Ref, _M}, State) when is_reference(Ref) ->
 handle_info(_Info, State) ->
     {noreply, State}.
 
-%%--------------------------------------------------------------------
-%% Function: terminate(Reason, State) -> void()
-%% Description: This function is called by a gen_server when it is about to
-%% terminate. It should be the opposite of Module:init/1 and do any necessary
-%% cleaning up. When it returns, the gen_server terminates with Reason.
-%% The return value is ignored.
-%%--------------------------------------------------------------------
+%% @private
 terminate(Reason, S) when Reason =:= shutdown; Reason =:= normal ->
     _NS = contact_tracker(stopped, S),
     ok;
@@ -158,15 +129,10 @@ terminate(Reason, _S) ->
     ?WARN([terminating_due_to, Reason]),
     ok.
 
-%%--------------------------------------------------------------------
-%% Func: code_change(OldVsn, State, Extra) -> {ok, NewState}
-%% Description: Convert process state when code is changed
-%%--------------------------------------------------------------------
+%% @private
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
-%%--------------------------------------------------------------------
-%%% Internal functions
 %%--------------------------------------------------------------------
 contact_tracker(S) ->
     contact_tracker(none, S).
