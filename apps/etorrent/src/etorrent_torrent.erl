@@ -1,10 +1,14 @@
-%%%-------------------------------------------------------------------
-%%% File    : etorrent_torrent.erl
-%%% Author  : Jesper Louis Andersen <>
-%%% Description : Library for manipulating the torrent table.
-%%%
-%%% Created : 15 Jun 2008 by Jesper Louis Andersen <>
-%%%-------------------------------------------------------------------
+%% @author Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
+%% @doc Maintain the torrent ETS table.
+%% <p>This module is responsible for maintaining an ETS table, namely
+%% the `torrent' table. This table is the general go-to place if you
+%% want to know anything about a torrent and its internal state.</p>
+%% <p>The code in this module is not expected to crash -- if it does,
+%% it very well takes all of etorrent with it.</p>
+%% <p>Also note that the module has a large number of API functions
+%% you can call</p>
+%% @end
+%% @todo We could consider moving out the API to a separate module
 -module(etorrent_torrent).
 
 -behaviour(gen_server).
@@ -23,8 +27,8 @@
          handle_info/2, terminate/2]).
 
 %% The type of torrent records.
-
 -type(torrent_state() :: 'leeching' | 'seeding' | 'endgame' | 'unknown').
+
 %% A single torrent is represented as the 'torrent' record
 -record(torrent,
 	{ %% Unique identifier of torrent, monotonically increasing
@@ -56,16 +60,18 @@
 
 %% ====================================================================
 
+%% @doc Start the `gen_server' governor.
+%% @end
 -spec start_link() -> {ok, pid()} | ignore | {error, term()}.
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
-% @doc Initialize a torrent
-% <p>The torrent entry for Id with the tracker
-%   state as given. Pieces is the number of pieces for this torrent.
-% </p>
-% <p><emph>Precondition:</emph> The #piece table has been filled with the torrents pieces.</p>
-% @end
+%% @doc Initialize a torrent
+%% <p>The torrent entry for Id with the tracker
+%%   state as given. Pieces is the number of pieces for this torrent.
+%% </p>
+%% <p><emph>Precondition:</emph> The #piece table has been filled with the torrents pieces.</p>
+%% @end
 -spec new(integer(),
        {{uploaded, integer()},
         {downloaded, integer()},
@@ -76,17 +82,17 @@ start_link() ->
 new(Id, Info, NPieces) ->
     gen_server:call(?SERVER, {new, Id, Info, NPieces}).
 
-% @doc Return all torrents, sorted by Id
-% @end
+%% @doc Return all torrents, sorted by Id
+%% @end
 -spec all() -> [[{term(), term()}]].
 all() ->
     gen_server:call(?SERVER, all).
 
-% @doc Request a change of state for the torrent
-% <p>The specific What part is documented as the alteration() type
-% in the module.
-% </p>
-% @end
+%% @doc Request a change of state for the torrent
+%% <p>The specific What part is documented as the alteration() type
+%% in the module.
+%% </p>
+%% @end
 -type alteration() :: unknown
                     | endgame
                     | {add_downloaded, integer()}
@@ -97,8 +103,8 @@ all() ->
 statechange(Id, What) ->
     gen_server:call(?SERVER, {statechange, Id, What}).
 
-% @doc Return the number of pieces for torrent Id
-% @end
+%% @doc Return the number of pieces for torrent Id
+%% @end
 -spec num_pieces(integer()) -> {value, integer()}.
 num_pieces(Id) ->
     gen_server:call(?SERVER, {num_pieces, Id}).
@@ -113,15 +119,15 @@ lookup(Id) ->
 	[M] -> {value, proplistify(M)}
     end.
 
-% @doc Returns true if the torrent is a seeding torrent
-% @end
+%% @doc Returns true if the torrent is a seeding torrent
+%% @end
 -spec is_seeding(integer()) -> boolean().
 is_seeding(Id) ->
     {value, S} = lookup(Id),
     proplists:get_value(state, S) =:= seeding.
 
-% @doc Returns all torrents which are currently seeding
-% @end
+%% @doc Returns all torrents which are currently seeding
+%% @end
 -spec seeding() -> {value, [integer()]}.
 seeding() ->
     Torrents = all(),
@@ -129,16 +135,16 @@ seeding() ->
 		T <- Torrents,
 		proplists:get_value(state, T) =:= seeding]}.
 
-% @doc Track that we downloaded a piece
-%  <p>As a side-effect, this call eventually updates the endgame state</p>
-% @end
+%% @doc Track that we downloaded a piece
+%%  <p>As a side-effect, this call eventually updates the endgame state</p>
+%% @end
 -spec decrease_not_fetched(integer()) -> ok.
 decrease_not_fetched(Id) ->
     gen_server:call(?SERVER, {decrease, Id}).
 
 
-% @doc Returns true if the torrent is in endgame mode
-% @end
+%% @doc Returns true if the torrent is in endgame mode
+%% @end
 -spec is_endgame(integer()) -> boolean().
 is_endgame(Id) ->
     case ets:lookup(?TAB, Id) of
@@ -148,6 +154,7 @@ is_endgame(Id) ->
 
 %% =======================================================================
 
+%% @private
 init([]) ->
     _ = ets:new(?TAB, [protected, named_table,
                                    {keypos, 2}]),
@@ -158,6 +165,7 @@ init([]) ->
 		      rate_sparkline_update),
     {ok, #state{ monitoring = dict:new() }}.
 
+%% @private
 handle_call({new, Id, {{uploaded, U}, {downloaded, D},
 		       {all_time_uploaded, AU},
 		       {all_time_downloaded, AD},
@@ -203,9 +211,11 @@ handle_call({decrease, Id}, _F, S) ->
 handle_call(_M, _F, S) ->
     {noreply, S}.
 
+%% @private
 handle_cast(_Msg, S) ->
     {noreply, S}.
 
+%% @private
 handle_info({'DOWN', Ref, _, _, _}, S) ->
     {ok, Id} = dict:find(Ref, S#state.monitoring),
     ets:delete(?TAB, Id),
@@ -218,9 +228,11 @@ handle_info(rate_sparkline_update, S) ->
 handle_info(_M, S) ->
     {noreply, S}.
 
+%% @private
 code_change(_OldVsn, S, _Extra) ->
     {ok, S}.
 
+%% @private
 terminate(_Reason, _S) ->
     ok.
 
