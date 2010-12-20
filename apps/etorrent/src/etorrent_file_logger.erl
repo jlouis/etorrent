@@ -12,23 +12,29 @@
 
 -behaviour(gen_event).
 
--export([init/2]).
+%% Install/Deinstall
+-export([add_handler/0, add_handler/1, delete_handler/0]).
 
+%% Callbacks
 -export([init/1, handle_event/2, handle_info/2, terminate/2]).
 -export([handle_call/2, code_change/3]).
 
 -record(state, {dir, fname, cur_fd, pred}).
 
 %% =======================================================================
-%% @doc Initialize the file logger
-%% @end
--spec init(string(), string()) -> 
-        {string(), string(), fun((_) -> boolean())}.
-init(Dir, Filename) -> init(Dir, Filename, fun(_) -> true end).
 
--spec init(string(), string(), fun((term()) -> boolean())) ->
-            {string(), string(), fun((term()) -> boolean())}.
-init(Dir, Filename, Pred) -> {Dir, Filename, Pred}.
+-spec add_handler() -> ok.
+add_handler() ->
+    add_handler(fun (_) ->
+			true
+		end).
+
+-spec add_handler(fun ( (term()) -> boolean() )) -> ok.
+add_handler(Predicate) ->
+    ok = etorrent_event:add_handler(?MODULE, [Predicate]).
+
+delete_handler() ->
+    etorrent_event:delete_handler(?MODULE, []).
 
 %% -----------------------------------------------------------------------
 file_open(Dir, Fname) ->
@@ -40,9 +46,11 @@ date_str({{Y, Mo, D}, {H, Mi, S}}) ->
                                 "~2.2.0w:~2.2.0w",
                                 [Y,Mo,D,H,Mi,S])).
 %% =======================================================================
-init({Dir, Filename, Pred}) ->
-    case catch file_open(Dir, Filename) of
-        {ok, Fd} -> {ok, #state { dir = Dir, fname = Filename,
+init([Pred]) ->
+    Dir = etorrent_config:logger_dir(),
+    Fname = etorrent_config:logger_file(),
+    case catch file_open(Dir, Fname) of
+        {ok, Fd} -> {ok, #state { dir = Dir, fname = Fname,
                                   cur_fd = Fd, pred = Pred }};
         Error -> Error
     end.

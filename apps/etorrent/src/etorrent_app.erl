@@ -23,6 +23,7 @@ start(_Type, _Args) ->
     case etorrent_sup:start_link(PeerId) of
 	{ok, Pid} ->
 	    ok = etorrent_memory_logger:add_handler(),
+	    ok = etorrent_file_logger:add_handler(),
 	    {ok, Pid};
 	{error, Err} ->
 	    {error, Err}
