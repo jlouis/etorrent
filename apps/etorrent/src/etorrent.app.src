@@ -11,7 +11,7 @@
     etorrent_dirwatcher,
     etorrent_dirwatcher_s,
     etorrent_fs_janitor,
-    etorrent_event_mgr,
+    etorrent_event,
     etorrent_fast_resume,
     etorrent_listener,
     etorrent_mgr,

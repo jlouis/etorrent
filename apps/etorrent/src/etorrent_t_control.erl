@@ -103,7 +103,7 @@ initializing(timeout, S) ->
             %% @todo: Try to coalesce some of these operations together.
 
             %% Read the torrent, check its contents for what we are missing
-            etorrent_event_mgr:checking_torrent(S#state.id),
+            etorrent_event:checking_torrent(S#state.id),
             {ok, Torrent, InfoHash, NumberOfPieces} =
                 etorrent_fs_checker:read_and_check_torrent(S#state.id,
 							   S#state.path),
@@ -141,7 +141,7 @@ initializing(timeout, S) ->
                   S#state.id),
 
             %% Since the process will now go to a hibernation state, GC it
-            etorrent_event_mgr:started_torrent(S#state.id),
+            etorrent_event:started_torrent(S#state.id),
             garbage_collect(),
             {next_state, started,
              S#state{tracker_pid = TrackerPid}}
@@ -157,7 +157,7 @@ started(check_torrent, S) ->
             {next_state, started, S}
     end;
 started(completed, #state { id = Id, tracker_pid = TrackerPid } = S) ->
-    etorrent_event_mgr:completed_torrent(Id),
+    etorrent_event:completed_torrent(Id),
     etorrent_tracker_communication:completed(TrackerPid),
     {next_state, started, S};
 % @todo hoist these reports so they are part of the event system!

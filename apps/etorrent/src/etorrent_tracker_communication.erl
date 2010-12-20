@@ -244,10 +244,10 @@ handle_tracker_response(BC, S) ->
       S).
 
 handle_tracker_response(BC, E, _WM, S) when is_list(E) ->
-    etorrent_t_control:tracker_error_report(S#state.control_pid, E),
+    etorrent_event:notify({tracker_error, S#state.torrent_id, E}),
     handle_timeout(BC, S);
 handle_tracker_response(BC, none, W, S) when is_list(W) ->
-    etorrent_t_control:tracker_warning_report(S#state.control_pid, W),
+    etorrent_event:notify({tracker_warning, S#state.torrent_id, W}),
     handle_tracker_response(BC, none, none, S);
 handle_tracker_response(BC, none, none, S) ->
     %% Add new peers

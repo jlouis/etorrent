@@ -12,7 +12,13 @@
 
 -behaviour(gen_event).
 
+%% Introduction/removal
+-export([add_handler/0, delete_handler/0]).
+
+%% Query
 -export([all_entries/0]).
+
+%% Callback
 -export([init/1, handle_event/2, handle_info/2, terminate/2]).
 -export([handle_call/2, code_change/3]).
 
@@ -22,6 +28,18 @@
 -define(OLD_PRUNE_TIME, 12 * 60 * 60).
 
 %% =======================================================================
+
+%% @doc Add the handler to etorrent_event.
+%% @end
+-spec add_handler() -> ok.
+add_handler() ->
+    ok = etorrent_event:add_handler(?MODULE, []).
+
+%% @doc Remove the handler from etorrent_even.
+%% @end
+-spec delete_handler() -> ok.
+delete_handler() ->
+    ok = etorrent_event:delete_handler(?MODULE, []).
 
 %% @doc Return all entries in the memory logger table
 %% @end

@@ -171,7 +171,7 @@ handle_call({new, Id, {{uploaded, U}, {downloaded, D},
 		       {all_time_downloaded, AD},
                        {left, L}, {total, T}}, NPieces}, {Pid, _Tag}, S) ->
     State = case L of
-                0 -> etorrent_event_mgr:seeding_torrent(Id),
+                0 -> etorrent_event:seeding_torrent(Id),
                      seeding;
                 _ -> leeching
             end,
@@ -324,7 +324,7 @@ state_change(Id, [What | Rest]) ->
     ets:insert(?TAB, New),
     case {T#torrent.state, New#torrent.state} of
         {leeching, seeding} ->
-            etorrent_event_mgr:seeding_torrent(Id),
+            etorrent_event:seeding_torrent(Id),
             ok;
         _ ->
             ok
