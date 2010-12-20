@@ -14,6 +14,9 @@
 -export([gsplit/2, queue_remove/2, group/1,
 	 list_shuffle/1, date_str/1]).
 
+%% "time-like" functions
+-export([now_subtract_seconds/2]).
+
 %% "bittorrent-like" functions
 -export([decode_ips/1]).
 
@@ -91,6 +94,19 @@ group([E | L]) ->
 group(E, K, []) -> [{E, K}];
 group(E, K, [E | R]) -> group(E, K+1, R);
 group(E, K, [F | R]) -> [{E, K} | group(F, 1, R)].
+
+% @doc Subtract a time delta in millsecs from a now() triple
+% @end
+-spec now_subtract_seconds({integer(), integer(), integer()}, integer()) ->
+    {integer(), integer(), integer()}.
+now_subtract_seconds({Megasecs, Secs, Ms}, Subsecs) ->
+    case Secs - Subsecs of
+        N when N >= 0 ->
+            {Megasecs, N, Ms};
+        N ->
+            Needed = abs(N) div 1000000 + 1,
+            {Megasecs - Needed, N + (Needed * 1000000), Ms}
+    end.
 
 %%====================================================================
 
