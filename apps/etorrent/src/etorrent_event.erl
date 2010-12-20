@@ -1,11 +1,11 @@
 %%%-------------------------------------------------------------------
-%%% File    : etorrent_event_mgr.erl
+%%% File    : etorrent_event.erl
 %%% Author  : Jesper Louis Andersen <>
 %%% Description : Event tracking inside the etorrent application.
 %%%
 %%% Created : 25 Aug 2007 by Jesper Louis Andersen <>
 %%%-------------------------------------------------------------------
--module(etorrent_event_mgr).
+-module(etorrent_event).
 
 %% Installation/deinstallation of the event mgr
 -export([start_link/0,

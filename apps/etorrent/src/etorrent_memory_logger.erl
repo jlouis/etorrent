@@ -32,11 +32,11 @@
 
 -spec add_handler() -> ok.
 add_handler() ->
-    ok = etorrent_event_mgr:add_handler(?MODULE, []).
+    ok = etorrent_event:add_handler(?MODULE, []).
 
 -spec delete_handler() -> ok.
 delete_handler() ->
-    ok = etorrent_event_mgr:delete_handler(?MODULE, []).
+    ok = etorrent_event:delete_handler(?MODULE, []).
 
 % @doc Return all entries in the memory logger table
 % @end
