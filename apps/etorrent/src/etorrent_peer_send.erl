@@ -1,13 +1,16 @@
-
-%%%-------------------------------------------------------------------
-%%% File    : etorrent_peer_send.erl
-%%% Author  : Jesper Louis Andersen
-%%% License : See COPYING
-%%% Description : Send out events to a foreign socket.
-%%%
-%%% Created : 27 Jan 2007 by
-%%%   Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
-%%%-------------------------------------------------------------------
+%% @author Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
+%% @doc Handle outgoing messages to a peer
+%% <p>This module handles all outgoing messaging for a peer. It
+%% supports various API calls to facilitate this</p>
+%% <p>Note that this module has two modes, <em>fast</em> and
+%% <em>slow</em>. The fast mode outsources the packet encoding to the
+%% C-layer, whereas the slow mode doesn't. The price to pay is that we
+%% have a worse granularity on the rate calculations, so we only shift
+%% into the fast gear when we have a certain amount of traffic going on.</p>
+%% <p>The shift fast to slow, or slow to fast, is synchronized with
+%% the process {@link etorrent_peer_recv}, so if altering the code,
+%% beware of that</p>
+%% @end
 -module(etorrent_peer_send).
 
 -include("etorrent_rate.hrl").
@@ -57,18 +60,19 @@
 -define(MAX_REQUESTS, 1024). % Maximal number of requests a peer may make.
 
 %%====================================================================
-%% API
-%%====================================================================
+
+%% @doc Start the send process
+%% @end
 -spec start_link(port(), integer(), boolean()) ->
     ignore | {ok, pid()} | {error, any()}.
 start_link(Socket, TorrentId, FastExtension) ->
     gen_server:start_link(?MODULE,
                           [Socket, TorrentId, FastExtension], []).
 
-%%--------------------------------------------------------------------
-%% Func: remote_request(Pid, Index, Offset, Len)
-%% Description: The remote end (ie, the peer) requested a chunk
-%%  {Index, Offset, Len}
+%% @doc Queue up a remote request
+%% <p>A remote request is a request from the peer at the other
+%% end. This call queues up the chunk request in our send queue.</p>
+%% @end
 %%--------------------------------------------------------------------
 -spec remote_request(pid(), integer(), integer(), integer()) -> ok.
 remote_request(Pid, Index, Offset, Len) ->
@@ -78,85 +82,95 @@ remote_request(Pid, Index, Offset, Len) ->
 %% Func: local_request(Pid, Index, Offset, Len)
 %% Description: We request a piece from the peer: {Index, Offset, Len}
 %%--------------------------------------------------------------------
+
+%% @doc send a REQUEST message
+%% <p>The dual to {@link remote_request/4}. We queue up a chunk for
+%% the peer to send back to us</p>
+%% @end
 -spec local_request(pid(), {integer(), integer(), integer()}) -> ok.
 local_request(Pid, {Index, Offset, Size}) ->
     gen_server:cast(Pid, {local_request, {Index, Offset, Size}}).
 
-%%--------------------------------------------------------------------
-%% Func: cancel(Pid, Index, Offset, Len)
-%% Description: Cancel the {Index, Offset, Len} at the peer.
-%%--------------------------------------------------------------------
+%% @doc Send a CANCEL message.
+%% @end
 -spec cancel(pid(), integer(), integer(), integer()) -> ok.
 cancel(Pid, Index, Offset, Len) ->
     gen_server:cast(Pid, {cancel, Index, Offset, Len}).
 
-%%--------------------------------------------------------------------
-%% Func: choke(Pid)
-%% Description: Choke the peer.
-%%--------------------------------------------------------------------
+%% @doc CHOKE the peer.
+%% @end
 -spec choke(pid()) -> ok.
 choke(Pid) ->
     gen_server:cast(Pid, choke).
 
-%%--------------------------------------------------------------------
-%% Func: unchoke(Pid)
-%% Description: Unchoke the peer.
-%%--------------------------------------------------------------------
+%% @doc UNCHOKE the peer.
+%% end
 -spec unchoke(pid()) -> ok.
 unchoke(Pid) ->
     gen_server:cast(Pid, unchoke).
 
-%% This call is used whenever we want to check the choke state of the peer.
+%% @doc Ask the process to check if a rechoke is necessary.
+%% <p>This call is used whenever we want to check the choke state of the peer.
 %% If it is true, we perform a rechoke request. It is probably the wrong
 %% place to issue the rechoke request. Rather, it would be better if a
-%% control process does this.
+%% control process does this.</p>
+%% @end
 -spec check_choke(pid()) -> ok.
 check_choke(Pid) ->
     gen_server:cast(Pid, check_choke).
 
-%%--------------------------------------------------------------------
-%% Func: not_interested(Pid)
-%% Description: Tell the peer we are not interested in him anymore
-%%--------------------------------------------------------------------
+%% @doc send a NOT_INTERESTED message
+%% @end
 -spec not_interested(pid()) -> ok.
 not_interested(Pid) ->
     gen_server:cast(Pid, not_interested).
 
-%% Tell the peer we are interested in him/her.
+%% @doc send an INTERESTED message
+%% @end
 -spec interested(pid()) -> ok.
 interested(Pid) ->
     gen_server:cast(Pid, interested).
 
-%%--------------------------------------------------------------------
-%% Func: have(Pid, PieceNumber)
-%% Description: Tell the peer we have the piece PieceNumber
-%%--------------------------------------------------------------------
+%% @doc send a HAVE message
+%% @end
 -spec have(pid(), integer()) -> ok.
 have(Pid, PieceNumber) ->
     gen_server:cast(Pid, {have, PieceNumber}).
 
-%% Send a bitfield message to the peer
+%% @doc Send a BITFIELD message to the peer
+%% @end
 -spec bitfield(pid(), binary()) -> ok. %% This should be checked
 bitfield(Pid, BitField) ->
     gen_server:cast(Pid, {bitfield, BitField}).
 
+%% @doc Send off the default EXT_MSG to the peer
+%% <p>This is part of BEP-10</p>
+%% @end
 -spec extended_msg(pid()) -> ok.
 extended_msg(Pid) ->
     gen_server:cast(Pid, extended_msg).
 
-%% Request that we enable fast messaging (port is active and we get messages).
+%% @doc Request that we enable fast messaging mode.
+%% <p>In this mode, message encoding is done by the underlying Erlang
+%% VM and not by us.</p>
+%% <p><b>Note:</b> The only intended caller of this function is {@link
+%% etorrent_peer_recv}, when it wants synchronization on the gear cange.</p>
+%% @end
 -spec go_fast(pid()) -> ok.
 go_fast(Pid) ->
     gen_server:cast(Pid, {go_fast, self()}).
 
-%% Request that we enable slow messaging (manual handling of packets, port is passive)
+%% @doc Request that we enable slow messaging mode.
+%% <p>In this mode, message encoding is done by the code in this
+%% module, not by the VM kernel</p>
+%% <p><b>Note:</b> The only intended caller of this function is {@link
+%% etorrent_peer_recv}, when it wants synchronization on the gear cange.</p>
+%% @end
 -spec go_slow(pid()) -> ok.
 go_slow(Pid) ->
     gen_server:cast(Pid, {go_slow, self()}).
 
 
-%%--------------------------------------------------------------------
-%%% Internal functions
 %%--------------------------------------------------------------------
 
 
@@ -219,17 +233,15 @@ local_choke(S) ->
     etorrent_rate_mgr:local_choke(S#state.torrent_id,
                                   S#state.control_pid).
 
-%% Unused callbacks
+
+%%====================================================================
+
+%% @private
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
 
-code_change(_OldVsn, State, _Extra) ->
-    {ok, State}.
-
-%%====================================================================
-%% gen_server callbacks
-%%====================================================================
+%% @private
 init([Socket, TorrentId, FastExtension]) ->
     erlang:send_after(?DEFAULT_KEEP_ALIVE_INTERVAL, self(), tick),
     erlang:send_after(?RATE_UPDATE, self(), rate_update),
@@ -248,6 +260,7 @@ init([Socket, TorrentId, FastExtension]) ->
 
 
 %% Whenever a tick is hit, we send out a keep alive message on the line.
+%% @private
 handle_info(tick, S) ->
     erlang:send_after(?DEFAULT_KEEP_ALIVE_INTERVAL, self(), tick),
     send_message(keep_alive, S, 0);
@@ -280,6 +293,7 @@ handle_info(Msg, S) ->
 
 %% Handle requests to choke and unchoke. If we are already choking the peer,
 %% there is no reason to send the message again.
+%% @private
 handle_cast(choke, S) -> perform_choke(S);
 handle_cast(unchoke, #state { choke = false } = S) -> {noreply, S, 0};
 handle_cast(unchoke,
@@ -354,5 +368,11 @@ handle_cast({go_slow, Pid}, S) ->
 handle_cast(_Msg, S) ->
     {noreply, S}.
 
+%% @private
 terminate(_Reason, _S) ->
     ok.
+
+%% @private
+code_change(_OldVsn, State, _Extra) ->
+    {ok, State}.
+

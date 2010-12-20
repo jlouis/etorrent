@@ -1,11 +1,10 @@
-%%%-------------------------------------------------------------------
-%%% File    : etorrent_file_logger.erl
-%%% Author  : Jesper Louis Andersen <>
-%%% Description : Log to a memory table. When entries are older than
-%%%  12 hours, prune the entries.
-%%%
-%%% Created :  9 Jul 2008 by Jesper Louis Andersen <>
-%%%-------------------------------------------------------------------
+%% @author Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
+%% @doc Log to a memory table
+%% <p>The gen_event event handler here is used to handle events and
+%% their insertion into into an ETS table. It is used mainly by the
+%% webui for listing the last 12 hours of events that occurred in the system.</p>
+%% @end
+%% @todo This module is missing some API-calls. They are in other modules.
 -module(etorrent_memory_logger).
 
 -include("log.hrl").
@@ -24,38 +23,45 @@
 
 %% =======================================================================
 
-% @doc Return all entries in the memory logger table
-% @end
-% @todo Improve spec
+%% @doc Return all entries in the memory logger table
+%% @end
+%% @todo Improve spec
 -spec all_entries() -> [{term(), term(), term()}].
 all_entries() ->
     ets:match_object(?TAB, '_').
 
 %% =======================================================================
 
+%% @private
 init(_Args) ->
     _ = ets:new(?TAB, [named_table, protected]),
     {ok, #state{}}.
 
+%% @private
 handle_event(Evt, S) ->
     Now = now(),
     ets:insert_new(?TAB, {Now, erlang:localtime(), Evt}),
     prune_old_events(),
     {ok, S}.
 
+%% @private
 handle_info(_, State) ->
     {ok, State}.
 
+%% @private
 terminate(_, _State) ->
     ok.
 
+%% @private
 handle_call(null, State) ->
     {ok, null, State}.
 
+%% @private
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 %% =======================================================================
+
 %% @doc Prune events which are older than a given amount of time
 %% @end
 prune_old_events() ->
