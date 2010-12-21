@@ -312,7 +312,7 @@ state_change(Id, [What | Rest]) ->
                   case Left of
                       0 ->
 			  ControlPid = gproc:lookup_local_name({torrent, Id, control}),
-			  etorrent_t_control:completed(ControlPid),
+			  etorrent_torrent_ctl:completed(ControlPid),
                           T#torrent { left = 0, state = seeding,
 				      rate_sparkline = [0.0] };
                       N when N =< T#torrent.total ->
