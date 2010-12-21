@@ -1,7 +1,7 @@
 %% @author Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
 %% @doc Supervise a pool of torrents.
 %% @end
--module(etorrent_t_pool_sup).
+-module(etorrent_torrent_pool).
 
 -behaviour(supervisor).
 
