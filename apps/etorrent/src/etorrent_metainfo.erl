@@ -1,13 +1,11 @@
-%%%-------------------------------------------------------------------
-%%% File    : metainfo.erl
-%%% Author  : Jesper Louis Andersen <jlouis@succubus>
-%%% License : See COPYING
-%%% Description : Code for manipulating the metainfo file
-%%%               Mostly for requests that are more complex
-%%%
-%%% Created : 24 Jan 2007 by Jesper Louis Andersen <jlouis@succubus>
-%%%-------------------------------------------------------------------
-
+%% @author Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
+%% @doc Library for handling a torrent metainfo file.
+%% <p>This module implements a set of convenience functions for
+%% accessing the metainfo file. Rather than spray fetches all over the
+%% code, everything is threaded through this library. If we want to
+%% convert the metainfo file from a torrent term to an internal format
+%% later on, it is easy because this module serves as the API.</p>
+%% @end
 -module(etorrent_metainfo).
 -author("Jesper Louis Andersen <jesper.louis.andersen@gmail.com>").
 
@@ -27,14 +25,15 @@
          get_http_urls/1, get_udp_urls/1, get_dht_urls/1]).
 
 %% ====================================================================
-% @doc Search a torrent file, return the piece length
-% @end
+
+%% @doc Search a torrent file, return the piece length
+%% @end
 -spec get_piece_length(bcode()) -> integer().
 get_piece_length(Torrent) ->
     etorrent_bcoding:get_info_value("piece length", Torrent).
 
-% @doc Search a torrent for the length field
-% @end
+%% @doc Search a torrent for the length field
+%% @end
 -spec get_length(bcode()) -> integer().
 get_length(Torrent) ->
     case etorrent_bcoding:get_info_value("length", Torrent, none) of
@@ -42,15 +41,15 @@ get_length(Torrent) ->
 	I when is_integer(I) -> I
     end.
 
-% @doc Search a torrent, return pieces as a list
-% @end
+%% @doc Search a torrent, return pieces as a list
+%% @end
 -spec get_pieces(bcode()) -> [binary()].
 get_pieces(Torrent) ->
     R = etorrent_bcoding:get_info_value("pieces", Torrent),
     split_into_chunks(R).
 
-% @doc Return the URL of a torrent
-% @end
+%% @doc Return the URL of a torrent
+%% @end
 -spec get_url(bcode()) -> [tier()].
 get_url(Torrent) ->
     case etorrent_bcoding:get_value("announce-list", Torrent, none) of
@@ -70,27 +69,35 @@ filter_tiers(Torrent, P) ->
 get_with_prefix(Torrent, P) ->
     filter_tiers(Torrent, fun(U) -> lists:prefix(P, U) end).
 
+%% @doc Return all URLs starting with "http://"
+%% @end
 get_http_urls(Torrent) -> get_with_prefix(Torrent, "http://").
+
+%% @doc Return all URLs starting with "udp://"
+%% @end
 get_udp_urls(Torrent)  -> get_with_prefix(Torrent, "udp://").
+
+%% @doc Return all URLs starting with "dht://"
+%% @end
 get_dht_urls(Torrent)  -> get_with_prefix(Torrent, "dht://").
 
-% @doc Return the infohash for a torrent
-% @end
+%% @doc Return the infohash for a torrent
+%% @end
 -spec get_infohash(bcode()) -> binary().
 get_infohash(Torrent) ->
     Info = get_info(Torrent),
     crypto:sha(iolist_to_binary(etorrent_bcoding:encode(Info))).
 
-% @doc Get a file list from the torrent
-% @end
+%% @doc Get a file list from the torrent
+%% @end
 -spec get_files(bcode()) -> [{string(), integer()}].
 get_files(Torrent) ->
     FilesEntries = get_files_section(Torrent),
     true = is_list(FilesEntries),
     [process_file_entry(Path) || Path <- FilesEntries].
 
-% @doc Get the name of a torrent.
-% @end
+%% @doc Get the name of a torrent.
+%% @end
 -spec get_name(bcode()) -> string().
 get_name(Torrent) ->
     N = etorrent_bcoding:get_info_value("name", Torrent),
