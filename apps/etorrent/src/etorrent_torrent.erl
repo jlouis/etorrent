@@ -272,7 +272,7 @@ for_each_torrent(F) ->
 update_sparkline_rate(Row) ->
     case Row#torrent.state of
         X when X =:= seeding orelse X =:= leeching ->
-            {ok, R} = etorrent_rate_mgr:get_torrent_rate(
+            {ok, R} = etorrent_peer_states:get_torrent_rate(
                             Row#torrent.id, X),
             SL = update_sparkline(R, Row#torrent.rate_sparkline),
             ets:insert(?TAB, Row#torrent { rate_sparkline = SL }),

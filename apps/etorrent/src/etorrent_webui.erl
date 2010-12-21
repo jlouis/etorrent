@@ -40,7 +40,7 @@ format_log_entry({_Now, LTime, Event}) ->
         [etorrent_utils:date_str(LTime), Event]).
 
 list_rates() ->
-    {DownloadRate, UploadRate} = etorrent_rate_mgr:global_rate(),
+    {DownloadRate, UploadRate} = etorrent_peer_states:global_rate(),
     R2 = io_lib:format("<p>Rate Up/Down: ~8.2f / ~8.2f</p>",
                         [UploadRate / 1024.0, DownloadRate / 1024.0]),
     {ok, R2}.
