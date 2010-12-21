@@ -1,14 +1,15 @@
 %% @author Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
 %% @doc Torrent Control process
-%% <p>This process controls a Torrent Download. It is the "first"
-%% process started and it checks the torrent for correctness. When it
-%% has checked the torrent, it will start up the rest of the needed
-%% processes, attach them to the supervisor and then lay dormant for
-%% most of the time, until the torrent needs to be stopped again.</p>
-%% <p><b>Note:</b> This module is pretty old, and is a prime candidate
-%% for some rewriting.</p>
+%% <p>This process controls a (single) Torrent Download. It is the
+%% "first" process started and it checks the torrent for
+%% correctness. When it has checked the torrent, it will start up the
+%% rest of the needed processes, attach them to the supervisor and
+%% then lay dormant for most of the time, until the torrent needs to
+%% be stopped again.</p>
+%% <p><b>Note:</b> This module is pretty old,
+%% and is a prime candidate for some rewriting.</p>
 %% @end
--module(etorrent_t_control).
+-module(etorrent_torrent_ctl).
 
 -behaviour(gen_fsm).
 
