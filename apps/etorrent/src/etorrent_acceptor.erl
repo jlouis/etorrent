@@ -132,7 +132,7 @@ start_new_incoming_peer(Socket, Caps, IP, Port, InfoHash, S) ->
         {value, 0} -> already_enough_connections;
         {value, K} when is_integer(K) ->
 	    {value, PL} = etorrent_table:get_torrent({infohash, InfoHash}),
-            etorrent_t_sup:add_peer(
+            etorrent_torrent_sup:add_peer(
 	      S#state.our_peer_id,
 	      InfoHash,
 	      proplists:get_value(id, PL),

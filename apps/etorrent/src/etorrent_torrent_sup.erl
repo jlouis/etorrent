@@ -2,7 +2,7 @@
 %% @doc Supervise a torrent file.
 %% <p>This supervisor controls a torrent download.</p>
 %% @end
--module(etorrent_t_sup).
+-module(etorrent_torrent_sup).
 
 -behaviour(supervisor).
 

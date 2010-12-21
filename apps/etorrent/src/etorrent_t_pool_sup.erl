@@ -26,8 +26,8 @@ start_link() -> supervisor:start_link({local, ?SERVER}, ?MODULE, []).
     {ok, pid()} | {ok, pid(), term()} | {error, term()}.
 add_torrent(File, Local_PeerId, Id) ->
     Torrent = {File,
-               {etorrent_t_sup, start_link, [File, Local_PeerId, Id]},
-               transient, infinity, supervisor, [etorrent_t_sup]},
+               {etorrent_torrent_sup, start_link, [File, Local_PeerId, Id]},
+               transient, infinity, supervisor, [etorrent_torrent_sup]},
     supervisor:start_child(?SERVER, Torrent).
 
 % @doc Ask to stop the torrent represented by File.
