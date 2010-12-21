@@ -59,4 +59,4 @@ init([Id]) ->
     ChildSpec = {child,
                  {etorrent_peer_sup, start_link, []},
                  temporary, infinity, supervisor, [etorrent_peer_sup]},
-    {ok, {{simple_one_for_one, 15, 60}, [ChildSpec]}}.
+    {ok, {{simple_one_for_one, 50, 3600}, [ChildSpec]}}.
