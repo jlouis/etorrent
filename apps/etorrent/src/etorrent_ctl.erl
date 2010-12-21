@@ -1,7 +1,12 @@
-%%%
-%%% This module is responsible for managing the run of set of torrent files.
-%%%
--module(etorrent_mgr).
+%% @author Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
+%% @doc Control torrents globally
+%% <p>This module is used to globally control torrents. You can start
+%% a torrent by pointing to a file on disk, and you can stop or a
+%% check a torrent.</p>
+%% <p>As such, this module is <em>intended</em> to become an API for
+%% torrent manipulation in the long run.</p>
+%% @end
+-module(etorrent_ctl).
 -behaviour(gen_server).
 
 -include("log.hrl").
