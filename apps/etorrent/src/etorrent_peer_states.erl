@@ -5,7 +5,7 @@
 %% rate as well as the state of each peer.</p>
 %% @end
 %% @todo module is a candidate for renaming. etorrent_g_peer_state.
--module(etorrent_rate_mgr).
+-module(etorrent_peer_states).
 
 -include("rate_mgr.hrl").
 -include("etorrent_rate.hrl").

@@ -40,7 +40,7 @@ init([PeerId]) ->
     EventManager = ?CHILD(etorrent_event_mgr),
     PeerMgr      = ?CHILDP(etorrent_peer_mgr, [PeerId]),
     FastResume   = ?CHILD(etorrent_fast_resume),
-    RateManager  = ?CHILD(etorrent_rate_mgr),
+    PeerStates   = ?CHILD(etorrent_peer_states),
     PieceManager = ?CHILD(etorrent_piece_mgr),
     ChunkManager = ?CHILD(etorrent_chunk_mgr),
     Choker       = ?CHILDP(etorrent_choker, [PeerId]),
@@ -73,7 +73,7 @@ init([PeerId]) ->
     {ok, {{one_for_all, 3, 60},
           [Tables, Torrent,
            Counters, EventManager, PeerMgr,
-           FastResume, RateManager, PieceManager,
+           FastResume, PeerStates, PieceManager,
            ChunkManager, Choker, Listener, AcceptorSup,
 	   UdpTracking, TorrentPool, TorrentMgr,
 	   DirWatcherSup] ++ DHTSup}}.
