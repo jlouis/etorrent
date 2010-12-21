@@ -2,7 +2,7 @@
 %% @doc Supervise a pool of peers.
 %% <p>This module is a simple supervisor of Peers</p>
 %% @end
--module(etorrent_peer_pool_sup).
+-module(etorrent_peer_pool).
 
 -behaviour(supervisor).
 
