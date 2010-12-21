@@ -25,7 +25,7 @@
 -spec list() -> ok.
 list() ->
     A = etorrent_torrent:all(),
-    {DownloadRate, UploadRate} = etorrent_peer_states:global_rate(),
+    {DownloadRate, UploadRate} = etorrent_peer_states:get_global_rate(),
     io:format("~3s ~11s ~11s ~11s ~11s ~3s ~3s ~7s~n",
               ["Id:", "total", "left", "uploaded", "downloaded",
                "I", "C", "Comp."]),

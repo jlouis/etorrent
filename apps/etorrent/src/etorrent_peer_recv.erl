@@ -156,10 +156,10 @@ handle_info(rate_update, OS) ->
     NR = etorrent_rate:update(OS#state.rate, 0),
     erlang:send_after(?RATE_UPDATE, self(), rate_update),
     SnubState = is_snubbing_us(OS),
-    ok = etorrent_peer_states:recv_rate(OS#state.id,
-                                     self(),
-                                     NR#peer_rate.rate,
-                                     SnubState),
+    ok = etorrent_peer_states:set_recv_rate(OS#state.id,
+					    self(),
+					    NR#peer_rate.rate,
+					    SnubState),
     S = OS#state { last_piece_msg_count = OS#state.last_piece_msg_count + 1 },
     if
         NR#peer_rate.rate > ?ENTER_FAST andalso S#state.mode =:= slow ->
