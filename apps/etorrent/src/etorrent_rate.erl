@@ -1,10 +1,15 @@
-%%%-------------------------------------------------------------------
-%%% File    : etorrent_rate.erl
-%%% Author  : Jesper Louis Andersen <>
-%%% Description : Library of rate calculation code.
-%%%
-%%% Created : 10 Jul 2008 by Jesper Louis Andersen <>
-%%%-------------------------------------------------------------------
+%% @author Jesper Louis Andersen <jesper.louis.andersen@gmail>
+%% @doc Measure the rate of a connection
+%% <p>The rate module can measure the current rate of a connection by
+%% using a sliding window protocol on top of updates.</p>
+%% <p>You can initialize a new rate object with {@link init/0} after
+%% which you can subsequently update it by calling {@link
+%% update/2}. Each update will track the amount of bytes that has been
+%% downloaded and use a 20 second sliding window to interpolate the
+%% rate. The advantage of this solution is that small fluctuations
+%% will not affect the rate and since it is effectively a running
+%% average over the 20 seconds.</p>
+%% @end
 -module(etorrent_rate).
 
 %% API
@@ -16,14 +21,15 @@
 -define(MAX_RATE_PERIOD, 20).
 
 %% ====================================================================
-% @doc Convenience initializer for init/1
-% @end
+
+%% @doc Convenience initializer for {@link init/1}
+%% @end
 init() -> init(?RATE_FUDGE).
 
-% @doc Initialize the rate tuple.
-%    Takes a single integer, fudge, which is the fudge factor used to start up.
-%    It fakes the startup of the rate calculation.
-% @end
+%% @doc Initialize the rate tuple.
+%% <p>Takes a single integer, fudge, which is the fudge factor used to start up.
+%% It fakes the startup of the rate calculation.</p>
+%% @end
 -spec init(integer()) -> #peer_rate{}.
 init(Fudge) ->
     T = now_secs(),
@@ -31,8 +37,8 @@ init(Fudge) ->
                  last = T - Fudge,
                  rate_since = T - Fudge }.
 
-% @doc Update the rate record with Amount new downloaded bytes
-% @end
+%% @doc Update the rate record with Amount new downloaded bytes
+%% @end
 -spec update(#peer_rate{}, integer()) -> #peer_rate{}.
 update(#peer_rate {rate = Rate,
                    total = Total,
@@ -62,8 +68,8 @@ update(#peer_rate {rate = Rate,
                          rate_since = lists:max([RateSince, T - ?MAX_RATE_PERIOD])}
     end.
 
-% @doc Calculate estimated time of arrival.
-% @end
+%% @doc Calculate estimated time of arrival.
+%% @end
 -type eta() :: {integer(), {integer(), integer(), integer()}}.
 -spec eta(integer(), float()) -> eta() | unknown.
 eta(_Left, DR) when DR == 0 ->
@@ -73,6 +79,12 @@ eta(Left, DownloadRate) when is_integer(Left) ->
 eta(unknown, _DownloadRate) ->
     unknown.
 
+%% @doc Format an ETA given bytes Left and a Rate
+%% <p>This function will return an iolist() format of the ETA given
+%% how many bytes there are `Left' to download and the current `DownloadRate'.
+%% </p>
+%% @end
+-spec format_eta(integer(), float()) -> iolist().
 format_eta(Left, DownloadRate) ->
     case eta(Left, DownloadRate) of
 	{DaysLeft, {HoursLeft, MinutesLeft, SecondsLeft}} ->

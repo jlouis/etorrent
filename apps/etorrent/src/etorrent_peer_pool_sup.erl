@@ -1,10 +1,7 @@
-%%%-------------------------------------------------------------------
-%%% File    : etorrent_t_peer_pool_sup.erl
-%%% Author  : Jesper Louis Andersen <>
-%%% Description : Supervise a group of peer processes.
-%%%
-%%% Created : 17 Aug 2007 by Jesper Louis Andersen <>
-%%%-------------------------------------------------------------------
+%% @author Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
+%% @doc Supervise a pool of peers.
+%% <p>This module is a simple supervisor of Peers</p>
+%% @end
 -module(etorrent_peer_pool_sup).
 
 -behaviour(supervisor).
@@ -21,15 +18,18 @@
 -define(SERVER, ?MODULE).
 
 %% ====================================================================
+
+%% @doc Start the pool supervisor
+%% @end
 -spec start_link(integer()) -> {ok, pid()} | ignore | {error, term()}.
 start_link(Id) -> supervisor:start_link(?MODULE, [Id]).
 
-% @doc Add a peer to the supervisor pool.
-% <p>Post-factum, when new peers arrives, or we deplete the number of connected
-% peer below a certain threshold, we add new peers. When this happens, we call
-% the add_peer/7 function given here. It sets up a peer and adds it to the
-% supervisor.</p>
-% @end
+%% @doc Add a peer to the supervisor pool.
+%% <p>Post-factum, when new peers arrives, or we deplete the number of connected
+%% peer below a certain threshold, we add new peers. When this happens, we call
+%% the add_peer/7 function given here. It sets up a peer and adds it to the
+%% supervisor.</p>
+%% @end
 -spec add_peer(pid(), binary(), binary(), integer(), {ip(), integer()},
 	       [capabilities()], port()) ->
             {error, term()} | {ok, pid(), pid()}.
@@ -52,6 +52,8 @@ add_peer(GroupPid, LocalPeerId, InfoHash, Id,
 
 
 %% ====================================================================
+
+%% @private
 init([Id]) ->
     gproc:add_local_name({torrent, Id, peer_pool_sup}),
     ChildSpec = {child,

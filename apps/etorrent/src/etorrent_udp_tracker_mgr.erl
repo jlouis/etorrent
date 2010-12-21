@@ -1,4 +1,20 @@
-%%% A manager for UDP communication with trackers
+%% @author Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
+%% @doc Handle the UDP tracker protocol.
+%% <p>This module is a central module to UDP tracker requests (BEP-15
+%% support). It provides an interface that torrents can use to query
+%% the UDP tracker with. The call is currently blocking, so the other
+%% process is not going to do anything while waiting for a
+%% response. The default timeout-i-give-up-time is 60 seconds.</p>
+%% <p>Apart from serving as the main entry point, this module also
+%% implements a Manager gen_server which is used to manage the current
+%% outstanding requests, their types and which processes are
+%% responsible for the different requests. Data is ETS-stored and
+%% monitors are used to clean up.</p>
+%% <p>The granularity is one process per request-event. The
+%% event-processes are defined in the module etorrent_udp_tracker. It
+%% is easier to handle timeout and such in a separate process rather
+%% than keep centrally track of it.</p>
+%% @end
 -module(etorrent_udp_tracker_mgr).
 
 -behaviour(gen_server).
@@ -23,12 +39,24 @@
 -define(DEFAULT_TIMEOUT, timer:seconds(60)).
 
 %%====================================================================
+
+%% @doc Start the Manager process
+%% @end
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
+%% @doc Announce as announce(Tr, PL, Timeout) with 60 sec timeout.
+%% @end
 announce(Tr, PL) ->
     announce(Tr, PL, timer:seconds(60)).
 
+
+%% @doc Announce to the tracker.
+%%   <p>PL contains the announce data, Tr is a {IP, Port} tracker
+%%   pair, and Timeout is the timeout.</p>
+%%   <p>The will block the caller</p>
+%% @end
+%% @todo Describe the announce data
 announce({IP, Port}, PropList, Timeout) ->
     case catch gen_server:call(?MODULE, {announce, {IP, Port}, PropList}, Timeout) of
 	{'EXIT', {timeout, _}} ->
@@ -37,12 +65,15 @@ announce({IP, Port}, PropList, Timeout) ->
 	Response -> {ok, Response}
     end.
 
+%% @private
 distribute_connid(Tracker, ConnID) ->
     gen_server:cast(?MODULE, {distribute_connid, Tracker, ConnID}).
 
+%% @private
 need_requestor(Tracker, N) ->
     gen_server:cast(?MODULE, {need_requestor, Tracker, N}).
 
+%% @private
 lookup_transaction(Tid) ->
     case ets:lookup(?TAB, Tid) of
 	[] ->
@@ -51,34 +82,43 @@ lookup_transaction(Tid) ->
 	    {ok, Pid}
     end.
 
+%% @private
 reg_connid_gather(Tracker) ->
     ets:insert(?TAB, [{{conn_id_req, Tracker}, self()},
 		      {self(), {conn_id_req, Tracker}}]).
 
+%% @private
 reg_tr_id(Tid) ->
     true = ets:insert(?TAB, [{Tid, self()}, {self(), Tid}]).
 
+%% @private
 unreg_tr_id(Tid) ->
     [true] = delete_object(?TAB, [{Tid, self()}, {self(), Tid}]).
 
+%% @private
 reg_announce(Tracker, PL) ->
     true = ets:insert(?TAB, [{{announce, Tracker}, self()},
 			     {{Tracker, PL}, self()},
 			     {self(), {Tracker, PL}}]).
 
+%% @private
 reg_connid(Tracker, ConnID) ->
     ets:insert(?TAB, [{{conn_id, Tracker}, ConnID}]).
 
+%% @private
 msg(Tr, M) ->
     gen_server:cast(?MODULE, {msg, Tr, M}).
 
 %%====================================================================
+
+%% @private
 init([]) ->
     ets:new(?TAB, [named_table, public, {keypos, 1}, bag]),
     Port = etorrent_config:udp_port(),
     {ok, Socket} = gen_udp:open(Port, [binary, {active, true}, inet, inet6]),
     {ok, #state{ socket = Socket }}.
 
+%% @private
 handle_call({announce, Tracker, PL}, From, S) ->
     case ets:lookup(?TAB, {conn_id, Tracker}) of
 	[] ->
@@ -95,7 +135,7 @@ handle_call(Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
 
-
+%% @private
 handle_cast({need_requestor, Tracker, N}, S) ->
     case ets:lookup(?TAB, {conn_id_req, Tracker}) of
 	[] ->
@@ -125,6 +165,7 @@ handle_cast(Msg, State) ->
     ?WARN([unknown_msg, Msg]),
     {noreply, State}.
 
+%% @private
 handle_info({udp, _, _IP, _Port, Packet}, S) ->
     etorrent_udp_tracker_proto:decode_dispatch(Packet),
     {noreply, S};
@@ -160,9 +201,11 @@ handle_info(Info, State) ->
     ?WARN([unknown_info, Info]),
     {noreply, State}.
 
+%% @private
 terminate(_Reason, _State) ->
     ok.
 
+%% @private
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 

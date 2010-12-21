@@ -1,14 +1,6 @@
-%%%-------------------------------------------------------------------
-%%% File    : etorrent_utils.erl
-%%% Author  : User Jlouis <jesper.louis.andersen@gmail.com>
-%%% License : See COPYING
-%%% Description : A selection of utilities used throughout the code
-%%%               Should probably be standard library in Erlang some of them
-%%%               If a function does not really fit into another module, they
-%%%               tend to go here if general enough.
-%%%
-%%% Created : 17 Apr 2007 by User Jlouis <jesper.louis.andersen@gmail.com>
-%%%-------------------------------------------------------------------
+%% @author Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
+%% @doc Various miscellaneous utilities not fitting into other places
+%% @end
 -module(etorrent_utils).
 
 -ifdef(TEST).
@@ -21,6 +13,9 @@
 %% "stdlib-like" functions
 -export([gsplit/2, queue_remove/2, group/1,
 	 list_shuffle/1, date_str/1]).
+
+%% "time-like" functions
+-export([now_subtract_seconds/2]).
 
 %% "bittorrent-like" functions
 -export([decode_ips/1]).
@@ -61,6 +56,8 @@ queue_remove(Item, Q) ->
 list_shuffle(List) ->
     merge_shuffle(List).
 
+%% @doc A Date formatter for {{Y, Mo, D}, {H, Mi, S}}.
+%% @end
 -spec date_str({{integer(), integer(), integer()},
                 {integer(), integer(), integer()}}) -> string().
 date_str({{Y, Mo, D}, {H, Mi, S}}) ->
@@ -97,6 +94,19 @@ group([E | L]) ->
 group(E, K, []) -> [{E, K}];
 group(E, K, [E | R]) -> group(E, K+1, R);
 group(E, K, [F | R]) -> [{E, K} | group(F, 1, R)].
+
+% @doc Subtract a time delta in millsecs from a now() triple
+% @end
+-spec now_subtract_seconds({integer(), integer(), integer()}, integer()) ->
+    {integer(), integer(), integer()}.
+now_subtract_seconds({Megasecs, Secs, Ms}, Subsecs) ->
+    case Secs - Subsecs of
+        N when N >= 0 ->
+            {Megasecs, N, Ms};
+        N ->
+            Needed = abs(N) div 1000000 + 1,
+            {Megasecs - Needed, N + (Needed * 1000000), Ms}
+    end.
 
 %%====================================================================
 

@@ -1,8 +1,4 @@
-%%
-%% %CopyrightBegin%
-%%
-%% Copyright Ericsson AB 2006-2009. All Rights Reserved.
-%%
+
 %% The contents of this file are subject to the Erlang Public License,
 %% Version 1.1, (the "License"); you may not use this file except in
 %% compliance with the License. You should have received a copy of the
@@ -14,20 +10,21 @@
 %% the License for the specific language governing rights and limitations
 %% under the License.
 %%
-%% %CopyrightEnd%
-%%
-%%
-%%--------------------------------------------------------------------
-%%  Note: This URI-parsing library is stolen from OTP_R13B04-274-g3a68c36 from
-%%    the inets application. I have bastardized it here for our purposes.
-%%--------------------------------------------------------------------
+%% @copyright Ericsson AB 2006-2009. All Rights Reserved.
+%% @doc URI-parsing library from OTP_R13B04-274-g3a68c36.
+%% <p>A simple steal of an internal HTTP parsing library to
+%% etorrent. It should probably be updated regurlarly.</p>
+%% @end
 -module(etorrent_http_uri).
 
 -export([parse/1]).
 
 %%%=========================================================================
-%%%  API
-%%%=========================================================================
+
+%% @doc Parse an URL string() into its components
+%% <p>The URL is parsed into `{Scheme, UserInfo, Host, Port, Path,
+%% Query}', or into `{error, Reason}'.</p>
+%% @end
 -spec parse(string()) -> {error, term()}
     | {http | https | udp, string(), string(), integer(), string(), string()}.
 parse(AbsURI) ->

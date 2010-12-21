@@ -1,10 +1,10 @@
-%%%-------------------------------------------------------------------
-%%% File    : etorrent_rate_mgr.erl
-%%% Author  : Jesper Louis Andersen <jlouis@ogre.home>
-%%% Description : Rate management process
-%%%
-%%% Created : 17 Jul 2008 by Jesper Louis Andersen <jlouis@ogre.home>
-%%%-------------------------------------------------------------------
+%% @author Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
+%% @doc Manage the rates of each connected peer
+%% <p>This module implements a bookkeeping server. The server has
+%% ETS tables which is used to save the current upload and download
+%% rate as well as the state of each peer.</p>
+%% @end
+%% @todo module is a candidate for renaming. etorrent_g_peer_state.
 -module(etorrent_rate_mgr).
 
 -include("rate_mgr.hrl").
@@ -52,35 +52,72 @@
 -ignore_xref([{'start_link', 0}]).
 
 %% ====================================================================
+
+%% @doc Start the server
+%% @end
 -spec start_link() -> ignore | {ok, pid()} | {error, term()}.
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
-%% Send state information
+%% @doc Update a peer state to `choked'
+%% <p><em>Clarification:</em> This state is what the remote peer has
+%% done to us.</p>
+%% @end
 -spec choke(integer(), pid()) -> ok.
 choke(Id, Pid) ->
     alter_state(choke, Id, Pid).
 
+%% @doc Update a peer state to `unchoked'
+%% <p><em>Clarification:</em> This state is what the remote peer has
+%% done to us.</p>
+%% @end
 -spec unchoke(integer(), pid()) -> ok.
 unchoke(Id, Pid) ->
     alter_state(unchoke, Id, Pid).
 
+%% @doc Update a peer state to `interested'
+%% <p><em>Clarification:</em> This state is what the remote peer
+%% thinks of us.</p>
+%% @end
 -spec interested(integer(), pid()) -> ok.
 interested(Id, Pid) ->
     alter_state(interested, Id, Pid).
 
+%% @doc Update a peer state to `not_interested'
+%% <p><em>Clarification:</em> This state is what the remote peer
+%% thinks of us.</p>
+%% @end
 -spec not_interested(integer(), pid()) -> ok.
 not_interested(Id, Pid) ->
     alter_state(not_interested, Id, Pid).
 
+%% @doc Update state: we `choke' the peer
+%% @end
 -spec local_choke(integer(), pid()) -> ok.
 local_choke(Id, Pid) ->
     alter_state(local_choke, Id, Pid).
 
+%% @doc Update state: we no longer `choke' the peer
+%% @end
 -spec local_unchoke(integer(), pid()) -> ok.
 local_unchoke(Id, Pid) ->
     alter_state(local_unchoke, Id, Pid).
 
+%% @doc Get the current state of a peer
+%% <p>This function return `{value, Snubbed, PL}' where `Snubbed' is a
+%% boolean() telling us whether the peer has been snubbed or not. `PL'
+%% is a property list with these fields:
+%% <dl>
+%%  <dt>`pid'</dt>
+%%    <dd>The pid of the peer</dd>
+%%  <dt>`choke_state'</dt>
+%%    <dd>boolean() - is the remote choking us?</dd>
+%%  <dt>`interest_state'</dt>
+%%    <dd>Is the peer interested in us?</dd>
+%%  <dt>`local_choke'</dt>
+%%    <dd>Are we currently choking the peer?</dd>
+%% </dl></p>
+%% @end
 -spec get_state(integer(), pid()) -> {value, boolean(), [{atom(), term()}]}.
 get_state(Id, Who) ->
     P = case ets:lookup(etorrent_peer_state, {Id, Who}) of
@@ -98,6 +135,11 @@ get_state(Id, Who) ->
               end,
     {value, Snubbed, RP}.
 
+%% @doc Get the `#peer_state{}' record for a peer.
+%% <p>If the peer is not in the table, the standard the default record
+%% is returned.</p>
+%% @end
+%% @todo rename as 'get_'
 -spec select_state(integer(), pid()) -> {value, #peer_state{}}.
 select_state(Id, Who) ->
     case ets:lookup(etorrent_peer_state, {Id, Who}) of
@@ -105,6 +147,12 @@ select_state(Id, Who) ->
         [P] -> {value, P}
     end.
 
+%% @doc Return a property list of interest for a pid
+%% <p>The following values are returned: `interested', `choking'. Both
+%% are boolean() values signifying what the remote thinks of us.</p>
+%% <p>If the pid is not found, a dummy value is returned. Such a
+%% dummy-peer is never interested and always choking.</p>
+%% @end
 pids_interest(Id, Pid) ->
     case ets:lookup(etorrent_peer_state, {Id, Pid}) of
 	[] -> [{interested, false},
@@ -113,22 +161,44 @@ pids_interest(Id, Pid) ->
 		{choking, P#peer_state.choke_state}]
     end.
 
+%% @doc Get the receive rate of the peer
+%% @end
+%% @todo rename to 'get_'
+%% @todo eradicate the 'undefined' return here
 -spec fetch_recv_rate(integer(), pid()) ->
     none | undefined | float().
 fetch_recv_rate(Id, Pid) -> fetch_rate(etorrent_recv_state, Id, Pid).
 
+%% @doc Get the send rate of the peer
+%% @end
+%% @todo rename to 'get_'
+%% @todo eradicate the 'undefined' return here
 -spec fetch_send_rate(integer(), pid()) ->
     none | undefined | float().
 fetch_send_rate(Id, Pid) -> fetch_rate(etorrent_send_state, Id, Pid).
 
+%% @doc Set the receive rate of the peer
+%% @end
+%% @todo rename to 'set_' or something such
+%% @todo eradicate the 'undefined' return here
 -spec recv_rate(integer(), pid(), float(), normal | snubbed) -> ok.
 recv_rate(Id, Pid, Rate, SnubState) ->
     alter_state(recv_rate, Id, Pid, Rate, SnubState).
 
+%% @doc Set the send rate of the peer
+%% @end
+%% @todo rename to 'set_' or something such
+%% @todo eradicate the 'undefined' return here
 -spec send_rate(integer(), pid(), float()) -> ok.
 send_rate(Id, Pid, Rate) ->
     alter_state(send_rate, Id, Pid, Rate, unchanged).
 
+%% @doc Get the rate of a given Torrent
+%% <p>This function proceeds by summing the rates for a given torrent.</p>
+%% <p>The `Direction' parameter is either `leeching' or `seeding'. If
+%% we are leeching the torrent, the receive rate is used. If we are
+%% seeding, the send rate is used.</p>
+%% @end
 -spec get_torrent_rate(integer(), leeching | seeding) -> {ok, float()}.
 get_torrent_rate(Id, Direction) ->
     Tab = case Direction of
@@ -139,6 +209,11 @@ get_torrent_rate(Id, Direction) ->
     R = lists:sum([K#rate_mgr.rate || K <- Objects]),
     {ok, R}.
 
+%% @doc Return the global receive and send rates
+%% <p>This function returns `{Recv, Send}' where both `Recv' and
+%% `Send' are float() values.</p>
+%% @end
+%% @todo Return a proplist(), not this thing you can't remember.
 -spec global_rate() -> {float(), float()}.
 global_rate() ->
     RR = sum_global_rate(etorrent_recv_state),
@@ -147,6 +222,7 @@ global_rate() ->
 
 %% ====================================================================
 
+%% @private
 init([]) ->
     RTid = ets:new(etorrent_recv_state, [public, named_table,
                                          {keypos, #rate_mgr.pid}]),
@@ -158,10 +234,12 @@ init([]) ->
                  global_recv = etorrent_rate:init(?RATE_FUDGE),
                  global_send = etorrent_rate:init(?RATE_FUDGE)}}.
 
+%% @private
 handle_call(Request, _From, State) ->
     ?INFO([unknown_request, ?MODULE, Request]),
     {reply, ok, State}.
 
+%% @private
 handle_cast({monitor, Pid}, S) ->
     erlang:monitor(process, Pid),
     {noreply, S};
@@ -169,6 +247,7 @@ handle_cast(Msg, State) ->
     ?INFO([unknown_cast, ?MODULE, Msg]),
     {noreply, State}.
 
+%% @private
 handle_info({'DOWN', _Ref, process, Pid, _Reason}, S) ->
     true = ets:match_delete(etorrent_recv_state, #rate_mgr { pid = {'_', Pid}, _='_'}),
     true = ets:match_delete(etorrent_send_state, #rate_mgr { pid = {'_', Pid}, _='_'}),
@@ -177,9 +256,11 @@ handle_info({'DOWN', _Ref, process, Pid, _Reason}, S) ->
 handle_info(_Info, State) ->
     {noreply, State}.
 
+%% @private
 terminate(_Reason, _S) ->
     ok.
 
+%% @private
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 

@@ -1,12 +1,13 @@
-%%%-------------------------------------------------------------------
-%%% File    : etorrent_t_control.erl
-%%% Author  : Jesper Louis Andersen <jlouis@succubus.local.domain>
-%%% License : See COPYING
-%%% Description : Representation of a torrent for downloading
-%%%
-%%% Created :  9 Jul 2007 by Jesper Louis Andersen
-%%%   <jlouis@succubus.local.domain>
-%%%-------------------------------------------------------------------
+%% @author Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
+%% @doc Torrent Control process
+%% <p>This process controls a Torrent Download. It is the "first"
+%% process started and it checks the torrent for correctness. When it
+%% has checked the torrent, it will start up the rest of the needed
+%% processes, attach them to the supervisor and then lay dormant for
+%% most of the time, until the torrent needs to be stopped again.</p>
+%% <p><b>Note:</b> This module is pretty old, and is a prime candidate
+%% for some rewriting.</p>
+%% @end
 -module(etorrent_t_control).
 
 -behaviour(gen_fsm).
@@ -14,11 +15,11 @@
 -include("log.hrl").
 
 -ignore_xref([{'start_link', 3}, {start, 1}, {initializing, 2},
-	      {started, 2}, {stopped, 2}, {stop, 1}, {torrent_checked, 2}]).
+	      {started, 2}, {stopped, 2}, {stop, 1}]).
 %% API
 -export([start_link/3, start/1, stop/1,
-        torrent_checked/2, tracker_error_report/2, completed/1,
-        tracker_warning_report/2,
+         tracker_error_report/2, completed/1,
+         tracker_warning_report/2,
 
         check_torrent/1]).
 
@@ -40,52 +41,52 @@
 -define(CHECK_WAIT_TIME, 3000).
 
 %% ====================================================================
+
+%% @doc Start the server process
 -spec start_link(integer(), string(), binary()) ->
         {ok, pid()} | ignore | {error, term()}.
 start_link(Id, Path, PeerId) ->
     gen_fsm:start_link(?MODULE, [self(), Id, Path, PeerId], []).
 
-% @doc Request that the given torrent is stopped
-% @end
+%% @doc Request that the given torrent is stopped
+%% @end
 -spec stop(pid()) -> ok.
 stop(Pid) ->
     gen_fsm:send_event(Pid, stop).
 
-% @doc Request that the given torrent is started
-% @end
+%% @doc Request that the given torrent is started
+%% @end
 -spec start(pid()) -> ok.
 start(Pid) ->
     gen_fsm:send_event(Pid, start).
 
-% @doc Request that the given torrent is checked (eventually again)
-% @end
+%% @doc Request that the given torrent is checked (eventually again)
+%% @end
 -spec check_torrent(pid()) -> ok.
 check_torrent(Pid) ->
     gen_fsm:send_event(Pid, check_torrent).
 
-% @todo Document this function
--spec torrent_checked(pid(), integer()) -> ok.
-torrent_checked(Pid, DiskState) ->
-    gen_fsm:send_event(Pid, {torrent_checked, DiskState}).
-
-% @doc Report an error from the tracker
-% @end
+%% @doc Report an error from the tracker
+%% @end
 -spec tracker_error_report(pid(), term()) -> ok.
 tracker_error_report(Pid, Report) ->
     gen_fsm:send_event(Pid, {tracker_error_report, Report}).
 
-% @doc Report a warning from the tracker
-% @end
+%% @doc Report a warning from the tracker
+%% @end
 -spec tracker_warning_report(pid(), term()) -> ok.
 tracker_warning_report(Pid, Report) ->
     gen_fsm:send_event(Pid, {tracker_warning_report, Report}).
 
+%% @doc Tell the controlled the torrent is complete
+%% @end
 -spec completed(pid()) -> ok.
 completed(Pid) ->
     gen_fsm:send_event(Pid, completed).
 
 %% ====================================================================
 
+%% @private
 init([Parent, Id, Path, PeerId]) ->
     etorrent_table:new_torrent(Path, Parent, Id),
     etorrent_chunk_mgr:new(Id),
@@ -95,6 +96,8 @@ init([Parent, Id, Path, PeerId]) ->
                               peer_id = PeerId,
                               parent_pid = Parent}, 0}. % Force timeout instantly.
 
+%% @private
+%% @todo Split and simplify this monster function
 initializing(timeout, S) ->
     case etorrent_table:acquire_check_token(S#state.id) of
         false ->
@@ -147,6 +150,7 @@ initializing(timeout, S) ->
              S#state{tracker_pid = TrackerPid}}
     end.
 
+%% @private
 started(stop, S) ->
     {stop, argh, S};
 started(check_torrent, S) ->
@@ -160,7 +164,7 @@ started(completed, #state { id = Id, tracker_pid = TrackerPid } = S) ->
     etorrent_event_mgr:completed_torrent(Id),
     etorrent_tracker_communication:completed(TrackerPid),
     {next_state, started, S};
-% @todo hoist these reports so they are part of the event system!
+%% @todo kill this
 started({tracker_error_report, Reason}, S) ->
     io:format("Got tracker error: ~s~n", [Reason]),
     {next_state, started, S};
@@ -168,31 +172,37 @@ started({tracker_warning_report, Reason}, S) ->
     io:format("Got tracker warning report: ~s~n", [Reason]),
     {next_state, started, S}.
 
+%% @private
 stopped(start, S) ->
     {stop, argh, S}.
 
+%% @private
 handle_event(Msg, SN, S) ->
     io:format("Problem: ~p~n", [Msg]),
     {next_state, SN, S}.
 
+%% @private
 handle_sync_event(_Event, _From, StateName, State) ->
     Reply = ok,
     {reply, Reply, StateName, State}.
 
+%% @private
 handle_info(Info, StateName, State) ->
     ?WARN([unknown_info, Info, StateName]),
     {next_state, StateName, State}.
 
+%% @private
 terminate(_Reason, _StateName, _S) ->
     ok.
 
+%% @private
 code_change(_OldVsn, StateName, State, _Extra) ->
     {ok, StateName, State}.
 
 %% --------------------------------------------------------------------
+
+%% @todo Does this function belong here?
 calculate_amount_left(Id) when is_integer(Id) ->
     Pieces = etorrent_piece_mgr:select(Id),
     lists:sum([etorrent_piece_mgr:size_piece(P) || P <- Pieces]).
-
-
 

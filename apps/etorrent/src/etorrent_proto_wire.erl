@@ -1,3 +1,9 @@
+%% @author Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
+%% @doc Library module for handling the wire protocol
+%% <p>This module implements a library of functions necessary to
+%% handle the wire-protocol of etorrent. In this module there are
+%% functions for encoding and decoding, etc</p>
+%% @end
 -module(etorrent_proto_wire).
 
 -include("etorrent_version.hrl").
@@ -65,11 +71,15 @@
                 | {allowed_fast, [integer()]}
 		| {extended, integer(), binary()}.
 
-% @doc Decode an incoming (partial) packet
-% <p>The incoming packet function will attempt to decode an incoming packet. It
-% returns either the decoded packet, or it returns a partial continuation to
-% continue packet reading.</p>
-% @end
+%% @doc Decode an incoming (partial) packet
+%% <p>The incoming packet function will attempt to decode an incoming packet. It
+%% returns either the decoded packet, or it returns a partial continuation to
+%% continue packet reading.</p>
+%% <p>The function is used when a Socket is in "slow" mode and will
+%% get less than a full packet in. We can then use this function and
+%% its continuation-construction to eat up partial packets, until we
+%% have the full one and can decode it.</p>
+%% @end
 -type cont_state() :: {partial, binary() | {integer(), [binary()]}}.
 -spec incoming_packet(none | cont_state(), binary()) ->
     ok | {ok, binary(), binary()} | cont_state().
@@ -98,10 +108,12 @@ incoming_packet({partial, {Left, IOL}}, Packet)
         when byte_size(Packet) < Left, is_integer(Left) ->
     {partial, {Left - byte_size(Packet), [Packet | IOL]}}.
 
-% @doc Send a message on a socket.
-% <p>Returns a pair {R, Sz}, where R is the result of the send and Sz is the
-% size of the sent datagram.</p>
-% @end
+%% @doc Send a message on a Socket.
+%% <p>Returns a pair {R, Sz}, where R is the result of the send and Sz is the
+%% size of the sent datagram.</p>
+%% <p>The Mode supplied is either 'fast' or 'slow' depending on the
+%% mode of the Socket in question.</p>
+%% @end
 -spec send_msg(port(), packet(), slow | fast) -> {ok | {error, term()},
                                                   integer()}.
 send_msg(Socket, Msg, Mode) ->
@@ -114,8 +126,8 @@ send_msg(Socket, Msg, Mode) ->
             {gen_tcp:send(Socket, Datagram), Sz}
     end.
 
-% @doc Decode a binary bitfield into a pieceset
-% @end
+%% @doc Decode a binary bitfield into a pieceset
+%% @end
 -spec decode_bitfield(integer(), binary()) ->
     {ok, gb_set()} | {error, term()}.
 decode_bitfield(Size, BinaryLump) ->
@@ -129,11 +141,11 @@ decode_bitfield(Size, BinaryLump) ->
             {error, bitfield_had_wrong_padding}
     end.
 
-% @doc Encode a pieceset into a binary bitfield
-% <p>The Size entry is the full size of the bitfield, so the function knows
-% how much and when to pad
-% </p>
-% @end
+%% @doc Encode a pieceset into a binary bitfield
+%% <p>The Size entry is the full size of the bitfield, so the function knows
+%% how much and when to pad
+%% </p>
+%% @end
 -spec encode_bitfield(integer(), gb_set()) -> binary().
 encode_bitfield(Size, PieceSet) ->
     PadBits = 8 - (Size rem 8),
@@ -148,8 +160,11 @@ encode_bitfield(Size, PieceSet) ->
     0 = length(Bits) rem 8,
     list_to_binary(build_bytes(Bits)).
 
-% @doc Decode a message from the wire
-% @end
+%% @doc Decode a message from the wire
+%% <p>This function take a binary input, assumed to be a wire protocol
+%% packet. It then decodes this packet into an internally used
+%% Erlang-term which is much easier to process.</p>
+%% @end
 -spec decode_msg(binary()) -> packet().
 decode_msg(Message) ->
    case Message of
@@ -160,9 +175,12 @@ decode_msg(Message) ->
        <<?NOT_INTERESTED>> -> not_interested;
        <<?HAVE, PieceNum:32/big>> -> {have, PieceNum};
        <<?BITFIELD, BitField/binary>> -> {bitfield, BitField};
-       <<?REQUEST, Index:32/big, Begin:32/big, Len:32/big>> -> {request, Index, Begin, Len};
-       <<?PIECE, Index:32/big, Begin:32/big, Data/binary>> -> {piece, Index, Begin, Data};
-       <<?CANCEL, Index:32/big, Begin:32/big, Len:32/big>> -> {cancel, Index, Begin, Len};
+       <<?REQUEST, Index:32/big, Begin:32/big, Len:32/big>> ->
+	   {request, Index, Begin, Len};
+       <<?PIECE, Index:32/big, Begin:32/big, Data/binary>> ->
+	   {piece, Index, Begin, Data};
+       <<?CANCEL, Index:32/big, Begin:32/big, Len:32/big>> ->
+	   {cancel, Index, Begin, Len};
        <<?PORT, Port:16/big>> -> {port, Port};
        %% FAST EXTENSION MESSAGES
        <<?SUGGEST, Index:32/big>> -> {suggest, Index};
@@ -177,22 +195,22 @@ decode_msg(Message) ->
 	   {extended, Type, Contents}
    end.
 
-% @doc Tell how many bytes there are left on a continuation
-% <p>Occasionally, we will need to know how many bytes we are missing on a
-% continuation, before we have to full packet. This function reports this.</p>
-% @end
+%% @doc Tell how many bytes there are left on a continuation
+%% <p>Occasionally, we will need to know how many bytes we are missing on a
+%% continuation, before we have to full packet. This function reports this.</p>
+%% @end
 -spec remaining_bytes(none | cont_state()) -> {val, integer()}.
 remaining_bytes(none) -> {val, 0};
 remaining_bytes({partial, _D}) when is_binary(_D) -> {val, 0};
 remaining_bytes({partial, {Left, _}}) when is_integer(Left) -> {val, Left}.
 
-% @doc Complete a partially initiated handshake.
-% <p>This function is used for incoming peer connections. They start off by
-% transmitting all their information, we check it against our current database
-% of what we accept. If we accept the message, then this function is called to
-% complete the handshake by reflecting back the correct handshake to the
-% peer.</p>
-% @end
+%% @doc Complete a partially initiated handshake.
+%% <p>This function is used for incoming peer connections. They start off by
+%% transmitting all their information, we check it against our current database
+%% of what we accept. If we accept the message, then this function is called to
+%% complete the handshake by reflecting back the correct handshake to the
+%% peer.</p>
+%% @end
 -spec complete_handshake(port(), binary(), binary()) ->
     ok | {error, term()}.
 complete_handshake(Socket, InfoHash, LocalPeerId) ->
@@ -204,12 +222,12 @@ complete_handshake(Socket, InfoHash, LocalPeerId) ->
         error:_ -> {error, stop}
     end.
 
-% @doc Receive and incoming handshake
-% <p>If the handshake is in the incoming direction, the method is to fling off
-% the protocol header, so the peer knows we are talking bittorrent. Then it
-% waits for the header to arrive. If the header is good, the connection can be
-% completed by a call to complete_handshake/3.</p>
-% @end
+%% @doc Receive and incoming handshake
+%% <p>If the handshake is in the incoming direction, the method is to fling off
+%% the protocol header, so the peer knows we are talking bittorrent. Then it
+%% waits for the header to arrive. If the header is good, the connection can be
+%% completed by a call to complete_handshake/3.</p>
+%% @end
 -spec receive_handshake(port()) ->
     {error, term()} | {ok, [{integer(), term()}], binary(), binary()}.
 receive_handshake(Socket) ->
@@ -221,11 +239,11 @@ receive_handshake(Socket) ->
             {error, X}
     end.
 
-% @doc Initiate a handshake in the outgoing direction
-% <p>If we are initiating a connection, then it is simple. We just fling off
-% everything to the peer and await the peer to get back to us. When he
-% eventually gets back, we can check his InfoHash against ours.</p>
-% @end
+%% @doc Initiate a handshake in the outgoing direction
+%% <p>If we are initiating a connection, then it is simple. We just fling off
+%% everything to the peer and await the peer to get back to us. When he
+%% eventually gets back, we can check his InfoHash against ours.</p>
+%% @end
 -type capabilities() :: [{integer(), atom()}].
 -spec initiate_handshake(port(), binary(), binary()) ->
     {error, term()} | {ok, capabilities(), binary(), binary()}
@@ -241,6 +259,18 @@ initiate_handshake(Socket, LocalPeerId, InfoHash) ->
     catch
         error:_ -> {error, stop}
     end.
+
+%% @doc Return the default contents of the Extended Messaging Protocol (BEP-10)
+%% <p>This function builds up the extended messaging contents default
+%% bcoded term to send to a peer, when the peer has been negotiated to
+%% support the extended messaging protocol (BEP-10).</p>
+%% <p>Note that the contents are returned as a binary() type.</p>
+%% @end
+-spec extended_msg_contents() -> binary().
+extended_msg_contents() ->
+    Port = etorrent_config:listen_port(),
+    extended_msg_contents(Port, ?AGENT_TRACKER_STRING, 250).
+
 %% =======================================================================
 
 %% Encode a message for the wire
@@ -390,10 +420,6 @@ encode_fastset([]) -> <<>>;
 encode_fastset([Idx | Rest]) ->
     R = encode_fastset(Rest),
     <<R/binary, Idx:32>>.
-
-extended_msg_contents() ->
-    Port = etorrent_config:listen_port(),
-    extended_msg_contents(Port, ?AGENT_TRACKER_STRING, 250).
 
 extended_msg_contents(Port, ClientVersion, ReqQ) ->
     iolist_to_binary(

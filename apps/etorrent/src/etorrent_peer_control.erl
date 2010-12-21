@@ -1,3 +1,13 @@
+%% @author Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
+%% @doc Manage and control peer communication.
+%% <p>This gen_server handles the communication with a single peer. It
+%% handles incoming connections, and transmits the right messages back
+%% to the peer, according to the specification of the BitTorrent
+%% procotol.</p>
+%% <p>Each peer runs one gen_server of this kind. It handles the
+%% queueing of pieces, requestal of new chunks to download, choking
+%% states, the remotes request queue, etc.</p>
+%% @end
 -module(etorrent_peer_control).
 
 -behaviour(gen_server).
@@ -57,77 +67,73 @@
 -ignore_xref([{start_link, 6}]).
 
 %%====================================================================
-%% API
-%%====================================================================
-%%--------------------------------------------------------------------
-%% Function: start_link() -> {ok,Pid} | ignore | {error,Error}
-%% Description: Starts the server
-%%--------------------------------------------------------------------
+
+%% @doc Starts the server
+%% @end
 start_link(LocalPeerId, InfoHash, Id, {IP, Port}, Caps, Socket) ->
     gen_server:start_link(?MODULE, [LocalPeerId, InfoHash,
                                     Id, {IP, Port}, Caps, Socket], []).
 
-%%--------------------------------------------------------------------
-%% Function: stop/1
-%% Args: Pid ::= pid()
-%% Description: Gracefully ask the server to stop.
-%%--------------------------------------------------------------------
+%% @doc Gracefully ask the server to stop.
+%% @end
 stop(Pid) ->
     gen_server:cast(Pid, stop).
 
-%%--------------------------------------------------------------------
-%% Function: choke(Pid)
-%% Description: Choke the peer.
-%%--------------------------------------------------------------------
+%% @doc Choke the peer.
+%% <p>The intended caller of this function is the {@link etorrent_choker}</p>
+%% @end
 choke(Pid) ->
     gen_server:cast(Pid, choke).
 
-%%--------------------------------------------------------------------
-%% Function: unchoke(Pid)
-%% Description: Unchoke the peer.
-%%--------------------------------------------------------------------
+%% @doc Unchoke the peer.
+%% <p>The intended caller of this function is the {@link etorrent_choker}</p>
+%% @end
 unchoke(Pid) ->
     gen_server:cast(Pid, unchoke).
 
-%%--------------------------------------------------------------------
-%% Function: have(Pid, PieceNumber)
-%% Description: Tell the peer we have just received piece PieceNumber.
-%%--------------------------------------------------------------------
+%% @doc Tell the peer we have just received piece PieceNumber.
+%% <p>The intended caller of this function is the {@link etorrent_piece_mgr}</p>
+%% @end
 have(Pid, PieceNumber) ->
     gen_server:cast(Pid, {have, PieceNumber}).
 
-%%--------------------------------------------------------------------
-%% Function: endgame_got_chunk(Pid, Index, Offset) -> ok
-%% Description: We got the chunk {Index, Offset}, handle it.
-%%--------------------------------------------------------------------
+%% @doc We got a chunk while in endgame mode, handle it.
+%% <p>The logic is that the chunk may be queued up for this peer. We
+%% wish to either cancel the request or remove it from the request
+%% queue before it is sent out if possible.</p>
+%% @end
 endgame_got_chunk(Pid, Chunk) ->
     gen_server:cast(Pid, {endgame_got_chunk, Chunk}).
 
-%% @doc Complete the handshake initiated by another client.
+%% @doc Initialize the connection.
+%% <p>The `Way' parameter tells the client of the connection is
+%% `incoming' or `outgoing'. They are handled differently since part
+%% of the handshake is already completed for incoming connections.</p>
+%% @end
 -type direction() :: incoming | outgoing.
 -spec initialize(pid(), direction()) -> ok.
 initialize(Pid, Way) ->
     gen_server:cast(Pid, {initialize, Way}).
 
-%% Request this this peer try queue up pieces.
+%% @doc Request this this peer try queue up pieces.
+%% <p>Used in certain situations where another peer gives back
+%% chunks. This call ensures progress by giving other peers a chance
+%% at grabbing the given-back pieces.</p>
+%% @end
 try_queue_pieces(Pid) ->
     gen_server:cast(Pid, try_queue_pieces).
 
-%% This message is incoming to the peer
+%% @doc Inject an incoming message to the process.
+%% <p>This is the main "Handle-incoming-messages" call. The intended
+%% caller is {@link etorrent_peer_recv}, whenever a message arrives on
+%% the socket.</p>
+%% @end
 incoming_msg(Pid, Msg) ->
     gen_server:cast(Pid, {incoming_msg, Msg}).
 
 %%====================================================================
-%% gen_server callbacks
-%%====================================================================
 
-%%--------------------------------------------------------------------
-%% Function: init(Args) -> {ok, State} |
-%%                         {ok, State, Timeout} |
-%%                         ignore               |
-%%                         {stop, Reason}
-%% Description: Initiates the server
-%%--------------------------------------------------------------------
+%% @private
 init([LocalPeerId, InfoHash, Id, {IP, Port}, Caps, Socket]) ->
     %% @todo: Update the leeching state to seeding when peer finished torrent.
     ok = etorrent_table:new_peer(IP, Port, Id, self(), leeching),
@@ -145,15 +151,7 @@ init([LocalPeerId, InfoHash, Id, {IP, Port}, Caps, Socket]) ->
        extended_messaging = proplists:get_bool(extended_messaging, Caps)}}.
        %% file_system_pid = FS}}.
 
-%%--------------------------------------------------------------------
-%% Function: handle_cast(Msg, State) -> {noreply, State} |
-%%                                      {noreply, State, Timeout} |
-%%                                      {stop, Reason, State}
-%% Description: Handling cast messages
-%%--------------------------------------------------------------------
-%% @todo: This ought to be handled elsewhere. For now, it is ok to have here,
-%%  but it should be a temporary process which tries to make a connection and
-%%  sets the initial stuff up.
+%% @private
 handle_cast({initialize, Way}, S) ->
     case etorrent_counters:obtain_peer_slot() of
         ok ->
@@ -200,12 +198,7 @@ handle_cast(Msg, State) ->
     {noreply, State}.
 
 
-%%--------------------------------------------------------------------
-%% Function: handle_info(Info, State) -> {noreply, State} |
-%%                                       {noreply, State, Timeout} |
-%%                                       {stop, Reason, State}
-%% Description: Handling all non call/cast messages
-%%--------------------------------------------------------------------
+%% @private
 handle_info({tcp, _P, _Packet}, State) ->
     ?ERR([wrong_controller]),
     {noreply, State};
@@ -213,18 +206,19 @@ handle_info(Info, State) ->
     ?WARN([unknown_msg, Info]),
     {noreply, State}.
 
-%%--------------------------------------------------------------------
-%% Function: terminate(Reason, State) -> void()
-%% Description: This function is called by a gen_server when it is about to
-%% terminate. It should be the opposite of Module:init/1 and do any necessary
-%% cleaning up. When it returns, the gen_server terminates with Reason.
-%% The return value is ignored.
-%%--------------------------------------------------------------------
+%% @private
 terminate(_Reason, _S) ->
     ok.
 
-%%--------------------------------------------------------------------
-%%% Internal functions
+%% @private
+handle_call(Request, _From, State) ->
+    ?WARN([unknown_handle_call, Request]),
+    {noreply, State}.
+
+%% @private
+code_change(_OldVsn, State, _Extra) ->
+    {ok, State}.
+
 %%--------------------------------------------------------------------
 
 %%--------------------------------------------------------------------
@@ -552,10 +546,4 @@ peer_seeds(Id, 0) ->
     end;
 peer_seeds(_Id, _N) -> ok.
 
-handle_call(Request, _From, State) ->
-    ?WARN([unknown_handle_call, Request]),
-    {noreply, State}.
-
-code_change(_OldVsn, State, _Extra) ->
-    {ok, State}.
 

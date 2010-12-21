@@ -1,10 +1,13 @@
-%%%-------------------------------------------------------------------
-%%% File    : acceptor.erl
-%%% Author  : Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
-%%% Description : Accept new connections from the network.
-%%%
-%%% Created : 30 Jul 2007 by Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
-%%%-------------------------------------------------------------------
+%% @author Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
+%% @doc Wait for incoming connections and accept them.
+%% <p>The gen_server acceptor process timeouts immediately and
+%% awaits a handshake. If the handshake comes through, it will do the
+%% initial part of the handshake and then eventually spawn up a
+%% process to continue the peer communication.</p>
+%% <p>In other words, we only handshake here and then carry on in
+%% another process tree, linked into a supervisor tree underneath the
+%% right torrent.</p>
+%% @end
 -module(etorrent_acceptor).
 
 -behaviour(gen_server).
@@ -22,6 +25,7 @@
                  our_peer_id}).
 
 -ignore_xref([{'start_link', 1}]).
+%%====================================================================
 
 %% @doc Starts the server.
 %% @end
@@ -30,49 +34,23 @@ start_link(OurPeerId) ->
     gen_server:start_link(?MODULE, [OurPeerId], []).
 
 %%====================================================================
-%% gen_server callbacks
-%%====================================================================
 
-%%--------------------------------------------------------------------
-%% Function: init(Args) -> {ok, State} |
-%%                         {ok, State, Timeout} |
-%%                         ignore               |
-%%                         {stop, Reason}
-%% Description: Initiates the server
-%%--------------------------------------------------------------------
+%% @private
 init([OurPeerId]) ->
     {ok, ListenSocket} = etorrent_listener:get_socket(),
     {ok, #state{ listen_socket = ListenSocket,
                  our_peer_id = OurPeerId}, 0}.
 
-%%--------------------------------------------------------------------
-%% Function: %% handle_call(Request, From, State) -> {reply, Reply, State} |
-%%                                      {reply, Reply, State, Timeout} |
-%%                                      {noreply, State} |
-%%                                      {noreply, State, Timeout} |
-%%                                      {stop, Reason, Reply, State} |
-%%                                      {stop, Reason, State}
-%% Description: Handling call messages
-%%--------------------------------------------------------------------
+%% @private
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
 
-%%--------------------------------------------------------------------
-%% Function: handle_cast(Msg, State) -> {noreply, State} |
-%%                                      {noreply, State, Timeout} |
-%%                                      {stop, Reason, State}
-%% Description: Handling cast messages
-%%--------------------------------------------------------------------
+%% @private
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-%%--------------------------------------------------------------------
-%% Function: handle_info(Info, State) -> {noreply, State} |
-%%                                       {noreply, State, Timeout} |
-%%                                       {stop, Reason, State}
-%% Description: Handling all non call/cast messages
-%%--------------------------------------------------------------------
+%% @private
 handle_info(timeout, S) ->
     case gen_tcp:accept(S#state.listen_socket) of
         {ok, Socket} -> handshake(Socket, S),
@@ -83,25 +61,14 @@ handle_info(timeout, S) ->
         {error, E}            -> {stop, E, S}
     end.
 
-%%--------------------------------------------------------------------
-%% Function: terminate(Reason, State) -> void()
-%% Description: This function is called by a gen_server when it is about to
-%% terminate. It should be the opposite of Module:init/1 and do any necessary
-%% cleaning up. When it returns, the gen_server terminates with Reason.
-%% The return value is ignored.
-%%--------------------------------------------------------------------
+%% @private
 terminate(_Reason, _State) ->
     ok.
 
-%%--------------------------------------------------------------------
-%% Func: code_change(OldVsn, State, Extra) -> {ok, NewState}
-%% Description: Convert process state when code is changed
-%%--------------------------------------------------------------------
+%% @private
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
-%%--------------------------------------------------------------------
-%%% Internal functions
 %%--------------------------------------------------------------------
 
 handshake(Socket, S) ->

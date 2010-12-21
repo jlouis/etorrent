@@ -1,3 +1,16 @@
+%% @author Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
+%% @doc Handle incoming messages from a peer
+%% <p>This module is a gen_server process handling all incoming
+%% messages from a peer. The intention is that this module decodes the
+%% message and sends it on the to the {@link etorrent_peer_control}
+%% process.</p>
+%% <p>The module has two modes, fast and slow. In the fast mode, some
+%% of the packet decoding is done in the Erlang VM, but the rate
+%% granularity is somewhat lost. So we only enable fast mode when the
+%% rate goes beyond a certain threshold, so we get accurate rate
+%% measurement anyway. The change of mode is in synchronizatio with
+%% the module {@link etorrent_peer_send}.</p>
+%% @end
 -module(etorrent_peer_recv).
 -behaviour(gen_server).
 
@@ -36,14 +49,22 @@
 
 %% =======================================================================
 
+%% @doc Start the gen_server process
+%% @end
 -spec start_link(integer(), any()) -> ignore | {ok, pid()} | {error, any()}.
 start_link(TorrentId, Socket) ->
     gen_server:start_link(?MODULE, [TorrentId, Socket], []).
 
+%% @doc Callback to go to fast mode.
+%% <em>Only intended caller is {@link etorrent_peer_send}</em>
+%% @end
 -spec cb_go_fast(pid()) -> ok.
 cb_go_fast(P) ->
     gen_server:call(P, go_fast).
 
+%% @doc Callback to go to slow mode.
+%% <em>Only intended caller is {@link etorrent_peer_send}</em>
+%% @end
 -spec cb_go_slow(pid()) -> ok.
 cb_go_slow(P) ->
     gen_server:call(P, go_slow).
@@ -102,9 +123,11 @@ is_snubbing_us(_S) ->
 
 %% ======================================================================
 
+%% @private
 terminate(_Reason, _S) ->
     ok.
 
+%% @private
 handle_info(timeout,
 	    #state { controller = none,
 		     socket = Sock } = S) ->
@@ -157,10 +180,12 @@ handle_info(Info, S) ->
     ?WARN([unknown_handle_info, Info]),
     next_msg(S).
 
+%% @private
 handle_cast(Msg, S) ->
     ?WARN([unknown_handle_cast, Msg]),
     next_msg(S).
 
+%% @private
 handle_call(go_fast, _From, S) ->
     ok = inet:setopts(S#state.socket, [{active, true}, {packet, 4}, {packet_size, 256*1024}]),
     {reply, ok, S#state { mode = fast }};
@@ -171,10 +196,11 @@ handle_call(Req, _From, S) ->
     ?WARN([unknown_handle_call, Req]),
     next_msg(S).
 
-
+%% @private
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
+%% @private
 init([TorrentId, Socket]) ->
     gproc:add_local_name({peer, Socket, receiver}),
     {CPid, _} = gproc:await({n,l,{peer, Socket, control}}),
