@@ -1,12 +1,6 @@
-%%%-------------------------------------------------------------------
-%%% File    : etorrent_t_pool_sup.erl
-%%% Author  : Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
-%%% License : See COPYING
-%%% Description : Supervisor for the pool of torrents
-%%%
-%%% Created : 13 Jul 2007 by
-%%%     Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
-%%%-------------------------------------------------------------------
+%% @author Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
+%% @doc Supervise a pool of torrents.
+%% @end
 -module(etorrent_t_pool_sup).
 
 -behaviour(supervisor).
@@ -44,5 +38,7 @@ stop_torrent(File) ->
     supervisor:delete_child(?SERVER, File).
 
 %% ====================================================================
+
+%% @private
 init([]) ->
     {ok,{{one_for_one, 5, 60}, []}}.

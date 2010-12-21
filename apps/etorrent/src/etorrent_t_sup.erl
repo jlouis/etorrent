@@ -1,5 +1,6 @@
 %% @author Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
-%% @doc Supervise the pool of torrent files.
+%% @doc Supervise a torrent file.
+%% <p>This supervisor controls a torrent download.</p>
 %% @end
 -module(etorrent_t_sup).
 
