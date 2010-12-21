@@ -54,7 +54,7 @@ init([PeerId]) ->
     TorrentPool = {torrent_pool_sup,
                    {etorrent_t_pool_sup, start_link, []},
                    transient, infinity, supervisor, [etorrent_t_pool_sup]},
-    TorrentMgr   = {etorrent_ctl,
+    Ctl          = {etorrent_ctl,
 		    {etorrent_ctl, start_link, [PeerId]},
 		    permanent, 120*1000, worker, [etorrent_ctl]},
     DirWatcherSup = {dirwatcher_sup,
@@ -75,5 +75,5 @@ init([PeerId]) ->
            Counters, EventManager, PeerMgr,
            FastResume, RateManager, PieceManager,
            ChunkManager, Choker, Listener, AcceptorSup,
-	   UdpTracking, TorrentPool, TorrentMgr,
+	   UdpTracking, TorrentPool, Ctl,
 	   DirWatcherSup] ++ DHTSup}}.
