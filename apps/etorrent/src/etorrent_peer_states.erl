@@ -1,10 +1,12 @@
 %% @author Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
-%% @doc Manage the rates of each connected peer
+%% @doc Track the states of peers.
 %% <p>This module implements a bookkeeping server. The server has
 %% ETS tables which is used to save the current upload and download
 %% rate as well as the state of each peer.</p>
+%% <p>Periodically, each peer stores data in these tables. Then the
+%% `choker' process extracts the information when it wants to
+%% recalculate the chokes of peers.</p>
 %% @end
-%% @todo module is a candidate for renaming. etorrent_g_peer_state.
 -module(etorrent_peer_states).
 
 -include("rate_mgr.hrl").
