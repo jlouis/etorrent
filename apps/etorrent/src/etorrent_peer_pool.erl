@@ -2,7 +2,7 @@
 %% @doc Supervise a pool of peers.
 %% <p>This module is a simple supervisor of Peers</p>
 %% @end
--module(etorrent_peer_pool_sup).
+-module(etorrent_peer_pool).
 
 -behaviour(supervisor).
 
@@ -59,4 +59,4 @@ init([Id]) ->
     ChildSpec = {child,
                  {etorrent_peer_sup, start_link, []},
                  temporary, infinity, supervisor, [etorrent_peer_sup]},
-    {ok, {{simple_one_for_one, 15, 60}, [ChildSpec]}}.
+    {ok, {{simple_one_for_one, 50, 3600}, [ChildSpec]}}.

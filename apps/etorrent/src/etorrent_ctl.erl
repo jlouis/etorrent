@@ -67,8 +67,8 @@ handle_cast({start, F}, S) ->
     case torrent_duplicate(F) of
         true -> {noreply, S};
         false ->
-            case etorrent_t_pool_sup:add_torrent( F, S#state.local_peer_id,
-                                                  etorrent_counters:next(torrent)) of
+            case etorrent_torrent_pool:start_child(F, S#state.local_peer_id,
+						   etorrent_counters:next(torrent)) of
                 {ok, _} -> {noreply, S};
                 {error, {already_started, _Pid}} -> {noreply, S}
             end
@@ -108,7 +108,7 @@ stop_torrent(F) ->
     case etorrent_table:get_torrent({filename, F}) of
 	not_found -> ok; % Was already removed, it is ok.
 	{value, _PL} ->
-	    etorrent_t_pool_sup:stop_torrent(F),
+	    etorrent_torrent_pool:terminate_child(F),
 	    ok
     end.
 

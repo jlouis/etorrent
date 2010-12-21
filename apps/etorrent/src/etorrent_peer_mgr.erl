@@ -171,7 +171,7 @@ spawn_peer(PeerId, PL, TorrentId, IP, Port) ->
 		  {ok, _Capabilities, PeerId} -> ok;
 		  {ok, Capabilities, RPID} ->
 		      {ok, RecvPid, ControlPid} =
-			  etorrent_t_sup:add_peer(
+			  etorrent_torrent_sup:add_peer(
 			    RPID,
 			    proplists:get_value(info_hash, PL),
 			    TorrentId,
