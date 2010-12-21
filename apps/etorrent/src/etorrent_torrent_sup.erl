@@ -1,6 +1,7 @@
 %% @author Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
 %% @doc Supervise a torrent file.
-%% <p>This supervisor controls a torrent download.</p>
+%% <p>This supervisor controls a single torrent download. It sits at
+%% the top of the supervisor tree for a torrent.</p>
 %% @end
 -module(etorrent_torrent_sup).
 
