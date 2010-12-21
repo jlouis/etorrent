@@ -56,6 +56,7 @@ handle_info(timeout, #state { our_peer_id = PeerId } = S) ->
         {error, E}            -> ?WARN([{error, E}]), ok
     end,
     {stop, normal, S}.
+    end.
 
 %% @private
 terminate(_Reason, _State) ->
