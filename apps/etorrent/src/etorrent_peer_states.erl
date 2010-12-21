@@ -20,19 +20,19 @@
 %% API
 -export([start_link/0,
 
-         choke/2, unchoke/2, interested/2, not_interested/2,
-         local_choke/2, local_unchoke/2,
+         set_choke/2, set_unchoke/2, set_interested/2, set_not_interested/2,
+         set_local_choke/2, set_local_unchoke/2,
 
-         recv_rate/4, send_rate/3,
+         set_recv_rate/4, set_send_rate/3,
 
          get_state/2,
          get_torrent_rate/2,
 
-         fetch_recv_rate/2,
-         fetch_send_rate/2,
-         select_state/2, pids_interest/2,
+         get_recv_rate/2,
+         get_send_rate/2,
+         get_peer_state/2, get_pids_interest/2,
 
-         global_rate/0]).
+         get_global_rate/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -65,44 +65,44 @@ start_link() ->
 %% <p><em>Clarification:</em> This state is what the remote peer has
 %% done to us.</p>
 %% @end
--spec choke(integer(), pid()) -> ok.
-choke(Id, Pid) ->
+-spec set_choke(integer(), pid()) -> ok.
+set_choke(Id, Pid) ->
     alter_state(choke, Id, Pid).
 
 %% @doc Update a peer state to `unchoked'
 %% <p><em>Clarification:</em> This state is what the remote peer has
 %% done to us.</p>
 %% @end
--spec unchoke(integer(), pid()) -> ok.
-unchoke(Id, Pid) ->
+-spec set_unchoke(integer(), pid()) -> ok.
+set_unchoke(Id, Pid) ->
     alter_state(unchoke, Id, Pid).
 
 %% @doc Update a peer state to `interested'
 %% <p><em>Clarification:</em> This state is what the remote peer
 %% thinks of us.</p>
 %% @end
--spec interested(integer(), pid()) -> ok.
-interested(Id, Pid) ->
+-spec set_interested(integer(), pid()) -> ok.
+set_interested(Id, Pid) ->
     alter_state(interested, Id, Pid).
 
 %% @doc Update a peer state to `not_interested'
 %% <p><em>Clarification:</em> This state is what the remote peer
 %% thinks of us.</p>
 %% @end
--spec not_interested(integer(), pid()) -> ok.
-not_interested(Id, Pid) ->
+-spec set_not_interested(integer(), pid()) -> ok.
+set_not_interested(Id, Pid) ->
     alter_state(not_interested, Id, Pid).
 
 %% @doc Update state: we `choke' the peer
 %% @end
--spec local_choke(integer(), pid()) -> ok.
-local_choke(Id, Pid) ->
+-spec set_local_choke(integer(), pid()) -> ok.
+set_local_choke(Id, Pid) ->
     alter_state(local_choke, Id, Pid).
 
 %% @doc Update state: we no longer `choke' the peer
 %% @end
--spec local_unchoke(integer(), pid()) -> ok.
-local_unchoke(Id, Pid) ->
+-spec set_local_unchoke(integer(), pid()) -> ok.
+set_local_unchoke(Id, Pid) ->
     alter_state(local_unchoke, Id, Pid).
 
 %% @doc Get the current state of a peer
@@ -141,9 +141,9 @@ get_state(Id, Who) ->
 %% <p>If the peer is not in the table, the standard the default record
 %% is returned.</p>
 %% @end
-%% @todo rename as 'get_'
--spec select_state(integer(), pid()) -> {value, #peer_state{}}.
-select_state(Id, Who) ->
+%% @deprecated I don't want to export the record
+-spec get_peer_state(integer(), pid()) -> {value, #peer_state{}}.
+get_peer_state(Id, Who) ->
     case ets:lookup(etorrent_peer_state, {Id, Who}) of
         [] -> {value, #peer_state { }}; % Pick defaults
         [P] -> {value, P}
@@ -155,7 +155,7 @@ select_state(Id, Who) ->
 %% <p>If the pid is not found, a dummy value is returned. Such a
 %% dummy-peer is never interested and always choking.</p>
 %% @end
-pids_interest(Id, Pid) ->
+get_pids_interest(Id, Pid) ->
     case ets:lookup(etorrent_peer_state, {Id, Pid}) of
 	[] -> [{interested, false},
 	       {choking, true}];
@@ -165,34 +165,28 @@ pids_interest(Id, Pid) ->
 
 %% @doc Get the receive rate of the peer
 %% @end
-%% @todo rename to 'get_'
 %% @todo eradicate the 'undefined' return here
--spec fetch_recv_rate(integer(), pid()) ->
+-spec get_recv_rate(integer(), pid()) ->
     none | undefined | float().
-fetch_recv_rate(Id, Pid) -> fetch_rate(etorrent_recv_state, Id, Pid).
+get_recv_rate(Id, Pid) -> fetch_rate(etorrent_recv_state, Id, Pid).
 
 %% @doc Get the send rate of the peer
 %% @end
-%% @todo rename to 'get_'
 %% @todo eradicate the 'undefined' return here
--spec fetch_send_rate(integer(), pid()) ->
+-spec get_send_rate(integer(), pid()) ->
     none | undefined | float().
-fetch_send_rate(Id, Pid) -> fetch_rate(etorrent_send_state, Id, Pid).
+get_send_rate(Id, Pid) -> fetch_rate(etorrent_send_state, Id, Pid).
 
 %% @doc Set the receive rate of the peer
 %% @end
-%% @todo rename to 'set_' or something such
-%% @todo eradicate the 'undefined' return here
--spec recv_rate(integer(), pid(), float(), normal | snubbed) -> ok.
-recv_rate(Id, Pid, Rate, SnubState) ->
+-spec set_recv_rate(integer(), pid(), float(), normal | snubbed) -> ok.
+set_recv_rate(Id, Pid, Rate, SnubState) ->
     alter_state(recv_rate, Id, Pid, Rate, SnubState).
 
 %% @doc Set the send rate of the peer
 %% @end
-%% @todo rename to 'set_' or something such
-%% @todo eradicate the 'undefined' return here
--spec send_rate(integer(), pid(), float()) -> ok.
-send_rate(Id, Pid, Rate) ->
+-spec set_send_rate(integer(), pid(), float()) -> ok.
+set_send_rate(Id, Pid, Rate) ->
     alter_state(send_rate, Id, Pid, Rate, unchanged).
 
 %% @doc Get the rate of a given Torrent
@@ -216,8 +210,8 @@ get_torrent_rate(Id, Direction) ->
 %% `Send' are float() values.</p>
 %% @end
 %% @todo Return a proplist(), not this thing you can't remember.
--spec global_rate() -> {float(), float()}.
-global_rate() ->
+-spec get_global_rate() -> {float(), float()}.
+get_global_rate() ->
     RR = sum_global_rate(etorrent_recv_state),
     SR = sum_global_rate(etorrent_send_state),
     {RR, SR}.
