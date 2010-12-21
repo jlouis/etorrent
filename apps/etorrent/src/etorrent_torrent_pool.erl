@@ -6,7 +6,7 @@
 -behaviour(supervisor).
 
 %% API
--export([start_link/0, add_torrent/3, stop_torrent/1]).
+-export([start_link/0, start_child/3, terminate_child/1]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -22,15 +22,18 @@ start_link() -> supervisor:start_link({local, ?SERVER}, ?MODULE, []).
 % <p>The torrent file is given by File. Our PeerId is also given, as well as
 % the Id we wish to use for that torrent.</p>
 % @end
--spec add_torrent(string(), binary(), integer()) ->
+-spec start_child(string(), binary(), integer()) ->
     {ok, pid()} | {ok, pid(), term()} | {error, term()}.
-add_torrent(File, Local_PeerId, Id) ->
-    supervisor:start_child(?SERVER, [File, Local_PeerId, Id]).
+start_child(File, Local_PeerId, Id) ->
+    ChildSpec = {File,
+		 {etorrent_torrent_sup, start_link, [File, Local_PeerId, Id]},
+		 transient, infinity, supervisor, [etorrent_torrent_sup]},
+    supervisor:start_child(?SERVER, ChildSpec).
 
 % @doc Ask to stop the torrent represented by File.
 % @end
--spec stop_torrent(string()) -> ok.
-stop_torrent(File) ->
+-spec terminate_child(string()) -> ok.
+terminate_child(File) ->
     supervisor:terminate_child(?SERVER, File),
     supervisor:delete_child(?SERVER, File).
 
@@ -38,7 +41,4 @@ stop_torrent(File) ->
 
 %% @private
 init([]) ->
-    ChildSpec = {child,
-		 {etorrent_torrent_sup, start_link, []},
-		 transient, infinity, supervisor, [etorrent_torrent_sup]},
-    {ok,{{one_for_one, 5, 3600}, [ChildSpec]}}.
+    {ok,{{one_for_one, 5, 3600}, []}}.
