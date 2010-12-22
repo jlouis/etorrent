@@ -103,7 +103,7 @@ unregister_chunk_server(TorrentID) ->
 
 -spec lookup_chunk_server(torrent_id()) -> pid().
 lookup_chunk_server(TorrentID) ->
-    gproc:where({n, l, chunk_server_key(TorrentID)}).
+    gproc:lookup_pid({n, l, chunk_server_key(TorrentID)}).
 
 chunk_server_key(TorrentID) ->
     {etorrent, TorrentID, chunk_server}.
@@ -293,6 +293,7 @@ chunk_server_test_() ->
         fun()  -> application:start(gproc) end,
         fun(_) -> application:stop(gproc) end,
         [?_test(lookup_registered_case()),
+         ?_test(unregister_case()),
          ?_test(not_interested_case()),
          ?_test(request_one_case())
         ]}.
@@ -300,6 +301,11 @@ chunk_server_test_() ->
 lookup_registered_case() ->
     ?assertEqual(true, ?chunk_server:register_chunk_server(0)),
     ?assertEqual(self(), ?chunk_server:lookup_chunk_server(0)).
+
+unregister_case() ->
+    ?assertEqual(true, ?chunk_server:register_chunk_server(3)),
+    ?assertEqual(true, ?chunk_server:unregister_chunk_server(3)),
+    ?assertError(badarg, ?chunk_server:lookup_chunk_server(3)).
 
 not_interested_case() ->
     Srv = initial_chunk_server(1),
