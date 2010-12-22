@@ -104,7 +104,7 @@ insert(Offset, Length, Chunkset) ->
         true ->
             error(badarg);
         false ->
-            NewChunks = insert_(Offset, Length - 1, Chunks),
+            NewChunks = insert_(Offset, Offset + Length - 1, Chunks),
             Chunkset#chunkset{chunks=NewChunks}
     end.
 
@@ -216,6 +216,13 @@ insert_head_test() ->
     Set0 = ?set:from_list(32, 2, [{2, 31}]),
     Set1 = ?set:from_list(32, 2, [{0, 31}]),
     ?assertEqual(Set1, ?set:insert(0, 2, Set0)).
+
+insert_after_head_test() ->
+    Set0 = ?set:from_list(2,1,[]),
+    Set1 = ?set:insert(0, 1, Set0),
+    Set2 = ?set:insert(1, 1, Set1),
+    Exp  = ?set:from_list(2,1,[{0,1}]),
+    ?assertEqual(Exp, Set2).
 
 insert_with_middle_test() ->
     Set0 = ?set:from_list(32, 2, [{0,1}, {3,4}, {6,31}]),
