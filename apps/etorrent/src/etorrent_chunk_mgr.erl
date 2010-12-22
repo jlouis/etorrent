@@ -297,20 +297,43 @@ handle_call({mark_dropped, Pid, PieceIndex, Offset, Length}, _, State) ->
     #state{
         piece_chunks=PieceChunks,
         peer_monitors=Peers} = State,
-    %% Reemove the chunk from the peer's set of open requests
-    OpenReqs = etorrent_monitorset:fetch(Pid, Peers),
-    NewReqs  = gb_trees:delete({PieceIndex, Offset}, OpenReqs),
-    NewPeers = etorrent_monitorset:update(Pid, NewReqs, Peers),
+     %% Reemove the chunk from the peer's set of open requests
+     OpenReqs = etorrent_monitorset:fetch(Pid, Peers),
+     NewReqs  = gb_trees:delete({PieceIndex, Offset}, OpenReqs),
+     NewPeers = etorrent_monitorset:update(Pid, NewReqs, Peers),
+ 
+     %% Add the chunk back to the chunkset of the piece.
+     Chunks = array:get(PieceIndex, PieceChunks),
+     NewChunks = etorrent_chunkset:insert(Offset, Length, Chunks),
+     NewPieceChunks = array:set(PieceIndex, NewChunks, PieceChunks),
+ 
+     NewState = State#state{
+         piece_chunks=NewPieceChunks,
+         peer_monitors=NewPeers},
+    {reply, ok, NewState};
 
-    %% Add the chunk back to the chunkset of the piece.
-    Chunks = array:get(PieceIndex, PieceChunks),
-    NewChunks = etorrent_chunkset:insert(Offset, Length, Chunks),
-    NewPieceChunks = array:set(PieceIndex, NewChunks, PieceChunks),
+handle_call({mark_all_dropped, Pid}, _, State) ->
+    #state{
+        piece_chunks=PieceChunks,
+        peer_monitors=Peers} = State,
+
+    OpenReqs  = etorrent_monitorset:fetch(Pid, Peers),
+    ChunkList = [{I,O,L} || {{I,O},L} <- gb_trees:to_list(OpenReqs)],
+    NewPieceChunks = lists:foldl(fun({PieceIndex, Offset, Length}, Acc) ->
+        %% Add the chunk back to the chunkset of the piece.
+        Chunks = array:get(PieceIndex, Acc),
+        NewChunks = etorrent_chunkset:insert(Offset, Length, Chunks),
+        array:set(PieceIndex, NewChunks, Acc)
+    end, PieceChunks, ChunkList),
+
+    %% Replace the peer's set of open requests with an empty set
+    NewPeers = etorrent_monitorset:update(Pid, gb_trees:empty(), Peers),
 
     NewState = State#state{
         piece_chunks=NewPieceChunks,
         peer_monitors=NewPeers},
     {reply, ok, NewState}.
+
 
 
 handle_cast(_, _) ->
@@ -343,7 +366,8 @@ chunk_server_test_() ->
          ?_test(unregister_case()),
          ?_test(not_interested_case()),
          ?_test(request_one_case()),
-         ?_test(mark_stored_case())
+         ?_test(mark_dropped_case()),
+         ?_test(mark_all_dropped_case())
         ]}.
 
 lookup_registered_case() ->
@@ -367,13 +391,22 @@ request_one_case() ->
     Ret = ?chunk_server:request_chunks(1, Has, 1),
     ?assertEqual({ok, [{0, 0, 1}]}, Ret).
 
-mark_stored_case() ->
+mark_dropped_case() ->
     Srv = initial_chunk_server(4),
     Has = etorrent_pieceset:from_list([0], 3),
     {ok, [{0, 0, 1}]} = ?chunk_server:request_chunks(4, Has, 1),
     {ok, [{0, 1, 1}]} = ?chunk_server:request_chunks(4, Has, 1),
-    ?chunk_server:mark_dropped(4, 0, 0, 1),
+    ok  = ?chunk_server:mark_dropped(4, 0, 0, 1),
     Ret = ?chunk_server:request_chunks(4, Has, 1),
     ?assertEqual({ok, [{0, 0, 1}]}, Ret).
+
+mark_all_dropped_case() ->
+    Srv = initial_chunk_server(5),
+    Has = etorrent_pieceset:from_list([0], 3),
+    ?assertMatch({ok, [{0, 0, 1}]}, ?chunk_server:request_chunks(5, Has, 1)),
+    ?assertMatch({ok, [{0, 1, 1}]}, ?chunk_server:request_chunks(5, Has, 1)),
+    ok = ?chunk_server:mark_all_dropped(5),
+    ?assertMatch({ok, [{0, 0, 1}]}, ?chunk_server:request_chunks(5, Has, 1)),
+    ?assertMatch({ok, [{0, 1, 1}]}, ?chunk_server:request_chunks(5, Has, 1)).
 
 -endif.
