@@ -46,13 +46,16 @@
 %% @end
 %%-------------------------------------------------------------------
 -module(etorrent_chunk_mgr).
+-behaviour(gen_server).
 
 -include("types.hrl").
 -include("log.hrl").
 
 -include_lib("stdlib/include/ms_transform.hrl").
 
--behaviour(gen_server).
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
 
 %% @todo: What pid is the chunk recording pid? Control or SendPid?
 %% API
@@ -66,7 +69,8 @@
 %% gproc registry entries
 -export([register_chunk_server/1,
          unregister_chunk_server/1,
-         lookup_chunk_server/1]).
+         lookup_chunk_server/1,
+         register_peer/1]).
 
 
 %% gen_server callbacks
@@ -104,6 +108,11 @@ unregister_chunk_server(TorrentID) ->
 -spec lookup_chunk_server(torrent_id()) -> pid().
 lookup_chunk_server(TorrentID) ->
     gproc:lookup_pid({n, l, chunk_server_key(TorrentID)}).
+
+-spec register_peer(torrent_id()) -> true.
+register_peer(TorrentID) ->
+    ChunkSrv = lookup_chunk_server(TorrentID),
+    gen_server:call(ChunkSrv, {register_peer, self()}).
 
 chunk_server_key(TorrentID) ->
     {etorrent, TorrentID, chunk_server}.
@@ -207,11 +216,22 @@ init([TorrentID, ChunkSize, FetchedPieces, PieceSizes]) ->
     {ok, InitState}.
 
 
+handle_call({register_peer, PeerPid}, _, State) ->
+    %% Add a new peer to the set of monitored peers. Set the initial state
+    %% of the monitored peer to an empty set open requests so that we don't
+    %% need to check for this during the lifetime of the peer.
+    #state{peer_monitors=PeerMonitors} = State,
+    OpenReqs = gb_trees:empty(),
+    NewMonitors = etorrent_monitorset:insert(PeerPid, OpenReqs, PeerMonitors),
+    NewState = State#state{peer_monitors=NewMonitors},
+    {reply, true, NewState};
+
 handle_call({request_chunks, PeerPid, Peerset, Numchunks}, _, State) ->
     #state{
         pieces_valid=PiecesValid,
         pieces_chunked=PiecesChunked,
-        piece_chunks=PieceChunks} = State,
+        piece_chunks=PieceChunks,
+        peer_monitors=Peers} = State,
     
     %% If this peer has no pieces that we are already downloading, begin
     %% downloading a new piece if this peer has any interesting pieces.
@@ -240,12 +260,19 @@ handle_call({request_chunks, PeerPid, Peerset, Numchunks}, _, State) ->
         PieceIndex ->
             Chunkset    = array:get(PieceIndex, PieceChunks),
             {Offs, Len} = etorrent_chunkset:min(Chunkset),
+            ?debugVal([Offs, Len, Chunkset]),
             NewChunkset = etorrent_chunkset:delete(Offs, Len, Chunkset),
             NewChunks   = array:set(PieceIndex, NewChunkset, PieceChunks),
             NewChunked  = etorrent_pieceset:insert(PieceIndex, PiecesChunked),
+            %% Add the chunk to this peer's set of open requests
+            OpenReqs = etorrent_monitorset:fetch(PeerPid, Peers),
+            NewReqs  = gb_trees:insert({PieceIndex, Offs}, Len, OpenReqs),
+            NewPeers = etorrent_monitorset:update(PeerPid, NewReqs, Peers),
+
             NewState = State#state{
                 pieces_chunked=NewChunked,
-                piece_chunks=NewChunks},
+                piece_chunks=NewChunks,
+                peer_monitors=NewPeers},
             {reply, {ok, [{PieceIndex, Offs, Len}]}, NewState}
     end;
 
@@ -259,12 +286,32 @@ handle_call({mark_fetched, PieceIndex, Offset, Length}, _, State) ->
 handle_call({mark_stored, Pid, PieceIndex, Offset, Length}, _, State) ->
     %% The calling process has written this chunk to disk.
     %% Remove it from the list of open requests of the process.
-    #state{peer_monitors=PeerMonitors} = State,
-    OpenRequests = etorrent_monitorset:fetch(Pid, PeerMonitors),
-    NewRequests  = gb_trees:delete({PieceIndex, Offset}, OpenRequests),
-    NewMonitors  = etorrent_monitorset:store(Pid, NewRequests, PeerMonitors),
-    NewState     = State#state{peer_monitors=NewMonitors},
+    #state{peer_monitors=Peers} = State,
+    OpenReqs = etorrent_monitorset:fetch(Pid, Peers),
+    NewReqs  = gb_trees:delete({PieceIndex, Offset}, OpenReqs),
+    NewPeers = etorrent_monitorset:update(Pid, NewReqs, Peers),
+    NewState = State#state{peer_monitors=NewPeers},
+    {reply, ok, NewState};
+
+handle_call({mark_dropped, Pid, PieceIndex, Offset, Length}, _, State) ->
+    #state{
+        piece_chunks=PieceChunks,
+        peer_monitors=Peers} = State,
+    %% Reemove the chunk from the peer's set of open requests
+    OpenReqs = etorrent_monitorset:fetch(Pid, Peers),
+    NewReqs  = gb_trees:delete({PieceIndex, Offset}, OpenReqs),
+    NewPeers = etorrent_monitorset:update(Pid, NewReqs, Peers),
+
+    %% Add the chunk back to the chunkset of the piece.
+    Chunks = array:get(PieceIndex, PieceChunks),
+    NewChunks = etorrent_chunkset:insert(Offset, Length, Chunks),
+    NewPieceChunks = array:set(PieceIndex, NewChunks, PieceChunks),
+
+    NewState = State#state{
+        piece_chunks=NewPieceChunks,
+        peer_monitors=NewPeers},
     {reply, ok, NewState}.
+
 
 handle_cast(_, _) ->
     not_implemented.
@@ -281,11 +328,11 @@ code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 -ifdef(TEST).
--include_lib("eunit/include/eunit.hrl").
 -define(chunk_server, ?MODULE).
 
 initial_chunk_server(ID) ->
     {ok, Pid} = ?chunk_server:start_link(ID, 1, [], [{0, 2}, {1, 2}, {2, 2}]),
+    true = ?chunk_server:register_peer(ID),
     Pid.
 
 chunk_server_test_() ->
@@ -295,7 +342,8 @@ chunk_server_test_() ->
         [?_test(lookup_registered_case()),
          ?_test(unregister_case()),
          ?_test(not_interested_case()),
-         ?_test(request_one_case())
+         ?_test(request_one_case()),
+         ?_test(mark_stored_case())
         ]}.
 
 lookup_registered_case() ->
@@ -319,6 +367,13 @@ request_one_case() ->
     Ret = ?chunk_server:request_chunks(1, Has, 1),
     ?assertEqual({ok, [{0, 0, 1}]}, Ret).
 
-
+mark_stored_case() ->
+    Srv = initial_chunk_server(4),
+    Has = etorrent_pieceset:from_list([0], 3),
+    {ok, [{0, 0, 1}]} = ?chunk_server:request_chunks(4, Has, 1),
+    {ok, [{0, 1, 1}]} = ?chunk_server:request_chunks(4, Has, 1),
+    ?chunk_server:mark_dropped(4, 0, 0, 1),
+    Ret = ?chunk_server:request_chunks(4, Has, 1),
+    ?assertEqual({ok, [{0, 0, 1}]}, Ret).
 
 -endif.
