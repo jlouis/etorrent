@@ -55,11 +55,11 @@ min(Chunkset) ->
     #chunkset{chunk_len=ChunkLen, chunks=Chunks} = Chunkset,
     case Chunks of
         [] ->
-            none;
-        [{Start, End}|_] when (Start + End) > ChunkLen ->
+            error(badarg);
+        [{Start, End}|_] when (1 + End - Start) > ChunkLen ->
             {Start, ChunkLen};
-        [{Start, End}|_] when (Start + End) =< ChunkLen ->
-            {Start, End - Start}
+        [{Start, End}|_] when (1 + End - Start) =< ChunkLen ->
+            {Start, (End - Start) + 1}
     end.
 
 %% @doc
@@ -132,11 +132,15 @@ new_min_test() ->
 
 min_smaller_test() ->
     Set = ?set:from_list(32, 4, [{0,1},{3, 31}]),
-    ?assertEqual({0,1}, ?set:min(Set)).
+    ?assertEqual({0,2}, ?set:min(Set)).
 
 min_empty_test() ->
     Set = ?set:from_list(32, 2, []),
-    ?assertEqual(none, ?set:min(Set)).
+    ?assertError(badarg, ?set:min(Set)).
+
+min_zero_test() ->
+    Set = ?set:from_list(2, 1, [{0,0}]),
+    ?assertEqual({0,1}, ?set:min(Set)).
 
 delete_invalid_length_test() ->
     ?assertError(badarg, ?set:delete(0, 0, ?set:new(32, 2))),
