@@ -14,7 +14,8 @@
          insert/2,
          intersection/2,
          difference/2,
-         size/1]).
+         size/1,
+         min/1]).
 
 -record(pieceset, {
     size :: pos_integer(),
@@ -185,6 +186,23 @@ size(<<0:1, Rest/bitstring>>, Acc) ->
 size(<<>>, Acc) ->
     Acc.
 
+%% @doc
+%% Return the lowest piece index that is a member of this set.
+%% If the piece set is empty, exit with reason badarg
+%% @end
+-spec min(pieceset()) -> pos_integer().
+min(Pieceset) ->
+    #pieceset{elements=Elements} = Pieceset,
+    min_(Elements, 0).
+
+min_(<<>>, _) ->
+    error(badarg);
+min_(<<1:1, _/bitstring>>, Index) ->
+    Index;
+min_(<<0:1, Rest/bitstring>>, Index) ->
+    min_(Rest, Index + 1).
+
+
 paddinglen(Size) ->
     Length = 8 - (Size rem 8),
     case Length of
@@ -265,6 +283,12 @@ from_full_list_test() ->
     Set0 = ?set:from_binary(<<255:8>>, 8),
     Set1 = ?set:from_list(lists:seq(0,7), 8),
     ?assertEqual(Set0, Set1).
+
+min_test_() ->
+    [?_assertError(badarg, ?set:min(?set:new(20))),
+     ?_assertEqual(0, ?set:min(?set:from_list([0], 8))),
+     ?_assertEqual(1, ?set:min(?set:from_list([1,7], 8))),
+     ?_assertEqual(15, ?set:min(?set:from_list([15], 16)))].
 
 %%
 %% Modifying the contents of a pieceset
