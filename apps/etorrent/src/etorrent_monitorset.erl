@@ -3,6 +3,7 @@
 -export([new/0,
          size/1,
          insert/3,
+         update/3,
          delete/2,
          fetch/2,
          is_member/2]).
@@ -31,6 +32,14 @@ size(Monitorset) ->
 insert(Pid, Value, Monitorset) ->
     MRef = monitor(process, Pid),
     gb_trees:insert(Pid, {MRef, Value}, Monitorset).
+
+%% @doc
+%%
+%% @end
+-spec update(reference(), term(), monitorset()) -> monitorset().
+update(Pid, Value, Monitorset) ->
+    {MRef, _} = gb_trees:get(Pid, Monitorset),
+    gb_trees:update(Pid, {MRef, Value}, Monitorset).
 
 %% @doc
 %%
