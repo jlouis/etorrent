@@ -73,6 +73,25 @@ so we can get it away.
       commands.
    9. If you enabled the webui, you can try browsing to its location. By default the location is 'http://localhost:8080'.
 
+## Troubleshooting
+
+If the above commands doesn't work, we want to hear about it. This is
+a list of known problems:
+
+   * General: Many distributions are insane and pack erlang in split
+     packages, so each part of erlang is in its own package. This
+     *always* leads to build problems due to missing stuff. Be sure
+     you have all relevant packages installed. And when you find which
+     packages are needed, please send a patch to this file for the
+     distribution and version so we can keep it up-to-date.
+
+   * Ubuntu 10.10: Ubuntu has a symlink `/usr/lib/erlang/man ->
+   /usr/share/man`. This is insane and generates problems when
+   building a release (spec errors on missing files if a symlink
+   points to nowhere). The easiest fix is to remove the man symlink
+   from `/usr/lib/erlang`. A way better fix is to install a recent
+   Erlang/OTP yourself and use **Begone(tm)** on the supplied version.
+
 ## QUESTIONS??
 
 You can either mail them to `jesper.louis.andersen@gmail.com` or you
