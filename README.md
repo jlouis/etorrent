@@ -100,6 +100,10 @@ Notice that we `-pa` add `../../apps/etorrent/ebin` so you can l(Mod) files
 from the shell directly into the running system after having
 recompiled them.
 
+## Documentation
+
+Read the HACKING.md file in this directory.
+
 ## ISSUES
 
 Either mail them to `jesper.louis.andersen@gmail.com` (We are
