@@ -61,12 +61,12 @@ The two important program entry points are:
     etorrent_app.erl
     etorrent_sup.erl
 
-The `etorrent_app' defines what is needed to make etorrent an
+The `etorrent_app` defines what is needed to make etorrent an
 application. When we make a release through the release system, we
 arrange that this application will be started automatically. So that
-is what makes etorrent start up. The important function is `start/2'
+is what makes etorrent start up. The important function is `start/2`
 which does some simple configuration and then launches the main
-supervisor, `etorrent_sup'.
+supervisor, `etorrent_sup`.
 
 The main etorrent supervisor starts up *lots of stuff*. In general the
 things started fall into three categories:
@@ -87,21 +87,21 @@ things started fall into three categories:
     protocol which are not relevant to the initial understanding.
 
 An important supervisor maintains the Directory Watcher. This process,
-the `etorrent_dirwatcher' is a gen_server which is the starting entry
+the `etorrent_dirwatcher` is a gen_server which is the starting entry
 point for the life cycle of a torrent. It periodically watches the
 directory and when a torrent is added, it will execute
-`etorrent_ctl:start/1' to actually start the torrent.
+`etorrent_ctl:start/1` to actually start the torrent.
 
-The `etorrent_ctl' gen_server is an interface to start and stop
+The `etorrent_ctl` gen_server is an interface to start and stop
 torrents for real. Starting a torrent is very simple. We start up a
 torrent supervisor and add it to the pool of currently alive
 torrents. Nothing more happens at the top level -- the remaining work
-is by the torrent supervisor, found in `etorrent_torrent_sup'.
+is by the torrent supervisor, found in `etorrent_torrent_sup`.
 
 ### The etorrent module
 
-The module `etorrent' is an interface to etorrent via the erl
-shell. Ask it to give help by running `etorrent:help()'.
+The module `etorrent` is an interface to etorrent via the erl
+shell. Ask it to give help by running `etorrent:help()`.
 
 ## Dependencies
 
@@ -121,7 +121,7 @@ distributed component which we are not using at all.
 The built-in SASL error logger of Erlang has problems when the
 messages it tries to log goes beyond a certain size. It manifests
 itself by the beam process taking up several gigabytes of memory. The
-`riak_err' application built by Basho technologies remedies this
+`riak_err` application built by Basho technologies remedies this
 problem. It is configured with a maximal size and will gracefully
 limit the output so these kinds of errors does not occur.
 
@@ -137,19 +137,19 @@ and then carry out commands from there.
 
 ## Torrent supervisors
 
-The torrent supervisor is `etorrent_torrent_sup'. This one will
+The torrent supervisor is `etorrent_torrent_sup`. This one will
 initially spawn supervisors to handle a pool of filesystem processes
 and a pool of peers. And finally, it will spawn a controller process,
 which will control the torrent in question.
 
 Initially, the control process will wait in line until it is its turn
 to perform a *check* of the torrent for correctness. To make the check
-fast, there is a global process, the `fast_resume' process which
+fast, there is a global process, the `fast_resume` process which
 persists the check data to disk every 5 minute. If the fast-resume
 data is consistent this is used. Otherwise, the control-process will
 check the torrent for pieces missing and pieces which we have and
 ok. It will then spawn a process in the supervisor, by adding a child,
-the `tracker_communication' process.
+the `tracker_communication` process.
 
 Tracker communication will contact the tracker and get a list of
 peers. It will report to the tracker that we exist, that we started
@@ -160,7 +160,7 @@ periodically contacts the tracker and it will also make a last contact
 to the tracker when the torrent is *stopped*. This final contact is
 ensured since the tracker-communicator server traps exits.
 
-The peers are then sent to a *global* process, the `peer_mgr', which
+The peers are then sent to a *global* process, the `peer_mgr`, which
 manages peers. Usually the peers will be started by adding them back
 into the peer pool of the right process right away, but if we have too
 many connections to peers, they will enter a queue. Also, peers will
@@ -179,7 +179,7 @@ to see if too many peers are connected, otherwise we allow it, blindly
 ## Peers
 
 A peer is governed by a supervisor as well, the
-`etorrent_peer_sup'. It will control three gen_servers: One for
+`etorrent_peer_sup`. It will control three gen_servers: One for
 sending messages to the remote peer and keeping a queue of outgoing
 messages. One for receiving and decoding incoming messages. And
 finally one for controlling the communication and running the peer
@@ -189,7 +189,7 @@ The supervisor is configured to die at the *instant* one of the other
 processes die. And the peer pool supervisor parent assumes everything
 are temporary. This means that an error in a peer will kill all
 processes and it will remove the peer permanently. There is a
-*monitor* set by the `peer_mgr' on the peer, so it may try to connect
+*monitor* set by the `peer_mgr` on the peer, so it may try to connect
 in more peers when it registers death of a peer. In turn, this
 behaviour ensures progress.
 
@@ -199,7 +199,7 @@ following, we will try to explain what they do and how they work.
 
 ## File system
 
-The file system code, hanging on `etorrent_torrent_sup' as a
+The file system code, hanging on `etorrent_torrent_sup` as a
 supervision tree maintains the storage of the file on-disk. Peers
 communicate with these processes to read out pieces and store
 pieces. The FS processes is split so there is a process per file. And
@@ -212,7 +212,7 @@ to know whom to ask.
 ## Chunk/Piece Management
 
 There are two, currently global, processes called the
-`etorrent_piece_mgr' and `etorrent_chunk_mgr'. The first of these, the
+`etorrent_piece_mgr` and `etorrent_chunk_mgr`. The first of these, the
 Piece Manager, keeps track of pieces for torrents we are
 downloading. In particular it maps what pieces we have downloaded and
 what pieces we are missing. It is used by peer processes so they can
@@ -250,7 +250,7 @@ A central point to the BitTorrent protocol is that you keep, say, 200
 connections to peers, but you only communicate on a few of them, some
 10-20. This avoids congestion problems in TCP/IP. The process of
 choosing who to communicate with is called choking/unchoking. There is
-a global server process, the `etorrent_choker', responsible for
+a global server process, the `etorrent_choker`, responsible for
 selecting the peers to communicate with. It wakes up every 10 seconds
 and then selects, re-chokes, peers.
 
