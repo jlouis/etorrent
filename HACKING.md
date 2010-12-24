@@ -12,22 +12,68 @@ And information herein might need a review if we are much after this
 date because the code is in constant motion. This is a warning. Ask
 for an update if it is too old!
 
+# Tips and tricks used throughout the code base
+
+There are a couple of tricks which are used again and again in the
+code base. These could be called the "Design Patterns" of Erlang/OTP.
+
+## Monitoring deaths
+
+A very commonly used scheme is where we have a bookkeeping process *B*
+and a client *C*. Usually the bookkeeping process is used because it
+can globalize information, the current download rate of processes
+say. So *C* stores its rates in an ETS table governed
+by *B*. The problem is now: What if *C* dies? *C* itself can't clean
+up since it is in an unknown state.
+
+The trick we use is to monitor *C* from *B*. Then, when a `'DOWN'`
+message comes to *B* it uses it to clean up after *C*. The trick is
+quite simple, but since it is used throughout the code in many places,
+I wanted to cover it here.
+
+## Init with a timeout of 0
+
+Some processes have a timeout of 0 in their `init/1` callback. This
+means that they time out right away as soon as they are initialized
+and can do more work there. Remember, when a newly spawned process
+(the spawnee) is running `init` the spawner (calling spawn_link) will
+be blocked. A timeout of 0 gets around that problem.
+
+## When a controlling process dies, so does its resource
+
+If we have an open port or a created ETS table, the crash or stop of
+the controlling process will also remove the ETS table or end the open
+port. We use this throughout etorrent to avoid having to trap exits
+all over the place and make sure that processes are closed down. It is
+quite confusing for a newcomer though, hence it is mentioned here.
+
+## The ETS table plus governor
+
+A process is spawned to create and govern an ETS table. The idea is
+that lookups doesn't touch the governor at all, but it is used to
+monitor the users of the table - and it is used to serialize access to
+the table when needed.
+
+Suppose for instance that something must only happen once. By sending
+a call to the governor, we can serialize the request and thus make
+sure only one process will initialize the thing.
+
 # General layout of the source code
 
 This is the hierarchy:
 
-    /apps/ - Container for the etorrent application
-    /apps/etorrent/ - The etorrent application
-    /apps/etorrent/doc/ - edoc-generated output for the etorrent app.
-    /apps/etorrent/ebin/ - Where .beam files are compiled to
-    /apps/etorrent/include/ - include (.hrl) files
-    /apps/etorrent/priv/ - private data for the app.
-    /apps/etorrent/src/ - main source code
+   * [/apps/](https://github.com/jlouis/etorrent/tree/master/apps) - Container for applications
+   * [/apps/etorrent/](https://github.com/jlouis/etorrent/tree/master/apps/etorrent) - The etorrent application
+   * /apps/etorrent/doc/ - edoc-generated output for the etorrent app.
+   * /apps/etorrent/ebin - Where .beam files are compiled to
+   * [/apps/etorrent/include](https://github.com/jlouis/etorrent/tree/master/apps/etorrent/include) - include (.hrl) files
+   * [/apps/etorrent/priv](https://github.com/jlouis/etorrent/tree/master/apps/etorrent/priv) - private data for the app.
+   * [/apps/etorrent/src](https://github.com/jlouis/etorrent/tree/master/apps/etorrent/src) - main source code
 
 The above should not pose any trouble with a seasoned or beginning
 erlang hacker.
 
-    /apps/etorrent/priv/webui/htdocs/
+   * [/apps/etorrent/priv/webui/htdocs/](https://github.com/jlouis/etorrent/tree/master/apps/etorrent/priv/webui/htdocs)
 
 This directory contains the data used by the Web UI system. It is
 basically dumping ground for Javascript code and anything static we
