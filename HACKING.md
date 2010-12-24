@@ -267,9 +267,7 @@ they work.
 
 ## File system
 
-(** --- Editing to here --- **)
-
-The file system code, hanging on `etorrent_torrent_sup` as a
+The file system code, hanging on [etorrent_torrent_sup](https://github.com/jlouis/etorrent/tree/master/apps/etorrent/src/etorrent_torrent_sup.erl)) as a
 supervision tree maintains the storage of the file on-disk. Peers
 communicate with these processes to read out pieces and store
 pieces. The FS processes is split so there is a process per file. And
@@ -282,32 +280,36 @@ to know whom to ask.
 ## Chunk/Piece Management
 
 There are two, currently global, processes called the
-`etorrent_piece_mgr` and `etorrent_chunk_mgr`. The first of these, the
-Piece Manager, keeps track of pieces for torrents we are
-downloading. In particular it maps what pieces we have downloaded and
-what pieces we are missing. It is used by peer processes so they can
-tell remote peers what pieces we have.
+[etorrent_piece_mgr](https://github.com/jlouis/etorrent/tree/master/apps/etorrent/src/etorrent_piece_mgr.erl)
+and
+([etorrent_chunk_mgr](https://github.com/jlouis/etorrent/tree/master/apps/etorrent/src/etorrent_chunk_mgr.erl). The
+first of these, the Piece Manager, keeps track of pieces for torrents
+we are downloading. In particular it maps what pieces we have
+downloaded and what pieces we are missing. It is used by peer
+processes so they can tell remote peers what pieces we have.
 
 The BitTorrent protocol does not exchange pieces. It exchanges
 *slices* of pieces. These are in etorrent terminology called *chunks*
-although other clients use *sub-pieces* for the same thing. Hence, the
-Chunk Manager keeps track of chunks of pieces. When a piece is chosen,
-it is "chunked" into smaller 16 Kilobyte chunks. These are then
-requested from peers. Note that we prefer to get all chunks of a piece
-downloaded as fast as possible so we may mark the piece as done and
-then exchange it with other peers. Hence the algorithm to select
-chunks prefers already chunked up pieces.
+although other clients use *slices* or *sub-pieces* for the same
+thing. To keep track of *chunks* we have the Chunk Manager. When a
+piece is chosen for downloading, it is "chunked" -- split -- into
+smaller 16 Kilobyte chunks. These are then requested from peers. Note
+we prefer to get all chunks of a piece downloaded as fast as
+possible -- so we may mark the piece as done and then exchange it with
+other peers. Hence the chunk selecting algorithm prefers already
+chunked up pieces.
 
 Another important part of the chunk manager is to ensure exclusive
 access to a chunk. There is little reason to download the same chunk
-from multiple peers. Thus, we earmark chunks to peers. If the peer
-dies, a monitor ensures we get the pieces back into consideration for
-other peers. Finally, there is a special *endgame* mode which is
-triggered when we are close to having the complete file. In this mode,
-we ignore the exclusivity rule and spam requests to all connected
-peers. The current rule is that when there are no more pieces to chunk
-up and we can't get exclusive pieces, we "steal" from other peers. A
-random shuffle of remaining pieces tries to eliminate too many multiples.
+from multiple peers. We earmark chunks to peers. If the peer dies, a
+monitor ensures we get the pieces back into consideration for other
+peers. Finally, there is a special *endgame* mode which is triggered
+when we are close to having the complete file downloaded. In this
+mode, we ignore the exclusivity rule and spam requests to all
+connected peers. The current rule is that when there are no more
+pieces to chunk up and we can't get exclusive pieces, we "steal" from
+other peers. A random shuffle of remaining pieces tries to eliminate
+too many multiples.
 
 **Note:** This part of the code is under rework at the moment. In
 particular we seek to make the processes torrent-local rather than
@@ -316,30 +318,34 @@ Magnus Klaar for the details.
 
 ## Choking
 
-A central point to the BitTorrent protocol is that you keep, say, 200
-connections to peers, but you only communicate on a few of them, some
-10-20. This avoids congestion problems in TCP/IP. The process of
-choosing who to communicate with is called choking/unchoking. There is
-a global server process, the `etorrent_choker`, responsible for
-selecting the peers to communicate with. It wakes up every 10 seconds
-and then selects, re-chokes, peers.
+A central point to the BitTorrent protocol is that you keep, perhaps,
+200 connections to peers; yet you only communicate to a few of them,
+some 10-20. This in turn avoids congestion problems in TCP/IP. The
+process of choosing whom to communicate with is called
+*choking/unchoking*. There is a glfobal server process, the
+[etorrent_choker](https://github.com/jlouis/etorrent/tree/master/apps/etorrent/src/etorrent_choker.erl),
+responsible for selecting the peers to communicate with. It wakes up
+every 10 seconds and then re-chokes peers.
 
 The rules are quite intricate and it is advised to study them in
-detail. To make the decision several parameters are taken into
-account:
+detail if you want to hack on this part. To make the decision several
+parameters are taken into account:
 
    * The rate of the peer, either in send or receive direction.
    * Is the peer choking us?
    * Is the peer interested in pieces we have?
    * Are we interested in pieces the peer has?
+   * Is the peer connected to a torrent we seed or leech?
 
-Furthermore, we have a circular ring of peers used for optimistic
-un-choking. The ring is moved forward a notch every 30 seconds and
-ensures that *all* peers eventually get a chance. If a peer is better
-than those we already download from, we will by this mechanism
-eventually latch onto it.
+Furthermore, we have a circular ring of peers used for *optimistic
+un-choking*. The ring is moved forward a notch every 30 seconds and
+ensures that *all* peers eventually get a chance at being unchoked. If
+a peer is better than those we already download from, we will by this
+mechanism eventually latch onto it.
 
 ## Other processes
+
+(** --- Editing to here --- **)
 
 This section is TODO.
 
