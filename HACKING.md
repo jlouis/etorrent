@@ -112,11 +112,11 @@ This directory contains the data used by the Web UI system. It is
 basically dumping ground for Javascript code and anything static we
 want to present to a user of the applications web interface.
 
-    * [/deps/](https://github.com/jlouis/etorrent/tree/master/deps) - dependencies are downloaded to here
-    * /dev/ - when you generate development embedded VMs they go here
-    * [/documentation/](https://github.com/jlouis/etorrent/tree/master/documentation) - haphazard general documentation about etorrent
-    * [/tools/](https://github.com/jlouis/etorrent/tree/master/tools) - small tools for manipulating and developing the source
-    * [/rel/](https://github.com/jlouis/etorrent/tree/master/rel) - stuff for making releases
+   * [/deps/](https://github.com/jlouis/etorrent/tree/master/deps) - dependencies are downloaded to here
+   * /dev/ - when you generate development embedded VMs they go here
+   * [/documentation/](https://github.com/jlouis/etorrent/tree/master/documentation) - haphazard general documentation about etorrent
+   * [/tools/](https://github.com/jlouis/etorrent/tree/master/tools) - small tools for manipulating and developing the source
+   * [/rel/](https://github.com/jlouis/etorrent/tree/master/rel) - stuff for making releases
 
 The release stuff follow the general conventions laid bare by *rebar*
 so I wont be covering it here. The file
@@ -189,7 +189,7 @@ gen_server is an interface to start and stop torrents for
 real. Starting a torrent is very simple. We start up a torrent
 supervisor and add it to the pool of currently alive torrents. Nothing
 more happens at the top level -- the remaining work is by the torrent
-supervisor, found in [etorrent_torrent_sup](https://github.com/jlouis/etorrent/tree/master/apps/etorrent/src/etorrent_torrent_sup).
+supervisor, found in [etorrent_torrent_sup](https://github.com/jlouis/etorrent/tree/master/apps/etorrent/src/etorrent_torrent_sup.erl).
 
 ### The etorrent module
 
@@ -198,69 +198,76 @@ shell. Ask it to give help by running `etorrent:help()`.
 
 ## Torrent supervisors
 
-(** --- Editing to here --- **)
-
-The torrent supervisor is `etorrent_torrent_sup`. This one will
-initially spawn supervisors to handle a pool of filesystem processes
-and a pool of peers. And finally, it will spawn a controller process,
-which will control the torrent in question.
+The torrent supervisor is
+[etorrent_torrent_sup](https://github.com/jlouis/etorrent/tree/master/apps/etorrent/src/etorrent_torrent_sup.erl).
+This one will initially spawn supervisors to handle a pool of
+filesystem processes and a pool of peers. And finally, it will spawn a
+controller process, which will control the torrent in question.
 
 Initially, the control process will wait in line until it is its turn
 to perform a *check* of the torrent for correctness. To make the check
-fast, there is a global process, the `fast_resume` process which
-persists the check data to disk every 5 minute. If the fast-resume
-data is consistent this is used. Otherwise, the control-process will
-check the torrent for pieces missing and pieces which we have and
-ok. It will then spawn a process in the supervisor, by adding a child,
-the `tracker_communication` process.
+fast, there is a global process, the
+[fast_resume](https://github.com/jlouis/etorrent/tree/master/apps/etorrent/src/etorrent_fast_resume.erl)
+process which persists the check data to disk every 5 minutes. If the
+fast-resume data is consistent this is used for fast
+checking. Otherwise, the control-process will check the torrent for
+pieces missing and pieces which we have. It will then spawn a process
+in the supervisor, by adding a child, the [tracker_communication](https://github.com/jlouis/etorrent/tree/master/apps/etorrent/src/etorrent_tracker_communication.erl)
+process.
 
 Tracker communication will contact the tracker and get a list of
 peers. It will report to the tracker that we exist, that we started
 downloading the torrent, how many bytes we have
-downloaded/uploaded and how many bytes there are left to download. The
+downloaded/uploaded -- and how many bytes there are left to download. The
 tracker process lives throughout the life-cycle of a torrent. It
 periodically contacts the tracker and it will also make a last contact
 to the tracker when the torrent is *stopped*. This final contact is
-ensured since the tracker-communicator server traps exits.
+ensured since the tracker-communicator process traps exits.
 
-The peers are then sent to a *global* process, the `peer_mgr`, which
-manages peers. Usually the peers will be started by adding them back
-into the peer pool of the right process right away, but if we have too
-many connections to peers, they will enter a queue. Also, peers will
-be filtered, if we are already connected to them.
+The peers are then sent to a *global* process, the
+[peer_mgr](https://github.com/jlouis/etorrent/tree/master/apps/etorrent/src/etorrent_peer_mgr.erl),
+which manages peers. Usually the peers will be started by adding them
+back into the peer pool of the right torrent right away. However, if
+we have too many connections to peers they will enter a queue, waiting
+in order. Also, peers will be filtered away, if we are already connected to
+them. There is little reason to connect to the same peer multiple times.
 
-**Incoming peer connections** We cover these here: To handle these, we
-have a global supervisor maintaining a small pool of accepting
+**Incoming peer connections** To handle incoming connections, we have
+a global supervisor maintaining a small pool of accepting
 processes. When a peer connects to us, we perform part of the
 handshake in the acceptor-process. We confer with several other parts
 of the system. As soon as the remote peer transfers the InfoHash, we
 look it up locally to see if this is a torrent we are currently
-working on. If not, we kill the connection. If it is alive, we check
-to see if too many peers are connected, otherwise we allow it, blindly
-(there is an opportunity for an optimization here).
+working on. If not, we kill the connection. If the torrent is alive,
+we check to see if too many peers are connected, otherwise we allow
+it, blindly (there is an opportunity for an optimization here).
 
 ## Peers
 
 A peer is governed by a supervisor as well, the
-`etorrent_peer_sup`. It will control three gen_servers: One for
-sending messages to the remote peer and keeping a queue of outgoing
-messages. One for receiving and decoding incoming messages. And
+[etorrent_peer_sup](https://github.com/jlouis/etorrent/tree/master/apps/etorrent/src/etorrent_peer_sup.erl). It will control three gen_servers: One for
+sending messages  to the remote peer and keeping a queue of outgoing
+messages
+([etorrent_peer_send](https://github.com/jlouis/etorrent/tree/master/apps/etorrent/src/etorrent_peer_send.erl)). One
+for receiving and decoding incoming messages ([etorrent_peer_recv](https://github.com/jlouis/etorrent/tree/master/apps/etorrent/src/etorrent_peer_recv.erl)). And
 finally one for controlling the communication and running the peer
-wire protocol we use to communicate with peers.
+wire protocol we use to communicate with peers ([etorrent_peer_control](https://github.com/jlouis/etorrent/tree/master/apps/etorrent/src/etorrent_peer_control.erl)).
 
 The supervisor is configured to die at the *instant* one of the other
 processes die. And the peer pool supervisor parent assumes everything
-are temporary. This means that an error in a peer will kill all
-peer processes and it will remove the peer permanently. There is a
-*monitor* set by the `peer_mgr` on the peer, so it may try to connect
-in more peers when it registers death of a peer. In turn, this
-behaviour ensures progress.
+are temporary. This means that an error in a peer will kill all peer
+processes and it will remove the peer. There is a *monitor* set by the
+`peer_mgr` on the peer, so it may try to connect in more peers when it
+registers death of a peer. In turn, this behaviour ensures progress.
 
-Peers are rather autonomous to the rest of the system. But they are
+Peers are rather *autonomous* to the rest of the system. But they are
 collaborating with several torrent-local and global processes. In the
-following, we will try to explain what they do and how they work.
+following, we will try to explain what these collaborators do and how
+they work.
 
 ## File system
+
+(** --- Editing to here --- **)
 
 The file system code, hanging on `etorrent_torrent_sup` as a
 supervision tree maintains the storage of the file on-disk. Peers
@@ -339,6 +346,10 @@ This section is TODO.
 ### UDP tracking
 ...
 ### DHT
+...
+### WebUI
+...
+### Event handling
 ...
 
 # So you want to hack etorrent? Cool!
