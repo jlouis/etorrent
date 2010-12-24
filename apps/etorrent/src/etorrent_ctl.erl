@@ -1,7 +1,12 @@
-%%%
-%%% This module is responsible for managing the run of set of torrent files.
-%%%
--module(etorrent_mgr).
+%% @author Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
+%% @doc Control torrents globally
+%% <p>This module is used to globally control torrents. You can start
+%% a torrent by pointing to a file on disk, and you can stop or a
+%% check a torrent.</p>
+%% <p>As such, this module is <em>intended</em> to become an API for
+%% torrent manipulation in the long run.</p>
+%% @end
+-module(etorrent_ctl).
 -behaviour(gen_server).
 
 -include("log.hrl").
@@ -50,11 +55,13 @@ stop(File) ->
 
 %% =======================================================================
 
-%% Callbacks
+%% @private
 init([PeerId]) ->
+    %% We trap exits to gracefully stop all torrents on death.
     process_flag(trap_exit, true),
     {ok, #state { local_peer_id = PeerId}}.
 
+%% @private
 handle_cast({start, F}, S) ->
     ?INFO([starting, F]),
     case torrent_duplicate(F) of
@@ -74,22 +81,24 @@ handle_cast({stop, F}, S) ->
     stop_torrent(F),
     {noreply, S}.
 
+%% @private
 handle_call(stop_all, _From, S) ->
     stop_all(),
     {reply, ok, S};
 handle_call(_A, _B, S) ->
     {noreply, S}.
 
+%% @private
 handle_info(Info, State) ->
     ?WARN([unknown_info, Info]),
     {noreply, State}.
 
-terminate(Event, _S) when Event == normal orelse Event == shutdown ->
+%% @private
+terminate(_Event, _S) ->
     stop_all(),
-    ok;
-terminate(_Foo, _State) ->
     ok.
 
+%% @private
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 

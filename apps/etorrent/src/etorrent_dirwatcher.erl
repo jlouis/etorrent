@@ -66,9 +66,9 @@ sweep(Key) ->
     Next = ets:next(etorrent_dirwatcher, Key),
     [{Key, S}] = ets:lookup(etorrent_dirwatcher, Key),
     case S of
-        new -> etorrent_mgr:start(Key);
+        new -> etorrent_ctl:start(Key);
         marked -> ok;
-        unmarked -> etorrent_mgr:stop(Key),
+        unmarked -> etorrent_ctl:stop(Key),
                     ets:delete(etorrent_dirwatcher, Key)
     end,
     sweep(Next).

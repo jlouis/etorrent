@@ -77,7 +77,7 @@ show(_) ->
 %% @doc Check a torrents contents. For debugging.
 %% @end
 check(Id) ->
-    etorrent_mgr:check(Id).
+    etorrent_ctl:check(Id).
 
 %% @doc Provide a simple help message for the commands supported.
 %% <p>This function will output a simple help message for the usage of the
