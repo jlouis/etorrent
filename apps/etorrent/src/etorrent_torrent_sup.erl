@@ -1,8 +1,9 @@
 %% @author Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
 %% @doc Supervise a torrent file.
-%% <p>This supervisor controls a torrent download.</p>
+%% <p>This supervisor controls a single torrent download. It sits at
+%% the top of the supervisor tree for a torrent.</p>
 %% @end
--module(etorrent_t_sup).
+-module(etorrent_torrent_sup).
 
 -behaviour(supervisor).
 
@@ -46,7 +47,7 @@ add_tracker(Pid, UrlTiers, InfoHash, Local_Peer_Id, TorrentId) ->
         {ok, pid(), pid()} | {error, term()}.
 add_peer(PeerId, InfoHash, TorrentId, {IP, Port}, Capabilities, Socket) ->
     GroupPid = gproc:lookup_local_name({torrent, TorrentId, peer_pool_sup}),
-    etorrent_peer_pool_sup:add_peer(
+    etorrent_peer_pool:add_peer(
       GroupPid,
       PeerId,
       InfoHash,
@@ -69,7 +70,7 @@ init([Path, PeerId, Id]) ->
                {etorrent_t_control, start_link, [Id, Path, PeerId]},
                permanent, 20000, worker, [etorrent_t_control]},
     PeerPool = {peer_pool_sup,
-                {etorrent_peer_pool_sup, start_link, [Id]},
-                transient, infinity, supervisor, [etorrent_peer_pool_sup]},
+                {etorrent_peer_pool, start_link, [Id]},
+                transient, infinity, supervisor, [etorrent_peer_pool]},
     %{ok, {{one_for_all, 1, 60}, [FSPool, FS, Control, PeerPool]}}.
     {ok, {{one_for_all, 1, 60}, [Control, FSPool, PeerPool]}}.
