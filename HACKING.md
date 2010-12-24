@@ -58,6 +58,39 @@ Suppose for instance that something must only happen once. By sending
 a call to the governor, we can serialize the request and thus make
 sure only one process will initialize the thing.
 
+# Dependencies
+
+Etorrent currently use two dependencies:
+
+### Gproc
+
+GProc is a process table written by Ulf Wiger at Erlang Solutions. It
+basically maintains a lookup table in ETS for processes. We use this
+throughout etorrent whenever we want to get hold of a process which is
+not "close" in the supervisor tree. We do this because it is way
+easier than to propagate around process ids all the time. GProc has a
+distributed component which we are not using at all.
+
+### riak_err
+
+The built-in SASL error logger of Erlang has problems when the
+messages it tries to log goes beyond a certain size. It manifests
+itself by the beam process taking up several gigabytes of memory. The
+[riak_err](http://github.com/basho/riak_err) application built by
+Basho technologies remedies this problem. It is configured with a
+maximal size and will gracefully limit the output so these kinds of
+errors does not occur.
+
+The downside is less configurability. Most notably, etorrent is quite
+spammy in its main console. One way around it is to connect to
+etorrent via another node,
+
+    erl -name 'foo@127.0.0.1' \
+        -remsh 'etorrent@127.0.0.1' \
+	-setcookie etorrent
+
+and then carry out commands from there.
+
 # General layout of the source code
 
 This is the hierarchy:
@@ -79,109 +112,93 @@ This directory contains the data used by the Web UI system. It is
 basically dumping ground for Javascript code and anything static we
 want to present to a user of the applications web interface.
 
-    /deps/ - dependencies are downloaded to here
-    /dev/ - when you generate development embedded VMs they go here
-    /documentation/ - haphazard general documentation about etorrent
-    /tools/ - small tools for manipulating and developing the source
-    /rel/ - stuff for making releases
+    * [/deps/](https://github.com/jlouis/etorrent/tree/master/deps) - dependencies are downloaded to here
+    * /dev/ - when you generate development embedded VMs they go here
+    * [/documentation/](https://github.com/jlouis/etorrent/tree/master/documentation) - haphazard general documentation about etorrent
+    * [/tools/](https://github.com/jlouis/etorrent/tree/master/tools) - small tools for manipulating and developing the source
+    * [/rel/](https://github.com/jlouis/etorrent/tree/master/rel) - stuff for making releases
 
 The release stuff follow the general conventions laid bare by *rebar*
-so I wont be covering it here.
+so I wont be covering it here. The file
+[reltool.config](https://github.com/jlouis/etorrent/tree/master/rel/reltool.config)
+is important though. It defines what to pack up in an embedded
+etorrent Erlang VM and what applications to start up at boot.
 
 # Building a development environment
 
-This is documented in README.md, so follow the path from there.
+This is documented in README.md, so follow the path from there. If it
+doesn't work, get back to us so we can get the documentation updated.
 
 # Code walk-through.
 
 This is the meaty part. I hope it will help a hacker to easily see
-what is happening in the application.
+what is happening in the application. And make it easier for him or
+her to understand the application. If we can give the hacker a
+bootstrap-start in understanding, we have succeeded.
 
 There is a supervisor-structure documented by the date in the
-*/documentation*. You may wish to peruse it.
+[/documentation](https://github.com/jlouis/etorrent/tree/master/documentation). You
+may wish to peruse it and study it while reading the rest of this document.
 
 ## Top level structure.
 
 The two important program entry points are:
 
-    etorrent_app.erl
-    etorrent_sup.erl
+   * [etorrent_app.erl](https://github.com/jlouis/etorrent/tree/master/apps/etorrent/src/etorrent_app.erl)
+   * [etorrent_sup.erl](https://github.com/jlouis/etorrent/tree/master/apps/etorrent/src/etorrent_sup.erl)
 
 The `etorrent_app` defines what is needed to make etorrent an
 application. When we make a release through the release system, we
 arrange that this application will be started automatically. So that
-is what makes etorrent start up. The important function is `start/2`
-which does some simple configuration and then launches the main
-supervisor, `etorrent_sup`.
+is what makes etorrent start up. The important function is
+`etorrent_app:start/2` which does some simple configuration and then
+launches the main supervisor, `etorrent_sup`.
 
-The main etorrent supervisor starts up *lots of stuff*. In general the
-things started fall into three categories:
+The main etorrent supervisor starts up *lots of stuff*. The things
+started fall into three categories:
 
-  * Global book keepers. These processes keep track of global state
+  * Global book-keepers. These processes keep track of global state
     and are not expected to die. They are usually fairly simple
-    processes which does very few things by themselves.
+    doing very few things by themselves. Most of them
+    store state in ETS tables, and reading can usually bypass the
+    governing process for speed.
 
   * Global processes. Any process in etorrent is either *global*,
     *torrent local* or *peer local* depending on whether it is used by
     all torrents, by a single torrent or by a single peer
     respectively. This split is what gives us fault tolerance. If a
     torrent dies, isolation gives us that only that particular torrent
-    will.
+    will; if a peer dies, it doesn't affect other peers.
 
   * Supervisors. There are several. The most important is the one
     maintaining a pool of torrents. Other maintain sub-parts of the
     protocol which are not relevant to the initial understanding.
 
 An important supervisor maintains the Directory Watcher. This process,
-the `etorrent_dirwatcher` is a gen_server which is the starting entry
-point for the life cycle of a torrent. It periodically watches the
-directory and when a torrent is added, it will execute
-`etorrent_ctl:start/1` to actually start the torrent.
+the
+[etorrent_dirwatcher](https://github.com/jlouis/etorrent/tree/master/apps/etorrent/src/etorrent_dirwatcher.erl)
+is a gen_server which is the starting entry point for the life cycle
+of a torrent. It periodically watches the directory and when a torrent
+is added, it will execute
+[etorrent_ctl:start/1](https://github.com/jlouis/etorrent/tree/master/apps/etorrent/src/etorrent_ctl.erl)
+to actually start the torrent.
 
-The `etorrent_ctl` gen_server is an interface to start and stop
-torrents for real. Starting a torrent is very simple. We start up a
-torrent supervisor and add it to the pool of currently alive
-torrents. Nothing more happens at the top level -- the remaining work
-is by the torrent supervisor, found in `etorrent_torrent_sup`.
+The
+[etorrent_ctl](https://github.com/jlouis/etorrent/tree/master/apps/etorrent/src/etorrent_ctl.erl)
+gen_server is an interface to start and stop torrents for
+real. Starting a torrent is very simple. We start up a torrent
+supervisor and add it to the pool of currently alive torrents. Nothing
+more happens at the top level -- the remaining work is by the torrent
+supervisor, found in [etorrent_torrent_sup](https://github.com/jlouis/etorrent/tree/master/apps/etorrent/src/etorrent_torrent_sup).
 
 ### The etorrent module
 
-The module `etorrent` is an interface to etorrent via the erl
+The module [etorrent](https://github.com/jlouis/etorrent/tree/master/apps/etorrent/src/etorrent.erl) is an interface to etorrent via the erl
 shell. Ask it to give help by running `etorrent:help()`.
 
-## Dependencies
-
-Etorrent currently use two dependencies:
-
-### Gproc
-
-GProc is a process table written by Ulf Wiger at Erlang Solutions. It
-basically maintains a lookup table in ETS for processes. We use this
-throughout etorrent whenever we want to get hold of a process which is
-not "close" in the supervisor tree. We do this because it is way
-easier than to propagate around process ids all the time. GProc has a
-distributed component which we are not using at all.
-
-### riak_err
-
-The built-in SASL error logger of Erlang has problems when the
-messages it tries to log goes beyond a certain size. It manifests
-itself by the beam process taking up several gigabytes of memory. The
-`riak_err` application built by Basho technologies remedies this
-problem. It is configured with a maximal size and will gracefully
-limit the output so these kinds of errors does not occur.
-
-The downside is less configurability. Most notably, etorrent is quite
-spammy in its main console. One way around it is to connect to
-etorrent via another node,
-
-    erl -name 'foo@127.0.0.1' \
-        -remsh 'etorrent@127.0.0.1' \
-	-setcookie etorrent
-
-and then carry out commands from there.
-
 ## Torrent supervisors
+
+(** --- Editing to here --- **)
 
 The torrent supervisor is `etorrent_torrent_sup`. This one will
 initially spawn supervisors to handle a pool of filesystem processes
@@ -234,7 +251,7 @@ wire protocol we use to communicate with peers.
 The supervisor is configured to die at the *instant* one of the other
 processes die. And the peer pool supervisor parent assumes everything
 are temporary. This means that an error in a peer will kill all
-processes and it will remove the peer permanently. There is a
+peer processes and it will remove the peer permanently. There is a
 *monitor* set by the `peer_mgr` on the peer, so it may try to connect
 in more peers when it registers death of a peer. In turn, this
 behaviour ensures progress.
