@@ -237,11 +237,12 @@ handle_call({request_chunks, PeerPid, Peerset, Numchunks}, _, State) ->
     
     %% If this peer has no pieces that we are already downloading, begin
     %% downloading a new piece if this peer has any interesting pieces.
-    OptimalPieces    = etorrent_pieceset:intersection(Peerset, PiecesValid),
+    OptimalPieces    = etorrent_pieceset:intersection(Peerset, PiecesChunked),
     SubOptimalPieces = etorrent_pieceset:difference(Peerset, PiecesValid),
     NumOptimal    = etorrent_pieceset:size(OptimalPieces),
     NumSubOptimal = etorrent_pieceset:size(SubOptimalPieces),
 
+    ?debugVal({NumOptimal, NumSubOptimal}),
     PieceIndex = case {NumOptimal, NumSubOptimal} of
         %% None that we are not already downloading
         %% and none that we would want to download
@@ -394,6 +395,7 @@ chunk_server_test_() ->
         [?_test(lookup_registered_case()),
          ?_test(unregister_case()),
          ?_test(not_interested_case()),
+         ?_test(not_interested_valid_case()),
          ?_test(request_one_case()),
          ?_test(mark_dropped_case()),
          ?_test(mark_all_dropped_case()),
@@ -415,7 +417,15 @@ not_interested_case() ->
     Srv = initial_chunk_server(1),
     Has = etorrent_pieceset:from_list([], 3),
     Ret = ?chunk_server:request_chunks(1, Has, 1),
-    ?assertEqual({error, not_interested}, Ret). 
+    ?assertEqual({error, not_interested}, Ret).
+
+not_interested_valid_case() ->
+    ID = 9,
+    {ok, Srv} = ?chunk_server:start_link(ID, 1, [0], [{0, 2}, {1, 2}, {2, 2}]),
+    true = ?chunk_server:register_peer(ID),
+    Has = etorrent_pieceset:from_list([0], 3),
+    Ret = ?chunk_server:request_chunks(ID, Has, 1),
+    ?assertEqual({error, not_interested}, Ret).
 
 request_one_case() ->
     Srv = initial_chunk_server(2),
@@ -474,5 +484,4 @@ marked_stored_not_dropped_case() ->
     Ref = monitor(process, Pid),
     ok  = receive {'DOWN', _, process, Pid, _} -> ok end,
     ?assertMatch({ok, [{0, 1, 1}]}, ?chunk_server:request_chunks(8, Has, 1)).
-
 -endif.
