@@ -201,11 +201,11 @@ delete_last_byte_test() ->
 
 
 insert_invalid_offset_test() ->
-    ?assertError(badarg, ?set:delete(-1, 0, undefined)).
+    ?assertError(badarg, ?set:insert(-1, 0, undefined)).
 
 insert_invalid_length_test() ->
-    ?assertError(badarg, ?set:delete(0, 0, undefined)),
-    ?assertError(badarg, ?set:delete(0, -1, undefined)).
+    ?assertError(badarg, ?set:insert(0, 0, undefined)),
+    ?assertError(badarg, ?set:insert(0, -1, undefined)).
 
 insert_empty_test() ->
     Set0 = ?set:from_list(32, 2, []),
