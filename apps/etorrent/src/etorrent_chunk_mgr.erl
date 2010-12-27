@@ -86,6 +86,7 @@
 -type monitorset() :: etorrent_monitorset:monitorset().
 
 -record(state, {
+    torrent_id     :: pos_integer(),
     chunk_size     :: pos_integer(),
     pieces_valid   :: pieceset(),
     pieces_unknown :: pieceset(),
@@ -208,6 +209,7 @@ init([TorrentID, ChunkSize, FetchedPieces, PieceSizes]) ->
     PieceChunks  = array:from_orddict(AllChunksets),
 
     InitState = #state{
+        torrent_id=TorrentID,
         chunk_size=ChunkSize,
         pieces_valid=PiecesValid,
         pieces_chunked=PiecesChunked,
@@ -316,19 +318,13 @@ handle_call({mark_all_dropped, Pid}, _, State) ->
     #state{
         piece_chunks=PieceChunks,
         peer_monitors=Peers} = State,
-
-    OpenReqs  = etorrent_monitorset:fetch(Pid, Peers),
-    ChunkList = [{I,O,L} || {{I,O},L} <- gb_trees:to_list(OpenReqs)],
+    %% Add the chunks back to the chunkset of each piece.
+    OpenReqs = etorrent_monitorset:fetch(Pid, Peers),
     NewPieceChunks = lists:foldl(fun({PieceIndex, Offset, Length}, Acc) ->
-        %% Add the chunk back to the chunkset of the piece.
-        Chunks = array:get(PieceIndex, Acc),
-        NewChunks = etorrent_chunkset:insert(Offset, Length, Chunks),
-        array:set(PieceIndex, NewChunks, Acc)
-    end, PieceChunks, ChunkList),
-
+        insert_chunk(PieceIndex, Offset, Length, Acc)
+    end, PieceChunks, chunk_list(OpenReqs)),
     %% Replace the peer's set of open requests with an empty set
     NewPeers = etorrent_monitorset:update(Pid, gb_trees:empty(), Peers),
-
     NewState = State#state{
         piece_chunks=NewPieceChunks,
         peer_monitors=NewPeers},
@@ -340,7 +336,20 @@ handle_cast(_, _) ->
     not_implemented.
 
 handle_info({'DOWN', _, process, Pid, _}, State) ->
-    {noreply, State}.
+    #state{
+        piece_chunks=PieceChunks,
+        peer_monitors=Peers} = State,
+    %% Add the chunks back to the chunkset of each piece.
+    OpenReqs = etorrent_monitorset:fetch(Pid, Peers),
+    NewPieceChunks = lists:foldl(fun({PieceIndex, Offset, Length}, Acc) ->
+        insert_chunk(PieceIndex, Offset, Length, Acc)
+    end, PieceChunks, chunk_list(OpenReqs)),
+    %% Delete the peer from the set of monitored peers
+    NewPeers = etorrent_monitorset:delete(Pid, Peers),
+    NewState = State#state{
+        piece_chunks=NewPieceChunks,
+        peer_monitors=NewPeers},
+    {noreply, NewState}.
 
 %% @private
 terminate(_Reason, _State) ->
@@ -350,8 +359,28 @@ terminate(_Reason, _State) ->
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
+%%
+%% Given a tree of a peers currently open requests, return a list of
+%% tuples containing the piece index, offset and length of each request.
+%%
+-spec chunk_list(gb_tree()) -> [{pos_integer(), pos_integer(), pos_integer()}].
+chunk_list(OpenReqs) ->
+    [{I,O,L} || {{I,O},L} <- gb_trees:to_list(OpenReqs)].
+
+%%
+%% Given a piece index and an array of chunksets for each piece,
+%% insert a chunk into the chunkset at the piece index.
+%%
+-spec insert_chunk(pos_integer(), pos_integer(),
+                   pos_integer, array()) -> array().
+insert_chunk(Piece, Offset, Length, PieceChunks) ->
+    Chunks = array:get(Piece, PieceChunks),
+    NewChunks = etorrent_chunkset:insert(Offset, Length, Chunks),
+    array:set(Piece, NewChunks, PieceChunks).
+
 -ifdef(TEST).
 -define(chunk_server, ?MODULE).
+
 
 initial_chunk_server(ID) ->
     {ok, Pid} = ?chunk_server:start_link(ID, 1, [], [{0, 2}, {1, 2}, {2, 2}]),
@@ -367,7 +396,10 @@ chunk_server_test_() ->
          ?_test(not_interested_case()),
          ?_test(request_one_case()),
          ?_test(mark_dropped_case()),
-         ?_test(mark_all_dropped_case())
+         ?_test(mark_all_dropped_case()),
+         ?_test(drop_none_on_exit_case()),
+         ?_test(drop_all_on_exit_case()),
+         ?_test(marked_stored_not_dropped_case())
         ]}.
 
 lookup_registered_case() ->
@@ -408,5 +440,39 @@ mark_all_dropped_case() ->
     ok = ?chunk_server:mark_all_dropped(5),
     ?assertMatch({ok, [{0, 0, 1}]}, ?chunk_server:request_chunks(5, Has, 1)),
     ?assertMatch({ok, [{0, 1, 1}]}, ?chunk_server:request_chunks(5, Has, 1)).
+
+drop_all_on_exit_case() ->
+    Srv = initial_chunk_server(6),
+    Has = etorrent_pieceset:from_list([0], 3),
+    Pid = spawn_link(fun() ->
+        true = ?chunk_server:register_peer(6),
+        {ok, [{0, 0, 1}]} = ?chunk_server:request_chunks(6, Has, 1),
+        {ok, [{0, 1, 1}]} = ?chunk_server:request_chunks(6, Has, 1)
+    end),
+    Ref = monitor(process, Pid),
+    ok  = receive {'DOWN', _, process, Pid, _} -> ok end,
+    ?assertMatch({ok, [{0, 0, 1}]}, ?chunk_server:request_chunks(6, Has, 1)),
+    ?assertMatch({ok, [{0, 1, 1}]}, ?chunk_server:request_chunks(6, Has, 1)).
+
+drop_none_on_exit_case() ->
+    Srv = initial_chunk_server(7),
+    Has = etorrent_pieceset:from_list([0], 3),
+    Pid = spawn_link(fun() -> true = ?chunk_server:register_peer(7) end),
+    Ref = monitor(process, Pid),
+    ok  = receive {'DOWN', _, process, Pid, _} -> ok end,
+    ?assertMatch({ok, [{0, 0, 1}]}, ?chunk_server:request_chunks(7, Has, 1)),
+    ?assertMatch({ok, [{0, 1, 1}]}, ?chunk_server:request_chunks(7, Has, 1)).
+
+marked_stored_not_dropped_case() ->
+    Srv = initial_chunk_server(8),
+    Has = etorrent_pieceset:from_list([0], 3),
+    Pid = spawn_link(fun() ->
+        true = ?chunk_server:register_peer(8),
+        {ok, [{0, 0, 1}]} = ?chunk_server:request_chunks(8, Has, 1),
+        ok = ?chunk_server:mark_stored(8, 0, 0, 1)
+    end),
+    Ref = monitor(process, Pid),
+    ok  = receive {'DOWN', _, process, Pid, _} -> ok end,
+    ?assertMatch({ok, [{0, 1, 1}]}, ?chunk_server:request_chunks(8, Has, 1)).
 
 -endif.
