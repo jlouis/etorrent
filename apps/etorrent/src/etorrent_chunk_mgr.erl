@@ -279,7 +279,7 @@ handle_call({request_chunks, PeerPid, Peerset, Numchunks}, _, State) ->
             {reply, {ok, [{PieceIndex, Offs, Len}]}, NewState}
     end;
 
-handle_call({mark_fetched, PieceIndex, Offset, Length}, _, State) ->
+handle_call({mark_fetched, Pid, PieceIndex, Offset, Length}, _, State) ->
     %% If we are in endgame mode, requests for a chunk may have been
     %% sent to more than one peer. Return a list of other peers that
     %% a request for this chunk has been sent to so that the caller
@@ -401,7 +401,8 @@ chunk_server_test_() ->
          ?_test(mark_all_dropped_case()),
          ?_test(drop_none_on_exit_case()),
          ?_test(drop_all_on_exit_case()),
-         ?_test(marked_stored_not_dropped_case())
+         ?_test(marked_stored_not_dropped_case()),
+         ?_test(mark_fetched_noop_case())
         ]}.
 
 lookup_registered_case() ->
@@ -484,4 +485,17 @@ marked_stored_not_dropped_case() ->
     Ref = monitor(process, Pid),
     ok  = receive {'DOWN', _, process, Pid, _} -> ok end,
     ?assertMatch({ok, [{0, 1, 1}]}, ?chunk_server:request_chunks(8, Has, 1)).
+
+mark_fetched_noop_case() ->
+    Srv = initial_chunk_server(10),
+    Has = etorrent_pieceset:from_list([0], 3),
+    Pid = spawn_link(fun() ->
+        true = ?chunk_server:register_peer(10),
+        {ok, [{0, 0, 1}]} = ?chunk_server:request_chunks(10, Has, 1),
+        ok = ?chunk_server:mark_fetched(10, 0, 0, 1)
+    end),
+    Ref = monitor(process, Pid),
+    ok  = receive {'DOWN', _, process, Pid, _} -> ok end,
+    ?assertMatch({ok, [{0, 0, 1}]}, ?chunk_server:request_chunks(10, Has, 1)).
+
 -endif.
