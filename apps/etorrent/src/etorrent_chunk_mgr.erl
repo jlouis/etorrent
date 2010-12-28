@@ -60,6 +60,7 @@
 %% @todo: What pid is the chunk recording pid? Control or SendPid?
 %% API
 -export([start_link/4,
+         mark_valid/2,
          mark_fetched/4,
          mark_stored/4,
          mark_dropped/4,
@@ -80,6 +81,8 @@
          handle_info/2,
          terminate/2,
          code_change/3]).
+
+-import(gen_server, [call/2]).
 
 -type chunkset()   :: etorrent_chunkset:chunkset().
 -type pieceset()   :: etorrent_pieceset:pieceset().
@@ -127,14 +130,22 @@ start_link(TorrentID, ChunkSize, Fetched, Sizes) ->
     gen_server:start_link(?MODULE, [TorrentID, ChunkSize, Fetched, Sizes], []).
 
 %% @doc
+%% Mark a piece as completly stored to disk and validated.
+%% @end
+-spec mark_valid(torrent_id(), pos_integer()) -> ok | {error, not_stored}.
+mark_valid(TorrentID, PieceIndex) ->
+    ChunkSrv = lookup_chunk_server(TorrentID),
+    call(ChunkSrv, {mark_valid, self(), PieceIndex}).
+
+
+%% @doc
 %% Mark a chunk as fetched but not written to file.
 %% @end
 -spec mark_fetched(torrent_id(), pos_integer(),
                    pos_integer(), pos_integer()) -> {ok, list(pid())}.
 mark_fetched(TorrentID, Index, Offset, Length) ->
     ChunkSrv = lookup_chunk_server(TorrentID),
-    Call = {mark_fetched, self(), Index, Offset, Length},
-    gen_server:call(ChunkSrv, Call).
+    call(ChunkSrv, {mark_fetched, self(), Index, Offset, Length}).
 
 %& @doc
 %% Mark a chunk as fetched and written to file.
@@ -143,8 +154,7 @@ mark_fetched(TorrentID, Index, Offset, Length) ->
                   pos_integer(), pos_integer()) -> ok.
 mark_stored(TorrentID, Index, Offset, Length) ->
     ChunkSrv = lookup_chunk_server(TorrentID),
-    Call = {mark_stored, self(), Index, Offset, Length},
-    gen_server:call(ChunkSrv, Call).
+    call(ChunkSrv, {mark_stored, self(), Index, Offset, Length}).
 
 %& @doc
 %% Reinsert a chunk into the request queue.
@@ -153,8 +163,7 @@ mark_stored(TorrentID, Index, Offset, Length) ->
                   pos_integer(), pos_integer()) -> ok.
 mark_dropped(TorrentID, Index, Offset, Length) ->
     ChunkSrv = lookup_chunk_server(TorrentID),
-    Call = {mark_dropped, self(), Index, Offset, Length},
-    gen_server:call(ChunkSrv, Call).
+    call(ChunkSrv, {mark_dropped, self(), Index, Offset, Length}).
 
 %% @doc
 %% Mark all currently open requests as dropped.
@@ -162,7 +171,7 @@ mark_dropped(TorrentID, Index, Offset, Length) ->
 -spec mark_all_dropped(torrent_id()) -> ok.
 mark_all_dropped(TorrentID) ->
     ChunkSrv = lookup_chunk_server(TorrentID),
-    gen_server:call(ChunkSrv, {mark_all_dropped, self()}).
+    call(ChunkSrv, {mark_all_dropped, self()}).
 
 
 %% @doc
@@ -172,8 +181,7 @@ mark_all_dropped(TorrentID) ->
     {ok, list({piece_index(), chunk_offset(), chunk_len()})}.
 request_chunks(TorrentID, Pieceset, Numchunks) ->
     ChunkSrv = lookup_chunk_server(TorrentID),
-    Call = {request_chunks, self(), Pieceset, Numchunks},
-    gen_server:call(ChunkSrv, Call).
+    call(ChunkSrv, {request_chunks, self(), Pieceset, Numchunks}).
 
 
 %%====================================================================
@@ -277,6 +285,22 @@ handle_call({request_chunks, PeerPid, Peerset, Numchunks}, _, State) ->
                 piece_chunks=NewChunks,
                 peer_monitors=NewPeers},
             {reply, {ok, [{PieceIndex, Offs, Len}]}, NewState}
+    end;
+
+handle_call({mark_valid, Pid, Index}, _, State) ->
+    %% Mark a piece as valid if all chunks of the
+    %% piece has been marked as stored.
+    #state{
+        pieces_valid=Valid,
+        piece_chunks=PieceChunks} = State,
+    Chunks   = array:get(Index, PieceChunks),
+    case etorrent_chunkset:size(Chunks) of
+        0 ->
+            NewValid = etorrent_pieceset:insert(Index, Valid),
+            NewState = State#state{pieces_valid=NewValid},
+            {reply, ok, NewState};
+        _ ->
+            {reply, {error, not_stored}, State}
     end;
 
 handle_call({mark_fetched, Pid, PieceIndex, Offset, Length}, _, State) ->
@@ -402,7 +426,9 @@ chunk_server_test_() ->
          ?_test(drop_none_on_exit_case()),
          ?_test(drop_all_on_exit_case()),
          ?_test(marked_stored_not_dropped_case()),
-         ?_test(mark_fetched_noop_case())
+         ?_test(mark_fetched_noop_case()),
+         ?_test(mark_valid_not_stored_case()),
+         ?_test(mark_valid_stored_case())
         ]}.
 
 lookup_registered_case() ->
@@ -497,5 +523,21 @@ mark_fetched_noop_case() ->
     Ref = monitor(process, Pid),
     ok  = receive {'DOWN', _, process, Pid, _} -> ok end,
     ?assertMatch({ok, [{0, 0, 1}]}, ?chunk_server:request_chunks(10, Has, 1)).
+
+
+mark_valid_not_stored_case() ->
+    Srv = initial_chunk_server(11),
+    Has = etorrent_pieceset:from_list([0], 3),
+    Ret = ?chunk_server:mark_valid(11, 0),
+    ?assertEqual({error, not_stored}, Ret).
+
+mark_valid_stored_case() ->
+    Srv = initial_chunk_server(12),
+    Has = etorrent_pieceset:from_list([0,1], 3),
+    {ok, [{0, 0, 1}]} = ?chunk_server:request_chunks(12, Has, 1),
+    {ok, [{0, 1, 1}]} = ?chunk_server:request_chunks(12, Has, 1),
+    ok  = ?chunk_server:mark_stored(12, 0, 0, 1),
+    ok  = ?chunk_server:mark_stored(12, 0, 1, 1),
+    ?assertEqual(ok, ?chunk_server:mark_valid(12, 0)).
 
 -endif.
