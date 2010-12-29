@@ -89,17 +89,59 @@
 -type monitorset() :: etorrent_monitorset:monitorset().
 
 -record(state, {
-    torrent_id     :: pos_integer(),
-    chunk_size     :: pos_integer(),
-    pieces_valid   :: pieceset(),
-    pieces_unknown :: pieceset(),
-    pieces_chunked :: pieceset(),
-    piece_chunks   :: array(),
-    peer_monitors  :: monitorset()}).
+    torrent_id      :: pos_integer(),
+    chunk_size      :: pos_integer(),
+    pieces_valid    :: pieceset(),
+    pieces_begun    :: pieceset(),
+    pieces_assigned :: pieceset(),
+    pieces_stored   :: pieceset(),
+    piece_chunks    :: array(),
+    peer_monitors   :: monitorset()}).
 
+%% # Open requests
 %% A gb_tree mapping {PieceIndex, Offset} to Chunklength
 %% is kept as the state of each monitored process.
-
+%%
+%% # Piece states
+%% As the download of a torrent progresses, and regresses, each piece
+%% enters and leaves a sequence of states.
+%% 
+%% ## Sequence
+%% 1. Invalid
+%% 2. Begun
+%% 3. Assigned
+%% 4. Stored
+%% 5. Valid
+%% 
+%% ## Invalid
+%% By default all pieces are considered as invalid. A piece
+%% is invalid if it is not a member of the set of valid pieces
+%%
+%% ## Begun
+%% When the download of a piece has begun the piece enters
+%% the begun state. While the piece is in this state it is
+%% still considered valid, but it enables the chunk server
+%% prioritize these pieces.
+%% A piece never leaves the begun state.
+%%
+%% ## Assigned
+%% When all chunks of the piece has been assigned to be downloaded
+%% from a set of peers, when the chunk set of the piece is empty,
+%% the piece enters the assigned state. If a piece has entered the
+%% assigned state it is considered begun.
+%% A piece leaves the assigned state if it has not yet entered the
+%% stored if a request has been dropped.
+%%
+%% ## Stored
+%% When all chunks of a piece has been marked as stored the piece
+%% enters the stored state. A piece is in the stored state until
+%% it has been validated.
+%% A piece must not leave the stored state.
+%%
+%% ## Valid
+%% A piece enters the valid state when it has been marked as valid.
+%% A piece may noy leave the valid state.
+%%
 
 -spec register_chunk_server(torrent_id()) -> true.
 register_chunk_server(TorrentID) ->
@@ -132,7 +174,8 @@ start_link(TorrentID, ChunkSize, Fetched, Sizes) ->
 %% @doc
 %% Mark a piece as completly stored to disk and validated.
 %% @end
--spec mark_valid(torrent_id(), pos_integer()) -> ok | {error, not_stored}.
+-spec mark_valid(torrent_id(), pos_integer()) ->
+          ok | {error, not_stored | valid}.
 mark_valid(TorrentID, PieceIndex) ->
     ChunkSrv = lookup_chunk_server(TorrentID),
     call(ChunkSrv, {mark_valid, self(), PieceIndex}).
@@ -220,7 +263,7 @@ init([TorrentID, ChunkSize, FetchedPieces, PieceSizes]) ->
         torrent_id=TorrentID,
         chunk_size=ChunkSize,
         pieces_valid=PiecesValid,
-        pieces_chunked=PiecesChunked,
+        pieces_begun=PiecesChunked,
         piece_chunks=PieceChunks,
         peer_monitors=etorrent_monitorset:new()},
     {ok, InitState}.
@@ -239,9 +282,12 @@ handle_call({register_peer, PeerPid}, _, State) ->
 handle_call({request_chunks, PeerPid, Peerset, Numchunks}, _, State) ->
     #state{
         pieces_valid=PiecesValid,
-        pieces_chunked=PiecesChunked,
+        pieces_stored=PiecesStored,
+        pieces_begun=PiecesChunked,
         piece_chunks=PieceChunks,
         peer_monitors=Peers} = State,
+
+    %% Consider pieces that has an empty chunkset 
     
     %% If this peer has no pieces that we are already downloading, begin
     %% downloading a new piece if this peer has any interesting pieces.
@@ -281,7 +327,7 @@ handle_call({request_chunks, PeerPid, Peerset, Numchunks}, _, State) ->
             NewPeers = etorrent_monitorset:update(PeerPid, NewReqs, Peers),
 
             NewState = State#state{
-                pieces_chunked=NewChunked,
+                pieces_begun=NewChunked,
                 piece_chunks=NewChunks,
                 peer_monitors=NewPeers},
             {reply, {ok, [{PieceIndex, Offs, Len}]}, NewState}
@@ -293,13 +339,17 @@ handle_call({mark_valid, Pid, Index}, _, State) ->
     #state{
         pieces_valid=Valid,
         piece_chunks=PieceChunks} = State,
-    Chunks   = array:get(Index, PieceChunks),
-    case etorrent_chunkset:size(Chunks) of
-        0 ->
+    IsValid = etorrent_pieceset:is_member(Index, Valid),
+    Chunks = array:get(Index, PieceChunks),
+    BytesLeft = etorrent_chunkset:size(Chunks),
+    case {IsValid, BytesLeft} of
+        {true, _} ->
+            {reply, {error, valid}, State};
+        {false, 0} ->
             NewValid = etorrent_pieceset:insert(Index, Valid),
             NewState = State#state{pieces_valid=NewValid},
             {reply, ok, NewState};
-        _ ->
+        {false, _} ->
             {reply, {error, not_stored}, State}
     end;
 
@@ -428,7 +478,8 @@ chunk_server_test_() ->
          ?_test(marked_stored_not_dropped_case()),
          ?_test(mark_fetched_noop_case()),
          ?_test(mark_valid_not_stored_case()),
-         ?_test(mark_valid_stored_case())
+         ?_test(mark_valid_stored_case()),
+         ?_test(all_stored_marks_stored_case())
         ]}.
 
 lookup_registered_case() ->
@@ -538,6 +589,15 @@ mark_valid_stored_case() ->
     {ok, [{0, 1, 1}]} = ?chunk_server:request_chunks(12, Has, 1),
     ok  = ?chunk_server:mark_stored(12, 0, 0, 1),
     ok  = ?chunk_server:mark_stored(12, 0, 1, 1),
-    ?assertEqual(ok, ?chunk_server:mark_valid(12, 0)).
+    ?assertEqual(ok, ?chunk_server:mark_valid(12, 0)),
+    ?assertEqual({error, valid}, ?chunk_server:mark_valid(12, 0)).
+
+all_stored_marks_stored_case() ->
+    Srv = initial_chunk_server(13),
+    Has = etorrent_pieceset:from_list([0,1], 3),
+    {ok, [{0, 0, 1}]} = ?chunk_server:request_chunks(13, Has, 1),
+    {ok, [{0, 1, 1}]} = ?chunk_server:request_chunks(13, Has, 1),
+    ?assertMatch({ok, [{1, 0, 1}]}, ?chunk_server:request_chunks(13, Has, 1)),
+    ?assertMatch({ok, [{1, 1, 1}]}, ?chunk_server:request_chunks(13, Has, 1)).
 
 -endif.
