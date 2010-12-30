@@ -453,7 +453,10 @@ handle_cast({mark_dropped, Pid, Index, Offset, Length}, State) ->
 handle_cast({demonitor, Pid}, State) ->
     %% This message should be received after all mark_dropped messages.
     %% At this point the set of open requests for the peer should be empty.
-    {noreply, State}.
+    #state{peer_monitors=Peers} = State,
+    NewPeers = etorrent_monitorset:delete(Pid, Peers),
+    NewState = State#state{peer_monitors=NewPeers},
+    {noreply, NewState}.
 
 handle_info({'DOWN', _, process, Pid, _}, State) ->
     %% When a peer crashes, send a series of mark-dropped messages
@@ -463,6 +466,7 @@ handle_info({'DOWN', _, process, Pid, _}, State) ->
     _ = [begin
         cast(self(), {mark_dropped, Pid, Index, Offset, Length})
     end || {Index, Offset, Length} <- chunk_list(OpenReqs)],
+    _ = cast(self(), {demonitor, Pid}),
     {noreply, State}.
 
 %% @private
