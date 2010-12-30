@@ -12,6 +12,7 @@
          to_list/1,
          is_member/2,
          insert/2,
+         delete/2,
          intersection/2,
          difference/2,
          size/1,
@@ -127,6 +128,26 @@ insert(PieceIndex, Pieceset) ->
             PaddingLen = paddinglen(PieceIndex + 1),
             <<Low:PieceIndex, _:1, Padding:PaddingLen, High/binary>> = Elements,
             Updated = <<Low:PieceIndex, 1:1, Padding:PaddingLen, High/binary>>,
+            Pieceset#pieceset{elements=Updated}
+    end.
+
+%% @doc
+%% Delete a piece from a pice set. If the index is negative
+%% or larger than the size of the piece set, this function
+%% exits with reason badarg.
+%% @end
+-spec delete(pos_integer(), pieceset()) -> pieceset().
+delete(PieceIndex, _) when PieceIndex < 0 ->
+    error(badarg);
+delete(PieceIndex, Pieceset) ->
+    #pieceset{size=Size, elements=Elements} = Pieceset,
+    case PieceIndex < Size of
+        false ->
+            error(badarg);
+        true ->
+            PaddingLen = paddinglen(PieceIndex + 1),
+            <<Low:PieceIndex, _:1, Padding:PaddingLen, High/binary>> = Elements,
+            Updated = <<Low:PieceIndex, 0:1, Padding:PaddingLen, High/binary>>,
             Pieceset#pieceset{elements=Updated}
     end.
 
