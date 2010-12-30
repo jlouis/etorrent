@@ -485,17 +485,6 @@ code_change(_OldVsn, State, _Extra) ->
 chunk_list(OpenReqs) ->
     [{I,O,L} || {{I,O},L} <- gb_trees:to_list(OpenReqs)].
 
-%%
-%% Given a piece index and an array of chunksets for each piece,
-%% insert a chunk into the chunkset at the piece index.
-%%
--spec insert_chunk(pos_integer(), pos_integer(),
-                   pos_integer, array()) -> array().
-insert_chunk(Piece, Offset, Length, PieceChunks) ->
-    Chunks = array:get(Piece, PieceChunks),
-    NewChunks = etorrent_chunkset:insert(Offset, Length, Chunks),
-    array:set(Piece, NewChunks, PieceChunks).
-
 -ifdef(TEST).
 -define(chunk_server, ?MODULE).
 
