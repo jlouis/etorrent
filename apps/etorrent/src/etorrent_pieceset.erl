@@ -343,6 +343,16 @@ insert_max_min_test() ->
     ?assert(?set:is_member(0, Set)),
     ?assertEqual(<<1:1, 0:3, 1:1, 0:3>>, ?set:to_binary(Set)).
 
+delete_invalid_index_test() ->
+    Set = ?set:new(3),
+    ?assertError(badarg, ?set:delete(-1, Set)),
+    ?assertError(badarg, ?set:delete(3, Set)).
+
+delete_test() ->
+    Set = ?set:from_list([0,2], 3),
+    ?assertNot(?set:is_member(0, ?set:delete(0, Set))),
+    ?assertNot(?set:is_member(2, ?set:delete(2, Set))).
+
 intersection_size_test() ->
     Set0 = ?set:new(5),
     Set1 = ?set:new(6),
