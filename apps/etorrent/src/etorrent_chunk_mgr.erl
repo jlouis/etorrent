@@ -91,11 +91,15 @@
 -record(state, {
     torrent_id      :: pos_integer(),
     chunk_size      :: pos_integer(),
+    %% Piece state sets
     pieces_valid    :: pieceset(),
     pieces_begun    :: pieceset(),
     pieces_assigned :: pieceset(),
     pieces_stored   :: pieceset(),
-    piece_chunks    :: array(),
+    %% Chunk sets for pieces
+    chunks_assigned :: array(),
+    chunks_stored   :: array(),
+    %% Chunks assigned to peers
     peer_monitors   :: monitorset()}).
 
 %% # Open requests
@@ -141,6 +145,17 @@
 %% ## Valid
 %% A piece enters the valid state when it has been marked as valid.
 %% A piece may noy leave the valid state.
+%%
+%% # Chunk sets
+%% ## Assigned chunks
+%% A set of chunks that has not yet been assigned to a peer is
+%% associated with each piece. When this set is empty the piece
+%% enters the assigned state.
+%%
+%% ## Stored chunks
+%% A set of chunks that has not yet been written to disk is associated
+%% with each piece. When this set is empty the piece enters the stored
+%% state. 
 %%
 
 -spec register_chunk_server(torrent_id()) -> true.
@@ -235,36 +250,38 @@ init([TorrentID, ChunkSize, FetchedPieces, PieceSizes]) ->
 
     NumPieces = length(PieceSizes),
     PiecesValid   = etorrent_pieceset:from_list(FetchedPieces, NumPieces),
-    PiecesChunked = etorrent_pieceset:new(NumPieces),
 
     %% Initialize a full chunkset for all pieces that are left to download
-    %% but don't mark them as chunked before a chunk has been deleted from
+    %% but don't mark them as begun before a chunk has been deleted from
     %% any of the chunksets.
+    %% Initialize an empty chunkset for all valid pieces.
     AllIndexes = lists:seq(0, NumPieces - 1),
     AllPieces = etorrent_pieceset:from_list(AllIndexes, NumPieces),
     PiecesInvalid = etorrent_pieceset:difference(AllPieces, PiecesValid),
+    InvalidList = etorrent_pieceset:to_list(PiecesInvalid),
+    ValidList = etorrent_pieceset:to_list(PiecesValid),
+    States = [{N, false} || N <- InvalidList] ++ [{N, true} || N <- ValidList],
     ChunkList = [begin
         Size = orddict:fetch(N, PieceSizes),
-        Set  = etorrent_chunkset:new(Size, ChunkSize),
+        Set = case IsValid of
+            false -> etorrent_chunkset:new(Size, ChunkSize);
+            true  -> etorrent_chunkset:from_list(Size, ChunkSize, [])
+        end,
         {N, Set}
-    end || N <- etorrent_pieceset:to_list(PiecesInvalid)],
-
-    %% Initialize an empty chunkset for all pieces that are valid.
-    CompletedList = [begin
-        Size = orddict:fetch(N, PieceSizes),
-        Set  = etorrent_chunkset:from_list(Size, ChunkSize, []),
-        {N, Set}
-    end || N <- etorrent_pieceset:to_list(PiecesValid)],
-
-    AllChunksets = lists:sort(CompletedList ++ ChunkList),
-    PieceChunks  = array:from_orddict(AllChunksets),
+    end || {N, IsValid} <- lists:sort(States)],
+    ChunkSets = array:from_orddict(ChunkList),
 
     InitState = #state{
         torrent_id=TorrentID,
         chunk_size=ChunkSize,
         pieces_valid=PiecesValid,
-        pieces_begun=PiecesChunked,
-        piece_chunks=PieceChunks,
+        %% All valid pieces are also begun, assigned and stored
+        pieces_begun=PiecesValid,
+        pieces_assigned=PiecesValid,
+        pieces_stored=PiecesValid,
+        %% Initially, the sets of assigned and stored chunks are equal
+        chunks_assigned=ChunkSets,
+        chunks_stored=ChunkSets,
         peer_monitors=etorrent_monitorset:new()},
     {ok, InitState}.
 
@@ -281,20 +298,22 @@ handle_call({register_peer, PeerPid}, _, State) ->
 
 handle_call({request_chunks, PeerPid, Peerset, Numchunks}, _, State) ->
     #state{
-        pieces_valid=PiecesValid,
-        pieces_stored=PiecesStored,
-        pieces_begun=PiecesChunked,
-        piece_chunks=PieceChunks,
+        pieces_valid=Valid,
+        pieces_begun=Begun,
+        pieces_assigned=Assigned,
+        pieces_stored=Stored,
+        chunks_assigned=AssignedChunks,
         peer_monitors=Peers} = State,
 
     %% Consider pieces that has an empty chunkset 
     
     %% If this peer has no pieces that we are already downloading, begin
     %% downloading a new piece if this peer has any interesting pieces.
-    OptimalPieces    = etorrent_pieceset:intersection(Peerset, PiecesChunked),
-    SubOptimalPieces = etorrent_pieceset:difference(Peerset, PiecesValid),
-    NumOptimal    = etorrent_pieceset:size(OptimalPieces),
-    NumSubOptimal = etorrent_pieceset:size(SubOptimalPieces),
+    Optimal = etorrent_pieceset:intersection(Peerset,
+              etorrent_pieceset:difference(Begun, Assigned)),
+    SubOptimal = etorrent_pieceset:difference(Peerset, Assigned),
+    NumOptimal = etorrent_pieceset:size(Optimal),
+    NumSubOptimal = etorrent_pieceset:size(SubOptimal),
 
     ?debugVal({NumOptimal, NumSubOptimal}),
     PieceIndex = case {NumOptimal, NumSubOptimal} of
@@ -305,30 +324,35 @@ handle_call({request_chunks, PeerPid, Peerset, Numchunks}, _, State) ->
         %% None that we are not already downloading
         %% but one ore more that we would want to download
         {0, N} ->
-            etorrent_pieceset:min(SubOptimalPieces);
+            etorrent_pieceset:min(SubOptimal);
         %% One or more that we are already downloading
         {N, _} ->
-            etorrent_pieceset:min(OptimalPieces)
+            etorrent_pieceset:min(Optimal)
     end,
 
     case PieceIndex of
         none ->
             {reply, {error, not_interested}, State};
-        PieceIndex ->
-            Chunkset    = array:get(PieceIndex, PieceChunks),
+        Index ->
+            Chunkset = array:get(Index, AssignedChunks),
             {Offs, Len} = etorrent_chunkset:min(Chunkset),
-            ?debugVal([Offs, Len, Chunkset]),
             NewChunkset = etorrent_chunkset:delete(Offs, Len, Chunkset),
-            NewChunks   = array:set(PieceIndex, NewChunkset, PieceChunks),
-            NewChunked  = etorrent_pieceset:insert(PieceIndex, PiecesChunked),
+            NewAssignedChunks = array:set(Index, NewChunkset, AssignedChunks),
+            NewBegun = etorrent_pieceset:insert(Index, Begun),
             %% Add the chunk to this peer's set of open requests
             OpenReqs = etorrent_monitorset:fetch(PeerPid, Peers),
-            NewReqs  = gb_trees:insert({PieceIndex, Offs}, Len, OpenReqs),
+            NewReqs  = gb_trees:insert({Index, Offs}, Len, OpenReqs),
             NewPeers = etorrent_monitorset:update(PeerPid, NewReqs, Peers),
+            %% The piece is in the assigned state if this was the last chunk
+            NewAssigned = case etorrent_chunkset:size(NewChunkset) of
+                0 -> etorrent_pieceset:insert(Index, Assigned);
+                _ -> Assigned
+            end,
 
             NewState = State#state{
-                pieces_begun=NewChunked,
-                piece_chunks=NewChunks,
+                pieces_begun=NewBegun,
+                pieces_assigned=NewAssigned,
+                chunks_assigned=NewAssignedChunks,
                 peer_monitors=NewPeers},
             {reply, {ok, [{PieceIndex, Offs, Len}]}, NewState}
     end;
@@ -338,7 +362,7 @@ handle_call({mark_valid, Pid, Index}, _, State) ->
     %% piece has been marked as stored.
     #state{
         pieces_valid=Valid,
-        piece_chunks=PieceChunks} = State,
+        chunks_assigned=PieceChunks} = State,
     IsValid = etorrent_pieceset:is_member(Index, Valid),
     Chunks = array:get(Index, PieceChunks),
     BytesLeft = etorrent_chunkset:size(Chunks),
@@ -370,38 +394,51 @@ handle_call({mark_stored, Pid, PieceIndex, Offset, Length}, _, State) ->
     NewState = State#state{peer_monitors=NewPeers},
     {reply, ok, NewState};
 
-handle_call({mark_dropped, Pid, PieceIndex, Offset, Length}, _, State) ->
+handle_call({mark_dropped, Pid, Index, Offset, Length}, _, State) ->
     #state{
-        piece_chunks=PieceChunks,
+        pieces_assigned=Assigned,
+        chunks_assigned=AssignedChunks,
         peer_monitors=Peers} = State,
      %% Reemove the chunk from the peer's set of open requests
      OpenReqs = etorrent_monitorset:fetch(Pid, Peers),
-     NewReqs  = gb_trees:delete({PieceIndex, Offset}, OpenReqs),
+     NewReqs  = gb_trees:delete({Index, Offset}, OpenReqs),
      NewPeers = etorrent_monitorset:update(Pid, NewReqs, Peers),
  
      %% Add the chunk back to the chunkset of the piece.
-     Chunks = array:get(PieceIndex, PieceChunks),
+     Chunks = array:get(Index, AssignedChunks),
      NewChunks = etorrent_chunkset:insert(Offset, Length, Chunks),
-     NewPieceChunks = array:set(PieceIndex, NewChunks, PieceChunks),
+     NewAssignedChunks = array:set(Index, NewChunks, AssignedChunks),
+
+     %% This piece is no longer in the assigned state
+     NewAssigned = etorrent_pieceset:delete(Index, Assigned),
  
      NewState = State#state{
-         piece_chunks=NewPieceChunks,
+         pieces_assigned=NewAssigned,
+         chunks_assigned=NewAssignedChunks,
          peer_monitors=NewPeers},
     {reply, ok, NewState};
 
 handle_call({mark_all_dropped, Pid}, _, State) ->
     #state{
-        piece_chunks=PieceChunks,
+        pieces_assigned=Assigned,
+        chunks_assigned=PieceChunks,
         peer_monitors=Peers} = State,
     %% Add the chunks back to the chunkset of each piece.
     OpenReqs = etorrent_monitorset:fetch(Pid, Peers),
-    NewPieceChunks = lists:foldl(fun({PieceIndex, Offset, Length}, Acc) ->
-        insert_chunk(PieceIndex, Offset, Length, Acc)
+    NewPieceChunks = lists:foldl(fun({Index, Offset, Length}, Acc) ->
+        insert_chunk(Index, Offset, Length, Acc)
     end, PieceChunks, chunk_list(OpenReqs)),
+
+    %% None of the pieces that had open requests are no longer assigned
+    NewAssigned = lists:foldl(fun({Index, _, _}, Acc) ->
+        etorrent_pieceset:delete(Index, Acc)
+    end, Assigned, chunk_list(OpenReqs)),
+
     %% Replace the peer's set of open requests with an empty set
     NewPeers = etorrent_monitorset:update(Pid, gb_trees:empty(), Peers),
     NewState = State#state{
-        piece_chunks=NewPieceChunks,
+        pieces_assigned=NewAssigned,
+        chunks_assigned=NewPieceChunks,
         peer_monitors=NewPeers},
     {reply, ok, NewState}.
 
@@ -412,17 +449,25 @@ handle_cast(_, _) ->
 
 handle_info({'DOWN', _, process, Pid, _}, State) ->
     #state{
-        piece_chunks=PieceChunks,
+        pieces_assigned=Assigned,
+        chunks_assigned=PieceChunks,
         peer_monitors=Peers} = State,
     %% Add the chunks back to the chunkset of each piece.
     OpenReqs = etorrent_monitorset:fetch(Pid, Peers),
     NewPieceChunks = lists:foldl(fun({PieceIndex, Offset, Length}, Acc) ->
         insert_chunk(PieceIndex, Offset, Length, Acc)
     end, PieceChunks, chunk_list(OpenReqs)),
+
+    %% None of the pieces that had open requests are no longer assigned
+    NewAssigned = lists:foldl(fun({Index, _, _}, Acc) ->
+        etorrent_pieceset:delete(Index, Acc)
+    end, Assigned, chunk_list(OpenReqs)),
+
     %% Delete the peer from the set of monitored peers
     NewPeers = etorrent_monitorset:delete(Pid, Peers),
     NewState = State#state{
-        piece_chunks=NewPieceChunks,
+        pieces_assigned=NewAssigned,
+        chunks_assigned=NewPieceChunks,
         peer_monitors=NewPeers},
     {noreply, NewState}.
 
