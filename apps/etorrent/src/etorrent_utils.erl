@@ -136,8 +136,12 @@ prop_group_count() ->
 		  Grouped)
 	    end).
 
-eqc_test() ->
-    ?assert(eqc:quickcheck(prop_group_count())),
+eqc_count_test_() ->
+    %% Run the first eqc-based test with a higher timeout value
+    %% beacause it takes time for EQC to authenticate when it's autostarted.
+    {timeout, 1000, [?_assert(eqc:quickcheck(prop_group_count()))]}.
+
+eqc_gsplit_test() ->
     ?assert(eqc:quickcheck(prop_gsplit_split())).
 
 -endif.
