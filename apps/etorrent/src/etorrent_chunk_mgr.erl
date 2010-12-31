@@ -216,7 +216,7 @@ mark_valid(TorrentID, PieceIndex) ->
 %% Mark a chunk as fetched but not written to file.
 %% @end
 -spec mark_fetched(torrent_id(), pos_integer(),
-                   pos_integer(), pos_integer()) -> {ok, list(pid())}.
+                   pos_integer(), pos_integer()) -> ok.
 mark_fetched(TorrentID, Index, Offset, Length) ->
     ChunkSrv = lookup_chunk_server(TorrentID),
     call(ChunkSrv, {mark_fetched, self(), Index, Offset, Length}).
@@ -252,7 +252,8 @@ mark_all_dropped(TorrentID) ->
 %% Request a 
 %% @end
 -spec request_chunks(torrent_id(), pieceset(), pos_integer()) ->
-    {ok, list({piece_index(), chunk_offset(), chunk_len()})}.
+    {ok, list({piece_index(), chunk_offset(), chunk_len()})}
+    | {error, not_interested | assigned}.
 request_chunks(TorrentID, Pieceset, Numchunks) ->
     ChunkSrv = lookup_chunk_server(TorrentID),
     call(ChunkSrv, {request_chunks, self(), Pieceset, Numchunks}).
@@ -316,6 +317,7 @@ handle_call({request_chunks, PeerPid, Peerset, _}, _, State) ->
     #state{
         pieces_begun=Begun,
         pieces_assigned=Assigned,
+        pieces_stored=Stored,
         chunks_assigned=AssignedChunks,
         peer_monitors=Peers} = State,
 
@@ -333,7 +335,11 @@ handle_call({request_chunks, PeerPid, Peerset, _}, _, State) ->
         %% None that we are not already downloading
         %% and none that we would want to download
         {0, 0} ->
-            none;
+            Interesting = etorrent_pieceset:difference(Peerset, Stored),
+            case etorrent_pieceset:size(Interesting) of
+                0 -> not_interested;
+                _ -> assigned
+            end;
         %% None that we are not already downloading
         %% but one ore more that we would want to download
         {0, _} ->
@@ -344,8 +350,10 @@ handle_call({request_chunks, PeerPid, Peerset, _}, _, State) ->
     end,
 
     case PieceIndex of
-        none ->
+        not_interested ->
             {reply, {error, not_interested}, State};
+        assigned ->
+            {reply, {error, assigned}, State};
         Index ->
             Chunkset = array:get(Index, AssignedChunks),
             {Offs, Len} = etorrent_chunkset:min(Chunkset),
@@ -639,6 +647,6 @@ get_all_request_case() ->
     {ok, [{1, 1, 1}]} = ?chunk_server:request_chunks(14, Has, 1),
     {ok, [{2, 0, 1}]} = ?chunk_server:request_chunks(14, Has, 1),
     {ok, [{2, 1, 1}]} = ?chunk_server:request_chunks(14, Has, 1),
-    ?assertEqual({error, not_interested}, ?chunk_server:request_chunks(14, Has, 1)).
+    ?assertEqual({error, assigned}, ?chunk_server:request_chunks(14, Has, 1)).
 
 -endif.
