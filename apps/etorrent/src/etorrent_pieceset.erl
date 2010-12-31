@@ -19,7 +19,7 @@
          min/1]).
 
 -record(pieceset, {
-    size :: pos_integer(),
+    size :: non_neg_integer(),
     elements :: binary()}).
 
 -opaque pieceset() :: #pieceset{}.
@@ -29,7 +29,7 @@
 %% Create an empty set of piece indexes. The set of pieces
 %% is limited to contain pieces indexes from 0 to Size-1.
 %% @end
--spec new(pos_integer()) -> pieceset().
+-spec new(non_neg_integer()) -> pieceset().
 new(Size) ->
     PaddingLen = paddinglen(Size),
     Elements = <<0:Size, 0:PaddingLen>>,
@@ -42,7 +42,7 @@ new(Size) ->
 %% Size pieces, as a set returned from new/1 is.
 %% The bitfield is expected to not be padded with more than 7 bits.
 %% @end
--spec from_binary(binary(), pos_integer()) -> pieceset().
+-spec from_binary(binary(), non_neg_integer()) -> pieceset().
 from_binary(Bin, Size) when is_binary(Bin) ->
     PaddingLen = paddinglen(Size),
     <<_:Size, PaddingValue:PaddingLen>> = Bin,
@@ -65,7 +65,7 @@ to_binary(Pieceset) ->
 %% @doc
 %% Convert an ordered list of piece indexes to a piece set.
 %% @end
--spec from_list(list(pos_integer()), pos_integer()) -> pieceset().
+-spec from_list(list(non_neg_integer()), non_neg_integer()) -> pieceset().
 from_list(List, Size) ->
     Pieceset = new(Size),
     from_list_(List, Pieceset).
@@ -80,7 +80,7 @@ from_list_([H|T], Pieceset) ->
 %% Convert a piece set to an ordered list of the piece indexes
 %% that are members of this set.
 %% @end
--spec to_list(pieceset()) -> list(pos_integer()).
+-spec to_list(pieceset()) -> list(non_neg_integer()).
 to_list(Pieceset) ->
     #pieceset{elements=Elements} = Pieceset,
     to_list(Elements, 0).
@@ -97,7 +97,7 @@ to_list(<<>>, _) ->
 %% false if not. If the piece index is negative or is larger
 %% than the size of this piece set, the function exits with badarg.
 %% @end
--spec is_member(pos_integer(), pieceset()) -> boolean().
+-spec is_member(non_neg_integer(), pieceset()) -> boolean().
 is_member(PieceIndex, _) when PieceIndex < 0 ->
     error(badarg);
 is_member(PieceIndex, Pieceset) ->
@@ -116,7 +116,7 @@ is_member(PieceIndex, Pieceset) ->
 %% negative or larger than the size of this piece set, this
 %% function exists with the reason badarg.
 %% @end
--spec insert(pos_integer(), pieceset()) -> pieceset().
+-spec insert(non_neg_integer(), pieceset()) -> pieceset().
 insert(PieceIndex, _) when PieceIndex < 0 ->
     error(badarg);
 insert(PieceIndex, Pieceset) ->
@@ -136,7 +136,7 @@ insert(PieceIndex, Pieceset) ->
 %% or larger than the size of the piece set, this function
 %% exits with reason badarg.
 %% @end
--spec delete(pos_integer(), pieceset()) -> pieceset().
+-spec delete(non_neg_integer(), pieceset()) -> pieceset().
 delete(PieceIndex, _) when PieceIndex < 0 ->
     error(badarg);
 delete(PieceIndex, Pieceset) ->
@@ -195,7 +195,7 @@ difference(Set0, Set1) ->
 %% @doc
 %% Return the number of pieces that are members of the set.
 %% @end
--spec size(pieceset()) -> pos_integer().
+-spec size(pieceset()) -> non_neg_integer().
 size(Pieceset) ->
     #pieceset{elements=Elements} = Pieceset,
     size(Elements, 0).
@@ -211,7 +211,7 @@ size(<<>>, Acc) ->
 %% Return the lowest piece index that is a member of this set.
 %% If the piece set is empty, exit with reason badarg
 %% @end
--spec min(pieceset()) -> pos_integer().
+-spec min(pieceset()) -> non_neg_integer().
 min(Pieceset) ->
     #pieceset{elements=Elements} = Pieceset,
     min_(Elements, 0).
