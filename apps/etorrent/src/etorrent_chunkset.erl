@@ -39,7 +39,7 @@ from_list(PieceLen, ChunkLen, Chunks) ->
 %% @doc
 %% Get sum of the size of all chunks in the chunkset.
 %% @end
--spec size(chunkset()) -> pos_integer().
+-spec size(chunkset()) -> non_neg_integer().
 size(Chunkset) ->
     #chunkset{chunks=Chunks} = Chunkset,
     Lengths = [1 + End - Start || {Start, End} <- Chunks],
