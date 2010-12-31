@@ -15,7 +15,7 @@
 -record(chunkset, {
     piece_len :: pos_integer(),
     chunk_len :: pos_integer(),
-    chunks :: list({pos_integer(), pos_integer()})}).
+    chunks :: list({non_neg_integer(), pos_integer()})}).
 
 -opaque chunkset() :: #chunkset{}.
 -export_type([chunkset/0]).
@@ -50,7 +50,7 @@ size(Chunkset) ->
 %% to the beginning of the piece. The chunk that is returned may
 %% be shorter than the chunk length of the set.
 %% @end
--spec min(chunkset()) -> none | {pos_integer(), pos_integer()}.
+-spec min(chunkset()) -> {pos_integer(), pos_integer()}.
 min(Chunkset) ->
     #chunkset{chunk_len=ChunkLen, chunks=Chunks} = Chunkset,
     case Chunks of

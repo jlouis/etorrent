@@ -8,7 +8,7 @@
          fetch/2,
          is_member/2]).
 
--opaque monitorset() :: gb_tree().
+-type monitorset() :: gb_tree().
 -export_type([monitorset/0]).
 
 %% @doc
@@ -28,7 +28,7 @@ size(Monitorset) ->
 %% @doc
 %%
 %% @end
--spec insert(reference(), term(), monitorset()) -> monitorset().
+-spec insert(pid(), term(), monitorset()) -> monitorset().
 insert(Pid, Value, Monitorset) ->
     MRef = monitor(process, Pid),
     gb_trees:insert(Pid, {MRef, Value}, Monitorset).
@@ -36,7 +36,7 @@ insert(Pid, Value, Monitorset) ->
 %% @doc
 %%
 %% @end
--spec update(reference(), term(), monitorset()) -> monitorset().
+-spec update(pid(), term(), monitorset()) -> monitorset().
 update(Pid, Value, Monitorset) ->
     {MRef, _} = gb_trees:get(Pid, Monitorset),
     gb_trees:update(Pid, {MRef, Value}, Monitorset).
@@ -44,7 +44,7 @@ update(Pid, Value, Monitorset) ->
 %% @doc
 %%
 %% @end
--spec delete(reference(), monitorset()) -> monitorset().
+-spec delete(pid(), monitorset()) -> monitorset().
 delete(Pid, Monitorset) ->
     {MRef, _} = gb_trees:get(Pid, Monitorset),
     true = demonitor(MRef, [flush]),
@@ -53,7 +53,7 @@ delete(Pid, Monitorset) ->
 %% @doc
 %%
 %% @end
--spec is_member(reference(), monitorset()) -> boolean().
+-spec is_member(pid(), monitorset()) -> boolean().
 is_member(Pid, Monitorset) ->
     gb_trees:is_defined(Pid, Monitorset).
 
