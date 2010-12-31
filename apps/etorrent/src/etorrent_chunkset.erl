@@ -110,11 +110,11 @@ insert(Offset, Length, Chunkset) ->
 
 insert_(ChStart, ChEnd, []) ->
     [{ChStart, ChEnd}];
-insert_(ChStart, ChEnd, [{Start, End}|T]) when ChStart > Start ->
+insert_(ChStart, ChEnd, [{Start, _}|T]) when ChStart > Start ->
     insert_(Start, ChEnd, T);
-insert_(ChStart, ChEnd, [{Start, End}|T]) when ChEnd =< End ->
+insert_(ChStart, ChEnd, [{_, End}|T]) when ChEnd =< End ->
     [{ChStart, End}|T];
-insert_(ChStart, ChEnd, [{Start, End}|T]) when ChEnd > End ->
+insert_(ChStart, ChEnd, [{_, End}|T]) when ChEnd > End ->
     insert_(ChStart, ChEnd, T).
 
 

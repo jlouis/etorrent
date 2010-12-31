@@ -84,7 +84,6 @@
 
 -import(gen_server, [call/2, cast/2]).
 
--type chunkset()   :: etorrent_chunkset:chunkset().
 -type pieceset()   :: etorrent_pieceset:pieceset().
 -type monitorset() :: etorrent_monitorset:monitorset().
 
@@ -313,12 +312,10 @@ handle_call({register_peer, PeerPid}, _, State) ->
     NewState = State#state{peer_monitors=NewMonitors},
     {reply, true, NewState};
 
-handle_call({request_chunks, PeerPid, Peerset, Numchunks}, _, State) ->
+handle_call({request_chunks, PeerPid, Peerset, _}, _, State) ->
     #state{
-        pieces_valid=Valid,
         pieces_begun=Begun,
         pieces_assigned=Assigned,
-        pieces_stored=Stored,
         chunks_assigned=AssignedChunks,
         peer_monitors=Peers} = State,
 
@@ -332,7 +329,6 @@ handle_call({request_chunks, PeerPid, Peerset, Numchunks}, _, State) ->
     NumOptimal = etorrent_pieceset:size(Optimal),
     NumSubOptimal = etorrent_pieceset:size(SubOptimal),
 
-    ?debugVal({NumOptimal, NumSubOptimal}),
     PieceIndex = case {NumOptimal, NumSubOptimal} of
         %% None that we are not already downloading
         %% and none that we would want to download
@@ -340,10 +336,10 @@ handle_call({request_chunks, PeerPid, Peerset, Numchunks}, _, State) ->
             none;
         %% None that we are not already downloading
         %% but one ore more that we would want to download
-        {0, N} ->
+        {0, _} ->
             etorrent_pieceset:min(SubOptimal);
         %% One or more that we are already downloading
-        {N, _} ->
+        {_, _} ->
             etorrent_pieceset:min(Optimal)
     end,
 
@@ -374,7 +370,7 @@ handle_call({request_chunks, PeerPid, Peerset, Numchunks}, _, State) ->
             {reply, {ok, [{PieceIndex, Offs, Len}]}, NewState}
     end;
 
-handle_call({mark_valid, Pid, Index}, _, State) ->
+handle_call({mark_valid, _, Index}, _, State) ->
     %% Mark a piece as valid if all chunks of the
     %% piece has been marked as stored.
     #state{
@@ -394,14 +390,14 @@ handle_call({mark_valid, Pid, Index}, _, State) ->
             {reply, {error, not_stored}, State}
     end;
 
-handle_call({mark_fetched, Pid, PieceIndex, Offset, Length}, _, State) ->
+handle_call({mark_fetched, _Pid, _Index, _Offset, _Length}, _, State) ->
     %% If we are in endgame mode, requests for a chunk may have been
     %% sent to more than one peer. Return a list of other peers that
     %% a request for this chunk has been sent to so that the caller
     %% can send a cancel-message to all of them.
     {reply, ok, State};
 
-handle_call({mark_stored, Pid, PieceIndex, Offset, Length}, _, State) ->
+handle_call({mark_stored, Pid, PieceIndex, Offset, _Length}, _, State) ->
     %% The calling process has written this chunk to disk.
     %% Remove it from the list of open requests of the process.
     #state{peer_monitors=Peers} = State,
@@ -525,27 +521,27 @@ unregister_case() ->
     ?assertError(badarg, ?chunk_server:lookup_chunk_server(3)).
 
 not_interested_case() ->
-    Srv = initial_chunk_server(1),
+    _ = initial_chunk_server(1),
     Has = etorrent_pieceset:from_list([], 3),
     Ret = ?chunk_server:request_chunks(1, Has, 1),
     ?assertEqual({error, not_interested}, Ret).
 
 not_interested_valid_case() ->
     ID = 9,
-    {ok, Srv} = ?chunk_server:start_link(ID, 1, [0], [{0, 2}, {1, 2}, {2, 2}]),
+    {ok, _} = ?chunk_server:start_link(ID, 1, [0], [{0, 2}, {1, 2}, {2, 2}]),
     true = ?chunk_server:register_peer(ID),
     Has = etorrent_pieceset:from_list([0], 3),
     Ret = ?chunk_server:request_chunks(ID, Has, 1),
     ?assertEqual({error, not_interested}, Ret).
 
 request_one_case() ->
-    Srv = initial_chunk_server(2),
+    _ = initial_chunk_server(2),
     Has = etorrent_pieceset:from_list([0], 3),
     Ret = ?chunk_server:request_chunks(1, Has, 1),
     ?assertEqual({ok, [{0, 0, 1}]}, Ret).
 
 mark_dropped_case() ->
-    Srv = initial_chunk_server(4),
+    _ = initial_chunk_server(4),
     Has = etorrent_pieceset:from_list([0], 3),
     {ok, [{0, 0, 1}]} = ?chunk_server:request_chunks(4, Has, 1),
     {ok, [{0, 1, 1}]} = ?chunk_server:request_chunks(4, Has, 1),
@@ -554,7 +550,7 @@ mark_dropped_case() ->
     ?assertEqual({ok, [{0, 0, 1}]}, Ret).
 
 mark_all_dropped_case() ->
-    Srv = initial_chunk_server(5),
+    _ = initial_chunk_server(5),
     Has = etorrent_pieceset:from_list([0], 3),
     ?assertMatch({ok, [{0, 0, 1}]}, ?chunk_server:request_chunks(5, Has, 1)),
     ?assertMatch({ok, [{0, 1, 1}]}, ?chunk_server:request_chunks(5, Has, 1)),
@@ -563,62 +559,61 @@ mark_all_dropped_case() ->
     ?assertMatch({ok, [{0, 1, 1}]}, ?chunk_server:request_chunks(5, Has, 1)).
 
 drop_all_on_exit_case() ->
-    Srv = initial_chunk_server(6),
+    _ = initial_chunk_server(6),
     Has = etorrent_pieceset:from_list([0], 3),
     Pid = spawn_link(fun() ->
         true = ?chunk_server:register_peer(6),
         {ok, [{0, 0, 1}]} = ?chunk_server:request_chunks(6, Has, 1),
         {ok, [{0, 1, 1}]} = ?chunk_server:request_chunks(6, Has, 1)
     end),
-    Ref = monitor(process, Pid),
+    _ = monitor(process, Pid),
     ok  = receive {'DOWN', _, process, Pid, _} -> ok end,
     timer:sleep(10),
     ?assertMatch({ok, [{0, 0, 1}]}, ?chunk_server:request_chunks(6, Has, 1)),
     ?assertMatch({ok, [{0, 1, 1}]}, ?chunk_server:request_chunks(6, Has, 1)).
 
 drop_none_on_exit_case() ->
-    Srv = initial_chunk_server(7),
+    _ = initial_chunk_server(7),
     Has = etorrent_pieceset:from_list([0], 3),
     Pid = spawn_link(fun() -> true = ?chunk_server:register_peer(7) end),
-    Ref = monitor(process, Pid),
+    _ = monitor(process, Pid),
     ok  = receive {'DOWN', _, process, Pid, _} -> ok end,
     ?assertMatch({ok, [{0, 0, 1}]}, ?chunk_server:request_chunks(7, Has, 1)),
     ?assertMatch({ok, [{0, 1, 1}]}, ?chunk_server:request_chunks(7, Has, 1)).
 
 marked_stored_not_dropped_case() ->
-    Srv = initial_chunk_server(8),
+    _ = initial_chunk_server(8),
     Has = etorrent_pieceset:from_list([0], 3),
     Pid = spawn_link(fun() ->
         true = ?chunk_server:register_peer(8),
         {ok, [{0, 0, 1}]} = ?chunk_server:request_chunks(8, Has, 1),
         ok = ?chunk_server:mark_stored(8, 0, 0, 1)
     end),
-    Ref = monitor(process, Pid),
+    _ = monitor(process, Pid),
     ok  = receive {'DOWN', _, process, Pid, _} -> ok end,
     ?assertMatch({ok, [{0, 1, 1}]}, ?chunk_server:request_chunks(8, Has, 1)).
 
 mark_fetched_noop_case() ->
-    Srv = initial_chunk_server(10),
+    _ = initial_chunk_server(10),
     Has = etorrent_pieceset:from_list([0], 3),
     Pid = spawn_link(fun() ->
         true = ?chunk_server:register_peer(10),
         {ok, [{0, 0, 1}]} = ?chunk_server:request_chunks(10, Has, 1),
         ok = ?chunk_server:mark_fetched(10, 0, 0, 1)
     end),
-    Ref = monitor(process, Pid),
+    _ = monitor(process, Pid),
     ok  = receive {'DOWN', _, process, Pid, _} -> ok end,
     timer:sleep(10),
     ?assertMatch({ok, [{0, 0, 1}]}, ?chunk_server:request_chunks(10, Has, 1)).
 
 
 mark_valid_not_stored_case() ->
-    Srv = initial_chunk_server(11),
-    Has = etorrent_pieceset:from_list([0], 3),
+    _ = initial_chunk_server(11),
     Ret = ?chunk_server:mark_valid(11, 0),
     ?assertEqual({error, not_stored}, Ret).
 
 mark_valid_stored_case() ->
-    Srv = initial_chunk_server(12),
+    _ = initial_chunk_server(12),
     Has = etorrent_pieceset:from_list([0,1], 3),
     {ok, [{0, 0, 1}]} = ?chunk_server:request_chunks(12, Has, 1),
     {ok, [{0, 1, 1}]} = ?chunk_server:request_chunks(12, Has, 1),
@@ -628,7 +623,7 @@ mark_valid_stored_case() ->
     ?assertEqual({error, valid}, ?chunk_server:mark_valid(12, 0)).
 
 all_stored_marks_stored_case() ->
-    Srv = initial_chunk_server(13),
+    _ = initial_chunk_server(13),
     Has = etorrent_pieceset:from_list([0,1], 3),
     {ok, [{0, 0, 1}]} = ?chunk_server:request_chunks(13, Has, 1),
     {ok, [{0, 1, 1}]} = ?chunk_server:request_chunks(13, Has, 1),
@@ -636,7 +631,7 @@ all_stored_marks_stored_case() ->
     ?assertMatch({ok, [{1, 1, 1}]}, ?chunk_server:request_chunks(13, Has, 1)).
 
 get_all_request_case() ->
-    Srv = initial_chunk_server(14),
+    _ = initial_chunk_server(14),
     Has = etorrent_pieceset:from_list([0,1,2], 3),
     {ok, [{0, 0, 1}]} = ?chunk_server:request_chunks(14, Has, 1),
     {ok, [{0, 1, 1}]} = ?chunk_server:request_chunks(14, Has, 1),
