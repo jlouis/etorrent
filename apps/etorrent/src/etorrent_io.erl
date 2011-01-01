@@ -53,9 +53,12 @@
 -export([start_link/2,
 	     allocate/1,
          piece_size/2,
+         piece_sizes/1,
          read_piece/2,
          read_chunk/4,
          write_chunk/4,
+         file_paths/1,
+         file_sizes/1,
          register_directory/1,
          lookup_directory/1,
          await_directory/1,
@@ -210,6 +213,30 @@ write_file_blocks(TorrentID, Chunk, [{Path, Offset, Length}|T]=L) ->
         ok ->
             write_file_blocks(TorrentID, Rest, T)
     end.
+
+file_path_len(T) ->
+    case etorrent_metainfo:get_files(T) of
+	[One] -> [One];
+	More when is_list(More) ->
+	    Name = etorrent_metainfo:get_name(T),
+	    [{filename:join([Name, Path]), Len} || {Path, Len} <- More]
+    end.
+
+%% @doc
+%% Return the relative paths of all files included in the .torrent.
+%% If the .torrent includes more than one file, the torrent name is
+%% prepended to all file paths.
+%% @end
+file_paths(Torrent) ->
+    [Path || {Path, _} <- file_path_len(Torrent)].
+
+%% @doc
+%% Returns the relative paths and sizes of all files included in the .torrent.
+%% If the .torrent includes more than one file, the torrent name is prepended
+%% to all file paths.
+%% @end
+file_sizes(Torrent) ->
+    file_path_len(Torrent).
 
 %% @doc
 %% Register the current process as the directory server for
