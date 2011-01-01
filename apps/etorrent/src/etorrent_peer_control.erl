@@ -134,6 +134,7 @@ init([TrackerUrl, LocalPeerId, InfoHash, Id, {IP, Port}, Caps, Socket]) ->
     random:seed(now()),
     ok = etorrent_table:new_peer(TrackerUrl, IP, Port, Id, self(), leeching),
     ok = etorrent_choker:monitor(self()),
+    true = etorrent_chunk_mgr:register_peer(Id),
     {value, NumPieces} = etorrent_torrent:num_pieces(Id),
     gproc:add_local_name({peer, Socket, control}),
     {ok, #state{
@@ -248,7 +249,8 @@ handle_message(choke, State) ->
             State#state{remote_choked=true};
         false ->
             State#state{remote_choked=true, remote_request_set=gb_trees:empty()}
-    end;
+    end,
+    {ok, NewState};
 handle_message(unchoke, S) ->
     ok = etorrent_peer_states:set_unchoke(S#state.torrent_id, self()),
     try_to_queue_up_pieces(S#state{remote_choked = false});
@@ -410,7 +412,7 @@ try_to_queue_up_pieces(State) ->
 %% @end
 -spec queue_items(pid(), list(), gb_tree()) -> gb_tree().
 queue_items(SendPid, Chunks, Requestset) ->
-    lists:foldl(fun({Index, Offset, Length}=Chunk, Acc) ->
+    lists:foldl(fun({_, _, _}=Chunk, Acc) ->
         etorrent_peer_send:local_request(SendPid, Chunk),
         gb_trees:enter(Chunk, 'ops', Acc)
     end, Requestset, Chunks).
