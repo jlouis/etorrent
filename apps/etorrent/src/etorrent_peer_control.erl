@@ -25,9 +25,14 @@
          terminate/2, code_change/3]).
 -export([format_status/2]).
 
--record(state, { remote_peer_id               :: none_set | binary(),
-                 local_peer_id                :: binary(),
-                 info_hash                    :: binary(),
+-type pieceset() :: etorrent_pieceset:pieceset().
+
+-record(state, { remote_peer_id = none,
+                 local_peer_id = none,
+                 info_hash = none,
+
+		 extended_messaging = false, % Peer support extended messages
+                 fast_extension = false, % Peer uses fast extension
 
 		 %% Peer support extended messages
 		 extended_messaging = false   :: boolean(),
@@ -45,7 +50,8 @@
 
                  remote_request_set = gb_sets:empty() :: gb_set(),
 
-                 piece_set = unknown          :: unknown | gb_set(),
+                 piece_set = unknown :: unknown | pieceset(),
+                 piece_request = [],
 
 		 %% Are we in endgame mode?
                  endgame = false              :: boolean(),
@@ -170,24 +176,20 @@ handle_cast(unchoke, S) ->
     etorrent_peer_send:unchoke(S#state.send_pid),
     {noreply, S};
 handle_cast(interested, S) ->
-    statechange_interested(S#state.local_interested, S#state.send_pid, true),
-    {noreply, S#state {local_interested = true}};
-handle_cast({have, PN}, #state { piece_set = unknown, send_pid = SPid } = S) ->
+    {noreply, statechange_interested(S, true)};
+handle_cast({have, PN}, #state{piece_set = unknown, send_pid = SPid } = S) ->
     etorrent_peer_send:have(SPid, PN),
     {noreply, S};
-handle_cast({have, PN}, #state { piece_set = PS, send_pid = SPid } = S) ->
-    case gb_sets:is_element(PN, PS) of
+handle_cast({have, PN}, #state{piece_set=PS, send_pid=SPid} = S) ->
+    case etorrent_pieceset:is_member(PN, PS) of
         true -> ok;
         false -> ok = etorrent_peer_send:have(SPid, PN)
     end,
-    Pruned = gb_sets:delete_any(PN, PS),
-    {noreply, S#state { piece_set = Pruned }};
-handle_cast({endgame_got_chunk, {chunk, Index, Offset, Len}},
-	    #state { torrent_id = Id, send_pid = SPid, remote_request_set = RS } = S) ->
-    Chunk = {Index, Offset, Len},
-    R = handle_endgame_got_chunk(Chunk, SPid, RS),
-    etorrent_chunk_mgr:endgame_remove_chunk(SPid, Id, Chunk),
-    {noreply, S#state { remote_request_set = R }};
+    Pruned = etorrent_pieceset:delete(PN, PS),
+    {noreply, S#state{piece_set=Pruned}};
+handle_cast({endgame_got_chunk, Chunk}, S) ->
+    NS = handle_endgame_got_chunk(Chunk, S),
+    {noreply, NS};
 handle_cast(try_queue_pieces, S) ->
     {ok, NS} = try_to_queue_up_pieces(S),
     {noreply, NS};
@@ -272,51 +274,59 @@ handle_message({have, PieceNum}, S) -> peer_have(PieceNum, S);
 handle_message({suggest, Idx}, S) ->
     ?INFO([{peer_id, S#state.remote_peer_id}, {suggest, Idx}]),
     {ok, S};
-handle_message(have_none, #state { piece_set = PS } = S) when PS =/= unknown ->
+handle_message(have_none, #state{piece_set=PS}=S) when PS =/= unknown ->
     {stop, normal, S};
-handle_message(have_none, #state { fast_extension = true, torrent_id = Torrent_Id } = S) ->
-    {value, Size} = etorrent_torrent:num_pieces(Torrent_Id),
-    {ok, S#state { piece_set = gb_sets:new(),
-                   pieces_left = Size,
-                   seeder = false}};
-handle_message(have_all, #state { piece_set = PS }) when PS =/= unknown ->
+handle_message(have_none, #state{fast_extension=true, torrent_id=TorrentID}=S) ->
+    {value, NumPieces} = etorrent_torrent:num_pieces(TorrentID),
+    Pieceset = etorrent_pieceset:new(NumPieces),
+    NewState = S#state{
+        piece_set=Pieceset,
+        pieces_left=NumPieces,
+        seeder=false},
+    {ok, NewState};
+
+handle_message(have_all, #state{piece_set=PS}) when PS =/= unknown ->
     {error, piece_set_out_of_band};
-handle_message(have_all, #state { fast_extension = true, torrent_id = Torrent_Id } = S) ->
-    {value, Size} = etorrent_torrent:num_pieces(Torrent_Id),
-    FullSet = gb_sets:from_list(lists:seq(0, Size - 1)),
-    {ok, S#state { piece_set = FullSet,
-                   pieces_left = 0,
-                   seeder = true }};
-handle_message({bitfield, _BF},
-    #state { piece_set = PS, socket = Socket, remote_peer_id = RemotePid })
-            when PS =/= unknown ->
+
+handle_message(have_all, #state{fast_extension=true, torrent_id=TorrentID}=S) ->
+    {value, NumPieces} = etorrent_torrent:num_pieces(TorrentID),
+    AllPieces = lists:seq(0, NumPieces - 1),
+    FullSet = etorrent_pieceset:from_list(AllPieces, NumPieces),
+    NewState = S#state{
+        piece_set=FullSet,
+        pieces_left=0,
+        seeder=true},
+    {ok, NewState};
+
+handle_message({bitfield, _}, #state{piece_set=PS}=S) when PS =/= unknown ->
+    #state{ socket=Socket, remote_peer_id=RemoteID} = S,
     {ok, {IP, Port}} = inet:peername(Socket),
-    etorrent_peer_mgr:enter_bad_peer(IP, Port, RemotePid),
+    etorrent_peer_mgr:enter_bad_peer(IP, Port, RemoteID),
     {error, piece_set_out_of_band};
-handle_message({bitfield, BitField},
-        #state { torrent_id = Torrent_Id, pieces_left = Pieces_Left,
-                 remote_peer_id = RemotePid } = S) ->
-    {value, Size} = etorrent_torrent:num_pieces(Torrent_Id),
-    {ok, PieceSet} =
-        etorrent_proto_wire:decode_bitfield(Size, BitField),
-    Left = Pieces_Left - etorrent_pieceset:size(PieceSet),
+
+handle_message({bitfield, Bin}, State) ->
+    #state{
+        torrent_id=TorrentID,
+        pieces_left=PiecesLeft,
+        remote_peer_id=RemoteID} = State,
+    {value, Size} = etorrent_torrent:num_pieces(TorrentID),
+    Pieceset = etorrent_pieceset:from_binary(Bin, Size),
+    Left = PiecesLeft - etorrent_pieceset:size(Pieceset),
     case Left of
-        0  -> ok = etorrent_table:statechange_peer(self(), seeder);
-        _N -> ok
+        0 -> ok = etorrent_table:statechange_peer(self(), seeder);
+        _ -> ok
     end,
-    case etorrent_piece_mgr:check_interest(Torrent_Id, PieceSet) of
-        {interested, Pruned} ->
-            statechange_interested(S#state.local_interested, S#state.send_pid, true),
-            NS = S#state {piece_set = gb_sets:from_list(Pruned),
-                            pieces_left = Left,
-                            seeder = Left == 0,
-                            local_interested = true},
-            {ok, NS};
+    NewState = State#state{
+        piece_set=Pieceset,
+        pieces_left=Left,
+        seeder=(Left == 0)},
+    case etorrent_piece_mgr:check_interest(TorrentID, Pieceset) of
+        {interested, _} ->
+            {ok, statechange_interested(NewState, true)};
         not_interested ->
-            {ok, S#state{piece_set = gb_sets:empty(), pieces_left = Left,
-                         seeder = Left == 0}};
+            {ok, NewState};
         invalid_piece ->
-            {stop, {invalid_piece_2, RemotePid}, S}
+            {stop, {invalid_piece_2, RemoteID}, State}
     end;
 handle_message({piece, Index, Offset, Data}, #state { remote_request_set = RS } = S) ->
     case handle_got_chunk(Index, Offset, Data, RS,
@@ -474,8 +484,12 @@ statechange_interested(true, SendPid, false) ->
     etorrent_peer_send:not_interested(SendPid),
     ok.
 
-peer_have(PN, #state { piece_set = unknown } = S) ->
-    peer_have(PN, S#state {piece_set = gb_sets:new()});
+peer_have(PN, #state{piece_set=unknown}=State) ->
+    #state{torrent_id=TorrentID} = State,
+    {value, NumPieces} = etorrent_torrent:num_pieces(TorrentID),
+    Pieceset = etorrent_pieceset:new(NumPieces),
+    NewState = State#state{piece_set=Pieceset},
+    peer_have(PN, NewState);
 peer_have(PN, S) ->
     case etorrent_piece_mgr:valid(S#state.torrent_id, PN) of
         true ->
@@ -484,8 +498,8 @@ peer_have(PN, S) ->
                 ok ->
                     case etorrent_piece_mgr:interesting(S#state.torrent_id, PN) of
                         true ->
-                            PS = gb_sets:add_element(PN, S#state.piece_set),
-                            NS = S#state { piece_set = PS, pieces_left = Left, seeder = Left == 0},
+                            PS = etorrent_pieceset:insert(PN, S#state.piece_set),
+                            NS = S#state{piece_set=PS, pieces_left=Left, seeder= Left == 0},
                             case S#state.local_interested of
                                 true ->
                                     try_to_queue_up_pieces(NS);
