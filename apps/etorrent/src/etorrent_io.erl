@@ -128,6 +128,14 @@ allocate(TorrentId, FilePath, BytesToWrite) ->
     {ok, FilePid} = await_open_file(TorrentId, FilePath),
     ok = etorrent_io_file:allocate(FilePid, BytesToWrite).
 
+piece_sizes(Torrent) ->
+    PieceMap  = make_piece_map(Torrent),
+    AllPositions = array:sparse_to_orddict(PieceMap),
+    [begin
+        BlockLengths = [Length || {_, _, Length} <- Positions],
+        PieceLength  = lists:sum(BlockLengths),
+        {PieceIndex, PieceLength}
+    end || {PieceIndex, Positions} <- AllPositions].
 
 %% @doc
 %% Read a piece into memory from disc.
