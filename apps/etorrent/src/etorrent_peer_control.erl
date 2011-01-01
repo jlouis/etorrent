@@ -237,20 +237,16 @@ format_status(_Opt, [_Pdict, S]) ->
 -spec handle_message(_,_) -> {'ok',_} | {'stop',_,_}.
 handle_message(keep_alive, S) ->
     {ok, S};
-handle_message(choke, S) ->
-    ok = etorrent_peer_states:set_choke(S#state.torrent_id, self()),
-    NS = case S#state.fast_extension of
-             true -> S;
-	     false ->
-		 %% Put chunks back
-		 ok = etorrent_chunk_mgr:putback_chunks(self()),
-		 %% Tell other peers that there is 0xf00d!
-		 etorrent_table:foreach_peer(S#state.torrent_id,
-					     fun(P) -> try_queue_pieces(P) end),
-		 %% Clean up the request set.
-		 S#state{ remote_request_set = gb_sets:empty() }
-         end,
-    {ok, NS#state { remote_choked = true }};
+handle_message(choke, State) ->
+    #state{torrent_id=TorrentID} = State,
+    ok = etorrent_rate_mgr:choke(TorrentID, self()),
+    ok = etorrent_chunk_mgr:mark_all_dropped(TorrentID),
+    NewState = case S#state.fast_extension of
+        true ->
+            State#state{remote_choked=true};
+        false ->
+            State#state{remote_choked=true, remote_request_set=gb_trees:empty()}
+    end;
 handle_message(unchoke, S) ->
     ok = etorrent_peer_states:set_unchoke(S#state.torrent_id, self()),
     try_to_queue_up_pieces(S#state{remote_choked = false});
@@ -341,101 +337,81 @@ handle_message(Unknown, S) ->
     ?WARN([unknown_message, Unknown]),
     {stop, normal, S}.
 
-
-%% @doc handle the case where we get a chunk while in endgame mode.
-%%   Note: This is when we get it from <i>another</i> peer than ourselves
-%% @end
-handle_endgame_got_chunk({Index, Offset, Len}, SendPid, RSet) ->
-    case gb_sets:is_element({Index, Offset, Len}, RSet) of
-	true ->
-	    %% Delete the element from the request set.
-	    etorrent_peer_send:cancel(SendPid, Index, Offset, Len),
-	    gb_sets:del_element({Index, Offset, Len}, RSet);
-	false ->
-	    %% Not an element in the request queue, ignore
-	    RSet
-    end.
-
-%% @doc Handle the case where we may be in endgame correctly.
-handle_endgame(_TorrentId, _Chunk, false) -> ok;
-handle_endgame(TorrentId, {Index, Offset, Len}, true) ->
-    case etorrent_chunk_mgr:mark_fetched(TorrentId,
-					 {Index, Offset, Len}) of
-	found -> ok;
-	assigned ->
-	    F = fun(P) ->
-			endgame_got_chunk(P, {chunk, Index, Offset, Len})
-		end,
-	    etorrent_table:foreach_peer(TorrentId, F)
-    end.
-
-%% @doc Process an incoming chunk in normal mode
-%%   returns an updated request set
-%% @end
-handle_got_chunk(Index, Offset, Data, RSet, TorrentId) ->
-    case gb_sets:is_element({Index, Offset, byte_size(Data)}, RSet) of
-	true ->
-            ok = etorrent_chunk_mgr:store_chunk(TorrentId,
-                                                {Index, Offset, Data}),
-            RS = gb_sets:del_element({Index, Offset, byte_size(Data)}, RSet),
-            {ok, RS};
+%%--------------------------------------------------------------------
+%% Func: handle_endgame_got_chunk({chunk, Index, Offset, Len}, S) -> S
+%% Description: Some other peer just downloaded {Index, Offset, Len} so try
+%%   not to download it here if we can avoid it.
+%%--------------------------------------------------------------------
+handle_endgame_got_chunk({chunk, Index, Offset, Len}, S) ->
+    case gb_trees:is_defined({Index, Offset, Len}, S#state.remote_request_set) of
+        true ->
+            %% Delete the element from the request set.
+            RS = gb_trees:delete({Index, Offset, Len}, S#state.remote_request_set),
+            etorrent_peer_send:cancel(S#state.send_pid, Index, Offset, Len),
+            S#state { remote_request_set = RS };
         false ->
+            S
+    end.
+
+%%--------------------------------------------------------------------
+%% Func: handle_got_chunk(Index, Offset, Data, Len, S) -> {ok, State}
+%% Description: We just got some chunk data. Store it in the mnesia DB
+%%--------------------------------------------------------------------
+handle_got_chunk(Index, Offset, Data, Len, S) ->
+    #state{torrent_id=TorrentID} = S,
+    case gb_trees:lookup({Index, Offset, Len},
+                         S#state.remote_request_set) of
+        {value, _} ->
+            ok = etorrent_chunk_mgr:mark_fetched(TorrentID, Index, Offset, Len),
+            ok = etorrent_io:write_chunk(TorrentID, Index, Offset, Data),
+            ok = etorrent_chunk_mgr:mark_stored(TorrentID, Index, Offset, Len),
+            %% Tell other peers we got the chunk if in endgame
+            RS = gb_trees:delete_any({Index, Offset, Len}, S#state.remote_request_set),
+            {ok, S#state { remote_request_set = RS }};
+        none ->
             %% Stray piece, we could try to get hold of it but for now we just
             %%   throw it on the floor.
             {ok, RSet}
     end.
 
-%% @doc Description: Try to queue up requests at the other end.
-%%   Is called in many places with the state as input as the final thing
-%%   it will check if we can queue up pieces and add some if needed.
-%% @end
+%%--------------------------------------------------------------------
+%% Function: try_to_queue_up_requests(state()) -> {ok, state()}
+%% Description: Try to queue up requests at the other end.
+%%--------------------------------------------------------------------
 try_to_queue_up_pieces(#state { remote_choked = true } = S) ->
     {ok, S};
-try_to_queue_up_pieces(S) ->
-    case gb_sets:size(S#state.remote_request_set) of
+try_to_queue_up_pieces(State) ->
+    #state{
+        torrent_id=TorrentID,
+        send_pid=SendPid,
+        piece_set=Pieceset,
+        remote_request_set=OpenRequests} = State,
+    case gb_trees:size(OpenRequests) of
         N when N > ?LOW_WATERMARK ->
-            {ok, S};
+            {ok, State};
         %% Optimization: Only replenish pieces modulo some N
         N when is_integer(N) ->
-            PiecesToQueue = ?HIGH_WATERMARK - N,
-            case etorrent_chunk_mgr:pick_chunks(S#state.torrent_id,
-                                                S#state.piece_set,
-                                                PiecesToQueue) of
-                not_interested ->
-                    statechange_interested(S#state.local_interested, S#state.send_pid, false),
-                    {ok, S#state{local_interested = false}};
-                none_eligible -> {ok, S};
-                {ok, Items} -> queue_items(Items, S);
-                {endgame, Items} -> queue_items(Items, S#state { endgame = true })
+            case etorrent_chunk_mgr:request_chunks(TorrentID, Pieceset, 1) of
+                {error, not_interested} ->
+                    {ok, statechange_interested(State, false)};
+                {error, assigned} ->
+                    {ok, State};
+                {ok, Chunks} ->
+                    NewRequests = queue_items(SendPid, Chunks, OpenRequests),
+                    NewState = State#state{remote_request_set=NewRequests},
+                    {ok, NewState}
             end
     end.
 
 %% @doc Send chunk messages for each chunk we decided to queue.
 %%   also add these chunks to the piece request set.
 %% @end
--type chunk() :: {integer(), integer()}.
--spec queue_items([{integer(), [chunk()]}], #state{}) -> {ok, #state{}}.
-queue_items(ChunkList, S) ->
-    RSet = queue_items(ChunkList, S#state.send_pid, S#state.remote_request_set),
-    {ok, S#state { remote_request_set = RSet }}.
-
--spec queue_items([{integer(), [chunk()]}], pid(), gb_set()) -> gb_set().
-queue_items([], _SendPid, Set) -> Set;
-queue_items([{Pn, Chunks} | Rest], SendPid, Set) ->
-    NT = lists:foldl(
-      fun ({Offset, Size}, T) ->
-              case gb_sets:is_element({Pn, Offset, Size}, T) of
-                  true ->
-                      Set;
-                  false ->
-                      etorrent_peer_send:local_request(SendPid,
-                                                         {Pn, Offset, Size}),
-                      gb_sets:add_element({Pn, Offset, Size}, T)
-              end
-      end,
-      Set,
-      Chunks),
-    queue_items(Rest, SendPid, NT).
+-spec queue_items(pid(), list(), gb_tree()) -> gb_tree().
+queue_items(SendPid, Chunks, Requestset) ->
+    lists:foldl(fun({Index, Offset, Length}=Chunk, Acc) ->
+        etorrent_peer_send:local_request(SendPid, Chunk),
+        gb_trees:enter(Chunk, 'ops', Acc)
+    end, Requestset, Chunks).
 
 % @doc Initialize the connection, depending on the way the connection is
 connection_initialize(incoming, S) ->
