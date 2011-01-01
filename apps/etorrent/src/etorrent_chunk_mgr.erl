@@ -59,7 +59,7 @@
 
 %% @todo: What pid is the chunk recording pid? Control or SendPid?
 %% API
--export([start_link/4,
+-export([start_link/5,
          mark_valid/2,
          mark_fetched/4,
          mark_stored/4,
@@ -89,6 +89,7 @@
 
 -record(state, {
     torrent_id      :: pos_integer(),
+    torrent_pid     :: pid(),
     chunk_size      :: pos_integer(),
     %% Piece state sets
     pieces_valid    :: pieceset(),
@@ -199,8 +200,9 @@ chunk_server_key(TorrentID) ->
 %% Start a new chunk server for a set of pieces, a subset of the
 %% pieces may already have been fetched.
 %% @end
-start_link(TorrentID, ChunkSize, Fetched, Sizes) ->
-    gen_server:start_link(?MODULE, [TorrentID, ChunkSize, Fetched, Sizes], []).
+start_link(TorrentID, ChunkSize, Fetched, Sizes, TorrentPid) ->
+    Args = [TorrentID, ChunkSize, Fetched, Sizes, TorrentPid],
+    gen_server:start_link(?MODULE, Args, []).
 
 %% @doc
 %% Mark a piece as completly stored to disk and validated.
@@ -262,7 +264,7 @@ request_chunks(TorrentID, Pieceset, Numchunks) ->
 %%====================================================================
 
 %% @private
-init([TorrentID, ChunkSize, FetchedPieces, PieceSizes]) ->
+init([TorrentID, ChunkSize, FetchedPieces, PieceSizes, InitTorrentPid]) ->
     true = register_chunk_server(TorrentID),
 
     NumPieces = length(PieceSizes),
@@ -287,9 +289,19 @@ init([TorrentID, ChunkSize, FetchedPieces, PieceSizes]) ->
         {N, Set}
     end || {N, IsValid} <- lists:sort(States)],
     ChunkSets = array:from_orddict(ChunkList),
+    
+    %% Make it possible to inject the pid of the torrent in tests
+    TorrentPid = case InitTorrentPid of
+        lookup ->
+            {TPid, _} = gproc:await({n, l, {torrent, TorrentID, control}}),
+            TPid;
+        _ when is_pid(InitTorrentPid) ->
+            InitTorrentPid
+    end,
 
     InitState = #state{
         torrent_id=TorrentID,
+        torrent_pid=TorrentPid,
         chunk_size=ChunkSize,
         pieces_valid=PiecesValid,
         %% All valid pieces are also begun, assigned and stored
@@ -405,14 +417,33 @@ handle_call({mark_fetched, _Pid, _Index, _Offset, _Length}, _, State) ->
     %% can send a cancel-message to all of them.
     {reply, ok, State};
 
-handle_call({mark_stored, Pid, PieceIndex, Offset, _Length}, _, State) ->
+handle_call({mark_stored, Pid, Index, Offset, Length}, _, State) ->
     %% The calling process has written this chunk to disk.
-    %% Remove it from the list of open requests of the process.
-    #state{peer_monitors=Peers} = State,
+    %% Remove it from the list of open requests of the peer.
+    #state{
+        torrent_pid=TorrentPid,
+        pieces_stored=Stored,
+        peer_monitors=Peers,
+        chunks_stored=ChunksStored} = State,
     OpenReqs = etorrent_monitorset:fetch(Pid, Peers),
-    NewReqs  = gb_trees:delete({PieceIndex, Offset}, OpenReqs),
+    NewReqs  = gb_trees:delete({Index, Offset}, OpenReqs),
     NewPeers = etorrent_monitorset:update(Pid, NewReqs, Peers),
-    NewState = State#state{peer_monitors=NewPeers},
+    %% Update the set of chunks in the piece that has been written to disk.
+    Chunks = array:get(Index, ChunksStored),
+    NewChunks = etorrent_chunkset:delete(Offset, Length, Chunks),
+    NewChunksStored = array:set(Index, NewChunks, ChunksStored),
+    %% Check if all chunks in this piece has been written to disk now.
+    NewStored = case etorrent_chunkset:size(NewChunks) of
+        0 ->
+            ok = etorrent_t_control:piece_stored(TorrentPid, Index),
+            etorrent_pieceset:insert(Index, Stored);
+        _ ->
+            Stored
+    end,
+    NewState = State#state{
+        pieces_stored=NewStored,
+        chunks_stored=NewChunksStored,
+        peer_monitors=NewPeers},
     {reply, ok, NewState};
 
 
@@ -494,7 +525,7 @@ chunk_list(OpenReqs) ->
 
 
 initial_chunk_server(ID) ->
-    {ok, Pid} = ?chunk_server:start_link(ID, 1, [], [{0, 2}, {1, 2}, {2, 2}]),
+    {ok, Pid} = ?chunk_server:start_link(ID, 1, [], [{0, 2}, {1, 2}, {2, 2}], self()),
     true = ?chunk_server:register_peer(ID),
     Pid.
 
@@ -536,7 +567,7 @@ not_interested_case() ->
 
 not_interested_valid_case() ->
     ID = 9,
-    {ok, _} = ?chunk_server:start_link(ID, 1, [0], [{0, 2}, {1, 2}, {2, 2}]),
+    {ok, _} = ?chunk_server:start_link(ID, 1, [0], [{0, 2}, {1, 2}, {2, 2}], self()),
     true = ?chunk_server:register_peer(ID),
     Has = etorrent_pieceset:from_list([0], 3),
     Ret = ?chunk_server:request_chunks(ID, Has, 1),
