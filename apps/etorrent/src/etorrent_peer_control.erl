@@ -238,10 +238,12 @@ format_status(_Opt, [_Pdict, S]) ->
 handle_message(keep_alive, S) ->
     {ok, S};
 handle_message(choke, State) ->
-    #state{torrent_id=TorrentID} = State,
+    #state{
+        torrent_id=TorrentID,
+        fast_extension=FastEnabled} = State,
     ok = etorrent_rate_mgr:choke(TorrentID, self()),
     ok = etorrent_chunk_mgr:mark_all_dropped(TorrentID),
-    NewState = case S#state.fast_extension of
+    NewState = case FastEnabled of
         true ->
             State#state{remote_choked=true};
         false ->
