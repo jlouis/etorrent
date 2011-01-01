@@ -328,21 +328,21 @@ handle_call({request_chunks, PeerPid, Peerset, _}, _, State) ->
     Optimal = etorrent_pieceset:intersection(Peerset,
               etorrent_pieceset:difference(Begun, Assigned)),
     SubOptimal = etorrent_pieceset:difference(Peerset, Assigned),
-    NumOptimal = etorrent_pieceset:size(Optimal),
-    NumSubOptimal = etorrent_pieceset:size(SubOptimal),
+    HasOptimal = not etorrent_pieceset:is_empty(Optimal),
+    HasSubOptimal = not etorrent_pieceset:is_empty(SubOptimal),
 
-    PieceIndex = case {NumOptimal, NumSubOptimal} of
+    PieceIndex = case {HasOptimal, HasSubOptimal} of
         %% None that we are not already downloading
         %% and none that we would want to download
-        {0, 0} ->
+        {false, false} ->
             Interesting = etorrent_pieceset:difference(Peerset, Stored),
-            case etorrent_pieceset:size(Interesting) of
-                0 -> not_interested;
-                _ -> assigned
+            case etorrent_pieceset:is_empty(Interesting) of
+                true  -> not_interested;
+                false -> assigned
             end;
         %% None that we are not already downloading
         %% but one ore more that we would want to download
-        {0, _} ->
+        {false, _} ->
             etorrent_pieceset:min(SubOptimal);
         %% One or more that we are already downloading
         {_, _} ->

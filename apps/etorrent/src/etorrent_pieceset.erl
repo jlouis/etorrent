@@ -11,6 +11,7 @@
          from_list/2,
          to_list/1,
          is_member/2,
+         is_empty/1,
          insert/2,
          delete/2,
          intersection/2,
@@ -110,6 +111,15 @@ is_member(PieceIndex, Pieceset) ->
             <<_:PieceIndex, Status:1, _:PaddingLen, _/binary>> = Elements,
             Status > 0
     end.
+
+%% @doc
+%% Returns true if there are any members in the piece set.
+%% @end
+-spec is_empty(pieceset()) -> boolean().
+is_empty(Pieceset) ->
+    #pieceset{size=Size, elements=Elements} = Pieceset,
+    <<Memberbits:Size, _/bitstring>> = Elements,
+    Memberbits == 0.
 
 %% @doc
 %% Insert a piece into the piece index. If the piece index is
