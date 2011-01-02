@@ -50,7 +50,11 @@
 
                  remote_request_set = gb_sets:empty() :: gb_set(),
 
-                 piece_set = unknown :: unknown | pieceset(),
+                 %% Keep two piecesets, the set of pieces that we have
+                 %% validated, and the set of pieces that the peer has.
+                 remote_pieces = unkown :: pieceset(),
+                 local_pieces  = unkown :: pieceset(),
+
                  piece_request = [],
 
 		 %% Are we in endgame mode?
@@ -177,16 +181,16 @@ handle_cast(unchoke, S) ->
     {noreply, S};
 handle_cast(interested, S) ->
     {noreply, statechange_interested(S, true)};
-handle_cast({have, PN}, #state{piece_set = unknown, send_pid = SPid } = S) ->
+handle_cast({have, PN}, #state{remote_pieces=unknown, send_pid=SPid}=S) ->
     etorrent_peer_send:have(SPid, PN),
     {noreply, S};
-handle_cast({have, PN}, #state{piece_set=PS, send_pid=SPid} = S) ->
+handle_cast({have, PN}, #state{remote_pieces=PS, send_pid=SPid}=State) ->
+    %% Don't send duplicate have-messages
     case etorrent_pieceset:is_member(PN, PS) of
-        true -> ok;
+        true  -> ok;
         false -> ok = etorrent_peer_send:have(SPid, PN)
     end,
-    Pruned = etorrent_pieceset:delete(PN, PS),
-    {noreply, S#state{piece_set=Pruned}};
+    {noreply, State};
 handle_cast({endgame_got_chunk, Chunk}, S) ->
     NS = handle_endgame_got_chunk(Chunk, S),
     {noreply, NS};
@@ -274,35 +278,35 @@ handle_message({have, PieceNum}, S) -> peer_have(PieceNum, S);
 handle_message({suggest, Idx}, S) ->
     ?INFO([{peer_id, S#state.remote_peer_id}, {suggest, Idx}]),
     {ok, S};
-handle_message(have_none, #state{piece_set=PS}=S) when PS =/= unknown ->
+handle_message(have_none, #state{remote_pieces=PS}=S) when PS =/= unknown ->
     {stop, normal, S};
 handle_message(have_none, #state{fast_extension=true, torrent_id=TorrentID}=S) ->
     {value, NumPieces} = etorrent_torrent:num_pieces(TorrentID),
     Pieceset = etorrent_pieceset:new(NumPieces),
     NewState = S#state{
-        piece_set=Pieceset,
+        remote_pieces=Pieceset,
         pieces_left=NumPieces,
         seeder=false},
     {ok, NewState};
 
-handle_message(have_all, #state{piece_set=PS}) when PS =/= unknown ->
-    {error, piece_set_out_of_band};
+handle_message(have_all, #state{remote_pieces=PS}) when PS =/= unknown ->
+    {error, remote_pieces_out_of_band};
 
 handle_message(have_all, #state{fast_extension=true, torrent_id=TorrentID}=S) ->
     {value, NumPieces} = etorrent_torrent:num_pieces(TorrentID),
     AllPieces = lists:seq(0, NumPieces - 1),
     FullSet = etorrent_pieceset:from_list(AllPieces, NumPieces),
     NewState = S#state{
-        piece_set=FullSet,
+        remote_pieces=FullSet,
         pieces_left=0,
         seeder=true},
     {ok, NewState};
 
-handle_message({bitfield, _}, #state{piece_set=PS}=S) when PS =/= unknown ->
+handle_message({bitfield, _}, #state{remote_pieces=PS}=S) when PS =/= unknown ->
     #state{ socket=Socket, remote_peer_id=RemoteID} = S,
     {ok, {IP, Port}} = inet:peername(Socket),
     etorrent_peer_mgr:enter_bad_peer(IP, Port, RemoteID),
-    {error, piece_set_out_of_band};
+    {error, remote_pieces_out_of_band};
 
 handle_message({bitfield, Bin}, State) ->
     #state{
@@ -317,7 +321,7 @@ handle_message({bitfield, Bin}, State) ->
         _ -> ok
     end,
     NewState = State#state{
-        piece_set=Pieceset,
+        remote_pieces=Pieceset,
         pieces_left=Left,
         seeder=(Left == 0)},
     case etorrent_piece_mgr:check_interest(TorrentID, Pieceset) of
@@ -398,7 +402,7 @@ try_to_queue_up_pieces(State) ->
     #state{
         torrent_id=TorrentID,
         send_pid=SendPid,
-        piece_set=Pieceset,
+        remote_pieces=Pieceset,
         remote_request_set=OpenRequests} = State,
     case gb_trees:size(OpenRequests) of
         N when N > ?LOW_WATERMARK ->
@@ -484,11 +488,11 @@ statechange_interested(true, SendPid, false) ->
     etorrent_peer_send:not_interested(SendPid),
     ok.
 
-peer_have(PN, #state{piece_set=unknown}=State) ->
+peer_have(PN, #state{remote_pieces=unknown}=State) ->
     #state{torrent_id=TorrentID} = State,
     {value, NumPieces} = etorrent_torrent:num_pieces(TorrentID),
     Pieceset = etorrent_pieceset:new(NumPieces),
-    NewState = State#state{piece_set=Pieceset},
+    NewState = State#state{remote_pieces=Pieceset},
     peer_have(PN, NewState);
 peer_have(PN, S) ->
     case etorrent_piece_mgr:valid(S#state.torrent_id, PN) of
@@ -498,8 +502,8 @@ peer_have(PN, S) ->
                 ok ->
                     case etorrent_piece_mgr:interesting(S#state.torrent_id, PN) of
                         true ->
-                            PS = etorrent_pieceset:insert(PN, S#state.piece_set),
-                            NS = S#state{piece_set=PS, pieces_left=Left, seeder= Left == 0},
+                            PS = etorrent_pieceset:insert(PN, S#state.remote_pieces),
+                            NS = S#state{remote_pieces=PS, pieces_left=Left, seeder= Left == 0},
                             case S#state.local_interested of
                                 true ->
                                     try_to_queue_up_pieces(NS);
