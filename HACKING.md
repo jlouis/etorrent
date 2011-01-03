@@ -412,18 +412,50 @@ mechanism eventually latch onto it.
 BEP 15 adds the ability to contact a tracker by UDP packets rather
 than use HTTP over TCP as one would normally do. The interface to the
 UDP tracking system is the process
-[etorrent_udp_tracker_mgr](https://github.com/jlouis/etorrent/tree/master/apps/etorrent/src/etorrent_choker.erl)
+[etorrent_udp_tracker_mgr](https://github.com/jlouis/etorrent/tree/master/apps/etorrent/src/etorrent_udp_tracker_mgr.erl)
+which lets us do announce requests over UDP with timeouts. The UDP
+tracking system itself is controlled by a supervisor,
+[etorrent_udp_tracker_sup](https://github.com/jlouis/etorrent/tree/master/apps/etorrent/src/etorrent_udp_tracker_sup.erl).
+
+Under this supervisor, several processes are hanging. First and
+foremost, we have a pool supervisor of type `simple_one_for_one`. Each
+call to announce will use the *process-per-request* idiom and turn
+itself into a process underneath this pool. It will then register
+itself as the recipient of messages it sends off to the server. This
+registration happens in a local ETS table.
+
+Once, a UDP packet arrives back the `etorrent_udp_tracker_proto`
+process is a gen_server responsible for decoding of incoming
+messages. After a successful decode, it dispatches the incoming
+message by looking it up in the ETS table and handing it to the right
+process in the pool of handlers. The handler process then either replies back
+to the torrent process (with `gen_server:reply/2`) or alters its
+internal state, sending off another UDP packet in turn.
+
+The system has several timeouts at different levels which may
+occur. Much of the complexity is due to these, but usually timeouts
+are kept locally in handlers. Another important part is that the
+handshake is like TCP. Hence, we first obtain a token from the tracker
+we then use subsequently for requests until the token times out. Some
+of the complexity is due to the reuse of the token.
 
 (** --- Editing to here --- **)
-
-**Describe the remaining parts**
 
 ## DHT
 ...
 ## WebUI
-...
+
+The WebUI is a quite simple system. We have a directory of static data
+served by the `inets` application. Some of this data is jQuery along
+with a couple of helper modules. Upon request of the status page,
+async requests are made back to the `inets` application and it feeds
+jQuery with the current status of the system. Then the jQuery system
+carries out the plotting of the data. The only relevant file on the
+Erlang-side is `etorrent_webui.erl`.
+
 ## Event handling
-...
+
+TODO, I moved around some data for this.
 
 # So you want to hack etorrent? Cool!
 
