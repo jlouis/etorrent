@@ -43,7 +43,12 @@ devclean:
 	rm -fr dev
 
 console:
-	dev/etorrent-dev/bin/etorrent console -pa ../../apps/etorrent/ebin
+	dev/etorrent-dev/bin/etorrent console \
+		-pa ../../apps/etorrent/ebin \
+		-pa ../../deps/riak_err/ebin
+
+remsh:
+	erl -name 'foo@127.0.0.1' -remsh 'etorrent@127.0.0.1' -setcookie etorrent
 
 console-perf:
 	perf record -- dev/etorrent-dev/bin/etorrent console -pa ../../apps/etorrent/ebin
