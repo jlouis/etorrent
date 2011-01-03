@@ -39,6 +39,13 @@ and can do more work there. Remember, when a newly spawned process
 (the spawnee) is running `init` the spawner (calling spawn_link) will
 be blocked. A timeout of 0 gets around that problem.
 
+This means you can spawn a `gen_server` and then politely ask it to
+enter a loop based upon incoming events right away. You don't have to
+explicitly tell it with a message to do some processing first which
+lowers the expectations of the caller. *The spawn of a process is its
+initialization* the idiom seems to be, but I will refrain from calling
+it SPII.
+
 ## When a controlling process dies, so does its resource
 
 If we have an open port or a created ETS table, the crash or stop of
@@ -57,6 +64,63 @@ the table when needed.
 Suppose for instance that something must only happen once. By sending
 a call to the governor, we can serialize the request and thus make
 sure only one process will initialize the thing.
+
+## Message is a process
+
+(Stolen from a stackoverflow answer by jlouis@)
+
+Let `M` be an Erlang term() which is a *message* we send around in the
+system. One obvious way to handle `M` is to build a pipeline of
+processes and queues. `M` is processed by the first worker in the
+pipeline and then sent on to the next queue. It is then picked up by
+the next worker process, processed again and put into a queue. And so
+on until the message has been fully processed.
+
+The perhaps not-so-obvious way is to define a process `P` and then
+hand `M` to `P`. We will notate it as `P(M)`. Now the message itself
+is a *process* and not a piece of *data*. `P` will do the same job
+that the workers did in the queue-solution but it won't have to pay
+the overhead of sticking the `M` back into queues and pick it off
+again and so on. When the processing `P(M)` is done, the process will
+simply end its life. If handed another message `M'` we will simply
+spawn `P(M')` and let it handle that message concurrently. If we get a
+set of processes, we will do `[P(M) || M <- Set]` and so on.
+
+If `P` needs to do synchronization or messaging, it can do so without
+having to "impersonate" the message, since it *is* the
+message. Contrast with the worker-queue approach where a worker has to
+take responsibility for a message that comes along it. If `P` has an
+error, only the message `P(M)` affected by the error will
+crash. Again, contrast with the worker-queue approach where a crash in
+the pipeline may affect other messages (mostly if the pipeline is
+badly designed).
+
+So the trick in conclusion: Turn a message into a process that
+*becomes* the message.
+
+The idiom is 'One Process per Message' and is quite common in
+Erlang. The price and overhead of making a new process is low enough
+that this works. You may want some kind of overload protection should
+you use the idea however. The reason is that you probably want to put
+a limit to the amount of concurrent requests so you *control* the load
+of the system rather than blindly let it destroy your servers. One
+such implementation is *Jobs*, created by Erlang Solutions, see the
+[jobs](https://github.com/esl/jobs) repository at github. Ulf Wiger is
+presenting it at
+[Erlang Factory Lite (jobs talk)](http://www.erlang-factory.com/conference/ErlangFactoryLiteLA/speakers/UlfWiger).
+
+As Ulf hints in the talk, we will usually do some preprocessing
+outside `P` to parse the message and internalize it to the Erlang
+system. But as soon as possible we will make the message `M` into a
+*job* by wrapping it in a process (`P(M)`). Thus we get the benefits
+of the Erlang Scheduler right away.
+
+There is another important ramification of this choice: If processing
+takes a long time for a message, then the preemptive scheduler of
+Erlang will ensure that messages with less processing needs still get
+handled quickly. If you have a limited amount of worker queues, you
+may end up with many of them being clogged, hampering the throughput
+of the system.
 
 # Dependencies
 
@@ -343,19 +407,22 @@ ensures that *all* peers eventually get a chance at being unchoked. If
 a peer is better than those we already download from, we will by this
 mechanism eventually latch onto it.
 
-## Other processes
+## UDP tracking
+
+BEP 15 adds the ability to contact a tracker by UDP packets rather
+than use HTTP over TCP as one would normally do. The interface to the
+UDP tracking system is the process
+[etorrent_udp_tracker_mgr](https://github.com/jlouis/etorrent/tree/master/apps/etorrent/src/etorrent_choker.erl)
 
 (** --- Editing to here --- **)
 
-This section is TODO.
+**Describe the remaining parts**
 
-### UDP tracking
+## DHT
 ...
-### DHT
+## WebUI
 ...
-### WebUI
-...
-### Event handling
+## Event handling
 ...
 
 # So you want to hack etorrent? Cool!
