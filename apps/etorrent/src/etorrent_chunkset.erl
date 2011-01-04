@@ -8,6 +8,8 @@
 -export([new/2,
          size/1,
          min/1,
+         min/2,
+         delete/2,
          delete/3,
          insert/3,
          from_list/3]).
@@ -52,15 +54,51 @@ size(Chunkset) ->
 %% @end
 -spec min(chunkset()) -> {pos_integer(), pos_integer()}.
 min(Chunkset) ->
+    case min_(Chunkset) of
+        none  -> error(badarg);
+        Other -> Other
+    end.
+
+min_(Chunkset) ->
     #chunkset{chunk_len=ChunkLen, chunks=Chunks} = Chunkset,
     case Chunks of
         [] ->
-            error(badarg);
+            none;
         [{Start, End}|_] when (1 + End - Start) > ChunkLen ->
             {Start, ChunkLen};
         [{Start, End}|_] when (1 + End - Start) =< ChunkLen ->
             {Start, (End - Start) + 1}
     end.
+
+%% @doc
+%% Get at most N chunks from the beginning of the chunkset.
+%% @end
+min(_, Numchunks) when Numchunks < 1 ->
+    error(badarg);
+min(Chunkset, Numchunks) ->
+    case min_(Chunkset, Numchunks) of
+        [] -> error(badarg);
+        List -> List
+    end.
+
+min_(_, 0) ->
+    [];
+min_(Chunkset, Numchunks) ->
+    case min_(Chunkset) of
+        none -> [];
+        {Start, End}=Chunk ->
+            Without = delete(Start, End, Chunkset),
+            [Chunk|min_(Without, Numchunks - 1)]
+    end.
+
+%% @doc
+%%
+%% @end
+delete([], Chunkset) ->
+    Chunkset;
+delete([{Offset, Length}|T], Chunkset) ->
+    delete(T, delete(Offset, Length, Chunkset)).
+
 
 %% @doc
 %% 
