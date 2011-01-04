@@ -32,8 +32,7 @@
 %% @end
 -spec new(non_neg_integer()) -> pieceset().
 new(Size) ->
-    PaddingLen = paddinglen(Size),
-    Elements = <<0:Size, 0:PaddingLen>>,
+    Elements = <<0:Size>>,
     #pieceset{size=Size, elements=Elements}.
 
 %% @doc
@@ -45,14 +44,13 @@ new(Size) ->
 %% @end
 -spec from_binary(binary(), non_neg_integer()) -> pieceset().
 from_binary(Bin, Size) when is_binary(Bin) ->
-    PaddingLen = paddinglen(Size),
-    <<_:Size, PaddingValue:PaddingLen>> = Bin,
+    PadLen = paddinglen(Size),
+    <<Elements:Size/bitstring, PadValue:PadLen>> = Bin,
     %% All bits used for padding must be set to 0
-    case PaddingValue of
-        0 -> ok;
+    case PadValue of
+        0 -> #pieceset{size=Size, elements=Elements};
         _ -> error(badarg)
-    end,
-    #pieceset{size=Size, elements=Bin}.
+    end.
 
 %% @doc
 %% Convert a piece set to a bitfield, the bitfield will
@@ -60,8 +58,9 @@ from_binary(Bin, Size) when is_binary(Bin) ->
 %% @end
 -spec to_binary(pieceset()) -> binary().
 to_binary(Pieceset) ->
-    #pieceset{elements=Elements} = Pieceset,
-    Elements.
+    #pieceset{size=Size, elements=Elements} = Pieceset,
+    PadLen = paddinglen(Size),
+    <<Elements/bitstring, 0:PadLen>>.
 
 %% @doc
 %% Convert an ordered list of piece indexes to a piece set.
@@ -107,8 +106,7 @@ is_member(PieceIndex, Pieceset) ->
         false ->
             error(badarg);
         true ->
-            PaddingLen = paddinglen(PieceIndex + 1),
-            <<_:PieceIndex, Status:1, _:PaddingLen, _/binary>> = Elements,
+            <<_:PieceIndex/bitstring, Status:1, _/bitstring>> = Elements,
             Status > 0
     end.
 
@@ -118,7 +116,7 @@ is_member(PieceIndex, Pieceset) ->
 -spec is_empty(pieceset()) -> boolean().
 is_empty(Pieceset) ->
     #pieceset{size=Size, elements=Elements} = Pieceset,
-    <<Memberbits:Size, _/bitstring>> = Elements,
+    <<Memberbits:Size>> = Elements,
     Memberbits == 0.
 
 %% @doc
@@ -135,9 +133,8 @@ insert(PieceIndex, Pieceset) ->
         false ->
             error(badarg);
         true ->
-            PaddingLen = paddinglen(PieceIndex + 1),
-            <<Low:PieceIndex, _:1, Padding:PaddingLen, High/binary>> = Elements,
-            Updated = <<Low:PieceIndex, 1:1, Padding:PaddingLen, High/binary>>,
+            <<Low:PieceIndex/bitstring, _:1, High/bitstring>> = Elements,
+            Updated = <<Low/bitstring, 1:1, High/bitstring>>,
             Pieceset#pieceset{elements=Updated}
     end.
 
@@ -155,9 +152,8 @@ delete(PieceIndex, Pieceset) ->
         false ->
             error(badarg);
         true ->
-            PaddingLen = paddinglen(PieceIndex + 1),
-            <<Low:PieceIndex, _:1, Padding:PaddingLen, High/binary>> = Elements,
-            Updated = <<Low:PieceIndex, 0:1, Padding:PaddingLen, High/binary>>,
+            <<Low:PieceIndex/bitstring, _:1, High/bitstring>> = Elements,
+            Updated = <<Low/bitstring, 0:1, High/bitstring>>,
             Pieceset#pieceset{elements=Updated}
     end.
 
@@ -173,11 +169,10 @@ intersection(Set0, Set1) ->
         false ->
             error(badarg);
         true ->
-            PaddingLen = paddinglen(Size0),
-            <<E0:Size0, 0:PaddingLen>> = Elements0,
-            <<E1:Size0, 0:PaddingLen>> = Elements1,
+            <<E0:Size0>> = Elements0,
+            <<E1:Size1>> = Elements1,
             Shared = E0 band E1,
-            Intersection = <<Shared:Size0, 0:PaddingLen>>,
+            Intersection = <<Shared:Size0>>,
             #pieceset{size=Size0, elements=Intersection}
     end.
 
@@ -193,11 +188,10 @@ difference(Set0, Set1) ->
         false ->
             error(badarg);
         true ->
-            PaddingLen = paddinglen(Size0),
-            <<E0:Size0, 0:PaddingLen>> = Elements0,
-            <<E1:Size0, 0:PaddingLen>> = Elements1,
+            <<E0:Size0>> = Elements0,
+            <<E1:Size1>> = Elements1,
             Unique = (E0 bxor E1) band E0,
-            Difference = <<Unique:Size0, 0:PaddingLen>>,
+            Difference = <<Unique:Size0>>,
             #pieceset{size=Size0, elements=Difference}
     end.
 
