@@ -52,8 +52,8 @@
 
                  %% Keep two piecesets, the set of pieces that we have
                  %% validated, and the set of pieces that the peer has.
-                 remote_pieces = unkown :: pieceset(),
-                 local_pieces  = unkown :: pieceset(),
+                 remote_pieces = unknown :: pieceset(),
+                 local_pieces  = unknown :: pieceset(),
 
                  piece_request = [],
 
@@ -302,8 +302,8 @@ handle_message(have_all, #state{fast_extension=true, torrent_id=TorrentID}=S) ->
         seeder=true},
     {ok, NewState};
 
-handle_message({bitfield, _}, #state{remote_pieces=PS}=S) when PS =/= unknown ->
-    #state{ socket=Socket, remote_peer_id=RemoteID} = S,
+handle_message({bitfield, _}, State) when State#state.remote_pieces /= unknown ->
+    #state{socket=Socket, remote_peer_id=RemoteID} = State,
     {ok, {IP, Port}} = inet:peername(Socket),
     etorrent_peer_mgr:enter_bad_peer(IP, Port, RemoteID),
     {error, remote_pieces_out_of_band};
