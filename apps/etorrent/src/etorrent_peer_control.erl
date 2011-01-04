@@ -409,7 +409,8 @@ try_to_queue_up_pieces(State) ->
             {ok, State};
         %% Optimization: Only replenish pieces modulo some N
         N when is_integer(N) ->
-            case etorrent_chunk_mgr:request_chunks(TorrentID, Pieceset, 1) of
+            Numchunks = ?HIGH_WATERMARK - N,
+            case etorrent_chunk_mgr:request_chunks(TorrentID, Pieceset, Numchunks) of
                 {error, not_interested} ->
                     {ok, statechange_interested(State, false)};
                 {error, assigned} ->
