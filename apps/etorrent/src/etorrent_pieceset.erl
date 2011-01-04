@@ -226,13 +226,20 @@ min(Pieceset) ->
     #pieceset{elements=Elements} = Pieceset,
     min_(Elements, 0).
 
-min_(<<>>, _) ->
-    error(badarg);
-min_(<<1:1, _/bitstring>>, Index) ->
-    Index;
-min_(<<0:1, Rest/bitstring>>, Index) ->
-    min_(Rest, Index + 1).
-
+min_(Elements, Offset) ->
+    Half = bit_size(Elements) div 2,
+    case Elements of
+        <<>> ->
+            error(badarg);
+        <<0:1>> ->
+            error(badarg);
+        <<1:1>> ->
+            Offset;
+        <<0:Half, Rest/bitstring>> ->
+            min_(Rest, Offset + Half);
+        <<Rest:Half/bitstring, _/bitstring>> ->
+            min_(Rest, Offset)
+    end.
 
 paddinglen(Size) ->
     Length = 8 - (Size rem 8),
