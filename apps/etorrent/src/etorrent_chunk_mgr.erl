@@ -325,7 +325,7 @@ handle_call({register_peer, PeerPid}, _, State) ->
     NewState = State#state{peer_monitors=NewMonitors},
     {reply, true, NewState};
 
-handle_call({request_chunks, PeerPid, Peerset, _}, _, State) ->
+handle_call({request_chunks, PeerPid, Peerset, Numchunks}, _, State) ->
     #state{
         pieces_begun=Begun,
         pieces_assigned=Assigned,
@@ -368,13 +368,15 @@ handle_call({request_chunks, PeerPid, Peerset, _}, _, State) ->
             {reply, {error, assigned}, State};
         Index ->
             Chunkset = array:get(Index, AssignedChunks),
-            {Offs, Len} = etorrent_chunkset:min(Chunkset),
-            NewChunkset = etorrent_chunkset:delete(Offs, Len, Chunkset),
+            Chunks   = etorrent_chunkset:min(Chunkset, Numchunks),
+            NewChunkset = etorrent_chunkset:delete(Chunks, Chunkset),
             NewAssignedChunks = array:set(Index, NewChunkset, AssignedChunks),
             NewBegun = etorrent_pieceset:insert(Index, Begun),
             %% Add the chunk to this peer's set of open requests
             OpenReqs = etorrent_monitorset:fetch(PeerPid, Peers),
-            NewReqs  = gb_trees:insert({Index, Offs}, Len, OpenReqs),
+            NewReqs  = lists:foldl(fun({Offs, Len}, Acc) ->
+                gb_trees:insert({Index, Offs}, Len, Acc)
+            end, OpenReqs, Chunks),
             NewPeers = etorrent_monitorset:update(PeerPid, NewReqs, Peers),
             %% The piece is in the assigned state if this was the last chunk
             NewAssigned = case etorrent_chunkset:size(NewChunkset) of
@@ -387,7 +389,8 @@ handle_call({request_chunks, PeerPid, Peerset, _}, _, State) ->
                 pieces_assigned=NewAssigned,
                 chunks_assigned=NewAssignedChunks,
                 peer_monitors=NewPeers},
-            {reply, {ok, [{PieceIndex, Offs, Len}]}, NewState}
+            ReturnValue = [{Index, Offs, Len} || {Offs, Len} <- Chunks],
+            {reply, {ok, ReturnValue}, NewState}
     end;
 
 handle_call({mark_valid, _, Index}, _, State) ->
