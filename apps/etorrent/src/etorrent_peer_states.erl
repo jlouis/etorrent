@@ -43,12 +43,8 @@
                      interest_state = not_interested :: interested | not_interested | '_',
                      local_choke = true :: boolean() | '_'}).
 
--record(state, { recv,
-                 send,
-                 state,
-
-                 global_recv,
-                 global_send}).
+-record(state, { global_recv :: #peer_rate{},
+                 global_send :: #peer_rate{}}).
 
 -define(SERVER, ?MODULE).
 -ignore_xref([{'start_link', 0}]).
@@ -220,14 +216,13 @@ get_global_rate() ->
 
 %% @private
 init([]) ->
-    RTid = ets:new(etorrent_recv_state, [public, named_table,
+    _Tid = ets:new(etorrent_recv_state, [public, named_table,
                                          {keypos, #rate_mgr.pid}]),
-    STid = ets:new(etorrent_send_state, [public, named_table,
+    _Tid2 = ets:new(etorrent_send_state, [public, named_table,
                                          {keypos, #rate_mgr.pid}]),
-    StTid = ets:new(etorrent_peer_state, [public, named_table,
+    _Tid3 = ets:new(etorrent_peer_state, [public, named_table,
                                          {keypos, #peer_state.pid}]),
-    {ok, #state{ recv = RTid, send = STid, state = StTid,
-                 global_recv = etorrent_rate:init(?RATE_FUDGE),
+    {ok, #state{ global_recv = etorrent_rate:init(?RATE_FUDGE),
                  global_send = etorrent_rate:init(?RATE_FUDGE)}}.
 
 %% @private

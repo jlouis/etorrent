@@ -21,13 +21,11 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
--record(state, {our_peer_id = none,
-                info_hash = none,
-
-                round = 0,
-
-                optimistic_unchoke_pid = none,
-                opt_unchoke_chain = []}).
+-record(state, {our_peer_id = none :: none | binary(),
+                info_hash = none   :: none | binary(),
+                round = 0          :: integer(),
+                optimistic_unchoke_pid = none :: none | pid(),
+                opt_unchoke_chain = [] :: [pid()]}).
 
 -record(rechoke_info, {pid :: pid(),
                        peer_state :: 'seeding' | 'leeching', % Is the peer seeding or leeching

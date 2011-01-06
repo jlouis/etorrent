@@ -38,24 +38,24 @@ main_setup
 	/* Torrent Global */
 	{ rank=same;
 	  sup_1a(`listen_sup')
-	  sup_11(`dht_sup')
+	  sup_11(`dht')
 	  sup_11(`dirwatcher_sup')
-	  sup_11(`t_pool_sup')
+	  sup_11(`torrent_pool')
 	  sup_1a(`udp_tracker_sup')
         }
 
 	link(`etorrent_sup', `listen_sup')
-	link(`etorrent_sup', `dht_sup')
+	link(`etorrent_sup', `dht')
 	link(`etorrent_sup', `dirwatcher_sup')
-	link(`etorrent_sup', `t_pool_sup')
+	link(`etorrent_sup', `torrent_pool')
 	link(`etorrent_sup', `udp_tracker_sup')
 
 	/* UDP Tracking */
-	sup_s(`udp_tracker_pool')
-	sup_11(`udp_decoder_sup')
+	sup_s(`udp_pool')
+	sup_11(`udp_proto_sup')
 
-	link(`udp_tracker_sup', `udp_tracker_pool')
-	link(`udp_tracker_sup', `udp_decoder_sup')
+	link(`udp_tracker_sup', `udp_pool')
+	link(`udp_tracker_sup', `udp_proto_sup')
 
 	/* Torrent Pool */
 	subgraph cluster_torrent {
@@ -63,22 +63,22 @@ main_setup
 	  color="deepskyblue4";
 	  fontsize=14;
 
-	  sup_1a(`t_sup')
+	  sup_1a(`torrent_sup')
 
 	  { rank=same;
-	    sup_11(`fs_pool')
-	    sup_s(`peer_pool_sup')
+	    sup_11(`io_sup')
+	    sup_s(`peer_pool')
           }
 
-	  link(`t_sup', `fs_pool')
-	  link(`t_sup', `peer_pool_sup')
+	  link(`torrent_sup', `io_sup')
+	  link(`torrent_sup', `peer_pool')
 
- 	  sup_1a(`peer_sup')
+ 	  sup_1a(`peer_pool')
 	  sup_1a(`file_io_sup')
 
-	  suggest_link(`peer_pool_sup', `peer_sup')
-	  suggest_link(`fs_pool', `file_io_sup')
+	  suggest_link(`peer_pool', `peer_sup')
+	  suggest_link(`io_sup', `file_io_sup')
 	}
 
-	suggest_link(`t_pool_sup', `t_sup')
+	suggest_link(`torrent_pool', `torrent_sup')
 }
