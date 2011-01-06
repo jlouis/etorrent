@@ -17,12 +17,16 @@
 -export([init/1, handle_event/2, handle_info/2, terminate/2]).
 -export([handle_call/2, code_change/3]).
 
--record(state, {dir, fname, cur_fd, pred}).
+-type filepath() :: string().
+-record(state, {dir :: filepath(),
+		fname :: filepath(),
+		cur_fd :: file:io_device(),
+		pred :: fun((term()) -> boolean())}).
 
 %% =======================================================================
 %% @doc Initialize the file logger
 %% @end
--spec init(string(), string()) -> 
+-spec init(string(), string()) ->
         {string(), string(), fun((_) -> boolean())}.
 init(Dir, Filename) -> init(Dir, Filename, fun(_) -> true end).
 
