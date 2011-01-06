@@ -2,12 +2,12 @@
 
 all: dotfiles
 
-dotfiles: sup_tree_20101220.png sup_tree_20101220.pdf
+dotfiles: sup_tree_20110106.png sup_tree_20110106.pdf
 
 clean:
-	rm -f sup_tree_20101220.png
-	rm -f sup_tree_20101220.pdf
-	rm -f sup_tree_20101220.dot
+	rm -f sup_tree_20110106.png
+	rm -f sup_tree_20110106.pdf
+	rm -f sup_tree_20110106.dot
 
 %.dot: %.m4
 	m4 $< > $@
