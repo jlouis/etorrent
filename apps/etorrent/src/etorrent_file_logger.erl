@@ -1,19 +1,17 @@
-%%%-------------------------------------------------------------------
-%%% File    : etorrent_file_logger.erl
-%%% Author  : Jesper Louis Andersen <>
-%%% Description : Log to a file. Loosely based on log_mf_h from the
-%%%  erlang distribution
-%%%
-%%% Created :  9 Jul 2008 by Jesper Louis Andersen <>
-%%%-------------------------------------------------------------------
+%% @author Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
+%% @doc Log Etorrent Events to a file.
+%% <p>This gen_event logger lets you log etorrent information to a file</p>
+%% @end
 -module(etorrent_file_logger).
 
 -include("log.hrl").
 
 -behaviour(gen_event).
 
--export([init/2]).
+%% Install/Deinstall
+-export([add_handler/0, add_handler/1, delete_handler/0]).
 
+%% Callbacks
 -export([init/1, handle_event/2, handle_info/2, terminate/2]).
 -export([handle_call/2, code_change/3]).
 
@@ -24,15 +22,26 @@
 		pred :: fun((term()) -> boolean())}).
 
 %% =======================================================================
-%% @doc Initialize the file logger
-%% @end
--spec init(string(), string()) ->
-        {string(), string(), fun((_) -> boolean())}.
-init(Dir, Filename) -> init(Dir, Filename, fun(_) -> true end).
 
--spec init(string(), string(), fun((term()) -> boolean())) ->
-            {string(), string(), fun((term()) -> boolean())}.
-init(Dir, Filename, Pred) -> {Dir, Filename, Pred}.
+%% @doc Add a default handler accepting everything
+%% @end
+-spec add_handler() -> ok.
+add_handler() ->
+    add_handler(fun (_) ->
+			true
+		end).
+
+%% @doc Add a handler with a predicate function.
+%% <p>This variant only outputs things the predicate function accepts</p>
+%% @end
+-spec add_handler(fun ( (term()) -> boolean() )) -> ok.
+add_handler(Predicate) ->
+    ok = etorrent_event:add_handler(?MODULE, [Predicate]).
+
+%% @doc Delete an installed handler
+%% @end
+delete_handler() ->
+    etorrent_event:delete_handler(?MODULE, []).
 
 %% -----------------------------------------------------------------------
 file_open(Dir, Fname) ->
@@ -44,13 +53,18 @@ date_str({{Y, Mo, D}, {H, Mi, S}}) ->
                                 "~2.2.0w:~2.2.0w",
                                 [Y,Mo,D,H,Mi,S])).
 %% =======================================================================
-init({Dir, Filename, Pred}) ->
-    case catch file_open(Dir, Filename) of
-        {ok, Fd} -> {ok, #state { dir = Dir, fname = Filename,
+
+%% @private
+init([Pred]) ->
+    Dir = etorrent_config:logger_dir(),
+    Fname = etorrent_config:logger_file(),
+    case catch file_open(Dir, Fname) of
+        {ok, Fd} -> {ok, #state { dir = Dir, fname = Fname,
                                   cur_fd = Fd, pred = Pred }};
         Error -> Error
     end.
 
+%% @private
 handle_event(Event, S) ->
     Date = date_str(erlang:localtime()),
         #state{dir = _Dir, fname = _Fname, cur_fd = _CurFd, pred = Pred} = S,
@@ -62,18 +76,22 @@ handle_event(Event, S) ->
         {ok, S}
         end.
 
+%% @private
 handle_info(_, State) ->
     {ok, State}.
 
+%% @private
 terminate(_, State) ->
     case file:close(State#state.cur_fd) of
         ok -> State;
         {error, R} -> ?WARN([cant_close_file,{reason, R}]), State
     end.
 
+%% @private
 handle_call(null, State) ->
     {ok, null, State}.
 
+%% @private
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 

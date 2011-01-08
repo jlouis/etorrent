@@ -25,7 +25,14 @@ start(_Type, _Args) ->
 	    false -> ignore
     end,
     consider_profiling(),
-    etorrent_sup:start_link(PeerId).
+    case etorrent_sup:start_link(PeerId) of
+	{ok, Pid} ->
+	    ok = etorrent_memory_logger:add_handler(),
+	    ok = etorrent_file_logger:add_handler(),
+	    {ok, Pid};
+	{error, Err} ->
+	    {error, Err}
+    end.
 
 %% Consider if the profiling should be enabled.
 consider_profiling() ->

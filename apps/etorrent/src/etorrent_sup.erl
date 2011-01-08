@@ -37,7 +37,7 @@ init([PeerId]) ->
     Tables       = ?CHILD(etorrent_table),
     Torrent      = ?CHILD(etorrent_torrent),
     Counters     = ?CHILD(etorrent_counters),
-    EventManager = ?CHILD(etorrent_event_mgr),
+    EventManager = ?CHILD(etorrent_event),
     PeerMgr      = ?CHILDP(etorrent_peer_mgr, [PeerId]),
     FastResume   = ?CHILD(etorrent_fast_resume),
     RateManager  = ?CHILD(etorrent_rate_mgr),
