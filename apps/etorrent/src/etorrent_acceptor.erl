@@ -51,7 +51,7 @@ handle_cast(_Msg, State) ->
     {noreply, State}.
 
 %% @private
-handle_info(timeout, #state { our_peer_id = PeerId} = S) ->
+handle_info(timeout, #state { our_peer_id = PeerId } = S) ->
     case gen_tcp:accept(S#state.listen_socket) of
         {ok, Socket} ->
 	    {ok, _Pid} = etorrent_listen_sup:start_child(),
