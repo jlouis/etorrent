@@ -79,12 +79,12 @@ rechoke(Chain) ->
 lookup_info(Seeding, Id, Pid) ->
     case sets:is_element(Id, Seeding) of
         true ->
-            case etorrent_rate_mgr:fetch_send_rate(Id, Pid) of
+            case etorrent_peer_states:get_send_rate(Id, Pid) of
                 none -> none;
                 Rate -> {seeding, -Rate} % Negative rate so keysort works
             end;
         false ->
-            case etorrent_rate_mgr:fetch_recv_rate(Id, Pid) of
+            case etorrent_peer_states:get_recv_rate(Id, Pid) of
                 none -> none;
                 Rate -> {leeching, -Rate} % Negative rate so keysort works
             end
@@ -104,7 +104,7 @@ build_rechoke_info(Seeding, [Pid | Next]) ->
     case etorrent_table:get_peer_info(Pid) of
         not_found -> build_rechoke_info(Seeding, Next);
         {peer_info, PeerState, Id} ->
-            {value, Snubbed, St} = etorrent_rate_mgr:get_state(Id, Pid),
+            {value, Snubbed, St} = etorrent_peer_states:get_state(Id, Pid),
             case lookup_info(Seeding, Id, Pid) of
                 none -> build_rechoke_info(Seeding, Next);
                 {State, R} -> [#rechoke_info {
@@ -137,7 +137,7 @@ move_cyclic_chain(Chain) ->
                 case etorrent_table:get_peer_info(Pid) of
                     not_found -> true;
                     {peer_info, _Kind, Id} ->
-                        PL = etorrent_rate_mgr:pids_interest(Id, Pid),
+                        PL = etorrent_peer_states:get_pids_interest(Id, Pid),
 			%% Peers not interested in us are skipped. Optimistically unchoking these
 			%% would not help as they would request nothing. Peers already not choking
 			%% us are in the valuation game, so they are also skipped.

@@ -230,8 +230,8 @@ empty_requests({{value, {Index, Offset, Len}}, Next}, S) ->
     empty_requests(queue:out(Next), NS).
 
 local_choke(S) ->
-    etorrent_rate_mgr:local_choke(S#state.torrent_id,
-                                  S#state.control_pid).
+    etorrent_peer_states:set_local_choke(S#state.torrent_id,
+					 S#state.control_pid).
 
 
 %%====================================================================
@@ -269,9 +269,9 @@ handle_info(tick, S) ->
 handle_info(rate_update, S) ->
     erlang:send_after(?RATE_UPDATE, self(), rate_update),
     Rate = etorrent_rate:update(S#state.rate, 0),
-    ok = etorrent_rate_mgr:send_rate(S#state.torrent_id,
-                                     S#state.control_pid,
-                                     Rate#peer_rate.rate),
+    ok = etorrent_peer_states:set_send_rate(S#state.torrent_id,
+					    S#state.control_pid,
+					    Rate#peer_rate.rate),
     {noreply, S#state { rate = Rate }};
 
 %% Different timeouts.
@@ -298,7 +298,7 @@ handle_cast(choke, S) -> perform_choke(S);
 handle_cast(unchoke, #state { choke = false } = S) -> {noreply, S, 0};
 handle_cast(unchoke,
         #state { choke = true, torrent_id = Torrent_Id, control_pid = ControlPid } = S) ->
-    ok = etorrent_rate_mgr:local_unchoke(Torrent_Id, ControlPid),
+    ok = etorrent_peer_states:set_local_unchoke(Torrent_Id, ControlPid),
     send_message(unchoke, S#state{choke = false});
 
 %% A request to check the current choke state and ask for a rechoking

@@ -230,21 +230,21 @@ code_change(_OldVsn, State, _Extra) ->
 handle_message(keep_alive, S) ->
     {ok, S};
 handle_message(choke, S) ->
-    ok = etorrent_rate_mgr:choke(S#state.torrent_id, self()),
+    ok = etorrent_peer_states:set_choke(S#state.torrent_id, self()),
     NS = case S#state.fast_extension of
              true -> S;
              false -> unqueue_all_pieces(S)
          end,
     {ok, NS#state { remote_choked = true }};
 handle_message(unchoke, S) ->
-    ok = etorrent_rate_mgr:unchoke(S#state.torrent_id, self()),
+    ok = etorrent_peer_states:set_unchoke(S#state.torrent_id, self()),
     try_to_queue_up_pieces(S#state{remote_choked = false});
 handle_message(interested, S) ->
-    ok = etorrent_rate_mgr:interested(S#state.torrent_id, self()),
+    ok = etorrent_peer_states:set_interested(S#state.torrent_id, self()),
     ok = etorrent_peer_send:check_choke(S#state.send_pid),
     {ok, S};
 handle_message(not_interested, S) ->
-    ok = etorrent_rate_mgr:not_interested(S#state.torrent_id, self()),
+    ok = etorrent_peer_states:set_not_interested(S#state.torrent_id, self()),
     ok = etorrent_peer_send:check_choke(S#state.send_pid),
     {ok, S};
 handle_message({request, Index, Offset, Len}, S) ->
