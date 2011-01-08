@@ -1,12 +1,14 @@
-%%%-------------------------------------------------------------------
-%%% File    : etorrent_choker.erl
-%%% Author  : Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
-%%% License : See COPYING
-%%% Description : Master process for a number of peers.
-%%%
-%%% Created : 18 Jul 2007 by
-%%%      Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
-%%%-------------------------------------------------------------------
+%% @author Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
+%% @doc Choose which peers to download from / upload to.
+%% <p>The choking module is responsible for performing choking
+%% operations every 10 seconds. It queries the current state of all
+%% peers and subsequently chokes/unchokes peers according to the
+%% choking algorithm.</p>
+%% <p>The choking algorithm is probably the nastiest part of the
+%% BitTorrent protocol. Several things are taken into consideration,
+%% including download speed, upload speed, interest and if the peer is
+%% choking us or not.</p>
+%% @end
 -module(etorrent_choker).
 
 -behaviour(gen_server).
@@ -44,16 +46,23 @@
 -ignore_xref([{start_link, 1}]).
 
 %%====================================================================
-%% API
-%%====================================================================
--spec start_link(pid()) -> {ok, pid()} | {error, any()} | ignore.
+
+%% @doc Start the choking server.
+%% @end
+-spec start_link(binary()) -> {ok, pid()} | {error, any()} | ignore.
 start_link(OurPeerId) ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [OurPeerId], []).
 
+%% @doc Request an immediate rechoke rather than wait.
+%% <p>This call is used when something urgent happens where it would
+%% be advantageous to quickly rechoke all peers.</p>
+%% @end
 -spec perform_rechoke() -> ok.
 perform_rechoke() ->
     gen_server:cast(?SERVER, rechoke).
 
+%% @doc Ask the choking server to monitor `Pid'
+%% @end
 -spec monitor(pid()) -> ok.
 monitor(Pid) ->
     gen_server:call(?SERVER, {monitor, Pid}).
@@ -272,13 +281,13 @@ split_preferred_peers([#rechoke_info { peer_state = PeerState, r_interest_state 
     end.
 
 %%====================================================================
-%% gen_server callbacks
-%%====================================================================
 
+%% @private
 init([OurPeerId]) ->
     erlang:send_after(?ROUND_TIME, self(), round_tick),
     {ok, #state{ our_peer_id = OurPeerId }}.
 
+%% @private
 handle_call({monitor, Pid}, _From, S) ->
     _Tref = erlang:monitor(process, Pid),
     NewChain = insert_new_peer_into_chain(Pid, S#state.opt_unchoke_chain),
@@ -288,12 +297,15 @@ handle_call(Request, _From, State) ->
     ?ERR([unknown_peer_group_call, Request]),
     Reply = ok,
     {reply, Reply, State}.
+
+%% @private
 handle_cast(rechoke, #state { opt_unchoke_chain = Chain } = S) ->
     rechoke(Chain),
     {noreply, S};
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
+%% @private
 handle_info(round_tick, S) ->
     R = case S#state.round of
         0 ->
@@ -315,9 +327,11 @@ handle_info(Info, State) ->
     ?INFO([unknown_info_msg, ?MODULE, Info]),
     {noreply, State}.
 
+%% @private
 terminate(_Reason, _S) ->
     ok.
 
+%% @private
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
