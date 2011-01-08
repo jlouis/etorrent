@@ -439,10 +439,10 @@ handshake is like TCP. Hence, we first obtain a token from the tracker
 we then use subsequently for requests until the token times out. Some
 of the complexity is due to the reuse of the token.
 
-(** --- Editing to here --- **)
-
 ## DHT
-...
+
+To be written.
+
 ## WebUI
 
 The WebUI is a quite simple system. We have a directory of static data
@@ -455,7 +455,7 @@ Erlang-side is `etorrent_webui.erl`.
 
 ## Event handling
 
-TODO, I moved around some data for this.
+To be written.
 
 # So you want to hack etorrent? Cool!
 
