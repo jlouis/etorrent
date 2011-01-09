@@ -1,10 +1,14 @@
-%%%-------------------------------------------------------------------
-%%% File    : etorrent_fast_resume.erl
-%%% Author  : Jesper Louis Andersen <jlouis@ogre.home>
-%%% Description : Fast resume process
-%%%
-%%% Created : 16 Jul 2008 by Jesper Louis Andersen <jlouis@ogre.home>
-%%%-------------------------------------------------------------------
+%% @author Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
+%% @doc Periodically record piece state to disk.
+%% <p>The `fast_resume' code is responsible for persisting the state of
+%% downloaded pieces to disk every 5 minutes. This means that if we
+%% crash, we are at worst 5 minutes back in time for the downloading
+%% of a torrent.</p>
+%% <p>When a torrent is initially started, the `fast_resume' is
+%% consulted for an eventual piece state. At the moment this piece
+%% state is believed blindly if present.</p>
+%% @end
+%% @todo Improve the situation and check strength.
 -module(etorrent_fast_resume).
 
 -behaviour(gen_server).
@@ -24,7 +28,9 @@
 -define(SERVER, ?MODULE).
 -define(PERSIST_TIME, timer:seconds(300)). % Every 300 secs, may be done configurable.
 -ignore_xref([{start_link, 0}]).
+
 %%====================================================================
+
 %% @doc Start up the server
 %% @end
 -spec start_link() -> {ok, pid()} | ignore | {error, term()}.
@@ -88,8 +94,18 @@ persist_to_disk() ->
     ok = ets:tab2file(etorrent_fast_resume, F, [{extended_info, [object_count, md5sum]}]),
     ok.
 
+upgrade(1, St) ->
+    upgrade1(St).
+
+%% Upgrade from version 1
+upgrade1(St) ->
+    [{state, St},
+     {uploaded, 0},
+     {downloaded, 0}].
+
 %% ==================================================================
 
+%% @private
 init([]) ->
     process_flag(trap_exit, true),
     F = etorrent_config:fast_resume_file(),
@@ -103,6 +119,7 @@ init([]) ->
     erlang:send_after(?PERSIST_TIME, self(), persist),
     {ok, #state{}}.
 
+%% @private
 handle_call({query_state, Id}, _From, S) ->
     {value, PL} = etorrent_table:get_torrent(Id),
     case ets:lookup(etorrent_fast_resume, proplists:get_value(filename, PL)) of
@@ -114,9 +131,11 @@ handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
 
+%% @private
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
+%% @private
 handle_info(persist, S) ->
     persist_to_disk(),
     erlang:send_after(?PERSIST_TIME, self(), persist),
@@ -124,21 +143,14 @@ handle_info(persist, S) ->
 handle_info(_Info, State) ->
     {noreply, State}.
 
-
+%% @private
 terminate(Reason, _State) when Reason =:= normal; Reason =:= shutdown ->
     persist_to_disk(),
     ok;
 terminate(_Reason, _State) ->
     ok.
 
+%% @private
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
-upgrade(1, St) ->
-    upgrade1(St).
-
-%% Upgrade from version 1
-upgrade1(St) ->
-    [{state, St},
-     {uploaded, 0},
-     {downloaded, 0}].
