@@ -30,13 +30,19 @@ init([PeerId]) ->
     Port = etorrent_config:listen_port(),
     ListenOpts = [binary, inet, {active, false},
 		 {reuseaddr, true}],
-    {ok, LSock} = gen_tcp:listen(Port, ListenOpts),
-    AcceptChild =
-	{accept_child, {etorrent_acceptor, start_link,
-			[PeerId, LSock]},
-	 temporary, brutal_kill, worker, [etorrent_acceptor]},
-    RestartStrategy = {simple_one_for_one, 100, 3600},
-    {ok, {RestartStrategy, [AcceptChild]}}.
+    case gen_tcp:listen(Port, ListenOpts) of
+	{ok, LSock} ->
+	    AcceptChild =
+		{accept_child, {etorrent_acceptor, start_link,
+				[PeerId, LSock]},
+		 temporary, brutal_kill, worker, [etorrent_acceptor]},
+	    RestartStrategy = {simple_one_for_one, 100, 3600},
+	    {ok, {RestartStrategy, [AcceptChild]}};
+	{error, Reason} ->
+	    error_logger:error_msg("ERROR in gen_tcp:listen/2: ~p~n", [Reason]),
+	    exit(gen_tcp_listen)
+    end.
+
 
 %%====================================================================
 
