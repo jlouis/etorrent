@@ -32,7 +32,7 @@
 %% Each time a client intends to read/write to a file it notifies the
 %% directory server. If the file is not a member of the set of open files
 %% the server the file server to open a file handle to the file.
-%% 
+%%
 %% When the limit on file servers keeping open file handles has been reached
 %% the file server will notify the least recently used file server to close
 %% its file handle for each notification for a file that is not in the set
@@ -52,6 +52,7 @@
 %%
 -export([start_link/2,
          read_piece/2,
+	 piece_size/2,
          read_chunk/4,
          write_chunk/4,
          file_paths/1,
@@ -103,6 +104,15 @@ read_piece(TorrentID, Piece) ->
     {ok, Positions} = get_positions(DirPid, Piece),
     BlockList = read_file_blocks(TorrentID, Positions),
     {ok, iolist_to_binary(BlockList)}.
+
+%% @doc Request the size of a piece
+%% <p>Returns `{ok, Size}' where `Size' is the amount of bytes in that piece</p>
+%% @end
+-spec piece_size(torrent_id(), piece_index()) -> {ok, integer()}.
+piece_size(TorrentID, Piece) ->
+    {ok, DirPid} = await_directory(TorrentID),
+    {ok, Positions} = get_positions(DirPid, Piece),
+    {ok, lists:sum([L || {_, _, L} <- Positions])}.
 
 
 %% @doc

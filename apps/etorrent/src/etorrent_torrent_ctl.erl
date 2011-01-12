@@ -131,7 +131,7 @@ initializing(timeout, S) ->
                     {downloaded, 0},
 		    {all_time_uploaded, AU},
 		    {all_time_downloaded, AD},
-                    {left, calculate_amount_left(S#state.id)},
+                    {left, calculate_amount_left(S#state.id, NumberOfPieces, Torrent)},
                     {total, etorrent_metainfo:get_length(Torrent)}},
                    NumberOfPieces),
 
@@ -203,7 +203,18 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 %% --------------------------------------------------------------------
 
 %% @todo Does this function belong here?
-calculate_amount_left(Id) when is_integer(Id) ->
-    Pieces = etorrent_piece_mgr:select(Id),
-    lists:sum([etorrent_piece_mgr:size_piece(P) || P <- Pieces]).
+calculate_amount_left(Id, NumPieces, Torrent) when is_integer(Id) ->
+    Length = etorrent_metainfo:get_length(Torrent),
+    PieceL = etorrent_metainfo:get_piece_length(Torrent),
+    LastPiece = NumPieces - 1,
+    LastPieceSize = Length rem PieceL,
+    Downloaded =
+	lists:sum([case etorrent_piece_mgr:fetched(Id, Pn) of
+		       true when Pn == LastPiece -> LastPieceSize;
+		       true                      -> PieceL;
+		       false                     -> 0
+		   end
+		   || Pn <- lists:seq(0, NumPieces - 1)]),
+    true = Downloaded =< Length,
+    Length - Downloaded.
 
