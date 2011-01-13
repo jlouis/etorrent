@@ -13,7 +13,7 @@ init([TorrentID, TorrentFile]) ->
     Workdir   = etorrent_config:work_dir(),
     FullPath  = filename:join([Workdir, TorrentFile]),
     Torrent   = etorrent_bcoding:parse_file(FullPath),
-    Files     = etorrent_io:file_paths(Torrent),
+    Files     = etorrent_metainfo:file_paths(Torrent),
     DirServer = directory_server_spec(TorrentID, Torrent),
     FileSup   = file_server_sup_spec(TorrentID, Workdir, Files),
     {ok, {{one_for_one, 1, 60}, [DirServer, FileSup]}}.

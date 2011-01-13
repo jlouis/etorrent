@@ -54,7 +54,6 @@
          read_piece/2,
          read_chunk/4,
          write_chunk/4,
-         file_paths/1,
          register_directory/1,
          lookup_directory/1,
          await_directory/1,
@@ -169,17 +168,6 @@ write_file_blocks(TorrentID, Chunk, [{Path, Offset, Length}|T]=L) ->
             write_file_blocks(TorrentID, Rest, T)
     end.
 
-file_path_len(T) ->
-    case etorrent_metainfo:get_files(T) of
-	[One] -> [One];
-	More when is_list(More) ->
-	    Name = etorrent_metainfo:get_name(T),
-	    [{filename:join([Name, Path]), Len} || {Path, Len} <- More]
-    end.
-
-file_paths(T) ->
-    [Path || {Path, _} <- file_path_len(T)].
-
 %% @doc
 %% Register the current process as the directory server for
 %% the given torrent.
@@ -283,6 +271,8 @@ get_positions(DirPid, Piece) ->
 schedule_io_operation(Directory, RelPath) ->
     {ok, DirPid} = await_directory(Directory),
     gen_server:cast(DirPid, {schedule_operation, RelPath}).
+
+%% ----------------------------------------------------------------------
 
 %% @private
 init([TorrentID, Torrent]) ->
@@ -389,11 +379,13 @@ terminate(_, _) ->
 code_change(_, _, _) ->
     not_implemented.
 
+%% ----------------------------------------------------------------------
+
 %%
 %%
 make_piece_map(Torrent) ->
     PieceLength = etorrent_metainfo:get_piece_length(Torrent),
-    FileLengths = file_path_len(Torrent),
+    FileLengths = etorrent_metainfo:file_path_len(Torrent),
     MapEntries  = make_piece_map_(PieceLength, FileLengths),
     lists:foldl(fun({Path, Piece, Offset, Length}, Acc) ->
         Prev = array:get(Piece, Acc),
