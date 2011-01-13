@@ -21,6 +21,8 @@
 %% Metainfo
 -export([get_piece_length/1, get_length/1, get_pieces/1, get_url/1,
          get_infohash/1,
+	 file_paths/1,
+	 file_path_len/1,
          get_files/1, get_name/1,
          get_http_urls/1, get_udp_urls/1, get_dht_urls/1]).
 
@@ -95,6 +97,19 @@ get_files(Torrent) ->
     FilesEntries = get_files_section(Torrent),
     true = is_list(FilesEntries),
     [process_file_entry(Path) || Path <- FilesEntries].
+
+%% @doc Return a list of file paths for a torrent
+%% @end
+file_paths(T) ->
+    [Path || {Path, _} <- file_path_len(T)].
+
+file_path_len(T) ->
+    case get_files(T) of
+	[One] -> [One];
+	More when is_list(More) ->
+	    Name = get_name(T),
+	    [{filename:join([Name, Path]), Len} || {Path, Len} <- More]
+    end.
 
 %% @doc Get the name of a torrent.
 %% @end
