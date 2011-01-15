@@ -70,7 +70,10 @@ handle_cast({start, F}, S) ->
             case etorrent_torrent_pool:start_child(F, S#state.local_peer_id,
 						   etorrent_counters:next(torrent)) of
                 {ok, _} -> {noreply, S};
-                {error, {already_started, _Pid}} -> {noreply, S}
+                {error, {already_started, _Pid}} -> {noreply, S};
+                {error, Reason} ->
+                    ?INFO([starting_error, Reason]),
+                    {noreply, S}
             end
     end;
 handle_cast({check, Id}, S) ->
