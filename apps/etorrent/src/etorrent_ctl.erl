@@ -73,6 +73,7 @@ handle_cast({start, F}, S) ->
                 {error, {already_started, _Pid}} -> {noreply, S};
                 {error, Reason} ->
                     ?INFO([starting_error, Reason]),
+                    etorrent_event:notify({starting_error, Reason}),
                     {noreply, S}
             end
     end;
