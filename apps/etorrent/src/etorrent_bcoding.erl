@@ -207,7 +207,7 @@ prop_inv() ->
     ?FORALL(BC, bcode(),
 	    begin
 		Enc = iolist_to_binary(encode(BC)),
-		Dec = decode(Enc),
+		{ok, Dec} = decode(Enc),
 		encode(BC) =:= encode(Dec)
 	    end).
 
