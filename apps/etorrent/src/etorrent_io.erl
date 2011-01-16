@@ -1,3 +1,45 @@
+%% @author Magnus Klaar <magnus.klaar@sgsstudentbostader.se>
+%% @doc File I/O subsystem.
+%% <p>A directory server (this module) is responsible for maintaining
+%% the opened/closed state for each file in a torrent.</p>
+%%
+%% == Pieces ==
+%% The directory server is responsible for mapping each piece to a set
+%% of file-blocks. A piece is only mapped to multiple blocks if it spans
+%% multiple files.
+%%
+%% == Chunks ==
+%% Chunks are mapped to a set of file blocks based on the file blocks that
+%% contain the piece that the chunk is a member of.
+%%
+%% == Scheduling ==
+%% Because there is a limit on the number of file descriptors that an
+%% OS-process can have open at the same time the directory server
+%% attempts to limit the amount of file servers that hold an actual
+%% file handle to the file it is resonsible for.
+%%
+%% Each time a client intends to read/write to a file it notifies the
+%% directory server. If the file is not a member of the set of open files
+%% the server the file server to open a file handle to the file.
+%%
+%% When the limit on file servers keeping open file handles has been reached
+%% the file server will notify the least recently used file server to close
+%% its file handle for each notification for a file that is not in the set
+%% of open files.
+%%
+%% == Guarantees ==
+%% The protocol between the directory server and the file servers is
+%% asynchronous, there is no guarantee that the number of open file handles
+%% will never be larger than the specified number.
+%%
+%% == Synchronization ==
+%% The gproc application is used to keep a registry of the process ids of
+%% directory servers and file servers. A file server registers under a second
+%% name when it has an open file handle. The support in gproc for waiting until a
+%% name is registered is used to notify clients when the file server has an
+%% open file handle.
+%%
+%% @end
 -module(etorrent_io).
 -behaviour(gen_server).
 -include("types.hrl").
@@ -8,53 +50,10 @@
 
 -define(AWAIT_TIMEOUT, 10*1000).
 
-%%
-%% #File I/O subsystem.
-%%
-%% A directory server (this module) is responsible for maintaining
-%% the opened/closed state for each file in a torrent.
-%%
-%% ## Pieces
-%% The directory server is responsible for mapping each piece to a set
-%% of file-blocks. A piece is only mapped to multiple blocks if it spans
-%% multiple files.
-%%
-%% ## Chunks
-%% Chunks are mapped to a set of file blocks based on the file blocks that
-%% contain the piece that the chunk is a member of.
-%%
-%% ## Scheduling
-%% Because there is a limit on the number of file descriptors that an
-%% OS-process can have open at the same time the directory server
-%% attempts to limit the amount of file servers that hold an actual
-%% file handle to the file it is resonsible for.
-%%
-%% Each time a client intends to read/write to a file it notifies the
-%% directory server. If the file is not a member of the set of open files
-%% the server the file server to open a file handle to the file.
-%% 
-%% When the limit on file servers keeping open file handles has been reached
-%% the file server will notify the least recently used file server to close
-%% its file handle for each notification for a file that is not in the set
-%% of open files.
-%%
-%% ## Guarantees
-%% The protocol between the directory server and the file servers is
-%% asynchronous, there is no guarantee that the number of open file handles
-%% will never be larger than the specified number.
-%%
-%% ## Synchronization
-%% The gproc application is used to keep a registry of the process ids of
-%% directory servers and file servers. A file server registers under a second
-%% name when it has an open file handle. The support in gproc for waiting until a
-%% name is registered is used to notify clients when the file server has an
-%% open file handle.
-%%
 -export([start_link/2,
          read_piece/2,
          read_chunk/4,
          write_chunk/4,
-         file_paths/1,
          register_directory/1,
          lookup_directory/1,
          await_directory/1,
@@ -86,9 +85,8 @@
     files_open :: list(#io_file{}),
     files_max  :: pos_integer()}).
 
-%%
-%% TODO - comment and spec
-%%
+%% @doc Start the File I/O Server
+%% @end
 -spec start_link(torrent_id(), bcode()) -> {'ok', pid()}.
 start_link(TorrentID, Torrent) ->
     gen_server:start_link(?MODULE, [TorrentID, Torrent], []).
@@ -169,17 +167,6 @@ write_file_blocks(TorrentID, Chunk, [{Path, Offset, Length}|T]=L) ->
         ok ->
             write_file_blocks(TorrentID, Rest, T)
     end.
-
-file_path_len(T) ->
-    case etorrent_metainfo:get_files(T) of
-	[One] -> [One];
-	More when is_list(More) ->
-	    Name = etorrent_metainfo:get_name(T),
-	    [{filename:join([Name, Path]), Len} || {Path, Len} <- More]
-    end.
-
-file_paths(T) ->
-    [Path || {Path, _} <- file_path_len(T)].
 
 %% @doc
 %% Register the current process as the directory server for
@@ -285,7 +272,9 @@ schedule_io_operation(Directory, RelPath) ->
     {ok, DirPid} = await_directory(Directory),
     gen_server:cast(DirPid, {schedule_operation, RelPath}).
 
+%% ----------------------------------------------------------------------
 
+%% @private
 init([TorrentID, Torrent]) ->
     % Let the user define a limit on the amount of files
     % that will be open at the same time
@@ -305,6 +294,8 @@ init([TorrentID, Torrent]) ->
 %% for a file server to enter the open state when the file server
 %% crashed before it could enter the open state.
 %%
+
+%% @private
 handle_call({read, _, _}, _, State) ->
     {reply, {error, eagain}, State};
 handle_call({write, _, _}, _, State) ->
@@ -315,6 +306,7 @@ handle_call({get_positions, Piece}, _, State) ->
     Positions = array:get(Piece, PieceMap),
     {reply, {ok, Positions}, State}.
 
+%% @private
 handle_cast({schedule_operation, RelPath}, State) ->
     #state{
         torrent=TorrentID,
@@ -364,6 +356,7 @@ handle_cast({schedule_operation, RelPath}, State) ->
     NewState = State#state{files_open=WithNewFile},
     {noreply, NewState}.
 
+%% @private
 handle_info({'DOWN', FileMon, _, _, _}, State) ->
     #state{
         torrent=TorrentID,
@@ -378,17 +371,21 @@ handle_info({'DOWN', FileMon, _, _, _}, State) ->
     NewState = State#state{files_open=NewFilesOpen},
     {noreply, NewState}.
 
+%% @private
 terminate(_, _) ->
     not_implemented.
 
+%% @private
 code_change(_, _, _) ->
     not_implemented.
+
+%% ----------------------------------------------------------------------
 
 %%
 %%
 make_piece_map(Torrent) ->
     PieceLength = etorrent_metainfo:get_piece_length(Torrent),
-    FileLengths = file_path_len(Torrent),
+    FileLengths = etorrent_metainfo:file_path_len(Torrent),
     MapEntries  = make_piece_map_(PieceLength, FileLengths),
     lists:foldl(fun({Path, Piece, Offset, Length}, Acc) ->
         Prev = array:get(Piece, Acc),
@@ -458,8 +455,6 @@ chunk_positions(ChunkOffs, ChunkLen, [{Path, FileOffs, BlockLen}|T]) ->
             Entry = {Path, EffectiveOffs, OutBlockLen},
             [Entry|chunk_positions(0, NewChunkLen, T)]
     end.
-            
-
 
 -ifdef(TEST).
 piece_map_0_test() ->
@@ -485,7 +480,7 @@ chunk_pos_0_test() ->
     Len  = 3,
     Map  = [{a, 0, 4}],
     Pos  = [{a, 1, 3}],
-    ?assertEqual(Pos, chunk_positions(Offs, Len, Map)). 
+    ?assertEqual(Pos, chunk_positions(Offs, Len, Map)).
 
 chunk_pos_1_test() ->
     Offs = 2,
