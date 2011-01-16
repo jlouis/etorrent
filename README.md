@@ -121,7 +121,8 @@ recompiled them.
 
 ## Documentation
 
-Read the HACKING.md file in this directory.
+Read the HACKING.md file in this directory. For how the git repository
+is worked, see `documentation/git.md`.
 
 ## ISSUES
 
