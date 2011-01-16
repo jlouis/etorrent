@@ -130,7 +130,7 @@ ping(IP, Port) ->
     case gen_server:call(srv_name(), {ping, IP, Port}) of
         timeout -> pang;
         Values ->
-            ID = decode_response(ping, Values)
+            _ID = decode_response(ping, Values)
     end.
 
 %
@@ -481,7 +481,7 @@ handle_info({udp, _Socket, IP, Port, Packet}, State) ->
 handle_info(_Msg, State) ->
     {noreply, State}.
 
-terminate(_, State) ->
+terminate(_, _State) ->
     ok.
 
 code_change(_, _, State) ->
