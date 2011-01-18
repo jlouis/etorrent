@@ -1,6 +1,25 @@
 -module(etorrent_config).
 -include("types.hrl").
--compile(export_all).
+
+-export([dht/0,
+	 dht_port/0,
+	 dht_state_file/0,
+	 fast_resume_file/0,
+	 listen_port/0,
+	 logger_dir/0,
+	 logger_file/0,
+	 max_files/0,
+	 max_peers/0,
+	 max_upload_rate/0,
+	 max_upload_slots/0,
+	 optimistic_slots/0,
+	 profiling/0,
+	 udp_port/0,
+	 webui/0,
+	 webui_address/0,
+	 webui_log_dir/0,
+	 webui_port/0,
+	 work_dir/0]).
 
 required(Key) ->
     {ok, Value} = application:get_env(etorrent, Key),
