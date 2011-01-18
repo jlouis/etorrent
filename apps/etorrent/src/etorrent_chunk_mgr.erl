@@ -155,6 +155,7 @@ select_chunks_by_piecenum({TorrentId, Pn}, Max) ->
 %%====================================================================
 %% @private
 init([]) ->
+    random:seed(now()),
     _Tid = ets:new(?TAB, [bag, protected, named_table, {keypos, #chunk.idt}]),
     D = dict:new(),
     {ok, #state{ torrent_dict = D }}.

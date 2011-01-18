@@ -70,6 +70,7 @@ is_bad_peer(IP, Port) ->
 %% ====================================================================
 
 init([OurPeerId]) ->
+    random:seed(now()), %% Seed RNG
     erlang:send_after(?CHECK_TIME, self(), cleanup_table),
     _Tid = ets:new(etorrent_bad_peer, [protected, named_table,
                                        {keypos, #bad_peer.ipport}]),

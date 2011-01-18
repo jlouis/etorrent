@@ -134,6 +134,7 @@ incoming_msg(Pid, Msg) ->
 
 %% @private
 init([LocalPeerId, InfoHash, Id, {IP, Port}, Caps, Socket]) ->
+    random:seed(now()),
     ok = etorrent_table:new_peer(IP, Port, Id, self(), leeching),
     ok = etorrent_choker:monitor(self()),
     {value, NumPieces} = etorrent_torrent:num_pieces(Id),
