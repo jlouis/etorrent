@@ -14,8 +14,10 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
--record(state, {dir = none}).
--define(WATCH_WAIT_TIME, timer:seconds(20)).
+-record(state, {
+    dir = none,
+    interval = timer:seconds(20)  :: pos_integer()}).
+
 -define(SERVER, ?MODULE).
 
 -ignore_xref([{start_link, 0}]).
@@ -78,24 +80,26 @@ sweep(Key) ->
 %% @private
 init([]) ->
     Dir = etorrent_config:work_dir(),
+    IntervalS = etorrent_config:dirwatch_interval(),
+    Interval = timer:seconds(IntervalS),
     _Tid = ets:new(etorrent_dirwatcher, [named_table, private]),
-    {ok, #state{dir = Dir}, 0}.
+    {ok, #state{dir = Dir, interval = Interval}, 0}.
 
 %% @private
 handle_call(_Request, _From, State) ->
     Reply = ok,
-    {reply, Reply, State, ?WATCH_WAIT_TIME}.
+    {reply, Reply, State, State#state.interval}.
 
 %% @private
 handle_cast(_Request, S) ->
-    {noreply, S, ?WATCH_WAIT_TIME}.
+    {noreply, S, S#state.interval}.
 
 %% @private
 handle_info(timeout, S) ->
     watch_directories(S),
-    {noreply, S, ?WATCH_WAIT_TIME};
+    {noreply, S, S#state.interval};
 handle_info(_Info, State) ->
-    {noreply, State, ?WATCH_WAIT_TIME}.
+    {noreply, State, State#state.interval}.
 
 %% @private
 terminate(_Reason, _State) ->
