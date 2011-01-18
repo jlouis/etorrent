@@ -27,7 +27,8 @@ init([TorrentID, TorrentFile]) ->
     {ok, Torrent}   = etorrent_bcoding:parse_file(FullPath),
     Files     = etorrent_metainfo:file_paths(Torrent),
     DirServer = directory_server_spec(TorrentID, Torrent),
-    FileSup   = file_server_sup_spec(TorrentID, Workdir, Files),
+    Dldir     = etorrent_config:download_dir(),
+    FileSup   = file_server_sup_spec(TorrentID, Dldir, Files),
     {ok, {{one_for_one, 1, 60}, [DirServer, FileSup]}}.
 
 %% ----------------------------------------------------------------------
