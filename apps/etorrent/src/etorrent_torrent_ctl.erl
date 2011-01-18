@@ -155,7 +155,7 @@ initializing(timeout, S) ->
 started(stop, S) ->
     {stop, argh, S};
 started(check_torrent, S) ->
-    case etorrent_fs_checker:check_torrent(S#state.id) of
+    case etorrent_fs_checker:check_torrent_for_bad_pieces(S#state.id) of
         [] -> {next_state, started, S};
         Errors ->
             ?INFO([errornous_pieces, {Errors}]),
