@@ -24,40 +24,35 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
--record(state, { remote_peer_id = none,
-                 local_peer_id = none,
-                 info_hash = none,
+-record(state, { remote_peer_id               :: none_set | binary(),
+                 local_peer_id                :: binary(),
+                 info_hash                    :: binary(),
 
-		 extended_messaging = false, % Peer support extended messages
-                 fast_extension = false, % Peer uses fast extension
+		 %% Peer support extended messages
+		 extended_messaging = false   :: boolean(),
+		 %% Peer uses fast extension
+                 fast_extension = false       :: boolean(),
+		 %% How many pieces are there left before the peer
+		 %% has every pieces?
+                 pieces_left                  :: integer(),
+                 seeder = false               :: boolean(),
+                 socket = none                :: gen_tcp:socket(),
 
-                 %% The packet continuation stores intermediate buffering
-                 %% when we only have received part of a package.
-                 packet_continuation = none,
-                 pieces_left, % How many pieces are there left before the peer
-                              % has every pieces?
-                 seeder = false,
-                 socket = none,
+                 remote_choked = true         :: boolean(),
 
-                 remote_choked = true,
-
-                 local_interested = false,
+                 local_interested = false     :: boolean(),
 
                  remote_request_set = gb_sets:empty() :: gb_set(),
 
-                 piece_set = unknown,
-                 piece_request = [],
+                 piece_set = unknown          :: unknown | gb_set(),
 
-                 packet_left = none,
-                 packet_iolist = [],
+		 %% Are we in endgame mode?
+                 endgame = false              :: boolean(),
 
-                 endgame = false, % Are we in endgame mode?
+                 send_pid                     :: pid(),
 
-                 send_pid = none,
-
-                 rate = none,
-                 rate_timer = none,
-                 torrent_id = none}).
+                 rate                         :: etorrent_rate:rate(),
+                 torrent_id                   :: integer() }).
 
 -define(DEFAULT_CHUNK_SIZE, 16384). % Default size for a chunk. All clients use this.
 -define(HIGH_WATERMARK, 30). % How many chunks to queue up to

@@ -50,12 +50,13 @@
 	  seeders = 0 :: non_neg_integer(),
 	  %% How many people are downloaded
 	  leechers = 0 :: non_neg_integer(),
-	  rate_sparkline = [0.0],
+	  %% This is a list of recent speeds present so we can plot them
+	  rate_sparkline = [0.0] :: [float()],
 	  state :: torrent_state()}).
 
 -define(SERVER, ?MODULE).
 -define(TAB, ?MODULE).
--record(state, { monitoring }).
+-record(state, { monitoring :: dict() }).
 -ignore_xref([{'start_link', 0}]).
 
 %% ====================================================================

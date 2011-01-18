@@ -1,7 +1,6 @@
 %% Various types spanning multiple modules.
 -type tier() :: [string()].
 -type bitfield() :: binary().
--type ip() :: {integer(), integer(), integer(), integer()}.
 -type capabilities() :: extended_messaging.
 % The bcode() type:
 -type bstring() :: {'string', string()}.
@@ -13,6 +12,9 @@
 -type bdict() :: [{string(), bcode()}].
 -type torrent_id() :: integer().
 -type file_path() :: string().
+
+% Type returned by the From tag in gen_*:handle_call
+-type from_tag() :: {pid(), term()}.
 
 % There are three types of blocks, define types for
 % all three to make it easier to distinguish which type
@@ -41,3 +43,8 @@
 -type trackerinfo() :: {nodeid(), ipaddr(), portnum(), token()}.
 -type dht_qtype() :: 'ping' | 'find_node'
                    | 'get_peers' | 'announce'.
+
+
+
+
+

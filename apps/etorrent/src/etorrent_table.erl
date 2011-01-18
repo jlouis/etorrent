@@ -36,8 +36,8 @@
                    path :: string() | '_'}). % (IDX) File system path minus work dir
 
 -record(peer, {pid :: pid() | '_' | '$1', % We identify each peer with it's pid.
-               ip :: ip() | '_',  % Ip of peer in question
-               port :: non_neg_integer() | '_', % Port of peer in question
+               ip :: ipaddr() | '_',  % Ip of peer in question
+               port :: portnum() | '_', % Port of peer in question
                torrent_id :: non_neg_integer() | '_', % (IDX) Torrent Id this peer belongs to
                state :: 'seeding' | 'leeching' | '_'}).
 
@@ -177,7 +177,7 @@ statechange_peer(Pid, seeder) ->
 
 %% @doc Insert a row for the peer
 %% @end
--spec new_peer(ip(), integer(), integer(), pid(), seeding | leeching) -> ok.
+-spec new_peer(ipaddr(), portnum(), integer(), pid(), seeding | leeching) -> ok.
 new_peer(IP, Port, TorrentId, Pid, State) ->
     true = ets:insert(peers, #peer { pid = Pid, ip = IP, port = Port,
 				     torrent_id = TorrentId, state = State}),
@@ -200,7 +200,7 @@ new_torrent(File, Supervisor, Id) when is_integer(Id), is_pid(Supervisor), is_li
 
 %% @doc Returns true if we are already connected to this peer.
 %% @end
--spec connected_peer(ip(), integer(), integer()) -> boolean().
+-spec connected_peer(ipaddr(), portnum(), integer()) -> boolean().
 connected_peer(IP, Port, Id) when is_integer(Id) ->
     case ets:match(peers, #peer { ip = IP, port = Port, torrent_id = Id, _ = '_'}) of
 	[] -> false;

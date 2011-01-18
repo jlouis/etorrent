@@ -25,15 +25,15 @@
          terminate/2, code_change/3]).
 
 %% Individual pieces are represented via the piece record
--record(piece, {idpn, % {Id, PieceNumber} pair identifying the piece
-                hash, % Hash of piece
-                left = unknown, % Number of chunks left...
-                state}). % (IDX) state is: fetched | not_fetched | chunked
+-record(piece, {idpn :: {torrent_id(), integer() | '$1' | '_' },
+                hash :: binary() | '_' ,
+                left = unknown :: unknown | integer() | '_', % Chunks left
+                state :: fetched | not_fetched | chunked | '_' }).
 
 -type piece() :: #piece{}.
 -export_type([piece/0]).
 
--record(state, { monitoring }).
+-record(state, { monitoring :: dict() }).
 
 -define(SERVER, ?MODULE).
 -define(TAB, etorrent_piece_tbl).

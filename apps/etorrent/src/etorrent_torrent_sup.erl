@@ -42,7 +42,8 @@ add_tracker(Pid, UrlTiers, InfoHash, Local_Peer_Id, TorrentId) ->
 %% peer_pools add_peer/7 function. It is just cleaner to call through this
 %% supervisor, as it has the knowledge about the peer pool pid.</p>
 %% @end
--spec add_peer(binary(), binary(), integer(), {ip(), integer()}, [capabilities()],
+-spec add_peer(binary(), binary(), integer(), {ipaddr(), portnum()},
+	       [capabilities()],
 	       port()) ->
         {ok, pid(), pid()} | {error, term()}.
 add_peer(PeerId, InfoHash, TorrentId, {IP, Port}, Capabilities, Socket) ->

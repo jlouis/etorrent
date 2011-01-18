@@ -71,6 +71,10 @@
                 | {allowed_fast, [integer()]}
 		| {extended, integer(), binary()}.
 
+-type cont_state() :: {partial, binary() | {integer(), [binary()]}}.
+-type continuation() :: cont_state() | none.
+-export_type([continuation/0]).
+
 %% @doc Decode an incoming (partial) packet
 %% <p>The incoming packet function will attempt to decode an incoming packet. It
 %% returns either the decoded packet, or it returns a partial continuation to
@@ -80,7 +84,6 @@
 %% its continuation-construction to eat up partial packets, until we
 %% have the full one and can decode it.</p>
 %% @end
--type cont_state() :: {partial, binary() | {integer(), [binary()]}}.
 -spec incoming_packet(none | cont_state(), binary()) ->
     ok | {ok, binary(), binary()} | cont_state().
 incoming_packet(none, <<>>) -> ok;

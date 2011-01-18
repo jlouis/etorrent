@@ -20,7 +20,7 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
--record(bad_peer, { ipport       :: {ip(), port()} | '_',
+-record(bad_peer, { ipport       :: {ipaddr(), portnum()} | '_',
                     offenses     :: integer()      | '_',
                     peerid       :: binary()       | '_',
                     last_offense :: {integer(), integer(), integer()} | '$1' }).
@@ -44,7 +44,7 @@ start_link(OurPeerId) ->
 
 % @doc Tell the peer mananger that a given peer behaved badly.
 % @end
--spec enter_bad_peer(ip(), integer(), binary()) -> ok.
+-spec enter_bad_peer(ipaddr(), portnum(), binary()) -> ok.
 enter_bad_peer(IP, Port, PeerId) ->
     gen_server:cast(?SERVER, {enter_bad_peer, IP, Port, PeerId}).
 
@@ -53,14 +53,14 @@ enter_bad_peer(IP, Port, PeerId) ->
 % may not use all of those given if it deems it has enough connections right
 % now.</p>
 % @end
--spec add_peers(integer(), [{ip(), integer()}]) -> ok.
+-spec add_peers(integer(), [{ipaddr(), portnum()}]) -> ok.
 add_peers(TorrentId, IPList) ->
     gen_server:cast(?SERVER, {add_peers,
                               [{TorrentId, {IP, Port}} || {IP, Port} <- IPList]}).
 
 % @doc Returns true if this peer is in the list of baddies
 % @end
--spec is_bad_peer(ip(), integer()) -> boolean().
+-spec is_bad_peer(ipaddr(), portnum()) -> boolean().
 is_bad_peer(IP, Port) ->
     case ets:lookup(etorrent_bad_peer, {IP, Port}) of
         [] -> false;

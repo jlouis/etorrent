@@ -32,7 +32,7 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3]).
 
--record(state, { socket }). % Might not be needed at all
+-record(state, { socket :: gen_udp:socket() }). % Might not be needed at all
 
 -define(SERVER, ?MODULE).
 -define(TAB, etorrent_udp_transact).

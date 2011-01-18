@@ -10,6 +10,7 @@
 %% @end
 -module(etorrent_udp_tracker_proto).
 
+-include("types.hrl").
 -include("log.hrl").
 
 -behaviour(gen_server).
@@ -30,7 +31,6 @@
 
 -type action() :: connect | announce | scrape | error.
 -type event() :: none | completed | started | stopped.
--type ip() :: {byte(), byte(), byte(), byte()}.
 -type announce_opt() :: {interval | leechers | seeders, pos_integer()}.
 -type scrape_opt() :: {seeders | leechers | completed, pos_integer()}.
 -type t_udp_packet() ::
@@ -39,8 +39,9 @@
 	| {announce_request, pos_integer(), binary(), binary(),
 	                     binary(),
 	                     {pos_integer(), pos_integer(), pos_integer()},
-	                     event(), ip(), pos_integer(), pos_integer()}
-	| {announce_response, pos_integer(), [{ip(), 0..65535}], [announce_opt()]}
+	                     event(), ipaddr(), pos_integer(), pos_integer()}
+	| {announce_response, pos_integer(), [{ipaddr(), portnum()}],
+	                                     [announce_opt()]}
 	| {scrape_request, pos_integer(), binary(), [binary()]}
 	| {scrape_response, pos_integer(), [scrape_opt()]}
 	| {error_response, pos_integer(), string()}.
