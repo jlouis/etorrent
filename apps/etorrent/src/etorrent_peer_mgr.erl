@@ -9,7 +9,6 @@
 %%% @todo: Monitor peers and retry them. In general, we need peer management here.
 -module(etorrent_peer_mgr).
 
--include("etorrent_bad_peer.hrl").
 -include("types.hrl").
 
 -behaviour(gen_server).
@@ -21,8 +20,14 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
--record(state, { our_peer_id,
-                 available_peers = []}).
+-record(bad_peer, { ipport       :: {ip(), port()},
+                    offenses     :: integer(),
+                    peerid       :: binary(),
+                    last_offense :: {integer(), integer(), integer()}}).
+
+-record(state, { our_peer_id           :: binary(),
+                 available_peers = []  :: [{torrent_id(), peerinfo()}] }).
+
 -ignore_xref([{'start_link', 1}]).
 -define(SERVER, ?MODULE).
 -define(DEFAULT_BAD_COUNT, 2).
