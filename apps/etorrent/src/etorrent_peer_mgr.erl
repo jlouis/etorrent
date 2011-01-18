@@ -20,10 +20,10 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
--record(bad_peer, { ipport       :: {ip(), port()},
-                    offenses     :: integer(),
-                    peerid       :: binary(),
-                    last_offense :: {integer(), integer(), integer()}}).
+-record(bad_peer, { ipport       :: {ip(), port()} | '_',
+                    offenses     :: integer()      | '_',
+                    peerid       :: binary()       | '_',
+                    last_offense :: {integer(), integer(), integer()} | '$1' }).
 
 -record(state, { our_peer_id           :: binary(),
                  available_peers = []  :: [{torrent_id(), peerinfo()}] }).
@@ -122,18 +122,16 @@ code_change(_OldVsn, State, _Extra) ->
 
 start_new_peers(IPList, State) ->
     %% Update the PeerList with the new incoming peers
-    %% XXX:
-    %%   the usort is potentially a bad idea here. It will sort the list
-    %%   and thus mostly take IP addresses in a specific order. This is
-    %%   a bad idea for various reasons.
-    %%
-    %%   A nice change would be to do duplicate removal the right way
-    %%   on the unsorted list.
-    PeerList = lists:usort(IPList ++ State#state.available_peers),
+    PeerList = etorrent_utils:list_shuffle(
+		 clean_list(IPList ++ State#state.available_peers)),
     PeerId   = State#state.our_peer_id,
     {value, SlotsLeft} = etorrent_counters:slots_left(),
     Remaining = fill_peers(SlotsLeft, PeerId, PeerList),
     State#state{available_peers = Remaining}.
+
+clean_list([]) -> [];
+clean_list([H | T]) ->
+    [H | clean_list(T -- [H])].
 
 fill_peers(0, _PeerId, Rem) -> Rem;
 fill_peers(_K, _PeerId, []) -> [];
