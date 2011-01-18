@@ -29,15 +29,11 @@
          stopped/2, handle_sync_event/4, handle_info/3, terminate/3,
          code_change/4]).
 
--record(state, {id = none,
-
-                path = none,
-                peer_id = none,
-
-                parent_pid = none,
-                tracker_pid = none,
-                disk_state = none,
-                available_peers = []}).
+-record(state, {id                :: integer() ,
+                path              :: string(),
+                peer_id           :: binary(),
+                parent_pid        :: pid(),
+                tracker_pid       :: pid()   }).
 
 -define(CHECK_WAIT_TIME, 3000).
 
