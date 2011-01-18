@@ -75,11 +75,30 @@ First, configure git so the patches have the right names in them:
     You should pick a name for your topic branch which is as precise
     as you can make it.
 
-  * In general, avoid merging `master` or `next` into your topic
+  * In general, *avoid* merging `master` or `next` into your topic
     branch. Also, avoid blindly firing `git rebase master` to follow
     the development on `master`. For testing reintegration with
-    master, git provides `git rerere`. Create a test branch and merge
-    master to this and use `rerere` to track what you did.
+    master, git provides `git rerere`.
+
+    The problem is that when your `topic` gets merged into master,
+    there will be a large amount of 'merge' commits which are basically
+    just noise (even though `git log` can filter them). Also, if merges
+    from master to your branch is used sparingly, it conveys information:
+    whenever you merge master in, you make it clear your `topic` depends
+    on something new that arrived.
+
+    Create a `test` branch and merge your `topic` plus `master` in to this
+    to test your changes against master. Do the same with `topic`+`next` to
+    test your branch against the cooking pot - so we get the cooking pot
+    exercised a bit as well. You can use this to test different configurations
+    of lurking patches and ideas with your code to flesh out problems long
+    before they occur.
+
+    the `git rerere` tool can track how conflicts are resolved, so you can
+    destroy the `test` branch afterwards and recreate it since `rerere`
+    will replay conflict resolutions for you. This also means that if you
+    merge the tree differently or need to merge changes from master you need,
+    then `rerere` will help you.
 
   * When you do several patches in a row, try to make it such that
     each commit provides a working tree. This helps tools like `git
