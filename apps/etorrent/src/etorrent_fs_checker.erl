@@ -105,10 +105,10 @@ load_torrent(Path) ->
     {ok, Torrent, FilesToCheck, InfoHash}.
 
 ensure_file_sizes_correct(Files) ->
-    Workdir = etorrent_config:work_dir(),
+    Dldir = etorrent_config:download_dir(),
     lists:foreach(
       fun ({Pth, ISz}) ->
-              F = filename:join([Workdir, Pth]),
+              F = filename:join([Dldir, Pth]),
               Sz = filelib:file_size(F),
               case Sz == ISz of
                   true ->
