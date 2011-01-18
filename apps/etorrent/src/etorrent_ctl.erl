@@ -75,7 +75,7 @@ handle_cast({start, F}, S) ->
     end;
 handle_cast({check, Id}, S) ->
     Child = gproc:lookup_local_name({torrent, Id, control}),
-    etorrent_torrent_ctl:check_torrent(Child),
+    etorrent_torrent_ctl:check_torrent_for_bad_pieces(Child),
     {noreply, S};
 handle_cast({stop, F}, S) ->
     stop_torrent(F),

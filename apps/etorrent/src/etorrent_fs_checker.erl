@@ -11,15 +11,15 @@
 -include("types.hrl").
 
 %% API
--export([read_and_check_torrent/2, check_torrent/1, check_piece_completion/2]).
+-export([read_and_check_torrent/2, check_torrent_for_bad_pieces/1, check_piece_completion/2]).
 
 %% ====================================================================
 
 % @doc Check the contents of torrent Id
 % <p>We will check a torrent, Id, and report a list of bad pieces.</p>
 % @end
--spec check_torrent(integer()) -> [pos_integer()].
-check_torrent(Id) ->
+-spec check_torrent_for_bad_pieces(integer()) -> [pos_integer()].
+check_torrent_for_bad_pieces(Id) ->
     [PN || PN <- etorrent_piece_mgr:pieces(Id),
 	   case check_piece(Id, PN) of
 	       {ok, _} ->
