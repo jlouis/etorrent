@@ -4,6 +4,7 @@
 -export([dht/0,
 	 dht_port/0,
 	 dht_state_file/0,
+	 dirwatch_interval/0,
 	 download_dir/0,
 	 fast_resume_file/0,
 	 listen_port/0,
@@ -39,6 +40,9 @@ work_dir() -> required(dir).
 
 -spec download_dir() -> file_path().
 download_dir() -> optional(download_dir, required(dir)).
+
+-spec dirwatch_interval() -> pos_integer().
+dirwatch_interval() -> optional(dirwatch_interval, 20).
 
 -spec fast_resume_file() -> file_path().
 fast_resume_file() -> required(fast_resume_file).
