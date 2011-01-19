@@ -262,7 +262,7 @@ handle_message({suggest, Idx}, S) ->
 handle_message(have_none, #state { piece_set = PS } = S) when PS =/= unknown ->
     {stop, normal, S};
 handle_message(have_none, #state { fast_extension = true, torrent_id = Torrent_Id } = S) ->
-    Size = etorrent_torrent:num_pieces(Torrent_Id),
+    {value, Size} = etorrent_torrent:num_pieces(Torrent_Id),
     {ok, S#state { piece_set = gb_sets:new(),
                    pieces_left = Size,
                    seeder = false}};
