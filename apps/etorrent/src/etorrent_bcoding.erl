@@ -54,11 +54,15 @@ encode(L) when is_list(L) -> ["l", [encode(I) || I <- L], "e"].
 
 %% @doc Decode a string or binary to a bcode() structure
 %% @end
--spec decode(string() | binary()) -> bcode().
+-spec decode(string() | binary()) -> {ok, bcode()} | {error, _Reason}.
 decode(Bin) when is_binary(Bin) -> decode(binary_to_list(Bin));
 decode(String) when is_list(String) ->
-    {Res, _Extra} = decode_b(String),
-    Res.
+    try
+        {Res, _Extra} = decode_b(String),
+        {ok, Res}
+    catch
+        error:Reason -> {error, Reason}
+    end.
 
 %% @doc Get a value from the dictionary
 %% @end
@@ -123,7 +127,7 @@ get_string_value(Key, PL, Default) ->
 
 %% @doc Parse a file into a Torrent structure.
 %% @end
--spec parse_file(string()) -> bcode().
+-spec parse_file(string()) -> {ok, bcode()} | {error, _Reason}.
 parse_file(File) ->
     {ok, Bin} = file:read_file(File),
     decode(Bin).
@@ -203,7 +207,7 @@ prop_inv() ->
     ?FORALL(BC, bcode(),
 	    begin
 		Enc = iolist_to_binary(encode(BC)),
-		Dec = decode(Enc),
+		{ok, Dec} = decode(Enc),
 		encode(BC) =:= encode(Dec)
 	    end).
 

@@ -616,7 +616,7 @@ renew_token(Tokens) ->
 
 
 decode_msg(InMsg) ->
-    Msg = etorrent_bcoding:decode(InMsg),
+    {ok, Msg} = etorrent_bcoding:decode(InMsg),
     MsgID = get_value(<<"t">>, Msg),
     case get_value(<<"y">>, Msg) of
         <<"q">> ->

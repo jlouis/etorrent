@@ -221,10 +221,14 @@ contact_tracker_udp(IP, Port, Event, #state { torrent_id = Id,
 contact_tracker_http(Url, Event, S) ->
     RequestUrl = build_tracker_url(Url, Event, S),
     case etorrent_http:request(RequestUrl) of
-        {ok, {{_, 200, _}, _, Body}} ->
-	    {ok,
-	     handle_tracker_response(etorrent_bcoding:decode(Body), S)};
-        {error, Type} ->
+    {ok, {{_, 200, _}, _, Body}} ->
+        case etorrent_bcoding:decode(Body) of
+        {ok, BC} -> {ok, handle_tracker_response(BC, S)};
+        {error, _} ->
+            etorrent_event:notify({malformed_tracker_response, Body}),
+            error
+        end;
+    {error, Type} ->
 	    case Type of
 		etimedout -> ignore;
 		econnrefused -> ignore;
