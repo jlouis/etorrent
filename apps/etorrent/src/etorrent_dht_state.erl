@@ -1,6 +1,8 @@
 %% @author Magnus Klaar <magnus.klaar@sgsstudentbostader.se>
 %% @doc A Server for maintaining the the routing table in DHT
 %%
+%% @todo Document all exported functions.
+%% 
 %% This module implements a server maintaining the
 %% DHT routing table. The nodes in the routing table
 %% is distributed across a set of buckets. The bucket

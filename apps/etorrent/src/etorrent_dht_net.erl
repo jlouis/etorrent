@@ -1,3 +1,6 @@
+%% @author Magnus Klaar <magnus.klaar@sgsstudentbostader.se>
+%% @doc TODO
+%% @end
 -module(etorrent_dht_net).
 -include("types.hrl").
 
