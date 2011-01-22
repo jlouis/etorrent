@@ -145,7 +145,7 @@ handle_info(timeout, S) ->
     {Proceed, NS} = case gen_tcp:recv(S#state.socket, Length) of
         {ok, Packet} -> {true, handle_packet_slow(S, Packet)};
         {error, closed} -> {false, S};
-        {error, ebadf} -> {flase, S};
+        {error, ebadf} -> {false, S};
         {error, timeout} -> {true, S};
         {error, ehostunreach} -> {false, S};
         {error, etimedout} -> {true, S}
