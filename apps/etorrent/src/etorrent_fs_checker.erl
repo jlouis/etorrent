@@ -84,7 +84,7 @@ check_piece(TorrentID, PieceIndex) ->
 initialize_dictionary(Id, Path) ->
     %% Load the torrent
     {ok, Torrent, Files, IH} = load_torrent(Path),
-    ok = ensure_file_sizes_correct(Files),
+    ok = ensure_file_sizes_correct(Id, Files),
     {ok, FPList, NumPieces} = build_dictionary_on_files(Id, Torrent, Files),
     {ok, Torrent, IH, FPList, NumPieces}.
 
@@ -104,18 +104,17 @@ load_torrent(Path) ->
 	end,
     {ok, Torrent, FilesToCheck, InfoHash}.
 
-ensure_file_sizes_correct(Files) ->
+ensure_file_sizes_correct(TorrentId, Files) ->
     Dldir = etorrent_config:download_dir(),
     lists:foreach(
       fun ({Pth, ISz}) ->
+	      %% Perhaps try relpath here
               F = filename:join([Dldir, Pth]),
               Sz = filelib:file_size(F),
-              case Sz == ISz of
-                  true ->
-                      ok;
-                  false ->
-                      Missing = ISz - Sz,
-                      fill_file_ensure_path(F, Missing)
+	      case ISz - Sz of
+		  0 -> ok;
+		  N when is_integer(N), N > 0 ->
+		      etorrent_io:allocate(TorrentId, Pth, N)
               end
       end,
       Files),
@@ -208,58 +207,11 @@ insert_into_path_map([{Path, Offset, Size} | Next], TorrentId, _Key, _KeyVal) ->
     [{KeyVal, Offset, Size} | insert_into_path_map(Next, TorrentId, Path, KeyVal)].
 
 
-fill_file_ensure_path(Path, Missing) ->
-    case file:open(Path, [read, write, delayed_write, binary, raw]) of
-        {ok, FD} ->
-            fill_file(FD, Missing);
-        {error, enoent} ->
-            % File missing
-            ok = filelib:ensure_dir(Path),
-            case file:open(Path, [read, write, delayed_write, binary, raw]) of
-                {ok, FD} ->
-                    fill_file(FD, Missing);
-                {error, Reason} ->
-                    {error, Reason}
-            end
-    end.
 
-fill_file(FD, Missing) ->
-    case application:get_env(etorrent, preallocation_strategy) of
-	undefined -> fill_file_sparse(FD, Missing);
-	{ok, sparse} -> fill_file_sparse(FD, Missing);
-	{ok, preallocate} -> fill_file_prealloc(FD, Missing)
-    end.
 
-fill_file_sparse(FD, Missing) ->
-    {ok, _NP} = file:position(FD, {eof, Missing-1}),
-    ok = file:write(FD, <<0>>),
-    ok = file:close(FD).
 
-fill_file_prealloc(FD, N) ->
-    {ok, _NP} = file:position(FD, eof),
-    SZ4 = N div 4,
-    Rem = (N rem 4) * 8,
-    create_file(FD, 0, SZ4),
-    ok = file:write(FD, <<0:Rem/unsigned>>).
 
-create_file(_FD, M, M) ->
-           ok;
-create_file(FD, M, N) when M + 1024 =< N ->
-    create_file(FD, M, M + 1024, []),
-    create_file(FD, M + 1024, N);
-create_file(FD, M, N) ->
-    create_file(FD, M, N, []).
 
-create_file(FD, M, M, R) ->
-    ok = file:write(FD, R);
-create_file(FD, M, N0, R) when M + 8 =< N0 ->
-    N1  = N0-1,  N2  = N0-2,  N3  = N0-3,  N4  = N0-4,
-    N5  = N0-5,  N6  = N0-6,  N7  = N0-7,  N8  = N0-8,
-    create_file(FD, M, N8,
-		[<<N8:32/unsigned,  N7:32/unsigned,
-		   N6:32/unsigned,  N5:32/unsigned,
-		   N4:32/unsigned,  N3:32/unsigned,
-		   N2:32/unsigned,  N1:32/unsigned>> | R]);
-create_file(FD, M, N0, R) ->
-    N1 = N0-1,
-    create_file(FD, M, N1, [<<N1:32/unsigned>> | R]).
+
+
+

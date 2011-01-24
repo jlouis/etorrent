@@ -51,6 +51,7 @@
 -define(AWAIT_TIMEOUT, 10*1000).
 
 -export([start_link/2,
+	 allocate/3,
          read_piece/2,
          read_chunk/4,
          write_chunk/4,
@@ -91,6 +92,13 @@
 start_link(TorrentID, Torrent) ->
     gen_server:start_link(?MODULE, [TorrentID, Torrent], []).
 
+%% @doc Allocate bytes in the end of a file
+%% @end
+-spec allocate(torrent_id(), string(), integer()) -> ok.
+allocate(TorrentId, FilePath, BytesToWrite) ->
+    ok = schedule_io_operation(TorrentId, FilePath),
+    {ok, FilePid} = await_open_file(TorrentId, FilePath),
+    ok = etorrent_io_file:allocate(FilePid, BytesToWrite).
 
 %% @doc
 %% Read a piece into memory from disc.
