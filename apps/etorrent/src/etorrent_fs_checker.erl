@@ -84,7 +84,7 @@ check_piece(TorrentID, PieceIndex) ->
 initialize_dictionary(Id, Path) ->
     %% Load the torrent
     {ok, Torrent, Files, IH} = load_torrent(Path),
-    ok = ensure_file_sizes_correct(Id, Files),
+    ok = etorrent_io:allocate(Id),
     {ok, FPList, NumPieces} = build_dictionary_on_files(Id, Torrent, Files),
     {ok, Torrent, IH, FPList, NumPieces}.
 
@@ -103,22 +103,6 @@ load_torrent(Path) ->
 		 || {Filename, Size} <- Files]
 	end,
     {ok, Torrent, FilesToCheck, InfoHash}.
-
-ensure_file_sizes_correct(TorrentId, Files) ->
-    Dldir = etorrent_config:download_dir(),
-    lists:foreach(
-      fun ({Pth, ISz}) ->
-	      %% Perhaps try relpath here
-              F = filename:join([Dldir, Pth]),
-              Sz = filelib:file_size(F),
-	      case ISz - Sz of
-		  0 -> ok;
-		  N when is_integer(N), N > 0 ->
-		      etorrent_io:allocate(TorrentId, Pth, N)
-              end
-      end,
-      Files),
-    ok.
 
 initialize_pieces_seed(Id, FilePieceList) ->
     etorrent_piece_mgr:add_pieces(

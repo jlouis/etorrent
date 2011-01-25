@@ -51,7 +51,7 @@
 -define(AWAIT_TIMEOUT, 10*1000).
 
 -export([start_link/2,
-	 allocate/3,
+	 allocate/1,
          read_piece/2,
          read_chunk/4,
          write_chunk/4,
@@ -83,6 +83,7 @@
 -record(state, {
     torrent :: torrent_id(),
     pieces  :: array(),
+    file_list :: [{string(), pos_integer()}],
     files_open :: list(#io_file{}),
     files_max  :: pos_integer()}).
 
@@ -91,6 +92,26 @@
 -spec start_link(torrent_id(), bcode()) -> {'ok', pid()}.
 start_link(TorrentID, Torrent) ->
     gen_server:start_link(?MODULE, [TorrentID, Torrent], []).
+
+%% @doc Allocate bytes in the end of files in a torrent
+%% @end
+-spec allocate(torrent_id()) -> ok.
+allocate(TorrentID) ->
+    {ok, DirPid} = await_directory(TorrentID),
+    {ok, Files}  = get_files(DirPid),
+    Dldir = etorrent_config:downlad_dir(),
+    lists:foreach(
+      fun ({Pth, ISz}) ->
+	      F = filename:join([Dldir, Pth]),
+	      Sz = filelib:file_size(F),
+	      case ISz - Sz of
+		  0 -> ok;
+		  N when is_integer(N), N > 0 ->
+		      allocate(TorrentID, Pth, N)
+	      end
+      end,
+      Files),
+    ok.
 
 %% @doc Allocate bytes in the end of a file
 %% @end
@@ -271,6 +292,13 @@ get_positions(DirPid, Piece) ->
     gen_server:call(DirPid, {get_positions, Piece}).
 
 %% @doc
+%% Fetch the file list and lengths of files in the torrent
+%% @end
+-spec get_files(pid()) -> {ok, list({string(), pos_integer()})}.
+get_files(Pid) ->
+    gen_server:call(Pid, get_files).
+
+%% @doc
 %% Notify the directory server that the current process intends
 %% to perform an IO-operation on a file. This is so that the directory
 %% can notify the file server to open it's file if needed.
@@ -289,9 +317,11 @@ init([TorrentID, Torrent]) ->
     MaxFiles = etorrent_config:max_files(),
     true = register_directory(TorrentID),
     PieceMap  = make_piece_map(Torrent),
+    Files     = make_file_list(Torrent),
     InitState = #state{
         torrent=TorrentID,
         pieces=PieceMap,
+        file_list = Files,
         files_open=[],
         files_max=MaxFiles},
     {ok, InitState}.
@@ -309,6 +339,8 @@ handle_call({read, _, _}, _, State) ->
 handle_call({write, _, _}, _, State) ->
     {reply, {error, eagain}, State};
 
+handle_call(get_files, _From, #state { file_list = FL } = State) ->
+    {reply, {ok, FL}, State};
 handle_call({get_positions, Piece}, _, State) ->
     #state{pieces=PieceMap} = State,
     Positions = array:get(Piece, PieceMap),
@@ -400,6 +432,16 @@ make_piece_map(Torrent) ->
         With = Prev ++ [{Path, Offset, Length}],
         array:set(Piece, With, Acc)
     end, array:new({default, []}), MapEntries).
+
+make_file_list(Torrent) ->
+    Files = etorrent_metainfo:get_files(Torrent),
+    Name = etorrent_metainfo:get_name(Torrent),
+    case Files of
+	[_] -> Files;
+	[_|_] ->
+	    [{filename:join([Name, Filename]), Size}
+	     || {Filename, Size} <- Files]
+    end.
 
 %%
 %% Calculate the positions where pieces start and continue in the
