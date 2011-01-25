@@ -130,4 +130,16 @@ First, configure git so the patches have the right names in them:
     this makes it easier for all of us to track what is still alive
     and what is not.
 
+## Caveats
+
+  * I tried to push amended commit to remote git repo, but it was rejected.
+    What happened?
+
+    A: The short answer is "don't do it". If you really want to, though,
+    you either need to change remote repo's config variable
+    "receive.denynonfastforwards", which you probably can't, or as
+    a dirty hack you delete and create the branch like this:
+	
+        git push origin :topic-branch-name
+        git push origin topic-branch-name
 
