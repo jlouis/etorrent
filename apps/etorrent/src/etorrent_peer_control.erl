@@ -174,7 +174,8 @@ handle_cast(unchoke, S) ->
     etorrent_peer_send:unchoke(S#state.send_pid),
     {noreply, S};
 handle_cast(interested, S) ->
-    {noreply, statechange_interested(S, true)};
+    statechange_interested(S#state.local_interested, S#state.send_pid, true),
+    {noreply, S#state {local_interested = true}};
 handle_cast({have, PN}, #state { piece_set = unknown, send_pid = SPid } = S) ->
     etorrent_peer_send:have(SPid, PN),
     {noreply, S};
@@ -264,7 +265,7 @@ handle_message(have_none, #state { fast_extension = true, torrent_id = Torrent_I
     {ok, S#state { piece_set = gb_sets:new(),
                    pieces_left = Size,
                    seeder = false}};
-       handle_message(have_all, #state { piece_set = PS }) when PS =/= unknown ->
+handle_message(have_all, #state { piece_set = PS }) when PS =/= unknown ->
     {error, piece_set_out_of_band};
 handle_message(have_all, #state { fast_extension = true, torrent_id = Torrent_Id } = S) ->
     {value, Size} = etorrent_torrent:num_pieces(Torrent_Id),
@@ -291,10 +292,12 @@ handle_message({bitfield, BitField},
     end,
     case etorrent_piece_mgr:check_interest(Torrent_Id, PieceSet) of
         {interested, Pruned} ->
-            {ok, statechange_interested(S#state {piece_set = gb_sets:from_list(Pruned),
-                                                 pieces_left = Left,
-                                                 seeder = Left == 0},
-                                        true)};
+            statechange_interested(S#state.local_interested, S#state.send_pid, true),
+            NS = S#state {piece_set = gb_sets:from_list(Pruned),
+                            pieces_left = Left,
+                            seeder = Left == 0,
+                            local_interested = true},
+            {ok, NS};
         not_interested ->
             {ok, S#state{piece_set = gb_sets:empty(), pieces_left = Left,
                          seeder = Left == 0}};
@@ -414,7 +417,9 @@ try_to_queue_up_pieces(S) ->
             case etorrent_chunk_mgr:pick_chunks(S#state.torrent_id,
                                                 S#state.piece_set,
                                                 PiecesToQueue) of
-                not_interested -> {ok, statechange_interested(S, false)};
+                not_interested ->
+                    statechange_interested(S#state.local_interested, S#state.send_pid, false),
+                    {ok, S#state{local_interested = false}};
                 none_eligible -> {ok, S};
                 {ok, Items} -> queue_items(Items, S);
                 {endgame, Items} -> queue_items(Items, S#state { endgame = true })
@@ -460,53 +465,61 @@ queue_items([{Pn, Offset, Size, Ops} | Rest], SendPid, Tree) ->
 
 
 % @doc Initialize the connection, depending on the way the connection is
-connection_initialize(Way, S) ->
-    case Way of
-        incoming ->
-            case etorrent_proto_wire:complete_handshake(
-                            S#state.socket,
-                            S#state.info_hash,
-                            S#state.local_peer_id) of
-                ok -> {ok, NS} =
-			  complete_connection_setup(
-                                    S#state { remote_peer_id = none_set,
-                                              fast_extension = false}),
-                      {ok, NS};
-                {error, stop} -> {stop, normal}
-            end;
-        outgoing ->
-            {ok, NS} = complete_connection_setup(S),
-            {ok, NS}
-    end.
+connection_initialize(incoming, S) ->
+    case etorrent_proto_wire:complete_handshake(
+                    S#state.socket,
+                    S#state.info_hash,
+                    S#state.local_peer_id) of
+        ok -> SendPid = complete_connection_setup(S#state.socket,
+                                            S#state.torrent_id,
+                                            S#state.extended_messaging),
+              NS = S#state { remote_peer_id = none_set,
+                            fast_extension = false,
+                            send_pid = SendPid},
+              {ok, NS};
+        {error, stop} -> {stop, normal}
+    end;
+connection_initialize(outgoing, S) ->
+    SendPid = complete_connection_setup(S#state.socket,
+                                        S#state.torrent_id,
+                                        S#state.extended_messaging),
+    {ok, S#state{send_pid = SendPid}}.
 
 %%--------------------------------------------------------------------
-%% Function: complete_connection_setup() -> gen_server_reply()}
+%% Function: complete_connection_setup(Socket, TorrentId, ExtendedMSG)
+%%              -> SendPid
 %% Description: Do the bookkeeping needed to set up the peer:
 %%    * enable passive messaging mode on the socket.
 %%    * Start the send pid
 %%    * Send off the bitfield
 %%--------------------------------------------------------------------
-complete_connection_setup(#state { extended_messaging = EMSG,
-				   socket = Sock } = S) ->
-    SendPid = gproc:lookup_local_name({peer, Sock, sender}),
-    BF = etorrent_piece_mgr:bitfield(S#state.torrent_id),
-    case EMSG of
-	true -> etorrent_peer_send:extended_msg(SendPid);
-	false -> ignore
+complete_connection_setup(Socket, TorrentId, ExtendedMSG) ->
+    SendPid = gproc:lookup_local_name({peer, Socket, sender}),
+    BF = etorrent_piece_mgr:bitfield(TorrentId),
+    case ExtendedMSG of
+        true -> etorrent_peer_send:extended_msg(SendPid);
+        false -> ignore
     end,
     etorrent_peer_send:bitfield(SendPid, BF),
-    {ok, S#state{send_pid = SendPid }}.
+    SendPid.
 
-statechange_interested(#state{ local_interested = true } = S, true) ->
-    S;
-statechange_interested(#state{ local_interested = false, send_pid = SPid} = S, true) ->
-    etorrent_peer_send:interested(SPid),
-    S#state{local_interested = true};
-statechange_interested(#state{ local_interested = false} = S, false) ->
-    S;
-statechange_interested(#state{ local_interested = true, send_pid = SPid} = S, false) ->
-    etorrent_peer_send:not_interested(SPid),
-    S#state{local_interested = false}.
+%%--------------------------------------------------------------------
+%% @spec statechange_interested(WasInterested, SendPid, GoInterested)
+%%          -> ok
+%% @doc Set interested in peer or not according to what GoInterested
+%%      is, if not yet.
+%% @end
+%%--------------------------------------------------------------------
+statechange_interested(true, _, true) ->
+    ok;
+statechange_interested(false, SendPid, true) ->
+    etorrent_peer_send:interested(SendPid),
+    ok;
+statechange_interested(false, _, false) ->
+    ok;
+statechange_interested(true, SendPid, false) ->
+    etorrent_peer_send:not_interested(SendPid),
+    ok.
 
 peer_have(PN, #state { piece_set = unknown } = S) ->
     peer_have(PN, S#state {piece_set = gb_sets:new()});
@@ -524,7 +537,9 @@ peer_have(PN, S) ->
                                 true ->
                                     try_to_queue_up_pieces(NS);
                                 false ->
-                                    try_to_queue_up_pieces(statechange_interested(NS, true))
+                                    statechange_interested(NS#state.local_interested,
+                                                            NS#state.send_pid, true),
+                                    try_to_queue_up_pieces(NS#state{local_interested = true})
                             end;
                         false ->
                             NSS = S#state { pieces_left = Left, seeder = Left == 0},
