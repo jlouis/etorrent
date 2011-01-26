@@ -1,6 +1,5 @@
 %% Various types spanning multiple modules.
 -type tier() :: [string()].
--type operation() :: {integer(), integer(), integer()}.
 -type bitfield() :: binary().
 -type ip() :: {integer(), integer(), integer(), integer()}.
 -type capabilities() :: extended_messaging.

@@ -65,7 +65,7 @@ read_and_check_torrent(Id, Path) ->
 %% @end
 -spec check_piece(torrent_id(), integer()) -> ok.
 check_piece(TorrentID, PieceIndex) ->
-    {InfoHash, _} = etorrent_piece_mgr:piece_info(TorrentID, PieceIndex),
+    InfoHash = etorrent_piece_mgr:piece_hash(TorrentID, PieceIndex),
     {ok, PieceBin} = etorrent_io:read_piece(TorrentID, PieceIndex),
     PieceSize = byte_size(PieceBin),
     case crypto:sha(PieceBin) == InfoHash of
