@@ -89,32 +89,31 @@ handle_packet(Packet, #state { id = Id } = S) ->
     NewCount = case Msg of {piece, _, _, _} -> 0;
                            _ -> S#state.last_piece_msg_count
                end,
-    {ok, S#state { rate = NR, last_piece_msg_count = NewCount }}.
+    S#state { rate = NR, last_piece_msg_count = NewCount }.
 
 handle_packet_slow(S, Packet) ->
     Cont = S#state.packet_continuation,
     case etorrent_proto_wire:incoming_packet(Cont, Packet) of
         ok -> case S#state.mode of
                 fast_setup ->
-                    {ok, go_fast(S)};
-                _Otherwise -> {ok, S}
+                    go_fast(S);
+                _Otherwise -> S
               end;
         {ok, P, R} ->
-            {ok, NS} = handle_packet(P, S),
+            NS = handle_packet(P, S),
             handle_packet_slow(NS#state { packet_continuation = none}, R);
         {partial, C} ->
-            {ok, S#state { packet_continuation = {partial, C} }}
+            S#state { packet_continuation = {partial, C} }
     end.
 
 % Request the next message to be processed
-next_msg(#state { mode = transition } = S) ->
-    {noreply, S};
-next_msg(#state { mode = fast } = S) ->
-    {noreply, S};
-next_msg(#state { mode = slow } = S) ->
-    {noreply, S, 0};
-next_msg(#state { mode = fast_setup } = S) ->
-    {noreply, S, 0}.
+next_msg(Mode) ->
+    case Mode of
+        transition  -> infinity;
+        fast        -> infinity;
+        slow        -> 0;
+        fast_setup  -> 0
+    end.
 
 is_snubbing_us(S) when S#state.last_piece_msg_count > ?LAST_PIECE_COUNT_THRESHOLD ->
     snubbed;
@@ -143,14 +142,17 @@ handle_info(timeout, S) ->
                 {val, L} = etorrent_proto_wire:remaining_bytes(S#state.packet_continuation),
                 L
         end,
-    case gen_tcp:recv(S#state.socket, Length) of
-        {ok, Packet} -> {ok, NS} = handle_packet_slow(S, Packet),
-                        next_msg(NS);
-        {error, closed} -> {stop, normal, S};
-        {error, ebadf} -> {stop, normal, S};
-        {error, timeout} -> next_msg(S);
-        {error, ehostunreach} -> {stop, normal, S};
-        {error, etimedout} -> next_msg(S)
+    {Proceed, NS} = case gen_tcp:recv(S#state.socket, Length) of
+        {ok, Packet} -> {true, handle_packet_slow(S, Packet)};
+        {error, closed} -> {false, S};
+        {error, ebadf} -> {false, S};
+        {error, timeout} -> {true, S};
+        {error, ehostunreach} -> {false, S};
+        {error, etimedout} -> {true, S}
+    end,
+    case Proceed of
+        true -> {noreply, NS, next_msg(NS#state.mode)};
+        false -> {stop, normal, NS}
     end;
 handle_info(rate_update, OS) ->
     NR = etorrent_rate:update(OS#state.rate, 0),
@@ -161,29 +163,30 @@ handle_info(rate_update, OS) ->
 					    NR#peer_rate.rate,
 					    SnubState),
     S = OS#state { last_piece_msg_count = OS#state.last_piece_msg_count + 1 },
-    if
+    SS = if
         NR#peer_rate.rate > ?ENTER_FAST andalso S#state.mode =:= slow ->
-            next_msg(S#state { rate = NR , mode = fast_setup });
+            S#state { rate = NR , mode = fast_setup };
         NR#peer_rate.rate < ?ENTER_SLOW andalso S#state.mode =:= fast ->
-            SS = go_slow(S),
-            next_msg(SS#state { rate = NR });
+            NS = go_slow(S),
+            NS#state { rate = NR };
         true ->
-            next_msg(S#state { rate = NR })
-    end;
+            S#state { rate = NR }
+    end,
+    {noreply, SS, next_msg(SS#state.mode)};
 handle_info({tcp, _P, Packet}, S) ->
-    {ok, NS} = handle_packet(Packet, S),
+    NS = handle_packet(Packet, S),
     {noreply, NS};
 handle_info({tcp_closed, _P}, S) ->
     ?INFO(peer_closed_port),
     {stop, normal, S};
 handle_info(Info, S) ->
     ?WARN([unknown_handle_info, Info]),
-    next_msg(S).
+    {noreply, S, next_msg(S#state.mode)}.
 
 %% @private
 handle_cast(Msg, S) ->
     ?WARN([unknown_handle_cast, Msg]),
-    next_msg(S).
+    {noreply, S, next_msg(S#state.mode)}.
 
 %% @private
 handle_call(go_fast, _From, S) ->
@@ -194,7 +197,7 @@ handle_call(go_slow, _From, S) ->
     {reply, ok, S#state { mode = slow }};
 handle_call(Req, _From, S) ->
     ?WARN([unknown_handle_call, Req]),
-    next_msg(S).
+    {noreply, S, next_msg(S#state.mode)}.
 
 %% @private
 code_change(_OldVsn, State, _Extra) ->
