@@ -14,8 +14,8 @@
 
 %% API
 -export([start_link/0, decrease_missing_chunks/2, statechange/3,
-         chunked_pieces/1, size_piece/1,
-	 piece_hash/2, find_new/2, fetched/2, bitfield/1, piecehashes/1,
+         chunked_pieces/1,
+	 piece_hash/2, find_new/2, fetched/2, bitfield/1, pieces/1,
 	 valid/2, interesting/2,
 	 chunkify_piece/2, select/1,
          add_monitor/2, num_not_fetched/1, check_interest/2, add_pieces/2, chunk/3]).
@@ -25,18 +25,15 @@
          terminate/2, code_change/3]).
 
 %% Individual pieces are represented via the piece record
--record(piece, {idpn, % {Id, PieceNumber} pair identifying the piece
-                hash, % Hash of piece
-                id, % (IDX) Id of this piece owning this piece, again for an index
-                piece_number, % Piece Number of piece, replicated for fast qlc access
-                left = unknown, % Number of chunks left...
-		size = none,
-                state}). % (IDX) state is: fetched | not_fetched | chunked
+-record(piece, {idpn :: {torrent_id(), integer() | '$1' | '_' },
+                hash :: binary() | '_' ,
+                left = unknown :: unknown | integer() | '_', % Chunks left
+                state :: fetched | not_fetched | chunked | '_' }).
 
 -type piece() :: #piece{}.
 -export_type([piece/0]).
 
--record(state, { monitoring }).
+-record(state, { monitoring :: dict() }).
 
 -define(SERVER, ?MODULE).
 -define(TAB, etorrent_piece_tbl).
@@ -53,10 +50,6 @@
 %%--------------------------------------------------------------------
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
-
-%% @doc What is the size of a given piece
-size_piece(#piece{state = fetched}) -> 0;
-size_piece(#piece{state = not_fetched, size = Sz}) when is_integer(Sz) -> Sz.
 
 %%--------------------------------------------------------------------
 %% Function: add_pieces(Id, FPList) -> void()
@@ -112,10 +105,11 @@ add_monitor(Pid, Id) ->
 %% Description: Return the number of not_fetched pieces for torrent Id.
 %%--------------------------------------------------------------------
 num_not_fetched(Id) when is_integer(Id) ->
-    Q = qlc:q([R#piece.piece_number ||
-                  R <- ets:table(?TAB),
-                  R#piece.id =:= Id,
-                  R#piece.state =:= not_fetched]),
+    Q = qlc:q([R || R <- ets:table(?TAB),
+		    begin {IdT, _} = R#piece.idpn,
+			  IdT == Id
+		    end,
+		    R#piece.state =:= not_fetched]),
     length(qlc:e(Q)).
 
 %%--------------------------------------------------------------------
@@ -134,9 +128,8 @@ select(Id) ->
     MatchHead = #piece { idpn = {Id, '_'}, _ = '_'},
     ets:select(?TAB, [{MatchHead, [], ['$_']}]).
 
-piecehashes(Id) ->
-    Pieces = select(Id),
-    [{PN, Hash} || #piece { idpn = {_, PN}, hash = Hash} <- Pieces].
+pieces(Id) ->
+    [PN || #piece { idpn = {_, PN} } <- select(Id)].
 
 piece_hash(Id, PN) ->
     case ets:lookup(?TAB, {Id, PN}) of
@@ -213,13 +206,10 @@ init([]) ->
 %%--------------------------------------------------------------------
 handle_call({add_pieces, Id, Pieces}, _From, S) ->
     lists:foreach(
-      fun({PN, Hash, Files, State}) ->
+      fun({PN, Hash, _Files, State}) ->
               ets:insert(?TAB,
                          #piece { idpn = {Id, PN},
-                                  id = Id,
-                                  piece_number = PN,
                                   hash = Hash,
-				  size = file_size(Files),
                                   state = State})
       end,
       Pieces),
@@ -311,19 +301,19 @@ find_interest_piece(Id, {Pn, Next}, Acc) ->
             end
     end.
 
-chunkify_piece(Id, #piece{ size = Sz, state = State, idpn = IDPN }) ->
+chunkify_piece(Id, #piece{ state = State, idpn = {Id, PN} }) ->
+    {ok, Sz} = etorrent_io:piece_size(Id, PN),
     Chunks = chunkify(Sz),
     NumChunks = length(Chunks),
     not_fetched = State,
-    {Id, Idx} = IDPN,
-    ok = etorrent_piece_mgr:chunk(Id, Idx, NumChunks),
-    {Id, Idx, Chunks}.
+    ok = etorrent_piece_mgr:chunk(Id, PN, NumChunks),
+    {Id, PN, Chunks}.
 
 %% @doc Break a piece into logical chunks
 %%   From a size, break it up into the off/len pairs we need
 %% @end
 -spec chunkify(integer()) -> [{integer(), integer()}].
-chunkify(Sz) ->
+chunkify(Sz) when is_integer(Sz) ->
     chunkify(0, Sz).
 
 chunkify(Off, Sz) when Sz =< ?DEFAULT_CHUNK_SIZE ->
@@ -332,6 +322,3 @@ chunkify(Off, Sz) when Sz =< ?DEFAULT_CHUNK_SIZE ->
 chunkify(Off, Sz) ->
     [{Off, ?DEFAULT_CHUNK_SIZE}
      | chunkify(Off + ?DEFAULT_CHUNK_SIZE, Sz - ?DEFAULT_CHUNK_SIZE)].
-
-file_size(Files) ->
-    lists:sum([Sz || {_F, _O, Sz} <- Files]).

@@ -18,6 +18,9 @@
 -include("etorrent_rate.hrl").
 -include("log.hrl").
 
+-type rate() :: #peer_rate{}.
+-export_type([rate/0]).
+
 -define(MAX_RATE_PERIOD, 20).
 
 %% ====================================================================

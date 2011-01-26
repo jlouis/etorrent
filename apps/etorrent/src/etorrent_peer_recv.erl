@@ -26,20 +26,22 @@
 
 -type(mode() :: 'transition' | 'fast' | 'slow' | 'fast_setup').
 
--record(state, { socket = none,
-                 packet_continuation = none,
-                 rate = none,
-		 control_pid = none,
-                 last_piece_msg_count = 0,
-                 id :: integer(),
-                 controller = none,
-                 % The MODE of the receiver. It is either a fast peer, in which
-                 % case messaging is handled by the underlying erlang VM, or slow,
-                 % in which we handle it ourselves to get fine-grained rate measurement.
-                 %
-                 % Note that there is also a transition state, fast_setup for transitioning
-                 % from slow to fast.
-                 mode = slow :: mode() }).
+-record(state, { socket                   :: gen_tcp:socket(),
+                 packet_continuation =
+		   none                   :: etorrent_proto_wire:continuation(),
+                 rate                     :: etorrent_rate:rate(),
+		 control_pid              :: pid(),
+                 last_piece_msg_count = 0 :: integer(),
+                 id                       :: integer(),
+                 controller = none        :: none | pid(),
+		 %% The MODE of the receiver. It is either a fast
+                 %% peer, in which case messaging is handled by the
+                 %% underlying erlang VM, or slow, % in which we
+                 %% handle it ourselves to get fine-grained rate
+                 %% measurement.  % Note that there is also a
+                 %% transition state, fast_setup for transitioning %
+                 %% from slow to fast.
+                 mode = slow              :: mode() }).
 
 -define(ENTER_FAST, 16000).
 -define(ENTER_SLOW, 4000).

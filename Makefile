@@ -21,6 +21,9 @@ doc:
 dialyze: compile
 	rebar skip_deps=true dialyze
 
+typer:
+	typer --plt ~/.etorrent_dialyzer_plt -r apps -I apps/etorrent/include
+
 rel: compile
 	rebar generate
 

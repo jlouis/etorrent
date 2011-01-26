@@ -42,19 +42,17 @@
 
 -type( mode() :: 'fast' | 'slow').
 
--record(state, {socket = none,
-                requests = none,
-
-                fast_extension = false,
-
-                mode = slow :: mode(),
-
-		control_pid = none,
-                rate = none,
-                choke = true,
-                interested = false, % Are we interested in the peer?
-                torrent_id = none,
-                file_system_pid = none}).
+-record(state, {socket = none                :: none | gen_tcp:socket(),
+                requests                     :: queue(),
+                fast_extension = false       :: boolean(),
+                mode = slow                  :: mode(),
+		control_pid = none           :: none | pid(),
+                rate                         :: etorrent_rate:rate(),
+                choke = true                 :: boolean(),
+		%% Are we interested in the peer?
+                interested = false           :: boolean(),
+                torrent_id                   :: integer(),
+                file_system_pid              :: pid() }).
 
 -define(DEFAULT_KEEP_ALIVE_INTERVAL, 120*1000). % From proto. spec.
 -define(MAX_REQUESTS, 1024). % Maximal number of requests a peer may make.

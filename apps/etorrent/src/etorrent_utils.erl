@@ -50,11 +50,12 @@ queue_remove(Item, Q) ->
     queue:from_list(List).
 
 %% @doc Permute List1 randomly. Returns the permuted list.
-%%  Implementation error: The shuffle is not fair and should be corrected
+%%  This functions usage hinges on a seeding of the RNG in Random!
 %% @end
 -spec list_shuffle([term()]) -> [term()].
 list_shuffle(List) ->
-    merge_shuffle(List).
+    Randomized = lists:sort([{random:uniform(), Item} || Item <- List]),
+    [Value || {_, Value} <- Randomized].
 
 %% @doc A Date formatter for {{Y, Mo, D}, {H, Mi, S}}.
 %% @end
@@ -109,47 +110,6 @@ now_subtract_seconds({Megasecs, Secs, Ms}, Subsecs) ->
     end.
 
 %%====================================================================
-
-%%
-%% Flip a coin randomly
-flip_coin() ->
-    random:uniform(2) - 1.
-
-%%
-%% Merge 2 lists, using a coin flip to choose which list to take the next element from.
-merge(A, []) ->
-    A;
-merge([], B) ->
-    B;
-merge([A | As], [B | Bs]) ->
-    case flip_coin() of
-        0 ->
-            [A | merge(As, [B | Bs])];
-        1 ->
-            [B | merge([A | As], Bs)]
-    end.
-
-%%
-%% Partition a list into items.
-partition(List) ->
-    partition_l(List, [], []).
-
-partition_l([], A, B) ->
-    {A, B};
-partition_l([Item], A, B) ->
-    {B, [Item | A]};
-partition_l([Item | Rest], A, B) ->
-    partition_l(Rest, B, [Item | A]).
-
-%%
-%% Shuffle a list by partitioning it and then merging it back by coin-flips
-merge_shuffle([]) ->
-    [];
-merge_shuffle([Item]) ->
-    [Item];
-merge_shuffle(List) ->
-    {A, B} = partition(List),
-    merge(merge_shuffle(A), merge_shuffle(B)).
 
 -ifdef(EUNIT).
 -ifdef(EQC).

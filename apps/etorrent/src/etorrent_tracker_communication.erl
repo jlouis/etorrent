@@ -71,6 +71,7 @@ completed(Pid) ->
 %% @private
 init([ControlPid, UrlTiers, InfoHash, PeerId, TorrentId]) ->
     process_flag(trap_exit, true),
+    random:seed(now()),
     HardRef = erlang:send_after(0, self(), hard_timeout),
     SoftRef = erlang:send_after(timer:seconds(?DEFAULT_CONNECTION_TIMEOUT_INTERVAL),
 			       self(),

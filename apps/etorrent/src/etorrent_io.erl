@@ -52,6 +52,7 @@
 
 -export([start_link/2,
          read_piece/2,
+	 piece_size/2,
          read_chunk/4,
          write_chunk/4,
          register_directory/1,
@@ -101,6 +102,15 @@ read_piece(TorrentID, Piece) ->
     {ok, Positions} = get_positions(DirPid, Piece),
     BlockList = read_file_blocks(TorrentID, Positions),
     {ok, iolist_to_binary(BlockList)}.
+
+%% @doc Request the size of a piece
+%% <p>Returns `{ok, Size}' where `Size' is the amount of bytes in that piece</p>
+%% @end
+-spec piece_size(torrent_id(), piece_index()) -> {ok, integer()}.
+piece_size(TorrentID, Piece) ->
+    {ok, DirPid} = await_directory(TorrentID),
+    {ok, Positions} = get_positions(DirPid, Piece),
+    {ok, lists:sum([L || {_, _, L} <- Positions])}.
 
 
 %% @doc

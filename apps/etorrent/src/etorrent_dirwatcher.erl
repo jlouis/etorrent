@@ -7,6 +7,8 @@
 -author("Jesper Louis Andersen <jesper.louis.andersen@gmail.com>").
 -behaviour(gen_server).
 
+-include("types.hrl").
+
 %% API
 -export([start_link/0]).
 
@@ -15,7 +17,7 @@
          terminate/2, code_change/3]).
 
 -record(state, {
-    dir = none,
+    dir = none                    :: none | file_path(),
     interval = timer:seconds(20)  :: pos_integer()}).
 
 -define(SERVER, ?MODULE).

@@ -30,13 +30,15 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3]).
 
--record(state, { try_count = -1,
-	         tracker,
-		 ty,
-		 connid = none,
-		 reply = none,
-		 properties = [],
-	         tid = none }).
+-record(state, { try_count = -1 :: integer(),
+	         tracker        :: tracker_id(),
+		 ty             :: announce | connid_gather,
+		 connid = none  :: none | integer(),
+		 reply = none   :: none | from_tag(),
+		 properties = [] :: [{term(), term()}], % Proplist
+	         tid = none      :: none | binary() }).
+-type tracker_id() :: {ipaddr(), portnum()}.
+-type conn_id() :: integer().
 
 -define(CONNID_TIMEOUT, timer:seconds(60)).
 
@@ -49,6 +51,8 @@
 %% @doc Start a request for a ConnId on Tracker.
 %%   The given N is used as a retry-count
 %% @end
+-spec start_link('requestor', tracker_id(), integer()) ->
+			{ok, pid()} | {error, term()}.
 start_link(requestor, Tracker, N) ->
     gen_server:start_link(?MODULE, [{connid_gather, Tracker, N}], []).
 
@@ -56,27 +60,33 @@ start_link(requestor, Tracker, N) ->
 %%   We are given to whom we should reply back in From, what Tracker
 %%   to call up, and a list of properties to send forth.
 %% @end
+-spec start_link('announce',from_tag(),tracker_id(),_) ->
+			'ignore' | {'error',_} | {'ok',pid()}.
 start_link(announce, From, Tracker, PL) ->
     gen_server:start_link(?MODULE, [{announce, From, Tracker, PL}], []).
 
 %% This internal function is used to forward a working connid to an announcer
 %% @private
+-spec connid(pid(),conn_id()) -> 'ok'.
 connid(Pid, ConnID) ->
     gen_server:cast(Pid, {connid, ConnID}).
 
 %% @doc Cancel a request event process
 %% @end
+-spec cancel(pid()) -> 'ok'.
 cancel(Pid) ->
     gen_server:cast(Pid, cancel).
 
 %% Sent when a connid expires (60 seconds per spec)
 %% @private
+-spec cancel_connid(pid(),conn_id()) -> 'ok'.
 cancel_connid(Pid, ConnID) ->
     gen_server:cast(Pid, {cancel, ConnID}).
 
 %% Used internally for the proto_decoder to inject a message to an
 %% event handler process
 %% @private
+-spec msg(pid(), term()) -> 'ok'. %% @todo Strengthen 'term()'
 msg(Pid, M) ->
     gen_server:cast(Pid, {msg, M}).
 

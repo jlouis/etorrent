@@ -9,7 +9,6 @@
 %%% @todo: Monitor peers and retry them. In general, we need peer management here.
 -module(etorrent_peer_mgr).
 
--include("etorrent_bad_peer.hrl").
 -include("types.hrl").
 
 -behaviour(gen_server).
@@ -21,8 +20,14 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
--record(state, { our_peer_id,
-                 available_peers = []}).
+-record(bad_peer, { ipport       :: {ipaddr(), portnum()} | '_',
+                    offenses     :: integer()      | '_',
+                    peerid       :: binary()       | '_',
+                    last_offense :: {integer(), integer(), integer()} | '$1' }).
+
+-record(state, { our_peer_id           :: binary(),
+                 available_peers = []  :: [{torrent_id(), peerinfo()}] }).
+
 -ignore_xref([{'start_link', 1}]).
 -define(SERVER, ?MODULE).
 -define(DEFAULT_BAD_COUNT, 2).
@@ -39,7 +44,7 @@ start_link(OurPeerId) ->
 
 % @doc Tell the peer mananger that a given peer behaved badly.
 % @end
--spec enter_bad_peer(ip(), integer(), binary()) -> ok.
+-spec enter_bad_peer(ipaddr(), portnum(), binary()) -> ok.
 enter_bad_peer(IP, Port, PeerId) ->
     gen_server:cast(?SERVER, {enter_bad_peer, IP, Port, PeerId}).
 
@@ -48,14 +53,14 @@ enter_bad_peer(IP, Port, PeerId) ->
 % may not use all of those given if it deems it has enough connections right
 % now.</p>
 % @end
--spec add_peers(integer(), [{ip(), integer()}]) -> ok.
+-spec add_peers(integer(), [{ipaddr(), portnum()}]) -> ok.
 add_peers(TorrentId, IPList) ->
     gen_server:cast(?SERVER, {add_peers,
                               [{TorrentId, {IP, Port}} || {IP, Port} <- IPList]}).
 
 % @doc Returns true if this peer is in the list of baddies
 % @end
--spec is_bad_peer(ip(), integer()) -> boolean().
+-spec is_bad_peer(ipaddr(), portnum()) -> boolean().
 is_bad_peer(IP, Port) ->
     case ets:lookup(etorrent_bad_peer, {IP, Port}) of
         [] -> false;
@@ -65,6 +70,7 @@ is_bad_peer(IP, Port) ->
 %% ====================================================================
 
 init([OurPeerId]) ->
+    random:seed(now()), %% Seed RNG
     erlang:send_after(?CHECK_TIME, self(), cleanup_table),
     _Tid = ets:new(etorrent_bad_peer, [protected, named_table,
                                        {keypos, #bad_peer.ipport}]),
@@ -117,18 +123,16 @@ code_change(_OldVsn, State, _Extra) ->
 
 start_new_peers(IPList, State) ->
     %% Update the PeerList with the new incoming peers
-    %% XXX:
-    %%   the usort is potentially a bad idea here. It will sort the list
-    %%   and thus mostly take IP addresses in a specific order. This is
-    %%   a bad idea for various reasons.
-    %%
-    %%   A nice change would be to do duplicate removal the right way
-    %%   on the unsorted list.
-    PeerList = lists:usort(IPList ++ State#state.available_peers),
+    PeerList = etorrent_utils:list_shuffle(
+		 clean_list(IPList ++ State#state.available_peers)),
     PeerId   = State#state.our_peer_id,
     {value, SlotsLeft} = etorrent_counters:slots_left(),
     Remaining = fill_peers(SlotsLeft, PeerId, PeerList),
     State#state{available_peers = Remaining}.
+
+clean_list([]) -> [];
+clean_list([H | T]) ->
+    [H | clean_list(T -- [H])].
 
 fill_peers(0, _PeerId, Rem) -> Rem;
 fill_peers(_K, _PeerId, []) -> [];

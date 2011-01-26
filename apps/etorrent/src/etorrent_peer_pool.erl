@@ -30,7 +30,7 @@ start_link(Id) -> supervisor:start_link(?MODULE, [Id]).
 %% the add_peer/7 function given here. It sets up a peer and adds it to the
 %% supervisor.</p>
 %% @end
--spec add_peer(pid(), binary(), binary(), integer(), {ip(), integer()},
+-spec add_peer(pid(), binary(), binary(), integer(), {ipaddr(), portnum()},
 	       [capabilities()], port()) ->
             {error, term()} | {ok, pid(), pid()}.
 add_peer(GroupPid, LocalPeerId, InfoHash, Id,

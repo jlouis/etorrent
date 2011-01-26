@@ -22,7 +22,7 @@
 -define(SERVER, ?MODULE).
 
 
--record(state, {local_peer_id}).
+-record(state, {local_peer_id :: binary() }).
 -ignore_xref([{start_link, 1}]).
 
 %% API

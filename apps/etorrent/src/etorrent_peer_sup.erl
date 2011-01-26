@@ -32,7 +32,7 @@
 %% <p>From that a supervisor for the peer and accompanying processes
 %% are spawned.</p>
 %% @end
--spec start_link(binary(), binary(), integer(), {ip(), integer()},
+-spec start_link(binary(), binary(), integer(), {ipaddr(), portnum()},
 		 [capabilities()], port()) ->
             {ok, pid()} | ignore | {error, term()}.
 start_link(LocalPeerId, InfoHash, Id, {IP, Port}, Capabilities, Socket) ->
