@@ -86,9 +86,9 @@
 
 
 -record(state, {
-    socket,
-    sent,
-    tokens
+    socket :: gen_udp:socket(),
+    sent   :: gb_tree(),
+    tokens :: queue()
 }).
 
 %
