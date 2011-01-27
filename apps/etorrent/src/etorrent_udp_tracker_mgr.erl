@@ -125,7 +125,7 @@ handle_call({announce, Tracker, PL}, From, S) ->
 	    spawn_announce(From, Tracker, PL),
 	    spawn_requestor(Tracker),
 	    {noreply, S};
-	[ConnId] ->
+	[{_Key, ConnId}] ->
 	    {ok, Pid} = spawn_announce(From, Tracker, PL),
 	    etorrent_udp_tracker:connid(Pid, ConnId),
 	    {noreply, S}
