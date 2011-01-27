@@ -10,6 +10,7 @@
 	 listen_port/0,
 	 logger_dir/0,
 	 logger_file/0,
+	 log_settings/0,
 	 max_files/0,
 	 max_peers/0,
 	 max_upload_rate/0,
@@ -97,3 +98,8 @@ dht_port() -> optional(dht_port, 6882).
 
 -spec dht_state_file() -> file_path().
 dht_state_file() -> optional(dht_state, "etorrent_dht_state").
+
+-spec log_settings() -> list().
+% @todo fix this return value
+log_settings() ->
+    optional(log_settings, []).
