@@ -587,7 +587,7 @@ random_token() ->
 init_tokens(NumTokens) ->
     queue:from_list([random_token() || _ <- lists:seq(1, NumTokens)]).
 %
-% Calculate the token value for a client based on the % client's IP address
+% Calculate the token value for a client based on the client's IP address
 % and Port number combined with a secret token value held by the socket server.
 % This avoids the need to store unique token values in the socket server.
 %
@@ -603,7 +603,7 @@ token_value(IP, Port, Tokens) ->
 
 %
 % Check if a token value included by a node in an announce message is bogus
-% of based on a token that is not recent enough.
+% (based on a token that is not recent enough).
 %
 is_valid_token(TokenValue, IP, Port, Tokens) ->
     ValidValues = [token_value(IP, Port, Token) || Token <- queue:to_list(Tokens)],
