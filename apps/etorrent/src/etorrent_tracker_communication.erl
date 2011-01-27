@@ -353,7 +353,7 @@ shuffle_tiers(Tiers) ->
     [etorrent_utils:list_shuffle(T) || T <- Tiers].
 
 splice(L) ->
-    {[length(T) || T <- L], lists:concat(L)}.
+    {[length(T) || T <- L], lists:append(L)}.
 
 unsplice([], []) -> [];
 unsplice([K | KR], List) ->
