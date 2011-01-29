@@ -17,17 +17,13 @@
 -include("log.hrl").
 
 -ignore_xref([{'start_link', 3}, {start, 1}, {initializing, 2},
-	      {started, 2}, {stopped, 2}, {stop, 1}]).
+	      {started, 2}]).
 %% API
--export([start_link/3, start/1, stop/1,
-         tracker_error_report/2, completed/1,
-         tracker_warning_report/2,
-
-        check_torrent/1]).
+-export([start_link/3, completed/1, check_torrent/1]).
 
 %% gen_fsm callbacks
 -export([init/1, handle_event/3, initializing/2, started/2,
-         stopped/2, handle_sync_event/4, handle_info/3, terminate/3,
+         handle_sync_event/4, handle_info/3, terminate/3,
          code_change/4]).
 
 -record(state, {id                :: integer() ,
@@ -46,35 +42,11 @@
 start_link(Id, Path, PeerId) ->
     gen_fsm:start_link(?MODULE, [self(), Id, Path, PeerId], []).
 
-%% @doc Request that the given torrent is stopped
-%% @end
--spec stop(pid()) -> ok.
-stop(Pid) ->
-    gen_fsm:send_event(Pid, stop).
-
-%% @doc Request that the given torrent is started
-%% @end
--spec start(pid()) -> ok.
-start(Pid) ->
-    gen_fsm:send_event(Pid, start).
-
 %% @doc Request that the given torrent is checked (eventually again)
 %% @end
 -spec check_torrent(pid()) -> ok.
 check_torrent(Pid) ->
     gen_fsm:send_event(Pid, check_torrent).
-
-%% @doc Report an error from the tracker
-%% @end
--spec tracker_error_report(pid(), term()) -> ok.
-tracker_error_report(Pid, Report) ->
-    gen_fsm:send_event(Pid, {tracker_error_report, Report}).
-
-%% @doc Report a warning from the tracker
-%% @end
--spec tracker_warning_report(pid(), term()) -> ok.
-tracker_warning_report(Pid, Report) ->
-    gen_fsm:send_event(Pid, {tracker_warning_report, Report}).
 
 %% @doc Tell the controlled the torrent is complete
 %% @end
@@ -149,8 +121,6 @@ initializing(timeout, S) ->
     end.
 
 %% @private
-started(stop, S) ->
-    {stop, argh, S};
 started(check_torrent, S) ->
     case check_torrent_for_bad_pieces(S#state.id) of
         [] -> {next_state, started, S};
@@ -161,18 +131,7 @@ started(check_torrent, S) ->
 started(completed, #state { id = Id, tracker_pid = TrackerPid } = S) ->
     etorrent_event:completed_torrent(Id),
     etorrent_tracker_communication:completed(TrackerPid),
-    {next_state, started, S};
-%% @todo kill this
-started({tracker_error_report, Reason}, S) ->
-    io:format("Got tracker error: ~s~n", [Reason]),
-    {next_state, started, S};
-started({tracker_warning_report, Reason}, S) ->
-    io:format("Got tracker warning report: ~s~n", [Reason]),
     {next_state, started, S}.
-
-%% @private
-stopped(start, S) ->
-    {stop, argh, S}.
 
 %% @private
 handle_event(Msg, SN, S) ->
