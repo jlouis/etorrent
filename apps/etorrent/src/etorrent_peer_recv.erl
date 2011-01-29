@@ -181,7 +181,6 @@ handle_info({tcp, _P, Packet}, S) ->
     NS = handle_packet(Packet, S),
     {noreply, NS};
 handle_info({tcp_closed, _P}, S) ->
-    ?INFO(peer_closed_port),
     {stop, normal, S};
 handle_info(Info, S) ->
     ?WARN([unknown_handle_info, Info]),
