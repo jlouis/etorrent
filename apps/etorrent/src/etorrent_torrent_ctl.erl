@@ -13,6 +13,7 @@
 
 -behaviour(gen_fsm).
 
+-include("types.hrl").
 -include("log.hrl").
 
 -ignore_xref([{'start_link', 3}, {start, 1}, {initializing, 2},
@@ -105,8 +106,8 @@ initializing(timeout, S) ->
             %% Read the torrent, check its contents for what we are missing
             etorrent_event:checking_torrent(S#state.id),
             {ok, Torrent, InfoHash, NumberOfPieces} =
-                etorrent_fs_checker:read_and_check_torrent(S#state.id,
-							   S#state.path),
+                read_and_check_torrent(S#state.id,
+				       S#state.path),
             etorrent_piece_mgr:add_monitor(self(), S#state.id),
             %% Update the tracking map. This torrent has been started, and we
             %%  know its infohash
@@ -151,7 +152,7 @@ initializing(timeout, S) ->
 started(stop, S) ->
     {stop, argh, S};
 started(check_torrent, S) ->
-    case etorrent_fs_checker:check_torrent_for_bad_pieces(S#state.id) of
+    case check_torrent_for_bad_pieces(S#state.id) of
         [] -> {next_state, started, S};
         Errors ->
             ?INFO([errornous_pieces, {Errors}]),
@@ -213,4 +214,109 @@ calculate_amount_left(Id, NumPieces, Torrent) when is_integer(Id) ->
 		   || Pn <- lists:seq(0, NumPieces - 1)]),
     true = Downloaded =< Length,
     Length - Downloaded.
+
+% @doc Check the contents of torrent Id
+% <p>We will check a torrent, Id, and report a list of bad pieces.</p>
+% @end
+-spec check_torrent_for_bad_pieces(integer()) -> [pos_integer()].
+check_torrent_for_bad_pieces(Id) ->
+    [PN || PN <- etorrent_piece_mgr:pieces(Id),
+	   case etorrent_io:check_piece(Id, PN) of
+	       {ok, _} ->
+		   false;
+	       wrong_hash ->
+		   true
+	   end].
+
+% @doc Read and check a torrent
+% <p>The torrent given by Id, at Path (the .torrent file) will be checked for
+%  correctness. We return a tuple
+%  with various information about said torrent: The decoded Torrent dictionary,
+%  the info hash and the number of pieces in the torrent.</p>
+% @end
+-spec read_and_check_torrent(integer(), string()) -> {ok, bcode(), binary(), integer()}.
+read_and_check_torrent(Id, Path) ->
+    {ok, Torrent, Infohash, Hashes} =
+        initialize_dictionary(Id, Path),
+
+    L = length(Hashes),
+
+    %% Check the contents of the torrent, updates the state of the piecemap
+    FS = gproc:lookup_local_name({torrent, Id, fs}),
+    case etorrent_fast_resume:query_state(Id) of
+	{value, PL} ->
+	    case proplists:get_value(state, PL) of
+		seeding -> initialize_pieces_seed(Id, Hashes);
+		{bitfield, BF} ->
+		    initialize_pieces_from_bitfield(Id, BF, Hashes)
+	    end;
+        %% XXX: The next one here could initialize with not_fetched all over
+        unknown ->
+	    %% We currently have to pre-populate the piece data here, which is quite
+	    %% bad. In the future:
+	    %% @todo remove the prepopulation from the piece_mgr code.
+            ok = etorrent_piece_mgr:add_pieces(
+                   Id,
+                  [{PN, Hash, dummy, not_fetched}
+		   || {PN, Hash} <- lists:zip(lists:seq(0, L - 1),
+					      Hashes)]),
+            ok = initialize_pieces_from_disk(FS, Id, Hashes)
+    end,
+
+    {ok, Torrent, Infohash, L}.
+
+%% =======================================================================
+
+initialize_dictionary(Id, Path) ->
+    %% Load the torrent
+    {ok, Torrent, IH} = load_torrent(Path),
+    ok = etorrent_io:allocate(Id),
+    Hashes = etorrent_metainfo:get_pieces(Torrent),
+    {ok, Torrent, IH, Hashes}.
+
+load_torrent(Path) ->
+    Workdir = etorrent_config:work_dir(),
+    P = filename:join([Workdir, Path]),
+    {ok, Torrent} = etorrent_bcoding:parse_file(P),
+    InfoHash = etorrent_metainfo:get_infohash(Torrent),
+    {ok, Torrent, InfoHash}.
+
+initialize_pieces_seed(Id, Hashes) ->
+    L = length(Hashes),
+    etorrent_piece_mgr:add_pieces(
+      Id,
+      [{PN, Hash, dummy, fetched}
+       || {PN, Hash} <- lists:zip(lists:seq(0,L - 1),
+				  Hashes)]).
+
+initialize_pieces_from_bitfield(Id, BitField, Hashes) ->
+    L = length(Hashes),
+    {ok, Set} = etorrent_proto_wire:decode_bitfield(L, BitField),
+    F = fun (PN) ->
+                case gb_sets:is_element(PN, Set) of
+                    true -> fetched;
+                    false -> not_fetched
+                end
+        end,
+    Pieces = [{PN, Hash, dummy, F(PN)}
+	      || {PN, Hash} <- lists:zip(lists:seq(0, L - 1),
+					 Hashes)],
+    etorrent_piece_mgr:add_pieces(Id, Pieces).
+
+initialize_pieces_from_disk(_, Id, Hashes) ->
+    L = length(Hashes),
+    F = fun(PN, Hash) ->
+		State = case etorrent_io:check_piece(Id, PN) of
+			    {ok, _} -> fetched;
+			    wrong_hash -> not_fetched
+			end,
+		{PN, Hash, dummy, State}
+        end,
+    etorrent_piece_mgr:add_pieces(
+      Id,
+      [F(PN, Hash)
+       || {PN, Hash} <- lists:zip(lists:seq(0, L - 1),
+				  Hashes)]).
+
+
 

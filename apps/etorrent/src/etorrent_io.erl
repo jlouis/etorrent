@@ -65,6 +65,9 @@
          unregister_open_file/2,
          await_open_file/2]).
 
+-export([check_piece/2,
+	 check_piece_completion/2]).
+
 -export([init/1,
          handle_call/3,
          handle_cast/2,
@@ -317,6 +320,40 @@ get_files(Pid) ->
 schedule_io_operation(Directory, RelPath) ->
     {ok, DirPid} = await_directory(Directory),
     gen_server:cast(DirPid, {schedule_operation, RelPath}).
+
+%% @doc Check a piece for completion and mark it for correctness
+%% @todo Perhaps this is not the entirely correct place for this, but
+%% it is better than the fs-checker it came from.
+%% @end
+-spec check_piece_completion(torrent_id(), integer()) -> ok.
+check_piece_completion(TorrentID, Idx) ->
+    case check_piece(TorrentID, Idx) of
+	{ok, PieceSize} ->
+            ok = etorrent_torrent:statechange(TorrentID, [{subtract_left, PieceSize}]),
+            ok = etorrent_piece_mgr:statechange(TorrentID, Idx, fetched),
+            _  = etorrent_table:foreach_peer(TorrentID,
+                     fun(Pid) -> etorrent_peer_control:have(Pid, Idx) end),
+            ok;
+        wrong_hash ->
+            ok = etorrent_piece_mgr:statechange(TorrentID, Idx, not_fetched)
+    end.
+
+%% @doc Search the ETS tables for the Piece with Index and
+%%      write it back to disk. Returns the size of the piece in question
+%% @todo Perhaps this is not the "correct" place for this function, but
+%% it is still an improvement over the old location.
+%% @end
+-spec check_piece(torrent_id(), integer()) ->
+			 {ok, integer()} | wrong_hash.
+check_piece(TorrentID, PieceIndex) ->
+    InfoHash = etorrent_piece_mgr:piece_hash(TorrentID, PieceIndex),
+    {ok, PieceBin} = etorrent_io:read_piece(TorrentID, PieceIndex),
+    case crypto:sha(PieceBin) == InfoHash of
+	true ->
+	    {ok, byte_size(PieceBin)};
+	false ->
+	    wrong_hash
+    end.
 
 %% ----------------------------------------------------------------------
 
