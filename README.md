@@ -27,12 +27,18 @@ ETORRENT was mostly conceived as an experiment in how easy it would be
 to write a bittorrent client in Erlang. The hypothesis is that the
 code will be cleaner and smaller than comparative bittorrent clients.
 
-Note that the code is not yet battle scarred. It has not stood up to the
-testing of time and as such, it will fail - sometimes in nasty ways and
-maybe as a bad p2p citizen. Hence, you should put restraint in using it
-unless you are able to fix eventual problems. If you've noticed any bad
-behavior it is definitely a bug and should be reported as soon as possible
-so we can get it away.
+## Maturity
+
+The code is at this point somewhat mature. It has been used in several
+scenarios with a good host of different clients and trackers. The code
+base is not known to act as a bad p2p citizen, although it may be
+possible that it is.
+
+The most important missing link currently is that only a few users
+have been testing it - so there may still be bugs in the code. The
+`master` branch has been quite stable for months now however, so it is
+time to get some more users for testing. Please report any bugs,
+especially if the client behaves badly.
 
 ## Currently supported BEPs:
 
@@ -64,7 +70,7 @@ so we can get it away.
       can subsequently be moved to a location at your leisure.
    3. edit `${EDITOR} rel/etorrent/etc/app.config` - there are a number of directories
       which must be set in order to make the system work.
-   4. check *rel/etorrent/etc/vm.args* - Erlang args to supply
+   4. check `${EDITOR} rel/etorrent/etc/vm.args` - Erlang args to supply
    5. be sure to protect the erlang cookie or anybody can connect to
       your erlang system! See the Erlang user manual in [distributed operation](http://www.erlang.org/doc/reference_manual/distributed.html)
    6. run `rel/etorrent/bin/etorrent console`
