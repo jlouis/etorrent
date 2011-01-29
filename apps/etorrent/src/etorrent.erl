@@ -24,7 +24,12 @@
 %% @end
 -spec list() -> ok.
 list() ->
-    A = etorrent_torrent:all(),
+    All = etorrent_torrent:all(),
+    A   = lists:sort(
+	    fun(PL1, PL2) ->
+		    proplists:get_value(id, PL1) =< proplists:get_value(id, PL2)
+	    end,
+	    All),
     {DownloadRate, UploadRate} = etorrent_peer_states:get_global_rate(),
     io:format("~3s ~11s ~11s ~11s ~11s ~3s ~3s ~7s~n",
               ["Id:", "total", "left", "uploaded", "downloaded",
