@@ -106,7 +106,7 @@ initializing(timeout, S) ->
 
             %% Start the tracker
             {ok, TrackerPid} =
-                etorrent_torrent_sup:add_tracker(
+                etorrent_torrent_sup:start_child_tracker(
                   S#state.parent_pid,
                   etorrent_metainfo:get_url(Torrent),
                   etorrent_metainfo:get_infohash(Torrent),

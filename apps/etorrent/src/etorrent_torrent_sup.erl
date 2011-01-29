@@ -10,7 +10,7 @@
 -include("types.hrl").
 
 %% API
--export([start_link/3, add_tracker/5, add_peer/6]).
+-export([start_link/3, start_child_tracker/5]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -23,39 +23,19 @@
 start_link(File, Local_PeerId, Id) ->
     supervisor:start_link(?MODULE, [File, Local_PeerId, Id]).
 
-%% @doc Add the tracker process to the supervisor
+%% @doc start a child process of a tracker type.
 %% <p>We do this after-the-fact as we like to make sure how complete the torrent
 %% is before telling the tracker we are serving it. In fact, we can't accurately
 %% report the "left" part to the tracker if it is not the case.</p>
 %% @end
--spec add_tracker(pid(), [tier()], binary(), binary(), integer()) -> {ok, pid()} | {ok, pid(), term()} | {error, term()}.
-add_tracker(Pid, UrlTiers, InfoHash, Local_Peer_Id, TorrentId) ->
+-spec start_child_tracker(pid(), [tier()], binary(), binary(), integer()) -> {ok, pid()} | {ok, pid(), term()} | {error, term()}.
+start_child_tracker(Pid, UrlTiers, InfoHash, Local_Peer_Id, TorrentId) ->
     _ = etorrent_dht:add_torrent(InfoHash, TorrentId),
     Tracker = {tracker_communication,
                {etorrent_tracker_communication, start_link,
                 [self(), UrlTiers, InfoHash, Local_Peer_Id, TorrentId]},
                permanent, 15000, worker, [etorrent_tracker_communication]},
     supervisor:start_child(Pid, Tracker).
-
-%% @doc Add a peer to the torrent peer pool.
-%% <p>In general, this is a simple call-through function, which hinges on the
-%% peer_pools add_peer/7 function. It is just cleaner to call through this
-%% supervisor, as it has the knowledge about the peer pool pid.</p>
-%% @end
--spec add_peer(binary(), binary(), integer(), {ipaddr(), portnum()},
-	       [capabilities()],
-	       port()) ->
-        {ok, pid(), pid()} | {error, term()}.
-add_peer(PeerId, InfoHash, TorrentId, {IP, Port}, Capabilities, Socket) ->
-    GroupPid = gproc:lookup_local_name({torrent, TorrentId, peer_pool_sup}),
-    etorrent_peer_pool:add_peer(
-      GroupPid,
-      PeerId,
-      InfoHash,
-      TorrentId,
-      {IP, Port},
-      Capabilities,
-      Socket).
 
 %% ====================================================================
 
