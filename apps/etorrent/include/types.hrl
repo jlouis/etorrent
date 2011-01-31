@@ -34,6 +34,12 @@
 % Types used by the DHT subsystem
 -type ipaddr() :: {byte(), byte(), byte(), byte()}.
 -type portnum() :: 1..16#FFFF.
+% Currently there are two flavors of info hash used in etorrent
+% code. One is a 160-bit binary produced by crypto:sha/1. The other
+% is an integer decoded from such binary, which is used exclusively
+% by DHT. DHT subsystem also uses it as node id and computes nodes
+% distance by 'xor' their ids. Xor can not be applied on binaries.
+% Thus the distinction.
 -type infohash() :: pos_integer().
 -type nodeid() :: pos_integer().
 -type nodeinfo() :: {nodeid(), ipaddr(), portnum()}.
