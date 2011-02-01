@@ -29,15 +29,14 @@ check_torrent_for_bad_pieces(Id) ->
 	   end].
 
 % @doc Read and check a torrent
-% <p>The torrent given by Id, at Path (the .torrent file) will be checked for
+% <p>The torrent given by Id, and parsed content will be checked for
 %  correctness. We return a tuple
 %  with various information about said torrent: The decoded Torrent dictionary,
 %  the info hash and the number of pieces in the torrent.</p>
 % @end
--spec read_and_check_torrent(integer(), string()) -> {ok, bcode(), binary(), integer()}.
-read_and_check_torrent(Id, Path) ->
-    {ok, Torrent, Infohash, Hashes} =
-        initialize_dictionary(Id, Path),
+-spec read_and_check_torrent(integer(), bcode()) -> {ok, integer()}.
+read_and_check_torrent(Id, Torrent) ->
+    {ok, Hashes} = initialize_dictionary(Id, Torrent),
 
     L = length(Hashes),
 
@@ -63,7 +62,7 @@ read_and_check_torrent(Id, Path) ->
             ok = initialize_pieces_from_disk(FS, Id, Hashes)
     end,
 
-    {ok, Torrent, Infohash, L}.
+    {ok, L}.
 
 %% @doc Check a piece for completion and mark it for correctness
 %% @end
@@ -97,19 +96,10 @@ check_piece(TorrentID, PieceIndex) ->
 
 %% =======================================================================
 
-initialize_dictionary(Id, Path) ->
-    %% Load the torrent
-    {ok, Torrent, IH} = load_torrent(Path),
+initialize_dictionary(Id, Torrent) ->
     ok = etorrent_io:allocate(Id),
     Hashes = etorrent_metainfo:get_pieces(Torrent),
-    {ok, Torrent, IH, Hashes}.
-
-load_torrent(Path) ->
-    Workdir = etorrent_config:work_dir(),
-    P = filename:join([Workdir, Path]),
-    {ok, Torrent} = etorrent_bcoding:parse_file(P),
-    InfoHash = etorrent_metainfo:get_infohash(Torrent),
-    {ok, Torrent, InfoHash}.
+    {ok, Hashes}.
 
 initialize_pieces_seed(Id, Hashes) ->
     L = length(Hashes),
