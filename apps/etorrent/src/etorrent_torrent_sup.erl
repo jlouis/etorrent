@@ -19,9 +19,10 @@
 
 %% @doc Start up the supervisor
 %% @end
--spec start_link(string(), binary(), integer()) -> {ok, pid()} | ignore | {error, term()}.
-start_link(File, Local_PeerId, Id) ->
-    supervisor:start_link(?MODULE, [File, Local_PeerId, Id]).
+-spec start_link({bcode(), string(), binary()}, binary(), integer()) ->
+                {ok, pid()} | ignore | {error, term()}.
+start_link({Torrent, TorrentFile, TorrentIH}, Local_PeerId, Id) ->
+    supervisor:start_link(?MODULE, [{Torrent, TorrentFile, TorrentIH}, Local_PeerId, Id]).
 
 %% @doc Add the tracker process to the supervisor
 %% <p>We do this after-the-fact as we like to make sure how complete the torrent
@@ -60,15 +61,16 @@ add_peer(PeerId, InfoHash, TorrentId, {IP, Port}, Capabilities, Socket) ->
 %% ====================================================================
 
 %% @private
-init([Path, PeerId, Id]) ->
+init([{Torrent, TorrentFile, TorrentIH}, PeerId, Id]) ->
     FSPool = {fs_pool,
-              {etorrent_io_sup, start_link, [Id, Path]},
+              {etorrent_io_sup, start_link, [Id, Torrent]},
               transient, infinity, supervisor, [etorrent_io_sup]},
     %FS = {fs,
     %      {etorrent_fs, start_link, [Id]},
     %      permanent, 2000, worker, [etorrent_fs]},
     Control = {control,
-               {etorrent_torrent_ctl, start_link, [Id, Path, PeerId]},
+               {etorrent_torrent_ctl, start_link,
+               [Id, {Torrent, TorrentFile, TorrentIH}, PeerId]},
                permanent, 20000, worker, [etorrent_torrent_ctl]},
     PeerPool = {peer_pool_sup,
                 {etorrent_peer_pool, start_link, [Id]},

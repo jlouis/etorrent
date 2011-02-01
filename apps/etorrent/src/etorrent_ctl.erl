@@ -9,6 +9,7 @@
 -module(etorrent_ctl).
 -behaviour(gen_server).
 
+-include("types.hrl").
 -include("log.hrl").
 
 -export([start_link/1,
@@ -64,18 +65,21 @@ init([PeerId]) ->
 %% @private
 handle_cast({start, F}, S) ->
     ?INFO([starting, F]),
-    case torrent_duplicate(F) of
-        true -> {noreply, S};
-        false ->
-            case etorrent_torrent_pool:start_child(F, S#state.local_peer_id,
-						   etorrent_counters:next(torrent)) of
+    case load_torrent(F) of
+        duplicate -> {noreply, S};
+        {ok, Torrent} ->
+            TorrentIH = etorrent_metainfo:get_infohash(Torrent),
+            case etorrent_torrent_pool:start_child(
+                            {Torrent, F, TorrentIH},
+                            S#state.local_peer_id,
+                            etorrent_counters:next(torrent)) of
                 {ok, _} -> {noreply, S};
-                {error, {already_started, _Pid}} -> {noreply, S};
-                {error, Reason} ->
-                    ?INFO([starting_error, Reason]),
-                    etorrent_event:notify({starting_error, Reason}),
-                    {noreply, S}
-            end
+                {error, {already_started, _Pid}} -> {noreply, S}
+            end;
+        {error, _Reason} ->
+            ?INFO([malformed_torrent_file, F]),
+            etorrent_event:notify({malformed_torrent_file, F}),
+            {noreply, S}
     end;
 handle_cast({check, Id}, S) ->
     Child = gproc:lookup_local_name({torrent, Id, control}),
@@ -111,8 +115,9 @@ stop_torrent(F) ->
     ?INFO([stopping, F]),
     case etorrent_table:get_torrent({filename, F}) of
 	not_found -> ok; % Was already removed, it is ok.
-	{value, _PL} ->
-	    etorrent_torrent_pool:terminate_child(F),
+	{value, PL} ->
+	    TorrentIH = proplists:get_value(info_hash, PL),
+	    etorrent_torrent_pool:terminate_child(TorrentIH),
 	    ok
     end.
 
@@ -123,10 +128,21 @@ stop_all() ->
 	 stop_torrent(F)
      end || PL <- PLS].
 
-torrent_duplicate(F) ->
+-spec load_torrent(string()) -> duplicate
+                                | {ok, bcode()}
+                                | {error, _Reason}.
+load_torrent(F) ->
     case etorrent_table:get_torrent({filename, F}) of
-	not_found -> false;
-	{value, PL} ->
-	    duplicate =:= proplists:get_value(state, PL)
+	    not_found -> load_torrent_internal(F);
+	    {value, PL} ->
+	        case duplicate =:= proplists:get_value(state, PL) of
+	            true -> duplicate;
+	            false -> load_torrent_internal(F)
+	        end
     end.
+
+load_torrent_internal(F) ->
+    Workdir = etorrent_config:work_dir(),
+    P = filename:join([Workdir, F]),
+    etorrent_bcoding:parse_file(P).
 

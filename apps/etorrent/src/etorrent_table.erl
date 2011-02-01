@@ -25,7 +25,7 @@
 
 %% Torrent information
 -export([all_torrents/0, statechange_torrent/2, get_torrent/1, acquire_check_token/1,
-	 new_torrent/3]).
+	 new_torrent/4]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -47,7 +47,7 @@
 -record(tracking_map, {id :: '_' | integer(), %% Unique identifier of torrent
                        filename :: '_' | string(),    %% The filename
                        supervisor_pid :: '_' | pid(), %% The Pid of who is supervising
-                       info_hash :: '_' | binary() | 'unknown',
+                       info_hash :: '_' | binary(),
                        state :: '_' | tracking_map_state()}).
 
 
@@ -184,16 +184,19 @@ new_peer(IP, Port, TorrentId, Pid, State) ->
     add_monitor(peer, Pid).
 
 %% @doc Add a new torrent
-%% <p>The torrent is given by File with the Supervisor pid as given to the
-%% database structure.</p>
+%% <p>The torrent is given by File and its infohash with the
+%% Supervisor pid as given to the database structure.</p>
 %% @end
--spec new_torrent(string(), pid(), integer()) -> ok.
-new_torrent(File, Supervisor, Id) when is_integer(Id), is_pid(Supervisor), is_list(File) ->
+-spec new_torrent(string(), binary(), pid(), integer()) -> ok.
+new_torrent(File, IH, Supervisor, Id) when is_integer(Id),
+                                        is_pid(Supervisor),
+                                        is_binary(IH),
+                                        is_list(File) ->
     add_monitor({torrent, Id}, Supervisor),
     TM = #tracking_map { id = Id,
 			 filename = File,
 			 supervisor_pid = Supervisor,
-			 info_hash = unknown,
+			 info_hash = IH,
 			 state = awaiting},
     true = ets:insert(tracking_map, TM),
     ok.
