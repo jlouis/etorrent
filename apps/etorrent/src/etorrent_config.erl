@@ -29,7 +29,7 @@
 	 work_dir/0]).
 
 %% API
--export([start_link/0]).
+-export([start_link/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -62,8 +62,8 @@ configuration_specification() ->
 %%====================================================================
 
 %% @doc Start up the configuration server
-start_link() ->
-    gen_server:start_link({local, ?MODULE}, ?MODULE, [[]], []).
+start_link(Config) ->
+    gen_server:start_link({local, ?MODULE}, ?MODULE, [Config], []).
 
 
 call(Key) ->
