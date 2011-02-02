@@ -19,10 +19,11 @@
 %% @private
 start(_Type, _Args) ->
     PeerId = generate_peer_id(),
+    Config = [], % Pick up configuration from config file
 
     consider_profiling(),
 
-    case etorrent_sup:start_link(PeerId) of
+    case etorrent_sup:start_link(PeerId, Config) of
 	{ok, Pid} ->
 	    ok = etorrent_memory_logger:add_handler(),
 	    ok = etorrent_file_logger:add_handler(),
