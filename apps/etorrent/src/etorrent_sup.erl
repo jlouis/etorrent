@@ -34,6 +34,7 @@ start_link(PeerId) ->
 %% @private
 init([PeerId]) ->
     ?INFO([etorrent_supervisor_starting, PeerId]),
+    Conf         = ?CHILD(etorrent_config),
     Tables       = ?CHILD(etorrent_table),
     Torrent      = ?CHILD(etorrent_torrent),
     Counters     = ?CHILD(etorrent_counters),
@@ -70,7 +71,7 @@ init([PeerId]) ->
     end,
 
     {ok, {{one_for_all, 3, 60},
-          [Tables, Torrent,
+          [Conf, Tables, Torrent,
            Counters, EventManager, PeerMgr,
            FastResume, PeerStates, PieceManager,
            ChunkManager, Choker, Listener,
