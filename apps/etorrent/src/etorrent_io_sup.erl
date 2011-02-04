@@ -11,20 +11,17 @@
 -export([init/1]).
 
 %% @doc Initiate the supervisor.
-%% <p>The arguments are the ID of the torrent and the file-path at
-%% which the torrent file lives</p>
+%% <p>The arguments are the ID of the torrent and the
+%% parsed torrent file</p>
 %% @end
--spec start_link(torrent_id(), file_path()) -> {'ok', pid()}.
-start_link(TorrentID, TorrentFile) ->
-    supervisor:start_link(?MODULE, [TorrentID, TorrentFile]).
+-spec start_link(torrent_id(), bcode()) -> {'ok', pid()}.
+start_link(TorrentID, Torrent) ->
+    supervisor:start_link(?MODULE, [TorrentID, Torrent]).
 
 %% ----------------------------------------------------------------------
 
 %% @private
-init([TorrentID, TorrentFile]) ->
-    Workdir   = etorrent_config:work_dir(),
-    FullPath  = filename:join([Workdir, TorrentFile]),
-    {ok, Torrent}   = etorrent_bcoding:parse_file(FullPath),
+init([TorrentID, Torrent]) ->
     Files     = etorrent_metainfo:file_paths(Torrent),
     DirServer = directory_server_spec(TorrentID, Torrent),
     Dldir     = etorrent_config:download_dir(),
