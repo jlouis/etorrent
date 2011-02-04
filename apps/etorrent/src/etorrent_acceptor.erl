@@ -127,7 +127,7 @@ start_new_incoming_peer(Socket, Caps, IP, Port, InfoHash, OurPeerId) ->
         {value, 0} -> already_enough_connections;
         {value, K} when is_integer(K) ->
 	    {value, PL} = etorrent_table:get_torrent({infohash, InfoHash}),
-            etorrent_torrent_sup:add_peer(
+            etorrent_peer_pool:start_child(
 	      OurPeerId,
 	      InfoHash,
 	      proplists:get_value(id, PL),

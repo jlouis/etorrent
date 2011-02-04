@@ -122,6 +122,8 @@ get_path(Id, TorrentId) when is_integer(Id) ->
 %% @end
 -spec acquire_check_token(integer()) -> boolean().
 acquire_check_token(Id) ->
+    %% @todo when using a monitor-approach, this can probably be
+    %% infinity.
     gen_server:call(?MODULE, {acquire_check_token, Id}).
 
 %% @doc Populate the #path_map table with entries. Return the Id
@@ -234,6 +236,7 @@ handle_call({monitor_pid, Type, Pid}, _From, S) ->
      S#state {
        monitoring = dict:store(Ref, {Pid, Type}, S#state.monitoring)}};
 handle_call({acquire_check_token, Id}, _From, S) ->
+    %% @todo This should definitely be a monitor on the _From process
     R = case ets:match(tracking_map, #tracking_map { _ = '_', state = checking }) of
 	    [] ->
 		[O] = ets:lookup(tracking_map, Id),

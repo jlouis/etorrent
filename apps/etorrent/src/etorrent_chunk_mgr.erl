@@ -308,7 +308,7 @@ chunkify_new_piece(Id, PieceSet) when is_integer(Id) ->
 
 %% Check the piece Idx on torrent Id for completion
 check_piece(Id, Idx) ->
-    _ = spawn_link(etorrent_fs_checker, check_piece_completion, [Id, Idx]),
+    _ = spawn_link(etorrent_io, check_piece_completion, [Id, Idx]),
     ets:match_delete(?TAB, #chunk { idt = {Id, Idx, '_'}, _ = '_'}).
 
 
