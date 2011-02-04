@@ -3,6 +3,7 @@
 /apps/etorrent/ebin/etorrent.app
 /apps/etorrent/.eunit
 /apps/etorrent/src/tags
+/apps/etorrent/logs
 *.beam
 deps/*
 /dev
