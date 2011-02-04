@@ -144,17 +144,19 @@ handle_info(timeout, S) ->
                 {val, L} = etorrent_proto_wire:remaining_bytes(S#state.packet_continuation),
                 L
         end,
-    {Proceed, NS} = case gen_tcp:recv(S#state.socket, Length) of
-        {ok, Packet} -> {true, handle_packet_slow(S, Packet)};
-        {error, closed} -> {false, S};
-        {error, ebadf} -> {false, S};
-        {error, timeout} -> {true, S};
-        {error, ehostunreach} -> {false, S};
-        {error, etimedout} -> {true, S}
-    end,
+    Proceed = case gen_tcp:recv(S#state.socket, Length) of
+		  {ok, Packet} -> {ok, Packet};
+		  {error, closed} -> error;
+		  {error, ebadf} -> error;
+		  {error, einval} -> error;
+		  {error, ehostunreach} -> error;
+		  {error, etimedout} -> error
+	      end,
     case Proceed of
-        true -> {noreply, NS, next_msg(NS#state.mode)};
-        false -> {stop, normal, NS}
+        {ok, Pkt} ->
+	    NS = handle_packet_slow(S, Pkt),
+	    {noreply, NS, next_msg(NS#state.mode)};
+        error -> {stop, normal, S}
     end;
 handle_info(rate_update, OS) ->
     NR = etorrent_rate:update(OS#state.rate, 0),
@@ -179,7 +181,6 @@ handle_info({tcp, _P, Packet}, S) ->
     NS = handle_packet(Packet, S),
     {noreply, NS};
 handle_info({tcp_closed, _P}, S) ->
-    ?INFO(peer_closed_port),
     {stop, normal, S};
 handle_info(Info, S) ->
     ?WARN([unknown_handle_info, Info]),
