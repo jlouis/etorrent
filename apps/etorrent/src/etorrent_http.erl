@@ -55,7 +55,7 @@ mk_header(PropList) ->
 
 %% @doc Convert the list into RFC1738 encoding (URL-encoding).
 %% @end
--spec build_encoded_form_rfc1738(string()) -> string().
+-spec build_encoded_form_rfc1738(string() | binary()) -> string().
 build_encoded_form_rfc1738(List) when is_list(List) ->
     Unreserved = rfc_3986_unreserved_characters_set(),
     F = fun (E) ->

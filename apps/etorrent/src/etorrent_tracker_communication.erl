@@ -26,17 +26,16 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
--record(state, {queued_message = none,
+-record(state, {queued_message = none :: none | started,
                 %% The hard timer is the time we *must* wait on the tracker.
                 %% soft timer may be overridden if we want to change state.
-                soft_timer = none,
-                hard_timer = none,
-                url = [[]] :: [tier()],
-                info_hash = none,
-                peer_id = none,
-                trackerid = none,
-                control_pid = none,
-                torrent_id = none}).
+                soft_timer     :: reference() | none,
+                hard_timer     :: reference() | none,
+                url = [[]]     :: [tier()],
+                info_hash      :: binary(),
+                peer_id        :: string(),
+                control_pid    :: pid(),
+                torrent_id     :: integer() }).
 
 -define(DEFAULT_CONNECTION_TIMEOUT_INTERVAL, 1800).
 -define(DEFAULT_CONNECTION_TIMEOUT_MIN_INTERVAL, 60).
@@ -52,7 +51,7 @@
 %% parameter and finally the `TorrentId': the identifier of the torrent.</p> 
 %% @end
 %% @todo What module, precisely do the control pid come from?
--spec start_link(pid(), [tier()], binary(), integer(), integer()) ->
+-spec start_link(pid(), [tier()], binary(), string(), integer()) ->
     ignore | {ok, pid()} | {error, term()}.
 start_link(ControlPid, UrlTiers, InfoHash, PeerId, TorrentId) ->
     gen_server:start_link(?MODULE,
@@ -265,8 +264,7 @@ handle_tracker_response(BC, none, none, S) ->
 	     etorrent_bcoding:get_value("complete", BC, 0),
 	     etorrent_bcoding:get_value("incomplete", BC, 0)}]),
     %% Timeout
-    TrackerId = etorrent_bcoding:get_value("trackerid", BC, tracker_id_not_given),
-    handle_timeout(BC, S#state { trackerid = TrackerId }).
+    handle_timeout(BC, S).
 
 handle_udp_response(Id, Peers, Status) ->
     etorrent_peer_mgr:add_peers(Id, Peers),

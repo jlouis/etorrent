@@ -11,7 +11,6 @@
 
 -export([start/2, stop/1, prep_stop/1, profile_output/0]).
 
-
 -ignore_xref([{'prep_stop', 1}, {stop, 0}, {check, 1}]).
 
 -define(RANDOM_MAX_SIZE, 999999999999).

@@ -29,7 +29,7 @@ start_link({Torrent, TorrentFile, TorrentIH}, Local_PeerId, Id) ->
 %% is before telling the tracker we are serving it. In fact, we can't accurately
 %% report the "left" part to the tracker if it is not the case.</p>
 %% @end
--spec start_child_tracker(pid(), [tier()], binary(), binary(), integer()) -> {ok, pid()} | {ok, pid(), term()} | {error, term()}.
+-spec start_child_tracker(pid(), [tier()], binary(), string(), integer()) -> {ok, pid()} | {ok, pid(), term()} | {error, term()}.
 start_child_tracker(Pid, UrlTiers, InfoHash, Local_Peer_Id, TorrentId) ->
     _ = etorrent_dht:add_torrent(InfoHash, TorrentId),
     Tracker = {tracker_communication,
