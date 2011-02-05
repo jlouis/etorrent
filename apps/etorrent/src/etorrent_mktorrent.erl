@@ -1,3 +1,7 @@
+%% @author Jesper Louis Andersen <jesper.louis.andersen@gmail.com>
+%% @doc Create .torrent files
+%% Use the rpc module to make the creation parallel.
+%% @end
 -module(etorrent_mktorrent).
 
 -include_lib("kernel/include/file.hrl").
@@ -8,8 +12,12 @@
 
 -define(CHUNKSIZE, 1048576).
 %%====================================================================
-%% API
-%%====================================================================
+
+%% @doc Create a torrent file.
+%% Given a File or directory `FD' a desired `AnnounceURL' and a output
+%% file name `OutFile' for a .torrent, construct it the contents of
+%% a torrent file.
+%% @end
 mktorrent(FD, AnnounceURL, OutFile) ->
     {PieceHashes, FileInfo} = read_and_hash(FD),
     TorrentData = torrent_file(AnnounceURL, PieceHashes, FileInfo, null),
@@ -90,4 +98,18 @@ torrent_file(AnnounceURL, PieceHashes, FileInfo, Comment) ->
     {dict, [{{string, "announce"}, {string, AnnounceURL}},
 	    {{string, "info"}, InfoDict}]
      ++ mk_comment(Comment)}.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
