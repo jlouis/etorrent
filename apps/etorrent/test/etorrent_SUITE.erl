@@ -12,6 +12,8 @@ suite() ->
     [{timetrap, {minutes, 1}}].
 
 init_per_suite(Config) ->
+    %% We should really use priv_dir here, but as we are for-once creating
+    %% files we will later rely on for fetching, this is ok I think.
     Directory = proplists:get_value(data_dir, Config),
     io:format("Data directory: ~s~n", [Directory]),
     Fn = filename:join([Directory, "test_file_30M.random"]),
