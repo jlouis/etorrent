@@ -12,15 +12,20 @@ suite() ->
     [{timetrap, {minutes, 1}}].
 
 init_per_suite(Config) ->
+    Directory = proplists:get_value(data_dir, Config),
+    io:format("Data directory: ~s~n", [Directory]),
+    Fn = filename:join([Directory, "test_file_30M.random"]),
+    ensure_random_file(Fn),
+    ensure_torrent_file(Fn),
     Config.
 
-end_per_suite(Config) ->
+end_per_suite(_Config) ->
     ok.
 
 init_per_testcase(_Case, Config) ->
     Config.
 
-end_per_testcase(_Case, Config) ->
+end_per_testcase(_Case, _Config) ->
     ok.
 
 all() ->
@@ -55,3 +60,31 @@ member_test(Num) ->
     true = lists:member('Elem', List),
     false = lists:member(arne_anka, List),
     false = lists:member({a,b,c}, List).
+
+ensure_torrent_file(Fn) ->
+    case filelib:is_regular(Fn ++ ".torrent") of
+	true ->
+	    ok;
+	false ->
+	    etorrent_mktorrent:mktorrent(
+	      Fn, "http://localhost:6969", Fn ++ ".torrent")
+    end.
+
+ensure_random_file(Fn) ->
+    case filelib:is_regular(Fn) of
+	true ->
+	    ok;
+	false ->
+	    create_torrent_file(Fn)
+    end.
+
+create_torrent_file(FName) ->
+    random:seed({137, 314159265, 1337}),
+    Bin = create_binary(30*1024*1024, <<>>),
+    file:write_file(FName, Bin).
+
+create_binary(0, Bin) -> Bin;
+create_binary(N, Bin) ->
+    Byte = random:uniform(256) - 1,
+    create_binary(N-1, <<Bin/binary, Byte:8/integer>>).
+

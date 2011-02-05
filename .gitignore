@@ -24,3 +24,4 @@ webui/*.log
 
 /documentation/sup_tree_20110106.pdf
 /documentation/sup_tree_20110106.png
+/apps/etorrent/test/etorrent_SUITE_data/test_file_30M.random
