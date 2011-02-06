@@ -66,80 +66,88 @@ code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 %%--------------------------------------------------------------------
-
 handshake(Socket, PeerId) ->
-    case etorrent_proto_wire:receive_handshake(Socket) of
-        {ok, Caps, InfoHash, HisPeerId} ->
-            lookup_infohash(Socket, Caps, InfoHash, HisPeerId, PeerId);
-        {error, _Reason} ->
-            gen_tcp:close(Socket),
-            ok
-    end.
-
-lookup_infohash(Socket, Caps, InfoHash, HisPeerId, OurPeerId) ->
-    case etorrent_table:get_torrent({infohash, InfoHash}) of
-	{value, _} ->
-	    start_peer(Socket, Caps, HisPeerId, InfoHash, OurPeerId);
-	not_found ->
+    %% This try..catch block is essentially a maybe monad. Each call
+    %% checks for some condition to be true and throws an exception
+    %% if the check fails. Finally, control is handed over to the control
+    %% pid or we handle an error by closing down.
+    try
+	{ok, {IP, Port}} = inet:peername(Socket),
+	{ok, Caps, InfoHash, HisPeerId} = receive_handshake(Socket),
+	ok = check_infohash(InfoHash),
+	ok = check_peer(IP, Port, InfoHash, HisPeerId, PeerId),
+	ok = check_peer_count(),
+	{ok, RecvPid, ControlPid} =
+	    check_torrent_state(Socket, Caps, IP, Port, InfoHash, PeerId),
+	ok = handover_control(Socket, RecvPid, ControlPid)
+    catch
+	throw:{error, _Reason} ->
+	    gen_tcp:close(Socket),
+	    ok;
+	throw:{bad_peer, HisPId} ->
+	    ?INFO([peer_id_is_bad, HisPId]),
 	    gen_tcp:close(Socket),
 	    ok
     end.
 
-start_peer(Socket, Caps, HisPeerId, InfoHash, OurPeerId) ->
-    {ok, {Address, Port}} = inet:peername(Socket),
-    case new_incoming_peer(Socket, Caps, Address, Port, InfoHash, HisPeerId, OurPeerId) of
-        {ok, RPid, CPid} ->
-            case gen_tcp:controlling_process(Socket, RPid) of
-                ok -> etorrent_peer_control:initialize(CPid, incoming),
-                      ok;
-                {error, enotconn} ->
-                    etorrent_peer_control:stop(CPid),
-                    ok
-            end;
-        already_enough_connections -> ok;
-        already_connected -> ok;
-        connect_to_ourselves ->
-            gen_tcp:close(Socket),
-            ok;
-	not_ready_for_connections ->
-	    gen_tcp:close(Socket),
-	    ok;
-        bad_peer ->
-            ?INFO([peer_id_is_bad, HisPeerId]),
-            gen_tcp:close(Socket),
-            ok
+receive_handshake(Socket) ->
+    case etorrent_proto_wire:receive_handshake(Socket) of
+        {ok, Caps, InfoHash, HisPeerId} ->
+	    {ok, Caps, InfoHash, HisPeerId};
+	{error, Reason} ->
+	    throw({error, Reason})
     end.
 
-new_incoming_peer(_Socket, _Caps, _IP, _Port, _InfoHash, PeerId, PeerId) ->
-        connect_to_ourselves;
-new_incoming_peer(Socket, Caps, IP, Port, InfoHash, _HisPeerId, OurPeerId) ->
+check_infohash(InfoHash) ->
+    case etorrent_table:get_torrent({infohash, InfoHash}) of
+	{value, _} ->
+	    ok;
+	not_found ->
+	    throw({error, infohash_not_found})
+    end.
+
+handover_control(Socket, RPid, CPid) ->
+    case gen_tcp:controlling_process(Socket, RPid) of
+	ok -> etorrent_peer_control:initialize(CPid, incoming),
+	      ok;
+	{error, enotconn} ->
+	    etorrent_peer_control:stop(CPid),
+	    throw({error, enotconn})
+    end.
+
+check_peer(_IP, _Port, _InfoHash, PeerId, PeerId) ->
+    throw({error, connect_to_ourselves});
+check_peer(IP, Port, InfoHash, HisPeerId, _OurPeerId) ->
     {value, PL} = etorrent_table:get_torrent({infohash, InfoHash}),
     case etorrent_peer_mgr:is_bad_peer(IP, Port) of
         true ->
-            bad_peer;
+	    throw({bad_peer, HisPeerId});
         false ->
-            case etorrent_table:connected_peer(IP, Port, proplists:get_value(id, PL)) of
-                true -> already_connected;
-                false -> start_new_incoming_peer(Socket, Caps, IP, Port, InfoHash, OurPeerId)
-            end
+	    ok
+    end,
+    case etorrent_table:connected_peer(IP, Port, proplists:get_value(id, PL)) of
+	true -> throw({error, already_connected});
+	false -> ok
     end.
 
+check_torrent_state(Socket, Caps, IP, Port, InfoHash, OurPeerId) ->
+    {value, PL} = etorrent_table:get_torrent({infohash, InfoHash}),
+    case proplists:get_value(state, PL) of
+	started ->
+	    etorrent_peer_pool:start_child(
+	      OurPeerId,
+	      InfoHash,
+	      proplists:get_value(id, PL),
+	      {IP, Port},
+	      Caps,
+	      Socket);
+	_ -> throw({error, not_ready_for_connections})
+    end.
 
-start_new_incoming_peer(Socket, Caps, IP, Port, InfoHash, OurPeerId) ->
+check_peer_count() ->
     case etorrent_counters:slots_left() of
-        {value, 0} -> already_enough_connections;
-        {value, K} when is_integer(K) ->
-	    {value, PL} = etorrent_table:get_torrent({infohash, InfoHash}),
-	    case proplists:get_value(state, PL) of
-		started ->
-		    etorrent_peer_pool:start_child(
-		      OurPeerId,
-		      InfoHash,
-		      proplists:get_value(id, PL),
-		      {IP, Port},
-		      Caps,
-		      Socket);
-		_ -> not_ready_for_connections
-	    end
+        {value, 0} -> throw({error, already_enough_connections});
+        {value, K} when is_integer(K) -> ok
     end.
+
 
