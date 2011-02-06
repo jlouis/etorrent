@@ -101,6 +101,9 @@ start_peer(Socket, Caps, HisPeerId, InfoHash, OurPeerId) ->
         connect_to_ourselves ->
             gen_tcp:close(Socket),
             ok;
+	not_ready_for_connections ->
+	    gen_tcp:close(Socket),
+	    ok;
         bad_peer ->
             ?INFO([peer_id_is_bad, HisPeerId]),
             gen_tcp:close(Socket),
@@ -127,12 +130,16 @@ start_new_incoming_peer(Socket, Caps, IP, Port, InfoHash, OurPeerId) ->
         {value, 0} -> already_enough_connections;
         {value, K} when is_integer(K) ->
 	    {value, PL} = etorrent_table:get_torrent({infohash, InfoHash}),
-            etorrent_peer_pool:start_child(
-	      OurPeerId,
-	      InfoHash,
-	      proplists:get_value(id, PL),
-	      {IP, Port},
-	      Caps,
-	      Socket)
+	    case proplists:get_value(state, PL) of
+		started ->
+		    etorrent_peer_pool:start_child(
+		      OurPeerId,
+		      InfoHash,
+		      proplists:get_value(id, PL),
+		      {IP, Port},
+		      Caps,
+		      Socket);
+		_ -> not_ready_for_connections
+	    end
     end.
 
