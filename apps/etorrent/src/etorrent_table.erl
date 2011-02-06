@@ -291,6 +291,8 @@ alter_map(TM, What) ->
     case What of
         {infohash, IH} ->
             TM#tracking_map { info_hash = IH };
+	checking ->
+	    TM#tracking_map { state = checking };
         started ->
             TM#tracking_map { state = started };
         stopped ->

@@ -70,23 +70,18 @@ init([Parent, Id, {Torrent, TorrentFile, TorrentIH}, PeerId]) ->
 
 %% @private
 %% @todo Split and simplify this monster function
-initializing(timeout, S) ->
-    case etorrent_table:acquire_check_token(S#state.id) of
+initializing(timeout, #state { id = Id, torrent = Torrent } = S) ->
+    case etorrent_table:acquire_check_token(Id) of
         false ->
             {next_state, initializing, S, ?CHECK_WAIT_TIME};
         true ->
             %% @todo: Try to coalesce some of these operations together.
 
             %% Read the torrent, check its contents for what we are missing
-            etorrent_event:checking_torrent(S#state.id),
-            {ok, NumberOfPieces} =
-                read_and_check_torrent(S#state.id,
-				       S#state.torrent),
-            etorrent_piece_mgr:add_monitor(self(), S#state.id),
-
-            %% Update the tracking map. This torrent has been started.
-            etorrent_table:statechange_torrent(S#state.id, started),
-
+	    etorrent_table:statechange_torrent(Id, checking),
+            etorrent_event:checking_torrent(Id),
+            {ok, NumberOfPieces} = read_and_check_torrent(Id, Torrent),
+            etorrent_piece_mgr:add_monitor(self(), Id),
 	    {AU, AD} =
 		case etorrent_fast_resume:query_state(S#state.id) of
 		    unknown -> {0,0};
@@ -94,28 +89,35 @@ initializing(timeout, S) ->
 			{proplists:get_value(uploaded, PL),
 			 proplists:get_value(downloaded, PL)}
 		end,
+
             %% Add a torrent entry for this torrent.
             ok = etorrent_torrent:new(
-                   S#state.id,
+                   Id,
                    {{uploaded, 0},
                     {downloaded, 0},
 		    {all_time_uploaded, AU},
 		    {all_time_downloaded, AD},
-                    {left, calculate_amount_left(S#state.id, NumberOfPieces, S#state.torrent)},
-                    {total, etorrent_metainfo:get_length(S#state.torrent)}},
+                    {left, calculate_amount_left(Id, NumberOfPieces, Torrent)},
+                    {total, etorrent_metainfo:get_length(Torrent)}},
                    NumberOfPieces),
+
+            %% Update the tracking map. This torrent has been started.
+	    %% Altering this state marks the point where we will accept
+	    %% Foreign connections on the torrent as well.
+            etorrent_table:statechange_torrent(Id, started),
+            etorrent_event:started_torrent(Id),
 
             %% Start the tracker
             {ok, TrackerPid} =
                 etorrent_torrent_sup:start_child_tracker(
                   S#state.parent_pid,
-                  etorrent_metainfo:get_url(S#state.torrent),
+                  etorrent_metainfo:get_url(Torrent),
                   S#state.info_hash,
                   S#state.peer_id,
-                  S#state.id),
+                  Id),
 
-            %% Since the process will now go to a hibernation state, GC it
-            etorrent_event:started_torrent(S#state.id),
+            %% Since the process will now go to a state where it won't do anything
+	    %% for a long time, GC it.
             garbage_collect(),
             {next_state, started,
              S#state{tracker_pid = TrackerPid}}
