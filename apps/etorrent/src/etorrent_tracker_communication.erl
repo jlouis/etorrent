@@ -235,7 +235,10 @@ contact_tracker_http(Url, Event, S) ->
 		econnrefused -> ignore;
 		session_remotly_closed -> ignore;
 		Err ->
-		    error_logger:error_report([contact_tracker_error, Err]),
+		    Msg = {error, [{contact_tracker, Err},
+				   {id, S#state.torrent_id}]},
+		    etorrent_event:notify(Msg),
+		    ?INFO([Msg]),
 		    ignore
 	    end,
 	    error
