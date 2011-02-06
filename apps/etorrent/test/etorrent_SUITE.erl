@@ -68,7 +68,7 @@ ensure_torrent_file(Fn) ->
 	true ->
 	    ok;
 	false ->
-	    etorrent_mktorrent:mktorrent(
+	    etorrent_mktorrent:create(
 	      Fn, "http://localhost:6969", Fn ++ ".torrent")
     end.
 

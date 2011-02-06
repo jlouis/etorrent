@@ -8,19 +8,23 @@
 -include("log.hrl").
 -include("types.hrl").
 %% API
--export([mktorrent/3]).
+-export([create/3, create/4]).
 
 -define(CHUNKSIZE, 1048576).
 %%====================================================================
 
+%% @equiv create(FD, AnnounceURL, OutFile, null)
+create(FD, AnnounceURL, OutFile) ->
+    create(FD, AnnounceURL, OutFile, null).
+
 %% @doc Create a torrent file.
 %% Given a File or directory `FD' a desired `AnnounceURL' and a output
 %% file name `OutFile' for a .torrent, construct it the contents of
-%% a torrent file.
+%% a torrent file. Finally, an Optional comment can be included.
 %% @end
-mktorrent(FD, AnnounceURL, OutFile) ->
+create(FD, AnnounceURL, OutFile, Comment) ->
     {PieceHashes, FileInfo} = read_and_hash(FD),
-    TorrentData = torrent_file(AnnounceURL, PieceHashes, FileInfo, null),
+    TorrentData = torrent_file(AnnounceURL, PieceHashes, FileInfo, Comment),
     write_torrent_file(OutFile, TorrentData).
 
 hash_file(File, {PH, InfoBlocks}) ->
@@ -63,26 +67,28 @@ finish_hash({{Bin, Hashes}, FI}) ->
     {lists:reverse([K | Hashes]),
      lists:reverse(FI)}.
 
+-spec mk_comment(null | list()) -> [term()].
 mk_comment(null) -> [];
-mk_comment(Comment) when is_list(Comment) -> [{{string, "comment"}, {string, Comment}}].
+mk_comment(Comment) when is_list(Comment) ->
+    [{<<"comment">>, list_to_binary(Comment)}].
 
-mk_infodict_single(PieceHashes, Name, Sz) ->
-    {dict, [{{string, "pieces"}, {string, PieceHashes}},
-	    {{string, "name"}, {string, Name}},
-	    {{string, "length"}, {integer, Sz}}]}.
+mk_infodict_single(PieceHashes, Name, Sz) when is_binary(PieceHashes) ->
+    [{<<"pieces">>, PieceHashes},
+     {<<"name">>,   list_to_binary(Name)},
+     {<<"length">>, Sz}].
 
 mk_files_list([], Accum, Sz) ->
     {Sz, lists:reverse(Accum)};
 mk_files_list([{N, #file_info { size = Size }} | R], Acc, S) ->
-    D = {dict, [{{string, "path"}, {string, N}},
-		{{string, "size"}, {integer, Size}}]},
+    D = [{<<"path">>, list_to_binary(N)},
+	 {<<"size">>, Size}],
     mk_files_list(R, [D | Acc], S + Size).
 
-mk_infodict_multi(PieceHashes, D) ->
+mk_infodict_multi(PieceHashes, D) when is_binary(PieceHashes) ->
     {Sz, L} = mk_files_list(D, [], 0),
-    {dict, [{{string, "pieces"}, {string, PieceHashes}},
-	    {{string, "length"}, {integer, Sz}},
-	    {{string, "files"}, {list, L}}]}.
+    [{<<"pieces">>, PieceHashes},
+     {<<"length">>, Sz},
+     {<<"files">>, L}].
 
 write_torrent_file(Out, Data) ->
     Encoded = etorrent_bcoding:encode(Data),
@@ -95,9 +101,8 @@ torrent_file(AnnounceURL, PieceHashes, FileInfo, Comment) ->
 		   L when is_list(L) ->
 		       mk_infodict_multi(PieceHashes, L)
 	       end,
-    {dict, [{{string, "announce"}, {string, AnnounceURL}},
-	    {{string, "info"}, InfoDict}]
-     ++ mk_comment(Comment)}.
+    [{<<"announce">>, list_to_binary(AnnounceURL)},
+     {<<"info">>, InfoDict}] ++ mk_comment(Comment).
 
 
 
