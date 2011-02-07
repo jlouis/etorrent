@@ -24,7 +24,9 @@ dialyze: compile
 typer:
 	typer --plt ~/.etorrent_dialyzer_plt -r apps -I apps/etorrent/include
 
-rel: compile
+rel: compile rel/etorrent
+
+rel/etorrent:
 	rebar generate
 
 relclean:
@@ -45,12 +47,17 @@ dev: etorrent-dev
 devclean:
 	rm -fr dev
 
-ctclean:
-	rm -f apps/etorrent/test/etorrent_SUITE_data/test_file_30M.random
+testclean:
+	rm -f test/etorrent_SUITE_data/test_file_30M.random
 
-ct:
-	mkdir -p apps/etorrent/test/etorrent_SUITE_data
-	rebar ct
+test: eunit common_test
+
+## Use the ct_run in the built release
+CT_RUN=rel/etorrent/erts-*/bin/ct_run
+
+common_test: rel
+	mkdir -p logs
+	${CT_RUN} -spec etorrent_test.spec
 
 console:
 	dev/etorrent-dev/bin/etorrent console \
@@ -74,7 +81,7 @@ depgraph.dot: compile
 
 .PHONY: all compile tags dialyze run tracer clean \
 	 deps eunit rel xref dev console console-perf graph \
-	 ct
+	 test testclean common_test
 
 %.png: %.dot
 	dot -Tpng $< > $@
