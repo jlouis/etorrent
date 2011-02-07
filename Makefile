@@ -48,6 +48,7 @@ devclean:
 	rm -fr dev
 
 testclean:
+	rm -f test/etorrent_SUITE_data/test_file_30M.random.torrent
 	rm -f test/etorrent_SUITE_data/test_file_30M.random
 
 test: eunit common_test

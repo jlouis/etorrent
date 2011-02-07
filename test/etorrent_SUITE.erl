@@ -16,9 +16,11 @@ init_per_suite(Config) ->
     %% files we will later rely on for fetching, this is ok I think.
     Directory = proplists:get_value(data_dir, Config),
     io:format("Data directory: ~s~n", [Directory]),
-    Fn = filename:join([Directory, "test_file_30M.random"]),
+    TestFn = "test_file_30M.random",
+    Fn = filename:join([Directory, TestFn]),
     ensure_random_file(Fn),
-    ensure_torrent_file(Fn),
+    file:set_cwd(Directory),
+    ensure_torrent_file(TestFn),
     Config.
 
 end_per_suite(_Config) ->
