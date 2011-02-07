@@ -21,7 +21,8 @@ init_per_suite(Config) ->
     ensure_random_file(Fn),
     file:set_cwd(Directory),
     ensure_torrent_file(TestFn),
-    Config.
+    {ok, N} = test_server:start_node('tracker', slave, [{remove, false}]),
+    [{tracker_node, N} | Config].
 
 end_per_suite(_Config) ->
     ok.
