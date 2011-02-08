@@ -10,7 +10,7 @@
 -include("log.hrl").
 
 %% API
--export([start_link/1, start_child/6]).
+-export([start_link/1, start_child/6, start_child/7]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -35,17 +35,24 @@ start_link(Id) -> supervisor:start_link(?MODULE, [Id]).
 	       port()) ->
         {ok, pid(), pid()} | {error, term()}.
 start_child(PeerId, InfoHash, Id, {IP, Port}, Capabilities, Socket) ->
+    start_child("no_tracker_url", PeerId, InfoHash, Id, {IP, Port}, Capabilities, Socket).
+-spec start_child(string(), binary(), binary(), integer(), {ipaddr(), portnum()},
+	       [capabilities()],
+	       port()) ->
+        {ok, pid(), pid()} | {error, term()}.
+start_child(TrackerUrl, PeerId, InfoHash, Id, {IP, Port}, Capabilities, Socket) ->
     GroupPid = gproc:lookup_local_name({torrent, Id, peer_pool_sup}),
     case supervisor:start_child(GroupPid,
-				[PeerId, InfoHash,
+				[TrackerUrl,
+				 PeerId, InfoHash,
 				 Id,
 				 {IP, Port},
 				 Capabilities,
 				 Socket]) of
         {ok, _Pid} ->
-	    RecvPid = gproc:lookup_local_name({peer, Socket, receiver}),
-	    ControlPid = gproc:lookup_local_name({peer, Socket, control}),
-	    {ok, RecvPid, ControlPid};
+            RecvPid = gproc:lookup_local_name({peer, Socket, receiver}),
+            ControlPid = gproc:lookup_local_name({peer, Socket, control}),
+            {ok, RecvPid, ControlPid};
         {error, Reason} ->
             ?ERR([{start_child_peer, Reason}]),
             {error, Reason}

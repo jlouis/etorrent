@@ -15,7 +15,7 @@
 -include("types.hrl").
 
 %% API
--export([start_link/6]).
+-export([start_link/7]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -25,18 +25,19 @@
 %% ====================================================================
 
 %% @doc Start the peer
-%% <p>A peer is fed with quite a lot of data. It gets our local
-%% `PeerId', it gets the `InfoHash', the Torrents `Id', the pair `{IP,
-%% Port}` of the remote peer, what `Capabilities' the peer supports
+%% <p>A peer is fed with quite a lot of data. It gets tracker url, our
+%% local `PeerId', it gets the `InfoHash', the Torrents `Id', the pair
+%% `{IP, Port}` of the remote peer, what `Capabilities' the peer supports
 %% and a `Socket' for communication.</p>
 %% <p>From that a supervisor for the peer and accompanying processes
 %% are spawned.</p>
 %% @end
--spec start_link(binary(), binary(), integer(), {ipaddr(), portnum()},
+-spec start_link(string(), binary(), binary(), integer(), {ipaddr(), portnum()},
 		 [capabilities()], port()) ->
             {ok, pid()} | ignore | {error, term()}.
-start_link(LocalPeerId, InfoHash, Id, {IP, Port}, Capabilities, Socket) ->
-    supervisor:start_link(?MODULE, [LocalPeerId,
+start_link(TrackerUrl, LocalPeerId, InfoHash, Id, {IP, Port}, Capabilities, Socket) ->
+    supervisor:start_link(?MODULE, [TrackerUrl,
+                                    LocalPeerId,
                                     InfoHash,
                                     Id,
                                     {IP, Port},
@@ -46,10 +47,10 @@ start_link(LocalPeerId, InfoHash, Id, {IP, Port}, Capabilities, Socket) ->
 %% ====================================================================
 
 %% @private
-init([LocalPeerId, InfoHash, Id, {IP, Port}, Caps, Socket]) ->
+init([TrackerUrl, LocalPeerId, InfoHash, Id, {IP, Port}, Caps, Socket]) ->
     Control = {control, {etorrent_peer_control, start_link,
-                          [LocalPeerId, InfoHash, Id, {IP, Port},
-			   Caps, Socket]},
+                          [TrackerUrl, LocalPeerId, InfoHash, Id, {IP, Port},
+			              Caps, Socket]},
                 permanent, 5000, worker, [etorrent_peer_control]},
     Receiver = {receiver, {etorrent_peer_recv, start_link,
                           [Id, Socket]},

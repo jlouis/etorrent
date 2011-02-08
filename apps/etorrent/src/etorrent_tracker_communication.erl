@@ -168,12 +168,17 @@ contact_tracker_tier([Url | Next], Event, S, Acc) ->
     case
 	case identify_url_type(Url) of
 	    http -> contact_tracker_http(Url, Event, S);
-	    {udp, IP, Port}  -> contact_tracker_udp(IP, Port, Event, S)
+	    {udp, IP, Port}  -> contact_tracker_udp(Url, IP, Port, Event, S)
 	end
     of
 	{ok, NS} ->
 	    {ok, NS, [Url] ++ lists:reverse(Acc) ++ Next};
 	error ->
+	    %% For private torrent (BEP 27), disconnect all peers coming
+	    %% from the tracker before switching to another one
+	    case etorrent_torrent:is_private(S#state.torrent_id) of
+	        true -> disconnect_tracker(Url)
+	    end,
 	    contact_tracker_tier(Next, Event, S, [Url | Acc])
     end.
 
@@ -192,10 +197,23 @@ identify_url_type(Url) ->
 
     end.
 
+%% @doc Disconnect from tracker designated by its url.
+%% <p>It is called to comply with BEP 27 Private Torrents,
+%% which reads: "When switching between trackers,
+%% the peer MUST disconnect from all current peers".</p>
+%% @end
+-spec disconnect_tracker(string()) -> ok.
+disconnect_tracker(Url) ->
+    F = fun(P) ->
+        etorrent_peer_control:stop(P)
+    end,
+    etorrent_table:foreach_peer_of_tracker(Url, F),
+    ok.
 
-contact_tracker_udp(IP, Port, Event, #state { torrent_id = Id,
-					      info_hash = InfoHash,
-					      peer_id = PeerId } = S) ->
+contact_tracker_udp(Url, IP, Port, Event,
+                        #state { torrent_id = Id,
+                                info_hash = InfoHash,
+                                peer_id = PeerId } = S) ->
     {value, PL} = etorrent_torrent:lookup(Id),
     Uploaded   = proplists:get_value(uploaded, PL),
     Downloaded = proplists:get_value(downloaded, PL),
@@ -212,7 +230,7 @@ contact_tracker_udp(IP, Port, Event, #state { torrent_id = Id,
     case etorrent_udp_tracker_mgr:announce({IP, Port}, PropList, timer:seconds(60)) of
 	{ok, {announce, Peers, Status}} ->
 	    ?INFO([udp_reply_handled]),
-	    {I, MI} = handle_udp_response(Id, Peers, Status),
+	    {I, MI} = handle_udp_response(Url, Id, Peers, Status),
 	    {ok, handle_timeout(I, MI, S)};
 	timeout ->
 	    error
@@ -224,7 +242,7 @@ contact_tracker_http(Url, Event, S) ->
     case etorrent_http:request(RequestUrl) of
     {ok, {{_, 200, _}, _, Body}} ->
         case etorrent_bcoding:decode(Body) of
-        {ok, BC} -> {ok, handle_tracker_response(BC, S)};
+        {ok, BC} -> {ok, handle_tracker_response(Url, BC, S)};
         {error, _} ->
             etorrent_event:notify({malformed_tracker_response, Body}),
             error
@@ -244,22 +262,24 @@ contact_tracker_http(Url, Event, S) ->
 	    error
     end.
 
-handle_tracker_response(BC, S) ->
+handle_tracker_response(Url, BC, S) ->
     handle_tracker_response(
+      Url,
       BC,
       etorrent_bcoding:get_string_value("failure reason", BC, none),
       etorrent_bcoding:get_string_value("warning message", BC, none),
       S).
 
-handle_tracker_response(BC, E, _WM, S) when is_list(E) ->
+handle_tracker_response(_Url, BC, E, _WM, S) when is_list(E) ->
     etorrent_event:notify({tracker_error, S#state.torrent_id, E}),
     handle_timeout(BC, S);
-handle_tracker_response(BC, none, W, S) when is_list(W) ->
+handle_tracker_response(Url, BC, none, W, S) when is_list(W) ->
     etorrent_event:notify({tracker_warning, S#state.torrent_id, W}),
-    handle_tracker_response(BC, none, none, S);
-handle_tracker_response(BC, none, none, S) ->
+    handle_tracker_response(Url, BC, none, none, S);
+handle_tracker_response(Url, BC, none, none, S) ->
     %% Add new peers
-    etorrent_peer_mgr:add_peers(S#state.torrent_id,
+    etorrent_peer_mgr:add_peers(Url,
+                                S#state.torrent_id,
                                 response_ips(BC)),
     %% Update the state of the torrent
     ok = etorrent_torrent:statechange(
@@ -271,8 +291,8 @@ handle_tracker_response(BC, none, none, S) ->
     TrackerId = etorrent_bcoding:get_value("trackerid", BC, tracker_id_not_given),
     handle_timeout(BC, S#state { trackerid = TrackerId }).
 
-handle_udp_response(Id, Peers, Status) ->
-    etorrent_peer_mgr:add_peers(Id, Peers),
+handle_udp_response(Url, Id, Peers, Status) ->
+    etorrent_peer_mgr:add_peers(Url, Id, Peers),
     etorrent_torrent:statechange(Id,
 				 [{tracker_report,
 				   proplists:get_value(seeders, Status, 0),

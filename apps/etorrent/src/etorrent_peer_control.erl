@@ -17,7 +17,7 @@
 -include("log.hrl").
 
 %% API
--export([start_link/6, choke/1, unchoke/1, have/2, initialize/2,
+-export([start_link/7, choke/1, unchoke/1, have/2, initialize/2,
         incoming_msg/2, stop/1]).
 
 %% gen_server callbacks
@@ -64,8 +64,8 @@
 
 %% @doc Starts the server
 %% @end
-start_link(LocalPeerId, InfoHash, Id, {IP, Port}, Caps, Socket) ->
-    gen_server:start_link(?MODULE, [LocalPeerId, InfoHash,
+start_link(TrackerUrl, LocalPeerId, InfoHash, Id, {IP, Port}, Caps, Socket) ->
+    gen_server:start_link(?MODULE, [TrackerUrl, LocalPeerId, InfoHash,
                                     Id, {IP, Port}, Caps, Socket], []).
 
 %% @doc Gracefully ask the server to stop.
@@ -128,9 +128,9 @@ incoming_msg(Pid, Msg) ->
 %%====================================================================
 
 %% @private
-init([LocalPeerId, InfoHash, Id, {IP, Port}, Caps, Socket]) ->
+init([TrackerUrl, LocalPeerId, InfoHash, Id, {IP, Port}, Caps, Socket]) ->
     random:seed(now()),
-    ok = etorrent_table:new_peer(IP, Port, Id, self(), leeching),
+    ok = etorrent_table:new_peer(TrackerUrl, IP, Port, Id, self(), leeching),
     ok = etorrent_choker:monitor(self()),
     {value, NumPieces} = etorrent_torrent:num_pieces(Id),
     gproc:add_local_name({peer, Socket, control}),

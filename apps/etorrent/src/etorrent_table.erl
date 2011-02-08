@@ -20,8 +20,8 @@
 -export([get_path/2, insert_path/2, delete_paths/1]).
 
 %% Peer information
--export([get_peer_info/1, new_peer/5, connected_peer/3,
-	 foreach_peer/2, statechange_peer/2]).
+-export([get_peer_info/1, new_peer/6, connected_peer/3,
+	 foreach_peer/2, foreach_peer_of_tracker/2, statechange_peer/2]).
 
 %% Torrent information
 -export([all_torrents/0, statechange_torrent/2, get_torrent/1, acquire_check_token/1,
@@ -36,6 +36,8 @@
                    path :: string() | '_'}). % (IDX) File system path minus work dir
 
 -record(peer, {pid :: pid() | '_' | '$1', % We identify each peer with it's pid.
+               tracker_url_hash :: integer() | '_', % Which tracker this peer comes from.
+                                              % A tracker is identified by the hash of its url.
                ip :: ipaddr() | '_',  % Ip of peer in question
                port :: portnum() | '_', % Port of peer in question
                torrent_id :: non_neg_integer() | '_', % (IDX) Torrent Id this peer belongs to
@@ -169,6 +171,14 @@ all_peer_pids(Id) ->
     R = ets:match(peers, #peer { torrent_id = Id, pid = '$1', _ = '_' }),
     {value, [Pid || [Pid] <- R]}.
 
+%% @doc Return all peer pids come from the tracker designated by its url.
+%% @end
+-spec all_peers_of_tracker(string()) -> {value, [pid()]}.
+all_peers_of_tracker(Url) ->
+    R = ets:match(peers, #peer{tracker_url_hash = erlang:phase2(Url),
+                               pid = '$1', _ = '_'}),
+    {value, [Pid || [Pid] <- R]}.
+
 %% @doc Change the peer to a seeder
 %% @end
 -spec statechange_peer(pid(), seeder) -> ok.
@@ -179,10 +189,10 @@ statechange_peer(Pid, seeder) ->
 
 %% @doc Insert a row for the peer
 %% @end
--spec new_peer(ipaddr(), portnum(), integer(), pid(), seeding | leeching) -> ok.
-new_peer(IP, Port, TorrentId, Pid, State) ->
-    true = ets:insert(peers, #peer { pid = Pid, ip = IP, port = Port,
-				     torrent_id = TorrentId, state = State}),
+-spec new_peer(string(), ipaddr(), portnum(), integer(), pid(), seeding | leeching) -> ok.
+new_peer(TrackerUrl, IP, Port, TorrentId, Pid, State) ->
+    true = ets:insert(peers, #peer { pid = Pid, tracker_url_hash = erlang:phash2(TrackerUrl),
+                     ip = IP, port = Port, torrent_id = TorrentId, state = State}),
     add_monitor(peer, Pid).
 
 %% @doc Add a new torrent
@@ -217,6 +227,14 @@ connected_peer(IP, Port, Id) when is_integer(Id) ->
 -spec foreach_peer(integer(), fun((pid()) -> term())) -> ok.
 foreach_peer(Id, F) ->
     {value, Pids} = all_peer_pids(Id),
+    lists:foreach(F, Pids),
+    ok.
+
+%% @doc Invoke a function on all peers come from one tracker.
+%% @end
+-spec foreach_peer_of_tracker(string(), fun((pid()) -> term())) -> ok.
+foreach_peer_of_tracker(TrackerUrl, F) ->
+    {value, Pids} = all_peers_of_tracker(TrackerUrl),
     lists:foreach(F, Pids),
     ok.
 
