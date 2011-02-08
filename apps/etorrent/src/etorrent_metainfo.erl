@@ -184,11 +184,21 @@ test_torrent() ->
 	<<34,129,182,214,148,202,7,93,69,98,198,49,204,47,61,
 	  110>>}]}].
 
+test_torrent_private() ->
+    T = test_torrent(),
+    I = [{<<"info">>, IL} || {<<"info">>, IL} <- T],
+    H = T -- I,
+    P = [{<<"info">>, IL ++ [{<<"private">>, 1}]} || {<<"info">>, IL} <- T],
+    H ++ P.
+      	  
 get_http_urls_test() ->
     ?assertEqual([["http://torrent.ubuntu.com:6969/announce"],
 		  ["http://ipv6.torrent.ubuntu.com:6969/announce"]],
 		 get_http_urls(test_torrent())).
 
+is_private_test() ->
+    ?assertEqual(false, is_private(test_torrent())),
+    ?assertEqual(true, is_private(test_torrent_private())).
 
 -endif.
 
