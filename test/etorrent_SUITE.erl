@@ -11,6 +11,22 @@
 suite() ->
     [{timetrap, {minutes, 1}}].
 
+start_opentracker(Dir) ->
+    ToSpawn = "run_opentracker.sh -i 127.0.0.1 -p 6969",
+    Spawn = filename:join([Dir, ToSpawn]),
+    Pid = spawn(fun() ->
+			Port = open_port(
+				 {spawn, Spawn}, [binary, stream, eof]),
+			receive
+			    close ->
+				port_close(Port)
+			end
+		end),
+    Pid.
+
+stop_opentracker(Pid) ->
+    Pid ! close.
+
 init_per_suite(Config) ->
     %% We should really use priv_dir here, but as we are for-once creating
     %% files we will later rely on for fetching, this is ok I think.
@@ -21,10 +37,13 @@ init_per_suite(Config) ->
     ensure_random_file(Fn),
     file:set_cwd(Directory),
     ensure_torrent_file(TestFn),
-    {ok, N} = test_server:start_node('tracker', slave, [{remove, false}]),
-    [{tracker_node, N} | Config].
+    Pid = start_opentracker(Directory),
+    %{ok, N} = test_server:start_node('tracker', slave, [binary, use_stdio, stream]),
+    [{tracker_port, Pid} | Config].
 
-end_per_suite(_Config) ->
+end_per_suite(Config) ->
+    Pid = proplists:get_value(tracker_port, Config),
+    stop_opentracker(Pid),
     ok.
 
 init_per_testcase(_Case, Config) ->
