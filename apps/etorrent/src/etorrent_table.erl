@@ -175,7 +175,7 @@ all_peer_pids(Id) ->
 %% @end
 -spec all_peers_of_tracker(string()) -> {value, [pid()]}.
 all_peers_of_tracker(Url) ->
-    R = ets:match(peers, #peer{tracker_url_hash = erlang:phase2(Url),
+    R = ets:match(peers, #peer{tracker_url_hash = erlang:phash2(Url),
                                pid = '$1', _ = '_'}),
     {value, [Pid || [Pid] <- R]}.
 
