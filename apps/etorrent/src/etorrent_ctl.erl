@@ -14,7 +14,7 @@
 
 -export([start_link/1,
 
-         start/1, stop/1,
+         start/1, start/2, stop/1,
          check/1]).
 
 -export([handle_cast/2, handle_call/3, init/1, terminate/2]).
@@ -38,9 +38,17 @@ start_link(PeerId) ->
 
 % @doc Ask the manager process to start a new torrent, given in File.
 % @end
--spec start(string()) -> ok.
+-spec start(string()) -> ok | {error, term()}.
 start(File) ->
-    gen_server:call(?SERVER, {start, File}, 15*1000). % Timeout should be enough
+    start(File, none).
+
+%% @doc Ask the manager to start a new torrent, given in File
+%% Upon completion the given CallBack function is executed in a separate
+%% process.
+%% @end
+-spec start(string(), none | fun (() -> any())) -> ok | {error, term()}.
+start(File, CallBack) ->
+    gen_server:call(?SERVER, {start, File, CallBack}, 15*1000).
 
 % @doc Check a torrents contents
 % @end
@@ -72,7 +80,7 @@ handle_cast({stop, F}, S) ->
     {noreply, S}.
 
 %% @private
-handle_call({start, F}, _From, S) ->
+handle_call({start, F, CallBack}, _From, S) ->
     ?INFO([starting, F]),
     case load_torrent(F) of
         duplicate -> {reply, duplicate, S};
@@ -82,7 +90,9 @@ handle_call({start, F}, _From, S) ->
                             {Torrent, F, TorrentIH},
                             S#state.local_peer_id,
                             etorrent_counters:next(torrent)) of
-                {ok, _} -> {reply, ok, S};
+                {ok, TorrentPid} ->
+		    install_callback(TorrentPid, TorrentIH, CallBack),
+		    {reply, ok, S};
                 {error, {already_started, _Pid}} = Err ->
 		    {reply, Err, S}
             end;
@@ -147,3 +157,7 @@ load_torrent_internal(F) ->
     P = filename:join([Workdir, F]),
     etorrent_bcoding:parse_file(P).
 
+install_callback(_TorrentPid, _InfoHash, none) ->
+    ok;
+install_callback(TorrentPid, InfoHash, Fun) ->
+    ok = etorrent_callback_handler:install_callback(TorrentPid, InfoHash, Fun).

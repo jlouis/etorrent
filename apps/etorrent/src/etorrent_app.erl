@@ -26,6 +26,7 @@ start(_Type, _Args) ->
 	{ok, Pid} ->
 	    ok = etorrent_memory_logger:add_handler(),
 	    ok = etorrent_file_logger:add_handler(),
+	    ok = etorrent_callback_handler:add_handler(),
 	    case etorrent_config:webui() of
 		true -> start_webui();
 		false -> ignore

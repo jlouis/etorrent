@@ -13,12 +13,24 @@
 -export([help/0, h/0, list/0, l/0, show/0, s/0, show/1, s/1, check/1]).
 
 %% Etorrent-as-library
--export([start/1]).
+-export([start/1, start/2]).
 
 -ignore_xref([{h, 0}, {l, 0}, {s, 0}, {s, 1}, {check, 1},
 	      {help, 0}, {list, 0}, {show, 0}, {show, 1}]).
 
 %%====================================================================
+
+%% @doc Start downloading torrent given by Filename
+%% @end
+start(Filename) when is_list(Filename) ->
+    etorrent_ctl:start(Filename).
+
+%% @doc Start downloading torrent given by Filename
+%% When the torrent is completed, the Callback function is executed
+%% in its own newly spawned process
+%% @end
+start(Filename, CallBack) when is_list(Filename), is_function(CallBack, 0) ->
+    etorrent_ctl:start(Filename, CallBack).
 
 %% @doc List currently active torrents.
 %% <p>This function will list the torrent files which are currently in
@@ -99,10 +111,11 @@ help() ->
                 {"list, l", "List torrents in system"},
                 {"show, s", "Show detailed information for a given torrent"},
                 {"stop", "Stop the system"},
-	        {"start(File)", "Start the given file as a .torrent"}],
+	        {"start(File)", "Start the given file as a .torrent"},
+	        {"start(File, CBFun)", "Start .torrent with a callback function upon completion"}],
 
     lists:foreach(fun({Command, Desc}) ->
-                          io:format("~-12.s - ~s~n", [Command, Desc])
+                          io:format("~-20.s - ~s~n", [Command, Desc])
                   end,
                   Commands),
     ok.
@@ -117,8 +130,6 @@ s() -> show().
 %% @equiv show(Item)
 s(Item) -> show(Item).
 
-start(Filename) when is_list(Filename) ->
-    etorrent_ctl:start(Filename).
 
 %%=====================================================================
 %% @todo Move this function (and its webui friend) to etorrent_torrent.
@@ -127,4 +138,12 @@ percent_complete(R) ->
     T = proplists:get_value(total, R),
     L = proplists:get_value(left, R),
     (T - L) / T * 100.
+
+
+
+
+
+
+
+
 
