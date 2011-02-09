@@ -9,7 +9,11 @@
 -module(etorrent).
 
 %% API
+%% Query
 -export([help/0, h/0, list/0, l/0, show/0, s/0, show/1, s/1, check/1]).
+
+%% Etorrent-as-library
+-export([start/1]).
 
 -ignore_xref([{h, 0}, {l, 0}, {s, 0}, {s, 1}, {check, 1},
 	      {help, 0}, {list, 0}, {show, 0}, {show, 1}]).
@@ -94,7 +98,8 @@ help() ->
     Commands = [{"help, h", "This help"},
                 {"list, l", "List torrents in system"},
                 {"show, s", "Show detailed information for a given torrent"},
-                {"stop", "Stop the system"}],
+                {"stop", "Stop the system"},
+	        {"start(File)", "Start the given file as a .torrent"}],
 
     lists:foreach(fun({Command, Desc}) ->
                           io:format("~-12.s - ~s~n", [Command, Desc])
@@ -111,6 +116,9 @@ l() -> list().
 s() -> show().
 %% @equiv show(Item)
 s(Item) -> show(Item).
+
+start(Filename) when is_list(Filename) ->
+    etorrent_ctl:start(Filename).
 
 %%=====================================================================
 %% @todo Move this function (and its webui friend) to etorrent_torrent.

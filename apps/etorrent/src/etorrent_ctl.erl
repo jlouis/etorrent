@@ -40,7 +40,7 @@ start_link(PeerId) ->
 % @end
 -spec start(string()) -> ok.
 start(File) ->
-    gen_server:cast(?SERVER, {start, File}).
+    gen_server:call(?SERVER, {start, File}, 15*1000). % Timeout should be enough
 
 % @doc Check a torrents contents
 % @end
@@ -63,24 +63,6 @@ init([PeerId]) ->
     {ok, #state { local_peer_id = PeerId}}.
 
 %% @private
-handle_cast({start, F}, S) ->
-    ?INFO([starting, F]),
-    case load_torrent(F) of
-        duplicate -> {noreply, S};
-        {ok, Torrent} ->
-            TorrentIH = etorrent_metainfo:get_infohash(Torrent),
-            case etorrent_torrent_pool:start_child(
-                            {Torrent, F, TorrentIH},
-                            S#state.local_peer_id,
-                            etorrent_counters:next(torrent)) of
-                {ok, _} -> {noreply, S};
-                {error, {already_started, _Pid}} -> {noreply, S}
-            end;
-        {error, _Reason} ->
-            ?INFO([malformed_torrent_file, F]),
-            etorrent_event:notify({malformed_torrent_file, F}),
-            {noreply, S}
-    end;
 handle_cast({check, Id}, S) ->
     Child = gproc:lookup_local_name({torrent, Id, control}),
     etorrent_torrent_ctl:check_torrent(Child),
@@ -90,6 +72,25 @@ handle_cast({stop, F}, S) ->
     {noreply, S}.
 
 %% @private
+handle_call({start, F}, _From, S) ->
+    ?INFO([starting, F]),
+    case load_torrent(F) of
+        duplicate -> {reply, duplicate, S};
+        {ok, Torrent} ->
+            TorrentIH = etorrent_metainfo:get_infohash(Torrent),
+            case etorrent_torrent_pool:start_child(
+                            {Torrent, F, TorrentIH},
+                            S#state.local_peer_id,
+                            etorrent_counters:next(torrent)) of
+                {ok, _} -> {reply, ok, S};
+                {error, {already_started, _Pid}} = Err ->
+		    {reply, Err, S}
+            end;
+        {error, Reason} ->
+            ?INFO([malformed_torrent_file, F]),
+            etorrent_event:notify({malformed_torrent_file, F}),
+	    {reply, {error, Reason}}
+    end;
 handle_call(stop_all, _From, S) ->
     stop_all(),
     {reply, ok, S};
