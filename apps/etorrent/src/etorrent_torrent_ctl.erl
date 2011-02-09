@@ -95,10 +95,11 @@ initializing(timeout, #state { id = Id, torrent = Torrent } = S) ->
                    Id,
                    {{uploaded, 0},
                     {downloaded, 0},
-		    {all_time_uploaded, AU},
-		    {all_time_downloaded, AD},
+		            {all_time_uploaded, AU},
+		            {all_time_downloaded, AD},
                     {left, calculate_amount_left(Id, NumberOfPieces, Torrent)},
-                    {total, etorrent_metainfo:get_length(Torrent)}},
+                    {total, etorrent_metainfo:get_length(Torrent)},
+                    {is_private, etorrent_metainfo:is_private(Torrent)}},
                    NumberOfPieces),
 
             %% Update the tracking map. This torrent has been started.

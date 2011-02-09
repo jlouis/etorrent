@@ -14,7 +14,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/1, enter_bad_peer/3, add_peers/2, is_bad_peer/2]).
+-export([start_link/1, enter_bad_peer/3, add_peers/2, add_peers/3, is_bad_peer/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -55,7 +55,10 @@ enter_bad_peer(IP, Port, PeerId) ->
 % @end
 -spec add_peers(integer(), [{ipaddr(), portnum()}]) -> ok.
 add_peers(TorrentId, IPList) ->
-    gen_server:cast(?SERVER, {add_peers,
+    add_peers("no_tracker_url", TorrentId, IPList).
+-spec add_peers(string(), integer(), [{ipaddr(), portnum()}]) -> ok.
+add_peers(TrackerUrl, TorrentId, IPList) ->
+    gen_server:cast(?SERVER, {add_peers, TrackerUrl,
                               [{TorrentId, {IP, Port}} || {IP, Port} <- IPList]}).
 
 % @doc Returns true if this peer is in the list of baddies
@@ -80,8 +83,8 @@ handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
 
-handle_cast({add_peers, IPList}, S) ->
-    NS = start_new_peers(IPList, S),
+handle_cast({add_peers, TrackerUrl, IPList}, S) ->
+    NS = start_new_peers(TrackerUrl, IPList, S),
     {noreply, NS};
 handle_cast({enter_bad_peer, IP, Port, PeerId}, S) ->
     case ets:lookup(etorrent_bad_peer, {IP, Port}) of
@@ -121,49 +124,49 @@ code_change(_OldVsn, State, _Extra) ->
 
 %% --------------------------------------------------------------------
 
-start_new_peers(IPList, State) ->
+start_new_peers(TrackerUrl, IPList, State) ->
     %% Update the PeerList with the new incoming peers
     PeerList = etorrent_utils:list_shuffle(
 		 clean_list(IPList ++ State#state.available_peers)),
     PeerId   = State#state.our_peer_id,
     {value, SlotsLeft} = etorrent_counters:slots_left(),
-    Remaining = fill_peers(SlotsLeft, PeerId, PeerList),
+    Remaining = fill_peers(TrackerUrl, SlotsLeft, PeerId, PeerList),
     State#state{available_peers = Remaining}.
 
 clean_list([]) -> [];
 clean_list([H | T]) ->
     [H | clean_list(T -- [H])].
 
-fill_peers(0, _PeerId, Rem) -> Rem;
-fill_peers(_K, _PeerId, []) -> [];
-fill_peers(K, PeerId, [{TorrentId, {IP, Port}} | R]) ->
+fill_peers(_TrackerUrl, 0, _PeerId, Rem) -> Rem;
+fill_peers(_TrackerUrl, _K, _PeerId, []) -> [];
+fill_peers(TrackerUrl, K, PeerId, [{TorrentId, {IP, Port}} | R]) ->
     case is_bad_peer(IP, Port) of
-       true -> fill_peers(K, PeerId, R);
-       false -> guard_spawn_peer(K, PeerId, TorrentId, IP, Port, R)
+       true -> fill_peers(TrackerUrl, K, PeerId, R);
+       false -> guard_spawn_peer(TrackerUrl, K, PeerId, TorrentId, IP, Port, R)
     end.
 
-guard_spawn_peer(K, PeerId, TorrentId, IP, Port, R) ->
+guard_spawn_peer(TrackerUrl, K, PeerId, TorrentId, IP, Port, R) ->
     case etorrent_table:connected_peer(IP, Port, TorrentId) of
         true ->
             % Already connected to the peer. This happens
             % when the peer connects back to us and the
             % tracker, which knows nothing about this,
             % still hands us the ip address.
-            fill_peers(K, PeerId, R);
+            fill_peers(TrackerUrl, K, PeerId, R);
         false ->
             case etorrent_table:get_torrent(TorrentId) of
-		not_found -> %% No such Torrent currently started, skip
-		    fill_peers(K, PeerId, R);
+                not_found -> %% No such Torrent currently started, skip
+                    fill_peers(TrackerUrl, K, PeerId, R);
                 {value, PL} ->
-                    try_spawn_peer(K, PeerId, PL, TorrentId, IP, Port, R)
+                    try_spawn_peer(TrackerUrl, K, PeerId, PL, TorrentId, IP, Port, R)
             end
     end.
 
-try_spawn_peer(K, PeerId, PL, TorrentId, IP, Port, R) ->
-    spawn_peer(PeerId, PL, TorrentId, IP, Port),
-    fill_peers(K-1, PeerId, R).
+try_spawn_peer(TrackerUrl, K, PeerId, PL, TorrentId, IP, Port, R) ->
+    spawn_peer(TrackerUrl, PeerId, PL, TorrentId, IP, Port),
+    fill_peers(TrackerUrl, K-1, PeerId, R).
 
-spawn_peer(PeerId, PL, TorrentId, IP, Port) ->
+spawn_peer(TrackerUrl, PeerId, PL, TorrentId, IP, Port) ->
     spawn(fun () ->
       case gen_tcp:connect(IP, Port, [binary, {active, false}],
 			   ?DEFAULT_CONNECT_TIMEOUT) of
@@ -176,6 +179,7 @@ spawn_peer(PeerId, PL, TorrentId, IP, Port) ->
 		  {ok, Capabilities, RPID} ->
 		      {ok, RecvPid, ControlPid} =
 			  etorrent_peer_pool:start_child(
+			    TrackerUrl,
 			    RPID,
 			    proplists:get_value(info_hash, PL),
 			    TorrentId,

@@ -21,10 +21,11 @@
 %% Metainfo
 -export([get_piece_length/1, get_length/1, get_pieces/1, get_url/1,
          get_infohash/1,
-	 file_paths/1,
-	 file_path_len/1,
+	     file_paths/1,
+	     file_path_len/1,
          get_files/1, get_name/1,
-         get_http_urls/1, get_udp_urls/1, get_dht_urls/1]).
+         get_http_urls/1, get_udp_urls/1, get_dht_urls/1,
+         is_private/1]).
 
 %% ====================================================================
 
@@ -118,6 +119,15 @@ get_name(Torrent) ->
     N = etorrent_bcoding:get_info_value("name", Torrent),
     true = valid_path(N),
     binary_to_list(N).
+    
+%% @doc Return true if the torrent is private.
+%% <p> According to BEP 27, a torrent is private if its metainfo file
+%% contains the "private=1" key-value pair.</p>
+%% @end
+-spec is_private(bcode()) -> boolean().
+is_private(Torrent) ->
+    etorrent_bcoding:get_info_value("private", Torrent) =:= 1.
+    
 
 %% ====================================================================
 
@@ -174,11 +184,21 @@ test_torrent() ->
 	<<34,129,182,214,148,202,7,93,69,98,198,49,204,47,61,
 	  110>>}]}].
 
+test_torrent_private() ->
+    T = test_torrent(),
+    I = [{<<"info">>, IL} || {<<"info">>, IL} <- T],
+    H = T -- I,
+    P = [{<<"info">>, IL ++ [{<<"private">>, 1}]} || {<<"info">>, IL} <- T],
+    H ++ P.
+      	  
 get_http_urls_test() ->
     ?assertEqual([["http://torrent.ubuntu.com:6969/announce"],
 		  ["http://ipv6.torrent.ubuntu.com:6969/announce"]],
 		 get_http_urls(test_torrent())).
 
+is_private_test() ->
+    ?assertEqual(false, is_private(test_torrent())),
+    ?assertEqual(true, is_private(test_torrent_private())).
 
 -endif.
 

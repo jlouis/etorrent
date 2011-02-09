@@ -21,7 +21,8 @@
          new/3, all/0, statechange/2,
          num_pieces/1, decrease_not_fetched/1,
          is_seeding/1, seeding/0,
-         lookup/1, is_endgame/1]).
+         lookup/1, is_endgame/1,
+         is_private/1]).
 
 -export([init/1, handle_call/3, handle_cast/2, code_change/3,
          handle_info/2, terminate/2]).
@@ -52,6 +53,8 @@
 	  leechers = 0 :: non_neg_integer(),
 	  %% This is a list of recent speeds present so we can plot them
 	  rate_sparkline = [0.0] :: [float()],
+	  %% BEP 27: is this torrent private
+	  is_private :: boolean(),
 	  state :: torrent_state()}).
 
 -define(SERVER, ?MODULE).
@@ -76,10 +79,11 @@ start_link() ->
 -spec new(integer(),
        {{uploaded, integer()},
         {downloaded, integer()},
-	{all_time_uploaded, non_neg_integer()},
-	{all_time_downloaded, non_neg_integer()},
+	    {all_time_uploaded, non_neg_integer()},
+	    {all_time_downloaded, non_neg_integer()},
         {left, integer()},
-        {total, integer()}}, integer()) -> ok.
+        {total, integer()},
+        {is_private, boolean()}}, integer()) -> ok.
 new(Id, Info, NPieces) ->
     gen_server:call(?SERVER, {new, Id, Info, NPieces}).
 
@@ -152,6 +156,15 @@ is_endgame(Id) ->
         [T] -> T#torrent.state =:= endgame;
         [] -> false % The torrent isn't there anymore.
     end.
+    
+%% @doc Returns true if the torrent is private.
+%% @end
+-spec is_private(integer()) -> boolean().
+is_private(Id) ->
+    case ets:lookup(?TAB, Id) of
+        [T] -> T#torrent.is_private;
+        [] -> false
+    end.
 
 %% =======================================================================
 
@@ -168,9 +181,10 @@ init([]) ->
 
 %% @private
 handle_call({new, Id, {{uploaded, U}, {downloaded, D},
-		       {all_time_uploaded, AU},
-		       {all_time_downloaded, AD},
-                       {left, L}, {total, T}}, NPieces}, {Pid, _Tag}, S) ->
+		               {all_time_uploaded, AU},
+		               {all_time_downloaded, AD},
+                       {left, L}, {total, T}, {is_private, P}},
+                       NPieces}, {Pid, _Tag}, S) ->
     State = case L of
                 0 -> etorrent_event:seeding_torrent(Id),
                      seeding;
@@ -182,9 +196,10 @@ handle_call({new, Id, {{uploaded, U}, {downloaded, D},
                            total = T,
                            uploaded = U,
                            downloaded = D,
-			   all_time_uploaded = AU,
-			   all_time_downloaded = AD,
+			               all_time_uploaded = AU,
+			               all_time_downloaded = AD,
                            pieces = NPieces,
+                           is_private = P,
                            state = State }),
     Missing = etorrent_piece_mgr:num_not_fetched(Id),
     true = ets:insert_new(etorrent_c_pieces, #c_pieces{ id = Id, missing = Missing}),
