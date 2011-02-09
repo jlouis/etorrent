@@ -9,11 +9,15 @@
 
 -include("etorrent_version.hrl").
 
--export([start/2, stop/1, prep_stop/1, profile_output/0]).
+-export([start/0, start/2, stop/1, prep_stop/1, profile_output/0]).
 
 -ignore_xref([{'prep_stop', 1}, {stop, 0}, {check, 1}]).
 
 -define(RANDOM_MAX_SIZE, 999999999999).
+
+start() ->
+    ensure_started([inets, crypto, sasl, gproc]),
+    application:start(etorrent).
 
 %% @private
 start(_Type, _Args) ->
@@ -102,3 +106,14 @@ generate_peer_id() ->
     Number = crypto:rand_uniform(0, ?RANDOM_MAX_SIZE),
     Rand = io_lib:fwrite("~B----------", [Number]),
     lists:flatten(io_lib:format("-ET~s-~12s", [?VERSION, Rand])).
+
+ensure_started([]) ->
+    ok;
+ensure_started([App | R]) ->
+    case application:start(App) of
+	ok ->
+	    ensure_started(R);
+	{error, {already_started, App}} ->
+	    ensure_started(R)
+    end.
+

@@ -13,12 +13,21 @@
 -export([help/0, h/0, list/0, l/0, show/0, s/0, show/1, s/1, check/1]).
 
 %% Etorrent-as-library
+-export([start_app/0]).
 -export([start/1, start/2]).
 
 -ignore_xref([{h, 0}, {l, 0}, {s, 0}, {s, 1}, {check, 1},
 	      {help, 0}, {list, 0}, {show, 0}, {show, 1}]).
 
 %%====================================================================
+
+%% @doc Start the etorrent application outside of the normal app framework
+%% This is mostly intended to be use for small start tests and so on. For
+%% real integration, it is better to build a release relying on the etorrent
+%% application.
+%% @end
+start_app() ->
+    etorrent_app:start().
 
 %% @doc Start downloading torrent given by Filename
 %% @end
