@@ -18,16 +18,18 @@
 %% @private
 start(_Type, _Args) ->
     PeerId = generate_peer_id(),
-    %% DB
-    case etorrent_config:webui() of
-	    true -> start_webui();
-	    false -> ignore
-    end,
+    Config = [], % Pick up configuration from config file
+
     consider_profiling(),
-    case etorrent_sup:start_link(PeerId) of
+
+    case etorrent_sup:start_link(PeerId, Config) of
 	{ok, Pid} ->
 	    ok = etorrent_memory_logger:add_handler(),
 	    ok = etorrent_file_logger:add_handler(),
+	    case etorrent_config:webui() of
+		true -> start_webui();
+		false -> ignore
+	    end,
 	    {ok, Pid};
 	{error, Err} ->
 	    {error, Err}
@@ -36,11 +38,11 @@ start(_Type, _Args) ->
 %% Consider if the profiling should be enabled.
 consider_profiling() ->
     case etorrent_config:profiling() of
-	    true ->
+	{profiling, true} ->
             eprof:start(),
             eprof:start_profiling([self()]);
-	    false ->
-	        ignore
+	{profiling, false} ->
+	    ignore
     end.
 
 %% @doc Output profile information

@@ -13,7 +13,7 @@
 -include("log.hrl").
 
 %% API
--export([start_link/1]).
+-export([start_link/2]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -24,16 +24,18 @@
 
 %% @doc Start the supervisor
 %% @end
--spec start_link([binary()]) -> {ok, pid()} | ignore | {error, term()}.
-start_link(PeerId) ->
-    supervisor:start_link({local, ?MODULE}, ?MODULE, [PeerId]).
+-spec start_link([binary()], [{atom(), term()}]) ->
+			{ok, pid()} | ignore | {error, term()}.
+start_link(PeerId, Config) ->
+    supervisor:start_link({local, ?MODULE}, ?MODULE, [PeerId, Config]).
 
 
 %% ====================================================================
 
 %% @private
-init([PeerId]) ->
+init([PeerId, Config]) ->
     ?INFO([etorrent_supervisor_starting, PeerId]),
+    Conf         = ?CHILDP(etorrent_config, [Config]),
     Tables       = ?CHILD(etorrent_table),
     Torrent      = ?CHILD(etorrent_torrent),
     Counters     = ?CHILD(etorrent_counters),
@@ -70,7 +72,7 @@ init([PeerId]) ->
     end,
 
     {ok, {{one_for_all, 3, 60},
-          [Tables, Torrent,
+          [Conf, Tables, Torrent,
            Counters, EventManager, PeerMgr,
            FastResume, PeerStates, PieceManager,
            ChunkManager, Choker, Listener,
