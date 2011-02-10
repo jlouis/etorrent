@@ -9,24 +9,31 @@
 
 -include("etorrent_version.hrl").
 
--export([start/0, start/2, stop/1, prep_stop/1, profile_output/0]).
+-export([start/0, start/1, start/2, stop/1, prep_stop/1, profile_output/0]).
 
 -ignore_xref([{'prep_stop', 1}, {stop, 0}, {check, 1}]).
 
 -define(RANDOM_MAX_SIZE, 999999999999).
 
 start() ->
+    start([]).
+
+start(Config) ->
+    load_config(Config),
     ensure_started([inets, crypto, sasl, gproc]),
     application:start(etorrent).
 
+load_config([]) ->
+    ok;
+load_config([{Key, Val} | Next]) ->
+    application:set_env(etorrent, Key, Val),
+    load_config(Next).
+
 %% @private
 start(_Type, _Args) ->
-    PeerId = generate_peer_id(),
-    Config = [], % Pick up configuration from config file
-
     consider_profiling(),
-
-    case etorrent_sup:start_link(PeerId, Config) of
+    PeerId = generate_peer_id(),
+    case etorrent_sup:start_link(PeerId) of
 	{ok, Pid} ->
 	    ok = etorrent_memory_logger:add_handler(),
 	    ok = etorrent_file_logger:add_handler(),
