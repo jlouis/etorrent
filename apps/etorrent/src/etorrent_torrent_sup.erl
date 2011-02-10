@@ -29,9 +29,17 @@ start_link({Torrent, TorrentFile, TorrentIH}, Local_PeerId, Id) ->
 %% is before telling the tracker we are serving it. In fact, we can't accurately
 %% report the "left" part to the tracker if it is not the case.</p>
 %% @end
--spec start_child_tracker(pid(), [tier()], binary(), binary(), integer()) -> {ok, pid()} | {ok, pid(), term()} | {error, term()}.
+-spec start_child_tracker(pid(), [tier()], binary(), binary(), integer()) ->
+                {ok, pid()} | {ok, pid(), term()} | {error, term()}.
 start_child_tracker(Pid, UrlTiers, InfoHash, Local_Peer_Id, TorrentId) ->
-    _ = etorrent_dht:add_torrent(InfoHash, TorrentId),
+    %% BEP 27 Private Torrent spec does not say this explicitly, but
+    %% Azureus wiki does mention a bittorrent client that conforms to
+    %% BEP 27 should behave like a classic one, i.e. no PEX or DHT.
+    %% So only enable DHT support for non-private torrent here.
+    case etorrent_torrent:is_private(TorrentId) of
+        false -> _ = etorrent_dht:add_torrent(InfoHash, TorrentId);
+        true -> ok
+    end,
     Tracker = {tracker_communication,
                {etorrent_tracker_communication, start_link,
                 [self(), UrlTiers, InfoHash, Local_Peer_Id, TorrentId]},
