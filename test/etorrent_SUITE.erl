@@ -6,10 +6,10 @@
 	 init_per_suite/1, end_per_suite/1,
 	 init_per_testcase/2, end_per_testcase/2]).
 
--export([member/1]).
+-export([member/1, seed_leech/1]).
 
 suite() ->
-    [{timetrap, {minutes, 1}}].
+    [{timetrap, {minutes, 3}}].
 
 start_opentracker(Dir) ->
     ToSpawn = "run_opentracker.sh -i 127.0.0.1 -p 6969",
@@ -55,42 +55,82 @@ init_per_testcase(_Case, Config) ->
 end_per_testcase(_Case, _Config) ->
     ok.
 
+common_configuration() ->
+  [
+   {dirwatch_interval, 20 },
+   {dht, false },
+   {dht_port, 6882 },
+   {max_peers, 200},
+   {max_upload_rate, 175},
+   {max_upload_slots, auto},
+   {fs_watermark_high, 128},
+   {fs_watermark_low, 100},
+   {min_uploads, 2},
+   {preallocation_strategy, sparse },
+   {webui, false },
+   {webui_logger_dir, "log/webui"},
+   {webui_bind_address, {127,0,0,1}},
+   {webui_port, 8080},
+   {profiling, false}
+  ].
+
 seed_configuration(Config) ->
-    [].
+    PrivDir = proplists:get_value(priv_dir, Config),
+    DataDir = proplists:get_value(data_dir, Config),
+    [{port, 1739 },
+     {udp_port, 1740 },
+     {dht_state, filename:join([PrivDir, "seeder_state.persistent"])},
+     {dir, DataDir},
+     {download_dir, DataDir},
+     {logger_dir, PrivDir},
+     {logger_fname, "seed_etorrent.log"},
+     {fast_resume_file, filename:join([PrivDir, "seed_fast_resume"])} | common_configuration()].
 
 leech_configuration(Config) ->
-    [].
+    PrivDir = proplists:get_value(priv_dir, Config),
+    DataDir = proplists:get_value(data_dir, Config),
+    [{port, 1769 },
+     {udp_port, 1760 },
+     {dht_state, filename:join([PrivDir, "leecher_state.persistent"])},
+     {dir, filename:join([PrivDir, "nothing"])},
+     {download_dir, filename:join([PrivDir, "nothing"])},
+     {logger_dir, PrivDir},
+     {logger_fname, "leech_etorrent.log"},
+     {fast_resume_file, filename:join([PrivDir, "leech_fast_resume"])} | common_configuration()].
 
-cleanfiles_leecher() ->
+cleanfiles_leecher(Config) ->
+    Priv = proplists:get_value(priv_dir, Config),
+    file:delete(filename:join([Priv, "test_file_30M.random.torrent"])),
     ok.
 
 seed_leech(Config) ->
     SN = proplists:get_value(seed_node, Config),
     LN = proplists:get_value(leech_node, Config),
-    Priv = proplists:get_value(priv_dir, Config),
     Data = proplists:get_value(data_dir, Config),
+    Priv = proplists:get_value(priv_dir, Config),
+    Priv =/= Data,
     SeedConfig = seed_configuration(Config),
     LeechConfig = leech_configuration(Config),
-    LeechTorrent = filename:join([Data, "test_file_30M.random.torrent"]),
+    SeedTorrent = filename:join([Data, "test_file_30M.random.torrent"]),
+    LeechTorrent = filename:join([Priv, "test_file_30M.random.torrent"]),
+    file:make_dir(filename:join([Priv, "nothing"])),
+    file:copy(SeedTorrent, LeechTorrent),
     ok = rpc:call(SN, etorrent, start_app, [SeedConfig]),
     ok = rpc:call(LN, etorrent, start_app, [LeechConfig]),
     {Ref, Pid} = {make_ref(), self()},
-    ok = rpc:call(LN, etorrent, start, [LeechTorrent,
-					fun() ->
-						Pid ! {Ref, done}
-					end]),
+    ok = rpc:call(LN, etorrent, start, [LeechTorrent, {Ref, Pid}]),
     receive
 	{Ref, done} -> ok
     after
-	30*1000 -> exit(timeout_error)
+	120*1000 -> exit(timeout_error)
     end,
-    ok = rpc:call(LN, etorrent_app, stop, []),
-    ok = rpc:call(SN, etorrent_app, stop, []),
-    cleanfiles_leecher(),
+    ok = rpc:call(LN, etorrent, stop_app, []),
+    ok = rpc:call(SN, etorrent, stop_app, []),
+    cleanfiles_leecher(Config),
     ok.
 
 all() ->
-    [member].
+    [member, seed_leech].
 
 member(Config) when is_list(Config) ->
     ?line {'EXIT',{badarg,_}} = (catch lists:member(45, {a,b,c})),
@@ -128,7 +168,7 @@ ensure_torrent_file(Fn) ->
 	    ok;
 	false ->
 	    etorrent_mktorrent:create(
-	      Fn, "http://localhost:6969", Fn ++ ".torrent")
+	      Fn, "http://localhost:6969/announce", Fn ++ ".torrent")
     end.
 
 ensure_random_file(Fn) ->
