@@ -8,6 +8,8 @@
 
 -export([member/1, seed_leech/1]).
 
+-define(TESTFILE30M, "test_file_30M.random.torrent").
+
 suite() ->
     [{timetrap, {minutes, 3}}].
 
@@ -56,11 +58,10 @@ init_per_testcase(seed_leech, Config) ->
     LN = proplists:get_value(leech_node, Config),
     Data = proplists:get_value(data_dir, Config),
     Priv = proplists:get_value(priv_dir, Config),
-    Priv =/= Data,
-    SeedConfig = seed_configuration(Config),
-    LeechConfig = leech_configuration(Config),
-    SeedTorrent = filename:join([Data, "test_file_30M.random.torrent"]),
-    LeechTorrent = filename:join([Priv, "test_file_30M.random.torrent"]),
+    SeedConfig = seed_configuration(Priv, Data),
+    LeechConfig = leech_configuration(Priv, Data),
+    SeedTorrent = filename:join([Data, ?TESTFILE30M]),
+    LeechTorrent = filename:join([Priv, ?TESTFILE30M]),
     file:make_dir(filename:join([Priv, "nothing"])),
     file:copy(SeedTorrent, LeechTorrent),
     ok = rpc:call(SN, etorrent, start_app, [SeedConfig]),
@@ -73,7 +74,10 @@ init_per_testcase(_Case, Config) ->
 end_per_testcase(seed_leech, Config) ->
     ok = rpc:call(proplists:get_value(ln, Config), etorrent, stop_app, []),
     ok = rpc:call(proplists:get_value(sn, Config), etorrent, stop_app, []),
-    cleanfiles_leecher(Config);
+    Priv = proplists:get_value(priv_dir, Config),
+    ok = file:delete(filename:join([Priv, ?TESTFILE30M])),
+    ok = file:delete(filename:join([Priv, "nothing", ?TESTFILE30M])),
+    ok = file:del_dir(filename:join([Priv, "nothing"]));
 end_per_testcase(_Case, _Config) ->
     ok.
 
@@ -96,9 +100,7 @@ common_configuration() ->
    {profiling, false}
   ].
 
-seed_configuration(Config) ->
-    PrivDir = proplists:get_value(priv_dir, Config),
-    DataDir = proplists:get_value(data_dir, Config),
+seed_configuration(PrivDir, DataDir) ->
     [{port, 1739 },
      {udp_port, 1740 },
      {dht_state, filename:join([PrivDir, "seeder_state.persistent"])},
@@ -108,9 +110,7 @@ seed_configuration(Config) ->
      {logger_fname, "seed_etorrent.log"},
      {fast_resume_file, filename:join([PrivDir, "seed_fast_resume"])} | common_configuration()].
 
-leech_configuration(Config) ->
-    PrivDir = proplists:get_value(priv_dir, Config),
-    DataDir = proplists:get_value(data_dir, Config),
+leech_configuration(PrivDir, DataDir) ->
     [{port, 1769 },
      {udp_port, 1760 },
      {dht_state, filename:join([PrivDir, "leecher_state.persistent"])},
@@ -119,11 +119,6 @@ leech_configuration(Config) ->
      {logger_dir, PrivDir},
      {logger_fname, "leech_etorrent.log"},
      {fast_resume_file, filename:join([PrivDir, "leech_fast_resume"])} | common_configuration()].
-
-cleanfiles_leecher(Config) ->
-    Priv = proplists:get_value(priv_dir, Config),
-    file:delete(filename:join([Priv, "test_file_30M.random.torrent"])),
-    ok.
 
 seed_leech(Config) ->
     {Ref, Pid} = {make_ref(), self()},
