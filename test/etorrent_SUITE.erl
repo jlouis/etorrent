@@ -47,11 +47,33 @@ init_per_suite(Config) ->
 end_per_suite(Config) ->
     Pid = proplists:get_value(tracker_port, Config),
     stop_opentracker(Pid),
+    test_server:stop_node('seeder'),
+    test_server:stop_node('leecher'),
     ok.
 
+init_per_testcase(seed_leech, Config) ->
+    SN = proplists:get_value(seed_node, Config),
+    LN = proplists:get_value(leech_node, Config),
+    Data = proplists:get_value(data_dir, Config),
+    Priv = proplists:get_value(priv_dir, Config),
+    Priv =/= Data,
+    SeedConfig = seed_configuration(Config),
+    LeechConfig = leech_configuration(Config),
+    SeedTorrent = filename:join([Data, "test_file_30M.random.torrent"]),
+    LeechTorrent = filename:join([Priv, "test_file_30M.random.torrent"]),
+    file:make_dir(filename:join([Priv, "nothing"])),
+    file:copy(SeedTorrent, LeechTorrent),
+    ok = rpc:call(SN, etorrent, start_app, [SeedConfig]),
+    ok = rpc:call(LN, etorrent, start_app, [LeechConfig]),
+    [{sn, SN}, {ln, LN},
+     {leech_torrent, LeechTorrent} | Config];
 init_per_testcase(_Case, Config) ->
     Config.
 
+end_per_testcase(seed_leech, Config) ->
+    ok = rpc:call(proplists:get_value(ln, Config), etorrent, stop_app, []),
+    ok = rpc:call(proplists:get_value(sn, Config), etorrent, stop_app, []),
+    cleanfiles_leecher(Config);
 end_per_testcase(_Case, _Config) ->
     ok.
 
@@ -104,30 +126,15 @@ cleanfiles_leecher(Config) ->
     ok.
 
 seed_leech(Config) ->
-    SN = proplists:get_value(seed_node, Config),
-    LN = proplists:get_value(leech_node, Config),
-    Data = proplists:get_value(data_dir, Config),
-    Priv = proplists:get_value(priv_dir, Config),
-    Priv =/= Data,
-    SeedConfig = seed_configuration(Config),
-    LeechConfig = leech_configuration(Config),
-    SeedTorrent = filename:join([Data, "test_file_30M.random.torrent"]),
-    LeechTorrent = filename:join([Priv, "test_file_30M.random.torrent"]),
-    file:make_dir(filename:join([Priv, "nothing"])),
-    file:copy(SeedTorrent, LeechTorrent),
-    ok = rpc:call(SN, etorrent, start_app, [SeedConfig]),
-    ok = rpc:call(LN, etorrent, start_app, [LeechConfig]),
     {Ref, Pid} = {make_ref(), self()},
-    ok = rpc:call(LN, etorrent, start, [LeechTorrent, {Ref, Pid}]),
+    ok = rpc:call(proplists:get_value(ln, Config),
+		  etorrent, start,
+		  [proplists:get_value(leech_torrent, Config), {Ref, Pid}]),
     receive
 	{Ref, done} -> ok
     after
 	120*1000 -> exit(timeout_error)
-    end,
-    ok = rpc:call(LN, etorrent, stop_app, []),
-    ok = rpc:call(SN, etorrent, stop_app, []),
-    cleanfiles_leecher(Config),
-    ok.
+    end.
 
 all() ->
     [member, seed_leech].
