@@ -177,7 +177,8 @@ contact_tracker_tier([Url | Next], Event, S, Acc) ->
 	    %% For private torrent (BEP 27), disconnect all peers coming
 	    %% from the tracker before switching to another one
 	    case etorrent_torrent:is_private(S#state.torrent_id) of
-	        true -> disconnect_tracker(Url)
+	        true -> disconnect_tracker(Url);
+	        _ -> ok
 	    end,
 	    contact_tracker_tier(Next, Event, S, [Url | Acc])
     end.
