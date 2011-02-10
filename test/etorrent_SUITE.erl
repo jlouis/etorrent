@@ -13,21 +13,8 @@
 suite() ->
     [{timetrap, {minutes, 3}}].
 
-start_opentracker(Dir) ->
-    ToSpawn = "run_opentracker.sh -i 127.0.0.1 -p 6969",
-    Spawn = filename:join([Dir, ToSpawn]),
-    Pid = spawn(fun() ->
-			Port = open_port(
-				 {spawn, Spawn}, [binary, stream, eof]),
-			receive
-			    close ->
-				port_close(Port)
-			end
-		end),
-    Pid.
-
-stop_opentracker(Pid) ->
-    Pid ! close.
+%% Setup/Teardown
+%% ----------------------------------------------------------------------
 
 init_per_suite(Config) ->
     %% We should really use priv_dir here, but as we are for-once creating
@@ -81,6 +68,8 @@ end_per_testcase(seed_leech, Config) ->
 end_per_testcase(_Case, _Config) ->
     ok.
 
+%% Configuration
+%% ----------------------------------------------------------------------
 common_configuration() ->
   [
    {dirwatch_interval, 20 },
@@ -120,6 +109,11 @@ leech_configuration(PrivDir, DataDir) ->
      {logger_fname, "leech_etorrent.log"},
      {fast_resume_file, filename:join([PrivDir, "leech_fast_resume"])} | common_configuration()].
 
+%% Tests
+%% ----------------------------------------------------------------------
+all() ->
+    [member, seed_leech].
+
 seed_leech(Config) ->
     {Ref, Pid} = {make_ref(), self()},
     ok = rpc:call(proplists:get_value(ln, Config),
@@ -130,9 +124,6 @@ seed_leech(Config) ->
     after
 	120*1000 -> exit(timeout_error)
     end.
-
-all() ->
-    [member, seed_leech].
 
 member(Config) when is_list(Config) ->
     ?line {'EXIT',{badarg,_}} = (catch lists:member(45, {a,b,c})),
@@ -163,6 +154,25 @@ member_test(Num) ->
     true = lists:member('Elem', List),
     false = lists:member(arne_anka, List),
     false = lists:member({a,b,c}, List).
+
+
+%% Helpers
+%% ----------------------------------------------------------------------
+start_opentracker(Dir) ->
+    ToSpawn = "run_opentracker.sh -i 127.0.0.1 -p 6969",
+    Spawn = filename:join([Dir, ToSpawn]),
+    Pid = spawn(fun() ->
+			Port = open_port(
+				 {spawn, Spawn}, [binary, stream, eof]),
+			receive
+			    close ->
+				port_close(Port)
+			end
+		end),
+    Pid.
+
+stop_opentracker(Pid) ->
+    Pid ! close.
 
 ensure_torrent_file(Fn) ->
     case filelib:is_regular(Fn ++ ".torrent") of
