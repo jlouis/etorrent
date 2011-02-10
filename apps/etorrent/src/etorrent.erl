@@ -8,12 +8,14 @@
 %% @end
 -module(etorrent).
 
+-include("log.hrl").
+
 %% API
 %% Query
 -export([help/0, h/0, list/0, l/0, show/0, s/0, show/1, s/1, check/1]).
 
 %% Etorrent-as-library
--export([start_app/0]).
+-export([start_app/0, start_app/1, stop_app/0]).
 -export([start/1, start/2]).
 
 -ignore_xref([{h, 0}, {l, 0}, {s, 0}, {s, 1}, {check, 1},
@@ -29,6 +31,14 @@
 start_app() ->
     etorrent_app:start().
 
+start_app(Config) ->
+    etorrent_app:start(Config).
+
+%% @doc Stop the etorrent application
+%% @end
+stop_app() ->
+    etorrent_app:stop().
+
 %% @doc Start downloading torrent given by Filename
 %% @end
 start(Filename) when is_list(Filename) ->
@@ -38,6 +48,12 @@ start(Filename) when is_list(Filename) ->
 %% When the torrent is completed, the Callback function is executed
 %% in its own newly spawned process
 %% @end
+start(Filename, {Ref, Pid})
+  when is_list(Filename), is_reference(Ref), is_pid(Pid) ->
+    start(Filename, fun() ->
+			    ?INFO([completing_torrent_callback, Filename]),
+			    Pid ! {Ref, done}
+		    end);
 start(Filename, CallBack) when is_list(Filename), is_function(CallBack, 0) ->
     etorrent_ctl:start(Filename, CallBack).
 

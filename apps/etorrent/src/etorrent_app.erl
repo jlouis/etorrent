@@ -9,7 +9,11 @@
 
 -include("etorrent_version.hrl").
 
--export([start/0, start/1, start/2, stop/1, prep_stop/1, profile_output/0]).
+%% API
+-export([start/0, start/1, stop/0]).
+
+%% Callbacks
+-export([start/2, stop/1, prep_stop/1, profile_output/0]).
 
 -ignore_xref([{'prep_stop', 1}, {stop, 0}, {check, 1}]).
 
@@ -22,6 +26,9 @@ start(Config) ->
     load_config(Config),
     ensure_started([inets, crypto, sasl, gproc]),
     application:start(etorrent).
+
+stop() ->
+    application:stop(etorrent).
 
 load_config([]) ->
     ok;
