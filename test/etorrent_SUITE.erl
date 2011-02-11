@@ -50,12 +50,17 @@ init_per_testcase(seed_leech, Config) ->
     LeechConfig = leech_configuration(CommonConf, Priv),
     SeedTorrent = filename:join([Data, ?TESTFILE30M ++ ".torrent"]),
     LeechTorrent = filename:join([Priv, ?TESTFILE30M ++ ".torrent"]),
+    SeedFile = filename:join([Data, ?TESTFILE30M]),
+    LeechFile = filename:join([Priv, "nothing", ?TESTFILE30M]),
     file:make_dir(filename:join([Priv, "nothing"])),
     file:copy(SeedTorrent, LeechTorrent),
     ok = rpc:call(SN, etorrent, start_app, [SeedConfig]),
     ok = rpc:call(LN, etorrent, start_app, [LeechConfig]),
     [{sn, SN}, {ln, LN},
-     {leech_torrent, LeechTorrent} | Config];
+     {seed_torrent, SeedTorrent},
+     {leech_torrent, LeechTorrent},
+     {seed_file, SeedFile},
+     {leech_file, LeechFile} | Config];
 init_per_testcase(_Case, Config) ->
     Config.
 
@@ -108,7 +113,8 @@ seed_leech(Config) ->
 	{Ref, done} -> ok
     after
 	120*1000 -> exit(timeout_error)
-    end.
+    end,
+    sha1_file(?config(leech_file, Config)) =:= sha1_file(?config(seed_file, Config)).
 
 %% Helpers
 %% ----------------------------------------------------------------------
@@ -154,4 +160,15 @@ create_binary(0, Bin) -> Bin;
 create_binary(N, Bin) ->
     Byte = random:uniform(256) - 1,
     create_binary(N-1, <<Bin/binary, Byte:8/integer>>).
+
+sha1_file(F) ->
+    Ctx = crypto:sha_init(),
+    {ok, FD} = file:open(F, [read,binary,raw]),
+    FinCtx = sha1_round(FD, file:read(FD, 1024*1024), Ctx),
+    crypto:sha_final(FinCtx).
+
+sha1_round(FD, eof, Ctx) ->
+    Ctx;
+sha1_round(FD, {ok, Data}, Ctx) ->
+    sha1_round(FD, file:read(FD, 1024*1024), crypto:sha_update(Ctx, Data)).
 
