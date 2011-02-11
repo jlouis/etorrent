@@ -79,6 +79,11 @@ especially if the client behaves badly.
       commands.
    9. If you enabled the webui, you can try browsing to its location. By default the location is 'http://localhost:8080'.
 
+## Testing etorrent
+
+Read the document [jlouis/etorrent/TEST.md](jlouis/etorrent/TEST.md)
+for how to run tests of the system.
+
 ## Troubleshooting
 
 If the above commands doesn't work, we want to hear about it. This is
