@@ -112,9 +112,7 @@ handle_call({query_state, ID}, _From, State) ->
         [] ->
             unknown;
         [{_, FSPL}] when is_list(FSPL) ->
-            {value, FSPL};
-	    [{_, St}] ->
-            {value, upgrade(1, St)}
+            {value, FSPL}
     end,
     {reply, Reply, State};
 
@@ -143,9 +141,6 @@ terminate(_Reason, _State) ->
 %% @private
 code_change(_, State, _) ->
     {ok, State}.
-
-upgrade(1, St) ->
-    upgrade1(St).
 
 %% Enter a torrent into the tracking table
 track_torrent(ID, Filename, Table) ->
@@ -178,11 +173,3 @@ track_torrent(ID, Filename, Table) ->
 				            {downloaded, Downloaded}]})
 	        end
     end.
-
-
-
-%% Upgrade from version 1
-upgrade1(St) ->
-    [{state, St},
-     {uploaded, 0},
-     {downloaded, 0}].
