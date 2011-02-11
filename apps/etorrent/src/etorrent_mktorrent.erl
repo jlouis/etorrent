@@ -74,6 +74,7 @@ mk_comment(Comment) when is_list(Comment) ->
 
 mk_infodict_single(PieceHashes, Name, Sz) when is_binary(PieceHashes) ->
     [{<<"pieces">>, PieceHashes},
+     {<<"piece length">>, ?CHUNKSIZE},
      {<<"name">>,   list_to_binary(Name)},
      {<<"length">>, Sz}].
 
@@ -88,6 +89,7 @@ mk_infodict_multi(PieceHashes, D) when is_binary(PieceHashes) ->
     {Sz, L} = mk_files_list(D, [], 0),
     [{<<"pieces">>, PieceHashes},
      {<<"length">>, Sz},
+     {<<"piece length">>, ?CHUNKSIZE},
      {<<"files">>, L}].
 
 write_torrent_file(Out, Data) ->

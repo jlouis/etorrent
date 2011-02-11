@@ -65,3 +65,6 @@ completed_torrent(Id) -> notify({completed_torrent, Id}).
 %% @end
 start_link() ->
     gen_event:start_link({local, ?SERVER}).
+
+
+

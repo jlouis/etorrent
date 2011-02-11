@@ -14,7 +14,7 @@
 
 -export([start_link/1,
 
-         start/1, stop/1,
+         start/1, start/2, stop/1,
          check/1]).
 
 -export([handle_cast/2, handle_call/3, init/1, terminate/2]).
@@ -38,9 +38,17 @@ start_link(PeerId) ->
 
 % @doc Ask the manager process to start a new torrent, given in File.
 % @end
--spec start(string()) -> ok.
+-spec start(string()) -> ok | {error, term()}.
 start(File) ->
-    gen_server:cast(?SERVER, {start, File}).
+    start(File, none).
+
+%% @doc Ask the manager to start a new torrent, given in File
+%% Upon completion the given CallBack function is executed in a separate
+%% process.
+%% @end
+-spec start(string(), none | fun (() -> any())) -> ok | {error, term()}.
+start(File, CallBack) ->
+    gen_server:call(?SERVER, {start, File, CallBack}, 15*1000).
 
 % @doc Check a torrents contents
 % @end
@@ -63,24 +71,6 @@ init([PeerId]) ->
     {ok, #state { local_peer_id = PeerId}}.
 
 %% @private
-handle_cast({start, F}, S) ->
-    ?INFO([starting, F]),
-    case load_torrent(F) of
-        duplicate -> {noreply, S};
-        {ok, Torrent} ->
-            TorrentIH = etorrent_metainfo:get_infohash(Torrent),
-            case etorrent_torrent_pool:start_child(
-                            {Torrent, F, TorrentIH},
-                            S#state.local_peer_id,
-                            etorrent_counters:next(torrent)) of
-                {ok, _} -> {noreply, S};
-                {error, {already_started, _Pid}} -> {noreply, S}
-            end;
-        {error, _Reason} ->
-            ?INFO([malformed_torrent_file, F]),
-            etorrent_event:notify({malformed_torrent_file, F}),
-            {noreply, S}
-    end;
 handle_cast({check, Id}, S) ->
     Child = gproc:lookup_local_name({torrent, Id, control}),
     etorrent_torrent_ctl:check_torrent(Child),
@@ -90,6 +80,27 @@ handle_cast({stop, F}, S) ->
     {noreply, S}.
 
 %% @private
+handle_call({start, F, CallBack}, _From, S) ->
+    ?INFO([starting, F]),
+    case load_torrent(F) of
+        duplicate -> {reply, duplicate, S};
+        {ok, Torrent} ->
+            TorrentIH = etorrent_metainfo:get_infohash(Torrent),
+            case etorrent_torrent_pool:start_child(
+                            {Torrent, F, TorrentIH},
+                            S#state.local_peer_id,
+                            etorrent_counters:next(torrent)) of
+                {ok, TorrentPid} ->
+		    install_callback(TorrentPid, TorrentIH, CallBack),
+		    {reply, ok, S};
+                {error, {already_started, _Pid}} = Err ->
+		    {reply, Err, S}
+            end;
+        {error, Reason} ->
+            ?INFO([malformed_torrent_file, F]),
+            etorrent_event:notify({malformed_torrent_file, F}),
+	    {reply, {error, Reason}}
+    end;
 handle_call(stop_all, _From, S) ->
     stop_all(),
     {reply, ok, S};
@@ -146,3 +157,7 @@ load_torrent_internal(F) ->
     P = filename:join([Workdir, F]),
     etorrent_bcoding:parse_file(P).
 
+install_callback(_TorrentPid, _InfoHash, none) ->
+    ok;
+install_callback(TorrentPid, InfoHash, Fun) ->
+    ok = etorrent_callback_handler:install_callback(TorrentPid, InfoHash, Fun).

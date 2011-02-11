@@ -35,7 +35,7 @@
 add_handler() ->
     ok = etorrent_event:add_handler(?MODULE, []).
 
-%% @doc Remove the handler from etorrent_even.
+%% @doc Remove the handler from etorrent_event.
 %% @end
 -spec delete_handler() -> ok.
 delete_handler() ->
@@ -90,3 +90,12 @@ prune_old_events() ->
     MS = ets:fun2ms(fun({N, LT, Evt}) -> LT < PruneTime end),
     ets:select_delete(?TAB, MS),
     ok.
+
+
+
+
+
+
+
+
+

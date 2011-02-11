@@ -23,6 +23,7 @@
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
+-export([format_status/2]).
 
 -record(state, { remote_peer_id               :: none_set | binary(),
                  local_peer_id                :: binary(),
@@ -215,6 +216,15 @@ handle_call(Request, _From, State) ->
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
+format_status(_Opt, [_Pdict, S]) ->
+    IPPort = case inet:peername(S#state.socket) of
+		 {ok, IPP} -> IPP;
+		 {error, Reason} -> {port_error, Reason}
+	     end,
+    Term = [{remote_peer_id, S#state.remote_peer_id},
+	    {info_hash,      S#state.info_hash},
+	    {socket_info,    IPPort}],
+    [{data,  [{"State",  Term}]}].
 %%--------------------------------------------------------------------
 
 %%--------------------------------------------------------------------

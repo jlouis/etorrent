@@ -1,5 +1,10 @@
 %% @author  : Jesper Louis andersen <jesper.louis.andersen@gmail.com>
 %% @doc A Gen server for the configuration in Etorrent
+%% @todo Much of this code is currently in a dead state and not used.
+%% There are hooks in here for runtime-configuration of Etorrent, but
+%% currently it is not used: Application configuration is set via the
+%% application framework of OTP.
+%% @end
 -module(etorrent_config).
 -include("types.hrl").
 
@@ -29,7 +34,7 @@
 	 work_dir/0]).
 
 %% API
--export([start_link/1]).
+-export([start_link/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -62,8 +67,8 @@ configuration_specification() ->
 %%====================================================================
 
 %% @doc Start up the configuration server
-start_link(Config) ->
-    gen_server:start_link({local, ?MODULE}, ?MODULE, [Config], []).
+start_link() ->
+    gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 
 call(Key) ->
@@ -148,9 +153,8 @@ log_settings() -> call(log_settings).
 %%====================================================================
 
 %% @private
-init([Config]) ->
-    Conf = read_config(Config),
-    {ok, #state{ conf = Conf }}.
+init([]) ->
+    {ok, #state{ conf = read_config([]) }}.
 
 %% @private
 handle_call({get_param, P}, _From, #state { conf = Conf } = State) ->

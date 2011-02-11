@@ -9,23 +9,42 @@
 
 -include("etorrent_version.hrl").
 
+%% API
+-export([start/0, start/1, stop/0]).
+
+%% Callbacks
 -export([start/2, stop/1, prep_stop/1, profile_output/0]).
 
 -ignore_xref([{'prep_stop', 1}, {stop, 0}, {check, 1}]).
 
 -define(RANDOM_MAX_SIZE, 999999999999).
 
+start() ->
+    start([]).
+
+start(Config) ->
+    load_config(Config),
+    ensure_started([inets, crypto, sasl, gproc]),
+    application:start(etorrent).
+
+stop() ->
+    application:stop(etorrent).
+
+load_config([]) ->
+    ok;
+load_config([{Key, Val} | Next]) ->
+    application:set_env(etorrent, Key, Val),
+    load_config(Next).
+
 %% @private
 start(_Type, _Args) ->
-    PeerId = generate_peer_id(),
-    Config = [], % Pick up configuration from config file
-
     consider_profiling(),
-
-    case etorrent_sup:start_link(PeerId, Config) of
+    PeerId = generate_peer_id(),
+    case etorrent_sup:start_link(PeerId) of
 	{ok, Pid} ->
 	    ok = etorrent_memory_logger:add_handler(),
 	    ok = etorrent_file_logger:add_handler(),
+	    ok = etorrent_callback_handler:add_handler(),
 	    case etorrent_config:webui() of
 		true -> start_webui();
 		false -> ignore
@@ -101,3 +120,14 @@ generate_peer_id() ->
     Number = crypto:rand_uniform(0, ?RANDOM_MAX_SIZE),
     Rand = io_lib:fwrite("~B----------", [Number]),
     lists:flatten(io_lib:format("-ET~s-~12s", [?VERSION, Rand])).
+
+ensure_started([]) ->
+    ok;
+ensure_started([App | R]) ->
+    case application:start(App) of
+	ok ->
+	    ensure_started(R);
+	{error, {already_started, App}} ->
+	    ensure_started(R)
+    end.
+

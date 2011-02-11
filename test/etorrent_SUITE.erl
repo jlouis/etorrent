@@ -6,11 +6,112 @@
 	 init_per_suite/1, end_per_suite/1,
 	 init_per_testcase/2, end_per_testcase/2]).
 
--export([member/1]).
+-export([seed_leech/0, seed_leech/1]).
+
+-define(TESTFILE30M, "test_file_30M.random").
 
 suite() ->
-    [{timetrap, {minutes, 1}}].
+    [{timetrap, {minutes, 3}}].
 
+%% Setup/Teardown
+%% ----------------------------------------------------------------------
+
+init_per_suite(Config) ->
+    %% We should really use priv_dir here, but as we are for-once creating
+    %% files we will later rely on for fetching, this is ok I think.
+    Directory = ?config(data_dir, Config),
+    io:format("Data directory: ~s~n", [Directory]),
+    TestFn = ?TESTFILE30M,
+    Fn = filename:join([Directory, TestFn]),
+    ensure_random_file(Fn),
+    file:set_cwd(Directory),
+    ensure_torrent_file(TestFn),
+    Pid = start_opentracker(Directory),
+    {ok, SeedNode} = test_server:start_node('seeder', slave, []),
+    {ok, LeechNode} = test_server:start_node('leecher', slave, []),
+    [{tracker_port, Pid},
+     {leech_node, LeechNode},
+     {seed_node, SeedNode} | Config].
+
+end_per_suite(Config) ->
+    Pid = ?config(tracker_port, Config),
+    stop_opentracker(Pid),
+    test_server:stop_node('seeder'),
+    test_server:stop_node('leecher'),
+    ok.
+
+init_per_testcase(seed_leech, Config) ->
+    SN = ?config(seed_node, Config),
+    LN = ?config(leech_node, Config),
+    Data = ?config(data_dir, Config),
+    Priv = ?config(priv_dir, Config),
+    CommonConf = ct:get_config(common_conf),
+    SeedConfig = seed_configuration(CommonConf, Priv, Data),
+    LeechConfig = leech_configuration(CommonConf, Priv),
+    SeedTorrent = filename:join([Data, ?TESTFILE30M ++ ".torrent"]),
+    LeechTorrent = filename:join([Priv, ?TESTFILE30M ++ ".torrent"]),
+    file:make_dir(filename:join([Priv, "nothing"])),
+    file:copy(SeedTorrent, LeechTorrent),
+    ok = rpc:call(SN, etorrent, start_app, [SeedConfig]),
+    ok = rpc:call(LN, etorrent, start_app, [LeechConfig]),
+    [{sn, SN}, {ln, LN},
+     {leech_torrent, LeechTorrent} | Config];
+init_per_testcase(_Case, Config) ->
+    Config.
+
+end_per_testcase(seed_leech, Config) ->
+    ok = rpc:call(?config(ln, Config), etorrent, stop_app, []),
+    ok = rpc:call(?config(sn, Config), etorrent, stop_app, []),
+    Priv = ?config(priv_dir, Config),
+    ?line ok = file:delete(filename:join([Priv, ?TESTFILE30M ++ ".torrent"])),
+    ?line ok = file:delete(filename:join([Priv, "nothing", ?TESTFILE30M])),
+    ?line ok = file:del_dir(filename:join([Priv, "nothing"]));
+end_per_testcase(_Case, _Config) ->
+    ok.
+
+%% Configuration
+%% ----------------------------------------------------------------------
+seed_configuration(CConf, PrivDir, DataDir) ->
+    [{port, 1739 },
+     {udp_port, 1740 },
+     {dht_state, filename:join([PrivDir, "seeder_state.persistent"])},
+     {dir, DataDir},
+     {download_dir, DataDir},
+     {logger_dir, PrivDir},
+     {logger_fname, "seed_etorrent.log"},
+     {fast_resume_file, filename:join([PrivDir, "seed_fast_resume"])} | CConf].
+
+leech_configuration(CConf, PrivDir) ->
+    [{port, 1769 },
+     {udp_port, 1760 },
+     {dht_state, filename:join([PrivDir, "leecher_state.persistent"])},
+     {dir, filename:join([PrivDir, "nothing"])},
+     {download_dir, filename:join([PrivDir, "nothing"])},
+     {logger_dir, PrivDir},
+     {logger_fname, "leech_etorrent.log"},
+     {fast_resume_file, filename:join([PrivDir, "leech_fast_resume"])} | CConf].
+
+%% Tests
+%% ----------------------------------------------------------------------
+all() ->
+    [seed_leech].
+
+seed_leech() ->
+    [{require, common_conf, etorrent_common_config}].
+
+seed_leech(Config) ->
+    {Ref, Pid} = {make_ref(), self()},
+    ok = rpc:call(?config(ln, Config),
+		  etorrent, start,
+		  [?config(leech_torrent, Config), {Ref, Pid}]),
+    receive
+	{Ref, done} -> ok
+    after
+	120*1000 -> exit(timeout_error)
+    end.
+
+%% Helpers
+%% ----------------------------------------------------------------------
 start_opentracker(Dir) ->
     ToSpawn = "run_opentracker.sh -i 127.0.0.1 -p 6969",
     Spawn = filename:join([Dir, ToSpawn]),
@@ -27,71 +128,13 @@ start_opentracker(Dir) ->
 stop_opentracker(Pid) ->
     Pid ! close.
 
-init_per_suite(Config) ->
-    %% We should really use priv_dir here, but as we are for-once creating
-    %% files we will later rely on for fetching, this is ok I think.
-    Directory = proplists:get_value(data_dir, Config),
-    io:format("Data directory: ~s~n", [Directory]),
-    TestFn = "test_file_30M.random",
-    Fn = filename:join([Directory, TestFn]),
-    ensure_random_file(Fn),
-    file:set_cwd(Directory),
-    ensure_torrent_file(TestFn),
-    Pid = start_opentracker(Directory),
-    %{ok, N} = test_server:start_node('tracker', slave, [binary, use_stdio, stream]),
-    [{tracker_port, Pid} | Config].
-
-end_per_suite(Config) ->
-    Pid = proplists:get_value(tracker_port, Config),
-    stop_opentracker(Pid),
-    ok.
-
-init_per_testcase(_Case, Config) ->
-    Config.
-
-end_per_testcase(_Case, _Config) ->
-    ok.
-
-all() ->
-    [member].
-
-member(Config) when is_list(Config) ->
-    ?line {'EXIT',{badarg,_}} = (catch lists:member(45, {a,b,c})),
-    ?line {'EXIT',{badarg,_}} = (catch lists:member(45, [0|non_list_tail])),
-    ?line false = lists:member(4233, []),
-    ?line member_test(1),
-    ?line member_test(100),
-    ?line member_test(256),
-    ?line member_test(1000),
-    ?line member_test(1998),
-    ?line member_test(1999),
-    ?line member_test(2000),
-    ?line member_test(2001),
-    ?line member_test(3998),
-    ?line member_test(3999),
-    ?line member_test(4000),
-    ?line member_test(4001),
-    ?line member_test(100008),
-    ok.
-member_test(Num) ->
-    List0 = ['The Element'|lists:duplicate(Num, 'Elem')],
-    true = lists:member('The Element', List0),
-    true = lists:member('Elem', List0),
-    false = lists:member(arne_anka, List0),
-    false = lists:member({a,b,c}, List0),
-    List = lists:reverse(List0),
-    true = lists:member('The Element', List),
-    true = lists:member('Elem', List),
-    false = lists:member(arne_anka, List),
-    false = lists:member({a,b,c}, List).
-
 ensure_torrent_file(Fn) ->
     case filelib:is_regular(Fn ++ ".torrent") of
 	true ->
 	    ok;
 	false ->
 	    etorrent_mktorrent:create(
-	      Fn, "http://localhost:6969", Fn ++ ".torrent")
+	      Fn, "http://localhost:6969/announce", Fn ++ ".torrent")
     end.
 
 ensure_random_file(Fn) ->
