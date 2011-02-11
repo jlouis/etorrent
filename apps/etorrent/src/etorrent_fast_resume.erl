@@ -32,6 +32,7 @@
          code_change/3]).
 
 -record(state, {
+    interval=3000,
     table=none :: atom()
 }).
 
@@ -102,6 +103,8 @@ init([]) ->
     Statefile  = etorrent_config:fast_resume_file(),
     Statetable = dets:init_table(Statefile),
     InitState  = #state{table=Statetable},
+    #state{interval=Interval} = InitState,
+    _ = timer:apply_interval(Interval, ?MODULE, update, []),
     {ok, InitState}.
 
 handle_call({query_state, ID}, _From, State) ->
