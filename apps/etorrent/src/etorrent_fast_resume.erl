@@ -10,18 +10,22 @@
 %% @end
 %% @todo Improve the situation and check strength.
 -module(etorrent_fast_resume).
-
 -behaviour(gen_server).
 
 -include("types.hrl").
 -include("log.hrl").
 
 %% API
--export([start_link/0, query_state/1]).
+-export([start_link/0,
+         query_state/1]).
 
 %% gen_server callbacks
--export([init/1, handle_call/3, handle_cast/2, handle_info/2,
-         terminate/2, code_change/3]).
+-export([init/1,
+         handle_call/3,
+         handle_cast/2,
+         handle_info/2,
+         terminate/2,
+         code_change/3]).
 
 -record(state, {}).
 
@@ -39,11 +43,15 @@ start_link() ->
 
 %% @doc Query for the state of TorrentId, Id.
 %% <p>The function returns one of several possible values:</p>
-%% <dl><dt>unknown</dt>
+%% <dl>
+%%     <dt>unknown</dt>
 %%     <dd>The torrent is in an unknown state. This means we know nothing
 %%         in particular about the torrent and we should simply load it as
 %%         if we had just started it</dd>
-%%     <dt>seeding</dt><dd>We are currently seeding this torrent</dd>
+%%
+%%     <dt>seeding</dt>
+%%     <dd>We are currently seeding this torrent</dd>
+%%
 %%     <dt>{bitfield, BF}</dt>
 %%     <dd>Here is the bitfield of known good pieces. The rest are in
 %%         an unknown state.</dd>
@@ -107,7 +115,6 @@ upgrade1(St) ->
 
 %% @private
 init([]) ->
-    process_flag(trap_exit, true),
     F = etorrent_config:fast_resume_file(),
     X = ets:file2tab(F, [{verify, true}]),
     _ = case X of
@@ -144,9 +151,6 @@ handle_info(_Info, State) ->
     {noreply, State}.
 
 %% @private
-terminate(Reason, _State) when Reason =:= normal; Reason =:= shutdown ->
-    persist_to_disk(),
-    ok;
 terminate(_Reason, _State) ->
     ok.
 
