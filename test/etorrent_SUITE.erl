@@ -8,7 +8,7 @@
 
 -export([seed_leech/0, seed_leech/1]).
 
--define(TESTFILE30M, "test_file_30M.random.torrent").
+-define(TESTFILE30M, "test_file_30M.random").
 
 suite() ->
     [{timetrap, {minutes, 3}}].
@@ -21,7 +21,7 @@ init_per_suite(Config) ->
     %% files we will later rely on for fetching, this is ok I think.
     Directory = ?config(data_dir, Config),
     io:format("Data directory: ~s~n", [Directory]),
-    TestFn = "test_file_30M.random",
+    TestFn = ?TESTFILE30M,
     Fn = filename:join([Directory, TestFn]),
     ensure_random_file(Fn),
     file:set_cwd(Directory),
@@ -48,8 +48,8 @@ init_per_testcase(seed_leech, Config) ->
     CommonConf = ct:get_config(common_conf),
     SeedConfig = seed_configuration(CommonConf, Priv, Data),
     LeechConfig = leech_configuration(CommonConf, Priv),
-    SeedTorrent = filename:join([Data, ?TESTFILE30M]),
-    LeechTorrent = filename:join([Priv, ?TESTFILE30M]),
+    SeedTorrent = filename:join([Data, ?TESTFILE30M ++ ".torrent"]),
+    LeechTorrent = filename:join([Priv, ?TESTFILE30M ++ ".torrent"]),
     file:make_dir(filename:join([Priv, "nothing"])),
     file:copy(SeedTorrent, LeechTorrent),
     ok = rpc:call(SN, etorrent, start_app, [SeedConfig]),
@@ -63,9 +63,9 @@ end_per_testcase(seed_leech, Config) ->
     ok = rpc:call(?config(ln, Config), etorrent, stop_app, []),
     ok = rpc:call(?config(sn, Config), etorrent, stop_app, []),
     Priv = ?config(priv_dir, Config),
-    ok = file:delete(filename:join([Priv, ?TESTFILE30M])),
-    ok = file:delete(filename:join([Priv, "nothing", ?TESTFILE30M])),
-    ok = file:del_dir(filename:join([Priv, "nothing"]));
+    ?line ok = file:delete(filename:join([Priv, ?TESTFILE30M ++ ".torrent"])),
+    ?line ok = file:delete(filename:join([Priv, "nothing", ?TESTFILE30M])),
+    ?line ok = file:del_dir(filename:join([Priv, "nothing"]));
 end_per_testcase(_Case, _Config) ->
     ok.
 
