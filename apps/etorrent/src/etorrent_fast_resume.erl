@@ -30,7 +30,6 @@
 -record(state, {}).
 
 -define(SERVER, ?MODULE).
--define(PERSIST_TIME, timer:seconds(300)). % Every 300 secs, may be done configurable.
 -ignore_xref([{start_link, 0}]).
 
 %%====================================================================
@@ -123,7 +122,6 @@ init([]) ->
             ?INFO([fast_resume_no_data, E]),
             _ = ets:new(etorrent_fast_resume, [named_table, protected])
     end,
-    erlang:send_after(?PERSIST_TIME, self(), persist),
     {ok, #state{}}.
 
 %% @private
@@ -143,10 +141,6 @@ handle_cast(_Msg, State) ->
     {noreply, State}.
 
 %% @private
-handle_info(persist, S) ->
-    persist_to_disk(),
-    erlang:send_after(?PERSIST_TIME, self(), persist),
-    {noreply, S};
 handle_info(_Info, State) ->
     {noreply, State}.
 
