@@ -19,6 +19,10 @@
 -export([start_link/0,
          query_state/1]).
 
+%% Privete API
+-export([srv_name/0,
+         update/0]).
+
 %% gen_server callbacks
 -export([init/1,
          handle_call/3,
@@ -31,7 +35,6 @@
     table=none :: atom()
 }).
 
--define(SERVER, ?MODULE).
 -ignore_xref([{start_link, 0}]).
 
 %%====================================================================
@@ -60,48 +63,21 @@ start_link() ->
 %% @end
 -spec query_state(integer()) -> unknown | {value, [{term(), term()}]}.
 query_state(Id) ->
-        gen_server:call(?SERVER, {query_state, Id}).
+    gen_server:call(?SERVER, {query_state, Id}).
+
+-spec srv_name() -> atom().
+srv_name() ->
+    ?MODULE.
+
+%% @doc
+%% Create a snapshot of all torrents that are loaded into etorrent
+%% at the time when this function is called.
+%% @end
+-spec update() -> ok.
+update() ->
+    gen_server:call(srv_name(), update).
 
 %% ==================================================================
-
-%% Enter a torrent into the tracking table
-track_torrent(Id, FName) ->
-    case etorrent_torrent:lookup(Id) of
-        not_found -> ignore;
-        {value, PL} ->
-
-	    Uploaded = proplists:get_value(uploaded, PL) +
-		       proplists:get_value(all_time_uploaded, PL),
-	    Downloaded = proplists:get_value(downloaded, PL) +
-		         proplists:get_value(all_time_downloaded, PL),
-	    case proplists:get_value(state, PL) of
-		unknown -> ignore;
-		seeding -> ets:insert(?MODULE,
-				      {FName, [{state, seeding},
-					       {uploaded, Uploaded},
-					       {downloaded, Downloaded}]});
-		_Other  -> ets:insert(
-			     ?MODULE,
-			     {FName, [{state,
-				       {bitfield, etorrent_piece_mgr:bitfield(Id)}},
-				      {uploaded, Uploaded},
-				      {downloaded, Downloaded}]})
-	    end
-    end.
-
-%% Enter all torrents into a tracking table
-track_in_ets_table(Lst) when is_list(Lst) ->
-    [track_torrent(Id, FN) || {Id, FN} <- Lst].
-
-%% Run a persistence operation
-persist_to_disk() ->
-    PLS = etorrent_table:all_torrents(),
-    track_in_ets_table([{proplists:get_value(id, P),
-			 proplists:get_value(filename, P)} || P <- PLS]),
-    F  = etorrent_config:fast_resume_file(),
-    ok = filelib:ensure_dir(F),
-    ok = ets:tab2file(etorrent_fast_resume, F, [{extended_info, [object_count, md5sum]}]),
-    ok.
 
 upgrade(1, St) ->
     upgrade1(St).
@@ -136,7 +112,17 @@ handle_call({query_state, Id}, _From, State) ->
     end,
     {reply, Reply, State};
 
-handle_call(_, _, State) ->
+handle_call(update, _, State) ->
+    %% Run a persistence operation on all torrents
+    %% TODO - in the ETS implementation the state of all inactive
+    %%        torrents was flushed out on each persitance operation.
+    _ = [begin
+        TorentID = proplists:get_value(id, Props)
+        Filename = proplists:get_value(filename, Props),
+        track_torrent(TorrentID, Filename)
+    end || Props <- etorrent_table:all_torrents()],
+    ok.
+
     {reply, ok, State}.
 
 handle_cast(_, State) ->
@@ -153,3 +139,45 @@ terminate(_Reason, _State) ->
 code_change(_, State, _) ->
     {ok, State}.
 
+upgrade(1, St) ->
+    upgrade1(St).
+
+%% Enter a torrent into the tracking table
+track_torrent(ID, Filename, Table) ->
+    case etorrent_torrent:lookup(ID) of
+        not_found ->
+            ignore;
+        {value, Props} ->
+            UploadTotal = proplists:get_value(all_time_uploaded, Props),
+            UploadDiff  = proplists:get_value(uploaded, Props),
+	        Uploaded    = UploadTotal + UploadDiff,
+
+            DownloadTotal = proplists:get_value(all_time_downloaded, Props),
+            DownloadDiff  = proplists:get_value(downloaded, Props),
+	        Downloaded    = DownloadTotal + DownloadDiff,
+
+	        case proplists:get_value(state, Props) of
+		        unknown ->
+                    ignore;
+		        seeding ->
+                    dets:insert(Table,
+				        {Filename, [
+                            {state, seeding},
+					        {uploaded, Uploaded},
+					        {downloaded, Downloaded}]});
+		         _  ->
+                    dets:insert(Table,
+			            {Filename, [
+                            {state, {bitfield, etorrent_piece_mgr:bitfield(Id)}},
+				            {uploaded, Uploaded},
+				            {downloaded, Downloaded}]})
+	        end
+    end.
+
+
+
+%% Upgrade from version 1
+upgrade1(St) ->
+    [{state, St},
+     {uploaded, 0},
+     {downloaded, 0}].
