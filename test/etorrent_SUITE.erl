@@ -167,7 +167,7 @@ sha1_file(F) ->
     FinCtx = sha1_round(FD, file:read(FD, 1024*1024), Ctx),
     crypto:sha_final(FinCtx).
 
-sha1_round(FD, eof, Ctx) ->
+sha1_round(_FD, eof, Ctx) ->
     Ctx;
 sha1_round(FD, {ok, Data}, Ctx) ->
     sha1_round(FD, file:read(FD, 1024*1024), crypto:sha_update(Ctx, Data)).
