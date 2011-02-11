@@ -6,7 +6,7 @@
 	 init_per_suite/1, end_per_suite/1,
 	 init_per_testcase/2, end_per_testcase/2]).
 
--export([seed_leech/1]).
+-export([seed_leech/0, seed_leech/1]).
 
 -define(TESTFILE30M, "test_file_30M.random.torrent").
 
@@ -19,7 +19,7 @@ suite() ->
 init_per_suite(Config) ->
     %% We should really use priv_dir here, but as we are for-once creating
     %% files we will later rely on for fetching, this is ok I think.
-    Directory = proplists:get_value(data_dir, Config),
+    Directory = ?config(data_dir, Config),
     io:format("Data directory: ~s~n", [Directory]),
     TestFn = "test_file_30M.random",
     Fn = filename:join([Directory, TestFn]),
@@ -34,19 +34,20 @@ init_per_suite(Config) ->
      {seed_node, SeedNode} | Config].
 
 end_per_suite(Config) ->
-    Pid = proplists:get_value(tracker_port, Config),
+    Pid = ?config(tracker_port, Config),
     stop_opentracker(Pid),
     test_server:stop_node('seeder'),
     test_server:stop_node('leecher'),
     ok.
 
 init_per_testcase(seed_leech, Config) ->
-    SN = proplists:get_value(seed_node, Config),
-    LN = proplists:get_value(leech_node, Config),
-    Data = proplists:get_value(data_dir, Config),
-    Priv = proplists:get_value(priv_dir, Config),
-    SeedConfig = seed_configuration(Priv, Data),
-    LeechConfig = leech_configuration(Priv, Data),
+    SN = ?config(seed_node, Config),
+    LN = ?config(leech_node, Config),
+    Data = ?config(data_dir, Config),
+    Priv = ?config(priv_dir, Config),
+    CommonConf = ct:get_config(common_conf),
+    SeedConfig = seed_configuration(CommonConf, Priv, Data),
+    LeechConfig = leech_configuration(CommonConf, Priv),
     SeedTorrent = filename:join([Data, ?TESTFILE30M]),
     LeechTorrent = filename:join([Priv, ?TESTFILE30M]),
     file:make_dir(filename:join([Priv, "nothing"])),
@@ -59,9 +60,9 @@ init_per_testcase(_Case, Config) ->
     Config.
 
 end_per_testcase(seed_leech, Config) ->
-    ok = rpc:call(proplists:get_value(ln, Config), etorrent, stop_app, []),
-    ok = rpc:call(proplists:get_value(sn, Config), etorrent, stop_app, []),
-    Priv = proplists:get_value(priv_dir, Config),
+    ok = rpc:call(?config(ln, Config), etorrent, stop_app, []),
+    ok = rpc:call(?config(sn, Config), etorrent, stop_app, []),
+    Priv = ?config(priv_dir, Config),
     ok = file:delete(filename:join([Priv, ?TESTFILE30M])),
     ok = file:delete(filename:join([Priv, "nothing", ?TESTFILE30M])),
     ok = file:del_dir(filename:join([Priv, "nothing"]));
@@ -70,26 +71,7 @@ end_per_testcase(_Case, _Config) ->
 
 %% Configuration
 %% ----------------------------------------------------------------------
-common_configuration() ->
-  [
-   {dirwatch_interval, 20 },
-   {dht, false },
-   {dht_port, 6882 },
-   {max_peers, 200},
-   {max_upload_rate, 175},
-   {max_upload_slots, auto},
-   {fs_watermark_high, 128},
-   {fs_watermark_low, 100},
-   {min_uploads, 2},
-   {preallocation_strategy, sparse },
-   {webui, false },
-   {webui_logger_dir, "log/webui"},
-   {webui_bind_address, {127,0,0,1}},
-   {webui_port, 8080},
-   {profiling, false}
-  ].
-
-seed_configuration(PrivDir, DataDir) ->
+seed_configuration(CConf, PrivDir, DataDir) ->
     [{port, 1739 },
      {udp_port, 1740 },
      {dht_state, filename:join([PrivDir, "seeder_state.persistent"])},
@@ -97,9 +79,9 @@ seed_configuration(PrivDir, DataDir) ->
      {download_dir, DataDir},
      {logger_dir, PrivDir},
      {logger_fname, "seed_etorrent.log"},
-     {fast_resume_file, filename:join([PrivDir, "seed_fast_resume"])} | common_configuration()].
+     {fast_resume_file, filename:join([PrivDir, "seed_fast_resume"])} | CConf].
 
-leech_configuration(PrivDir, DataDir) ->
+leech_configuration(CConf, PrivDir) ->
     [{port, 1769 },
      {udp_port, 1760 },
      {dht_state, filename:join([PrivDir, "leecher_state.persistent"])},
@@ -107,18 +89,21 @@ leech_configuration(PrivDir, DataDir) ->
      {download_dir, filename:join([PrivDir, "nothing"])},
      {logger_dir, PrivDir},
      {logger_fname, "leech_etorrent.log"},
-     {fast_resume_file, filename:join([PrivDir, "leech_fast_resume"])} | common_configuration()].
+     {fast_resume_file, filename:join([PrivDir, "leech_fast_resume"])} | CConf].
 
 %% Tests
 %% ----------------------------------------------------------------------
 all() ->
     [seed_leech].
 
+seed_leech() ->
+    [{require, common_conf, etorrent_common_config}].
+
 seed_leech(Config) ->
     {Ref, Pid} = {make_ref(), self()},
-    ok = rpc:call(proplists:get_value(ln, Config),
+    ok = rpc:call(?config(ln, Config),
 		  etorrent, start,
-		  [proplists:get_value(leech_torrent, Config), {Ref, Pid}]),
+		  [?config(leech_torrent, Config), {Ref, Pid}]),
     receive
 	{Ref, done} -> ok
     after
