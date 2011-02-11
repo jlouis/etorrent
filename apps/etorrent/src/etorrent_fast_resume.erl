@@ -111,8 +111,8 @@ handle_call({query_state, ID}, _From, State) ->
     Reply = case dets:lookup(Table, Torrentfile) of
         [] ->
             unknown;
-        [{_, FSPL}] when is_list(FSPL) ->
-            {value, FSPL}
+        [{_, Torrentstate}] ->
+            {value, Torrentstate}
     end,
     {reply, Reply, State};
 
@@ -134,11 +134,9 @@ handle_cast(_, State) ->
 handle_info(_, State) ->
     {noreply, State}.
 
-%% @private
-terminate(_Reason, _State) ->
+terminate(_, _) ->
     ok.
 
-%% @private
 code_change(_, State, _) ->
     {ok, State}.
 
