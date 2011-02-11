@@ -43,7 +43,7 @@
 %% @end
 -spec start_link() -> {ok, pid()} | ignore | {error, term()}.
 start_link() ->
-    gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
+    gen_server:start_link({local, srv_name()}, ?MODULE, [], []).
 
 %% @doc Query for the state of TorrentId, Id.
 %% <p>The function returns one of several possible values:</p>
@@ -63,7 +63,7 @@ start_link() ->
 %% @end
 -spec query_state(integer()) -> unknown | {value, [{term(), term()}]}.
 query_state(Id) ->
-    gen_server:call(?SERVER, {query_state, Id}).
+    gen_server:call(srv_name(), {query_state, Id}).
 
 -spec srv_name() -> atom().
 srv_name() ->
@@ -116,13 +116,12 @@ handle_call(update, _, State) ->
     %% Run a persistence operation on all torrents
     %% TODO - in the ETS implementation the state of all inactive
     %%        torrents was flushed out on each persitance operation.
+    #state{table=Table} = State,
     _ = [begin
-        TorentID = proplists:get_value(id, Props)
-        Filename = proplists:get_value(filename, Props),
-        track_torrent(TorrentID, Filename)
+        TorrentID = proplists:get_value(id, Props),
+        Filename  = proplists:get_value(filename, Props),
+        track_torrent(TorrentID, Filename, Table)
     end || Props <- etorrent_table:all_torrents()],
-    ok.
-
     {reply, ok, State}.
 
 handle_cast(_, State) ->
@@ -168,7 +167,7 @@ track_torrent(ID, Filename, Table) ->
 		         _  ->
                     dets:insert(Table,
 			            {Filename, [
-                            {state, {bitfield, etorrent_piece_mgr:bitfield(Id)}},
+                            {state, {bitfield, etorrent_piece_mgr:bitfield(ID)}},
 				            {uploaded, Uploaded},
 				            {downloaded, Downloaded}]})
 	        end
