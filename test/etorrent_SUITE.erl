@@ -6,7 +6,8 @@
 	 init_per_suite/1, end_per_suite/1,
 	 init_per_testcase/2, end_per_testcase/2]).
 
--export([seed_leech/0, seed_leech/1]).
+-export([seed_leech/0, seed_leech/1,
+	 seed_transmission/0, seed_transmission/1]).
 
 -define(TESTFILE30M, "test_file_30M.random").
 
@@ -35,11 +36,32 @@ init_per_suite(Config) ->
 
 end_per_suite(Config) ->
     Pid = ?config(tracker_port, Config),
+    LN = ?config(leech_node, Config),
+    SN = ?config(seed_node, Config),
     stop_opentracker(Pid),
-    test_server:stop_node('seeder'),
-    test_server:stop_node('leecher'),
+    test_server:stop_node(SN),
+    test_server:stop_node(LN),
     ok.
 
+init_per_testcase(seed_transmission, Config) ->
+    SN = ?config(seed_node, Config),
+    Data = ?config(data_dir, Config),
+    Priv = ?config(priv_dir, Config),
+    CommonConf = ct:get_config(common_conf),
+    SeedConfig = seed_configuration(CommonConf, Priv, Data),
+    SeedTorrent = filename:join([Data, ?TESTFILE30M ++ ".torrent"]),
+    LeechTorrent = filename:join([Priv, ?TESTFILE30M ++ ".torrent"]),
+    SeedFile = filename:join([Data, ?TESTFILE30M]),
+    LeechFile = filename:join([Priv, "nothing", ?TESTFILE30M]),
+    file:make_dir(filename:join([Priv, "nothing"])),
+    file:copy(SeedTorrent, LeechTorrent),
+    ok = rpc:call(SN, etorrent, start_app, [SeedConfig]),
+    [{sn, SN},
+     {seed_torrent, SeedTorrent},
+     {leech_torrent, LeechTorrent},
+     {seed_file, SeedFile},
+     {download_dir, filename:join([Priv, "nothing"])},
+     {leech_file, LeechFile} | Config];
 init_per_testcase(seed_leech, Config) ->
     SN = ?config(seed_node, Config),
     LN = ?config(leech_node, Config),
@@ -64,6 +86,12 @@ init_per_testcase(seed_leech, Config) ->
 init_per_testcase(_Case, Config) ->
     Config.
 
+end_per_testcase(seed_transmission, Config) ->
+    ok = rpc:call(?config(sn, Config), etorrent, stop_app, []),
+    Priv = ?config(priv_dir, Config),
+    ?line ok = file:delete(filename:join([Priv, ?TESTFILE30M ++ ".torrent"])),
+    ?line ok = file:delete(filename:join([Priv, "nothing", ?TESTFILE30M])),
+    ?line ok = file:del_dir(filename:join([Priv, "nothing"]));
 end_per_testcase(seed_leech, Config) ->
     ok = rpc:call(?config(ln, Config), etorrent, stop_app, []),
     ok = rpc:call(?config(sn, Config), etorrent, stop_app, []),
@@ -99,7 +127,22 @@ leech_configuration(CConf, PrivDir) ->
 %% Tests
 %% ----------------------------------------------------------------------
 all() ->
-    [seed_leech].
+    [seed_transmission].
+
+seed_transmission() ->
+    [{require, common_conf, etorrent_common_config}].
+
+seed_transmission(Config) ->
+    {Ref, Pid} = start_transmission(
+		   ?config(data_dir, Config),
+		   ?config(download_dir, Config),
+		   ?config(leech_torrent, Config)),
+    receive
+	{Ref, done} -> ok = stop_transmission(Pid)
+    after
+	120*1000 -> exit(timeout_error)
+    end,
+    sha1_file(?config(leech_file, Config)) =:= sha1_file(?config(seed_file, Config)).
 
 seed_leech() ->
     [{require, common_conf, etorrent_common_config}].
@@ -130,6 +173,50 @@ start_opentracker(Dir) ->
 			end
 		end),
     Pid.
+
+start_transmission(DataDir, DownDir, Torrent) ->
+    ToSpawn = ["run_transmission-cli.sh '" ,Torrent,
+	       "' -w '", DownDir,
+	       "' -p 1780"],
+    Spawn = filename:join([DataDir, lists:concat(ToSpawn)]),
+    Ref = make_ref(),
+    Self = self(),
+    Pid = spawn_link(fun() ->
+			Port = open_port(
+				 {spawn, Spawn},
+				 [stream, binary, eof]),
+			transmission_loop(Port, Ref, Self, <<>>)
+		     end),
+    {Ref, Pid}.
+
+stop_transmission(Pid) ->
+    Pid ! close.
+
+transmission_complete_criterion() ->
+    "State changed from \"Incomplete\" to \"Complete\"".
+
+transmission_loop(Port, Ref, ReturnPid, OldBin) ->
+    case binary:split(OldBin, [<<"\r">>, <<"\n">>]) of
+	[OnePart] ->
+	    receive
+		{Port, {data, Data}} ->
+		    transmission_loop(Port, Ref, ReturnPid, <<OnePart/binary,
+							      Data/binary>>);
+		close ->
+		    port_close(Port);
+		M ->
+		    error_logger:error_report([received_unknown_msg, M]),
+		    transmission_loop(Port, Ref, ReturnPid, OnePart)
+	    end;
+	[L, Rest] ->
+	    error_logger:info_report([line, L]),
+	    case string:str(binary_to_list(L), transmission_complete_criterion()) of
+		0 -> ok;
+		N when is_integer(N) ->
+		    ReturnPid ! {Ref, done}
+	    end,
+	    transmission_loop(Port, Ref, ReturnPid, Rest)
+    end.
 
 stop_opentracker(Pid) ->
     Pid ! close.
