@@ -81,7 +81,7 @@ especially if the client behaves badly.
 
 ## Testing etorrent
 
-Read the document [jlouis/etorrent/TEST.md](jlouis/etorrent/TEST.md)
+Read the document [etorrent/TEST.md](/etorrent/TEST.md)
 for how to run tests of the system.
 
 ## Troubleshooting
