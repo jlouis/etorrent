@@ -27,7 +27,9 @@
          terminate/2,
          code_change/3]).
 
--record(state, {}).
+-record(state, {
+    table=none :: atom()
+}).
 
 -define(SERVER, ?MODULE).
 -ignore_xref([{start_link, 0}]).
@@ -114,34 +116,33 @@ upgrade1(St) ->
 
 %% @private
 init([]) ->
-    F = etorrent_config:fast_resume_file(),
-    X = ets:file2tab(F, [{verify, true}]),
-    _ = case X of
-        {ok, etorrent_fast_resume} -> true;
-        E ->
-            ?INFO([fast_resume_no_data, E]),
-            _ = ets:new(etorrent_fast_resume, [named_table, protected])
+    %% TODO - check for errors when opening the dets table
+    Statefile  = etorrent_config:fast_resume_file(),
+    Statetable = dets:init_table(Statefile),
+    InitState  = #state{table=Statetable},
+    {ok, InitState}.
+
+handle_call({query_state, Id}, _From, State) ->
+    #state{table=Table} = State,
+    {value, Properties} = etorrent_table:get_torrent(Id),
+    Torrentfile = proplists:get_value(filename, Properties),
+    Reply = case dets:lookup(Table, Torrentfile) of
+        [] ->
+            unknown;
+        [{_, FSPL}] when is_list(FSPL) ->
+            {value, FSPL};
+	    [{_, St}] ->
+            {value, upgrade(1, St)}
     end,
-    {ok, #state{}}.
+    {reply, Reply, State};
 
-%% @private
-handle_call({query_state, Id}, _From, S) ->
-    {value, PL} = etorrent_table:get_torrent(Id),
-    case ets:lookup(etorrent_fast_resume, proplists:get_value(filename, PL)) of
-        [] -> {reply, unknown, S};
-        [{_, FSPL}] when is_list(FSPL) -> {reply, {value, FSPL}, S};
-	[{_, St}] -> {reply, {value, upgrade(1, St)}, S}
-    end;
-handle_call(_Request, _From, State) ->
-    Reply = ok,
-    {reply, Reply, State}.
+handle_call(_, _, State) ->
+    {reply, ok, State}.
 
-%% @private
-handle_cast(_Msg, State) ->
+handle_cast(_, State) ->
     {noreply, State}.
 
-%% @private
-handle_info(_Info, State) ->
+handle_info(_, State) ->
     {noreply, State}.
 
 %% @private
@@ -149,6 +150,6 @@ terminate(_Reason, _State) ->
     ok.
 
 %% @private
-code_change(_OldVsn, State, _Extra) ->
+code_change(_, State, _) ->
     {ok, State}.
 
