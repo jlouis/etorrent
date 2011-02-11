@@ -45,7 +45,7 @@
 start_link() ->
     gen_server:start_link({local, srv_name()}, ?MODULE, [], []).
 
-%% @doc Query for the state of TorrentId, Id.
+%% @doc Query for the state of TorrentID, ID.
 %% <p>The function returns one of several possible values:</p>
 %% <dl>
 %%      <dt>unknown</dt>
@@ -68,8 +68,8 @@ start_link() ->
 %% </dl>
 %% @end
 -spec query_state(integer()) -> unknown | {value, [{term(), term()}]}.
-query_state(Id) ->
-    gen_server:call(srv_name(), {query_state, Id}).
+query_state(ID) ->
+    gen_server:call(srv_name(), {query_state, ID}).
 
 -spec srv_name() -> atom().
 srv_name() ->
@@ -104,9 +104,9 @@ init([]) ->
     InitState  = #state{table=Statetable},
     {ok, InitState}.
 
-handle_call({query_state, Id}, _From, State) ->
+handle_call({query_state, ID}, _From, State) ->
     #state{table=Table} = State,
-    {value, Properties} = etorrent_table:get_torrent(Id),
+    {value, Properties} = etorrent_table:get_torrent(ID),
     Torrentfile = proplists:get_value(filename, Properties),
     Reply = case dets:lookup(Table, Torrentfile) of
         [] ->
