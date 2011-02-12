@@ -33,7 +33,7 @@
 % @doc Start a new etorrent_t_manager process
 % @end
 -spec start_link(binary()) -> {ok, pid()} | ignore | {error, term()}.
-start_link(PeerId) ->
+start_link(PeerId) when is_binary(PeerId) ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [PeerId], []).
 
 % @doc Ask the manager process to start a new torrent, given in File.

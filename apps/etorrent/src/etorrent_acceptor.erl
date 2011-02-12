@@ -31,7 +31,7 @@ start_link(OurPeerId, LSock) ->
 %%====================================================================
 
 %% @private
-init([PeerId, LSock]) ->
+init([PeerId, LSock]) when is_binary(PeerId) ->
     {ok, #state{ listen_socket = LSock,
                  our_peer_id = PeerId }, 0}.
 

@@ -119,7 +119,8 @@ default_webui_configuration() ->
 generate_peer_id() ->
     Number = crypto:rand_uniform(0, ?RANDOM_MAX_SIZE),
     Rand = io_lib:fwrite("~B----------", [Number]),
-    lists:flatten(io_lib:format("-ET~s-~12s", [?VERSION, Rand])).
+    PeerId = lists:flatten(io_lib:format("-ET~s-~12s", [?VERSION, Rand])),
+    list_to_binary(PeerId).
 
 ensure_started([]) ->
     ok;

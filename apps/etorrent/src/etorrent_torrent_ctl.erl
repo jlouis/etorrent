@@ -29,7 +29,7 @@
 -record(state, {id                :: integer() ,
                 torrent           :: bcode(),   % Parsed torrent file
                 info_hash         :: binary(),  % Infohash of torrent file
-                peer_id           :: string(),
+                peer_id           :: binary(),
                 parent_pid        :: pid(),
                 tracker_pid       :: pid()   }).
 
@@ -38,7 +38,7 @@
 %% ====================================================================
 
 %% @doc Start the server process
--spec start_link(integer(), {bcode(), string(), binary()}, string()) ->
+-spec start_link(integer(), {bcode(), string(), binary()}, binary()) ->
         {ok, pid()} | ignore | {error, term()}.
 start_link(Id, {Torrent, TorrentFile, TorrentIH}, PeerId) ->
     gen_fsm:start_link(?MODULE, [self(), Id, {Torrent, TorrentFile, TorrentIH}, PeerId], []).

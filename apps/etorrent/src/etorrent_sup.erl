@@ -45,7 +45,7 @@ init([PeerId]) ->
     PeerStates   = ?CHILD(etorrent_peer_states),
     PieceManager = ?CHILD(etorrent_piece_mgr),
     ChunkManager = ?CHILD(etorrent_chunk_mgr),
-    Choker       = ?CHILDP(etorrent_choker, [PeerId]),
+    Choker       = ?CHILD(etorrent_choker),
     Listener     = {etorrent_listen_sup,
 		    {etorrent_listen_sup, start_link, [PeerId]},
 		    permanent, infinity, supervisor, [etorrent_listen_sup]},

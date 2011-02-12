@@ -39,7 +39,8 @@
 % @doc Start the peer manager
 % @end
 -spec start_link(binary()) -> {ok, pid()} | ignore | {error, term()}.
-start_link(OurPeerId) ->
+start_link(OurPeerId)
+  when is_binary(OurPeerId) ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [OurPeerId], []).
 
 % @doc Tell the peer mananger that a given peer behaved badly.

@@ -17,14 +17,13 @@
 -include("log.hrl").
 
 %% API
--export([start_link/1, perform_rechoke/0, monitor/1]).
+-export([start_link/0, perform_rechoke/0, monitor/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
--record(state, {our_peer_id = none :: none | binary(),
-                info_hash = none   :: none | binary(),
+-record(state, {info_hash = none   :: none | binary(),
                 round = 0          :: integer(),
                 optimistic_unchoke_pid = none :: none | pid(),
                 opt_unchoke_chain = [] :: [pid()]}).
@@ -49,9 +48,9 @@
 
 %% @doc Start the choking server.
 %% @end
--spec start_link(binary()) -> {ok, pid()} | {error, any()} | ignore.
-start_link(OurPeerId) ->
-    gen_server:start_link({local, ?SERVER}, ?MODULE, [OurPeerId], []).
+-spec start_link() -> {ok, pid()} | {error, any()} | ignore.
+start_link() ->
+    gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
 %% @doc Request an immediate rechoke rather than wait.
 %% <p>This call is used when something urgent happens where it would
@@ -283,9 +282,9 @@ split_preferred_peers([#rechoke_info { peer_state = PeerState, r_interest_state 
 %%====================================================================
 
 %% @private
-init([OurPeerId]) ->
+init([]) ->
     erlang:send_after(?ROUND_TIME, self(), round_tick),
-    {ok, #state{ our_peer_id = OurPeerId }}.
+    {ok, #state{ }}.
 
 %% @private
 handle_call({monitor, Pid}, _From, S) ->

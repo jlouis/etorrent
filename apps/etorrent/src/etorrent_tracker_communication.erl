@@ -33,7 +33,7 @@
                 hard_timer     :: reference() | none,
                 url = [[]]     :: [tier()],
                 info_hash      :: binary(),
-                peer_id        :: string(),
+                peer_id        :: binary(),
                 control_pid    :: pid(),
                 torrent_id     :: integer() }).
 
@@ -51,9 +51,10 @@
 %% parameter and finally the `TorrentId': the identifier of the torrent.</p> 
 %% @end
 %% @todo What module, precisely do the control pid come from?
--spec start_link(pid(), [tier()], binary(), string(), integer()) ->
+-spec start_link(pid(), [tier()], binary(), binary(), integer()) ->
     ignore | {ok, pid()} | {error, term()}.
-start_link(ControlPid, UrlTiers, InfoHash, PeerId, TorrentId) ->
+start_link(ControlPid, UrlTiers, InfoHash, PeerId, TorrentId)
+  when is_binary(PeerId) ->
     gen_server:start_link(?MODULE,
                           [ControlPid,
                             UrlTiers, InfoHash, PeerId, TorrentId],
@@ -219,7 +220,7 @@ contact_tracker_udp(Url, IP, Port, Event,
     Downloaded = proplists:get_value(downloaded, PL),
     Left       = proplists:get_value(left, PL),
     PropList = [{info_hash, InfoHash},
-		{peer_id, list_to_binary(PeerId)},
+		{peer_id, PeerId},
 		{up, Uploaded},
 		{down, Downloaded},
 		{left, Left},

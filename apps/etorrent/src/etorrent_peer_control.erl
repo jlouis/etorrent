@@ -65,7 +65,8 @@
 
 %% @doc Starts the server
 %% @end
-start_link(TrackerUrl, LocalPeerId, InfoHash, Id, {IP, Port}, Caps, Socket) ->
+start_link(TrackerUrl, LocalPeerId, InfoHash, Id, {IP, Port}, Caps, Socket) 
+  when is_binary(LocalPeerId) ->
     gen_server:start_link(?MODULE, [TrackerUrl, LocalPeerId, InfoHash,
                                     Id, {IP, Port}, Caps, Socket], []).
 

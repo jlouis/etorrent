@@ -26,7 +26,7 @@ start_child() ->
     supervisor:start_child(?MODULE, []).
 %%====================================================================
 
-init([PeerId]) ->
+init([PeerId]) when is_binary(PeerId) ->
     Port = etorrent_config:listen_port(),
     ListenOpts = [binary, inet, {active, false},
 		 {reuseaddr, true}],
@@ -45,4 +45,13 @@ init([PeerId]) ->
 
 
 %%====================================================================
+
+
+
+
+
+
+
+
+
 
