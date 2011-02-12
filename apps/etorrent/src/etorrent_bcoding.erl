@@ -47,7 +47,8 @@ encode(N) when is_integer(N) -> ["i", integer_to_list(N), "e"];
 encode(B) when is_binary(B) -> [integer_to_list(byte_size(B)), ":", B];
 encode(empty_dict) -> "de";
 encode([{B,_}|_] = D) when is_binary(B) ->
-    ["d", [[encode(K), encode(V)] || {K,V} <- D], "e"];
+    SortedD = lists:keysort(1, D),
+    ["d", [[encode(K), encode(V)] || {K,V} <- SortedD], "e"];
 encode(empty_list) -> "le";
 encode([]) -> exit(empty_list_in_bcode);
 encode(L) when is_list(L) -> ["l", [encode(I) || I <- L], "e"].
