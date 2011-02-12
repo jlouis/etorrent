@@ -127,7 +127,7 @@ leech_configuration(CConf, PrivDir) ->
 %% Tests
 %% ----------------------------------------------------------------------
 all() ->
-    [seed_transmission].
+    [seed_leech].
 
 seed_transmission() ->
     [{require, common_conf, etorrent_common_config}].
@@ -174,11 +174,16 @@ start_opentracker(Dir) ->
 		end),
     Pid.
 
+quote(Str) ->
+    lists:concat(["'", Str, "'"]).
+
 start_transmission(DataDir, DownDir, Torrent) ->
-    ToSpawn = ["run_transmission-cli.sh '" ,Torrent,
-	       "' -w '", DownDir,
-	       "' -p 1780"],
+    ToSpawn = ["run_transmission-cli.sh ", quote(Torrent),
+	       " -w ", quote(DownDir),
+	       " -g ", quote(DownDir),
+	       " -et -B -p 1780"],
     Spawn = filename:join([DataDir, lists:concat(ToSpawn)]),
+    error_logger:info_report([{spawn, Spawn}]),
     Ref = make_ref(),
     Self = self(),
     Pid = spawn_link(fun() ->
