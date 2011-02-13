@@ -88,7 +88,7 @@ especially if the client behaves badly.
    3. Confirm that your crypto works correctly by running `crypto:start().` from an erlang shell (Start->Erlang OTP R14B01->Erlang).
       The shell should respond with `ok`. If you get an error then your openssl libraries are still missing.
    4. Open up a git bash shell and cd to a directory you want to work in.
-   5. Clone the rebar repository `https://github.com/basho/rebar.git`
+   5. Clone the rebar repository `git clone https://github.com/basho/rebar.git`
    6. From a regular cmd.exe shell `cd rebar`. Now if you added the erlang bin directory to your PATH then you can simply run `bootstrap.bat`.
       If you didn't add Erlang's bin to your path then issue the following command:
       `"C:\Program Files\erl5.8.2\bin\escript.exe" bootstrap
