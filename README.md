@@ -82,7 +82,7 @@ especially if the client behaves badly.
 ## GETTING STARTED (Windows)
    0. Obviously get and install erlang from erlang.org. This process was tested with R14B01 release.
       You may want to add the bin directory to your PATH in order to reduce the length of the commands you will enter later on.
-   1. Install [msysgit](http://code.google.com/p/msysgit/). Tested with (1.7.3.1.msysgit.0](http://code.google.com/p/msysgit/downloads/detail?name=Git-1.7.3.1-preview20101002.exe&can=2&q=).
+   1. Install [msysgit](http://code.google.com/p/msysgit/). Tested with [1.7.3.1.msysgit.0](http://code.google.com/p/msysgit/downloads/detail?name=Git-1.7.3.1-preview20101002.exe&can=2&q=).
    2. Install [Win32 OpenSSL](http://www.slproweb.com/products/Win32OpenSSL.html).
       The installer hang on me midway through the process but the libs were properly copied to C:\Windows\system32.
    3. Confirm that your crypto works correctly by running `crypto:start().` from an erlang shell (Start->Erlang OTP R14B01->Erlang).
