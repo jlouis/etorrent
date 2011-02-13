@@ -91,7 +91,7 @@ especially if the client behaves badly.
    5. Clone the rebar repository `git clone https://github.com/basho/rebar.git`
    6. From a regular cmd.exe shell `cd rebar`. Now if you added the erlang bin directory to your PATH then you can simply run `bootstrap.bat`.
       If you didn't add Erlang's bin to your path then issue the following command:
-      `"C:\Program Files\erl5.8.2\bin\escript.exe" bootstrap
+      `"C:\Program Files\erl5.8.2\bin\escript.exe" bootstrap`
       Adjust the path to your Erlang installation directory. From now on, use this invocation for escript.exe and erl.exe. I'll assume it's on PATH.
       You should now have a `rebar` file created. If you have Erlangs bin dir on your PATH then you may want to also add the rebar directory to your
       PATH. This will allow you to use the rebar.bat script which will also reduce the amount of typing you will have to do.
