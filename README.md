@@ -59,8 +59,8 @@ especially if the client behaves badly.
      work. It may work with older versions, but has mostly been tested
      with newer versions.
    * A proper operating system (e.g., some UNIX-derivative). Windows
-     support has never been tested (If you want to port, I'll be happy
-     to help).
+     support has been tested by mulander and is reported to work with
+     some manual labor. For details see the Windows getting started section.
 
 ## GETTING STARTED
 
@@ -78,6 +78,52 @@ especially if the client behaves badly.
    8. call `etorrent:help()`. from the Erlang CLI to get a list of available
       commands.
    9. If you enabled the webui, you can try browsing to its location. By default the location is 'http://localhost:8080'.
+
+## GETTING STARTED (Windows)
+   0. Obviously get and install erlang from erlang.org. This process was tested with R14B01 release.
+      You may want to add the bin directory to your PATH in order to reduce the length of the commands you will enter later on.
+   1. Install [msysgit](http://code.google.com/p/msysgit/). Tested with (1.7.3.1.msysgit.0](http://code.google.com/p/msysgit/downloads/detail?name=Git-1.7.3.1-preview20101002.exe&can=2&q=).
+   2. Install [Win32 OpenSSL](http://www.slproweb.com/products/Win32OpenSSL.html).
+      The installer hang on me midway through the process but the libs were properly copied to C:\Windows\system32.
+   3. Confirm that your crypto works correctly by running `crypto:start().` from an erlang shell (Start->Erlang OTP R14B01->Erlang).
+      The shell should respond with `ok`. If you get an error then your openssl libraries are still missing.
+   4. Open up a git bash shell and cd to a directory you want to work in.
+   5. Clone the rebar repository `https://github.com/basho/rebar.git`
+   6. From a regular cmd.exe shell `cd rebar`. Now if you added the erlang bin directory to your PATH then you can simply run `bootstrap.bat`.
+      If you didn't add Erlang's bin to your path then issue the following command:
+      `"C:\Program Files\erl5.8.2\bin\escript.exe" bootstrap
+      Adjust the path to your Erlang installation directory. From now on, use this invocation for escript.exe and erl.exe. I'll assume it's on PATH.
+      You should now have a `rebar` file created. If you have Erlangs bin dir on your PATH then you may want to also add the rebar directory to your
+      PATH. This will allow you to use the rebar.bat script which will also reduce the amount of typing you will have to do.
+   7. Clone etorrent and copy the `rebar` file into it (unless you have it on path).
+   8. Now, we need to satisfy the dependencies. This should be done by rebar itself but I couldn't get it to work correctly with git.
+      This point describes how to do it manually.
+      `mkdir deps` # this is where rebar will look for etorrent dependencies
+      `escript.exe rebar check-deps` # this will give you a list of the missing dependencies and their git repos.
+      For each dependency reported by check-deps perform the following command in a git bash shell (be sure to be in the etorrent directory)
+      `git clone git://path_to_repo/name.git deps/name`
+      Be sure to run `escript.exe rebar check-deps` after cloning each additional repo as new dependencies might be added by them.
+      For the time of this writing (2011-02-13) I had to clone the following repositories:
+      `git clone git://github.com/esl/gproc.git deps/gproc`
+      `git clone git://github.com/esl/edown.git deps/edown`
+      `git clone git://github.com/basho/riak_err.git deps/riak_err`
+   9. `escript.exe rebar compile` to compile the application from a cmd.exe prompt.
+  10. `escript.exe rebar generate` this creates an embedded release in *rel/etorrent* which
+       can subsequently be moved to a location at your leisure. This command may take some time so be patient.
+  11. Edit `rel/etorrent/etc/app.config` - there are a number of directories which must be set in order to make the system work.
+      Be sure each directory exists before starting etorrent. You also have to change all paths starting with `/` (ie. `/var/lib...`).
+      When setting paths use forward slashes. For example `{dir, "D:/etorrent/torrents"},`.
+  12. Check `rel/etorrent/etc/vm.args` - Erlang args to supply
+  13. Be sure to protect the erlang cookie or anybody can connect to
+      your erlang system! See the Erlang user manual in [distributed operation](http://www.erlang.org/doc/reference_manual/distributed.html)
+  14. We can't run the etorrent script because it's written in bash. So in order to start ettorent cd from a cmd.exe shell into the `rel\etorrent`
+      directory. And perform the following command
+      `erts-5.8.2\bin\erl.exe -boot release\1.2.1\etorrent -embedded -config etc\app.config -args_file etc\vm.args`
+      Be sure to substitute the version number in the release path to the current etorrent release version. Do the same for the erts version.
+      Allow port communication when/if the Windows firewall asks for it.
+  15. drop a .torrent file in the watched dir and see what happens.
+  16. call `etorrent:help()`. from the Erlang CLI to get a list of available commands.
+  17. If you enabled the webui, you can try browsing to its location. By default the location is 'http://localhost:8080'.
 
 ## Testing etorrent
 
