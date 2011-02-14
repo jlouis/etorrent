@@ -2,7 +2,8 @@
 
 -include_lib("common_test/include/ct.hrl").
 
--export([suite/0, all/0,
+-export([suite/0, all/0, groups/0,
+	 init_per_group/2, end_per_group/2,
 	 init_per_suite/1, end_per_suite/1,
 	 init_per_testcase/2, end_per_testcase/2]).
 
@@ -16,6 +17,11 @@ suite() ->
 
 %% Setup/Teardown
 %% ----------------------------------------------------------------------
+init_per_group(_Group, Config) ->
+    Config.
+
+end_per_group(_Group, Config) ->
+    ok.
 
 init_per_suite(Config) ->
     %% We should really use priv_dir here, but as we are for-once creating
@@ -44,8 +50,9 @@ end_per_suite(Config) ->
     ok.
 
 init_per_testcase(seed_transmission, Config) ->
-    SN = ?config(seed_node, Config),
     Data = ?config(data_dir, Config),
+    SN = ?config(seed_node, Config),
+
     Priv = ?config(priv_dir, Config),
     CommonConf = ct:get_config(common_conf),
     SeedConfig = seed_configuration(CommonConf, Priv, Data),
@@ -54,13 +61,20 @@ init_per_testcase(seed_transmission, Config) ->
     SeedFile = filename:join([Data, ?TESTFILE30M]),
     LeechFile = filename:join([Priv, "nothing", ?TESTFILE30M]),
     file:make_dir(filename:join([Priv, "nothing"])),
-    file:copy(SeedTorrent, LeechTorrent),
+    {ok, _} = file:copy(SeedTorrent, LeechTorrent),
+    DownloadDir = filename:join([Priv, "nothing"]),
+    {ok, _} = file:copy(filename:join([Data, "transmission", "settings.json"]),
+			filename:join([DownloadDir, "settings.json"])),
+    {Ref, Pid} = start_transmission(Data,
+				    DownloadDir,
+				    LeechTorrent),
+    ok = ct:sleep({seconds, 8}), %% Wait for transmission to start up
     ok = rpc:call(SN, etorrent, start_app, [SeedConfig]),
     [{sn, SN},
+     {transmission_port, {Ref, Pid}},
      {seed_torrent, SeedTorrent},
      {leech_torrent, LeechTorrent},
      {seed_file, SeedFile},
-     {download_dir, filename:join([Priv, "nothing"])},
      {leech_file, LeechFile} | Config];
 init_per_testcase(seed_leech, Config) ->
     SN = ?config(seed_node, Config),
@@ -90,15 +104,17 @@ end_per_testcase(seed_transmission, Config) ->
     ok = rpc:call(?config(sn, Config), etorrent, stop_app, []),
     Priv = ?config(priv_dir, Config),
     ?line ok = file:delete(filename:join([Priv, ?TESTFILE30M ++ ".torrent"])),
-    ?line ok = file:delete(filename:join([Priv, "nothing", ?TESTFILE30M])),
-    ?line ok = file:del_dir(filename:join([Priv, "nothing"]));
+    ?line ok = file:delete(filename:join([Priv, "nothing", ?TESTFILE30M]));
+    %% Don't map in this before you gracefully clean out the directory.
+    %% ?line ok = file:del_dir(filename:join([Priv, "nothing"]));
 end_per_testcase(seed_leech, Config) ->
     ok = rpc:call(?config(ln, Config), etorrent, stop_app, []),
     ok = rpc:call(?config(sn, Config), etorrent, stop_app, []),
     Priv = ?config(priv_dir, Config),
     ?line ok = file:delete(filename:join([Priv, ?TESTFILE30M ++ ".torrent"])),
-    ?line ok = file:delete(filename:join([Priv, "nothing", ?TESTFILE30M])),
-    ?line ok = file:del_dir(filename:join([Priv, "nothing"]));
+    ?line ok = file:delete(filename:join([Priv, "nothing", ?TESTFILE30M]));
+    %% Don't map in this before you gracefully clean out the directory.
+    %% ?line ok = file:del_dir(filename:join([Priv, "nothing"]));
 end_per_testcase(_Case, _Config) ->
     ok.
 
@@ -126,17 +142,17 @@ leech_configuration(CConf, PrivDir) ->
 
 %% Tests
 %% ----------------------------------------------------------------------
+groups() ->
+    [{main_group, [shuffle, sequence], [seed_transmission, seed_leech]}].
+
 all() ->
-    [seed_leech].
+    [{group, main_group}].
 
 seed_transmission() ->
     [{require, common_conf, etorrent_common_config}].
 
 seed_transmission(Config) ->
-    {Ref, Pid} = start_transmission(
-		   ?config(data_dir, Config),
-		   ?config(download_dir, Config),
-		   ?config(leech_torrent, Config)),
+    {Ref, Pid} = ?config(transmission_port, Config),
     receive
 	{Ref, done} -> ok = stop_transmission(Pid)
     after
@@ -181,7 +197,7 @@ start_transmission(DataDir, DownDir, Torrent) ->
     ToSpawn = ["run_transmission-cli.sh ", quote(Torrent),
 	       " -w ", quote(DownDir),
 	       " -g ", quote(DownDir),
-	       " -et -B -p 1780"],
+	       " -p 1780"],
     Spawn = filename:join([DataDir, lists:concat(ToSpawn)]),
     error_logger:info_report([{spawn, Spawn}]),
     Ref = make_ref(),
@@ -194,11 +210,12 @@ start_transmission(DataDir, DownDir, Torrent) ->
 		     end),
     {Ref, Pid}.
 
-stop_transmission(Pid) ->
-    Pid ! close.
+stop_transmission(Pid) when is_pid(Pid) ->
+    Pid ! close,
+    ok.
 
 transmission_complete_criterion() ->
-    "State changed from \"Incomplete\" to \"Complete\"".
+    "Seeding, uploading to".
 
 transmission_loop(Port, Ref, ReturnPid, OldBin) ->
     case binary:split(OldBin, [<<"\r">>, <<"\n">>]) of
@@ -214,7 +231,6 @@ transmission_loop(Port, Ref, ReturnPid, OldBin) ->
 		    transmission_loop(Port, Ref, ReturnPid, OnePart)
 	    end;
 	[L, Rest] ->
-	    error_logger:info_report([line, L]),
 	    case string:str(binary_to_list(L), transmission_complete_criterion()) of
 		0 -> ok;
 		N when is_integer(N) ->
