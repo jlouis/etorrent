@@ -162,8 +162,8 @@ stop_leecher(Config) ->
 
 end_per_testcase(leech_transmission, Config) ->
     stop_leecher(Config),
-    ?line ok = file:delete(?config(tr_seed_file), Config),
-    ?line ok = file:delete(?config(et_leech_file), Config);
+    ?line ok = file:delete(?config(tr_seed_file, Config)),
+    ?line ok = file:delete(?config(et_leech_file, Config));
 end_per_testcase(seed_transmission, Config) ->
     ok = rpc:call(?config(sn, Config), etorrent, stop_app, []),
     Priv = ?config(priv_dir, Config),
