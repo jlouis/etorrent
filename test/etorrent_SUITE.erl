@@ -12,7 +12,8 @@
 	 leech_transmission/0, leech_transmission/1]).
 
 -define(TESTFILE30M, "test_file_30M.random").
--define(ETORRENT_WORK_DIR, "nothing-et").
+-define(ET_WORK_DIR, "work-et").
+-define(TR_WORK_DIR, "work-tr").
 
 suite() ->
     [{timetrap, {minutes, 3}}].
@@ -24,6 +25,8 @@ init_per_group(main_group, Config) ->
 init_per_group(_Group, Config) ->
     Config.
 
+end_per_group(main_group, Config) ->
+    end_locations(Config);
 end_per_group(_Group, _Config) ->
     ok.
 
@@ -53,37 +56,49 @@ end_per_suite(Config) ->
     test_server:stop_node(LN),
     ok.
 
+end_locations(Config) ->
+    DataDir = ?config(data_dir, Config),
+    PrivDir = ?config(priv_dir, Config),
+
+    %% Remove locations
+    ok = file:del_dir(filename:join([PrivDir, ?ET_WORK_DIR])),
+
+    ok = file:delete(filename:join([PrivDir, ?TR_WORK_DIR, "settings.json"])),
+    ok = file:del_dir(filename:join([PrivDir, ?TR_WORK_DIR])).
+
+
 init_locations(Config) ->
     %% Setup locations that some of the test cases use
     DataDir = ?config(data_dir, Config),
     PrivDir = ?config(priv_dir, Config),
 
     %% Create locations
-    file:make_dir(filename:join([PrivDir, "nothing"])),
-    file:make_dir(filename:join([PrivDir, ?ETORRENT_WORK_DIR])),
-    file:make_dir(filename:join([PrivDir, "nothing-tr"])),
+    file:make_dir(filename:join([PrivDir, ?ET_WORK_DIR])),
+    file:make_dir(filename:join([PrivDir, ?TR_WORK_DIR])),
 
     %% Setup common locations
     SeedTorrent = filename:join([DataDir, ?TESTFILE30M ++ ".torrent"]),
     SeedFile    = filename:join([DataDir, ?TESTFILE30M]),
+    SeedFastResume = filename:join([PrivDir, "seed_fast_resume"]),
 
-    LeechTorrent = filename:join([PrivDir, ?TESTFILE30M ++ ".torrent"]),
     LeechFile    = filename:join([PrivDir, ?TESTFILE30M]),
+    LeechFastResume = filename:join([PrivDir, "leech_fast_resume"]),
 
     %% Setup Etorrent location
-    EtorrentWorkDir          = filename:join([PrivDir, "nothing-et"]),
-    EtorrentLeechFile        = filename:join([PrivDir, "nothing-et", ?TESTFILE30M]),
+    EtorrentWorkDir          = filename:join([PrivDir, ?ET_WORK_DIR]),
+    EtorrentLeechFile        = filename:join([PrivDir, ?ET_WORK_DIR, ?TESTFILE30M]),
 
     %% Setup Transmission locations
-    TransMissionWorkDir      = filename:join([PrivDir, "nothing-tr"]),
-    TransMissionFile     = filename:join([PrivDir, "nothing-tr", ?TESTFILE30M]),
+    TransMissionWorkDir      = filename:join([PrivDir, ?TR_WORK_DIR]),
+    TransMissionFile     = filename:join([PrivDir, ?TR_WORK_DIR, ?TESTFILE30M]),
     {ok, _} = file:copy(filename:join([DataDir, "transmission", "settings.json"]),
 			filename:join([TransMissionWorkDir, "settings.json"])),
 
     [{seed_torrent, SeedTorrent},
      {seed_file,    SeedFile},
-     {leech_torrent, LeechTorrent},
+     {seed_fast_resume, SeedFastResume},
      {leech_file,    LeechFile},
+     {leech_fast_resume, LeechFastResume},
      {et_work_dir, EtorrentWorkDir},
      {et_leech_file, EtorrentLeechFile},
      {tr_work_dir, TransMissionWorkDir},
@@ -91,14 +106,16 @@ init_locations(Config) ->
 
 spawn_leecher(Config) ->
     CommonConf = ct:get_config(common_conf),
-    LeechConfig = leech_configuration(CommonConf,
+    LeechConfig = leech_configuration(Config,
+				      CommonConf,
 				      ?config(priv_dir, Config),
-				      ?ETORRENT_WORK_DIR),
+				      ?ET_WORK_DIR),
     ok = rpc:call(?config(leech_node, Config), etorrent, start_app, [LeechConfig]).
 
 spawn_seeder(Config) ->
     CommonConf = ct:get_config(common_conf),
-    SeedConfig = seed_configuration(CommonConf,
+    SeedConfig = seed_configuration(Config,
+				    CommonConf,
 				    ?config(priv_dir, Config),
 				    ?config(data_dir, Config)),
     ok = rpc:call(?config(seed_node, Config), etorrent, start_app, [SeedConfig]).
@@ -121,33 +138,11 @@ init_per_testcase(seed_transmission, Config) ->
     spawn_seeder(Config),
     [{transmission_port, {Ref, Pid}} | Config];
 init_per_testcase(seed_leech, Config) ->
-    SN = ?config(seed_node, Config),
-    LN = ?config(leech_node, Config),
-    Data = ?config(data_dir, Config),
-    Priv = ?config(priv_dir, Config),
-    CommonConf = ct:get_config(common_conf),
-    SeedConfig = seed_configuration(CommonConf, Priv, Data),
-    LeechConfig = leech_configuration(CommonConf, Priv),
-    SeedTorrent = filename:join([Data, ?TESTFILE30M ++ ".torrent"]),
-    LeechTorrent = filename:join([Priv, ?TESTFILE30M ++ ".torrent"]),
-    SeedFile = filename:join([Data, ?TESTFILE30M]),
-    LeechFile = filename:join([Priv, "nothing", ?TESTFILE30M]),
-    file:make_dir(filename:join([Priv, "nothing"])),
-    file:copy(SeedTorrent, LeechTorrent),
-    ok = rpc:call(SN, etorrent, start_app, [SeedConfig]),
-    ok = rpc:call(LN, etorrent, start_app, [LeechConfig]),
-    [{seed_torrent, SeedTorrent},
-     {leech_torrent, LeechTorrent},
-     {seed_file, SeedFile},
-     {leech_file, LeechFile} | Config];
+    spawn_seeder(Config),
+    spawn_leecher(Config),
+    Config;
 init_per_testcase(_Case, Config) ->
     Config.
-
-stop_leecher(Config) ->
-    ok = rpc:call(?config(leech_node, Config), etorrent, stop_app, []).
-
-stop_seeder(Config) ->
-    ok = rpc:call(?config(seed_node, Config), etorrent, stop_app, []).
 
 end_per_testcase(leech_transmission, Config) ->
     stop_leecher(Config),
@@ -165,7 +160,7 @@ end_per_testcase(_Case, _Config) ->
 
 %% Configuration
 %% ----------------------------------------------------------------------
-seed_configuration(CConf, PrivDir, DataDir) ->
+seed_configuration(Config, CConf, PrivDir, DataDir) ->
     [{port, 1739 },
      {udp_port, 1740 },
      {dht_state, filename:join([PrivDir, "seeder_state.persistent"])},
@@ -173,12 +168,12 @@ seed_configuration(CConf, PrivDir, DataDir) ->
      {download_dir, DataDir},
      {logger_dir, PrivDir},
      {logger_fname, "seed_etorrent.log"},
-     {fast_resume_file, filename:join([PrivDir, "seed_fast_resume"])} | CConf].
+     {fast_resume_file, ?config(seed_fast_resume, Config)} | CConf].
 
-leech_configuration(CConf, PrivDir) ->
-    leech_configuration(CConf, PrivDir, "nothing-et").
+leech_configuration(Config, CConf, PrivDir) ->
+    leech_configuration(CConf, PrivDir, ?ET_WORK_DIR).
 
-leech_configuration(CConf, PrivDir, DownloadSuffix) ->
+leech_configuration(Config, CConf, PrivDir, DownloadSuffix) ->
     [{port, 1769 },
      {udp_port, 1760 },
      {dht_state, filename:join([PrivDir, "leecher_state.persistent"])},
@@ -186,7 +181,7 @@ leech_configuration(CConf, PrivDir, DownloadSuffix) ->
      {download_dir, filename:join([PrivDir, DownloadSuffix])},
      {logger_dir, PrivDir},
      {logger_fname, "leech_etorrent.log"},
-     {fast_resume_file, filename:join([PrivDir, "leech_fast_resume"])} | CConf].
+     {fast_resume_file, ?config(leech_fast_resume, Config)} | CConf].
 
 %% Tests
 %% ----------------------------------------------------------------------
@@ -202,7 +197,7 @@ seed_transmission() ->
 seed_transmission(Config) ->
     {Ref, Pid} = ?config(transmission_port, Config),
     receive
-	{Ref, done} -> ok = stop_transmission(Pid)
+	{Ref, done} -> ok = stop_transmission(Config, Pid)
     after
 	120*1000 -> exit(timeout_error)
     end,
@@ -218,7 +213,7 @@ leech_transmission(Config) ->
 		  etorrent, start,
 		  [?config(seed_torrent, Config), {Ref, Pid}]),
     receive
-	{Ref, done} -> ok
+	{Ref, done} -> ok = stop_transmission(Config, Pid)
     after
 	120*1000 -> exit(timeout_error)
     end,
@@ -232,7 +227,7 @@ seed_leech(Config) ->
     {Ref, Pid} = {make_ref(), self()},
     ok = rpc:call(?config(leech_node, Config),
 		  etorrent, start,
-		  [?config(leech_torrent, Config), {Ref, Pid}]),
+		  [?config(seed_torrent, Config), {Ref, Pid}]),
     receive
 	{Ref, done} -> ok
     after
@@ -276,9 +271,36 @@ start_transmission(DataDir, DownDir, Torrent) ->
 		     end),
     {Ref, Pid}.
 
-stop_transmission(Pid) when is_pid(Pid) ->
+stop_transmission(Config, Pid) when is_pid(Pid) ->
     Pid ! close,
+    end_transmission_locations(Config),
     ok.
+
+end_transmission_locations(Config) ->
+    PrivDir = ?config(priv_dir, Config),
+
+    %% Transmission dir needs some help:
+    ok = file:delete(filename:join([PrivDir, ?TR_WORK_DIR, "resume",
+				    "test_file_30M.random.ce953adee1a11f83.resume"])),
+    ok = file:del_dir(filename:join([PrivDir, ?TR_WORK_DIR, "resume"])),
+
+    ok = file:delete(filename:join([PrivDir, ?TR_WORK_DIR, "torrents",
+				    "test_file_30M.random.ce953adee1a11f83.torrent"])),
+    ok = file:del_dir(filename:join([PrivDir, ?TR_WORK_DIR, "torrents"])),
+
+    ok = file:del_dir(filename:join([PrivDir, ?TR_WORK_DIR, "blocklists"])).
+
+stop_leecher(Config) ->
+    ok = rpc:call(?config(leech_node, Config), etorrent, stop_app, []),
+    ok = file:delete(filename:join([?config(priv_dir, Config),
+				    "leech_etorrent.log"])),
+    ok = file:delete(?config(leech_fast_resume, Config)).
+
+stop_seeder(Config) ->
+    ok = rpc:call(?config(seed_node, Config), etorrent, stop_app, []),
+    ok = file:delete(filename:join([?config(priv_dir, Config),
+				    "seed_etorrent.log"])),
+    ok = file:delete(?config(seed_fast_resume, Config)).
 
 transmission_complete_criterion() ->
     "Seeding, uploading to".
