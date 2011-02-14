@@ -10,6 +10,9 @@ To run the unit tests, you currently need a set of programs installed:
 * [QuickCheck Mini](http://www.quviq.com/news100621.html) - The small
   version of QuviQ's QuickCheck tool. It should be somewhere in your
   Erlang path.
+* [Transmission 2.21](www.transmissionbt.com) - To install this, I use
+  a PPA in Ubuntu, namely `ppa:transmissionbt/ppa` use
+  `add-apt-repository` to get it in.
 
 ## Performing tests
 
