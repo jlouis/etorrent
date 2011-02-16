@@ -87,19 +87,19 @@ handle_call({start, F, CallBack}, _From, S) ->
         {ok, Torrent} ->
             TorrentIH = etorrent_metainfo:get_infohash(Torrent),
             case etorrent_torrent_pool:start_child(
-                            {Torrent, F, TorrentIH},
-                            S#state.local_peer_id,
-                            etorrent_counters:next(torrent)) of
+                   {Torrent, F, TorrentIH},
+                   S#state.local_peer_id,
+                   etorrent_counters:next(torrent)) of
                 {ok, TorrentPid} ->
-		    install_callback(TorrentPid, TorrentIH, CallBack),
-		    {reply, ok, S};
+                    install_callback(TorrentPid, TorrentIH, CallBack),
+                    {reply, ok, S};
                 {error, {already_started, _Pid}} = Err ->
-		    {reply, Err, S}
+                    {reply, Err, S}
             end;
         {error, Reason} ->
             ?INFO([malformed_torrent_file, F]),
             etorrent_event:notify({malformed_torrent_file, F}),
-	    {reply, {error, Reason}}
+            {reply, {error, Reason}, S}
     end;
 handle_call(stop_all, _From, S) ->
     stop_all(),
