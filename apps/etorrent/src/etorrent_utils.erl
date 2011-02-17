@@ -12,7 +12,7 @@
 
 %% "stdlib-like" functions
 -export([gsplit/2, queue_remove/2, group/1,
-	 list_shuffle/1, date_str/1]).
+	 list_shuffle/1, date_str/1, any_to_list/1]).
 
 %% "time-like" functions
 -export([now_subtract_seconds/2]).
@@ -108,6 +108,16 @@ now_subtract_seconds({Megasecs, Secs, Ms}, Subsecs) ->
             Needed = abs(N) div 1000000 + 1,
             {Megasecs - Needed, N + (Needed * 1000000), Ms}
     end.
+
+any_to_list(V) when is_list(V) ->
+    V;
+any_to_list(V) when is_integer(V) ->
+    integer_to_list(V);
+any_to_list(V) when is_atom(V) ->
+    atom_to_list(V);
+any_to_list(V) when is_binary(V) ->
+    binary_to_list(V).
+
 
 %%====================================================================
 

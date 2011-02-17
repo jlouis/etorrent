@@ -31,6 +31,7 @@
 	 webui_address/0,
 	 webui_log_dir/0,
 	 webui_port/0,
+     use_upnp/0,
 	 work_dir/0]).
 
 %% API
@@ -62,6 +63,7 @@ configuration_specification() ->
      required(logger_fname),
      optional(dht_port, 6882),
      optional(dht_state, "etorrent_dht_state"),
+     optional(use_upnp, true),
      optional(log_settings, [])].
 
 %%====================================================================
@@ -98,6 +100,9 @@ max_peers() -> call(max_peers).
 
 -spec webui() -> boolean().
 webui() -> call(webui).
+
+-spec use_upnp() -> boolean().
+use_upnp() -> call(use_upnp).
 
 %% This function is calling directly, so it can be called outside the
 %% start of the application. In the longer run, we should probably
