@@ -172,7 +172,6 @@ add_port_mapping(Service, Proto, Port) ->
 %% gen_server callbacks
 %%===================================================================
 init([]) ->
-    ok = start_ibrowse(),
     {ok, Sock} = gen_udp:open(0, [{active, true}, inet]),
     {ok, #state{ssdp_sock = Sock}, 0}.
 
@@ -389,14 +388,5 @@ decode_host(URL) ->
         80 -> Host;
         N when is_integer(N) ->
             Host ++ ":" ++ integer_to_list(N)
-    end.
-
-
-%% @doc Ensure ibrowse loaded.
-start_ibrowse() ->
-    case ibrowse:start() of
-        {ok, _} -> ok;
-        {error, {already_started, _}} -> ok;
-        _ -> error
     end.
 

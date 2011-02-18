@@ -63,7 +63,6 @@ configuration_specification() ->
      required(logger_fname),
      optional(dht_port, 6882),
      optional(dht_state, "etorrent_dht_state"),
-     optional(use_upnp, true),
      optional(log_settings, [])].
 
 %%====================================================================
@@ -102,7 +101,7 @@ max_peers() -> call(max_peers).
 webui() -> call(webui).
 
 -spec use_upnp() -> boolean().
-use_upnp() -> call(use_upnp).
+use_upnp() -> element(2, (required(use_upnp))([])).
 
 %% This function is calling directly, so it can be called outside the
 %% start of the application. In the longer run, we should probably
