@@ -65,7 +65,7 @@
 
 %% @doc Starts the server
 %% @end
-start_link(TrackerUrl, LocalPeerId, InfoHash, Id, {IP, Port}, Caps, Socket) 
+start_link(TrackerUrl, LocalPeerId, InfoHash, Id, {IP, Port}, Caps, Socket)
   when is_binary(LocalPeerId) ->
     gen_server:start_link(?MODULE, [TrackerUrl, LocalPeerId, InfoHash,
                                     Id, {IP, Port}, Caps, Socket], []).
@@ -159,7 +159,8 @@ handle_cast({initialize, Way}, S) ->
 handle_cast({incoming_msg, Msg}, S) ->
     case handle_message(Msg, S) of
         {ok, NS} -> {noreply, NS};
-        {stop, NS} -> {stop, normal, NS}
+        {stop, NS} -> {stop, normal, NS};
+        {stop, Reason, NS} -> {stop, Reason, NS}
     end;
 handle_cast(choke, S) ->
     etorrent_peer_send:choke(S#state.send_pid),
@@ -233,7 +234,7 @@ format_status(_Opt, [_Pdict, S]) ->
 %% Description: Process an incoming message Msg from the wire. Return either
 %%  {ok, S} if the processing was ok, or {stop, Reason, S} in case of an error.
 %%--------------------------------------------------------------------
--spec handle_message(_,_) -> {'ok',_} | {'stop',_}.
+-spec handle_message(_,_) -> {'ok',_} | {'stop',_,_}.
 handle_message(keep_alive, S) ->
     {ok, S};
 handle_message(choke, S) ->
