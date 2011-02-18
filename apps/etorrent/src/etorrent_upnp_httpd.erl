@@ -29,7 +29,7 @@
 -define(SERVER, ?MODULE).
 -define(HTTPD_NAME, etorrent_upnp_http_server).
 -define(LOOP, {?SERVER, loop}).
--define(NOTIFY(M), etorrent_event:notify(M)).
+
 
 %%===================================================================
 %% API
@@ -77,7 +77,7 @@ handle_call(_Request, _From, S) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_info({'DOWN', ServerRef, _, _, _}, S) ->
+handle_info({'DOWN', _, _, _, _}, S) ->
     ?WARN([restarting_httpd]),
     {Server, ServerRef} = start_and_monitor_httpd(),
     {ok, S#state{server = Server, server_ref = ServerRef}};
@@ -85,9 +85,9 @@ handle_info(Info, S) ->
     ?WARN([unknown_info, Info]),
     {noreply, S}.
 
-terminate(_Reason, S) ->
-    _ = erlang:demonitor(S#state.server_ref),
-    mochiweb_http:stop(?HTTPD_NAME).
+terminate(_Reason, _S) ->
+    mochiweb_http:stop(?HTTPD_NAME),
+    ok.
 
 code_change(_OldVer, State, _Extra) ->
     {ok, State}.

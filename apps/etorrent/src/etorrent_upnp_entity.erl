@@ -32,7 +32,6 @@
                 prop    :: upnp_device() | upnp_service()}).
 
 -define(SERVER, ?MODULE).
--define(NOTIFY(M), etorrent_event:notify(M)).
 
 
 %%===================================================================
@@ -69,6 +68,8 @@ init(Args) ->
         undefined -> ets:new(tab_name(), [named_table, public, set]);
         _ -> ok
     end,
+    %% We trap exits to unsubscribe from UPnP service.
+    process_flag(trap_exit, true),
     register_self(Args),
     {ok, #state{cat     = proplists:get_value(cat, Args),
                 prop    = proplists:get_value(prop, Args)}, 0}.
@@ -79,14 +80,16 @@ handle_call(_Request, _From, State) ->
 
 
 handle_cast({update, Cat, NewProp}, #state{prop = Prop} = State) ->
-    Merged = merge_proplists(Prop, NewProp),
+    Merged = etorrent_utils:merge_proplists(Prop, NewProp),
     case can_do_port_mapping(Cat, Merged) of
         true ->
-            %% seems etorrent listens on three ports: listen_port,
-            %% udp_port and dht_port.
+            %% add three port mapping for etorrent: listen_port, udp_port,
+            %% and dht_port. if etorrent listens on more ports in the future,
+            %% simply add them here.
+            DHTEnabled = etorrent_config:dht(),
             add_port_mapping(self(), tcp, etorrent_config:listen_port()),
             add_port_mapping(self(), udp, etorrent_config:udp_port()),
-            add_port_mapping(self(), udp, etorrent_config:dht_port());
+            [add_port_mapping(self(), udp, etorrent_config:dht_port()) || DHTEnabled];
         _ -> ignore
     end,
     case can_subscribe(Cat, Merged) of
@@ -124,7 +127,7 @@ handle_info(subscribe, State) ->
         false ->
             case etorrent_upnp_net:subscribe(Prop) of
                 {ok, Sid} ->
-                    merge_proplists(Prop, [{sid, Sid}]);
+                    etorrent_utils:merge_proplists(Prop, [{sid, Sid}]);
                 {error, _} -> Prop
             end;
         true -> Prop
@@ -202,19 +205,6 @@ is_subscribed(Prop) ->
     Sid = proplists:get_value(sid, Prop),
     Sid =/= undefined.
 
-
-merge_proplists(OldProp, NewProp) ->
-    merge_proplists(OldProp, NewProp, []).
-
-merge_proplists(OldProp, [], Acc) ->
-    lists:append(OldProp, Acc);
-merge_proplists([], NewProp, Acc) ->
-    lists:append(NewProp, Acc);
-merge_proplists(OldProp, NewProp, Acc) ->
-    [{Key, Vale}|_] = NewProp,
-    merge_proplists(proplists:delete(Key, OldProp),
-                    proplists:delete(Key, NewProp),
-                    [{Key, Vale} | Acc]).
 
 tab_name() ->
     etorrent_upnp_registry.

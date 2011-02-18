@@ -37,10 +37,10 @@ init([]) ->
 add_upnp_entity(Category, Proplist) ->
     %% Each UPnP device or service can be uniquely identified by its
     %% category + type + uuid.
-    ChildID = erlang:phash2({Category,
-                             proplists:get_value(type, Proplist),
-                             proplists:get_value(uuid, Proplist)}),
-    ChildSpec = {{etorrent_upnp_entity, ChildID},
+    ChildID = {etorrent_upnp_entity, Category,
+               proplists:get_value(type, Proplist),
+               proplists:get_value(uuid, Proplist)},
+    ChildSpec = {ChildID,
                  {etorrent_upnp_entity, start_link, [Category, Proplist]},
                  permanent, 2000, worker, dynamic},
     case supervisor:start_child(?SERVER, ChildSpec) of

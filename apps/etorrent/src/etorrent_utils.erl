@@ -12,7 +12,8 @@
 
 %% "stdlib-like" functions
 -export([gsplit/2, queue_remove/2, group/1,
-	 list_shuffle/1, date_str/1, any_to_list/1]).
+	 list_shuffle/1, date_str/1, any_to_list/1,
+     merge_proplists/2, compare_proplists/2]).
 
 %% "time-like" functions
 -export([now_subtract_seconds/2]).
@@ -119,6 +120,25 @@ any_to_list(V) when is_binary(V) ->
     binary_to_list(V).
 
 
+%% @doc Returns a proplist formed by merging OldProp and NewProp. If a key
+%%      presents only in OldProp or NewProp, the tuple is picked. If a key
+%%      presents in both OldProp and NewProp, the tuple from NewProp is
+%%      picked.
+%% @end
+-spec merge_proplists(proplists:proplist(), proplists:proplist()) ->
+    proplists:proplist().
+merge_proplists(OldProp, NewProp) ->
+    lists:ukeymerge(1, lists:ukeysort(1, NewProp), lists:ukeysort(1, OldProp)).
+
+%% @doc Returns true if two proplists match regardless of the order of tuples
+%%      present in them, false otherwise.
+%% @end
+-spec compare_proplists(proplists:proplist(), proplists:proplist()) ->
+    boolean().
+compare_proplists(Prop1, Prop2) ->
+    lists:ukeysort(1, Prop1) =:= lists:ukeysort(1, Prop2).
+
+
 %%====================================================================
 
 -ifdef(EUNIT).
@@ -145,6 +165,23 @@ prop_group_count() ->
 		  end,
 		  Grouped)
 	    end).
+
+shuffle_list(List) ->                                          
+    random:seed(now()),
+    {NewList, _} = lists:foldl( fun(_El, {Acc,Rest}) ->          
+        RandomEl = lists:nth(random:uniform(length(Rest)), Rest),
+        {[RandomEl|Acc], lists:delete(RandomEl, Rest)}            
+    end, {[],List}, List),                                        
+    NewList.
+proplist_utils_test() ->
+    Prop1 = lists:zip(lists:seq(1, 15), lists:seq(1, 15)),
+    Prop2 = lists:zip(lists:seq(5, 20), lists:seq(5, 20)),
+    PropFull = lists:zip(lists:seq(1, 20), lists:seq(1, 20)),
+    ?assertEqual(merge_proplists(shuffle_list(Prop1), shuffle_list(Prop2)),
+                 PropFull),
+    ?assert(compare_proplists(Prop1, shuffle_list(Prop1))),
+    ok.
+
 
 eqc_test() ->
     ?assert(eqc:quickcheck(prop_group_count())),

@@ -62,17 +62,17 @@ parse_msearch_resp(Resp) ->
         [_, UUID|_] = re:split(USN, ":", [{return, binary}]),
         case Cat of
             <<"device">> ->
-                {ok, device, [proplists:property(type, Type),
-                              proplists:property(ver, Ver),
-                              proplists:property(uuid, UUID),
-                              proplists:property(loc, Loc),
-                              proplists:property(max_age, Age),
-                              proplists:property(server, Svr)]};
+                {ok, device, [{type,    Type},
+                              {ver,     Ver},
+                              {uuid,    UUID},
+                              {loc,     Loc},
+                              {max_age, Age},
+                              {server,  Svr}]};
             <<"service">> ->
-                {ok, service, [proplists:property(type, Type),
-                               proplists:property(ver, Ver),
-                               proplists:property(uuid, UUID),
-                               proplists:property(loc, Loc)]};
+                {ok, service, [{type,   Type},
+                               {ver,    Ver},
+                               {uuid,   UUID},
+                               {loc,    Loc}]};
             <<"uuid">> ->
                 {ok, uuid}
         end

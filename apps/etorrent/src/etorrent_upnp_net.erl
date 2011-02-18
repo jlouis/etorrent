@@ -38,7 +38,6 @@
 -record(state, {ssdp_sock :: gen_udp:socket()}).
 
 -define(SERVER, ?MODULE).
--define(NOTIFY(M), etorrent_event:notify(M)).
 -define(HTTP_SCHEME, "http://").
 
 
@@ -148,8 +147,8 @@ subscribe(Service) ->
 -spec unsubscribe(upnp_service()) -> ok.
 unsubscribe(Service) ->
     {_PubUrl, SubUrl} = build_sub_url(Service),
-    _ = ibrowse:send_req(SubUrl, [{"SID", "uuid:" ++ proplists:get_value(sid, Service)}],
-                         unsubscribe, [], [{headers_as_is, true}]).
+    ibrowse:send_req(SubUrl, [{"SID", "uuid:" ++ proplists:get_value(sid, Service)}],
+                     unsubscribe, [], [{headers_as_is, true}]).
 
 
 %% @doc Add a port mapping to given UPnP service.
