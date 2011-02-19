@@ -54,6 +54,7 @@ add_upnp_entity(Category, Proplist) ->
 
 start_upnp_sup_tree() ->
     etorrent_event:start_link(),
+    etorrent_table:start_link(),
     etorrent_upnp_sup:start_link().
 
 

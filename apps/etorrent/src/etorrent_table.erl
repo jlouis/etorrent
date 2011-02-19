@@ -27,6 +27,10 @@
 -export([all_torrents/0, statechange_torrent/2, get_torrent/1, acquire_check_token/1,
 	 new_torrent/4]).
 
+%% UPnP entity information
+-export([register_upnp_entity/3,
+         lookup_upnp_entity/2]).
+
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3]).
@@ -59,6 +63,7 @@
 -ignore_xref([{start_link, 0}]).
 
 -define(SERVER, ?MODULE).
+-define(TAB_UPNP, upnp_entity).
 
 %%====================================================================
 
@@ -238,6 +243,27 @@ foreach_peer_of_tracker(TrackerUrl, F) ->
     lists:foreach(F, Pids),
     ok.
 
+
+%% @doc Inserts a UPnP entity into its dedicated ETS table.
+%% @end
+-spec register_upnp_entity(pid(), device | service,
+                           upnp_device() | upnp_service()) -> true.
+register_upnp_entity(Pid, Cat, Entity) ->
+    Id = etorrent_upnp_entity:id(Cat, Entity),
+    add_monitor({upnp, Cat, Entity}, Pid),
+    true = ets:insert(?TAB_UPNP, {Id, Pid, Cat, Entity}).
+
+%% @doc Returns the pid that governs given UPnP entity.
+%% @end
+-spec lookup_upnp_entity(device | service,
+                         upnp_device() | upnp_service()) -> {ok, pid()} | {error, not_found}.
+lookup_upnp_entity(Cat, Entity) ->
+    case ets:lookup(?TAB_UPNP, etorrent_upnp_entity:id(Cat, Entity)) of
+        [{_Id, Pid, _Cat, _Entity}] -> {ok, Pid};
+        [] -> {error, not_found}
+    end.
+
+
 %%====================================================================
 
 %% @private
@@ -245,6 +271,7 @@ init([]) ->
     ets:new(path_map, [public, {keypos, #path_map.id}, named_table]),
     ets:new(peers, [named_table, {keypos, #peer.pid}, public]),
     ets:new(tracking_map, [named_table, {keypos, #tracking_map.id}, public]),
+    ets:new(?TAB_UPNP, [named_table, public, set]),
     {ok, #state{ monitoring = dict:new() }}.
 
 %% @private
@@ -280,7 +307,11 @@ handle_info({'DOWN', Ref, _, _, _}, S) ->
 	peer ->
 	    true = ets:delete(peers, X);
 	{torrent, Id} ->
-	    true = ets:delete(tracking_map, Id)
+	    true = ets:delete(tracking_map, Id);
+    {upnp, Cat, Entity} ->
+        EntityId = etorrent_upnp_entity:id(Cat, Entity),
+        etorrent_upnp_entity:unsubscribe(Cat, Entity),
+        true = ets:delete(?TAB_UPNP, EntityId)
     end,
     {noreply, S#state { monitoring = dict:erase(Ref, S#state.monitoring) }};
 handle_info(Msg, S) ->
