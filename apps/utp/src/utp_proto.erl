@@ -1,5 +1,7 @@
 -module(utp_proto).
 
+-include("utp.hrl").
+
 -export([mk_connection_id/0,
 	 send_packet/3,
 	 encode/3,
@@ -19,6 +21,7 @@ mk_connection_id() ->
     <<N:16/integer>> = crypto:rand_bytes(2),
     N.
 
+-spec gettimeofday() -> integer().
 gettimeofday() ->
     {M, S, Micro} = os:timestamp(),
     S1 = M*1000000 + S,
@@ -32,7 +35,14 @@ send_packet(Packet, LastTS, Socket) ->
     Diff = timediff(TS,LastTS),
     gen_udp:send(Socket, Packet, TS, Diff).
 
-encode({packet, Type, ConnID, WSize, SeqNo, AckNo, ExtList, Payload}, TS, TSDiff) ->
+-spec encode(packet(), timestamp(), timestamp()) -> binary().
+encode(#packet { ty = Type,
+		 conn_id = ConnID,
+		 win_sz = WSize,
+		 seq_no = SeqNo,
+		 ack_no = AckNo,
+		 extension = ExtList,
+		 payload = Payload}, TS, TSDiff) ->
     {Extension, ExtBin} = encode_extensions(ExtList),
     EncTy = encode_type(Type),
     <<1:4/integer, EncTy:4/integer, Extension:8/integer, ConnID:16/integer,
@@ -43,6 +53,7 @@ encode({packet, Type, ConnID, WSize, SeqNo, AckNo, ExtList, Payload}, TS, TSDiff
       ExtBin/binary,
       Payload/binary>>.
 
+-spec decode(binary()) -> {packet(), timestamp(), timestamp()}.
 decode(Packet) ->
     case Packet of
 	<<1:4/integer, Type:4/integer, Extension:8/integer, ConnectionId:16/integer,
@@ -52,13 +63,15 @@ decode(Packet) ->
 	  SeqNo:16/integer, AckNo:16/integer,
 	ExtPayload/binary>> ->
 	    {Extensions, Payload} = decode_extensions(Extension, ExtPayload, []),
-	    {packet,
-	     decode_type(Type), ConnectionId,
+	    {#packet { ty = decode_type(Type),
+		       conn_id = ConnectionId,
+		       win_sz = WindowSize,
+		       seq_no = SeqNo,
+		       ack_no = AckNo,
+		       extension = Extensions,
+		       payload = Payload},
 	     TimeStamp,
-	     TimeStampdiff,
-	     WindowSize,
-	     SeqNo, AckNo,
-	     Extensions, Payload}
+	     TimeStampdiff}
     end.
 
 decode_extensions(0, Payload, Exts) ->

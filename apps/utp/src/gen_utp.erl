@@ -17,6 +17,7 @@
 
 %% Internally used API
 -export([register_process/2]).
+-export([lookup_registrar/1]).
 
 -type utp_socket() :: {utp_sock, pid()}.
 -export_type([utp_socket/0]).
@@ -74,8 +75,19 @@ accept(_ListenSock) ->
     todo.
 
 %% @doc Register a process as the recipient of a given incoming message
+%% @end
 register_process(Pid, ConnID) ->
     call({reg_proc, Pid, ConnID}).
+
+%% @doc Look up the registrar underneath a given connection ID
+%% @end
+lookup_registrar(CID) ->
+    case ets:lookup(?TAB, CID) of
+	[] ->
+	    not_found;
+	[{_, Pid}] ->
+	    {ok, Pid}
+    end.
 
 %%%===================================================================
 %%% gen_server callbacks

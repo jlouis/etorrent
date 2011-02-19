@@ -41,7 +41,9 @@ init([]) ->
 
     GenUTP = {gen_utp, {gen_utp, start_link, []},
 	      permanent, 15000, worker, [gen_utp]},
+    GenUTPDecoder = {gen_utp_decoder, {gen_utp_decoder, start_link, []},
+	      permanent, 15000, worker, [gen_utp_decoder]},
     WorkerPool = {gen_utp_worker_pool, {gen_utp_worker_pool, start_link, []},
 		  transient, infinity, supervisor, [gen_utp_worker_pool]},
-    {ok, {SupFlags, [WorkerPool, GenUTP]}}.
+    {ok, {SupFlags, [WorkerPool, GenUTPDecoder, GenUTP]}}.
 
