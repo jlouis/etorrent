@@ -28,3 +28,4 @@ webui/*.log
 /logs/
 .eunit/
 /etorrent_dialyzer.plt
+/apps/utp/ebin/utp.app
