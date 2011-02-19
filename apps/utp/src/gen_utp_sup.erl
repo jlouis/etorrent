@@ -8,7 +8,7 @@
 -behaviour(supervisor).
 
 %% API
--export([start_link/0]).
+-export([start_link/1]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -26,24 +26,34 @@
 %% @spec start_link() -> {ok, Pid} | ignore | {error, Error}
 %% @end
 %%--------------------------------------------------------------------
-start_link() ->
-    supervisor:start_link({local, ?SERVER}, ?MODULE, []).
+start_link(Port, Opts) ->
+    supervisor:start_link({local, ?SERVER}, ?MODULE, [Port, Opts]).
+
+%% @equiv start_link(Port, [])
+start_link(Port) ->
+    start_link(Port, []).
 
 %%%===================================================================
 
 %% @private
-init([]) ->
+init([Port]) ->
+    init([Port, []]);
+init([Port, Opts]) ->
     RestartStrategy = all_for_one,
     MaxRestarts = 10,
     MaxSecondsBetweenRestarts = 3600,
 
     SupFlags = {RestartStrategy, MaxRestarts, MaxSecondsBetweenRestarts},
 
-    GenUTP = {gen_utp, {gen_utp, start_link, []},
+    GenUTP = {gen_utp, {gen_utp, start_link, [Port, Opts]},
 	      permanent, 15000, worker, [gen_utp]},
     GenUTPDecoder = {gen_utp_decoder, {gen_utp_decoder, start_link, []},
 	      permanent, 15000, worker, [gen_utp_decoder]},
     WorkerPool = {gen_utp_worker_pool, {gen_utp_worker_pool, start_link, []},
 		  transient, infinity, supervisor, [gen_utp_worker_pool]},
     {ok, {SupFlags, [WorkerPool, GenUTPDecoder, GenUTP]}}.
+
+
+
+
 

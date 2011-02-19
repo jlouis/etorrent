@@ -7,7 +7,7 @@
 -behaviour(gen_server).
 
 %% API (Supervisor)
--export([start_link/0]).
+-export([start_link/1, start_link/2]).
 
 %% API (Use)
 -export([connect/2, connect/3,
@@ -29,14 +29,25 @@
 -define(SERVER, ?MODULE).
 -define(TAB, ?MODULE).
 
--record(state, { monitored :: gb_tree() }).
+-record(state, { monitored :: gb_tree(),
+	         socket    :: gen_udp:socket() }).
 
 %%%===================================================================
 
 %% @doc Starts the server
+%% Options is a proplist of options, given in the spec.
 %% @end
-start_link() ->
-    gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
+%% @todo Strengthen spec
+-spec start_link(integer(), proplists:proplist()) ->
+			any().
+start_link(Port, Opts) ->
+    gen_server:start_link({local, ?SERVER}, ?MODULE, [Port, Opts], []).
+
+%% @equiv start_link(Port, [])
+-spec start_link(integer()) ->
+			any().
+start_link(Port) ->
+    start_link(Port, []).
 
 %% @equiv connect(Addr, Port, [])
 connect(Addr, Port) ->
@@ -104,9 +115,10 @@ lookup_registrar(CID) ->
 %%                     {stop, Reason}
 %% @end
 %%--------------------------------------------------------------------
-init([]) ->
+init([Port, Opts]) ->
+    {ok, Socket} = gen_udp:open(Port, [binary] ++ Opts),
     true = ets:new(?TAB, [named_table, protected, set]),
-    {ok, #state{ monitored = gb_trees:new() }}.
+    {ok, #state{ monitored = gb_trees:new(), socket = Socket }}.
 
 %%--------------------------------------------------------------------
 %% @private
