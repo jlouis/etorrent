@@ -4,4 +4,4 @@
               {registered,[]},
               {applications,[kernel,stdlib,crypto]},
               {env,[]},
-              {modules,[utp_proto]}]}.
+              {modules,[gen_utp,utp_proto]}]}.
