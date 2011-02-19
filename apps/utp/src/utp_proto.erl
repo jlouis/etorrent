@@ -1,7 +1,8 @@
--module(etorrent_utp_proto).
+-module(utp_proto).
 
 -export([mk_connection_id/0,
-	 encode/1,
+	 send_packet/3,
+	 encode/3,
 	 decode/1]).
 
 -define(EXT_SACK, 1).
@@ -18,7 +19,20 @@ mk_connection_id() ->
     <<N:16/integer>> = crypto:rand_bytes(2),
     N.
 
-encode({packet, Type, ConnID, TS, TSDiff, WSize, SeqNo, AckNo, ExtList, Payload}) ->
+gettimeofday() ->
+    {M, S, Micro} = os:timestamp(),
+    S1 = M*1000000 + S,
+    Micro + S1*1000000.
+
+timediff(Ts, Last) ->
+    Ts - Last. %% @todo this has to be a lot more clever than it currently is!
+
+send_packet(Packet, LastTS, Socket) ->
+    TS = gettimeofday(),
+    Diff = timediff(TS,LastTS),
+    gen_udp:send(Socket, Packet, TS, Diff).
+
+encode({packet, Type, ConnID, WSize, SeqNo, AckNo, ExtList, Payload}, TS, TSDiff) ->
     {Extension, ExtBin} = encode_extensions(ExtList),
     EncTy = encode_type(Type),
     <<1:4/integer, EncTy:4/integer, Extension:8/integer, ConnID:16/integer,

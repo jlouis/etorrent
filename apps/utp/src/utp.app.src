@@ -1,0 +1,21 @@
+{application, utp,
+ [
+  {description, "The uTP protocol"},
+  {vsn, "0.1"},
+  {registered,
+   [
+   ]},
+  {applications, [kernel, stdlib, crypto]},
+  %% {mod, {etorrent_app, []}},
+  {env, []}
+ ]
+}.
+
+
+
+
+
+
+
+
+
