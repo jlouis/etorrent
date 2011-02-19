@@ -109,9 +109,11 @@ handle_cast({update, Cat, NewProp}, #state{prop = Prop} = State) ->
         true -> subscribe(self());
         _ -> ignore
     end,
+    etorrent_table:update_upnp_entity(self(), Cat, Merged),
     {noreply, State#state{prop = Merged}};
 handle_cast({unsubscribe, Cat, Prop}, State) ->
     NewProp = do_unsubscribe(Cat, Prop),
+    etorrent_table:update_upnp_entity(self(), Cat, NewProp),
     {noreply, State#state{prop = NewProp}};
 handle_cast(_Msg, State) ->
     {noreply, State}.
@@ -138,7 +140,7 @@ handle_info({add_port_mapping, Proto, Port}, State) ->
     end,
     {noreply, State};
 handle_info(subscribe, State) ->
-    #state{prop = Prop} = State,
+    #state{cat = Cat, prop = Prop} = State,
     NewProp = case is_subscribed(Prop) of
         false ->
             case etorrent_upnp_net:subscribe(Prop) of
@@ -148,6 +150,7 @@ handle_info(subscribe, State) ->
             end;
         true -> Prop
     end,
+    etorrent_table:update_upnp_entity(self(), Cat, NewProp),
     {noreply, State#state{prop = NewProp}};
 handle_info(Info, State) ->
     ?WARN([unknown_info, Info]),

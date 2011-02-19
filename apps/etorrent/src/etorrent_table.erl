@@ -29,7 +29,8 @@
 
 %% UPnP entity information
 -export([register_upnp_entity/3,
-         lookup_upnp_entity/2]).
+         lookup_upnp_entity/2,
+         update_upnp_entity/3]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -263,6 +264,13 @@ lookup_upnp_entity(Cat, Entity) ->
         [] -> {error, not_found}
     end.
 
+%% @doc Updates UPnP ETS table with information of given UPnP entity.
+%% @end
+-spec update_upnp_entity(pid(), device | service,
+                         upnp_device() | upnp_service()) -> true.
+update_upnp_entity(Pid, Cat, Entity) ->
+    EntityId = etorrent_upnp_entity:id(Cat, Entity),
+    true = ets:insert(?TAB_UPNP, {EntityId, Pid, Cat, Entity}).
 
 %%====================================================================
 
