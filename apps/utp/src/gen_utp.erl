@@ -12,7 +12,8 @@
 %% API (Use)
 -export([connect/2, connect/3,
 	 send/2,
-	 recv/2, recv/3]).
+	 recv/2, recv/3,
+	 listen/1, accept/1]).
 
 %% Internally used API
 -export([register_process/2]).
@@ -23,9 +24,6 @@
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3]).
-
-
-
 
 -define(SERVER, ?MODULE).
 -define(TAB, ?MODULE).
@@ -66,6 +64,14 @@ recv({utp_sock, Pid}, Length) ->
 		  {ok, binary()} | {error, term()}.
 recv({utp_sock, Pid}, Length, Timeout) ->
     gen_utp_worker:recv(Pid, Length, Timeout).
+
+listen(_Port) ->
+    %% Open a listen socket.
+    todo.
+
+accept(_ListenSock) ->
+    %% Accept a listen socket.
+    todo.
 
 %% @doc Register a process as the recipient of a given incoming message
 register_process(Pid, ConnID) ->
