@@ -16,7 +16,7 @@
 -export([start_link/4]).
 
 %% Operations
--export([connect/1]).
+-export([connect/1, accept/2]).
 
 %% gen_fsm callbacks
 -export([init/1, handle_event/3,
@@ -47,11 +47,16 @@
 		     opts :: proplists:proplist() }).
 
 -record(state_idle, { sock_info :: #sock_info{} }).
--record(state_syn_sent, { sock_info :: #sock_info{},
+-record(state_syn_sent, { sock_info    :: #sock_info{},
 			  conn_id_send :: integer(),
-			  seq_no    :: integer(), % @todo probably need more here
+			  seq_no       :: integer(), % @todo probably need more here
 					          % Push into #conn{} state
-			  connector :: {reference(), pid()} }).
+			  connector    :: {reference(), pid()} }).
+
+-record(state_connected, { sock_info    :: #sock_info{},
+			   conn_id_send :: integer(),
+			   seq_no       :: integer(),
+			   ack_no       :: integer() }).
 
 %%%===================================================================
 %%% API
@@ -64,6 +69,9 @@ start_link(Socket, Addr, Port, Options) ->
 
 connect(Pid) ->
     gen_fsm:sync_send_event(Pid, connect). % @todo Timeouting!
+
+accept(Pid, SynPacket) ->
+    gen_fsm:sync_send_event(Pid, {accept, SynPacket}). % @todo Timeouting!
 
 %%%===================================================================
 %%% gen_fsm callbacks
@@ -158,6 +166,19 @@ idle(connect, From, #state_idle { sock_info = SockInfo }) ->
 					     seq_no = 2,
 					     conn_id_send = Conn_id_send,
 					     connector = From }};
+idle({accept, SYN}, _From, #state_idle { sock_info = SockInfo }) ->
+    Conn_id_send = SYN#packet.conn_id,
+    SeqNo = mk_random_seq_no(),
+    AckNo = SYN#packet.ack_no,
+    AckPacket = #packet { ty = st_state,
+			  seq_no = SeqNo,
+			  ack_no = AckNo,
+			  conn_id = Conn_id_send },
+    ok = send(SockInfo, AckPacket),
+    {reply, ok, connected, #state_connected { sock_info = SockInfo,
+					      seq_no = SeqNo + 1,
+					      ack_no = AckNo,
+					      conn_id_send = Conn_id_send }};
 idle(_Msg, _From, S) ->
     {reply, idle, {error, enotconn}, S}.
 
@@ -241,6 +262,10 @@ code_change(_OldVsn, StateName, State, _Extra) ->
     {ok, StateName, State}.
 
 %%%===================================================================
+
+mk_random_seq_no() ->
+    <<N:16/integer>> = crypto:random_bytes(2),
+    N.
 
 send(#sock_info { socket = Socket,
 		  addr = Addr, port = Port }, Packet) ->
