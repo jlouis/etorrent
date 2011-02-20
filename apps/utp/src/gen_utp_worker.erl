@@ -42,6 +42,8 @@
 -export_type([conn_st/0]).
 
 -define(SERVER, ?MODULE).
+%% Default extensions to use when SYN/SYNACK'ing
+-define(SYN_EXTS, [{ext_bits, <<0:64/integer>>}]).
 
 -type ip_address() :: {byte(), byte(), byte(), byte()}.
 -record(sock_info, { addr :: string() | ip_address(),
@@ -223,7 +225,8 @@ idle(connect, From, #state_idle { sock_info = SockInfo }) ->
     SynPacket = #packet { ty = st_syn,
 			  seq_no = 1,
 			  ack_no = 0,
-			  conn_id = Conn_id_recv
+			  conn_id = Conn_id_recv,
+			  extension = ?SYN_EXTS
 			}, % Rest are defaults
     ok = send(SockInfo, SynPacket),
     {next_state, syn_sent, #state_syn_sent { sock_info = SockInfo,
@@ -240,7 +243,9 @@ idle({accept, SYN}, _From, #state_idle { sock_info = SockInfo }) ->
     AckPacket = #packet { ty = st_state,
 			  seq_no = SeqNo, % @todo meaning of ++ ?
 			  ack_no = AckNo,
-			  conn_id = Conn_id_send },
+			  conn_id = Conn_id_send,
+			  extension = ?SYN_EXTS
+			},
     ok = send(SockInfo, AckPacket),
     {reply, ok, connected, #state_connected { sock_info = SockInfo,
 					      seq_no = SeqNo + 1,
