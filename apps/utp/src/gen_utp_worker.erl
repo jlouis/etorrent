@@ -108,6 +108,7 @@ incoming(Pid, Packet) ->
 %% @end
 %%--------------------------------------------------------------------
 init([Addr, Port, Options]) ->
+    %% @todo There are many more default states to set up here. They are not in yet.
     SockInfo = #sock_info { addr = Addr,
 			    port = Port,
 			    opts = Options },

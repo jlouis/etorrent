@@ -26,7 +26,7 @@ order to actually implement the protocol.
   back an RST
 * There is a concept of fast_resends, not documented
 * There is a concept of closing the socket via RESET messages
-
+* There are of course socket options, and these must be maintained.
 
 # Good things to handle once and for all:
 
