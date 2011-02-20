@@ -4,6 +4,8 @@ This is a loose list of stuff which is not described fully in the BEP
 29 spec of the uTP protocol. It serves as help to implementors in
 order to actually implement the protocol.
 
+The code is here: https://github.com/bittorrent/libutp
+
 * An open UDP socket acts as a TCP listen() point in the protocol.
 * There are two protocol versions. 0 which is deprecated and 1 which
   is the current one. You will have to ignore all protcol data with a
