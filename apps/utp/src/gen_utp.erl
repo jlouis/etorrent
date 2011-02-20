@@ -34,7 +34,7 @@
 
 -record(state, { monitored :: gb_tree(),
 	         socket    :: gen_udp:socket(),
-	         listen_queue :: closed | {queue, integer(), queue()} }).
+	         listen_queue :: closed | {queue, integer(), integer(), queue()} }).
 
 %%%===================================================================
 
@@ -82,9 +82,10 @@ recv({utp_sock, Pid}, Length) ->
 recv({utp_sock, Pid}, Length, Timeout) ->
     gen_utp_worker:recv(Pid, Length, Timeout).
 
-listen(_Port) ->
-    %% Open a listen socket.
-    todo.
+%% @doc Listen on socket, with queue length Q
+%% @end
+listen(QLen) ->
+    call({listen, QLen}).
 
 accept(_ListenSock) ->
     %% Accept a listen socket.
@@ -132,7 +133,9 @@ lookup_registrar(CID) ->
 init([Port, Opts]) ->
     {ok, Socket} = gen_udp:open(Port, [binary, {active, once}] ++ Opts),
     true = ets:new(?TAB, [named_table, protected, set]),
-    {ok, #state{ monitored = gb_trees:new(), socket = Socket }}.
+    {ok, #state{ monitored = gb_trees:new(),
+		 listen_queue = closed,
+		 socket = Socket }}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -148,6 +151,10 @@ init([Port, Opts]) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+handle_call({listen, QLen}, _From, #state { listen_queue = closed } = S) ->
+    {reply, ok, S#state { listen_queue = {queue, 0, QLen, queue:new()}}};
+handle_call({listen, _QLen}, _From, #state { listen_queue = {queue, 0, 0, _}} = S) ->
+    {reply, {error, ealreadylistening}, S};
 handle_call({reg_proc, Proc, CID}, _From, State) ->
     true = ets:insert(?TAB, {CID, Proc}),
     Ref = erlang:monitor(process, Proc),
