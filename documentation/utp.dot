@@ -1,14 +1,27 @@
 digraph {
+	/* Initialization */
 	idle -> syn_sent [label="Connect()"];
 	syn_sent -> connected [label="r(syn_ack)"];
 	idle -> connected [label="Accept()"];
+	/* Close */
 	idle -> destroy [label="Close()"];
 	syn_sent -> syn_sent [label="Close()"];
 	connected -> fin_sent [label="Close()"];
 	connected_full -> fin_sent [label="Close()"];
 	got_fin -> destroy_delay [label="Close()"];
 	reset -> destroy [label="Close()"];
+	/* Connection SendBuf overflow */
 	connected -> connected_full;
 	connected_full -> connected;
+	/* Destroy */
+	destroy_delay -> destroy [label="timeout"];
+	got_fin -> reset [label="timeout"];
+	/* Finailization */
+	connected -> got_fin [label="r(st_fin)"];
+	connected_full -> got_fin [label="r(st_fin)"];
+	syn_sent -> got_fin [label="??"];
+	idle     -> got_fin [label="??"];
+	reset    -> got_fin [label="??"];
 
+	
 }
