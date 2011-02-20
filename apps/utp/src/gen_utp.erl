@@ -12,7 +12,7 @@
 -export([start_link/1, start_link/2]).
 
 %% API (Use)
--export([connect/2, connect/3,
+-export([connect/2, connect/3, close/1,
 	 send/2,
 	 recv/2, recv/3,
 	 listen/1, accept/0]).
@@ -96,6 +96,11 @@ recv({utp_sock, Pid}, Length) ->
 		  {ok, binary()} | {error, term()}.
 recv({utp_sock, Pid}, Length, Timeout) ->
     gen_utp_worker:recv(Pid, Length, Timeout).
+
+%% @doc Close down a socket (nonblocking)
+%% @end
+close({utp_sock, Pid}) ->
+    gen_utp_worker:close(Pid).
 
 %% @doc Listen on socket, with queue length Q
 %% @end

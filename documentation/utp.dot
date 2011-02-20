@@ -1,6 +1,14 @@
 digraph {
 	idle -> syn_sent [label="Connect()"];
 	syn_sent -> connected [label="r(syn_ack)"];
-
 	idle -> connected [label="Accept()"];
+	idle -> destroy [label="Close()"];
+	syn_sent -> syn_sent [label="Close()"];
+	connected -> fin_sent [label="Close()"];
+	connected_full -> fin_sent [label="Close()"];
+	got_fin -> destroy_delay [label="Close()"];
+	reset -> destroy [label="Close()"];
+	connected -> connected_full;
+	connected_full -> connected;
+
 }

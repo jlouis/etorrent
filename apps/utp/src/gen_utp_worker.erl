@@ -16,7 +16,7 @@
 -export([start_link/4]).
 
 %% Operations
--export([connect/1, accept/2]).
+-export([connect/1, accept/2, close/1]).
 
 %% Internal API
 -export([incoming/2]).
@@ -62,20 +62,29 @@
 			   ack_no       :: integer() }).
 
 %%%===================================================================
-%%% API
-%%%===================================================================
 
 %% @doc Create a worker for a peer endpoint
 %% @end
 start_link(Socket, Addr, Port, Options) ->
     gen_fsm:start_link({local, ?SERVER}, ?MODULE, [Socket, Addr, Port, Options], []).
 
+%% @doc Send a connect event
+%% @end
 connect(Pid) ->
     gen_fsm:sync_send_event(Pid, connect). % @todo Timeouting!
 
+%% @doc Send an accept event
+%% @end
 accept(Pid, SynPacket) ->
     gen_fsm:sync_send_event(Pid, {accept, SynPacket}). % @todo Timeouting!
 
+%% @doc Send a close event
+%% @end
+close(Pid) ->
+    %% Consider making it sync, but the de-facto implementation isn't
+    gen_fsm:send_event(Pid, close).
+
+%% ----------------------------------------------------------------------
 incoming(Pid, Packet) ->
     gen_fsm:send_event(Pid, Packet).
 
@@ -103,6 +112,8 @@ init([Addr, Port, Options]) ->
     {ok, state_name, #state_idle{ sock_info = SockInfo }}.
 
 %% @private
+idle(close, S) ->
+    {next_state, destroy, S};
 idle(Msg, S) ->
     %% Ignore messages
     error_logger:warning_report([async_message, idle, Msg]),
@@ -121,49 +132,65 @@ syn_sent(#packet { ty = st_state,
 					       conn_id_send = Conn_id_send,
 					       seq_no = SeqNo,
 					       ack_no = PktSeqNo }};
+syn_sent(close, _S) ->
+    todo_alter_rto;
 syn_sent(Msg, S) ->
     %% Ignore messages
     error_logger:warning_report([async_message, syn_sent, Msg]),
     {next_state, syn_sent, S}.
 
-
 %% @private
+connected(close, #state_connected { sock_info = SockInfo } = S) ->
+    %% Close down connection!
+    ok = send_fin(SockInfo),
+    {next_state, fin_sent, S};
 connected(Msg, S) ->
     %% Ignore messages
     error_logger:warning_report([async_message, connected, Msg]),
     {next_state, connected, S}.
 
 %% @private
+connected_full(close, #state_connected { sock_info = SockInfo } = S) ->
+    %% Close down connection!
+    ok = send_fin(SockInfo),
+    {next_state, fin_sent, S};
 connected_full(Msg, S) ->
     %% Ignore messages
     error_logger:warning_report([async_message, connected_full, Msg]),
     {next_state, connected_full, S}.
 
 %% @private
+got_fin(close, S) ->
+    {next_state, destroy_delay, S};
 got_fin(Msg, S) ->
     %% Ignore messages
     error_logger:warning_report([async_message, got_fin, Msg]),
     {next_state, got_fin, S}.
 
 %% @private
+%% Die deliberately on close for now
 destroy_delay(Msg, S) ->
     %% Ignore messages
     error_logger:warning_report([async_message, destroy_delay, Msg]),
     {next_state, destroy_delay, S}.
 
 %% @private
+%% Die deliberately on close for now
 fin_sent(Msg, S) ->
     %% Ignore messages
     error_logger:warning_report([async_message, fin_sent, Msg]),
     {next_state, fin_sent, S}.
 
 %% @private
+reset(close, S) ->
+    {next_state, destroy, S};
 reset(Msg, S) ->
     %% Ignore messages
     error_logger:warning_report([async_message, reset, Msg]),
     {next_state, reset, S}.
 
 %% @private
+%% Die deliberately on close for now
 destroy(Msg, S) ->
     %% Ignore messages
     error_logger:warning_report([async_message, destroy, Msg]),
@@ -259,45 +286,15 @@ handle_sync_event(_Event, _From, StateName, State) ->
     Reply = ok,
     {reply, Reply, StateName, State}.
 
-%%--------------------------------------------------------------------
 %% @private
-%% @doc
-%% This function is called by a gen_fsm when it receives any
-%% message other than a synchronous or asynchronous event
-%% (or a system message).
-%%
-%% @spec handle_info(Info,StateName,State)->
-%%                   {next_state, NextStateName, NextState} |
-%%                   {next_state, NextStateName, NextState, Timeout} |
-%%                   {stop, Reason, NewState}
-%% @end
-%%--------------------------------------------------------------------
 handle_info(_Info, StateName, State) ->
     {next_state, StateName, State}.
 
-%%--------------------------------------------------------------------
 %% @private
-%% @doc
-%% This function is called by a gen_fsm when it is about to
-%% terminate. It should be the opposite of Module:init/1 and do any
-%% necessary cleaning up. When it returns, the gen_fsm terminates with
-%% Reason. The return value is ignored.
-%%
-%% @spec terminate(Reason, StateName, State) -> void()
-%% @end
-%%--------------------------------------------------------------------
 terminate(_Reason, _StateName, _State) ->
     ok.
 
-%%--------------------------------------------------------------------
 %% @private
-%% @doc
-%% Convert process state when code is changed
-%%
-%% @spec code_change(OldVsn, StateName, State, Extra) ->
-%%                   {ok, StateName, NewState}
-%% @end
-%%--------------------------------------------------------------------
 code_change(_OldVsn, StateName, State, _Extra) ->
     {ok, StateName, State}.
 
@@ -306,6 +303,9 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 mk_random_seq_no() ->
     <<N:16/integer>> = crypto:random_bytes(2),
     N.
+
+send_fin(_SockInfo) ->
+    todo.
 
 send(#sock_info { socket = Socket,
 		  addr = Addr, port = Port }, Packet) ->
