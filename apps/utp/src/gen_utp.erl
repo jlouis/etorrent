@@ -4,6 +4,8 @@
 %%% @end
 -module(gen_utp).
 
+-include("utp.hrl").
+
 -behaviour(gen_server).
 
 %% API (Supervisor)
@@ -16,8 +18,9 @@
 	 listen/1, accept/1]).
 
 %% Internally used API
--export([register_process/2]).
--export([lookup_registrar/1]).
+-export([register_process/2,
+	 lookup_registrar/1,
+	 incoming_new/1]).
 
 -type utp_socket() :: {utp_sock, pid()}.
 -export_type([utp_socket/0]).
@@ -30,7 +33,8 @@
 -define(TAB, ?MODULE).
 
 -record(state, { monitored :: gb_tree(),
-	         socket    :: gen_udp:socket() }).
+	         socket    :: gen_udp:socket(),
+	         listen_queue :: closed | {queue, integer(), queue()} }).
 
 %%%===================================================================
 
@@ -85,6 +89,15 @@ listen(_Port) ->
 accept(_ListenSock) ->
     %% Accept a listen socket.
     todo.
+
+%% @doc New unknown incoming packet
+incoming_new(#packet { ty = st_syn } = Packet) ->
+    %% SYN packet, so pass it in
+    gen_server:cast(?MODULE, {incoming_syn, Packet});
+incoming_new(#packet{}) ->
+    %% Stray, ignore
+    ok.
+
 
 %% @doc Register a process as the recipient of a given incoming message
 %% @end
@@ -145,16 +158,11 @@ handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
 
-%%--------------------------------------------------------------------
 %% @private
-%% @doc
-%% Handling cast messages
-%%
-%% @spec handle_cast(Msg, State) -> {noreply, State} |
-%%                                  {noreply, State, Timeout} |
-%%                                  {stop, Reason, State}
-%% @end
-%%--------------------------------------------------------------------
+handle_cast({incoming_syn, _P}, #state { listen_queue = closed } = S) ->
+    %% Not listening on queue
+    %% @todo RESET sent back here?
+    {noreply, S};
 handle_cast(_Msg, State) ->
     {noreply, State}.
 

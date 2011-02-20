@@ -59,7 +59,7 @@ handle_cast({packet, P}, S) ->
 		{ok, Pid} ->
 		    gen_utp_worker:incoming(Pid, Packet);
 		not_found ->
-		    ignore
+		    gen_utp:incoming_new(Packet)
 	    end;
 	ignore ->
 	    ok
