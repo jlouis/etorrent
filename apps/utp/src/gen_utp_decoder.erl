@@ -10,7 +10,7 @@
 
 %% API
 -export([start_link/0]).
--export([decode_and_dispatch/1]).
+-export([decode_and_dispatch/3]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -28,8 +28,8 @@
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
-decode_and_dispatch(Packet) ->
-    gen_server:cast(?SERVER, {packet, Packet}).
+decode_and_dispatch(Packet, IP, Port) ->
+    gen_server:cast(?SERVER, {packet, Packet, IP, Port}).
 
 %%%===================================================================
 
@@ -44,7 +44,7 @@ handle_call(_Request, _From, State) ->
     {reply, Reply, State}.
 
 %% @private
-handle_cast({packet, P}, S) ->
+handle_cast({packet, P, Addr, Port}, S) ->
     R = try
         Decoded = utp_proto:decode(P),
 	{ok, Decoded}
@@ -59,7 +59,7 @@ handle_cast({packet, P}, S) ->
 		{ok, Pid} ->
 		    gen_utp_worker:incoming(Pid, Packet);
 		not_found ->
-		    gen_utp:incoming_new(Packet)
+		    gen_utp:incoming_new(Packet, Addr, Port)
 	    end;
 	ignore ->
 	    ok

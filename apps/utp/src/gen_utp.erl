@@ -15,12 +15,12 @@
 -export([connect/2, connect/3,
 	 send/2,
 	 recv/2, recv/3,
-	 listen/1, accept/1]).
+	 listen/1, accept/0]).
 
 %% Internally used API
 -export([register_process/2,
 	 lookup_registrar/1,
-	 incoming_new/1]).
+	 incoming_new/3]).
 
 -type utp_socket() :: {utp_sock, pid()}.
 -export_type([utp_socket/0]).
@@ -35,6 +35,12 @@
 -record(state, { monitored :: gb_tree(),
 	         socket    :: gen_udp:socket(),
 	         listen_queue :: closed | {queue, integer(), integer(), queue()} }).
+
+-record(accept_queue,
+	{ acceptors      :: queue(),
+	  incoming_conns :: queue(),
+	  q_len          :: integer(),
+	  max_q_len      :: integer() }).
 
 %%%===================================================================
 
@@ -64,6 +70,15 @@ connect(Addr, Port, Options) ->
     {ok, Pid} = gen_utp_pool:start_child(Socket, Addr, Port, Options),
     gen_utp_worker:connect(Pid).
 
+accept() ->
+    %% Accept an incoming connection.
+    %% @todo timeouts!
+    %% We handle the SynPacket here because because it is then the caller that gets to work
+    %% with the result of the worker process directly, rather than the gen_utp proxy having
+    %% to do it.
+    {ok, Pid, SynPacket} = call(accept),
+    gen_utp_worker:accept(Pid, SynPacket).
+
 %% @doc Send a message on a uTP Socket
 %% @end
 -spec send(utp_socket(), iolist()) -> ok | {error, term()}.
@@ -87,15 +102,11 @@ recv({utp_sock, Pid}, Length, Timeout) ->
 listen(QLen) ->
     call({listen, QLen}).
 
-accept(_ListenSock) ->
-    %% Accept a listen socket.
-    todo.
-
 %% @doc New unknown incoming packet
-incoming_new(#packet { ty = st_syn } = Packet) ->
+incoming_new(#packet { ty = st_syn } = Packet, Addr, Port) ->
     %% SYN packet, so pass it in
-    gen_server:cast(?MODULE, {incoming_syn, Packet});
-incoming_new(#packet{}) ->
+    gen_server:cast(?MODULE, {incoming_syn, Packet, Addr, Port});
+incoming_new(#packet{}, _Addr, _Port) ->
     %% Stray, ignore
     ok.
 
@@ -151,9 +162,16 @@ init([Port, Opts]) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+handle_call(accept, _From, #state { listen_queue = closed } = S) ->
+    {reply, {error, no_listen}, S};
+handle_call(accept, From, #state { listen_queue = Q,
+				   socket = Socket } = S) ->
+    {ok, Pairings, NewQ} = push_acceptor(From, Q),
+    [accept_incoming_conn(Socket, Acc, SYN) || {Acc, SYN} <- Pairings],
+    {noreply, S#state { listen_queue = NewQ }};
 handle_call({listen, QLen}, _From, #state { listen_queue = closed } = S) ->
-    {reply, ok, S#state { listen_queue = {queue, 0, QLen, queue:new()}}};
-handle_call({listen, _QLen}, _From, #state { listen_queue = {queue, 0, 0, _}} = S) ->
+    {reply, ok, S#state { listen_queue = new_accept_queue(QLen) }};
+handle_call({listen, _QLen}, _From, #state { listen_queue = #accept_queue{} } = S) ->
     {reply, {error, ealreadylistening}, S};
 handle_call({reg_proc, Proc, CID}, _From, State) ->
     true = ets:insert(?TAB, {CID, Proc}),
@@ -166,18 +184,28 @@ handle_call(_Request, _From, State) ->
     {reply, Reply, State}.
 
 %% @private
-handle_cast({incoming_syn, _P}, #state { listen_queue = closed } = S) ->
+handle_cast({incoming_syn, _P, _Addr, _Port}, #state { listen_queue = closed } = S) ->
     %% Not listening on queue
     %% @todo RESET sent back here?
     {noreply, S};
+handle_cast({incoming_syn, Packet, Addr, Port}, #state { listen_queue = Q,
+						         socket = Socket } = S) ->
+    Elem = {Packet, Addr, Port},
+    case push_syn(Elem, Q) of
+	synq_full ->
+	    {noreply, S}; % @todo RESET sent back?
+	{ok, Pairings, NewQ} ->
+	    [accept_incoming_conn(Socket, Acc, SYN) || {Acc, SYN} <- Pairings],
+	    {noreply, S#state { listen_queue = NewQ }}
+    end;
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
 %% @private
-handle_info({udp, _Socket, _IP, _InPortNo, Datagram},
+handle_info({udp, _Socket, IP, Port, Datagram},
 	    #state { socket = Socket } = S) ->
     %% @todo FLOW CONTROL here, because otherwise we may swamp the decoder.
-    gen_utp_decoder:decode_and_dispatch(Datagram),
+    gen_utp_decoder:decode_and_dispatch(Datagram, IP, Port),
     %% Quirk out the next packet :)
     inet:setopts(Socket, [{active, once}]),
     {noreply, S};
@@ -200,10 +228,47 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
+push_acceptor(From, #accept_queue { acceptors = AQ } = Q) ->
+    handle_queue(Q#accept_queue { acceptors = queue:in(From, AQ) }, []).
+
+push_syn(_SYNPacket, #accept_queue { q_len          = QLen,
+				     max_q_len      = MaxQ}) when QLen >= MaxQ ->
+    synq_full;
+push_syn(SYNPacket, #accept_queue { incoming_conns = IC,
+				    q_len          = QLen } = Q) ->
+    handle_queue(Q#accept_queue { incoming_conns = queue:in(SYNPacket, IC),
+				  q_len          = QLen + 1 }, []).
+
+
+handle_queue(#accept_queue { acceptors = AQ,
+			     incoming_conns = IC,
+			     q_len = QLen } = Q, Pairings) ->
+    case {queue:out(AQ), queue:out(IC)} of
+	{{{value, Acceptor}, AQ1}, {{value, SYN}, IC1}} ->
+	    handle_queue(Q#accept_queue { acceptors = AQ1,
+					  incoming_conns = IC1,
+					  q_len = QLen - 1 },
+			 [{Acceptor, SYN} | Pairings]);
+	_ ->
+	    {ok, Pairings, Q} % Can't do anymore work for now
+    end.
+
+accept_incoming_conn(Socket, From, {SynPacket, Addr, Port}) ->
+    {ok, Pid} = gen_utp_worker_pool:start_child(Socket, Addr, Port, []),
+    gen_server:reply(From, {ok, Pid, SynPacket}).
+
+new_accept_queue(QLen) ->
+    #accept_queue { acceptors = queue:new(),
+		    incoming_conns = queue:new(),
+		    q_len = 0,
+		    max_q_len = QLen }.
+
 get_socket() ->
     call(get_socket).
 
 call(Msg) ->
     gen_server:call(?MODULE, Msg, infinity).
+
+
 
 
