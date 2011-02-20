@@ -2,7 +2,7 @@
 
 all: dotfiles
 
-dotfiles: sup_tree_20110106.png sup_tree_20110106.pdf
+dotfiles: sup_tree_20110106.png sup_tree_20110106.pdf utp.pdf
 
 clean:
 	rm -f sup_tree_20110106.png

@@ -30,3 +30,4 @@ webui/*.log
 /etorrent_dialyzer.plt
 /apps/utp/ebin/utp.app
 /apps/utp/.eunit/
+/documentation/utp.pdf

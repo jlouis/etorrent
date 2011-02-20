@@ -3,13 +3,13 @@
 -type extension() :: {sack, binary()} | {ext_bits, binary()}.
 -type timestamp() :: integer().
 
--record(packet, { ty :: packet_type(),
-		  conn_id :: integer(),
-		  win_sz :: integer(),
-		  seq_no :: integer(),
-		  ack_no :: integer(),
-		  extension :: [extension()],
-		  payload :: binary()
+-record(packet, { ty             :: packet_type(),
+		  conn_id        :: integer(),
+		  win_sz = 0     :: integer(),
+		  seq_no         :: integer(),
+		  ack_no         :: integer(),
+		  extension = [] :: [extension()],
+		  payload = <<>> :: binary()
 		}).
 
 -type packet() :: #packet{}.
