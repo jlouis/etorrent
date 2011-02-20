@@ -15,8 +15,10 @@
 
 %% API
 -export([start_link/2,
+         id/2,
          create/2,
          update/2,
+         unsubscribe/2,
          notify/1]).
 
 %% gen_server callbacks
@@ -42,6 +44,12 @@ start_link(Cat, Prop) ->
     gen_server:start_link(?MODULE, Args, []).
 
 
+id(Cat, Prop) ->
+    Type = proplists:get_value(type, Prop),
+    UUID = proplists:get_value(uuid, Prop),
+    _Id = erlang:phash2({Cat, Type, UUID}).
+
+
 create(Cat, Proplist) ->
     etorrent_upnp_sup:add_upnp_entity(Cat, Proplist).
 
@@ -55,6 +63,15 @@ update(Cat, Prop) ->
     end.
 
 
+unsubscribe(Cat, Prop) ->
+    case lookup_pid(Cat, Prop) of
+        {ok, Pid} ->
+            gen_server:cast(Pid, {unsubscribe, Cat, Prop});
+        {error, not_found} ->
+            do_unsubscribe(Cat, Prop)
+    end.
+    
+
 %% @todo See explanation in ``etorrent_upnp_httpd''.
 -spec notify(upnp_notify()) -> ok.
 notify(_Content) ->
@@ -64,10 +81,6 @@ notify(_Content) ->
 %% gen_server callbacks
 %%===================================================================
 init(Args) ->
-    _ = case ets:info(tab_name()) of
-        undefined -> ets:new(tab_name(), [named_table, public, set]);
-        _ -> ok
-    end,
     %% We trap exits to unsubscribe from UPnP service.
     process_flag(trap_exit, true),
     register_self(Args),
@@ -96,7 +109,12 @@ handle_cast({update, Cat, NewProp}, #state{prop = Prop} = State) ->
         true -> subscribe(self());
         _ -> ignore
     end,
+    etorrent_table:update_upnp_entity(self(), Cat, Merged),
     {noreply, State#state{prop = Merged}};
+handle_cast({unsubscribe, Cat, Prop}, State) ->
+    NewProp = do_unsubscribe(Cat, Prop),
+    etorrent_table:update_upnp_entity(self(), Cat, NewProp),
+    {noreply, State#state{prop = NewProp}};
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
@@ -122,7 +140,7 @@ handle_info({add_port_mapping, Proto, Port}, State) ->
     end,
     {noreply, State};
 handle_info(subscribe, State) ->
-    #state{prop = Prop} = State,
+    #state{cat = Cat, prop = Prop} = State,
     NewProp = case is_subscribed(Prop) of
         false ->
             case etorrent_upnp_net:subscribe(Prop) of
@@ -132,6 +150,7 @@ handle_info(subscribe, State) ->
             end;
         true -> Prop
     end,
+    etorrent_table:update_upnp_entity(self(), Cat, NewProp),
     {noreply, State#state{prop = NewProp}};
 handle_info(Info, State) ->
     ?WARN([unknown_info, Info]),
@@ -140,15 +159,7 @@ handle_info(Info, State) ->
 
 terminate(_Reason, State) ->
     #state{cat = Cat, prop = Prop} = State,
-    case Cat of
-        service ->
-            Sid = proplists:get_value(sid, Prop),
-            case Sid of
-                undefined -> ignore;
-                _ -> etorrent_upnp_net:unsubscribe(Prop)
-            end;
-        _ -> ignore
-    end.
+    do_unsubscribe(Cat, Prop).
 
 
 code_change(_OldVer, S, _Extra) ->
@@ -162,18 +173,10 @@ code_change(_OldVer, S, _Extra) ->
 register_self(Args) ->
     Cat = proplists:get_value(cat, Args),
     Prop = proplists:get_value(prop, Args),
-    ets:insert(tab_name(), {id(Cat, Prop), self()}).
+    etorrent_table:register_upnp_entity(self(), Cat, Prop).
 
 lookup_pid(Cat, Prop) ->
-    case ets:lookup(tab_name(), id(Cat, Prop)) of
-        [{_Id, Pid}] -> {ok, Pid};
-        [] -> {error, not_found}
-    end.
-
-id(Cat, Prop) ->
-    Type = proplists:get_value(type, Prop),
-    UUID = proplists:get_value(uuid, Prop),
-    _Id = erlang:phash2({Cat, Type, UUID}).
+    etorrent_table:lookup_upnp_entity(Cat, Prop).
 
 
 is_root_device(Cat, Prop) ->
@@ -205,7 +208,19 @@ is_subscribed(Prop) ->
     Sid = proplists:get_value(sid, Prop),
     Sid =/= undefined.
 
-
-tab_name() ->
-    etorrent_upnp_registry.
+-spec do_unsubscribe(device | service, upnp_device() | upnp_service()) ->
+                    upnp_device() | upnp_service().
+do_unsubscribe(Cat, Prop) ->
+    NewProp = case Cat of
+        service ->
+            Sid = proplists:get_value(sid, Prop),
+            case Sid of
+                undefined -> Prop;
+                _ ->
+                    etorrent_upnp_net:unsubscribe(Prop),
+                    proplists:delete(sid, Prop)
+            end;
+        _ -> Prop
+    end,
+    NewProp.
 

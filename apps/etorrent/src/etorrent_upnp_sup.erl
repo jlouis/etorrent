@@ -52,10 +52,15 @@ add_upnp_entity(Category, Proplist) ->
 
 -ifdef(EUNIT).
 
+start_upnp_sup_tree() ->
+    etorrent_event:start_link(),
+    etorrent_table:start_link(),
+    etorrent_upnp_sup:start_link().
+
+
 upnp_sup_tree_start_test() ->
     try
-        etorrent_event:start_link(),
-        etorrent_upnp_sup:start_link(),
+        start_upnp_sup_tree(),
         etorrent_upnp_entity:create(device, [{type, <<"InternetGatewayDevice">>},
                                              {uuid, <<"whatever">>}]),
         etorrent_upnp_entity:create(service, [{type, <<"WANIPConnection">>},
@@ -66,6 +71,21 @@ upnp_sup_tree_start_test() ->
     catch
         _:_ -> ?assert(false)
     end.
+
+
+multiple_instances_test() ->
+    %% may need to run multiple instances, e.g. when doing test. make sure
+    %% embeded mochiweb http server will not conflict with each other in
+    %% that case.
+    try
+        start_upnp_sup_tree(),
+        %% simulates parallel run by starting another (default) mochiweb server 
+        {ok, _Server} = mochiweb_http:start([{name, multiple_instances_test},
+                                             {loop, {mochiweb_http, default_body}}])
+    catch
+        _:_ -> ?assert(false)
+    end.
+
 
 %% @todo: Can do way more unit tests here.
 

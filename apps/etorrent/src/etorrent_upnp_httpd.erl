@@ -97,7 +97,7 @@ code_change(_OldVer, State, _Extra) ->
 %%===================================================================
 start_and_monitor_httpd() ->
     try
-        {ok, Server} = mochiweb_http:start([{name, ?HTTPD_NAME}, {loop, ?LOOP}]),
+        {ok, Server} = mochiweb_http:start([{name, ?HTTPD_NAME}, {loop, ?LOOP}, {port, 0}]),
         ServerRef = erlang:monitor(process, Server),
         {Server, ServerRef}
     catch
