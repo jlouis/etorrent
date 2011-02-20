@@ -14,11 +14,24 @@
 -export([start_link/0]).
 
 %% gen_fsm callbacks
--export([init/1, state_name/2, state_name/3, handle_event/3,
+-export([init/1, state_name/3, handle_event/3,
 	 handle_sync_event/4, handle_info/3, terminate/3, code_change/4]).
+
+%% gen_fsm callback states
+-export([idle/2,
+	 syn_sent/2,
+	 connected/2,
+	 connected_full/2,
+	 got_fin/2,
+	 destroy_delay/2,
+	 fin_sent/2,
+	 reset/2,
+	 destroy/2]).
 
 -type conn_st() :: idle | syn_sent | connected | connected_full | got_fin
 		   | destroy_delay | fin_sent | reset | destroy.
+
+-export_type([conn_st/0]).
 
 -define(SERVER, ?MODULE).
 
@@ -60,23 +73,42 @@ start_link() ->
 init([]) ->
     {ok, state_name, #state{}}.
 
-%%--------------------------------------------------------------------
 %% @private
-%% @doc
-%% There should be one instance of this function for each possible
-%% state name. Whenever a gen_fsm receives an event sent using
-%% gen_fsm:send_event/2, the instance of this function with the same
-%% name as the current state name StateName is called to handle
-%% the event. It is also called if a timeout occurs.
-%%
-%% @spec state_name(Event, State) ->
-%%                   {next_state, NextStateName, NextState} |
-%%                   {next_state, NextStateName, NextState, Timeout} |
-%%                   {stop, Reason, NewState}
-%% @end
-%%--------------------------------------------------------------------
-state_name(_Event, State) ->
-    {next_state, state_name, State}.
+idle(_Msg, _State) ->
+    todo.
+
+%% @private
+syn_sent(_Msg, _State) ->
+    todo.
+
+%% @private
+connected(_Msg, _State) ->
+    todo.
+
+%% @private
+connected_full(_Msg, _State) ->
+    todo.
+
+%% @private
+got_fin(_Msg, _State) ->
+    todo.
+
+%% @private
+destroy_delay(_Msg, _State) ->
+    todo.
+
+%% @private
+fin_sent(_Msg, _State) ->
+    todo.
+
+%% @private
+reset(_Msg, _State) ->
+    todo.
+
+%% @private
+destroy(_Msg, _State) ->
+    todo.
+
 
 %%--------------------------------------------------------------------
 %% @private
