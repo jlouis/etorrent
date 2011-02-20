@@ -116,7 +116,7 @@ lookup_registrar(CID) ->
 %% @end
 %%--------------------------------------------------------------------
 init([Port, Opts]) ->
-    {ok, Socket} = gen_udp:open(Port, [binary] ++ Opts),
+    {ok, Socket} = gen_udp:open(Port, [binary, {active, once}] ++ Opts),
     true = ets:new(?TAB, [named_table, protected, set]),
     {ok, #state{ monitored = gb_trees:new(), socket = Socket }}.
 
@@ -155,16 +155,14 @@ handle_call(_Request, _From, State) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-%%--------------------------------------------------------------------
 %% @private
-%% @doc
-%% Handling all non call/cast messages
-%%
-%% @spec handle_info(Info, State) -> {noreply, State} |
-%%                                   {noreply, State, Timeout} |
-%%                                   {stop, Reason, State}
-%% @end
-%%--------------------------------------------------------------------
+handle_info({udp, _Socket, _IP, _InPortNo, Datagram},
+	    #state { socket = Socket } = S) ->
+    %% @todo FLOW CONTROL here, because otherwise we may swamp the decoder.
+    gen_utp_decoder:decode_and_dispatch(Datagram),
+    %% Quirk out the next packet :)
+    inet:setopts(Socket, [{active, once}]),
+    {noreply, S};
 handle_info({'DOWN', Ref, process, _Pid, _Reason}, #state { monitored = MM } = S) ->
     CID = gb_trees:fetch(Ref, MM),
     true = ets:delete(?TAB, CID),
@@ -172,28 +170,11 @@ handle_info({'DOWN', Ref, process, _Pid, _Reason}, #state { monitored = MM } = S
 handle_info(_Info, State) ->
     {noreply, State}.
 
-%%--------------------------------------------------------------------
 %% @private
-%% @doc
-%% This function is called by a gen_server when it is about to
-%% terminate. It should be the opposite of Module:init/1 and do any
-%% necessary cleaning up. When it returns, the gen_server terminates
-%% with Reason. The return value is ignored.
-%%
-%% @spec terminate(Reason, State) -> void()
-%% @end
-%%--------------------------------------------------------------------
 terminate(_Reason, _State) ->
     ok.
 
-%%--------------------------------------------------------------------
 %% @private
-%% @doc
-%% Convert process state when code is changed
-%%
-%% @spec code_change(OldVsn, State, Extra) -> {ok, NewState}
-%% @end
-%%--------------------------------------------------------------------
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
