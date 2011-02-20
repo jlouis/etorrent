@@ -22,6 +22,13 @@ digraph {
 	syn_sent -> got_fin [label="??"];
 	idle     -> got_fin [label="??"];
 	reset    -> got_fin [label="??"];
+	fin_sent -> destroy [label="timeout"];
+	/* Resetting */
+	syn_sent -> reset [label="timeout"];
+	connected -> reset [label="timeout"];
+	connected_full -> reset [label="timeout"];
 
-	
 }
+
+
+
