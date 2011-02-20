@@ -57,25 +57,40 @@
 
 -type ip_address() :: {byte(), byte(), byte(), byte()}.
 
-%% @todo Decide how to split up these records in a nice way
--record(sock_info, { addr :: string() | ip_address(),
-		     port :: 0..16#FFFF,
-		     socket :: gen_udp:socket(),
-		     opts :: proplists:proplist(),
-		     retransmit_timeout,
-		     send_quota,
-		     cur_window_packets,
-		     fast_resend_seq_no,
-		     max_window,
-		     outbuf_mask,
-		     inbuf_mask,
-		     outbuf_elements,
-		     inbuf_elements,
-		     timing %% This is probably right, send seends sockinfo and timing
-		   }).
+%% @todo Decide how to split up these records in a nice way.
+%% @todo Right now it is just the god record!
+-record(sock_info, {
+	  ack_no,
+	  addr :: string() | ip_address(),
+	  cur_window,
+	  cur_window_packets,
+	  fast_resend_seq_no,
+	  inbuf_elements,
+	  inbuf_mask,
+	  max_send,
+	  max_window,
+	  max_window_user,
+	  opt_sendbuf,
+	  opts :: proplists:proplist(),
+	  outbuf_elements,
+	  outbuf_mask,
+	  port :: 0..16#FFFF,
+	  retransmit_timeout,
+	  send_quota,
+	  socket :: gen_udp:socket(),
+	  timing, %% This is probably right, send seends sockinfo and timing
+	  transmissions
+	 }).
+
+-record(packet_wrap, {
+	  packet            :: utp_proto:packet(),
+	  transmissions = 0 :: integer(),
+	  need_resend = false :: integer()
+	 }).
 
 -record(timing, {
 	  ack_time,
+	  bytes_since_ack,
 	  last_got_packet,
 	  last_sent_packet,
 	  last_measured_delay,
@@ -391,6 +406,14 @@ get_rcv_window() ->
 send_fin(_SockInfo) ->
     todo.
 
+send_keep_alive(#sock_info { ack_no = AckNo } = SockInfo) ->
+    SockInfo1 = send_ack(SockInfo#sock_info { ack_no = AckNo - 1 }),
+    SockInfo1#sock_info { ack_no = AckNo }.
+
+send_ack(SockInfo) ->
+    exit(todo),
+    SockInfo.
+
 send_rst(SockInfo, ConnID, Ack, Seq) ->
     send(SockInfo,
 	 #packet { ty = st_reset,
@@ -400,7 +423,63 @@ send_rst(SockInfo, ConnID, Ack, Seq) ->
 		   seq_no = Seq,
 		   win_sz = 0 }).
 
+-spec update_cur_window(#packet_wrap{}, integer()) -> integer().
+update_cur_window(#packet_wrap { transmissions = Trs,
+				 packet = P,
+				 need_resend = Resend},
+		  CurWindow) when Trs == 0; Resend == true ->
+    CurWindow + byte_size(P#packet.payload);
+update_cur_window(#packet_wrap{}, CurWindow) -> CurWindow.
+
+
+update_send_quota(#packet_wrap { transmissions = Tr,
+				 packet = P }, MaxSend, PacketSize, SendQuota) ->
+    case MaxSend < PacketSize andalso Tr == 0 of
+	true -> SendQuota + byte_size(P#packet.payload);
+	false -> SendQuota
+    end.
+
+sent_ack(#sock_info { timing = Timing } = SI) ->
+    NT = Timing#timing { ack_time = utp_proto:get_time_ms() + ?DEFAULT_ACK_TIME,
+			 bytes_since_ack = 0 },
+    SI#sock_info { timing = NT }.
+
+send_packet(#sock_info { max_window = MaxWindow,
+			 opt_sendbuf = OptSendBuf,
+			 ack_no      = AckNo,
+			 max_send    = MaxSend,
+			 send_quota  = SendQuota,
+			 cur_window  = CurWindow,
+			 socket      = Socket,
+			 transmissions = Transmissions,
+			 max_window_user = MaxWindowUser } = SockInfo, Packet) ->
+    Max_Send = lists:min([MaxWindow, OptSendBuf, MaxWindowUser]),
+    CurWindow1 = update_cur_window(Packet, CurWindow),
+    SendQuota1 = update_send_quota(Packet, MaxSend, get_packet_size(Socket), SendQuota),
+
+    %%         pkt->need_resend = false;
+    P = utp_proto:encode(Packet#packet { ack_no = AckNo }),
+
+    TimeSent = utp_proto:get_time_micro(),
+    sent_ack(todo),
+    send(SockInfo, P),
+    {ok, Transmissions+1, TimeSent, P}.
+
 send(#sock_info { socket = Socket,
 		  addr = Addr, port = Port }, Packet) ->
     %% @todo Handle timestamping here!!
     gen_udp:send_packet(Socket, Addr, Port, utp_proto:encode(Packet, 0,0)).
+
+
+
+
+
+
+
+
+
+
+
+
+
+
