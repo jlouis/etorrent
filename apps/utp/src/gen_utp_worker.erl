@@ -18,6 +18,9 @@
 %% Operations
 -export([connect/1, accept/2]).
 
+%% Internal API
+-export([incoming/2]).
+
 %% gen_fsm callbacks
 -export([init/1, handle_event/3,
 	 handle_sync_event/4, handle_info/3, terminate/3, code_change/4]).
@@ -73,6 +76,9 @@ connect(Pid) ->
 accept(Pid, SynPacket) ->
     gen_fsm:sync_send_event(Pid, {accept, SynPacket}). % @todo Timeouting!
 
+incoming(Pid, Packet) ->
+    gen_fsm:send_event(Pid, Packet).
+
 %%%===================================================================
 %%% gen_fsm callbacks
 %%%===================================================================
@@ -103,36 +109,65 @@ idle(Msg, S) ->
     {next_state, idle, S}.
 
 %% @private
-syn_sent(_Msg, _State) ->
-    todo.
+syn_sent(#packet { ty = st_state,
+		   seq_no = PktSeqNo },
+	 #state_syn_sent { sock_info = SockInfo,
+			   conn_id_send = Conn_id_send,
+			   seq_no = SeqNo,
+			   connector = From
+			 }) ->
+    gen_fsm:reply(From, ok),
+    {next_state, connected, #state_connected { sock_info = SockInfo,
+					       conn_id_send = Conn_id_send,
+					       seq_no = SeqNo,
+					       ack_no = PktSeqNo }};
+syn_sent(Msg, S) ->
+    %% Ignore messages
+    error_logger:warning_report([async_message, syn_sent, Msg]),
+    {next_state, syn_sent, S}.
+
 
 %% @private
-connected(_Msg, _State) ->
-    todo.
+connected(Msg, S) ->
+    %% Ignore messages
+    error_logger:warning_report([async_message, connected, Msg]),
+    {next_state, connected, S}.
 
 %% @private
-connected_full(_Msg, _State) ->
-    todo.
+connected_full(Msg, S) ->
+    %% Ignore messages
+    error_logger:warning_report([async_message, connected_full, Msg]),
+    {next_state, connected_full, S}.
 
 %% @private
-got_fin(_Msg, _State) ->
-    todo.
+got_fin(Msg, S) ->
+    %% Ignore messages
+    error_logger:warning_report([async_message, got_fin, Msg]),
+    {next_state, got_fin, S}.
 
 %% @private
-destroy_delay(_Msg, _State) ->
-    todo.
+destroy_delay(Msg, S) ->
+    %% Ignore messages
+    error_logger:warning_report([async_message, destroy_delay, Msg]),
+    {next_state, destroy_delay, S}.
 
 %% @private
-fin_sent(_Msg, _State) ->
-    todo.
+fin_sent(Msg, S) ->
+    %% Ignore messages
+    error_logger:warning_report([async_message, fin_sent, Msg]),
+    {next_state, fin_sent, S}.
 
 %% @private
-reset(_Msg, _State) ->
-    todo.
+reset(Msg, S) ->
+    %% Ignore messages
+    error_logger:warning_report([async_message, reset, Msg]),
+    {next_state, reset, S}.
 
 %% @private
-destroy(_Msg, _State) ->
-    todo.
+destroy(Msg, S) ->
+    %% Ignore messages
+    error_logger:warning_report([async_message, destroy, Msg]),
+    {next_state, destroy, S}.
 
 
 %%--------------------------------------------------------------------
@@ -155,6 +190,8 @@ destroy(_Msg, _State) ->
 %%--------------------------------------------------------------------
 idle(connect, From, #state_idle { sock_info = SockInfo }) ->
     Conn_id_recv = utp_proto:mk_connection_id(),
+    gen_utp:register_process(self(), Conn_id_recv),
+
     Conn_id_send = Conn_id_recv + 1,
     SynPacket = #packet { ty = st_syn,
 			  seq_no = 1,
@@ -167,11 +204,14 @@ idle(connect, From, #state_idle { sock_info = SockInfo }) ->
 					     conn_id_send = Conn_id_send,
 					     connector = From }};
 idle({accept, SYN}, _From, #state_idle { sock_info = SockInfo }) ->
+    Conn_id_recv = SYN#packet.conn_id + 1,
+    gen_utp:register_process(self(), Conn_id_recv),
+
     Conn_id_send = SYN#packet.conn_id,
     SeqNo = mk_random_seq_no(),
     AckNo = SYN#packet.ack_no,
     AckPacket = #packet { ty = st_state,
-			  seq_no = SeqNo,
+			  seq_no = SeqNo, % @todo meaning of ++ ?
 			  ack_no = AckNo,
 			  conn_id = Conn_id_send },
     ok = send(SockInfo, AckPacket),
