@@ -1,3 +1,6 @@
 digraph {
-	idle -> syn_sent;
+	idle -> syn_sent [label="Connect()"];
+	syn_sent -> connected [label="r(syn_ack)"];
+
+	idle -> connected [label="Accept()"];
 }
