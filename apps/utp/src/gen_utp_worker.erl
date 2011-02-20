@@ -45,23 +45,62 @@
 %% Default extensions to use when SYN/SYNACK'ing
 -define(SYN_EXTS, [{ext_bits, <<0:64/integer>>}]).
 
+%% Default SYN packet timeout
+-define(SYN_TIMEOUT, 3000).
+-define(RTT_VAR, 800). % Round trip time variance
+-define(PACKET_SIZE, 350). % @todo Probably dead!
+-define(MAX_WINDOW_USER, 255 * ?PACKET_SIZE). % Likewise!
+-define(DEFAULT_ACK_TIME, 16#70000000). % Default add to the future when an Ack is expected
+-define(MAX_WINDOW_DECAY, 100). % ms
+%% The default RecvBuf size: 200K
+-define(OPT_RCVBUF, 200 * 1024).
+
 -type ip_address() :: {byte(), byte(), byte(), byte()}.
+
+%% @todo Decide how to split up these records in a nice way
 -record(sock_info, { addr :: string() | ip_address(),
 		     port :: 0..16#FFFF,
 		     socket :: gen_udp:socket(),
-		     opts :: proplists:proplist() }).
+		     opts :: proplists:proplist(),
+		     retransmit_timeout,
+		     send_quota,
+		     cur_window_packets,
+		     fast_resend_seq_no,
+		     max_window,
+		     outbuf_mask,
+		     inbuf_mask,
+		     outbuf_elements,
+		     inbuf_elements,
+		     timing %% This is probably right, send seends sockinfo and timing
+		   }).
 
--record(state_idle, { sock_info :: #sock_info{} }).
+-record(timing, {
+	  ack_time,
+	  last_got_packet,
+	  last_sent_packet,
+	  last_measured_delay,
+	  last_rwin_decay,
+	  last_send_quota
+	 }).
+
+%% STATE RECORDS
+%% ----------------------------------------------------------------------
+-record(state_idle, { sock_info :: #sock_info{},
+		      timeout   :: reference() }).
 -record(state_syn_sent, { sock_info    :: #sock_info{},
 			  conn_id_send :: integer(),
 			  seq_no       :: integer(), % @todo probably need more here
 					          % Push into #conn{} state
-			  connector    :: {reference(), pid()} }).
+			  connector    :: {reference(), pid()},
+			  timeout      :: reference(),
+			  last_rcv_win :: integer
+			}).
 
 -record(state_connected, { sock_info    :: #sock_info{},
 			   conn_id_send :: integer(),
 			   seq_no       :: integer(),
-			   ack_no       :: integer() }).
+			   ack_no       :: integer(),
+			   timeout      :: reference() }).
 
 %%%===================================================================
 
@@ -107,12 +146,39 @@ incoming(Pid, Packet) ->
 %%                     {stop, StopReason}
 %% @end
 %%--------------------------------------------------------------------
-init([Addr, Port, Options]) ->
-    %% @todo There are many more default states to set up here. They are not in yet.
+init([Socket, Addr, Port, Options]) ->
+    TRef = erlang:send_after(?SYN_TIMEOUT, self(), syn_timeout),
+
+    Current_Time = utp_proto:get_current_time_millis(),
+
+    %% @todo All these are probably wrong. They have to be timers instead and set
+    %%       in the future accordingly (ack_time, etc)
+    Timing = #timing {
+      ack_time = Current_Time + ?DEFAULT_ACK_TIME,
+      last_got_packet = Current_Time,
+      last_sent_packet = Current_Time,
+      last_measured_delay = Current_Time + ?DEFAULT_ACK_TIME,
+      last_rwin_decay = Current_Time - ?MAX_WINDOW_DECAY,
+      last_send_quota = Current_Time
+    },
+
     SockInfo = #sock_info { addr = Addr,
 			    port = Port,
-			    opts = Options },
-    {ok, state_name, #state_idle{ sock_info = SockInfo }}.
+			    opts = Options,
+			    socket = Socket,
+			    retransmit_timeout = ?SYN_TIMEOUT,
+			    send_quota = ?PACKET_SIZE * 100,
+			    cur_window_packets = 0,
+			    fast_resend_seq_no = 1, % SeqNo
+			    max_window = get_packet_size(Socket),
+			    outbuf_mask = 16#f,
+			    inbuf_mask  = 16#f,
+			    outbuf_elements = [], % These two should probably be queues
+			    inbuf_elements = [],
+			    timing = Timing
+			  },
+    {ok, state_name, #state_idle{ sock_info = SockInfo,
+				  timeout = TRef }}.
 
 %% @private
 idle(close, S) ->
@@ -218,7 +284,8 @@ destroy(Msg, S) ->
 %%                   {stop, Reason, Reply, NewState}
 %% @end
 %%--------------------------------------------------------------------
-idle(connect, From, #state_idle { sock_info = SockInfo }) ->
+idle(connect, From, #state_idle { sock_info = SockInfo,
+				  timeout = TRef }) ->
     Conn_id_recv = utp_proto:mk_connection_id(),
     gen_utp:register_process(self(), Conn_id_recv),
 
@@ -231,10 +298,13 @@ idle(connect, From, #state_idle { sock_info = SockInfo }) ->
 			}, % Rest are defaults
     ok = send(SockInfo, SynPacket),
     {next_state, syn_sent, #state_syn_sent { sock_info = SockInfo,
+					     last_rcv_win = get_rcv_window(),
+					     timeout = TRef,
 					     seq_no = 2,
 					     conn_id_send = Conn_id_send,
 					     connector = From }};
 idle({accept, SYN}, _From, #state_idle { sock_info = SockInfo }) ->
+    %% @todo timeout handling from the syn packet!
     Conn_id_recv = SYN#packet.conn_id + 1,
     gen_utp:register_process(self(), Conn_id_recv),
 
@@ -306,12 +376,29 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 
 %%%===================================================================
 
+get_packet_size(_Socket) ->
+    %% @todo FIX get_packet_size/1 to actually work!
+    1500.
+
 mk_random_seq_no() ->
     <<N:16/integer>> = crypto:random_bytes(2),
     N.
 
+get_rcv_window() ->
+    %% @todo, trim down if receive buffer is present!
+    ?OPT_RCVBUF.
+
 send_fin(_SockInfo) ->
     todo.
+
+send_rst(SockInfo, ConnID, Ack, Seq) ->
+    send(SockInfo,
+	 #packet { ty = st_reset,
+		   extension = [],
+		   conn_id = ConnID,
+		   ack_no = Ack,
+		   seq_no = Seq,
+		   win_sz = 0 }).
 
 send(#sock_info { socket = Socket,
 		  addr = Addr, port = Port }, Packet) ->
