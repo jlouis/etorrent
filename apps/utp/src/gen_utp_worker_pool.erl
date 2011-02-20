@@ -8,7 +8,7 @@
 
 %% API
 -export([start_link/0]).
--export([start_child/3]).
+-export([start_child/4]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -28,9 +28,9 @@ start_link() ->
     supervisor:start_link({local, ?SERVER}, ?MODULE, []).
 
 %% @doc Start a worker child
-start_child(Addr, Port, Options) ->
+start_child(Socket, Addr, Port, Options) ->
     Pool = gproc:lookup_local_name(gen_utp_worker_pool),
-    supervisor:start_child(Pool, [Addr, Port, Options]).
+    supervisor:start_child(Pool, [Socket, Addr, Port, Options]).
 
 %%%===================================================================
 
@@ -42,5 +42,14 @@ init([]) ->
                  {gen_utp_worker, start_link, []},
                  temporary, 15000, worker, [gen_utp_worker]},
     {ok, {{simple_one_for_one, 50, 3600}, [ChildSpec]}}.
+
+
+
+
+
+
+
+
+
 
 

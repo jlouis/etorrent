@@ -56,7 +56,8 @@ connect(Addr, Port) ->
 %% @doc Connect to a foreign uTP peer
 %% @end
 connect(Addr, Port, Options) ->
-    {ok, Pid} = gen_utp_pool:start_child(Addr, Port, Options),
+    {ok, Socket} = get_socket(),
+    {ok, Pid} = gen_utp_pool:start_child(Socket, Addr, Port, Options),
     gen_utp_worker:connect(Pid).
 
 %% @doc Send a message on a uTP Socket
@@ -138,6 +139,8 @@ handle_call({reg_proc, Proc, CID}, _From, State) ->
     true = ets:insert(?TAB, {CID, Proc}),
     Ref = erlang:monitor(process, Proc),
     {reply, ok, State#state { monitored = gb_trees:insert(Ref, CID) }};
+handle_call(get_socket, _From, S) ->
+    {reply, {ok, S#state.socket}, S};
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -181,6 +184,9 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+get_socket() ->
+    call(get_socket).
 
 call(Msg) ->
     gen_server:call(?MODULE, Msg, infinity).

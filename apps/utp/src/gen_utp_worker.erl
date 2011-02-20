@@ -8,17 +8,22 @@
 %%%-------------------------------------------------------------------
 -module(gen_utp_worker).
 
+-include("utp.hrl").
+
 -behaviour(gen_fsm).
 
 %% API
--export([start_link/0]).
+-export([start_link/4]).
+
+%% Operations
+-export([connect/1]).
 
 %% gen_fsm callbacks
--export([init/1, state_name/3, handle_event/3,
+-export([init/1, handle_event/3,
 	 handle_sync_event/4, handle_info/3, terminate/3, code_change/4]).
 
 %% gen_fsm callback states
--export([idle/2,
+-export([idle/2, idle/3,
 	 syn_sent/2,
 	 connected/2,
 	 connected_full/2,
@@ -35,23 +40,30 @@
 
 -define(SERVER, ?MODULE).
 
--record(state, {}).
+-type ip_address() :: {byte(), byte(), byte(), byte()}.
+-record(sock_info, { addr :: string() | ip_address(),
+		     port :: 0..16#FFFF,
+		     socket :: gen_udp:socket(),
+		     opts :: proplists:proplist() }).
+
+-record(state_idle, { sock_info :: #sock_info{} }).
+-record(state_syn_sent, { sock_info :: #sock_info{},
+			  conn_id_send :: integer(),
+			  seq_no    :: integer(), % @todo probably need more here
+					          % Push into #conn{} state
+			  connector :: {reference(), pid()} }).
 
 %%%===================================================================
 %%% API
 %%%===================================================================
 
-%%--------------------------------------------------------------------
-%% @doc
-%% Creates a gen_fsm process which calls Module:init/1 to
-%% initialize. To ensure a synchronized start-up procedure, this
-%% function does not return until Module:init/1 has returned.
-%%
-%% @spec start_link() -> {ok, Pid} | ignore | {error, Error}
+%% @doc Create a worker for a peer endpoint
 %% @end
-%%--------------------------------------------------------------------
-start_link() ->
-    gen_fsm:start_link({local, ?SERVER}, ?MODULE, [], []).
+start_link(Socket, Addr, Port, Options) ->
+    gen_fsm:start_link({local, ?SERVER}, ?MODULE, [Socket, Addr, Port, Options], []).
+
+connect(Pid) ->
+    gen_fsm:sync_send_event(Pid, connect). % @todo Timeouting!
 
 %%%===================================================================
 %%% gen_fsm callbacks
@@ -70,12 +82,17 @@ start_link() ->
 %%                     {stop, StopReason}
 %% @end
 %%--------------------------------------------------------------------
-init([]) ->
-    {ok, state_name, #state{}}.
+init([Addr, Port, Options]) ->
+    SockInfo = #sock_info { addr = Addr,
+			    port = Port,
+			    opts = Options },
+    {ok, state_name, #state_idle{ sock_info = SockInfo }}.
 
 %% @private
-idle(_Msg, _State) ->
-    todo.
+idle(Msg, S) ->
+    %% Ignore messages
+    error_logger:warning_report([async_message, idle, Msg]),
+    {next_state, idle, S}.
 
 %% @private
 syn_sent(_Msg, _State) ->
@@ -128,9 +145,22 @@ destroy(_Msg, _State) ->
 %%                   {stop, Reason, Reply, NewState}
 %% @end
 %%--------------------------------------------------------------------
-state_name(_Event, _From, State) ->
-    Reply = ok,
-    {reply, Reply, state_name, State}.
+idle(connect, From, #state_idle { sock_info = SockInfo }) ->
+    Conn_id_recv = utp_proto:mk_connection_id(),
+    Conn_id_send = Conn_id_recv + 1,
+    SynPacket = #packet { ty = st_syn,
+			  seq_no = 1,
+			  ack_no = 0,
+			  conn_id = Conn_id_recv
+			}, % Rest are defaults
+    ok = send(SockInfo, SynPacket),
+    {next_state, syn_sent, #state_syn_sent { sock_info = SockInfo,
+					     seq_no = 2,
+					     conn_id_send = Conn_id_send,
+					     connector = From }};
+idle(_Msg, _From, S) ->
+    {reply, idle, {error, enotconn}, S}.
+
 
 %%--------------------------------------------------------------------
 %% @private
@@ -211,5 +241,8 @@ code_change(_OldVsn, StateName, State, _Extra) ->
     {ok, StateName, State}.
 
 %%%===================================================================
-%%% Internal functions
-%%%===================================================================
+
+send(#sock_info { socket = Socket,
+		  addr = Addr, port = Port }, Packet) ->
+    %% @todo Handle timestamping here!!
+    gen_udp:send_packet(Socket, Addr, Port, utp_proto:encode(Packet, 0,0)).
