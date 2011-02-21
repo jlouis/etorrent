@@ -3,8 +3,21 @@
     - Some??? There are *numerous*. One has to really read this carefully to get an idea
       of how the protocol works.
 
+* Go Through utp.cpp and add missing routines here
+  * send_data()
+  * is_writable() -- Perhaps not do this
+  * flush_packets()
+  * write_outgoing_packet()
+  * update_send_quota()
+  * check_timeouts() -- Definitely change!
+  * ack_packet()
+  * selective_ack_bytes()
+  * selective_ack()
+  * apply_ledbat_ccontrol()
+  * get_packet_size() -- Fix from bad default
+  * UTP_ProcessIncoming() -- Definitely change!
+  * UTP_* add here!
 * Implement send_ack()
-* Implement send_keep_alive()
 * Implement timing in send()
 * Handle transmit/retrieval of data
 * Handle connection teardown
