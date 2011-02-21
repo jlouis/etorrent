@@ -51,7 +51,22 @@
 -define(PACKET_SIZE, 350). % @todo Probably dead!
 -define(MAX_WINDOW_USER, 255 * ?PACKET_SIZE). % Likewise!
 -define(DEFAULT_ACK_TIME, 16#70000000). % Default add to the future when an Ack is expected
+
+%% Number of bytes to increase max window size by, per RTT. This is
+%% scaled down linearly proportional to off_target. i.e. if all packets
+%% in one window have 0 delay, window size will increase by this number.
+%% Typically it's less. TCP increases one MSS per RTT, which is 1500
+-define(MAX_CWND_INCREASE_BYTES_PER_RTT, 3000).
+-define(CUR_DELAY_SIZE, 3).
+
+%% Experiments suggest that a clock skew of 10 ms per 325 seconds
+%% is not impossible. Reset delay_base every 13 minutes. The clock
+%% skew is dealt with by observing the delay base in the other
+%% direction, and adjusting our own upwards if the opposite direction
+%% delay base keeps going down
+-define(DELAY_BASE_HISTORY, 13).
 -define(MAX_WINDOW_DECAY, 100). % ms
+
 %% The default RecvBuf size: 200K
 -define(OPT_RCVBUF, 200 * 1024).
 
@@ -60,26 +75,42 @@
 %% @todo Decide how to split up these records in a nice way.
 %% @todo Right now it is just the god record!
 -record(sock_info, {
-	  ack_no,
-	  addr :: string() | ip_address(),
-	  cur_window,
-	  cur_window_packets,
-	  fast_resend_seq_no,
+	  %% Stuff pertaining to the socket:
+	  addr        :: string() | ip_address(),
+	  opts        :: proplists:proplist(), %% Options on the socket
+	  packet_size :: integer(),
+	  port        :: 0..16#FFFF,
+	  socket      :: gen_udp:socket(),
+
+	  %% Stuff pertaining to the Packet Mgmt
+	  ack_no             :: integer(),
+	  cur_window         :: integer(),
+	  cur_window_packets :: integer(),
+	  fast_resend_seq_no :: integer(),
+	  max_send           :: integer(),
+	  max_window         :: integer(),
+	  max_window_user    :: integer(),
+	  retransmit_timeout,
+
+	  %% Buffers
 	  inbuf_elements,
 	  inbuf_mask,
-	  max_send,
-	  max_window,
-	  max_window_user,
 	  opt_sendbuf,
-	  opts :: proplists:proplist(),
+
 	  outbuf_elements,
 	  outbuf_mask,
-	  port :: 0..16#FFFF,
-	  retransmit_timeout,
-	  send_quota,
-	  socket :: gen_udp:socket(),
-	  timing, %% This is probably right, send seends sockinfo and timing
-	  transmissions
+
+	  %% General timing
+	  timing, %% This is probably right, send needs sockinfo and timing
+
+	  %% WRONG STUFF!
+	  transmissions %% @todo: Wrong! Is in a packet wrapper!
+	 }).
+
+%% Track send quota available
+-record(send_quota, {
+	  send_quota :: integer(),
+	  last_send_quota :: integer()
 	 }).
 
 -record(packet_wrap, {
@@ -182,7 +213,6 @@ init([Socket, Addr, Port, Options]) ->
 			    opts = Options,
 			    socket = Socket,
 			    retransmit_timeout = ?SYN_TIMEOUT,
-			    send_quota = ?PACKET_SIZE * 100,
 			    cur_window_packets = 0,
 			    fast_resend_seq_no = 1, % SeqNo
 			    max_window = get_packet_size(Socket),
@@ -531,26 +561,36 @@ update_cur_window(#packet_wrap { transmissions = Trs,
 update_cur_window(#packet_wrap{}, CurWindow) -> CurWindow.
 
 
-update_send_quota(#packet_wrap { transmissions = Tr,
+update_send_quota_1(#packet_wrap { transmissions = Tr,
 				 packet = P }, MaxSend, PacketSize, SendQuota) ->
     case MaxSend < PacketSize andalso Tr == 0 of
 	true -> SendQuota + byte_size(P#packet.payload);
 	false -> SendQuota
     end.
 
-update_send_quota(todo) ->
-    todo.
-%% void UTPSocket::update_send_quota()
-%% {
-%% 	int dt = g_current_ms - last_send_quota;
-%% 	if (dt == 0) return;
-%% 	last_send_quota = g_current_ms;
-%% 	size_t add = max_window * dt * 100 / (rtt_hist.delay_base?rtt_hist.delay_base:50);
-%% 	if (add > max_window * 100 && add > MAX_CWND_INCREASE_BYTES_PER_RTT * 100) add = max_window;
-%% 	send_quota += (int32)add;
-%% //	LOG_UTPV("0x%08x: UTPSocket::update_send_quota dt:%d rtt:%u max_window:%u quota:%d",
-%% //			 this, dt, rtt, (uint)max_window, send_quota / 100);
-%% }
+update_send_quota(CurrentTime,
+		  #send_quota { send_quota = SendQuota,
+				last_send_quota = LastSendQuota } = SQ,
+		  MaxWindow,
+		  RttHistDelayBase) ->
+    TimeDelta = utp_proto:get_current_ms() - LastSendQuota,
+    case TimeDelta of
+	0 ->
+	    {LastSendQuota, SendQuota};
+	N when is_integer(N) ->
+	    ToAdd = MaxWindow * TimeDelta * 100 / (case RttHistDelayBase of
+						       none -> 50;
+						       Base when is_integer(Base) -> Base
+						   end),
+	    Add = case ToAdd > MaxWindow
+		      andalso ToAdd > ?MAX_CWND_INCREASE_BYTES_PER_RTT * 100 of
+		      true ->
+			  MaxWindow;
+		      false ->
+			  ToAdd
+		  end,
+	    {CurrentTime, SendQuota + Add}
+    end.
 
 sent_ack(#sock_info { timing = Timing } = SI) ->
     NT = Timing#timing { ack_time = utp_proto:get_time_ms() + ?DEFAULT_ACK_TIME,
@@ -591,7 +631,7 @@ flush_packets(todo) ->
 %% }
     todo.
 
-is_writable(todo) ->
+is_writable(PacketSize, Extra) ->
 %%    bool UTPSocket::is_writable(size_t to_write)
 %% {
 %% 	// return true if it's OK to stuff another packet into the
@@ -735,14 +775,15 @@ send_packet(#sock_info { max_window = MaxWindow,
 			 opt_sendbuf = OptSendBuf,
 			 ack_no      = AckNo,
 			 max_send    = MaxSend,
-			 send_quota  = SendQuota,
 			 cur_window  = CurWindow,
 			 socket      = Socket,
 			 transmissions = Transmissions,
-			 max_window_user = MaxWindowUser } = SockInfo, Packet) ->
+			 max_window_user = MaxWindowUser } = SockInfo,
+	    #send_quota { send_quota = SendQuota } = SQ,
+	    Packet) ->
     Max_Send = lists:min([MaxWindow, OptSendBuf, MaxWindowUser]),
     CurWindow1 = update_cur_window(Packet, CurWindow),
-    SendQuota1 = update_send_quota(Packet, MaxSend, get_packet_size(Socket), SendQuota),
+    SendQuota1 = update_send_quota_1(Packet, MaxSend, get_packet_size(Socket), SendQuota),
 
     %%         pkt->need_resend = false;
     P = utp_proto:encode(Packet#packet { ack_no = AckNo }),
@@ -807,64 +848,55 @@ send_data(todo) ->
     todo.
 
 
-check_timeouts(todo) ->
-    todo.
-%%     void UTPSocket::check_timeouts()
-%% {
-%% #ifdef _DEBUG
-%% 	check_invariant();
-%% #endif
+handle_socket_writability(connected_full, PacketSize, Extra) ->
+    %% In case the new send quota made it possible to send another packet
+    %% Mark the socket as writable. If we don't use pacing, the send
+    %% quota does not affect if the socket is writeable
+    %% if we don't use packet pacing, the writable event is triggered
+    %% whenever the cur_window falls below the max_window, so we don't
+    %% need this check then.
+    case is_writable(PacketSize, Extra) of
+	true ->
+	    connected;
+	false ->
+	    connected_full
+    end;
+handle_socket_writability(OtherState, _, _) ->
+    OtherState.
 
-%% 	// this invariant should always be true
-%% 	assert(cur_window_packets == 0 || outbuf.get(seq_nr - cur_window_packets));
+%% @todo This screams wrong!
+reset_max_window(CurrentTime, 0, ZeroWindowTime)
+  when CurrentTime - ZeroWindowTime >= 0 ->
+    ?PACKET_SIZE;
+reset_max_window(CurrentTime, MaxWindowUser, ZeroWindowTime) ->
+    MaxWindowUser.
 
-%% 	LOG_UTPV("0x%08x: CheckTimeouts timeout:%d max_window:%u cur_window:%u quota:%d "
-%% 			 "state:%s cur_window_packets:%u bytes_since_ack:%u ack_time:%d",
-%% 			 this, (int)(rto_timeout - g_current_ms), (uint)max_window, (uint)cur_window,
-%% 			 send_quota / 100, statenames[state], cur_window_packets,
-%% 			 (uint)bytes_since_ack, (int)(g_current_ms - ack_time));
-
-%% 	update_send_quota();
-%% 	flush_packets();
-
-
-%% 	if (USE_PACKET_PACING) {
-%% 		// In case the new send quota made it possible to send another packet
-%% 		// Mark the socket as writable. If we don't use pacing, the send
-%% 		// quota does not affect if the socket is writeable
-%% 		// if we don't use packet pacing, the writable event is triggered
-%% 		// whenever the cur_window falls below the max_window, so we don't
-%% 		// need this check then
-%% 		if (state == CS_CONNECTED_FULL && is_writable(get_packet_size())) {
-%% 			state = CS_CONNECTED;
-%% 			LOG_UTPV("0x%08x: Socket writable. max_window:%u cur_window:%u quota:%d packet_size:%u",
-%% 					 this, (uint)max_window, (uint)cur_window, send_quota / 100, (uint)get_packet_size());
-%% 			func.on_state(userdata, UTP_STATE_WRITABLE);
-%% 		}
-%% 	}
-
-%% 	switch (state) {
-%% 	case CS_SYN_SENT:
-%% 	case CS_CONNECTED_FULL:
-%% 	case CS_CONNECTED:
-%% 	case CS_FIN_SENT: {
-
-%% 		// Reset max window...
-%% 		if ((int)(g_current_ms - zerowindow_time) >= 0 && max_window_user == 0) {
-%% 			max_window_user = PACKET_SIZE;
-%% 		}
-
-%% 		if ((int)(g_current_ms - rto_timeout) >= 0 &&
-%% 			(!(USE_PACKET_PACING) || cur_window_packets > 0) &&
-%% 			rto_timeout > 0) {
-
-%% 			/*
-%% 			OutgoingPacket *pkt = (OutgoingPacket*)outbuf.get(seq_nr - cur_window_packets);
-			
-%% 			// If there were a lot of retransmissions, force recomputation of round trip time
-%% 			if (pkt->transmissions >= 4)
-%% 				rtt = 0;
-%% 			*/
+check_timeouts(State,
+	       CurrentTime, #sock_info { max_window = MaxWindow,
+					 max_window_user = MaxWindowUser,
+				         packet_size = PacketSize } = SI, SQ,
+	       RttHistBase,
+	       ZeroWindowTime) ->
+    SQ_New = update_send_quota(CurrentTime, SQ, MaxWindow, RttHistBase),
+    %% flush_packets();
+    NewState = handle_socket_writability(State, PacketSize, todo),
+    case State of
+	S when S == syn_sent;
+	       S == connected_full;
+	       S == connected;
+	       S == fin_sent ->
+	    MaxWinUser = reset_max_window(CurrentTime,
+					  MaxWindowUser,
+					  ZeroWindowTime);
+	S when S == got_fin;
+	       S == destroy_delay ->
+	    ok;
+	S when S == idle;
+	       S == reset;
+	       S == destroy ->
+	    ok
+    end,
+    update_quota_1(todo).
 
 %% 			// Increase RTO
 %% 			const uint new_timeout = retransmit_timeout * 2;
@@ -879,17 +911,17 @@ check_timeouts(todo) ->
 %% 				func.on_error(userdata, ETIMEDOUT);
 %% 				goto getout;
 %% 			}
+bump_timeout(syn_sent, To) when To > 6000 ->
+    {new_state, cs_reset}
+bump_timeout(fin_sent, To) when To >= 30000 ->
+    {new_state, destroy};
+bump_timeout(_Otherwise, To) when To >= 30000 ->
+    {new_state, reset};
+bump_timeout(_, _) ->
+    none.
 
-%% 			retransmit_timeout = new_timeout;
-%% 			rto_timeout = g_current_ms + new_timeout;
 
-%% 			// On Timeout
-%% 			duplicate_ack = 0;
-
-%% 			// rate = min_rate
-%% 			max_window = get_packet_size();
-%% 			send_quota = max<int32>((int32)max_window * 100, send_quota);
-
+mark_all_packets_as_lost() ->
 %% 			// every packet should be considered lost
 %% 			for (int i = 0; i < cur_window_packets; ++i) {
 %% 				OutgoingPacket *pkt = (OutgoingPacket*)outbuf.get(seq_nr - i - 1);
@@ -899,71 +931,61 @@ check_timeouts(todo) ->
 %% 				cur_window -= pkt->payload;
 %% 			}
 
-%% 			// used in parse_log.py
-%% 			LOG_UTP("0x%08x: Packet timeout. Resend. seq_nr:%u. timeout:%u max_window:%u",
-%% 					this, seq_nr - cur_window_packets, retransmit_timeout, (uint)max_window);
+rto_timeout_transition(destroy_delay) -> destroy;
+rto_timeout_transition(got_fin)       -> reset.
 
-%% 			fast_timeout = true;
-%% 			timeout_seq_nr = seq_nr;
+rto_timeout() ->
+    Timeout = RetransmitTimeout * 2,
+    bump_timeout(Timeout),
+    RetransmitTimeout = Timeout,
+    set_new_timeout(Timeout),
+    DupeAck = 0,
+    MaxWindow = PacketSize,
+    SendQuota = lists:max([MaxWindow * 100, SendQuota]), %% Yet another way to bump send quota :)
+    mark_all_packets_as_lost(),
+    FastTimeout = true,
+    TimeoutSeqNo = SeqNo,
 
-%% 			if (cur_window_packets > 0) {
-%% 				OutgoingPacket *pkt = (OutgoingPacket*)outbuf.get(seq_nr - cur_window_packets);
-%% 				assert(pkt);
-%% 				send_quota = max<int32>((int32)pkt->length * 100, send_quota);
+    case CurWindowPackets > 0 of
+	true ->
+	    Pkt = pick_outgoing_packet(SeqNo - CurWindowPackets),
+	    SendQuota = lists:max([MaxWindow * 100, SendQuota]), %% AGAIN! :)
+	    send_packet(Pkt);
+	false ->
+	    ok
+    end,
 
-%% 				// Re-send the packet.
-%% 				send_packet(pkt);
-%% 			}
-%% 		}
+    NewState = handle_socket_writability(State, PacketSize, Extra),
 
-%% 		// Mark the socket as writable
-%% 		if (state == CS_CONNECTED_FULL && is_writable(get_packet_size())) {
-%% 			state = CS_CONNECTED;
-%% 			LOG_UTPV("0x%08x: Socket writable. max_window:%u cur_window:%u quota:%d packet_size:%u",
-%% 					 this, (uint)max_window, (uint)cur_window, send_quota / 100, (uint)get_packet_size());
-%% 			func.on_state(userdata, UTP_STATE_WRITABLE);
-%% 		}
+    case State of
+	S when S == connected;
+	       S == fin_sent ->
+	    if
+		BytesSinceAck > ?DELAYED_ACK_BYTE_THRESHOLD;
+		  CurrentTime - AckTime >= 0 ->
+		    send_ack();
+		true ->
+		    ok
+	    end,
+	    if
+		CurrentTime - LastSentPacket >= ?KEEPALIVE_INTERVAL ->
+		    send_keep_alive()
+	    end;
 
-%% 		if (state >= CS_CONNECTED && state <= CS_FIN_SENT) {
-%% 			// Send acknowledgment packets periodically, or when the threshold is reached
-%% 			if (bytes_since_ack > DELAYED_ACK_BYTE_THRESHOLD ||
-%% 				(int)(g_current_ms - ack_time) >= 0) {
-%% 				send_ack();
-%% 			}
 
-%% 			if ((int)(g_current_ms - last_sent_packet) >= KEEPALIVE_INTERVAL) {
-%% 				send_keep_alive();
-%% 			}
-%% 		}
+	_ -> ok
+    end.
 
-%% 		break;
-%% 	}
-
-%% 	// Close?
-%% 	case CS_GOT_FIN:
-%% 	case CS_DESTROY_DELAY:
-%% 		if ((int)(g_current_ms - rto_timeout) >= 0) {
-%% 			state = (state == CS_DESTROY_DELAY) ? CS_DESTROY : CS_RESET;
-%% 			if (cur_window_packets > 0 && userdata) {
-%% 				func.on_error(userdata, ECONNRESET);
-%% 			}
-%% 		}
-%% 		break;
-%% 	// prevent warning
-%% 	case CS_IDLE:
-%% 	case CS_RESET:
-%% 	case CS_DESTROY:
-%% 		break;
-%% 	}
-
-%% 	getout:
-
-%% 	// make sure we don't accumulate quota when we don't have
-%% 	// anything to send
-%% 	int32 limit = max<int32>((int32)max_window / 2, 5 * (int32)get_packet_size()) * 100;
-%% 	if (send_quota > limit) send_quota = limit;
-%% }
-
+update_quota_1(MaxWindow, PacketSize, SendQuota) ->
+    M = MaxWindow / 2,
+    N = 5 * PacketSize * 100,
+    Limit = lists:max([M, N]),
+    case SendQuota > Limit of
+	true ->
+	    Limit;
+	false ->
+	    SendQuota
+    end.
 
 %% // returns:
 %% // 0: the packet was acked.
