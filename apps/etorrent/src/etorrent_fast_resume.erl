@@ -101,7 +101,7 @@ upgrade1(St) ->
 init([]) ->
     %% TODO - check for errors when opening the dets table
     Statefile  = etorrent_config:fast_resume_file(),
-    Statetable = dets:init_table(Statefile),
+    {ok, Statetable} = dets:open_file(Statefile, []),
     InitState  = #state{table=Statetable},
     #state{interval=Interval} = InitState,
     _ = timer:apply_interval(Interval, ?MODULE, update, []),
