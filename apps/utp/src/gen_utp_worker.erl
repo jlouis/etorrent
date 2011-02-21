@@ -656,7 +656,7 @@ write_outgoing_packet(todo) ->
 %% 		size_t added = 0;
 
 %% 		OutgoingPacket *pkt = NULL;
-		
+
 %% 		if (cur_window_packets > 0) {
 %% 			pkt = (OutgoingPacket*)outbuf.get(seq_nr - 1);
 %% 		}
