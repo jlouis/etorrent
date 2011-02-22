@@ -30,7 +30,7 @@ enqueue_receiver(From, Length, #process_info { receiver_q = RQ } = PI) ->
 
 enqueue_sender(From, Data, #process_info { sender_q = SQ } = PI) ->
     NQ = queue:in({sender, From, Data}, SQ),
-    PI#process_info { sender_q = SQ }.
+    PI#process_info { sender_q = NQ }.
 
 
 

@@ -34,7 +34,7 @@
 %% gen_fsm callback states
 -export([idle/2, idle/3,
 	 syn_sent/2,
-	 connected/2,
+	 connected/2, connected/3,
 	 connected_full/2,
 	 got_fin/2,
 	 destroy_delay/2,
@@ -103,31 +103,7 @@
 
 
 	  %% General timing
-	  timing, %% This is probably right, send needs sockinfo and timing
-
-	  %% WRONG STUFF!
-	  transmissions %% @todo: Wrong! Is in a packet wrapper!
-	 }).
-
--record(pkt_info, {
-	  %% Buffers
-	  inbuf_elements,
-	  inbuf_mask,
-	  opt_sendbuf,
-
-	  outbuf_elements,
-	  outbuf_mask }).
-
-%% Track send quota available
--record(send_quota, {
-	  send_quota :: integer(),
-	  last_send_quota :: integer()
-	 }).
-
--record(packet_wrap, {
-	  packet            :: utp_proto:packet(),
-	  transmissions = 0 :: integer(),
-	  need_resend = false :: integer()
+	  timing %% This is probably wrong, it belongs int he pkt_info structure
 	 }).
 
 -record(timing, {
@@ -140,14 +116,16 @@
 	  last_send_quota
 	 }).
 
+-record(pkt_buf, { recv_buf :: queue() }).
+
 %% STATE RECORDS
 %% ----------------------------------------------------------------------
 -record(state_idle, { sock_info :: #sock_info{},
-		      pkt_info  :: #pkt_info{},
+		      pkt_info  :: utp_pkt:t(),
 		      timeout   :: reference() }).
 
 -record(state_syn_sent, { sock_info    :: #sock_info{},
-			  pkt_info     :: #pkt_info{},
+			  pkt_info     :: utp_pkt:t(),
 			  conn_id_send :: integer(),
 			  seq_no       :: integer(), % @todo probably need more here
 					          % Push into #conn{} state
@@ -157,7 +135,8 @@
 			}).
 
 -record(state_connected, { sock_info    :: #sock_info{},
-			   pkt_info     :: #pkt_info{},
+			   pkt_info     :: utp_pkt:t(),
+			   pkt_buf      :: #pkt_buf{},
 			   proc_info    :: utp_process:t(),
 			   conn_id_send :: integer(),
 			   seq_no       :: integer(),
@@ -236,13 +215,7 @@ init([Socket, Addr, Port, Options]) ->
       last_send_quota = Current_Time
     },
 
-    PktInfo  = #pkt_info {
-      outbuf_mask = 16#f,
-      inbuf_mask  = 16#f,
-      outbuf_elements = [], % These two should probably be queues
-      inbuf_elements = []
-    },
-
+    PktInfo  = utp_pkt:mk(),
     SockInfo = #sock_info { addr = Addr,
 			    port = Port,
 			    opts = Options,
@@ -286,6 +259,20 @@ syn_sent(Msg, S) ->
     {next_state, syn_sent, S}.
 
 %% @private
+connected({packet, Pkt, RecvTime},
+	  #state_connected { pkt_info = PKI,
+			     pkt_buf  = PB,
+			     proc_info = PRI
+			     } = S) ->
+    case utp_pkt:handle_packet(RecvTime, Pkt, PKI) of
+	{ok, Payload, N_PKI} ->
+	    {N_PB, N_PRI} = satisfy_recvs(PRI,
+					utp_pkt:enqueue_recv_payload(Payload, PB)),
+	    {next_state, connected,
+	     S#state_connected { pkt_info = N_PKI,
+				 pkt_buf = N_PB,
+				 proc_info = N_PRI }}
+    end;
 connected(close, #state_connected { sock_info = SockInfo } = S) ->
     %% Close down connection!
     ok = send_fin(SockInfo),
@@ -465,6 +452,9 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 
 %%%===================================================================
 
+reply(To, Msg) ->
+    gen_fsm:reply(To, Msg).
+
 get_packet_size(_Socket) ->
     %% @todo FIX get_packet_size/1 to actually work!
     1500.
@@ -480,9 +470,52 @@ get_rcv_window() ->
 send_fin(_SockInfo) ->
     todo.
 
+buffer_putback(B, #pkt_buf { recv_buf = Q } = Buf) ->
+    Buf#pkt_buf { recv_buf = queue:in_r(B, Q) }.
+
+buffer_dequeue(#pkt_buf { recv_buf = Q } = Buf) ->
+    case queue:out(Q) of
+	{{value, E}, Q1} ->
+	    {ok, E, Buf#pkt_buf { recv_buf = Q1 }};
+	{empty, _} ->
+	    empty
+    end.
+
+satisfy_buffer(From, 0, Res, Buffer) ->
+    reply(From, {ok, Res}),
+    {ok, Buffer};
+satisfy_buffer(From, Length, Res, Buffer) ->
+    case buffer_dequeue(Buffer) of
+	{ok, Bin, N_Buffer} when byte_size(Bin) =< Length ->
+	    satisfy_buffer(From, Length - byte_size(Bin), <<Res/binary, Bin/binary>>, N_Buffer);
+	{ok, Bin, N_Buffer} when byte_size(Bin) > Length ->
+	    <<Cut:Length/binary, Rest/binary>> = Bin,
+	    satisfy_buffer(From, 0, <<Res/binary, Cut/binary>>, buffer_putback(Rest, N_Buffer));
+	empty ->
+	    {emptied, From, Length, Res, Buffer}
+    end.
+
+satisfy_recvs(Processes, Buffer) ->
+    case utp_process:dequeue_recv(Processes) of
+	{ok, {receiver, Length, From, Res}, N_Processes} ->
+	    case satisfy_buffer(From, Length, Res, Buffer) of
+		{ok, N_Buffer} ->
+		    satisfy_recvs(N_Processes, N_Buffer);
+		{emptied, F, L, R, N_Buffer} ->
+		    {ok, utp_process:putback_receiver(F, L, R), N_Buffer}
+	    end;
+	empty ->
+	    {ok, Processes, Buffer}
+    end.
+
+
+-ifdef(STASHED_AWAY).
+
 send_keep_alive(#sock_info { ack_no = AckNo } = SockInfo) ->
     SockInfo1 = send_ack(SockInfo#sock_info { ack_no = AckNo - 1 }),
     SockInfo1#sock_info { ack_no = AckNo }.
+
+
 
 send_ack(SockInfo) ->
 %%     void UTPSocket::send_ack(bool synack)
@@ -2131,4 +2164,5 @@ handle_packet(P, SockInfo, PktInfo, ProcInfo) ->
 %% 	*stats = _global_stats;
 %% }
 
-
+-endif.
+-endif.

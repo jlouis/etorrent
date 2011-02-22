@@ -8,7 +8,7 @@
 -endif.
 
 -export([mk_connection_id/0,
-	 payload_size/1
+	 payload_size/1,
 	 send_packet/3,
 	 encode/3,
 	 decode/1]).
