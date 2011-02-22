@@ -16,7 +16,13 @@
 -export([start_link/4]).
 
 %% Operations
--export([connect/1, accept/2, close/1]).
+-export([connect/1,
+	 accept/2,
+	 close/1,
+
+	 recv/2,
+	 send/2
+	]).
 
 %% Internal API
 -export([incoming/2]).
@@ -92,19 +98,26 @@
 	  max_window_user    :: integer(),
 	  retransmit_timeout,
 
-	  %% Buffers
-	  inbuf_elements,
-	  inbuf_mask,
-	  opt_sendbuf,
-
-	  outbuf_elements,
-	  outbuf_mask,
 
 	  %% General timing
 	  timing, %% This is probably right, send needs sockinfo and timing
 
 	  %% WRONG STUFF!
 	  transmissions %% @todo: Wrong! Is in a packet wrapper!
+	 }).
+
+-record(pkt_info, {
+	  %% Buffers
+	  inbuf_elements,
+	  inbuf_mask,
+	  opt_sendbuf,
+
+	  outbuf_elements,
+	  outbuf_mask }).
+
+-record(process_info, {
+	  sender_q   :: queue(),
+	  receiver_q :: queue()
 	 }).
 
 %% Track send quota available
@@ -143,6 +156,7 @@
 			}).
 
 -record(state_connected, { sock_info    :: #sock_info{},
+			   proc_info    :: #process_info{},
 			   conn_id_send :: integer(),
 			   seq_no       :: integer(),
 			   ack_no       :: integer(),
@@ -164,6 +178,18 @@ connect(Pid) ->
 %% @end
 accept(Pid, SynPacket) ->
     gen_fsm:sync_send_event(Pid, {accept, SynPacket}). % @todo Timeouting!
+
+%% @doc Receive some bytes from the socket. Blocks until the said amount of
+%% bytes have been read.
+%% @end
+recv(Pid, Amount) ->
+    gen_fsm:sync_send_event(Pid, {recv, Amount}, infinity).
+
+%% @doc Send some bytes from the socket. Blocks until the said amount of
+%% bytes have been sent and has been accepted by the underlying layer.
+%% @end
+send(Pid, Data) ->
+    gen_fsm:sync_send_event(Pid, {send, Data}).
 
 %% @doc Send a close event
 %% @end
@@ -370,6 +396,18 @@ idle({accept, SYN}, _From, #state_idle { sock_info = SockInfo }) ->
 idle(_Msg, _From, S) ->
     {reply, idle, {error, enotconn}, S}.
 
+connected({recv, Length}, From, #state_connected { proc_info = PI } = S) ->
+    %% @todo Try to satisfy receivers
+    {next_state, connected, S#state_connected {
+			   proc_info = enqueue_receiver(From, Length, PI) }};
+connected({send, Data}, From, #state_connected { proc_info = PI } = S) ->
+    {next_state, connected, S#state_connected {
+			   proc_info = enqueue_sender(From, Data, PI) }};
+connected(Msg, From, S) ->
+    error_logger:warning_report([sync_message, connected, Msg, From]),
+    {next_state, connected, S}.
+
+
 
 %%--------------------------------------------------------------------
 %% @private
@@ -420,7 +458,13 @@ code_change(_OldVsn, StateName, State, _Extra) ->
     {ok, StateName, State}.
 
 %%%===================================================================
+enqueue_receiver(From, Length, #process_info { receiver_q = RQ } = PI) ->
+    NQ = queue:in({receiver, From, Length, <<>>}, RQ),
+    PI#process_info { receiver_q = NQ }.
 
+enqueue_sender(From, Data, #process_info { sender_q = SQ } = PI) ->
+    NQ = queue:in({sender, From, Data}, SQ),
+    PI#process_info { sender_q = SQ }.
 
 get_packet_size(_Socket) ->
     %% @todo FIX get_packet_size/1 to actually work!
@@ -912,7 +956,7 @@ check_timeouts(State,
 %% 				goto getout;
 %% 			}
 bump_timeout(syn_sent, To) when To > 6000 ->
-    {new_state, cs_reset}
+    {new_state, cs_reset};
 bump_timeout(fin_sent, To) when To >= 30000 ->
     {new_state, destroy};
 bump_timeout(_Otherwise, To) when To >= 30000 ->
@@ -922,6 +966,7 @@ bump_timeout(_, _) ->
 
 
 mark_all_packets_as_lost() ->
+    todo.
 %% 			// every packet should be considered lost
 %% 			for (int i = 0; i < cur_window_packets; ++i) {
 %% 				OutgoingPacket *pkt = (OutgoingPacket*)outbuf.get(seq_nr - i - 1);
