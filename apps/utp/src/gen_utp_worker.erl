@@ -272,7 +272,7 @@ connected({packet, Pkt, RecvTime},
     end;
 connected(close, #state_connected { sock_info = SockInfo } = S) ->
     %% Close down connection!
-    ok = send_fin(SockInfo),
+    ok = utp_pkt:send_fin(SockInfo),
     {next_state, fin_sent, S};
 connected(Msg, S) ->
     %% Ignore messages
@@ -282,7 +282,7 @@ connected(Msg, S) ->
 %% @private
 connected_full(close, #state_connected { sock_info = SockInfo } = S) ->
     %% Close down connection!
-    ok = send_fin(SockInfo),
+    ok = utp_pkt:send_fin(SockInfo),
     {next_state, fin_sent, S};
 connected_full(Msg, S) ->
     %% Ignore messages
@@ -452,9 +452,6 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 reply(To, Msg) ->
     gen_fsm:reply(To, Msg).
 
-send_fin(_SockInfo) ->
-    todo.
-
 buffer_putback(B, #pkt_buf { recv_buf = Q } = Buf) ->
     Buf#pkt_buf { recv_buf = queue:in_r(B, Q) }.
 
@@ -500,38 +497,18 @@ send_keep_alive(#sock_info { ack_no = AckNo } = SockInfo) ->
     SockInfo1 = send_ack(SockInfo#sock_info { ack_no = AckNo - 1 }),
     SockInfo1#sock_info { ack_no = AckNo }.
 
-
-
-send_ack(SockInfo) ->
-%%     void UTPSocket::send_ack(bool synack)
-%% {
-%% 	PacketFormatExtensions pfe;
-%% 	zeromem(&pfe);
-%% 	PacketFormatExtensionsV1& pfe1 = (PacketFormatExtensionsV1&)pfe;
-%% 	PacketFormatAck& pfa = (PacketFormatAck&)pfe1;
-%% 	PacketFormatAckV1& pfa1 = (PacketFormatAckV1&)pfe1;
-
-%% 	size_t len;
-%% 	last_rcv_win = get_rcv_window();
-%% 	if (version == 0) {
-%% 		pfa.pf.connid = conn_id_send;
-%% 		pfa.pf.ack_nr = (uint16)ack_nr;
-%% 		pfa.pf.seq_nr = (uint16)seq_nr;
-%% 		pfa.pf.flags = ST_STATE;
-%% 		pfa.pf.ext = 0;
-%% 		pfa.pf.windowsize = (byte)DIV_ROUND_UP(last_rcv_win, PACKET_SIZE);
-%% 		len = sizeof(PacketFormat);
-%% 	} else {
-%% 		pfa1.pf.set_version(1);
-%% 		pfa1.pf.set_type(ST_STATE);
-%% 		pfa1.pf.ext = 0;
-%% 		pfa1.pf.connid = conn_id_send;
-%% 		pfa1.pf.ack_nr = ack_nr;
-%% 		pfa1.pf.seq_nr = seq_nr;
-%% 		pfa1.pf.windowsize = (uint32)last_rcv_win;
-%% 		len = sizeof(PacketFormatV1);
-%% 	}
-
+send_ack(#sock_info {
+	    conn_id = ConnID
+	   } = SockInfo,
+	 PI, AckNo, SeqNo) ->
+    RcvWin = utp_pkt:rcv_win(PI),
+    Pkt = #packet { conn_id = ConnID,
+		    ack_no  = AckNo,
+		    seq_no  = SeqNo,
+		    extension = [],
+		    ty = st_state,
+		    last_rcv_win = RcvWinn,
+		    payload = <<>> },
 %% 	// we never need to send EACK for connections
 %% 	// that are shutting down
 %% 	if (reorder_count != 0 && state < CS_GOT_FIN) {
@@ -576,33 +553,9 @@ send_ack(SockInfo) ->
 %% 		}
 %% 		len += 4 + 2;
 %% 		LOG_UTPV("0x%08x: Sending EACK %u [%u] bits:[%032b]", this, ack_nr, conn_id_send, m);
-%% 	} else if (synack) {
-%% 		// we only send "extensions" in response to SYN
-%% 		// and the reorder count is 0 in that state
-
-%% 		LOG_UTPV("0x%08x: Sending ACK %u [%u] with extension bits", this, ack_nr, conn_id_send);
-%% 		if (version == 0) {
-%% 			pfe.pf.ext = 2;
-%% 			pfe.ext_next = 0;
-%% 			pfe.ext_len = 8;
-%% 			memset(pfe.extensions, 0, 8);
-%% 		} else {
-%% 			pfe1.pf.ext = 2;
-%% 			pfe1.ext_next = 0;
-%% 			pfe1.ext_len = 8;
-%% 			memset(pfe1.extensions, 0, 8);
-%% 		}
-%% 		len += 8 + 2;
-%% 	} else {
-%% 		LOG_UTPV("0x%08x: Sending ACK %u [%u]", this, ack_nr, conn_id_send);
 %% 	}
-
-%% 	sent_ack();
-%% 	send_data((PacketFormat*)&pfe, len, ack_overhead);
-%% }
-
-    exit(todo),
-    SockInfo.
+    send_data(Pkt),
+    sent_ack(PI).
 
 send_rst(SockInfo, ConnID, Ack, Seq) ->
     send(SockInfo,

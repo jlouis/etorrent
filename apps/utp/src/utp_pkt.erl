@@ -7,7 +7,8 @@
 	 mk/0,
 	 packet_size/1,
 	 rcv_window/0,
-	 mk_random_seq_no/0
+	 mk_random_seq_no/0,
+	 send_fin/1
 	 ]).
 
 %% TYPES
@@ -71,6 +72,9 @@ mk_random_seq_no() ->
 rcv_window() ->
     %% @todo, trim down if receive buffer is present!
     ?OPT_RCVBUF.
+
+send_fin(_SockInfo) ->
+    todo.
 
 
 
