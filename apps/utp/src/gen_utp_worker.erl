@@ -115,11 +115,6 @@
 	  outbuf_elements,
 	  outbuf_mask }).
 
--record(process_info, {
-	  sender_q   :: queue(),
-	  receiver_q :: queue()
-	 }).
-
 %% Track send quota available
 -record(send_quota, {
 	  send_quota :: integer(),
@@ -156,7 +151,7 @@
 			}).
 
 -record(state_connected, { sock_info    :: #sock_info{},
-			   proc_info    :: #process_info{},
+			   proc_info    :: utp_process:t(),
 			   conn_id_send :: integer(),
 			   seq_no       :: integer(),
 			   ack_no       :: integer(),
@@ -399,10 +394,10 @@ idle(_Msg, _From, S) ->
 connected({recv, Length}, From, #state_connected { proc_info = PI } = S) ->
     %% @todo Try to satisfy receivers
     {next_state, connected, S#state_connected {
-			   proc_info = enqueue_receiver(From, Length, PI) }};
+			   proc_info = utp_process:enqueue_receiver(From, Length, PI) }};
 connected({send, Data}, From, #state_connected { proc_info = PI } = S) ->
     {next_state, connected, S#state_connected {
-			   proc_info = enqueue_sender(From, Data, PI) }};
+			   proc_info = utp_process:enqueue_sender(From, Data, PI) }};
 connected(Msg, From, S) ->
     error_logger:warning_report([sync_message, connected, Msg, From]),
     {next_state, connected, S}.
@@ -458,13 +453,8 @@ code_change(_OldVsn, StateName, State, _Extra) ->
     {ok, StateName, State}.
 
 %%%===================================================================
-enqueue_receiver(From, Length, #process_info { receiver_q = RQ } = PI) ->
-    NQ = queue:in({receiver, From, Length, <<>>}, RQ),
-    PI#process_info { receiver_q = NQ }.
-
-enqueue_sender(From, Data, #process_info { sender_q = SQ } = PI) ->
-    NQ = queue:in({sender, From, Data}, SQ),
-    PI#process_info { sender_q = SQ }.
+payload_size(#packet { payload = PL }) ->
+    byte_size(PL).
 
 get_packet_size(_Socket) ->
     %% @todo FIX get_packet_size/1 to actually work!
@@ -942,39 +932,31 @@ check_timeouts(State,
     end,
     update_quota_1(todo).
 
-%% 			// Increase RTO
-%% 			const uint new_timeout = retransmit_timeout * 2;
-%% 			if (new_timeout >= 30000 || (state == CS_SYN_SENT && new_timeout > 6000)) {
-%% 				// more than 30 seconds with no reply. kill it.
-%% 				// if we haven't even connected yet, give up sooner. 6 seconds
-%% 				// means 2 tries at the following timeouts: 3, 6 seconds
-%% 				if (state == CS_FIN_SENT)
-%% 					state = CS_DESTROY;
-%% 				else
-%% 					state = CS_RESET;
-%% 				func.on_error(userdata, ETIMEDOUT);
-%% 				goto getout;
-%% 			}
+increase_rto(State, RTO) ->
+    bump_timeout(State, RTO * 2).
+
+%% More than 30 seconds with no reply. kill it.
+%% if we haven't even connected yet, give up sooner. 6 seconds
+%% means 2 tries at the following timeouts: 3, 6 seconds
 bump_timeout(syn_sent, To) when To > 6000 ->
     {new_state, cs_reset};
 bump_timeout(fin_sent, To) when To >= 30000 ->
-    {new_state, destroy};
+    {new_state_send_quota, destroy}; % Notice that we ought to bump send quota in this case
 bump_timeout(_Otherwise, To) when To >= 30000 ->
-    {new_state, reset};
+    {new_state_send_quota, reset};
 bump_timeout(_, _) ->
     none.
 
 
-mark_all_packets_as_lost() ->
-    todo.
-%% 			// every packet should be considered lost
-%% 			for (int i = 0; i < cur_window_packets; ++i) {
-%% 				OutgoingPacket *pkt = (OutgoingPacket*)outbuf.get(seq_nr - i - 1);
-%% 				if (pkt == 0 || pkt->transmissions == 0 || pkt->need_resend) continue;
-%% 				pkt->need_resend = true;
-%% 				assert(cur_window >= pkt->payload);
-%% 				cur_window -= pkt->payload;
-%% 			}
+mark_all_packets_as_lost(CurWindow, #pkt_info {} = PktInfo) ->
+    {PktInfo1, PayloadSum} =
+	map_outgoing_queue(
+	  fun(Pkt) ->
+		  {Pkt#packet_wrap { need_resend = true },
+		   payload_size(Pkt#packet_wrap.packet)}
+	  end,
+	  PktInfo),
+    {PktInfo1, CurWindow - PayloadSum}.
 
 rto_timeout_transition(destroy_delay) -> destroy;
 rto_timeout_transition(got_fin)       -> reset.
