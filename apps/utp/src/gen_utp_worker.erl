@@ -76,9 +76,6 @@
 -define(DELAY_BASE_HISTORY, 13).
 -define(MAX_WINDOW_DECAY, 100). % ms
 
-%% The default RecvBuf size: 200K
--define(OPT_RCVBUF, 200 * 1024).
-
 -type ip_address() :: {byte(), byte(), byte(), byte()}.
 
 %% @todo Decide how to split up these records in a nice way.
@@ -223,7 +220,7 @@ init([Socket, Addr, Port, Options]) ->
 			    retransmit_timeout = ?SYN_TIMEOUT,
 			    cur_window_packets = 0,
 			    fast_resend_seq_no = 1, % SeqNo
-			    max_window = get_packet_size(Socket),
+			    max_window = utp_pkt:packet_size(Socket),
 			    timing = Timing
 			  },
     {ok, state_name, #state_idle{ sock_info = SockInfo,
@@ -362,7 +359,7 @@ idle(connect, From, #state_idle { sock_info = SockInfo,
 			}, % Rest are defaults
     ok = send(SockInfo, SynPacket),
     {next_state, syn_sent, #state_syn_sent { sock_info = SockInfo,
-					     last_rcv_win = get_rcv_window(),
+					     last_rcv_win = utp_pkt:rcv_window(),
 					     timeout = TRef,
 					     seq_no = 2,
 					     conn_id_send = Conn_id_send,
@@ -373,7 +370,7 @@ idle({accept, SYN}, _From, #state_idle { sock_info = SockInfo }) ->
     gen_utp:register_process(self(), Conn_id_recv),
 
     Conn_id_send = SYN#packet.conn_id,
-    SeqNo = mk_random_seq_no(),
+    SeqNo = utp_pkt:mk_random_seq_no(),
     AckNo = SYN#packet.ack_no,
     AckPacket = #packet { ty = st_state,
 			  seq_no = SeqNo, % @todo meaning of ++ ?
@@ -454,18 +451,6 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 
 reply(To, Msg) ->
     gen_fsm:reply(To, Msg).
-
-get_packet_size(_Socket) ->
-    %% @todo FIX get_packet_size/1 to actually work!
-    1500.
-
-mk_random_seq_no() ->
-    <<N:16/integer>> = crypto:random_bytes(2),
-    N.
-
-get_rcv_window() ->
-    %% @todo, trim down if receive buffer is present!
-    ?OPT_RCVBUF.
 
 send_fin(_SockInfo) ->
     todo.

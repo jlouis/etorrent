@@ -1,10 +1,17 @@
 %% @doc Low level packet buffer management.
 -module(utp_pkt).
 
+-include("utp.hrl").
+
 -export([
-	 mk/0
+	 mk/0,
+	 packet_size/1,
+	 rcv_window/0,
+	 mk_random_seq_no/0
 	 ]).
 
+%% TYPES
+%% ----------------------------------------------------------------------
 -record(pkt_info, {
 	  %% Buffers
 	  inbuf_elements :: list(),
@@ -34,6 +41,15 @@
 	      pkt/0,
 	      quota/0]).
 
+%% DEFINES
+%% ----------------------------------------------------------------------
+
+%% The default RecvBuf size: 200K
+-define(OPT_RCVBUF, 200 * 1024).
+
+
+%% API
+%% ----------------------------------------------------------------------
 
 -spec mk() -> t().
 mk() ->
@@ -42,5 +58,27 @@ mk() ->
 		outbuf_elements = [], % These two should probably be queues
 		inbuf_elements = []
 	      }.
+
+
+packet_size(_Socket) ->
+    %% @todo FIX get_packet_size/1 to actually work!
+    1500.
+
+mk_random_seq_no() ->
+    <<N:16/integer>> = crypto:random_bytes(2),
+    N.
+
+rcv_window() ->
+    %% @todo, trim down if receive buffer is present!
+    ?OPT_RCVBUF.
+
+
+
+
+
+
+
+
+
 
 
