@@ -113,8 +113,6 @@
 	  last_send_quota
 	 }).
 
--record(pkt_buf, { recv_buf :: queue() }).
-
 %% STATE RECORDS
 %% ----------------------------------------------------------------------
 -record(state_idle, { sock_info :: #sock_info{},
@@ -133,7 +131,7 @@
 
 -record(state_connected, { sock_info    :: #sock_info{},
 			   pkt_info     :: utp_pkt:t(),
-			   pkt_buf      :: #pkt_buf{},
+			   pkt_buf      :: utp_pkt:buf(),
 			   proc_info    :: utp_process:t(),
 			   conn_id_send :: integer(),
 			   seq_no       :: integer(),
@@ -261,10 +259,10 @@ connected({packet, Pkt, RecvTime},
 			     pkt_buf  = PB,
 			     proc_info = PRI
 			     } = S) ->
-    case utp_pkt:handle_packet(RecvTime, Pkt, PKI) of
-	{ok, Payload, N_PKI} ->
+    case utp_pkt:handle_packet(RecvTime, Pkt, PKI, PB) of
+	{ok, Payload, N_PKI, N_PB1} ->
 	    {N_PB, N_PRI} = satisfy_recvs(PRI,
-					utp_pkt:enqueue_recv_payload(Payload, PB)),
+					utp_pkt:enqueue_recv_payload(Payload, N_PB1)),
 	    {next_state, connected,
 	     S#state_connected { pkt_info = N_PKI,
 				 pkt_buf = N_PB,
@@ -452,27 +450,17 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 reply(To, Msg) ->
     gen_fsm:reply(To, Msg).
 
-buffer_putback(B, #pkt_buf { recv_buf = Q } = Buf) ->
-    Buf#pkt_buf { recv_buf = queue:in_r(B, Q) }.
-
-buffer_dequeue(#pkt_buf { recv_buf = Q } = Buf) ->
-    case queue:out(Q) of
-	{{value, E}, Q1} ->
-	    {ok, E, Buf#pkt_buf { recv_buf = Q1 }};
-	{empty, _} ->
-	    empty
-    end.
-
 satisfy_buffer(From, 0, Res, Buffer) ->
     reply(From, {ok, Res}),
     {ok, Buffer};
 satisfy_buffer(From, Length, Res, Buffer) ->
-    case buffer_dequeue(Buffer) of
+    case utp_pkt:buffer_dequeue(Buffer) of
 	{ok, Bin, N_Buffer} when byte_size(Bin) =< Length ->
 	    satisfy_buffer(From, Length - byte_size(Bin), <<Res/binary, Bin/binary>>, N_Buffer);
 	{ok, Bin, N_Buffer} when byte_size(Bin) > Length ->
 	    <<Cut:Length/binary, Rest/binary>> = Bin,
-	    satisfy_buffer(From, 0, <<Res/binary, Cut/binary>>, buffer_putback(Rest, N_Buffer));
+	    satisfy_buffer(From, 0, <<Res/binary, Cut/binary>>, 
+			   utp_pkt:buffer_putback(Rest, N_Buffer));
 	empty ->
 	    {emptied, From, Length, Res, Buffer}
     end.

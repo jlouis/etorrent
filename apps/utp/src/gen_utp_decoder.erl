@@ -47,17 +47,18 @@ handle_call(_Request, _From, State) ->
 handle_cast({packet, P, Addr, Port}, S) ->
     R = try
         Decoded = utp_proto:decode(P),
-	{ok, Decoded}
+	T       = utp_proto:current_time_ms(),
+	{ok, Decoded, T}
     catch
 	error:E ->
 	    error_logger:warning_report([uTP_decode, E]),
 	    ignore
     end,
     case R of
-	{ok, #packet { conn_id = CID } = Packet} ->
+	{ok, #packet { conn_id = CID } = Packet, RecvTime} ->
 	    case gen_utp:lookup_registrar(CID) of
 		{ok, Pid} ->
-		    gen_utp_worker:incoming(Pid, Packet);
+		    gen_utp_worker:incoming(Pid, {packet, Packet, RecvTime});
 		not_found ->
 		    gen_utp:incoming_new(Packet, Addr, Port)
 	    end;
