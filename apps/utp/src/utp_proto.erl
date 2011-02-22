@@ -8,6 +8,7 @@
 -endif.
 
 -export([mk_connection_id/0,
+	 payload_size/1
 	 send_packet/3,
 	 encode/3,
 	 decode/1]).
@@ -25,6 +26,9 @@
 mk_connection_id() ->
     <<N:16/integer>> = crypto:rand_bytes(2),
     N.
+
+payload_size(#packet { payload = PL }) ->
+    byte_size(PL).
 
 -spec gettimeofday() -> integer().
 gettimeofday() ->

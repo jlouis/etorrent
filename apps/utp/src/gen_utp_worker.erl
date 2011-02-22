@@ -57,6 +57,9 @@
 -define(PACKET_SIZE, 350). % @todo Probably dead!
 -define(MAX_WINDOW_USER, 255 * ?PACKET_SIZE). % Likewise!
 -define(DEFAULT_ACK_TIME, 16#70000000). % Default add to the future when an Ack is expected
+-define(DELAYED_ACK_BYTE_THRESHOLD, 2400). % bytes
+-define(DELAYED_ACK_TIME_THRESHOLD, 100).  % milliseconds
+-define(KEEPALIVE_INTERVAL, 29000). % ms
 
 %% Number of bytes to increase max window size by, per RTT. This is
 %% scaled down linearly proportional to off_target. i.e. if all packets
@@ -140,8 +143,11 @@
 %% STATE RECORDS
 %% ----------------------------------------------------------------------
 -record(state_idle, { sock_info :: #sock_info{},
+		      pkt_info  :: #pkt_info{},
 		      timeout   :: reference() }).
+
 -record(state_syn_sent, { sock_info    :: #sock_info{},
+			  pkt_info     :: #pkt_info{},
 			  conn_id_send :: integer(),
 			  seq_no       :: integer(), % @todo probably need more here
 					          % Push into #conn{} state
@@ -151,6 +157,7 @@
 			}).
 
 -record(state_connected, { sock_info    :: #sock_info{},
+			   pkt_info     :: #pkt_info{},
 			   proc_info    :: utp_process:t(),
 			   conn_id_send :: integer(),
 			   seq_no       :: integer(),
@@ -229,6 +236,13 @@ init([Socket, Addr, Port, Options]) ->
       last_send_quota = Current_Time
     },
 
+    PktInfo  = #pkt_info {
+      outbuf_mask = 16#f,
+      inbuf_mask  = 16#f,
+      outbuf_elements = [], % These two should probably be queues
+      inbuf_elements = []
+    },
+
     SockInfo = #sock_info { addr = Addr,
 			    port = Port,
 			    opts = Options,
@@ -237,13 +251,10 @@ init([Socket, Addr, Port, Options]) ->
 			    cur_window_packets = 0,
 			    fast_resend_seq_no = 1, % SeqNo
 			    max_window = get_packet_size(Socket),
-			    outbuf_mask = 16#f,
-			    inbuf_mask  = 16#f,
-			    outbuf_elements = [], % These two should probably be queues
-			    inbuf_elements = [],
 			    timing = Timing
 			  },
     {ok, state_name, #state_idle{ sock_info = SockInfo,
+				  pkt_info  = PktInfo,
 				  timeout = TRef }}.
 
 %% @private
@@ -453,8 +464,6 @@ code_change(_OldVsn, StateName, State, _Extra) ->
     {ok, StateName, State}.
 
 %%%===================================================================
-payload_size(#packet { payload = PL }) ->
-    byte_size(PL).
 
 get_packet_size(_Socket) ->
     %% @todo FIX get_packet_size/1 to actually work!
@@ -827,7 +836,7 @@ send_packet(#sock_info { max_window = MaxWindow,
     send(SockInfo, P),
     {ok, Transmissions+1, TimeSent, P}.
 
-send(#sock_info { socket = Socket,
+send_pkt(#sock_info { socket = Socket,
 		  addr = Addr, port = Port }, Packet) ->
     %% @todo Handle timestamping here!!
     gen_udp:send_packet(Socket, Addr, Port, utp_proto:encode(Packet, 0,0)).
@@ -933,7 +942,8 @@ check_timeouts(State,
     update_quota_1(todo).
 
 increase_rto(State, RTO) ->
-    bump_timeout(State, RTO * 2).
+    R = bump_timeout(State, RTO * 2),
+    {R, RTO * 2}.
 
 %% More than 30 seconds with no reply. kill it.
 %% if we haven't even connected yet, give up sooner. 6 seconds
@@ -953,7 +963,7 @@ mark_all_packets_as_lost(CurWindow, #pkt_info {} = PktInfo) ->
 	map_outgoing_queue(
 	  fun(Pkt) ->
 		  {Pkt#packet_wrap { need_resend = true },
-		   payload_size(Pkt#packet_wrap.packet)}
+		   utp_proto:payload_size(Pkt#packet_wrap.packet)}
 	  end,
 	  PktInfo),
     {PktInfo1, CurWindow - PayloadSum}.
@@ -961,9 +971,11 @@ mark_all_packets_as_lost(CurWindow, #pkt_info {} = PktInfo) ->
 rto_timeout_transition(destroy_delay) -> destroy;
 rto_timeout_transition(got_fin)       -> reset.
 
-rto_timeout() ->
-    Timeout = RetransmitTimeout * 2,
-    bump_timeout(Timeout),
+rto_timeout(State, RetransmitTimeout) ->
+    case increase_rto(State, RetransmitTimeout) of
+	todo ->
+    end,
+    %% Fold these into the case
     RetransmitTimeout = Timeout,
     set_new_timeout(Timeout),
     DupeAck = 0,
@@ -1353,88 +1365,10 @@ update_quota_1(MaxWindow, PacketSize, SendQuota) ->
 %% 	}
 %% }
 
-%% // Process an incoming packet
-%% // syn is true if this is the first packet received. It will cut off parsing
-%% // as soon as the header is done
-%% size_t UTP_ProcessIncoming(UTPSocket *conn, const byte *packet, size_t len, bool syn = false)
-%% {
-%% 	UTP_RegisterRecvPacket(conn, len);
-
-%% 	g_current_ms = UTP_GetMilliseconds();
-
-%% 	conn->update_send_quota();
-
-%% 	const PacketFormat *pf = (PacketFormat*)packet;
-%% 	const PacketFormatV1 *pf1 = (PacketFormatV1*)packet;
-%% 	const byte *packet_end = packet + len;
-
-%% 	uint16 pk_seq_nr;
-%% 	uint16 pk_ack_nr;
-%% 	uint8 pk_flags;
-%% 	if (conn->version == 0) {
-%% 		pk_seq_nr = pf->seq_nr;
-%% 		pk_ack_nr = pf->ack_nr;
-%% 		pk_flags = pf->flags;
-%% 	} else {
-%% 		pk_seq_nr = pf1->seq_nr;
-%% 		pk_ack_nr = pf1->ack_nr;
-%% 		pk_flags = pf1->type();
-%% 	}
-
-%% 	if (pk_flags >= ST_NUM_STATES) return 0;
-
-%% 	LOG_UTPV("0x%08x: Got %s. seq_nr:%u ack_nr:%u state:%s version:%u timestamp:"I64u" reply_micro:%u",
-%% 			 conn, flagnames[pk_flags], pk_seq_nr, pk_ack_nr, statenames[conn->state], conn->version,
-%% 			 conn->version == 0?(uint64)(pf->tv_sec) * 1000000 + pf->tv_usec:uint64(pf1->tv_usec),
-%% 			 conn->version == 0?(uint32)(pf->reply_micro):(uint32)(pf1->reply_micro));
-
-%% 	// mark receipt time
-%% 	uint64 time = UTP_GetMicroseconds();
-
-%% 	// RSTs are handled earlier, since the connid matches the send id not the recv id
-%% 	assert(pk_flags != ST_RESET);
-
-%% 	// TODO: maybe send a ST_RESET if we're in CS_RESET?
-
-%% 	const byte *selack_ptr = NULL;
-
-%% 	// Unpack UTP packet options
-%% 	// Data pointer
-%% 	const byte *data = (const byte*)pf + conn->get_header_size();
-%% 	if (conn->get_header_size() > len) {
-%% 		LOG_UTPV("0x%08x: Invalid packet size (less than header size)", conn);
-%% 		return 0;
-%% 	}
-%% 	// Skip the extension headers
-%% 	uint extension = conn->version == 0 ? pf->ext : pf1->ext;
-%% 	if (extension != 0) {
-%% 		do {
-%% 			// Verify that the packet is valid.
-%% 			data += 2;
-
-%% 			if ((int)(packet_end - data) < 0 || (int)(packet_end - data) < data[-1]) {
-%% 				LOG_UTPV("0x%08x: Invalid len of extensions", conn);
-%% 				return 0;
-%% 			}
-
-%% 			switch(extension) {
-%% 			case 1: // Selective Acknowledgment
-%% 				selack_ptr = data;
-%% 				break;
-%% 			case 2: // extension bits
-%% 				if (data[-1] != 8) {
-%% 					LOG_UTPV("0x%08x: Invalid len of extension bits header", conn);
-%% 					return 0;
-%% 				}
-%% 				memcpy(conn->extensions, data, 8);
-%% 				LOG_UTPV("0x%08x: got extension bits:%02x%02x%02x%02x%02x%02x%02x%02x", conn,
-%% 					conn->extensions[0], conn->extensions[1], conn->extensions[2], conn->extensions[3],
-%% 					conn->extensions[4], conn->extensions[5], conn->extensions[6], conn->extensions[7]);
-%% 			}
-%% 			extension = data[-2];
-%% 			data += data[-1];
-%% 		} while (extension);
-%% 	}
+handle_packet(P, SockInfo, PktInfo, ProcInfo) ->
+    CurrentTime = utp_proto:current_time_ms(),
+    ReceivedTime = utp_proto:current_time_micro(),
+    PktInfo1 = update_send_quota(PktInfo),
 
 %% 	if (conn->state == CS_SYN_SENT) {
 %% 		// if this is a syn-ack, initialize our ack_nr
@@ -1443,27 +1377,27 @@ update_quota_1(MaxWindow, PacketSize, SendQuota) ->
 %% 		conn->ack_nr = (pk_seq_nr - 1) & SEQ_NR_MASK;
 %% 	}
 
-%% 	g_current_ms = UTP_GetMilliseconds();
-%% 	conn->last_got_packet = g_current_ms;
-
-%% 	if (syn) {
-%% 		return 0;
-%% 	}
+    LastGotPacket = CurrentTime,
 
 %% 	// seqnr is the number of packets past the expected
 %% 	// packet this is. ack_nr is the last acked, seq_nr is the
 %% 	// current. Subtracring 1 makes 0 mean "this is the next
 %% 	// expected packet".
-%% 	const uint seqnr = (pk_seq_nr - conn->ack_nr - 1) & SEQ_NR_MASK;
-
+    SeqNo = (P#packet.seq_no - PI#packet_info.ack_no) band SEQ_NO_MASK,
 %% 	// Getting an invalid sequence number?
-%% 	if (seqnr >= REORDER_BUFFER_MAX_SIZE) {
-%% 		if (seqnr >= (SEQ_NR_MASK + 1) - REORDER_BUFFER_MAX_SIZE && pk_flags != ST_STATE) {
-%% 			conn->ack_time = g_current_ms + min<uint>(conn->ack_time - g_current_ms, DELAYED_ACK_TIME_THRESHOLD);
-%% 		}
-%% 		LOG_UTPV("    Got old Packet/Ack (%u/%u)=%u!", pk_seq_nr, conn->ack_nr, seqnr);
-%% 		return 0;
-%% 	}
+    if
+	SeqNo >= ?REORDER_BUFFER_MAX_SIZE
+	andalso SeqNo >= (?SEQ_NO_MASK + 1) - ?REORDER_BUFFER_MAX_SIZE
+	andalso P#packet.ty =/= st_state ->
+	    CurrentTime + lists:min([AckTime - CurrentTime,
+				     ?DELAYED_ACK_TIME_THRESHOLD])
+		%% @todo This will abort and not set any values, which is wrong.
+		%% I keep it like this for now until I later decide what to do with
+		%% it. The Data flow here needs some alteration.
+		throw(old_packet_time);
+	true ->
+	    ok
+    end,
 
 %% 	// Process acknowledgment
 %% 	// acks is the number of packets that was acked
