@@ -37,8 +37,13 @@
 
 -record(pkt_buf, { recv_buf :: queue(),
 		   reorder_buf = [] :: orddict:orddict(),
+		   %% When we have a working protocol, this retransmission queue is probably
+		   %% Optimization candidate 1 :)
 		   retransmission_queue = [] :: [#packet_wrap{}],
-		   ack_no   :: 0..16#FFFF % Next expected packet
+		   window_packets :: integer(), % Number of packets currently in the send window
+		   ack_no   :: 0..16#FFFF, % Next expected packet
+		   seq_no   :: 0..16#FFFF  % Next Sequence number to use when sending packets
+			       
 		 }).
 -type buf() :: #pkt_buf{}.
 
@@ -88,6 +93,9 @@ rcv_window() ->
 send_fin(_SockInfo) ->
     todo.
 
+bit16(N) ->
+    N band 16#FFFF.
+
 handle_packet(_CurrentTimeMs,
 	      #packet { seq_no = SeqNo,
 			ack_no = AckNo,
@@ -95,46 +103,74 @@ handle_packet(_CurrentTimeMs,
 			ty = _Type } = _Packet,
 	      _ProcInfo,
 	   PacketBuffer) ->
-    N_PB = case update_recv_buffer(SeqNo, Payload, PacketBuffer) of
+    SeqAhead = bit16(SeqNo - PacketBuffer#pkt_buf.ack_no),
+    if
+	SeqAhead >= ?REORDER_BUFFER_SIZE ->
+	    %% Packet looong into the future, ignore
+	    throw({invalid, is_far_in_future});
+	true ->
+	    %% Packet ok, feed to rest of system
+	    ok
+    end,
+    N_PB = case update_recv_buffer(SeqAhead, Payload, PacketBuffer) of
 	       duplicate -> PacketBuffer; % Perhaps do something else here
 	       #pkt_buf{} = PB -> PB
 	   end,
-    N_PB1 = update_send_buffer(AckNo, N_PB),
+    WindowStart = bit16(PacketBuffer#pkt_buf.seq_no - PacketBuffer#pkt_buf.window_packets),
+    AckAhead = bit16(AckNo - WindowStart),
+    Acks = if
+	       AckAhead > PacketBuffer#pkt_buf.window_packets ->
+		   0; % The ack number is old, so do essentially nothing in the next part
+	       true ->
+		   %% -1 here is needed because #pkt_buf.seq_no is one
+		   %% ahead It is the next packet to send out, so it
+		   %% is one beyond the top end of the window
+		   AckAhead -1
+	   end,
+    N_PB1 = update_send_buffer(Acks, WindowStart, N_PB),
     {ok, N_PB1}.
 
-update_send_buffer(AckNo, #pkt_buf { retransmission_queue = RQ } = PB) ->
-    N_RQ = lists:filter(
-	     fun(#packet_wrap {
-		    packet = Pkt }) ->
-		     Pkt#packet.seq_no >= AckNo % @todo Wrapping!
-	     end,
-	     RQ),
+
+update_send_buffer(0, _WindowStart, PB) ->
+    PB; %% Essentially a duplicate ACK, but we don't do anything about it
+update_send_buffer(AckAhead, WindowStart,
+		   #pkt_buf { retransmission_queue = RQ } = PB) ->
+    {AckedPackets, N_RQ} = lists:partition(
+			     fun(#packet_wrap {
+				    packet = Pkt }) ->
+				     SeqNo = Pkt#packet.seq_no,
+				     Dist = bit16(SeqNo - WindowStart),
+				     Dist =< AckAhead
+			     end,
+			     RQ),
+    %% @todo This is a placeholder for later when we need LEDBAT congestion control
+    _AckedBytes = sum_packets(AckedPackets),
     PB#pkt_buf { retransmission_queue = N_RQ }.
 
+sum_packets(List) ->
+    Ps = [byte_size(Pkt#packet.payload) || #packet_wrap { packet = Pkt } <- List],
+    lists:sum(Ps).
+
 update_recv_buffer(_SeqNo, <<>>, PB) -> PB;
-update_recv_buffer(SeqNo,
-		     Payload,
-		     #pkt_buf { ack_no = AckNo } = PB)
-  when SeqNo == AckNo+1 ->
+update_recv_buffer(1, Payload, #pkt_buf { ack_no = AckNo } = PB) ->
     %% This is the next expected packet, yay!
     N_PB = enqueue_payload(Payload, PB),
-    satisfy_from_reorder_buffer(N_PB#pkt_buf { ack_no = SeqNo });
-update_recv_buffer(SeqNo, Payload, PB) ->
-    reorder_buffer_in(SeqNo, Payload, PB).
-
+    satisfy_from_reorder_buffer(N_PB#pkt_buf { ack_no = bit16(AckNo+1) });
+update_recv_buffer(SeqNoAhead, Payload, PB) when is_integer(SeqNoAhead) ->
+    reorder_buffer_in(SeqNoAhead , Payload, PB).
 
 satisfy_from_reorder_buffer(#pkt_buf { reorder_buf = [] } = PB) ->
     PB;
 satisfy_from_reorder_buffer(#pkt_buf { ack_no = AckNo,
-				       reorder_buf = [{SeqNo, PL} | R]} = PB)
-  when SeqNo == AckNo+1 -> % @todo Wrapping!
-    N_PB = enqueue_payload(PL, PB),
-    satisfy_from_reorder_buffer(N_PB#pkt_buf { ack_no = SeqNo, reorder_buf = R});
-satisfy_from_reorder_buffer(#pkt_buf { ack_no = AckNo,
-				       reorder_buf = [{SeqNo, _PL} | _R]} = PB)
-  when SeqNo =/= AckNo+1 -> % @todo Wrapping!
-    PB.
-
+				       reorder_buf = [{SeqNo, PL} | R]} = PB) ->
+    NextExpected = bit16(AckNo+1),
+    case SeqNo == NextExpected of
+	true ->
+	    N_PB = enqueue_payload(PL, PB),
+	    satisfy_from_reorder_buffer(N_PB#pkt_buf { ack_no = SeqNo, reorder_buf = R});
+	false ->
+	    PB
+    end.
 
 reorder_buffer_in(SeqNo, Payload, #pkt_buf { reorder_buf = OD } = PB) ->
     case orddict:is_key(SeqNo) of

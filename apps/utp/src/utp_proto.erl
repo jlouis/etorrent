@@ -72,6 +72,13 @@ decode(Packet) ->
 	  SeqNo:16/integer, AckNo:16/integer,
 	ExtPayload/binary>> ->
 	    {Extensions, Payload} = decode_extensions(Extension, ExtPayload, []),
+	    Ty = decode_type(Type),
+	    if
+		Ty == st_state ->
+		    <<>> = Payload;
+		true ->
+		    ok
+	    end,
 	    {#packet { ty = decode_type(Type),
 		       conn_id = ConnectionId,
 		       win_sz = WindowSize,
