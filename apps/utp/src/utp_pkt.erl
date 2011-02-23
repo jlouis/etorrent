@@ -9,7 +9,7 @@
 	 rcv_window/0,
 	 mk_random_seq_no/0,
 	 send_fin/1,
-	 handle_packet/4,
+	 handle_packet/5,
 	 buffer_dequeue/1,
 	 buffer_putback/2
 	 ]).
@@ -17,6 +17,8 @@
 %% TYPES
 %% ----------------------------------------------------------------------
 -record(pkt_info, {
+	  got_fin :: boolean(),
+	  eof_pkt :: 0..16#FFFF, % The packet with the EOF flag
 	  %% Buffers
 	  inbuf_elements :: list(),
 	  inbuf_mask     :: integer(),
@@ -43,7 +45,6 @@
 		   window_packets :: integer(), % Number of packets currently in the send window
 		   ack_no   :: 0..16#FFFF, % Next expected packet
 		   seq_no   :: 0..16#FFFF  % Next Sequence number to use when sending packets
-			       
 		 }).
 -type buf() :: #pkt_buf{}.
 
@@ -97,12 +98,15 @@ bit16(N) ->
     N band 16#FFFF.
 
 handle_packet(_CurrentTimeMs,
+	      State,
 	      #packet { seq_no = SeqNo,
 			ack_no = AckNo,
 			payload = Payload,
-			ty = _Type } = _Packet,
-	      _ProcInfo,
-	   PacketBuffer) ->
+			ty = Type } = _Packet,
+	      PktInfo,
+	      PacketBuffer) ->
+    %% Assertions
+    %% ------------------------------
     SeqAhead = bit16(SeqNo - PacketBuffer#pkt_buf.ack_no),
     if
 	SeqAhead >= ?REORDER_BUFFER_SIZE ->
@@ -112,6 +116,15 @@ handle_packet(_CurrentTimeMs,
 	    %% Packet ok, feed to rest of system
 	    ok
     end,
+    case State of
+	connected -> ok;
+	connected_full -> ok;
+	fin_sent -> ok;
+	_ -> throw({no_data, State})
+    end,
+    %% State update
+    %% ------------------------------
+    {FinState, N_PKI} = handle_fin(Type, SeqNo, PktInfo),
     N_PB = case update_recv_buffer(SeqAhead, Payload, PacketBuffer) of
 	       duplicate -> PacketBuffer; % Perhaps do something else here
 	       #pkt_buf{} = PB -> PB
@@ -128,8 +141,13 @@ handle_packet(_CurrentTimeMs,
 		   AckAhead -1
 	   end,
     N_PB1 = update_send_buffer(Acks, WindowStart, N_PB),
-    {ok, N_PB1}.
 
+    {ok, N_PB1, N_PKI, FinState}.
+
+handle_fin(st_fin, SeqNo, #pkt_info { got_fin = false } = PKI) ->
+    {[fin], PKI#pkt_info { got_fin = true,
+			   eof_pkt = SeqNo }};
+handle_fin(_, _, PKI) -> {[], PKI}.
 
 update_send_buffer(0, _WindowStart, PB) ->
     PB; %% Essentially a duplicate ACK, but we don't do anything about it

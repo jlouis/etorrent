@@ -259,10 +259,9 @@ connected({packet, Pkt, RecvTime},
 			     pkt_buf  = PB,
 			     proc_info = PRI
 			     } = S) ->
-    case utp_pkt:handle_packet(RecvTime, Pkt, PKI, PB) of
-	{ok, Payload, N_PKI, N_PB1} ->
-	    {N_PB, N_PRI} = satisfy_recvs(PRI,
-					utp_pkt:enqueue_recv_payload(Payload, N_PB1)),
+    case utp_pkt:handle_packet(RecvTime, connected, Pkt, PKI, PB) of
+	{ok, N_PB1, N_PKI, StateAlter} ->
+	    {N_PB, N_PRI} = satisfy_recvs(PRI, N_PB1),
 	    {next_state, connected,
 	     S#state_connected { pkt_info = N_PKI,
 				 pkt_buf = N_PB,
