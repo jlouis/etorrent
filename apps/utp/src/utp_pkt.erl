@@ -14,11 +14,24 @@
 	 buffer_putback/2
 	 ]).
 
+-export([
+	 can_write/6
+	 ]).
+
 %% TYPES
 %% ----------------------------------------------------------------------
 -record(pkt_info, {
 	  got_fin :: boolean(),
 	  eof_pkt :: 0..16#FFFF, % The packet with the EOF flag
+	  max_window_user :: integer(), % The maximal window size we have
+
+	  %% Timeouts,
+	  %%   Set when we update the zero window to 0 so we can reset it to 1.
+	  zero_window_timeout :: none | {set, reference()},
+
+	  %% Timestamps
+	  last_maxed_out_window :: integer(),
+
 	  %% Buffers
 	  inbuf_elements :: list(),
 	  inbuf_mask     :: integer(),
@@ -30,21 +43,26 @@
 -type t() :: #pkt_info{}.
 
 
--record(packet_wrap, {
+-record(pkt_wrap, {
 	  packet            :: utp_proto:packet(),
 	  transmissions = 0 :: integer(),
 	  need_resend = false :: integer()
 	 }).
--type pkt() :: #packet_wrap{}.
+-type pkt() :: #pkt_wrap{}.
 
 -record(pkt_buf, { recv_buf :: queue(),
 		   reorder_buf = [] :: orddict:orddict(),
 		   %% When we have a working protocol, this retransmission queue is probably
 		   %% Optimization candidate 1 :)
-		   retransmission_queue = [] :: [#packet_wrap{}],
-		   window_packets :: integer(), % Number of packets currently in the send window
+		   retransmission_queue = [] :: [#pkt_wrap{}],
+		   reorder_count             :: integer(), % When and what to reorder
+		   send_window_packets :: integer(), % Number of packets currently in the send window
 		   ack_no   :: 0..16#FFFF, % Next expected packet
-		   seq_no   :: 0..16#FFFF  % Next Sequence number to use when sending packets
+		   seq_no   :: 0..16#FFFF, % Next Sequence number to use when sending packets
+
+		   send_max_window :: integer(),
+		   max_window      :: integer(),
+		   opt_snd_buf     :: integer()
 		 }).
 -type buf() :: #pkt_buf{}.
 
@@ -65,7 +83,7 @@
 
 %% The default RecvBuf size: 200K
 -define(OPT_RCVBUF, 200 * 1024).
-
+-define(ZERO_WINDOW_DELAY, 15*1000).
 
 %% API
 %% ----------------------------------------------------------------------
@@ -77,6 +95,11 @@ mk() ->
 		outbuf_elements = [], % These two should probably be queues
 		inbuf_elements = []
 	      }.
+
+
+seqno(#packet { seq_no = S}) ->
+    S;
+seqno(#pkt_wrap { packet = #packet { seq_no = S} }) -> S.
 
 
 packet_size(_Socket) ->
@@ -102,6 +125,7 @@ handle_packet(_CurrentTimeMs,
 	      #packet { seq_no = SeqNo,
 			ack_no = AckNo,
 			payload = Payload,
+			win_sz  = WindowSize,
 			ty = Type } = _Packet,
 	      PktInfo,
 	      PacketBuffer) ->
@@ -129,10 +153,11 @@ handle_packet(_CurrentTimeMs,
 	       duplicate -> PacketBuffer; % Perhaps do something else here
 	       #pkt_buf{} = PB -> PB
 	   end,
-    WindowStart = bit16(PacketBuffer#pkt_buf.seq_no - PacketBuffer#pkt_buf.window_packets),
+    WindowStart = bit16(PacketBuffer#pkt_buf.seq_no
+			- PacketBuffer#pkt_buf.send_window_packets),
     AckAhead = bit16(AckNo - WindowStart),
     Acks = if
-	       AckAhead > PacketBuffer#pkt_buf.window_packets ->
+	       AckAhead > PacketBuffer#pkt_buf.send_window_packets ->
 		   0; % The ack number is old, so do essentially nothing in the next part
 	       true ->
 		   %% -1 here is needed because #pkt_buf.seq_no is one
@@ -141,20 +166,69 @@ handle_packet(_CurrentTimeMs,
 		   AckAhead -1
 	   end,
     N_PB1 = update_send_buffer(Acks, WindowStart, N_PB),
-
-    {ok, N_PB1, N_PKI, FinState}.
+    N_PKI1 = handle_window_size(WindowSize, N_PKI),
+    DestroyState = if
+		       %% @todo send_window_packets right?
+		       AckAhead == N_PB1#pkt_buf.send_window_packets
+		         andalso State == fin_sent ->
+			   [destroy];
+		       true ->
+			   []
+		   end,
+    NagleState = consider_nagle(N_PB1),
+    {ok, N_PB1, N_PKI1, FinState ++ DestroyState ++ NagleState}.
 
 handle_fin(st_fin, SeqNo, #pkt_info { got_fin = false } = PKI) ->
     {[fin], PKI#pkt_info { got_fin = true,
 			   eof_pkt = SeqNo }};
 handle_fin(_, _, PKI) -> {[], PKI}.
 
-update_send_buffer(0, _WindowStart, PB) ->
+handle_window_size(0, PKI) ->
+    TRef = erlang:send_after(?ZERO_WINDOW_DELAY, self(), zero_window_timeout),
+    PKI#pkt_info { zero_window_timeout = {set, TRef},
+		   max_window_user = 0};
+handle_window_size(WindowSize, PKI) ->
+    PKI#pkt_info { max_window_user = WindowSize }.
+
+update_send_buffer(AcksAhead, WindowStart, PB) ->
+    {Acked, PB} = update_send_buffer1(AcksAhead, WindowStart, PB),
+    %% @todo SACK!
+    PB#pkt_buf { send_window_packets = PB#pkt_buf.send_window_packets - Acked }.
+
+retransmit_q_find(_SeqNo, []) ->
+    not_found;
+retransmit_q_find(SeqNo, [PW|R]) ->
+    case seqno(PW) == SeqNo of
+	true ->
+	    {value, PW};
+	false ->
+	    retransmit_q_find(SeqNo, R)
+    end.
+
+consider_nagle(#pkt_buf { send_window_packets = 1,
+			  seq_no = SeqNo,
+			  retransmission_queue = RQ,
+			  reorder_count = ReorderCount
+			  }) ->
+    {ok, PktW} = retransmit_q_find(SeqNo-1, RQ),
+    case PktW#pkt_wrap.transmissions of
+	0 ->
+	    case ReorderCount of
+		0 ->
+		    [send_ack, sent_ack];
+		_ ->
+		    []
+	    end;
+	_ ->
+	    []
+    end.
+
+update_send_buffer1(0, _WindowStart, PB) ->
     PB; %% Essentially a duplicate ACK, but we don't do anything about it
-update_send_buffer(AckAhead, WindowStart,
+update_send_buffer1(AckAhead, WindowStart,
 		   #pkt_buf { retransmission_queue = RQ } = PB) ->
     {AckedPackets, N_RQ} = lists:partition(
-			     fun(#packet_wrap {
+			     fun(#pkt_wrap {
 				    packet = Pkt }) ->
 				     SeqNo = Pkt#packet.seq_no,
 				     Dist = bit16(SeqNo - WindowStart),
@@ -163,10 +237,10 @@ update_send_buffer(AckAhead, WindowStart,
 			     RQ),
     %% @todo This is a placeholder for later when we need LEDBAT congestion control
     _AckedBytes = sum_packets(AckedPackets),
-    PB#pkt_buf { retransmission_queue = N_RQ }.
+    {length(AckedPackets), PB#pkt_buf { retransmission_queue = N_RQ }}.
 
 sum_packets(List) ->
-    Ps = [byte_size(Pkt#packet.payload) || #packet_wrap { packet = Pkt } <- List],
+    Ps = [byte_size(Pkt#packet.payload) || #pkt_wrap { packet = Pkt } <- List],
     lists:sum(Ps).
 
 update_recv_buffer(_SeqNo, <<>>, PB) -> PB;
@@ -217,3 +291,37 @@ buffer_dequeue(#pkt_buf { recv_buf = Q } = Buf) ->
 
 
 
+
+can_write(CurrentTime, Size, PacketSize, CurrentWindow,
+	  #pkt_buf { send_max_window = SendMaxWindow,
+		     send_window_packets = SendWindowPackets,
+		     opt_snd_buf    = OptSndBuf,
+		     max_window      = MaxWindow },
+	  PKI) ->
+    %% We can't send more than what one of the windows will bound is by.
+    %% So the max send value is the minimum over these:
+    MaxSend = lists:min([MaxWindow, OptSndBuf, SendMaxWindow]),
+    PacketExceed = CurrentWindow + PacketSize >= MaxWindow,
+    Res = if
+	      SendWindowPackets >= ?OUTGOING_BUFFER_MAX_SIZE-1 ->
+		  false;
+	      SendWindowPackets + PacketSize =< MaxSend ->
+		  true;
+	      MaxWindow < Size
+	        andalso CurrentWindow < MaxWindow
+	        andalso SendWindowPackets == 0 ->
+		  true;
+	      true ->
+		  false
+	  end,
+    %% @todo quota
+    %% @todo 
+    {Res, PKI#pkt_info {
+	    last_maxed_out_window =
+		case PacketExceed of
+		    true ->
+			CurrentTime;
+		    false ->
+			PKI#pkt_info.last_maxed_out_window
+	       end
+	  }}.

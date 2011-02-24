@@ -20,6 +20,7 @@ digraph {
 	connected -> got_fin [label="r(st_fin)"];
 	connected_full -> got_fin [label="r(st_fin)"];
 	syn_sent -> got_fin [label="??"];
+	fin_sent -> got_fin [label="r(got_eof_pkt)"];
 	idle     -> got_fin [label="??"];
 	reset    -> got_fin [label="??"];
 	fin_sent -> destroy [label="timeout"];

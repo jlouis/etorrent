@@ -1,3 +1,10 @@
+### "Real" TODO:
+
+* Fast timeout/retransmit handling is not done yet.
+* Selective ACK is not done yet.
+
+### "Old" TODO:
+
 * Handle the rest of the connection establish
   * Read uTP connection code, there may be some idiosyncracies :/
     - Some??? There are *numerous*. One has to really read this carefully to get an idea
@@ -44,8 +51,4 @@
 * Handle congestion window
   * Calculations on the window
   * Handle the window itself
-
-
-
-
 
