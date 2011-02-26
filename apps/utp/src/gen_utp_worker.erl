@@ -25,7 +25,10 @@
 	]).
 
 %% Internal API
--export([incoming/2]).
+-export([
+	 incoming/2,
+	 reply/2
+	]).
 
 %% gen_fsm callbacks
 -export([init/1, handle_event/3,
@@ -177,6 +180,9 @@ close(Pid) ->
 incoming(Pid, Packet) ->
     gen_fsm:send_event(Pid, Packet).
 
+reply(To, Msg) ->
+    gen_fsm:reply(To, Msg).
+
 %%%===================================================================
 %%% gen_fsm callbacks
 %%%===================================================================
@@ -241,7 +247,7 @@ syn_sent(#packet { ty = st_state,
 			   seq_no = SeqNo,
 			   connector = From
 			 }) ->
-    gen_fsm:reply(From, ok),
+    reply(From, ok),
     {next_state, connected, #state_connected { sock_info = SockInfo,
 					       conn_id_send = Conn_id_send,
 					       seq_no = SeqNo,
@@ -387,9 +393,15 @@ connected({recv, Length}, From, #state_connected { proc_info = PI } = S) ->
     %% @todo Try to satisfy receivers
     {next_state, connected, S#state_connected {
 			   proc_info = utp_process:enqueue_receiver(From, Length, PI) }};
-connected({send, Data}, From, #state_connected { proc_info = PI } = S) ->
+connected({send, Data}, From, #state_connected { proc_info = PI,
+					         pkt_info  = PKI,
+					         pkt_buf   = PKB } = S) ->
+    ProcInfo = utp_process:enqueue_sender(From, Data, PI),
+    {ok, ProcInfo1, PKI1, PKB1} = utp_pkt:fill_window(ProcInfo, PKI, PKB),
     {next_state, connected, S#state_connected {
-			   proc_info = utp_process:enqueue_sender(From, Data, PI) }};
+			      proc_info = ProcInfo1,
+			      pkt_info  = PKI1,
+			      pkt_buf   = PKB1 }};
 connected(Msg, From, S) ->
     error_logger:warning_report([sync_message, connected, Msg, From]),
     {next_state, connected, S}.
@@ -445,9 +457,6 @@ code_change(_OldVsn, StateName, State, _Extra) ->
     {ok, StateName, State}.
 
 %%%===================================================================
-
-reply(To, Msg) ->
-    gen_fsm:reply(To, Msg).
 
 satisfy_buffer(From, 0, Res, Buffer) ->
     reply(From, {ok, Res}),

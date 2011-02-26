@@ -11,7 +11,8 @@
 	 send_fin/1,
 	 handle_packet/5,
 	 buffer_dequeue/1,
-	 buffer_putback/2
+	 buffer_putback/2,
+	 fill_window/3
 	 ]).
 
 -export([
@@ -24,6 +25,8 @@
 	  got_fin :: boolean(),
 	  eof_pkt :: 0..16#FFFF, % The packet with the EOF flag
 	  max_window_user :: integer(), % The maximal window size we have
+
+	  pkt_size :: integer(), % The maximal size of packets
 
 	  %% Timeouts,
 	  %%   Set when we update the zero window to 0 so we can reset it to 1.
@@ -315,7 +318,7 @@ can_write(CurrentTime, Size, PacketSize, CurrentWindow,
 		  false
 	  end,
     %% @todo quota
-    %% @todo 
+    %% @todo
     {Res, PKI#pkt_info {
 	    last_maxed_out_window =
 		case PacketExceed of
@@ -325,3 +328,50 @@ can_write(CurrentTime, Size, PacketSize, CurrentWindow,
 			PKI#pkt_info.last_maxed_out_window
 	       end
 	  }}.
+
+fill_window(ProcInfo,
+	    PktInfo,
+	    PktBuf) ->
+    PacketsToTransmit = packets_to_transmit(PktInfo, PktBuf),
+    dequeue_transmit_packets(PacketsToTransmit, ProcInfo, PktInfo, PktBuf).
+
+
+packets_to_transmit(_PktInfo, _PktBuf) ->
+    todo. % @todo can return [{full, N} | {partial, Bytes}]
+
+dequeue_transmit_packets([], PI, PKI, PKB) ->
+    {ok, PI, PKI, PKB}; %% @todo maybe set that buffer is full
+dequeue_transmit_packets([{full, 0} | R], PI, PKI, PKB) ->
+    dequeue_transmit_packets(R, PI, PKI, PKB);
+dequeue_transmit_packets([{full, N} | R], PI, #pkt_info { pkt_size = PSz } = PKI,
+			 PKB) ->
+    case transmit_packet(PSz, PI, PKI, PKB) of
+	{ok, PI1, PKI1, PKB1} ->
+	    dequeue_transmit_packets([{full, N-1} | R], PI1, PKI1, PKB1);
+	{State, PI1, PKI1, PKB1} when State == nagle;
+				      State == empty_queue ->
+	    {State, PI1, PKI1, PKB1}
+    end;
+dequeue_transmit_packets([{partial, Sz}], PI, PKI, PKB) ->
+    transmit_packet(Sz, PI, PKI, PKB).
+
+transmit_packet(Sz, PI, PKI, PKB) ->
+    case utp_process:dequeue_packet(PI, Sz) of
+	none ->
+	    {empty_queue, PI, PKI, PKB};
+	{value, Bin, PI1} when byte_size(Bin) == Sz ->
+	    {ok, PKI1, PKB1} = transmit_data_packet(Bin, PKI, PKB),
+	    {ok, PI1, PKI1, PKB1};
+	{value, Bin, PI1} when byte_size(Bin) < Sz ->
+	    {ok, PKI1, PKB1} = transmit_data_packet({nagle, Bin}, PKI, PKB),
+	    {nagle, PI1, PKI1, PKB1}
+    end.
+
+
+transmit_data_packet({nagle, Bin}, PKI, PKB) ->
+    todo;
+transmit_data_packet(Bin, PKI, PKB) ->
+    todo.
+
+
+

@@ -11,7 +11,9 @@
 	 mk/0,
 
 	 enqueue_sender/3,
-	 enqueue_receiver/3
+	 enqueue_receiver/3,
+
+	 dequeue_packet/2
 	]).
 -record(process_info, {
 	  receiver_q :: queue(),
@@ -32,10 +34,20 @@ enqueue_sender(From, Data, #process_info { sender_q = SQ } = PI) ->
     NQ = queue:in({sender, From, Data}, SQ),
     PI#process_info { sender_q = NQ }.
 
-
-
-
-
-
-
+dequeue_packet(#process_info { sender_q = SQ } = PI, Size) when Size > 0 ->
+    case queue:out(SQ) of
+	{empty, _} ->
+	    none;
+	{value, {sender, From, Data}, Q} ->
+	    case Data of
+		<<Payload:Size/binary, Rest/binary>> ->
+		    {value, Payload, PI #process_info {
+				       sender_q = queue:in_r({sender, From, Rest}, Q)
+				      }};
+		<<Payload/binary>> ->
+		    gen_utp:reply(From, ok),
+		    {value, Payload, PI #process_info {
+				       sender_q = Q }}
+	    end
+    end.
 
