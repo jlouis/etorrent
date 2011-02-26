@@ -341,19 +341,22 @@ packets_to_transmit(_PktInfo, _PktBuf) ->
 
 dequeue_transmit_packets([], PI, PKI, PKB) ->
     {ok, PI, PKI, PKB}; %% @todo maybe set that buffer is full
-dequeue_transmit_packets([{full, 0} | R], PI, PKI, PKB) ->
-    dequeue_transmit_packets(R, PI, PKI, PKB);
-dequeue_transmit_packets([{full, N} | R], PI, #pkt_info { pkt_size = PSz } = PKI,
+dequeue_transmit_packets([{partial, Sz} | R], PI, PKI, PKB) ->
+    dequeue_transmit_packets1(Sz, PI, PKI, PKB, R);
+dequeue_transmit_packets([{full, 0}], PI, PKI, PKB) ->
+    {ok, PI, PKI, PKB};
+dequeue_transmit_packets([{full, N} | R], PI, #pkt_info { pkt_size = Sz } = PKI,
 			 PKB) ->
-    case transmit_packet(PSz, PI, PKI, PKB) of
+    dequeue_transmit_packets1(Sz, PI, PKI, PKB, [{full, N-1} | R]).
+
+dequeue_transmit_packets1(Sz, PI, PKI, PKB, R) ->
+    case transmit_packet(Sz, PI, PKI, PKB) of
 	{ok, PI1, PKI1, PKB1} ->
-	    dequeue_transmit_packets([{full, N-1} | R], PI1, PKI1, PKB1);
+	    dequeue_transmit_packets(R, PI1, PKI1, PKB1);
 	{State, PI1, PKI1, PKB1} when State == nagle;
 				      State == empty_queue ->
 	    {State, PI1, PKI1, PKB1}
-    end;
-dequeue_transmit_packets([{partial, Sz}], PI, PKI, PKB) ->
-    transmit_packet(Sz, PI, PKI, PKB).
+    end.
 
 transmit_packet(Sz, PI, PKI, PKB) ->
     case utp_process:dequeue_packet(PI, Sz) of
@@ -367,11 +370,18 @@ transmit_packet(Sz, PI, PKI, PKB) ->
 	    {nagle, PI1, PKI1, PKB1}
     end.
 
-
+%% @todo This case does not necessarily have to know a priori if we are nagling
 transmit_data_packet({nagle, Bin}, PKI, PKB) ->
     todo;
 transmit_data_packet(Bin, PKI, PKB) ->
     todo.
+
+
+
+
+
+
+
 
 
 
