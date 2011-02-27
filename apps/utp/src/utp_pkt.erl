@@ -62,6 +62,8 @@
 		   send_window_packets :: integer(), % Number of packets currently in the send window
 		   ack_no   :: 0..16#FFFF, % Next expected packet
 		   seq_no   :: 0..16#FFFF, % Next Sequence number to use when sending packets
+		   %% Nagle
+		   send_nagle    :: none | {nagle, binary()},
 
 		   send_max_window :: integer(),
 		   max_window      :: integer(),
@@ -324,15 +326,28 @@ can_write(CurrentTime, Size, PacketSize, CurrentWindow,
 	  }}.
 
 fill_window(ProcInfo, PktInfo, PktBuf) ->
-    PacketsToTransmit = packets_to_transmit(PktInfo, PktBuf),
+    PacketsToTransmit = packets_to_transmit(PktInfo#pkt_info.pkt_size, PktBuf),
     {ok, Packets, ProcInfo1} = dequeue_packets(PacketsToTransmit,
 					       ProcInfo, [],
 					       PktInfo#pkt_info.pkt_size),
     {ok, PKI1, PKB1} = transmit_packets(Packets, PktInfo, PktBuf),
     {ok, ProcInfo1, PKI1, PKB1}.
 
-packets_to_transmit(_PktInfo, _PktBuf) ->
-    todo. % @todo can return [{full, N} | {partial, Bytes}]
+packets_to_transmit(PacketSize,
+		    #pkt_buf { send_window_packets = N,
+			       send_nagle = Nagle } = PktBuf) ->
+    Window = send_window(PktBuf),
+    if
+	Window < N ->
+	    case Nagle of
+		none ->
+		    [{full, N - Window}];
+		{nagle, _TRef, Bin} ->
+		    [{partial, PacketSize - byte_size(Bin)}, {full, N - (Window + 1)}]
+	    end;
+	Window == N ->
+	    []
+    end.
 
 dequeue_packets([], PI, Acc, _PacketSize) ->
     {ok, lists:reverse(Acc), PI};
@@ -355,8 +370,45 @@ dequeue_packets1(Sz, PI, Acc, R, Ty, PSz) ->
 
 transmit_packets([], PKI, PKB) ->
     {ok, PKI, PKB};
-transmit_packets([_Head | _Tail], _PKI, _PKB) ->
+transmit_packets([{partial, Bin} | Rest],
+		 #pkt_info { pkt_size = PacketSize } = PKI,
+		 #pkt_buf { send_nagle = {nagle, NBin}} = PKB) ->
+    PacketSize = byte_size(Bin) + byte_size(NBin),
+    transmit_packets([{full, <<Bin/binary, NBin/binary>>} | Rest],
+		     PKI,
+		     PKB#pkt_buf { send_nagle = none });
+transmit_packets([{full, Bin} | Rest], PKI,
+		 #pkt_buf { seq_no = SeqNo } = PKB) ->
+    Pkt = mk_pkt(Bin, PKB#pkt_buf.seq_no+1),
+    send_packet(Pkt),
+    transmit_packets(Rest, PKI, enqueue_pkt(Pkt, PKB#pkt_buf { seq_no = SeqNo+1 }));
+transmit_packets([{nagle, Bin}], PKI,
+		 #pkt_buf { send_nagle = {nagle, NBin} } = PKB) ->
+    transmit_packets([], PKI,
+		     PKB#pkt_buf {
+		       send_nagle = {nagle, <<NBin/binary, Bin/binary>>}});
+transmit_packets([{nagle, Bin}], PKI,
+		 #pkt_buf { send_nagle = none } = PKB) ->
+    transmit_packets([], PKI,
+		     PKB#pkt_buf { send_nagle = {nagle, Bin}}).
+
+
+send_window(#pkt_buf { seq_no = SeqNo,
+		       ack_no = AckNo }) ->
+    bit16(SeqNo - AckNo).
+
+mk_pkt(_Bin, _SeqNo) ->
     todo.
+
+%% @todo need more parameters
+send_packet(_Pkt) ->
+    todo.
+
+enqueue_pkt(_Pkt, _PKB) ->
+    todo. %% @todo we already have this function under another name :)
+
+
+
 
 
 
