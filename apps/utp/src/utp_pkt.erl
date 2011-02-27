@@ -12,7 +12,7 @@
 	 handle_packet/5,
 	 buffer_dequeue/1,
 	 buffer_putback/2,
-	 fill_window/3
+	 fill_window/5
 	 ]).
 
 -export([
@@ -27,6 +27,8 @@
 	  max_window_user :: integer(), % The maximal window size we have
 
 	  pkt_size :: integer(), % The maximal size of packets
+	  cur_window :: integer(), % Current send window size
+	  send_ack_no :: integer(), % Current ack_no to send out
 
 	  %% Timeouts,
 	  %%   Set when we update the zero window to 0 so we can reset it to 1.
@@ -325,13 +327,34 @@ can_write(CurrentTime, Size, PacketSize, CurrentWindow,
 	       end
 	  }}.
 
-fill_window(ProcInfo, PktInfo, PktBuf) ->
+fill_window(ConnId, SockInfo, ProcInfo, PktInfo, PktBuf) ->
     PacketsToTransmit = packets_to_transmit(PktInfo#pkt_info.pkt_size, PktBuf),
     {ok, Packets, ProcInfo1} = dequeue_packets(PacketsToTransmit,
 					       ProcInfo, [],
 					       PktInfo#pkt_info.pkt_size),
-    {ok, PKI1, PKB1} = transmit_packets(Packets, PktInfo, PktBuf),
-    {ok, ProcInfo1, PKI1, PKB1}.
+    {ok, PKB1, PktWrap} = mk_packets(Packets, PktInfo#pkt_info.pkt_size, PktBuf, []),
+    {ok, FilledPackets} = transmit_packets(PktWrap, PktInfo, SockInfo, ConnId, []),
+    PKB2 = enqueue_packets(FilledPackets, PKB1),
+    {ok, PKB2, ProcInfo1}.
+
+enqueue_packets(Packets, #pkt_buf { retransmission_queue = RQ } = PacketBuf) ->
+    PacketBuf#pkt_buf { retransmission_queue = Packets ++ RQ }.
+
+send_packet(SI, FilledPkt) ->
+    gen_utp_worker:send_pkt(SI, FilledPkt).
+
+transmit_packets([], _, _, _, Acc) ->
+    lists:reverse(Acc);
+transmit_packets([#pkt_wrap {
+		     packet = Pkt,
+		     transmissions = 0,
+		     need_resend = false } | Rest], PKI, SI, ConnId, Acc) ->
+    FilledPkt = Pkt#packet {
+		  conn_id = ConnId,
+		  win_sz  = PKI#pkt_info.cur_window,
+		  ack_no  = PKI#pkt_info.send_ack_no },
+    send_packet(SI, FilledPkt),
+    transmit_packets(Rest, PKI, SI, ConnId, [FilledPkt | Acc]).
 
 packets_to_transmit(PacketSize,
 		    #pkt_buf { send_window_packets = N,
@@ -368,47 +391,47 @@ dequeue_packets1(Sz, PI, Acc, R, Ty, PSz) ->
 	    dequeue_packets(R, PI1, [{nagle, Bin} | Acc], PSz)
     end.
 
-transmit_packets([], PKI, PKB) ->
-    {ok, PKI, PKB};
-transmit_packets([{partial, Bin} | Rest],
-		 #pkt_info { pkt_size = PacketSize } = PKI,
-		 #pkt_buf { send_nagle = {nagle, NBin}} = PKB) ->
-    PacketSize = byte_size(Bin) + byte_size(NBin),
-    transmit_packets([{full, <<Bin/binary, NBin/binary>>} | Rest],
-		     PKI,
-		     PKB#pkt_buf { send_nagle = none });
-transmit_packets([{full, Bin} | Rest], PKI,
-		 #pkt_buf { seq_no = SeqNo } = PKB) ->
+
+mk_packets([], _PSz, PKB, Acc) ->
+    {ok, PKB, lists:reverse(Acc)};
+mk_packets([{partial, Bin} | Rest], PSz,
+		 #pkt_buf { send_nagle = {nagle, NBin}} = PKB, Acc) ->
+    PSz = byte_size(Bin) + byte_size(NBin),
+    mk_packets([{full, <<Bin/binary, NBin/binary>>} | Rest],
+		     PSz,
+		     PKB#pkt_buf { send_nagle = none }, Acc);
+mk_packets([{full, Bin} | Rest], PSz,
+		 #pkt_buf { seq_no = SeqNo } = PKB, Acc) ->
     Pkt = mk_pkt(Bin, PKB#pkt_buf.seq_no+1),
-    send_packet(Pkt),
-    transmit_packets(Rest, PKI, enqueue_pkt(Pkt, PKB#pkt_buf { seq_no = SeqNo+1 }));
-transmit_packets([{nagle, Bin}], PKI,
-		 #pkt_buf { send_nagle = {nagle, NBin} } = PKB) ->
-    transmit_packets([], PKI,
-		     PKB#pkt_buf {
-		       send_nagle = {nagle, <<NBin/binary, Bin/binary>>}});
-transmit_packets([{nagle, Bin}], PKI,
-		 #pkt_buf { send_nagle = none } = PKB) ->
-    transmit_packets([], PKI,
-		     PKB#pkt_buf { send_nagle = {nagle, Bin}}).
+    mk_packets(Rest, PSz, PKB#pkt_buf { seq_no = SeqNo+1 }, [Pkt | Acc]);
+mk_packets([{nagle, Bin}], PSz,
+ 		 #pkt_buf { send_nagle = {nagle, NBin} } = PKB, Acc) ->
+     mk_packets([], PSz,
+ 		     PKB#pkt_buf {
+ 		       send_nagle = {nagle, <<NBin/binary, Bin/binary>>}}, Acc);
+mk_packets([{nagle, Bin}], PSz,
+ 		 #pkt_buf { send_nagle = none } = PKB, Acc) ->
+     mk_packets([], PSz,
+ 		     PKB#pkt_buf { send_nagle = {nagle, Bin}}, Acc).
 
 
 send_window(#pkt_buf { seq_no = SeqNo,
 		       ack_no = AckNo }) ->
     bit16(SeqNo - AckNo).
 
-mk_pkt(_Bin, _SeqNo) ->
-    todo.
-
-%% @todo need more parameters
-send_packet(_Pkt) ->
-    todo.
-
-enqueue_pkt(_Pkt, _PKB) ->
-    todo. %% @todo we already have this function under another name :)
-
-
-
-
+mk_pkt(Bin, SeqNo) ->
+    #pkt_wrap {
+	%% Will fill in the remaining entries later
+	packet = #packet {
+	  ty = st_data,
+	  conn_id = none,
+	  win_sz = none,
+	  seq_no = SeqNo,
+	  ack_no = none,
+	  extension = [],
+	  payload = Bin
+	 },
+	transmissions = 0,
+	need_resend = false }.
 
 
