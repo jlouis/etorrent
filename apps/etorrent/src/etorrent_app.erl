@@ -24,7 +24,7 @@ start() ->
 
 start(Config) ->
     load_config(Config),
-    ensure_started([inets, crypto, sasl, gproc]),
+    ensure_started([inets, crypto, sasl, gproc, ibrowse]),
     application:start(etorrent).
 
 stop() ->

@@ -8,4 +8,5 @@
                                        [self(),?MODULE,?LINE]++Args)).
 -define(DEBUGP(Args), io:format("D(~p:~p:~p) : ~p~n",
                                        [self(),?MODULE,?LINE, Args])).
+-define(NOTIFY(M), etorrent_event:notify(M)).
 

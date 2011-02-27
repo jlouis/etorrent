@@ -31,6 +31,7 @@
 	 webui_address/0,
 	 webui_log_dir/0,
 	 webui_port/0,
+     use_upnp/0,
 	 work_dir/0]).
 
 %% API
@@ -98,6 +99,9 @@ max_peers() -> call(max_peers).
 
 -spec webui() -> boolean().
 webui() -> call(webui).
+
+-spec use_upnp() -> boolean().
+use_upnp() -> element(2, (required(use_upnp))([])).
 
 %% This function is calling directly, so it can be called outside the
 %% start of the application. In the longer run, we should probably

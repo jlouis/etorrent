@@ -50,7 +50,9 @@
 -type dht_qtype() :: 'ping' | 'find_node'
                    | 'get_peers' | 'announce'.
 
-
-
-
+%% Types used by UPnP subsystem
+-type upnp_device() :: proplists:proplist().
+-type upnp_service() :: proplists:proplist().
+-type upnp_notify() :: proplists:proplist().
+-define(UPNP_RD_NAME, <<"rootdevice">>). %% Literal name of UPnP root device
 
