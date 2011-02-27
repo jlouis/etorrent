@@ -289,12 +289,6 @@ buffer_dequeue(#pkt_buf { recv_buf = Q } = Buf) ->
 	    empty
     end.
 
-
-
-
-
-
-
 can_write(CurrentTime, Size, PacketSize, CurrentWindow,
 	  #pkt_buf { send_max_window = SendMaxWindow,
 		     send_window_packets = SendWindowPackets,
@@ -329,59 +323,40 @@ can_write(CurrentTime, Size, PacketSize, CurrentWindow,
 	       end
 	  }}.
 
-fill_window(ProcInfo,
-	    PktInfo,
-	    PktBuf) ->
+fill_window(ProcInfo, PktInfo, PktBuf) ->
     PacketsToTransmit = packets_to_transmit(PktInfo, PktBuf),
-    dequeue_transmit_packets(PacketsToTransmit, ProcInfo, PktInfo, PktBuf).
-
+    {ok, Packets, ProcInfo1} = dequeue_packets(PacketsToTransmit,
+					       ProcInfo, [],
+					       PktInfo#pkt_info.pkt_size),
+    {ok, PKI1, PKB1} = transmit_packets(Packets, PktInfo, PktBuf),
+    {ok, ProcInfo1, PKI1, PKB1}.
 
 packets_to_transmit(_PktInfo, _PktBuf) ->
     todo. % @todo can return [{full, N} | {partial, Bytes}]
 
-dequeue_transmit_packets([], PI, PKI, PKB) ->
-    {ok, PI, PKI, PKB}; %% @todo maybe set that buffer is full
-dequeue_transmit_packets([{partial, Sz} | R], PI, PKI, PKB) ->
-    dequeue_transmit_packets1(Sz, PI, PKI, PKB, R);
-dequeue_transmit_packets([{full, 0}], PI, PKI, PKB) ->
-    {ok, PI, PKI, PKB};
-dequeue_transmit_packets([{full, N} | R], PI, #pkt_info { pkt_size = Sz } = PKI,
-			 PKB) ->
-    dequeue_transmit_packets1(Sz, PI, PKI, PKB, [{full, N-1} | R]).
+dequeue_packets([], PI, Acc, _PacketSize) ->
+    {ok, lists:reverse(Acc), PI};
+dequeue_packets([{partial, Sz} | R], PI, Acc, PacketSize) ->
+    dequeue_packets1(Sz, PI, Acc, R, partial, PacketSize);
+dequeue_packets([{full, 0}], PI, Acc, PacketSize) ->
+    dequeue_packets([], PI, Acc, PacketSize);
+dequeue_packets([{full, N} | R], PI, Acc, PacketSize) ->
+    dequeue_packets1(PacketSize, PI, Acc, [{full, N-1} | R], full, PacketSize).
 
-dequeue_transmit_packets1(Sz, PI, PKI, PKB, R) ->
-    case transmit_packet(Sz, PI, PKI, PKB) of
-	{ok, PI1, PKI1, PKB1} ->
-	    dequeue_transmit_packets(R, PI1, PKI1, PKB1);
-	{State, PI1, PKI1, PKB1} when State == nagle;
-				      State == empty_queue ->
-	    {State, PI1, PKI1, PKB1}
-    end.
-
-transmit_packet(Sz, PI, PKI, PKB) ->
+dequeue_packets1(Sz, PI, Acc, R, Ty, PSz) ->
     case utp_process:dequeue_packet(PI, Sz) of
 	none ->
-	    {empty_queue, PI, PKI, PKB};
+	    dequeue_packets([], PI, Acc, PSz);
 	{value, Bin, PI1} when byte_size(Bin) == Sz ->
-	    {ok, PKI1, PKB1} = transmit_data_packet(Bin, PKI, PKB),
-	    {ok, PI1, PKI1, PKB1};
+	    dequeue_packets(R, PI1, [{Ty, Bin} | Acc], PSz);
 	{value, Bin, PI1} when byte_size(Bin) < Sz ->
-	    {ok, PKI1, PKB1} = transmit_data_packet({nagle, Bin}, PKI, PKB),
-	    {nagle, PI1, PKI1, PKB1}
+	    dequeue_packets(R, PI1, [{nagle, Bin} | Acc], PSz)
     end.
 
-%% @todo This case does not necessarily have to know a priori if we are nagling
-transmit_data_packet({nagle, Bin}, PKI, PKB) ->
-    todo;
-transmit_data_packet(Bin, PKI, PKB) ->
+transmit_packets([], PKI, PKB) ->
+    {ok, PKI, PKB};
+transmit_packets([_Head | _Tail], _PKI, _PKB) ->
     todo.
-
-
-
-
-
-
-
 
 
 
