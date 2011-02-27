@@ -34,20 +34,39 @@ enqueue_sender(From, Data, #process_info { sender_q = SQ } = PI) ->
     NQ = queue:in({sender, From, Data}, SQ),
     PI#process_info { sender_q = NQ }.
 
+
 dequeue_packet(#process_info { sender_q = SQ } = PI, Size) when Size > 0 ->
-    case queue:out(SQ) of
-	{empty, _} ->
+    case dequeue_packet(<<>>, SQ, Size) of
+	{ok, Payload, NewSQ} ->
+	    {value, Payload, PI#process_info { sender_q = NewSQ }};
+	{partial, <<>>, SQ} ->
 	    none;
-	{value, {sender, From, Data}, Q} ->
+	{partial, Payload, NewSQ} ->
+	    {value, Payload, PI#process_info { sender_q = NewSQ }}
+    end.
+
+dequeue_packet(Payload, Q, 0) ->
+    {ok, Payload, Q};
+dequeue_packet(Payload, Q, N) when is_integer(N) ->
+    case queue:out(Q) of
+	{empty, _} ->
+	    {partial, Payload, Q};
+	{value, {sender, From, Data}, NewQ} ->
 	    case Data of
-		<<Payload:Size/binary, Rest/binary>> ->
-		    {value, Payload, PI #process_info {
-				       sender_q = queue:in_r({sender, From, Rest}, Q)
-				      }};
-		<<Payload/binary>> ->
+		<<PL:N/binary, Rest/binary>> ->
+		    {ok, <<Payload/binary, PL/binary>>,
+		     case Rest of
+			 <<>> ->
+			     gen_utp:reply(From, ok),
+			     NewQ;
+			 Remaining ->
+			     queue:in_r({sender, From, Remaining}, NewQ)
+		     end};
+		<<PL/binary>> when byte_size(PL) < N ->
 		    gen_utp:reply(From, ok),
-		    {value, Payload, PI #process_info {
-				       sender_q = Q }}
+		    dequeue_packet(<<Payload/binary, PL/binary>>,
+				   NewQ,
+				   N - byte_size(PL))
 	    end
     end.
 
