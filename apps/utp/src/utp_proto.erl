@@ -10,7 +10,7 @@
 -export([mk_connection_id/0,
 	 payload_size/1,
 	 send_packet/3,
-	 encode/3,
+	 encode/2,
 	 decode/1]).
 
 -define(EXT_SACK, 1).
@@ -30,8 +30,8 @@ mk_connection_id() ->
 payload_size(#packet { payload = PL }) ->
     byte_size(PL).
 
--spec gettimeofday() -> integer().
-gettimeofday() ->
+-spec cur_time_us() -> integer().
+cur_time_us() ->
     {M, S, Micro} = os:timestamp(),
     S1 = M*1000000 + S,
     Micro + S1*1000000.
@@ -40,20 +40,21 @@ timediff(Ts, Last) ->
     Ts - Last. %% @todo this has to be a lot more clever than it currently is!
 
 send_packet(Packet, LastTS, Socket) ->
-    TS = gettimeofday(),
+    TS = cur_time_us(),
     Diff = timediff(TS,LastTS),
     gen_udp:send(Socket, Packet, TS, Diff).
 
--spec encode(packet(), timestamp(), timestamp()) -> binary().
+-spec encode(packet(), timestamp()) -> binary().
 encode(#packet { ty = Type,
 		 conn_id = ConnID,
 		 win_sz = WSize,
 		 seq_no = SeqNo,
 		 ack_no = AckNo,
 		 extension = ExtList,
-		 payload = Payload}, TS, TSDiff) ->
+		 payload = Payload}, TSDiff) ->
     {Extension, ExtBin} = encode_extensions(ExtList),
     EncTy = encode_type(Type),
+    TS    = cur_time_us(),
     <<1:4/integer, EncTy:4/integer, Extension:8/integer, ConnID:16/integer,
       TS:32/integer,
       TSDiff:32/integer,
