@@ -415,7 +415,10 @@ mk_packets([{partial, Bin} | Rest], PSz,
 		     PKB#pkt_buf { send_nagle = none }, Acc);
 mk_packets([{full, Bin} | Rest], PSz,
 		 #pkt_buf { seq_no = SeqNo } = PKB, Acc) ->
-    Pkt = mk_pkt(Bin, PKB#pkt_buf.seq_no+1, PKB#pkt_buf.last_ack),
+    Pkt = mk_pkt(Bin,
+		 PKB#pkt_buf.last_recv_window,
+		 PKB#pkt_buf.seq_no+1,
+		 PKB#pkt_buf.last_ack),
     mk_packets(Rest, PSz, PKB#pkt_buf { seq_no = SeqNo+1 }, [Pkt | Acc]);
 mk_packets([{nagle, Bin}], PSz,
  		 #pkt_buf { send_nagle = {nagle, NBin} } = PKB, Acc) ->
@@ -432,13 +435,13 @@ send_inflight(#pkt_buf { seq_no = SeqNo,
 			 last_ack = AckNo }) ->
     bit16(SeqNo - AckNo).
 
-mk_pkt(Bin, SeqNo, AckNo) ->
+mk_pkt(Bin, WinSz, SeqNo, AckNo) ->
     #pkt_wrap {
 	%% Will fill in the remaining entries later
 	packet = #packet {
 	  ty = st_data,
 	  conn_id = none,
-	  win_sz = none,
+	  win_sz = WinSz,
 	  seq_no = SeqNo,
 	  ack_no = AckNo,
 	  extension = [],

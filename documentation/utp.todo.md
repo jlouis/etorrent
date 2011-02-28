@@ -1,9 +1,5 @@
 ### "Real" TODO:
 
-* Window size outgoing
-  * Should be possible with the above
-    This is now always the contents of the last_recv_window :)
-
 * Window Size incoming
   * Study this.
 
