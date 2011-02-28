@@ -26,17 +26,29 @@
 	  eof_pkt :: 0..16#FFFF, % The packet with the EOF flag
 	  max_window_user :: integer(), % The maximal window size we have
 
-	  pkt_size :: integer(), % The maximal size of packets
-	  cur_window :: integer(), % Current send window size
+	  %% The maximal size of packets.
+	  pkt_size :: integer(),
+	  %% The current window size in the send direction
+	  cur_window :: integer(),
 
 	  %% Timeouts,
-	  %%   Set when we update the zero window to 0 so we can reset it to 1.
+	  %% --------------------
+	  %% Set when we update the zero window to 0 so we can reset it to 1.
 	  zero_window_timeout :: none | {set, reference()},
 
 	  %% Timestamps
+	  %% --------------------
+	  %% When was the window last totally full (in send direction)
 	  last_maxed_out_window :: integer(),
 
-	  opt_sendbuf    :: integer() }).
+	  %% Packet buffer settings
+	  %% --------------------
+	  %% Size of the outgoing buffer on the socket
+	  opt_sendbuf    :: integer(),
+	  %% Same, for the receive buffer
+	  opt_recvbuf    :: integer()
+
+	 }).
 
 -type t() :: #pkt_info{}.
 
@@ -284,13 +296,14 @@ buffer_dequeue(#pkt_buf { recv_buf = Q } = Buf) ->
 	    empty
     end.
 
+%% @todo: Do we need this beast at all?
 can_write(CurrentTime, Size, PacketSize, CurrentWindow,
 	  #pkt_buf { send_max_window = SendMaxWindow,
 		     send_window_packets = SendWindowPackets,
 		     opt_snd_buf    = OptSndBuf,
 		     max_window      = MaxWindow },
 	  PKI) ->
-    %% We can't send more than what one of the windows will bound is by.
+    %% We can't send more than what one of the windows will bound us by.
     %% So the max send value is the minimum over these:
     MaxSend = lists:min([MaxWindow, OptSndBuf, SendMaxWindow]),
     PacketExceed = CurrentWindow + PacketSize >= MaxWindow,
@@ -307,7 +320,9 @@ can_write(CurrentTime, Size, PacketSize, CurrentWindow,
 		  false
 	  end,
     %% @todo quota
-    %% @todo
+    %% @todo Why the heck do we have this side-effect here? The last_maxed_out_window
+    %% should be set in other ways I think. It has nothing to do with the question of
+    %% we can write on the socket or not!
     {Res, PKI#pkt_info {
 	    last_maxed_out_window =
 		case PacketExceed of
