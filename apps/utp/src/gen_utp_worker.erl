@@ -399,14 +399,20 @@ connected({recv, Length}, From, #state_connected { proc_info = PI } = S) ->
     %% @todo Try to satisfy receivers
     {next_state, connected, S#state_connected {
 			   proc_info = utp_process:enqueue_receiver(From, Length, PI) }};
-connected({send, Data}, From, #state_connected { proc_info = PI,
-					         pkt_info  = PKI,
-					         pkt_buf   = PKB } = S) ->
+connected({send, Data}, From, #state_connected {
+			  conn_id_send = ConnId,
+			  proc_info = PI,
+			  sock_info = SockInfo,
+			  pkt_info  = PKI,
+			  pkt_buf   = PKB } = S) ->
     ProcInfo = utp_process:enqueue_sender(From, Data, PI),
-    {ok, ProcInfo1, PKI1, PKB1} = utp_pkt:fill_window(ProcInfo, PKI, PKB),
+    {ok, ProcInfo1, PKB1} = utp_pkt:fill_window(ConnId,
+						SockInfo,
+						ProcInfo,
+						PKI,
+						PKB),
     {next_state, connected, S#state_connected {
 			      proc_info = ProcInfo1,
-			      pkt_info  = PKI1,
 			      pkt_buf   = PKB1 }};
 connected(Msg, From, S) ->
     error_logger:warning_report([sync_message, connected, Msg, From]),

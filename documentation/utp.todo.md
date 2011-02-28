@@ -1,7 +1,17 @@
 ### "Real" TODO:
 
+* Handle incoming/outgoing timestamping
+* Window Size alterations
+* Window Size special cases
+* Timers, retransmits, zero window, acks
+* Timestamp handling
+* Close down
+* Timeout close down
+* Split utp_pkt into its constituents.
+* Retransmit, Ack timeouts.
 * Fast timeout/retransmit handling is not done yet.
 * Selective ACK is not done yet.
+* SendQuotas
 
 ### "Old" TODO:
 
