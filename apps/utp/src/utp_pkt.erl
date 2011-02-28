@@ -28,7 +28,6 @@
 
 	  pkt_size :: integer(), % The maximal size of packets
 	  cur_window :: integer(), % Current send window size
-	  send_ack_no :: integer(), % Current ack_no to send out
 
 	  %% Timeouts,
 	  %%   Set when we update the zero window to 0 so we can reset it to 1.
@@ -37,13 +36,7 @@
 	  %% Timestamps
 	  last_maxed_out_window :: integer(),
 
-	  %% Buffers
-	  inbuf_elements :: list(),
-	  inbuf_mask     :: integer(),
-	  opt_sendbuf    :: integer(),
-
-	  outbuf_elements :: list(),
-	  outbuf_mask     :: integer() }).
+	  opt_sendbuf    :: integer() }).
 
 -type t() :: #pkt_info{}.
 
@@ -64,6 +57,7 @@
 		   send_window_packets :: integer(), % Number of packets currently in the send window
 		   ack_no   :: 0..16#FFFF, % Next expected packet
 		   seq_no   :: 0..16#FFFF, % Next Sequence number to use when sending packets
+		   last_ack :: 0..16#FFFF, % Last ack the other end sent us
 		   %% Nagle
 		   send_nagle    :: none | {nagle, binary()},
 
@@ -97,11 +91,7 @@
 
 -spec mk() -> t().
 mk() ->
-    #pkt_info { outbuf_mask = 16#f,
-		inbuf_mask  = 16#f,
-		outbuf_elements = [], % These two should probably be queues
-		inbuf_elements = []
-	      }.
+    #pkt_info { }.
 
 
 seqno(#packet { seq_no = S}) ->
@@ -183,7 +173,8 @@ handle_packet(_CurrentTimeMs,
 			   []
 		   end,
     NagleState = consider_nagle(N_PB1),
-    {ok, N_PB1, N_PKI1, FinState ++ DestroyState ++ NagleState}.
+    {ok, N_PB1#pkt_buf { last_ack = AckNo },
+         N_PKI1, FinState ++ DestroyState ++ NagleState}.
 
 handle_fin(st_fin, SeqNo, #pkt_info { got_fin = false } = PKI) ->
     {[fin], PKI#pkt_info { got_fin = true,
@@ -351,8 +342,7 @@ transmit_packets([#pkt_wrap {
 		     need_resend = false } | Rest], PKI, SI, ConnId, Acc) ->
     FilledPkt = Pkt#packet {
 		  conn_id = ConnId,
-		  win_sz  = PKI#pkt_info.cur_window,
-		  ack_no  = PKI#pkt_info.send_ack_no },
+		  win_sz  = PKI#pkt_info.cur_window },
     send_packet(SI, FilledPkt),
     transmit_packets(Rest, PKI, SI, ConnId, [FilledPkt | Acc]).
 
@@ -402,7 +392,7 @@ mk_packets([{partial, Bin} | Rest], PSz,
 		     PKB#pkt_buf { send_nagle = none }, Acc);
 mk_packets([{full, Bin} | Rest], PSz,
 		 #pkt_buf { seq_no = SeqNo } = PKB, Acc) ->
-    Pkt = mk_pkt(Bin, PKB#pkt_buf.seq_no+1),
+    Pkt = mk_pkt(Bin, PKB#pkt_buf.seq_no+1, PKB#pkt_buf.last_ack),
     mk_packets(Rest, PSz, PKB#pkt_buf { seq_no = SeqNo+1 }, [Pkt | Acc]);
 mk_packets([{nagle, Bin}], PSz,
  		 #pkt_buf { send_nagle = {nagle, NBin} } = PKB, Acc) ->
@@ -419,7 +409,7 @@ send_window(#pkt_buf { seq_no = SeqNo,
 		       ack_no = AckNo }) ->
     bit16(SeqNo - AckNo).
 
-mk_pkt(Bin, SeqNo) ->
+mk_pkt(Bin, SeqNo, AckNo) ->
     #pkt_wrap {
 	%% Will fill in the remaining entries later
 	packet = #packet {
@@ -427,11 +417,17 @@ mk_pkt(Bin, SeqNo) ->
 	  conn_id = none,
 	  win_sz = none,
 	  seq_no = SeqNo,
-	  ack_no = none,
+	  ack_no = AckNo,
 	  extension = [],
 	  payload = Bin
 	 },
 	transmissions = 0,
 	need_resend = false }.
+
+
+
+
+
+
 
 
