@@ -13,36 +13,38 @@
 	 enqueue_sender/3,
 	 enqueue_receiver/3,
 
-	 dequeue_packet/2
+	 dequeue_packet/2,
+
+	 bytes_in_recv_buffer/1
 	]).
--record(process_info, {
+-record(proc_info, {
 	  receiver_q :: queue(),
 	  sender_q   :: queue()
 }).
--type t() :: #process_info{}.
+-type t() :: #proc_info{}.
 -export_type([t/0]).
 
 mk() ->
-    #process_info { receiver_q = queue:new(),
+    #proc_info { receiver_q = queue:new(),
 		    sender_q   = queue:new() }.
 
-enqueue_receiver(From, Length, #process_info { receiver_q = RQ } = PI) ->
+enqueue_receiver(From, Length, #proc_info { receiver_q = RQ } = PI) ->
     NQ = queue:in({receiver, From, Length, <<>>}, RQ),
-    PI#process_info { receiver_q = NQ }.
+    PI#proc_info { receiver_q = NQ }.
 
-enqueue_sender(From, Data, #process_info { sender_q = SQ } = PI) ->
+enqueue_sender(From, Data, #proc_info { sender_q = SQ } = PI) ->
     NQ = queue:in({sender, From, Data}, SQ),
-    PI#process_info { sender_q = NQ }.
+    PI#proc_info { sender_q = NQ }.
 
 
-dequeue_packet(#process_info { sender_q = SQ } = PI, Size) when Size > 0 ->
+dequeue_packet(#proc_info { sender_q = SQ } = PI, Size) when Size > 0 ->
     case dequeue_packet(<<>>, SQ, Size) of
 	{ok, Payload, NewSQ} ->
-	    {value, Payload, PI#process_info { sender_q = NewSQ }};
+	    {value, Payload, PI#proc_info { sender_q = NewSQ }};
 	{partial, <<>>, SQ} ->
 	    none;
 	{partial, Payload, NewSQ} ->
-	    {value, Payload, PI#process_info { sender_q = NewSQ }}
+	    {value, Payload, PI#proc_info { sender_q = NewSQ }}
     end.
 
 dequeue_packet(Payload, Q, 0) ->
@@ -70,3 +72,6 @@ dequeue_packet(Payload, Q, N) when is_integer(N) ->
 	    end
     end.
 
+bytes_in_recv_buffer(#proc_info { receiver_q = RQ }) ->
+    L = queue:to_list(RQ),
+    lists:sum([byte_size(Payload) || {receiver, _From, _Sz, Payload} <- L]).

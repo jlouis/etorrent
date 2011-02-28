@@ -1,12 +1,8 @@
 ### "Real" TODO:
 
-* Window Size alterations
-  * Move opt_recvbuf/opt_sendbuf to #pkt_buf code
-  * Write a function which updates the last recv window
-    You can simply update the rcv win because this is *always* what happens
-    This window should go in packets leaving the system.
 * Window size outgoing
   * Should be possible with the above
+    This is now always the contents of the last_recv_window :)
 
 * Window Size incoming
   * Study this.

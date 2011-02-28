@@ -5,8 +5,9 @@
 
 -export([
 	 mk/0,
+	 mk_buf/1,
+
 	 packet_size/1,
-	 rcv_window/0,
 	 mk_random_seq_no/0,
 	 send_fin/1,
 	 handle_packet/5,
@@ -17,6 +18,10 @@
 
 -export([
 	 can_write/6
+	 ]).
+
+-export([
+	 update_last_recv_window/2
 	 ]).
 
 %% TYPES
@@ -39,15 +44,7 @@
 	  %% Timestamps
 	  %% --------------------
 	  %% When was the window last totally full (in send direction)
-	  last_maxed_out_window :: integer(),
-
-	  %% Packet buffer settings
-	  %% --------------------
-	  %% Size of the outgoing buffer on the socket
-	  opt_sendbuf    :: integer(),
-	  %% Same, for the receive buffer
-	  opt_recvbuf    :: integer()
-
+	  last_maxed_out_window :: integer()
 	 }).
 
 -type t() :: #pkt_info{}.
@@ -73,9 +70,19 @@
 		   %% Nagle
 		   send_nagle    :: none | {nagle, binary()},
 
+		   %% Windows
+		   %% --------------------
+		   last_recv_window :: integer(),
 		   send_max_window :: integer(),
 		   max_window      :: integer(),
-		   opt_snd_buf     :: integer()
+
+		   %% Packet buffer settings
+		   %% --------------------
+		   %% Size of the outgoing buffer on the socket
+		   opt_snd_buf_sz   :: integer(),
+		   %% Same, for the recv buffer
+		   opt_recv_buf_sz  :: integer()
+
 		 }).
 -type buf() :: #pkt_buf{}.
 
@@ -105,6 +112,11 @@
 mk() ->
     #pkt_info { }.
 
+mk_buf(OptRecv) ->
+    #pkt_buf {
+	opt_recv_buf_sz = OptRecv,
+	last_recv_window = OptRecv
+       }.
 
 seqno(#packet { seq_no = S}) ->
     S;
@@ -118,10 +130,6 @@ packet_size(_Socket) ->
 mk_random_seq_no() ->
     <<N:16/integer>> = crypto:random_bytes(2),
     N.
-
-rcv_window() ->
-    %% @todo, trim down if receive buffer is present!
-    ?OPT_RCVBUF.
 
 send_fin(_SockInfo) ->
     todo.
@@ -300,7 +308,7 @@ buffer_dequeue(#pkt_buf { recv_buf = Q } = Buf) ->
 can_write(CurrentTime, Size, PacketSize, CurrentWindow,
 	  #pkt_buf { send_max_window = SendMaxWindow,
 		     send_window_packets = SendWindowPackets,
-		     opt_snd_buf    = OptSndBuf,
+		     opt_snd_buf_sz  = OptSndBuf,
 		     max_window      = MaxWindow },
 	  PKI) ->
     %% We can't send more than what one of the windows will bound us by.
@@ -439,10 +447,11 @@ mk_pkt(Bin, SeqNo, AckNo) ->
 	transmissions = 0,
 	need_resend = false }.
 
-
-
-
-
-
-
+update_last_recv_window(#pkt_buf { opt_recv_buf_sz = RSz } = PB,
+		        ProcInfo) ->
+    BufSize = pkt_process:bytes_in_recv_buffer(ProcInfo),
+    NewBufSize = if RSz > BufSize -> RSz - BufSize;
+		    true          -> 0
+		 end,
+    PB#pkt_buf { last_recv_window = NewBufSize }.
 
