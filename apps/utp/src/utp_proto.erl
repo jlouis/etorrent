@@ -30,8 +30,8 @@ mk_connection_id() ->
 payload_size(#packet { payload = PL }) ->
     byte_size(PL).
 
--spec cur_time_us() -> integer().
-cur_time_us() ->
+-spec current_time_us() -> integer().
+current_time_us() ->
     {M, S, Micro} = os:timestamp(),
     S1 = M*1000000 + S,
     Micro + S1*1000000.
@@ -40,7 +40,7 @@ timediff(Ts, Last) ->
     Ts - Last. %% @todo this has to be a lot more clever than it currently is!
 
 send_packet(Packet, LastTS, Socket) ->
-    TS = cur_time_us(),
+    TS = current_time_us(),
     Diff = timediff(TS,LastTS),
     gen_udp:send(Socket, Packet, TS, Diff).
 
@@ -54,7 +54,7 @@ encode(#packet { ty = Type,
 		 payload = Payload}, TSDiff) ->
     {Extension, ExtBin} = encode_extensions(ExtList),
     EncTy = encode_type(Type),
-    TS    = cur_time_us(),
+    TS    = current_time_us(),
     <<1:4/integer, EncTy:4/integer, Extension:8/integer, ConnID:16/integer,
       TS:32/integer,
       TSDiff:32/integer,
@@ -65,6 +65,7 @@ encode(#packet { ty = Type,
 
 -spec decode(binary()) -> {packet(), timestamp(), timestamp()}.
 decode(Packet) ->
+    TS = current_time_us(),
     case Packet of
 	<<1:4/integer, Type:4/integer, Extension:8/integer, ConnectionId:16/integer,
 	  TimeStamp:32/integer,
@@ -88,7 +89,8 @@ decode(Packet) ->
 		       extension = Extensions,
 		       payload = Payload},
 	     TimeStamp,
-	     TimeStampdiff}
+	     TimeStampdiff,
+	     TS}
     end.
 
 decode_extensions(0, Payload, Exts) ->

@@ -26,7 +26,7 @@
 
 %% Internal API
 -export([
-	 incoming/2,
+	 incoming/3,
 	 reply/2,
 	 send_pkt/2
 	]).
@@ -178,8 +178,8 @@ close(Pid) ->
     gen_fsm:send_event(Pid, close).
 
 %% ----------------------------------------------------------------------
-incoming(Pid, Packet) ->
-    gen_fsm:send_event(Pid, Packet).
+incoming(Pid, Packet, Timing) ->
+    gen_fsm:send_event(Pid, {pkt, Packet, Timing}).
 
 reply(To, Msg) ->
     gen_fsm:reply(To, Msg).
@@ -246,8 +246,9 @@ idle(Msg, S) ->
     {next_state, idle, S}.
 
 %% @private
-syn_sent(#packet { ty = st_state,
-		   seq_no = PktSeqNo },
+syn_sent({pkt, #packet { ty = st_state,
+			 seq_no = PktSeqNo },
+	       _Timing},
 	 #state_syn_sent { sock_info = SockInfo,
 			   conn_id_send = Conn_id_send,
 			   seq_no = SeqNo,
@@ -266,7 +267,7 @@ syn_sent(Msg, S) ->
     {next_state, syn_sent, S}.
 
 %% @private
-connected({packet, Pkt, RecvTime},
+connected({pkt, Pkt, {_TS, _TSDiff, RecvTime}},
 	  #state_connected { pkt_info = PKI,
 			     pkt_buf  = PB,
 			     proc_info = PRI
