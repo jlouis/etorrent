@@ -349,16 +349,16 @@ transmit_packets([#pkt_wrap {
 packets_to_transmit(PacketSize,
 		    #pkt_buf { send_window_packets = N,
 			       send_nagle = Nagle } = PktBuf) ->
-    Window = send_window(PktBuf),
+    Inflight = send_inflight(PktBuf),
     if
-	Window < N ->
+	Inflight < N ->
 	    case Nagle of
 		none ->
-		    [{full, N - Window}];
+		    [{full, N - Inflight}];
 		{nagle, _TRef, Bin} ->
-		    [{partial, PacketSize - byte_size(Bin)}, {full, N - (Window + 1)}]
+		    [{partial, PacketSize - byte_size(Bin)}, {full, N - (Inflight + 1)}]
 	    end;
-	Window == N ->
+	Inflight == N ->
 	    []
     end.
 
@@ -405,8 +405,8 @@ mk_packets([{nagle, Bin}], PSz,
  		     PKB#pkt_buf { send_nagle = {nagle, Bin}}, Acc).
 
 
-send_window(#pkt_buf { seq_no = SeqNo,
-		       ack_no = AckNo }) ->
+send_inflight(#pkt_buf { seq_no = SeqNo,
+			 last_ack = AckNo }) ->
     bit16(SeqNo - AckNo).
 
 mk_pkt(Bin, SeqNo, AckNo) ->
