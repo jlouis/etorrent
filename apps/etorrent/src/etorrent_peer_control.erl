@@ -332,15 +332,19 @@ handle_message({bitfield, Bin}, State) ->
         invalid_piece ->
             {stop, {invalid_piece_2, RemoteID}, State}
     end;
-handle_message({piece, Index, Offset, Data}, #state { remote_request_set = RS } = S) ->
-    case handle_got_chunk(Index, Offset, Data, RS,
-			  S#state.torrent_id) of
-	{ok, RS} ->
-	    try_to_queue_up_pieces(S); % No change on RS
-	{ok, NRS} ->
-	    handle_endgame(S#state.torrent_id,
-			   {Index, Offset, byte_size(Data)}, S#state.endgame),
-	    try_to_queue_up_pieces(S#state { remote_request_set = NRS})
+handle_message({piece, Index, Offset, Data}, State) ->
+    #state{
+        torrent_id=TorrentID,
+        endgame=InEndgame,
+        remote_request_set=Requests} = State,
+    case handle_got_chunk(Index, Offset, Data, Requests, TorrentID) of
+	    {ok, Requests} ->
+	        try_to_queue_up_pieces(State);
+        {ok, NewRequests} ->
+            ChunkSpec = {Index, Offset, byte_size(Data)},
+	        handle_endgame(TorrentID, ChunkSpec, InEndgame),
+            NewState = State#state{remote_request_set=NewRequests},
+	        try_to_queue_up_pieces(NewState)
     end;
 handle_message({extended, _, _}, S) when S#state.extended_messaging == false ->
     %% We do not accept extended messages unless they have been enabled.
@@ -388,10 +392,8 @@ handle_endgame(TorrentId, {Index, Offset, Len}, true) ->
 %% Func: handle_got_chunk(Index, Offset, Data, Len, S) -> {ok, State}
 %% Description: We just got some chunk data. Store it in the mnesia DB
 %%--------------------------------------------------------------------
-handle_got_chunk(Index, Offset, Data, Len, State) ->
-    #state{
-        torrent_id=TorrentID,
-         remote_request_set=Reqs} = State,
+handle_got_chunk(Index, Offset, Data, Reqs, TorrentID) ->
+    Len = byte_size(Data),
     case gb_trees:lookup({Index, Offset, Len}, Reqs) of
         {value, _} ->
             ok = etorrent_chunk_mgr:mark_fetched(TorrentID, Index, Offset, Len),
@@ -399,11 +401,11 @@ handle_got_chunk(Index, Offset, Data, Len, State) ->
             ok = etorrent_chunk_mgr:mark_stored(TorrentID, Index, Offset, Len),
             %% Tell other peers we got the chunk if in endgame
             NewReqs = gb_trees:delete_any({Index, Offset, Len}, Reqs),
-            {ok, State#state{remote_request_set=NewReqs}};
+            {ok, NewReqs};
         none ->
             %% Stray piece, we could try to get hold of it but for now we just
             %%   throw it on the floor.
-            {ok, State}
+            {ok, Reqs}
     end.
 
 %%--------------------------------------------------------------------

@@ -22,10 +22,10 @@ start_link(TorrentID, Torrent) ->
 
 %% @private
 init([TorrentID, Torrent]) ->
-    Files     = etorrent_metainfo:file_paths(Torrent),
-    DirServer = directory_server_spec(TorrentID, Torrent),
-    Dldir     = etorrent_config:download_dir(),
-    FileSup   = file_server_sup_spec(TorrentID, Dldir, Files),
+    Files        = etorrent_metainfo:file_paths(Torrent),
+    DirServer    = directory_server_spec(TorrentID, Torrent),
+    {dir, Dldir} = etorrent_config:download_dir(),
+    FileSup      = file_server_sup_spec(TorrentID, Dldir, Files),
     {ok, {{one_for_one, 1, 60}, [DirServer, FileSup]}}.
 
 %% ----------------------------------------------------------------------
@@ -39,12 +39,3 @@ file_server_sup_spec(TorrentID, Workdir, Files) ->
     {{TorrentID, file_server_sup},
         {etorrent_io_file_sup, start_link, Args},
         permanent, 2000, supervisor, [etorrent_file_io_sup]}.
-
-
-
-
-
-
-
-
-

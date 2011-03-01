@@ -69,7 +69,7 @@
          await_open_file/2]).
 
 -export([check_piece/2,
-	 check_piece_completion/2]).
+         check_piece_completion/2]).
 
 -export([init/1,
          handle_call/3,
@@ -106,7 +106,7 @@ start_link(TorrentID, Torrent) ->
 allocate(TorrentID) ->
     {ok, DirPid} = await_directory(TorrentID),
     {ok, Files}  = get_files(DirPid),
-    Dldir = etorrent_config:download_dir(),
+    {dir, Dldir} = etorrent_config:download_dir(),
     lists:foreach(
       fun ({Pth, ISz}) ->
 	      F = filename:join([Dldir, Pth]),
