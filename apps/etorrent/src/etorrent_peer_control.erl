@@ -31,9 +31,6 @@
                  local_peer_id = none,
                  info_hash = none,
 
-		 extended_messaging = false, % Peer support extended messages
-                 fast_extension = false, % Peer uses fast extension
-
 		 %% Peer support extended messages
 		 extended_messaging = false   :: boolean(),
 		 %% Peer uses fast extension
@@ -179,8 +176,9 @@ handle_cast(choke, S) ->
 handle_cast(unchoke, S) ->
     etorrent_peer_send:unchoke(S#state.send_pid),
     {noreply, S};
-handle_cast(interested, S) ->
-    {noreply, statechange_interested(S, true)};
+handle_cast(interested, State) ->
+    statechange_interested(State, true),
+    {noreply, State#state{local_interested=true}};
 handle_cast({have, PN}, #state{remote_pieces=unknown, send_pid=SPid}=S) ->
     etorrent_peer_send:have(SPid, PN),
     {noreply, S};
@@ -252,6 +250,7 @@ handle_message(choke, State) ->
     ok = etorrent_chunk_mgr:mark_all_dropped(TorrentID),
     NewState = case FastEnabled of
         true ->
+            etorrent_table:foreach_peer(TorrentID, fun try_queue_pieces/1),
             State#state{remote_choked=true};
         false ->
             State#state{remote_choked=true, remote_request_set=gb_trees:empty()}
@@ -326,7 +325,8 @@ handle_message({bitfield, Bin}, State) ->
         seeder=(Left == 0)},
     case etorrent_piece_mgr:check_interest(TorrentID, Pieceset) of
         {interested, _} ->
-            {ok, statechange_interested(NewState, true)};
+            statechange_interested(NewState, true),
+            {ok, NewState#state{local_interested=true}};
         not_interested ->
             {ok, NewState};
         invalid_piece ->
@@ -371,25 +371,39 @@ handle_endgame_got_chunk({chunk, Index, Offset, Len}, S) ->
             S
     end.
 
+%% @doc Handle the case where we may be in endgame correctly.
+handle_endgame(_TorrentId, _Chunk, false) -> ok;
+handle_endgame(TorrentId, {Index, Offset, Len}, true) ->
+    case etorrent_chunk_mgr:mark_fetched(TorrentId,
+					 {Index, Offset, Len}) of
+	found -> ok;
+	assigned ->
+	    F = fun(P) ->
+			endgame_got_chunk(P, {chunk, Index, Offset, Len})
+		end,
+	    etorrent_table:foreach_peer(TorrentId, F)
+    end.
+
 %%--------------------------------------------------------------------
 %% Func: handle_got_chunk(Index, Offset, Data, Len, S) -> {ok, State}
 %% Description: We just got some chunk data. Store it in the mnesia DB
 %%--------------------------------------------------------------------
-handle_got_chunk(Index, Offset, Data, Len, S) ->
-    #state{torrent_id=TorrentID} = S,
-    case gb_trees:lookup({Index, Offset, Len},
-                         S#state.remote_request_set) of
+handle_got_chunk(Index, Offset, Data, Len, State) ->
+    #state{
+        torrent_id=TorrentID,
+         remote_request_set=Reqs} = State,
+    case gb_trees:lookup({Index, Offset, Len}, Reqs) of
         {value, _} ->
             ok = etorrent_chunk_mgr:mark_fetched(TorrentID, Index, Offset, Len),
             ok = etorrent_io:write_chunk(TorrentID, Index, Offset, Data),
             ok = etorrent_chunk_mgr:mark_stored(TorrentID, Index, Offset, Len),
             %% Tell other peers we got the chunk if in endgame
-            RS = gb_trees:delete_any({Index, Offset, Len}, S#state.remote_request_set),
-            {ok, S#state { remote_request_set = RS }};
+            NewReqs = gb_trees:delete_any({Index, Offset, Len}, Reqs),
+            {ok, State#state{remote_request_set=NewReqs}};
         none ->
             %% Stray piece, we could try to get hold of it but for now we just
             %%   throw it on the floor.
-            {ok, RSet}
+            {ok, State}
     end.
 
 %%--------------------------------------------------------------------
@@ -412,7 +426,8 @@ try_to_queue_up_pieces(State) ->
             Numchunks = ?HIGH_WATERMARK - N,
             case etorrent_chunk_mgr:request_chunks(TorrentID, Pieceset, Numchunks) of
                 {error, not_interested} ->
-                    {ok, statechange_interested(State, false)};
+                    statechange_interested(State, false),
+                    {ok, State#state{local_interested=false}};
                 {error, assigned} ->
                     {ok, State};
                 {ok, Chunks} ->
@@ -478,16 +493,16 @@ complete_connection_setup(Socket, TorrentId, ExtendedMSG) ->
 %%      is, if not yet.
 %% @end
 %%--------------------------------------------------------------------
-statechange_interested(true, _, true) ->
-    ok;
-statechange_interested(false, SendPid, true) ->
-    etorrent_peer_send:interested(SendPid),
-    ok;
-statechange_interested(false, _, false) ->
-    ok;
-statechange_interested(true, SendPid, false) ->
-    etorrent_peer_send:not_interested(SendPid),
-    ok.
+statechange_interested(State, IsInterested) ->
+    #state{
+        local_interested=WasInterested,
+        send_pid=SendPid} = State,
+    case {WasInterested, IsInterested} of
+        {true, true}   -> ok;
+        {false, false} -> ok;
+        {false, true}  -> etorrent_peer_send:interested(SendPid);
+        {true, false}  -> etorrent_peer_send:not_interested(SendPid)
+    end.
 
 peer_have(PN, #state{remote_pieces=unknown}=State) ->
     #state{torrent_id=TorrentID} = State,
@@ -509,8 +524,7 @@ peer_have(PN, S) ->
                                 true ->
                                     try_to_queue_up_pieces(NS);
                                 false ->
-                                    statechange_interested(NS#state.local_interested,
-                                                            NS#state.send_pid, true),
+                                    statechange_interested(NS, true),
                                     try_to_queue_up_pieces(NS#state{local_interested = true})
                             end;
                         false ->
