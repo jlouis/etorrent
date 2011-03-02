@@ -359,11 +359,9 @@ handle_message(Unknown, S) ->
     ?WARN([unknown_message, Unknown]),
     {stop, normal, S}.
 
-%%--------------------------------------------------------------------
-%% Func: handle_endgame_got_chunk({chunk, Index, Offset, Len}, S) -> S
-%% Description: Some other peer just downloaded {Index, Offset, Len} so try
-%%   not to download it here if we can avoid it.
-%%--------------------------------------------------------------------
+%% @doc handle the case where we get a chunk while in endgame mode.
+%%   Note: This is when we get it from <i>another</i> peer than ourselves
+%% @end
 handle_endgame_got_chunk({chunk, Index, Offset, Len}, S) ->
     case gb_trees:is_defined({Index, Offset, Len}, S#state.remote_request_set) of
         true ->
@@ -388,10 +386,9 @@ handle_endgame(TorrentId, {Index, Offset, Len}, true) ->
 	    etorrent_table:foreach_peer(TorrentId, F)
     end.
 
-%%--------------------------------------------------------------------
-%% Func: handle_got_chunk(Index, Offset, Data, Len, S) -> {ok, State}
-%% Description: We just got some chunk data. Store it in the mnesia DB
-%%--------------------------------------------------------------------
+%% @doc Process an incoming chunk in normal mode
+%%   returns an updated request set
+%% @end
 handle_got_chunk(Index, Offset, Data, Reqs, TorrentID) ->
     Len = byte_size(Data),
     case gb_trees:lookup({Index, Offset, Len}, Reqs) of
@@ -408,10 +405,10 @@ handle_got_chunk(Index, Offset, Data, Reqs, TorrentID) ->
             {ok, Reqs}
     end.
 
-%%--------------------------------------------------------------------
-%% Function: try_to_queue_up_requests(state()) -> {ok, state()}
-%% Description: Try to queue up requests at the other end.
-%%--------------------------------------------------------------------
+%% @doc Description: Try to queue up requests at the other end.
+%%   Is called in many places with the state as input as the final thing
+%%   it will check if we can queue up pieces and add some if needed.
+%% @end
 try_to_queue_up_pieces(#state { remote_choked = true } = S) ->
     {ok, S};
 try_to_queue_up_pieces(State) ->
