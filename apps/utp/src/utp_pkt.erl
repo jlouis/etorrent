@@ -29,12 +29,16 @@
 -record(pkt_info, {
 	  got_fin :: boolean(),
 	  eof_pkt :: 0..16#FFFF, % The packet with the EOF flag
+
+	  %% @todo: Consider renaming this to peer_advertised_window
 	  max_window_user :: integer(), % The maximal window size we have
 
 	  %% The maximal size of packets.
 	  pkt_size :: integer(),
-	  %% The current window size in the send direction
+	  %% The current window size in the send direction, in bytes.
 	  cur_window :: integer(),
+	  %% Maximal window size int he send direction, in bytes.
+	  max_window :: integer(),
 
 	  %% Timeouts,
 	  %% --------------------

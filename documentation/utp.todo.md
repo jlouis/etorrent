@@ -1,13 +1,21 @@
 ### "Real" TODO:
 
+* Implement the update when draining (RBDrain)
+* Implement the zero_window timing handling, it is easy
+
 * Window Size incoming
   * Study this.
+  * Window is changed in the selective ack code
+  * max_window is our maximal window, which can be manipulated
+    window_decay is one place
+    reset on timeout is a second
+    in LEDBAT CControl is a third
+    initialized to the packet size when starting out
+    maybe_decay_win adjusts the window, based on the selective ack information
 
-* Window Size special cases
-  * Go through variables doing stuff with the recv window
-  * Go through variables doing stuff with the send window
+  * max_window_user is the other ends max_window (call it max_window_peer)
+    It is *essentially* what we get from the other end!
 
-* Handle incoming timestamping
 * Handle outgoing timestamping
 * Timers, retransmits, zero window, acks
 * Timestamp handling
@@ -18,6 +26,9 @@
 * Fast timeout/retransmit handling is not done yet.
 * Selective ACK is not done yet.
 * SendQuotas
+
+* Handle incoming timestamping
+  * We currently do not do anything with incoming packets. We should.
 
 ### "Old" TODO:
 
