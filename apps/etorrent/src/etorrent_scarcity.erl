@@ -4,36 +4,31 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
--export([from_list/2,
+-export([from_list/1,
          to_list/1,
          insert/3,
          delete/2,
          increment/2,
-         decrement/2]).
+         decrement/2,
+         iterator/1,
+         next/1]).
 
--type pieceset() :: etorrent_pieceset:pieceset().
--type piecelist() :: list(pos_integer()).
 -record(scarcity, {
-    members  :: pieceset(),
     counters :: array(),
-    ordering :: piecelist()}).
+    ordering :: gb_set()}).
+
 -opaque scarcity() :: #scarcity{}.
+-export_type([scarcity/0]).
     
 
 %% @doc
 %%
 %% @end
--spec from_list(pos_integer(), list({pos_integer(), pos_integer()})) -> scarcity().
-from_list(NumPieces, ScarcityList) ->
-    InitMembers  = etorrent_pieceset:new(NumPieces),
-    InitCounters = array:new([{size, NumPieces}, {default, 0}]),
-    InitScarcity = #scarcity{
-        members=InitMembers,
-        counters=InitCounters,
-        ordering=[]},
-    lists:foldl(fun({Index, Count}, Acc) ->
-        insert(Index, Count, Acc)
-    end, InitScarcity, ScarcityList).
+-spec from_list(list({pos_integer(), pos_integer()})) -> scarcity().
+from_list(ScarcityList) ->
+    InitCounters = array:from_orddict(ScarcityList),
+    InitOrdering = gb_sets:from_list([{S,I} || {I,S} <- ScarcityList]),
+    #scarcity{counters=InitCounters, ordering=InitOrdering}.
 
 %% @doc
 %%
@@ -41,7 +36,7 @@ from_list(NumPieces, ScarcityList) ->
 -spec to_list(#scarcity{}) -> list(pos_integer()).
 to_list(Scarcity) ->
     #scarcity{ordering=Ordering} = Scarcity,
-    Ordering.
+    [Index || {_, Index} <- gb_sets:to_list(Ordering)].
 
 
 %% @doc
@@ -49,44 +44,27 @@ to_list(Scarcity) ->
 %% @end
 -spec insert(pos_integer(), pos_integer(), #scarcity{}) -> scarcity().
 insert(Index, Count, Scarcity) ->
-    #scarcity{
-        members=Members,
-        counters=Counters,
-        ordering=Ordering} = Scarcity,
-    assert_not_member(Index, Members),
+    #scarcity{counters=Counters, ordering=Ordering} = Scarcity,
+    assert_not_member(Index, Counters),
 
-    NewMembers  = etorrent_pieceset:insert(Index, Members),
     NewCounters = array:set(Index, Count, Counters),
-    IsSmaller   = fun(E) -> array:get(E, Counters) =< Count end,
-    {Smaller, Larger} = lists:splitwith(IsSmaller, Ordering),
-    NewOrdering = Smaller ++ [Index|Larger],
+    NewOrdering = gb_sets:insert({Count, Index}, Ordering),
 
-    NewScarcity = #scarcity{
-        members=NewMembers,
-        counters=NewCounters,
-        ordering=NewOrdering},
-    NewScarcity.
+    #scarcity{counters=NewCounters, ordering=NewOrdering}.
 
 %% @doc
 %%
 %% @end
 -spec delete(pos_integer(), #scarcity{}) -> scarcity().
 delete(Index, Scarcity) ->
-     #scarcity{
-        members=Members,
-        counters=Counters,
-        ordering=Ordering} = Scarcity,
-    assert_member(Index, Members),
+    #scarcity{counters=Counters, ordering=Ordering} = Scarcity,
+    assert_member(Index, Counters),
 
-    NewMembers  = etorrent_pieceset:delete(Index, Members),
+    Count = array:get(Index, Counters),
     NewCounters = array:reset(Index, Counters),
-    NewOrdering = lists:delete(Index, Ordering),
+    NewOrdering = gb_sets:delete({Count, Index}, Ordering),
 
-    NewScarcity = #scarcity{
-        members=NewMembers,
-        counters=NewCounters,
-        ordering=NewOrdering},
-    NewScarcity.
+    #scarcity{counters=NewCounters, ordering=NewOrdering}.
 
    
 
@@ -96,20 +74,15 @@ delete(Index, Scarcity) ->
 %% @end
 -spec increment(pos_integer(), #scarcity{}) -> scarcity().
 increment(Index, Scarcity) ->
-    #scarcity{
-        members=Members,
-        counters=Counters,
-        ordering=Ordering} = Scarcity,
-    assert_member(Index, Members),
+    #scarcity{counters=Counters, ordering=Ordering} = Scarcity,
+    assert_member(Index, Counters),
 
-    PrevCount = array:get(Index, Counters),
-    NewCounters = array:set(Index, PrevCount + 1, Counters),
-    NewOrdering = reorder(Index, NewCounters, Ordering),
+    Count = array:get(Index, Counters),
+    NewCounters = array:set(Index, Count + 1, Counters),
+    TmpOrdering = gb_sets:delete({Count, Index}, Ordering),
+    NewOrdering = gb_sets:insert({Count + 1, Index}, TmpOrdering),
 
-    NewScarcity = #scarcity{
-        counters=NewCounters,
-        ordering=NewOrdering},
-    NewScarcity.
+    #scarcity{counters=NewCounters, ordering=NewOrdering}.
 
 
 %% @doc
@@ -117,96 +90,119 @@ increment(Index, Scarcity) ->
 %% @end
 -spec decrement(pos_integer(), #scarcity{}) -> scarcity().
 decrement(Index, Scarcity) ->
-     #scarcity{
-        members=Members,
-        counters=Counters,
-        ordering=Ordering} = Scarcity,
-    assert_member(Index, Members),
+    #scarcity{counters=Counters, ordering=Ordering} = Scarcity,
+    assert_member(Index, Counters),
 
-    PrevCount = array:get(Index, Counters),
-    NewCounters = array:set(Index, PrevCount - 1, Counters),
-    NewOrdering = reorder(Index, NewCounters, Ordering),
+    Count = array:get(Index, Counters),
+    NewCounters = array:set(Index, Count - 1, Counters),
+    TmpOrdering = gb_sets:delete({Count, Index}, Ordering),
+    NewOrdering = gb_sets:insert({Count - 1, Index}, TmpOrdering),
 
-    NewScarcity = #scarcity{
-        counters=NewCounters,
-        ordering=NewOrdering},
-    NewScarcity.
+    #scarcity{counters=NewCounters, ordering=NewOrdering}.
 
-   
+
+%% @doc
+%%
+%% @end
+-spec iterator(#scarcity{}) -> term().
+iterator(Scarcity) ->
+    #scarcity{ordering=Ordering} = Scarcity,
+    gb_sets:iterator(Ordering).
+
+
+%% @doc
+%%
+%% @end
+-spec next(term()) -> pos_integer().
+next(Iterator) ->
+    case gb_sets:next(Iterator) of
+        none ->
+            none;
+        {{_, Index}, NewIterator} ->
+            {Index, NewIterator}
+    end.
+
 
 %% @doc  
 %%
 %% @end
--spec assert_member(pos_integer(), pieceset()) -> ok.
-assert_member(Index, Pieceset) ->
-    case etorrent_pieceset:is_member(Index, Pieceset) of
-        true  -> ok;
-        false -> error(badarg)
+-spec assert_member(pos_integer(), array()) -> ok.
+assert_member(Index, Counters) ->
+    case array:get(Index, Counters) of
+        undefined ->
+            error(badarg);
+        _  ->
+            ok
     end.
 
 %% @doc
 %%
 %% @end
--spec assert_not_member(pos_integer(), pieceset()) -> ok.
-assert_not_member(Index, Pieceset) ->
-    case etorrent_pieceset:is_member(Index, Pieceset) of
-        true  -> error(badarg);
-        false -> ok
+-spec assert_not_member(pos_integer(), array()) -> ok.
+assert_not_member(Index, Counters) ->
+    case array:get(Index, Counters) of
+        undefined ->
+            ok;
+        _ ->
+            error(badarg)
     end.
 
-
-%% @doc
-%%
-%% @end
--spec reorder(pos_integer(), array(), piecelist()) -> piecelist().
-%% Changed piece occurs at the middle of the list
-reorder(Changed, Counters, [Smaller,Changed,Larger|T]=Original) ->
-    SmallerHas = array:get(Smaller, Counters),
-    ChangedHas = array:get(Changed, Counters),
-    LargerHas  = array:get(Larger,  Counters),
-    if  ChangedHas < SmallerHas ->
-            [Changed,Smaller,Larger|T];
-        ChangedHas > LargerHas ->
-            [Smaller,Larger,Changed|T];
-        true ->
-            Original
-    end;
-%% Changed piece occurs at the beginning of the list
-reorder(Changed, Counters, [Changed,Larger|T]=Original) ->
-    ChangedHas = array:get(Changed, Counters),
-    LargerHas  = array:get(Larger,  Counters),
-    if  ChangedHas > LargerHas ->
-            [Larger,Changed|T];
-        true ->
-            Original
-    end;
-%% Changed piece occurs at the end of the list
-reorder(Changed, Counters, [Smaller,Changed|T]=Original) ->
-    ChangedHas = array:get(Changed, Counters),
-    SmallerHas = array:get(Smaller, Counters),
-    if  ChangedHas < SmallerHas ->
-            [ChangedHas,SmallerHas|T];
-        true ->
-            Original
-    end;
-%% Not there yet, order of head is unaffected
-reorder(Changed, Counters, [H|T]) ->
-    [H|reorder(Changed, Counters, T)].
 
 -ifdef(TEST).
 -define(mod, ?MODULE).
--define(pset, etorrent_pieceset).
 
 new_all_unordered_test() ->
-    New = ?mod:from_list(3, [{0,0},{1,0},{2,0}]),
-    ?assertEqual([0,1,2], ?mod:to_list(New)).
+    S0 = ?mod:from_list([{0,0},{1,0},{2,0}]),
+    ?assertEqual([0,1,2], ?mod:to_list(S0)).
 
 new_all_ordered_test() ->
-    New = ?mod:from_list(3, [{0,0},{1,1},{2,2}]),
-    ?assertEqual([0,1,2], ?mod:to_list(New)).
+    S0 = ?mod:from_list([{0,0},{1,1},{2,2}]),
+    ?assertEqual([0,1,2], ?mod:to_list(S0)).
 
 new_all_reversed_test() ->
-    New = ?mod:from_list(3, [{0,2},{1,1},{2,0}]),
-    ?assertEqual([2,1,0], ?mod:to_list(New)).
+    S0 = ?mod:from_list([{0,2},{1,1},{2,0}]),
+    ?assertEqual([2,1,0], ?mod:to_list(S0)).
+
+increment_test() ->
+    S0 = ?mod:from_list([{0,0}, {1,1}, {2,2}]),
+    S1 = ?mod:increment(0, S0),
+    S2 = ?mod:increment(0, S1),
+    S3 = ?mod:increment(0, S2),
+    S4 = ?mod:increment(0, S3),
+    ?assertEqual([1,2,0], ?mod:to_list(S4)).
+
+decrement_test() ->
+    S0 = ?mod:from_list([{0,0}, {1,1}, {2,2}]),
+    S1 = ?mod:decrement(2, S0),
+    S2 = ?mod:decrement(2, S1),
+    S3 = ?mod:decrement(2, S2),
+    S4 = ?mod:decrement(2, S3),
+    ?assertEqual([2,0,1], ?mod:to_list(S4)).
+
+delete_test() ->
+    S0 = ?mod:from_list([{0,0},{1,1},{2,2}]),
+    S1 = ?mod:delete(0, S0),
+    S2 = ?mod:delete(1, S0),
+    S3 = ?mod:delete(2, S0),
+    ?assertEqual([1,2], ?mod:to_list(S1)),
+    ?assertEqual([0,2], ?mod:to_list(S2)),
+    ?assertEqual([0,1], ?mod:to_list(S3)).
+
+delete_nonmember_test() ->
+    S0 = ?mod:from_list([{0,0},{2,2}]),
+    ?assertError(badarg, ?mod:delete(1, S0)).
+
+insert_member_test() ->
+    S0 = ?mod:from_list([{0,0},{1,1},{2,2}]),
+    ?assertError(badarg, ?mod:insert(1, 1, S0)).
+
+iterator_test() ->
+    S0 = ?mod:from_list([{0,0},{2,2}]),
+    I0 = ?mod:iterator(S0),
+    {E1,I1} = ?mod:next(I0),
+    {E2,I2} = ?mod:next(I1),
+    ?assertEqual(0, E1),
+    ?assertEqual(2, E2),
+    ?assertEqual(none, ?mod:next(I2)).
 
 -endif.
