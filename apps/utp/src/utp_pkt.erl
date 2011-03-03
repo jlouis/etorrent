@@ -13,12 +13,15 @@
 	 handle_packet/5,
 	 buffer_dequeue/1,
 	 buffer_putback/2,
-	 fill_window/5
+	 fill_window/5,
+	 rb_drained/1
 	 ]).
 
+-ifdef(NOT_BOUND).
 -export([
 	 can_write/6
 	 ]).
+-endif.
 
 -export([
 	 update_last_recv_window/2
@@ -308,42 +311,6 @@ buffer_dequeue(#pkt_buf { recv_buf = Q } = Buf) ->
 	    empty
     end.
 
-%% @todo: Do we need this beast at all?
-can_write(CurrentTime, Size, PacketSize, CurrentWindow,
-	  #pkt_buf { send_max_window = SendMaxWindow,
-		     send_window_packets = SendWindowPackets,
-		     opt_snd_buf_sz  = OptSndBuf,
-		     max_window      = MaxWindow },
-	  PKI) ->
-    %% We can't send more than what one of the windows will bound us by.
-    %% So the max send value is the minimum over these:
-    MaxSend = lists:min([MaxWindow, OptSndBuf, SendMaxWindow]),
-    PacketExceed = CurrentWindow + PacketSize >= MaxWindow,
-    Res = if
-	      SendWindowPackets >= ?OUTGOING_BUFFER_MAX_SIZE-1 ->
-		  false;
-	      SendWindowPackets + PacketSize =< MaxSend ->
-		  true;
-	      MaxWindow < Size
-	        andalso CurrentWindow < MaxWindow
-	        andalso SendWindowPackets == 0 ->
-		  true;
-	      true ->
-		  false
-	  end,
-    %% @todo quota
-    %% @todo Why the heck do we have this side-effect here? The last_maxed_out_window
-    %% should be set in other ways I think. It has nothing to do with the question of
-    %% we can write on the socket or not!
-    {Res, PKI#pkt_info {
-	    last_maxed_out_window =
-		case PacketExceed of
-		    true ->
-			CurrentTime;
-		    false ->
-			PKI#pkt_info.last_maxed_out_window
-	       end
-	  }}.
 
 fill_window(ConnId, SockInfo, ProcInfo, PktInfo, PktBuf) ->
     PacketsToTransmit = packets_to_transmit(PktInfo#pkt_info.pkt_size, PktBuf),
@@ -462,3 +429,60 @@ update_last_recv_window(#pkt_buf { opt_recv_buf_sz = RSz } = PB,
 		 end,
     PB#pkt_buf { last_recv_window = NewBufSize }.
 
+receive_window(#pkt_buf {
+		  recv_buf = Q,
+		  opt_recv_buf_sz = Sz
+		 }) ->
+    BufSize = [byte_size(Payload) || Payload <- queue:to_list(Q)],
+    if Sz > BufSize -> Sz - BufSize;
+	true -> 0
+    end.
+
+rb_drained(#pkt_buf {
+	      last_recv_window = LastWin
+	     } = PBuf) ->
+    NewWin = receive_window(PBuf),
+    if NewWin > LastWin, LastWin == 0 -> send_ack;
+       NewWin > LastWin -> ack_timer;
+       true -> ok
+    end.
+
+-ifdef(NOT_BOUND).
+
+%% @todo: Do we need this beast at all?
+can_write(CurrentTime, Size, PacketSize, CurrentWindow,
+	  #pkt_buf { send_max_window = SendMaxWindow,
+		     send_window_packets = SendWindowPackets,
+		     opt_snd_buf_sz  = OptSndBuf,
+		     max_window      = MaxWindow },
+	  PKI) ->
+    %% We can't send more than what one of the windows will bound us by.
+    %% So the max send value is the minimum over these:
+    MaxSend = lists:min([MaxWindow, OptSndBuf, SendMaxWindow]),
+    PacketExceed = CurrentWindow + PacketSize >= MaxWindow,
+    Res = if
+	      SendWindowPackets >= ?OUTGOING_BUFFER_MAX_SIZE-1 ->
+		  false;
+	      SendWindowPackets + PacketSize =< MaxSend ->
+		  true;
+	      MaxWindow < Size
+	        andalso CurrentWindow < MaxWindow
+	        andalso SendWindowPackets == 0 ->
+		  true;
+	      true ->
+		  false
+	  end,
+    %% @todo quota
+    %% @todo Why the heck do we have this side-effect here? The last_maxed_out_window
+    %% should be set in other ways I think. It has nothing to do with the question of
+    %% we can write on the socket or not!
+    {Res, PKI#pkt_info {
+	    last_maxed_out_window =
+		case PacketExceed of
+		    true ->
+			CurrentTime;
+		    false ->
+			PKI#pkt_info.last_maxed_out_window
+	       end
+	  }}.
+-endif.

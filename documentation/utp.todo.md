@@ -1,6 +1,5 @@
 ### "Real" TODO:
 
-* Implement the update when draining (RBDrain)
 * Implement the zero_window timing handling, it is easy
 
 * Window Size incoming

@@ -274,7 +274,17 @@ connected({pkt, Pkt, {_TS, _TSDiff, RecvTime}},
 			     } = S) ->
     case utp_pkt:handle_packet(RecvTime, connected, Pkt, PKI, PB) of
 	{ok, N_PB1, N_PKI, StateAlter} ->
-	    {N_PB, N_PRI} = satisfy_recvs(PRI, N_PB1),
+	    {N_PRI, N_PB} =
+		case satisfy_recvs(PRI, N_PB1) of
+		    {ok, PR, PB} -> {PR, PB};
+		    {rb_drained, PR, PB} ->
+			case utp_pkt:rb_drained(PB) of
+			    ok -> ok;
+			    send_ack -> todo;
+			    set_timer -> todo
+			end,
+			{PR, PB}
+		end,
 	    {next_state, connected,
 	     S#state_connected { pkt_info = N_PKI,
 				 pkt_buf = N_PB,
@@ -480,10 +490,10 @@ satisfy_buffer(From, Length, Res, Buffer) ->
 	    satisfy_buffer(From, Length - byte_size(Bin), <<Res/binary, Bin/binary>>, N_Buffer);
 	{ok, Bin, N_Buffer} when byte_size(Bin) > Length ->
 	    <<Cut:Length/binary, Rest/binary>> = Bin,
-	    satisfy_buffer(From, 0, <<Res/binary, Cut/binary>>, 
+	    satisfy_buffer(From, 0, <<Res/binary, Cut/binary>>,
 			   utp_pkt:buffer_putback(Rest, N_Buffer));
 	empty ->
-	    {emptied, From, Length, Res, Buffer}
+	    {rb_drained, From, Length, Res, Buffer}
     end.
 
 satisfy_recvs(Processes, Buffer) ->
@@ -492,11 +502,14 @@ satisfy_recvs(Processes, Buffer) ->
 	    case satisfy_buffer(From, Length, Res, Buffer) of
 		{ok, N_Buffer} ->
 		    satisfy_recvs(N_Processes, N_Buffer);
-		{emptied, F, L, R, N_Buffer} ->
-		    {ok, utp_process:putback_receiver(F, L, R), N_Buffer}
+		{rb_drained, F, L, R, N_Buffer} ->
+		    {rb_drained, utp_process:putback_receiver(F, L, R), N_Buffer}
 	    end;
 	empty ->
 	    {ok, Processes, Buffer}
     end.
+
+
+
 
 
