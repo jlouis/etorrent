@@ -53,7 +53,7 @@ dequeue_packet(Payload, Q, N) when is_integer(N) ->
     case queue:out(Q) of
 	{empty, _} ->
 	    {partial, Payload, Q};
-	{value, {sender, From, Data}, NewQ} ->
+	{{value, {sender, From, Data}}, NewQ} ->
 	    case Data of
 		<<PL:N/binary, Rest/binary>> ->
 		    {ok, <<Payload/binary, PL/binary>>,
