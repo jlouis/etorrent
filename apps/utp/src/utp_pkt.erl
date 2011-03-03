@@ -291,11 +291,9 @@ satisfy_from_reorder_buffer(#pkt_buf { ack_no = AckNo,
     end.
 
 reorder_buffer_in(SeqNo, Payload, #pkt_buf { reorder_buf = OD } = PB) ->
-    case orddict:is_key(SeqNo) of
-	true ->
-	    duplicate;
-	false ->
-	    PB#pkt_buf { reorder_buf = orddict:store(SeqNo, Payload, OD) }
+    case orddict:is_key(SeqNo, OD) of
+	true -> duplicate;
+	false -> PB#pkt_buf { reorder_buf = orddict:store(SeqNo, Payload, OD) }
     end.
 
 enqueue_payload(Payload, #pkt_buf { recv_buf = Q } = PB) ->

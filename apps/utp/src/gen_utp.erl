@@ -19,6 +19,7 @@
 
 %% Internally used API
 -export([register_process/2,
+	 reply/2,
 	 lookup_registrar/1,
 	 incoming_new/3]).
 
@@ -87,8 +88,8 @@ send({utp_sock, Pid}, Msg) ->
 
 %% @equiv recv(Socket, Length, infinity)
 -spec recv(utp_socket(), integer()) -> {ok, binary()} | {error, term()}.
-recv({utp_sock, Pid}, Length) ->
-    recv(Pid, Length, infinity).
+recv(Socket, Length) ->
+    recv(Socket, Length, infinity).
 
 %% @doc Receive a message with a timeout
 %% @end
@@ -131,6 +132,11 @@ lookup_registrar(CID) ->
 	    {ok, Pid}
     end.
 
+%% @doc Reply back to a socket user
+%% @end
+reply(To, Msg) ->
+    gen_fsm:reply(To, Msg).
+
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
@@ -149,7 +155,7 @@ lookup_registrar(CID) ->
 init([Port, Opts]) ->
     {ok, Socket} = gen_udp:open(Port, [binary, {active, once}] ++ Opts),
     true = ets:new(?TAB, [named_table, protected, set]),
-    {ok, #state{ monitored = gb_trees:new(),
+    {ok, #state{ monitored = gb_trees:empty(),
 		 listen_queue = closed,
 		 socket = Socket }}.
 
@@ -178,10 +184,10 @@ handle_call({listen, QLen}, _From, #state { listen_queue = closed } = S) ->
     {reply, ok, S#state { listen_queue = new_accept_queue(QLen) }};
 handle_call({listen, _QLen}, _From, #state { listen_queue = #accept_queue{} } = S) ->
     {reply, {error, ealreadylistening}, S};
-handle_call({reg_proc, Proc, CID}, _From, State) ->
+handle_call({reg_proc, Proc, CID}, _From, #state { monitored = Monitored } = State) ->
     true = ets:insert(?TAB, {CID, Proc}),
     Ref = erlang:monitor(process, Proc),
-    {reply, ok, State#state { monitored = gb_trees:insert(Ref, CID) }};
+    {reply, ok, State#state { monitored = gb_trees:enter(Ref, CID, Monitored) }};
 handle_call(get_socket, _From, S) ->
     {reply, {ok, S#state.socket}, S};
 handle_call(_Request, _From, State) ->
@@ -215,7 +221,7 @@ handle_info({udp, _Socket, IP, Port, Datagram},
     inet:setopts(Socket, [{active, once}]),
     {noreply, S};
 handle_info({'DOWN', Ref, process, _Pid, _Reason}, #state { monitored = MM } = S) ->
-    CID = gb_trees:fetch(Ref, MM),
+    CID = gb_trees:get(Ref, MM),
     true = ets:delete(?TAB, CID),
     {noreply, S#state { monitored = gb_trees:delete(Ref, MM)}};
 handle_info(_Info, State) ->

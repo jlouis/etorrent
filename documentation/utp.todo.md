@@ -1,8 +1,15 @@
 ### "Real" TODO:
 
-* Implement the zero_window timing handling, it is easy
+* Dialyzer run
+* Try to spawn code, make a connection. Get the connection code to work.
+* Try to transfer data on the UTP socket, don't close the socket again.
+* Write code for socket teardown.
+* Test closing the socket as well.
 
-* Window Size incoming
+
+* Handle outgoing timestamping
+* Timers, retransmits, acks
+* Window Size incoming (SKIP THIS FOR NOW, we can just use the incoming advertised window)
   * Study this.
   * Window is changed in the selective ack code
   * max_window is our maximal window, which can be manipulated
@@ -15,8 +22,6 @@
   * max_window_user is the other ends max_window (call it max_window_peer)
     It is *essentially* what we get from the other end!
 
-* Handle outgoing timestamping
-* Timers, retransmits, zero window, acks
 * Timestamp handling
 * Close down
 * Timeout close down
