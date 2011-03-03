@@ -17,13 +17,22 @@
 -include("log.hrl").
 
 %% API
--export([start_link/7, choke/1, unchoke/1, have/2, initialize/2,
-        incoming_msg/2, stop/1]).
+-export([start_link/7,
+        choke/1,
+        unchoke/1,
+        have/2,
+        initialize/2,
+        incoming_msg/2,
+        stop/1]).
 
 %% gen_server callbacks
--export([init/1, handle_call/3, handle_cast/2, handle_info/2,
-         terminate/2, code_change/3]).
--export([format_status/2]).
+-export([init/1,
+         handle_call/3,
+         handle_cast/2,
+         handle_info/2,
+         terminate/2,
+         code_change/3,
+         format_status/2]).
 
 -type pieceset() :: etorrent_pieceset:pieceset().
 
