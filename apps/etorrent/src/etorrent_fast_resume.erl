@@ -101,7 +101,15 @@ upgrade1(St) ->
 init([]) ->
     %% TODO - check for errors when opening the dets table
     Statefile  = etorrent_config:fast_resume_file(),
-    {ok, Statetable} = dets:open_file(Statefile, []),
+    {ok, Statetable} = case dets:open_file(Statefile, []) of
+        {ok, Table} ->
+            {ok, Table};
+        %% An old spoolfile may have been created using ets:tab2file.
+        %% Removing it and reopening the dets table works in this case.
+        {error,{not_a_dets_file, _}} ->
+            file:delete(Statefile),
+            dets:open_file(Statefile, [])
+    end,
     InitState  = #state{table=Statetable},
     #state{interval=Interval} = InitState,
     _ = timer:apply_interval(Interval, ?MODULE, update, []),
