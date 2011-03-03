@@ -28,6 +28,13 @@
 	 update_last_recv_window/2
 	 ]).
 
+%% DEFINES
+%% ----------------------------------------------------------------------
+
+%% The default RecvBuf size: 200K
+-define(OPT_RECV_BUF, 200 * 1024).
+-define(ZERO_WINDOW_DELAY, 15*1000).
+
 %% TYPES
 %% ----------------------------------------------------------------------
 -record(pkt_info, {
@@ -61,7 +68,7 @@
 -record(pkt_wrap, {
 	  packet            :: utp_proto:packet(),
 	  transmissions = 0 :: integer(),
-	  need_resend = false :: integer()
+	  need_resend = false :: boolean()
 	 }).
 -type pkt() :: #pkt_wrap{}.
 
@@ -89,7 +96,7 @@
 		   %% Size of the outgoing buffer on the socket
 		   opt_snd_buf_sz   :: integer(),
 		   %% Same, for the recv buffer
-		   opt_recv_buf_sz  :: integer()
+		   opt_recv_buf_sz = ?OPT_RECV_BUF :: integer()
 
 		 }).
 -type buf() :: #pkt_buf{}.
@@ -105,13 +112,6 @@
 	      pkt/0,
 	      buf/0,
 	      quota/0]).
-
-%% DEFINES
-%% ----------------------------------------------------------------------
-
-%% The default RecvBuf size: 200K
--define(OPT_RCVBUF, 200 * 1024).
--define(ZERO_WINDOW_DELAY, 15*1000).
 
 %% API
 %% ----------------------------------------------------------------------
@@ -410,7 +410,7 @@ mk_pkt(Bin, WinSz, SeqNo, AckNo) ->
 	%% Will fill in the remaining entries later
 	packet = #packet {
 	  ty = st_data,
-	  conn_id = none,
+	  conn_id = undefined,
 	  win_sz = WinSz,
 	  seq_no = SeqNo,
 	  ack_no = AckNo,
@@ -432,7 +432,7 @@ receive_window(#pkt_buf {
 		  recv_buf = Q,
 		  opt_recv_buf_sz = Sz
 		 }) ->
-    BufSize = [byte_size(Payload) || Payload <- queue:to_list(Q)],
+    BufSize = lists:sum([byte_size(Payload) || Payload <- queue:to_list(Q)]),
     if Sz > BufSize -> Sz - BufSize;
 	true -> 0
     end.
