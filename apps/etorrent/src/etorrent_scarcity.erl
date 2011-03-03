@@ -98,7 +98,8 @@ increment(Index, Scarcity) ->
 
 
 %% @doc
-%%
+%% Decrement the number of peers providing a piece by one and
+%% reprioritize the pieces in the scarcity list.
 %% @end
 -spec decrement(pos_integer(), #scarcity{}) -> scarcity().
 decrement(Index, Scarcity) ->
@@ -116,7 +117,8 @@ decrement(Index, Scarcity) ->
 
 
 %% @doc
-%%
+%% Return an iterator that tranverses the pieces in the scarcity
+%% list in the same order as the list returned by :to_list/1.
 %% @end
 -spec iterator(#scarcity{}) -> term().
 iterator(Scarcity) ->
@@ -125,9 +127,10 @@ iterator(Scarcity) ->
 
 
 %% @doc
-%%
+%% Return the head and tail of an iterator. If the end of the
+%% iterator has been reached none is returned.
 %% @end
--spec next(term()) -> pos_integer().
+-spec next(term()) -> none | {pos_integer(), term()}.
 next(Iterator) ->
     case gb_sets:next(Iterator) of
         none ->
@@ -138,7 +141,7 @@ next(Iterator) ->
 
 
 %% @doc  
-%%
+%% Ensure that a piece is a member of the scarcity list.
 %% @end
 -spec assert_member(pos_integer(), array()) -> ok.
 assert_member(Index, Counters) ->
@@ -151,7 +154,7 @@ assert_member(Index, Counters) ->
 
 
 %% @doc
-%%
+%% Ensure that a piece is not a member of the scarcity list.
 %% @end
 -spec assert_not_member(pos_integer(), array()) -> ok.
 assert_not_member(Index, Counters) ->
@@ -164,7 +167,7 @@ assert_not_member(Index, Counters) ->
 
 
 %% @doc
-%%
+%% Ensure that a piece index is not negative, it really shouldn't be.
 %% @end
 -spec assert_positive(pos_integer()) -> ok.
 assert_positive(Integer) ->
