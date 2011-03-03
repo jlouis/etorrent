@@ -438,7 +438,7 @@ handle_call({mark_stored, Pid, Index, Offset, Length}, _, State) ->
     %% Check if all chunks in this piece has been written to disk now.
     NewStored = case etorrent_chunkset:size(NewChunks) of
         0 ->
-            ok = etorrent_t_control:piece_stored(TorrentPid, Index),
+            ok = etorrent_torrent_ctl:piece_stored(TorrentPid, Index),
             etorrent_pieceset:insert(Index, Stored);
         _ ->
             Stored

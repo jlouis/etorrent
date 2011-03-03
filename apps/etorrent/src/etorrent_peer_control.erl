@@ -246,7 +246,7 @@ handle_message(choke, State) ->
     #state{
         torrent_id=TorrentID,
         fast_extension=FastEnabled} = State,
-    ok = etorrent_rate_mgr:choke(TorrentID, self()),
+    ok = etorrent_peer_states:set_choke(TorrentID, self()),
     ok = etorrent_chunk_mgr:mark_all_dropped(TorrentID),
     NewState = case FastEnabled of
         true ->
