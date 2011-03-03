@@ -27,40 +27,36 @@
 
 -type pieceset() :: etorrent_pieceset:pieceset().
 
--record(state, { remote_peer_id = none,
-                 local_peer_id = none,
-                 info_hash = none,
+-record(state, {
+    remote_peer_id = none,
+    local_peer_id = none,
+    info_hash = none,
 
-		 %% Peer support extended messages
-		 extended_messaging = false   :: boolean(),
-		 %% Peer uses fast extension
-                 fast_extension = false       :: boolean(),
-		 %% How many pieces are there left before the peer
-		 %% has every pieces?
-                 pieces_left                  :: integer(),
-                 seeder = false               :: boolean(),
-                 socket = none                :: gen_tcp:socket(),
+    %% Peer support extended messages
+    extended_messaging = false:: boolean(),
+    %% Peer uses fast extension
+    fast_extension = false :: boolean(),
+    %% How many pieces are there left before the peer
+    %% has every pieces?
+    pieces_left :: integer(),
+    seeder = false :: boolean(),
+    socket = none  :: none | gen_tcp:socket(),
 
-                 remote_choked = true         :: boolean(),
+    remote_choked = true :: boolean(),
+    local_interested = false :: boolean(),
+    remote_request_set = gb_sets:empty() :: gb_set(),
 
-                 local_interested = false     :: boolean(),
+    %% Keep two piecesets, the set of pieces that we have
+    %% validated, and the set of pieces that the peer has.
+    remote_pieces = unknown :: pieceset(),
+    local_pieces  = unknown :: pieceset(),
+    piece_request = [],
 
-                 remote_request_set = gb_sets:empty() :: gb_set(),
-
-                 %% Keep two piecesets, the set of pieces that we have
-                 %% validated, and the set of pieces that the peer has.
-                 remote_pieces = unknown :: pieceset(),
-                 local_pieces  = unknown :: pieceset(),
-
-                 piece_request = [],
-
-		 %% Are we in endgame mode?
-                 endgame = false              :: boolean(),
-
-                 send_pid                     :: pid(),
-
-                 rate                         :: etorrent_rate:rate(),
-                 torrent_id                   :: integer() }).
+    %% Are we in endgame mode?
+    endgame = false  :: boolean(),
+    send_pid :: pid(),
+    rate  :: etorrent_rate:rate(),
+    torrent_id :: integer()}).
 
 -define(DEFAULT_CHUNK_SIZE, 16384). % Default size for a chunk. All clients use this.
 -define(HIGH_WATERMARK, 30). % How many chunks to queue up to
