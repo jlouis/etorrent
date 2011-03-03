@@ -57,11 +57,11 @@ start(_Type, _Args) ->
 %% Consider if the profiling should be enabled.
 consider_profiling() ->
     case etorrent_config:profiling() of
-	{profiling, true} ->
+	    true ->
             eprof:start(),
             eprof:start_profiling([self()]);
-	{profiling, false} ->
-	    ignore
+	    false ->
+	        ignore
     end.
 
 %% @doc Output profile information

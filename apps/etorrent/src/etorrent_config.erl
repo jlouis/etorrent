@@ -103,7 +103,7 @@ webui() -> call(webui).
 %% start of the application. In the longer run, we should probably
 %% Push profiling to be a startup option on the top-level supervisor.
 -spec profiling() -> {atom(), boolean()}.
-profiling() -> (required(profiling))([]).
+profiling() -> element(2, (required(profiling))([])).
 
 -spec webui_port() -> pos_integer().
 webui_port() -> call(webui_port).
@@ -182,37 +182,33 @@ code_change(_OldVsn, State, _Extra) ->
 %% Search the configuation and if does not have a value, search the key
 required(Key) ->
     fun(Config) ->
-	    V = case proplists:get_value(Key, Config) of
+	    case proplists:get_value(Key, Config) of
 		    undefined ->
 			case application:get_env(etorrent, Key) of
-			    {ok, Value} -> Value;
-			    undefined -> undefined
+			    {ok, Value} -> {Key, Value};
+			    undefined -> {Key, undefined}
 			end;
 		    Value ->
-			Value
-		end,
-	    case V of
-		undefined -> undefined;
-		_Otherwise -> {Key, V}
-	    end
+			{Key, Value}
+		end
     end.
 
 optional(Key, Default) ->
     fun(Config) ->
-	    V = case proplists:get_value(Key, Config) of
+	    case proplists:get_value(Key, Config) of
 		    undefined ->
 			case application:get_env(etorrent, Key) of
 			    {ok, Value} ->
-				Value;
+				{Key, Value};
 			    undefined when is_function(Default) ->
-				Default(Config);
+				{_, Value} = Default(Config),
+                {Key, Value};
 			    undefined ->
-				Default
+				{Key, Default}
 			end;
 		    Value ->
-			Value
-		end,
-	    {Key, V}
+			{Key, Value}
+		end
     end.
 
 
