@@ -39,10 +39,12 @@ current_time_us() ->
 timediff(Ts, Last) ->
     Ts - Last. %% @todo this has to be a lot more clever than it currently is!
 
+-spec send_packet(packet(), timestamp(), term()) -> ok | {error, term()}.
 send_packet(Packet, LastTS, Socket) ->
     TS = current_time_us(),
-    Diff = timediff(TS,LastTS),
-    gen_udp:send(Socket, Packet, TS, Diff).
+    Diff = timediff(TS,LastTS), %% @todo is this correct at all?
+    Encoded = encode(Packet, Diff),
+    gen_udp:send(Socket, Encoded).
 
 -spec encode(packet(), timestamp()) -> binary().
 encode(#packet { ty = Type,
@@ -63,7 +65,7 @@ encode(#packet { ty = Type,
       ExtBin/binary,
       Payload/binary>>.
 
--spec decode(binary()) -> {packet(), timestamp(), timestamp()}.
+-spec decode(binary()) -> {packet(), timestamp(), timestamp(), timestamp()}.
 decode(Packet) ->
     TS = current_time_us(),
     case Packet of
