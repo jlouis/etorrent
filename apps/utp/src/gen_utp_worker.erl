@@ -444,6 +444,15 @@ connected(Msg, From, S) ->
 %%                   {stop, Reason, NewState}
 %% @end
 %%--------------------------------------------------------------------
+handle_event({timeout, TRef, zerowindow_timeout},
+	     SN, #state_connected {
+	      pkt_info = PKI
+	      } = State)
+  when SN == syn_sent; SN == connected; SN == connected_full; SN == fin_sent ->
+    PKI1 = utp_pkt:zerowindow_timeout(TRef, PKI),
+    {next_state, SN, State#state_connected { pkt_info = PKI1 }};
+handle_event({timeout, _TRef, zerowindow_timeout}, SN, State) ->
+    {next_state, SN, State}; % Ignore, stray zerowindow timeout
 handle_event(_Event, StateName, State) ->
     {next_state, StateName, State}.
 

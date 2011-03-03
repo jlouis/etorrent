@@ -14,7 +14,8 @@
 	 buffer_dequeue/1,
 	 buffer_putback/2,
 	 fill_window/5,
-	 rb_drained/1
+	 rb_drained/1,
+	 zerowindow_timeout/1
 	 ]).
 
 -ifdef(NOT_BOUND).
@@ -34,7 +35,7 @@
 	  eof_pkt :: 0..16#FFFF, % The packet with the EOF flag
 
 	  %% @todo: Consider renaming this to peer_advertised_window
-	  max_window_user :: integer(), % The maximal window size we have
+	  peer_adv_window :: integer(), % Called max_window_user in the libutp code
 
 	  %% The maximal size of packets.
 	  pkt_size :: integer(),
@@ -211,9 +212,9 @@ handle_fin(_, _, PKI) -> {[], PKI}.
 handle_window_size(0, PKI) ->
     TRef = erlang:send_after(?ZERO_WINDOW_DELAY, self(), zero_window_timeout),
     PKI#pkt_info { zero_window_timeout = {set, TRef},
-		   max_window_user = 0};
+		   peer_adv_window = 0};
 handle_window_size(WindowSize, PKI) ->
-    PKI#pkt_info { max_window_user = WindowSize }.
+    PKI#pkt_info { peer_adv_window = WindowSize }.
 
 update_send_buffer(AcksAhead, WindowStart, PB) ->
     {Acked, PB} = update_send_buffer1(AcksAhead, WindowStart, PB),
@@ -446,6 +447,10 @@ rb_drained(#pkt_buf {
        NewWin > LastWin -> ack_timer;
        true -> ok
     end.
+
+zerowindow_timeout(PKI = #pkt_info { peer_adv_window = 0 }) ->
+                   PKI   #pkt_info { peer_adv_window = packet_size(PKI) };
+zerowindow_timeout(PKI) -> PKI.
 
 -ifdef(NOT_BOUND).
 
