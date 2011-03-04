@@ -19,7 +19,7 @@
 -ignore_xref([{'start_link', 3}, {start, 1}, {initializing, 2},
 	      {started, 2}]).
 %% API
--export([start_link/3, completed/1, check_torrent/1]).
+-export([start_link/3, completed/1, check_torrent/1, piece_stored/2]).
 
 %% gen_fsm callbacks
 -export([init/1, handle_event/3, initializing/2, started/2,
@@ -54,6 +54,13 @@ check_torrent(Pid) ->
 -spec completed(pid()) -> ok.
 completed(Pid) ->
     gen_fsm:send_event(Pid, completed).
+
+%% @doc Notify the torrent that a piece has been downloaded.
+%% @end
+-spec piece_stored(pid(), pos_integer()) -> ok.
+piece_stored(Pid, PieceIndex) ->
+    gen_fsm:send_event(Pid, {piece_stored, PieceIndex}).
+
 
 %% ====================================================================
 

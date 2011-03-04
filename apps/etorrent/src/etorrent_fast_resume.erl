@@ -86,17 +86,6 @@ update() ->
 
 %% ==================================================================
 
-upgrade(1, St) ->
-    upgrade1(St).
-
-%% Upgrade from version 1
-upgrade1(St) ->
-    [{state, St},
-     {uploaded, 0},
-     {downloaded, 0}].
-
-%% ==================================================================
-
 %% @private
 init([]) ->
     %% TODO - check for errors when opening the dets table
@@ -115,6 +104,7 @@ init([]) ->
     _ = timer:apply_interval(Interval, ?MODULE, update, []),
     {ok, InitState}.
 
+%% @private
 handle_call({query_state, ID}, _From, State) ->
     #state{table=Table} = State,
     {value, Properties} = etorrent_table:get_torrent(ID),
@@ -139,15 +129,19 @@ handle_call(update, _, State) ->
     end || Props <- etorrent_table:all_torrents()],
     {reply, ok, State}.
 
+%% @private
 handle_cast(_, State) ->
     {noreply, State}.
 
+%% @private
 handle_info(_, State) ->
     {noreply, State}.
 
+%% @private
 terminate(_, _) ->
     ok.
 
+%% @private
 code_change(_, State, _) ->
     {ok, State}.
 
