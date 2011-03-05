@@ -8,9 +8,6 @@
 
 %%% @todo: Monitor peers and retry them. In general, we need peer management here.
 -module(etorrent_peer_mgr).
-
--include("types.hrl").
-
 -behaviour(gen_server).
 
 %% API
@@ -19,6 +16,11 @@
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
+
+-type peerinfo() :: etorrent_types:peerinfo().
+-type torrent_id() :: etorrent_types:torrent_id().
+-type ipaddr() :: etorrent_types:ipaddr().
+-type portnum() :: etorrent_types:portnum().
 
 -record(bad_peer, { ipport       :: {ipaddr(), portnum()} | '_',
                     offenses     :: integer()      | '_',

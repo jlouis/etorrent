@@ -6,11 +6,9 @@
 %% table access.</p>
 %% @end
 -module(etorrent_table).
-
--include("types.hrl").
+-behaviour(gen_server).
 -include("log.hrl").
 
--behaviour(gen_server).
 
 %% API
 %% Startup/init
@@ -31,6 +29,9 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3]).
 
+
+-type ipaddr() :: etorrent_types:ipaddr().
+-type portnum() :: etorrent_types:portnum().
 %% The path map tracks file system paths and maps them to integers.
 -record(path_map, {id :: {'_' | '$1' | non_neg_integer(), '_' | non_neg_integer()},
                    path :: string() | '_'}). % (IDX) File system path minus work dir

@@ -4,10 +4,7 @@
 %% the top of the supervisor tree for a torrent.</p>
 %% @end
 -module(etorrent_torrent_sup).
-
 -behaviour(supervisor).
-
--include("types.hrl").
 
 %% API
 -export([start_link/3, start_child_tracker/5]).
@@ -15,6 +12,11 @@
 %% Supervisor callbacks
 -export([init/1]).
 -ignore_xref([{'start_link', 3}]).
+
+-type bcode() :: etorrent_types:bcode().
+-type tier() :: etorrent_types:tier().
+
+
 %% =======================================================================
 
 %% @doc Start up the supervisor

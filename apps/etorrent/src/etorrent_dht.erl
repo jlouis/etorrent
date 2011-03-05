@@ -3,7 +3,6 @@
 %% @end
 -module(etorrent_dht).
 -behaviour(supervisor).
--include("types.hrl").
 -export([start_link/0,
          start_link/1,
          start_link/2,
@@ -15,6 +14,8 @@
          distance/2,
          find_self/0]).
 
+-type nodeinfo() :: etorrent_types:nodeinfo().
+-type nodeid() :: etorrent_types:nodeid().
 -spec integer_id(list(byte()) | binary()) -> nodeid().
 -spec list_id(nodeid()) -> list(byte()).
 -spec random_id() -> nodeid().

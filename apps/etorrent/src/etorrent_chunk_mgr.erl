@@ -47,7 +47,6 @@
 %%-------------------------------------------------------------------
 -module(etorrent_chunk_mgr).
 
--include("types.hrl").
 -include("log.hrl").
 
 -include_lib("stdlib/include/ms_transform.hrl").

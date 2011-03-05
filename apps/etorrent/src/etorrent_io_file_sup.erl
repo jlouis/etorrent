@@ -5,7 +5,6 @@
 %% @end
 -module(etorrent_io_file_sup).
 -behaviour(supervisor).
--include("types.hrl").
 
 %% Use a separate supervisor for files. This ensures that
 %% the directory server can assume that all files will be
@@ -13,6 +12,10 @@
 
 -export([start_link/3]).
 -export([init/1]).
+
+-type file_path() :: etorrent_types:file_path().
+-type torrent_id() :: etorrent_types:torrent_id().
+
 
 %% @doc Start the file pool supervisor
 %% @end
