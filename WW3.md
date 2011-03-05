@@ -62,7 +62,8 @@ communicate what values a function expects and returns. Maximizing the
 chances of dialyzer finding embarassing bugs is always a good thing.
 Function specifications should also be provided for internal functions.
 
-# Defining records
+# Records
+## Defining records
 
 Fields in record defenitions should be separated by line breaks. All fields
 in a record defenitions should include a type specification. Default values
@@ -73,7 +74,7 @@ Ommitting the default values in the defenition and assigning each field a value
 when creating a record saves readers from having to go back to the record
 defenition to find out what the final result is.
 
-# Matching on records
+## Matching on records
 
 Fields and variable bindings should be separated by line breaks when a record
 is used on the left side of the match operator. If only one or two fields are
@@ -85,7 +86,7 @@ matched a one-liner may be used.
 
         #state{info_hash=InfoHash, remote_pieces=Pieceset} = State,
 
-# Updating fields in a record
+## Updating fields in a record
 
 The same rules as matches on records apply.
 
@@ -96,18 +97,24 @@ The same rules as matches on records apply.
         NewState = State#state{info_hash=NewInfohash, remote_pieces=NewPieceset},
     
 
-# Records in function heads
+## Records in function heads
 
 Matches on records in function heads should be avoided if it's possible.
 In the case of gen_server state the first expression should be to unpack
 only the values in the state record that are necessary for the clause.
 
-# When to use records
+## When to use records
 
 A record should be used for all composite data types. For small and short
 lived groupings of values, such as returning two values from a function or
 gen_server calls use of records is discouraged. Use of other data structures
 where a record would have sufficied is discouraged.
+
+## Including records
+
+A record defenition should never be shared by two modules. To prevent cases of
+this from slipping through the cracks records should never be defined in header
+files.
 
 # Variable names
 
