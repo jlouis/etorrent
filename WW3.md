@@ -55,10 +55,6 @@ it easier to spot what has been modified when viewing the changes in a commit.
              unregister_chunk_server/1,
              lookup_chunk_server/1]).
 
-    
-
-
-
 # Function specifications
 
 All functions should be annotated with a type specification. This helps
@@ -130,6 +126,10 @@ Variable names should not be abbreviated more than necessary. Ensuring
 that lines don't get to long by using cryptic variable names is almost
 always the wrong way to adhere to the line length limit.
 
+__State__ over __S__
+__Index__ over __Idx__
+__Infohash__ over __Hash__
+
 # Recursive functions
 
 Use of recursive functions where a list comprehension or a foldr would
@@ -163,7 +163,7 @@ Case expressions should not be nested if it isn't absolutely necessary.
 Assigning the result of a case expression and later matching on that
 is preferrable since it helps communicate the purpose of the case statement.
 
-# Saving lines of code
+# Do not be clever
 
 Saving lines of code by nesting expressions or being clever
 with formatting will make anyone who is reading your code have to second
@@ -230,3 +230,19 @@ be drawn from this isn't that unit tests are a waste of time to write.
 
 A unit test that is quick and dirty is always better than one that would have
 adhered to all of the rules if it was ever written.
+
+# Line lengths
+
+Lines should not exceed 80 characters. This limit is imposed because
+it is difficult to read *wide* code, therefore it makes sense to make
+exceptions to this rule if the alternative is more difficult to read.
+
+# Separating functions and function clauses
+
+ * Two blank lines should be used to separate function defenitions.
+ * One blank line should be used to separate function clauses.
+
+# Header files
+
+The use of header files is discouraged because it burdens the reader with
+having to keep multiple files in mind when reading a module.
