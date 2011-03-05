@@ -1,8 +1,15 @@
 -module(etorrent_scarcity).
-
--ifdef(TEST).
--include_lib("eunit/include/eunit.hrl").
--endif.
+%% @author Magnus Klaar <magnus.klaar@sgsstudentbostader.se>
+%% @doc A set of pieces ordered by scarcity
+%%
+%% This module implements a piece set that is ordered by the number of peers
+%% that provide a valid copy of the piece. This is implemented by inserting
+%% {NumPeers, PieceIndex} pairs into an ordered set.
+%%
+%% An array mapping piece indexes to the number of peers providing the piece
+%% is also maintained to ensure that we don't need to scan through the set
+%% for each update.
+%% @end
 
 -export([from_list/1,
          to_list/1,
@@ -180,6 +187,7 @@ assert_positive(Integer) ->
 
 
 -ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
 -define(mod, ?MODULE).
 
 new_all_unordered_test() ->
