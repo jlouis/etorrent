@@ -102,7 +102,7 @@ webui() -> call(webui).
 %% This function is calling directly, so it can be called outside the
 %% start of the application. In the longer run, we should probably
 %% Push profiling to be a startup option on the top-level supervisor.
--spec profiling() -> {atom(), boolean()}.
+-spec profiling() -> boolean().
 profiling() -> element(2, (required(profiling))([])).
 
 -spec webui_port() -> pos_integer().

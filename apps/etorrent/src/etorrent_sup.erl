@@ -24,7 +24,7 @@
 
 %% @doc Start the supervisor
 %% @end
--spec start_link([binary()]) ->
+-spec start_link(binary()) ->
 			{ok, pid()} | ignore | {error, term()}.
 start_link(PeerId) ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, [PeerId]).

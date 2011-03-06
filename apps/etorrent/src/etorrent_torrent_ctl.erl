@@ -59,6 +59,13 @@ piece_stored(Pid, Idx) ->
 completed(Pid) ->
     gen_fsm:send_event(Pid, completed).
 
+%% @doc Notify the torrent that a piece has been downloaded.
+%% @end
+-spec piece_stored(pid(), pos_integer()) -> ok.
+piece_stored(Pid, PieceIndex) ->
+    gen_fsm:send_event(Pid, {piece_stored, PieceIndex}).
+
+
 %% ====================================================================
 
 %% @private
