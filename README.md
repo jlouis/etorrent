@@ -162,6 +162,23 @@ a list of known problems:
    from `/usr/lib/erlang`. A way better fix is to install a recent
    Erlang/OTP yourself and use **Begone(tm)** on the supplied version.
 
+### Installing Erlang
+
+I (jlouis@) use the following commands to install Erlang:
+
+* Install *stow*, `sudo aptitude install stow`
+* Execute `sudo aptitude build-dep erlang` to pull in all build
+dependencies we need.
+* Execute `git clone git://github.com/erlang/otp.git`
+* Get into the directory and fire away `git checkout dev && ./otp_build autoconf`
+* `./configure --prefix=/usr/local/stow/otp-dev-$(date +%Y%m%d)`
+* `make; make docs`
+* `make install install-docs`
+
+And then I enable it in stow:
+
+    cd /usr/local/stow && stow otp-dev-$(date +%Y%m%d)
+
 ## QUESTIONS??
 
 You can either mail them to `jesper.louis.andersen@gmail.com` or you
