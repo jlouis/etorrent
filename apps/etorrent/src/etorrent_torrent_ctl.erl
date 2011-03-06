@@ -49,10 +49,6 @@ start_link(Id, {Torrent, TorrentFile, TorrentIH}, PeerId) ->
 check_torrent(Pid) ->
     gen_fsm:send_event(Pid, check_torrent).
 
-%% @doc Store a piece
-piece_stored(Pid, Idx) ->
-    gen_fsm:send_event(Pid, {piece_stored, Idx}).
-
 %% @doc Tell the controlled the torrent is complete
 %% @end
 -spec completed(pid()) -> ok.
