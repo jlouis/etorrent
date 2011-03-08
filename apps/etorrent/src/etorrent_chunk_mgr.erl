@@ -258,7 +258,7 @@ mark_all_dropped(TorrentID) ->
 %% @end
 -spec request_chunks(torrent_id(), pieceset(), pos_integer()) ->
     {ok, list({piece_index(), chunk_offset(), chunk_len()})}
-    | {error, not_interested | assigned}.
+    | {ok, not_interested | assigned}.
 request_chunks(TorrentID, Pieceset, Numchunks) ->
     ChunkSrv = lookup_chunk_server(TorrentID),
     call(ChunkSrv, {request_chunks, self(), Pieceset, Numchunks}).
@@ -366,9 +366,9 @@ handle_call({request_chunks, PeerPid, Peerset, Numchunks}, _, State) ->
 
     case PieceIndex of
         not_interested ->
-            {reply, {error, not_interested}, State};
+            {reply, {ok, not_interested}, State};
         assigned ->
-            {reply, {error, assigned}, State};
+            {reply, {ok, assigned}, State};
         Index ->
             Chunkset = array:get(Index, AssignedChunks),
             Chunks   = etorrent_chunkset:min(Chunkset, Numchunks),
@@ -568,7 +568,7 @@ not_interested_case() ->
     _ = initial_chunk_server(1),
     Has = etorrent_pieceset:from_list([], 3),
     Ret = ?chunk_server:request_chunks(1, Has, 1),
-    ?assertEqual({error, not_interested}, Ret).
+    ?assertEqual({ok, not_interested}, Ret).
 
 not_interested_valid_case() ->
     ID = 9,
@@ -576,7 +576,7 @@ not_interested_valid_case() ->
     true = ?chunk_server:register_peer(ID),
     Has = etorrent_pieceset:from_list([0], 3),
     Ret = ?chunk_server:request_chunks(ID, Has, 1),
-    ?assertEqual({error, not_interested}, Ret).
+    ?assertEqual({ok, not_interested}, Ret).
 
 request_one_case() ->
     _ = initial_chunk_server(2),
@@ -683,6 +683,6 @@ get_all_request_case() ->
     {ok, [{1, 1, 1}]} = ?chunk_server:request_chunks(14, Has, 1),
     {ok, [{2, 0, 1}]} = ?chunk_server:request_chunks(14, Has, 1),
     {ok, [{2, 1, 1}]} = ?chunk_server:request_chunks(14, Has, 1),
-    ?assertEqual({error, assigned}, ?chunk_server:request_chunks(14, Has, 1)).
+    ?assertEqual({ok, assigned}, ?chunk_server:request_chunks(14, Has, 1)).
 
 -endif.

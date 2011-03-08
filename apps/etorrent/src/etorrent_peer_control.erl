@@ -420,10 +420,10 @@ try_to_queue_up_pieces(State) ->
         N when is_integer(N) ->
             Numchunks = ?HIGH_WATERMARK - N,
             case etorrent_chunk_mgr:request_chunks(TorrentID, Pieceset, Numchunks) of
-                {error, not_interested} ->
+                {ok, not_interested} ->
                     statechange_interested(State, false),
                     {ok, State#state{local_interested=false}};
-                {error, assigned} ->
+                {ok, assigned} ->
                     {ok, State};
                 {ok, Chunks} ->
                     NewRequests = queue_items(SendPid, Chunks, OpenRequests),
