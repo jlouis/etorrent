@@ -221,7 +221,7 @@ mark_valid(TorrentID, PieceIndex) ->
 %% Mark a chunk as fetched but not written to file.
 %% @end
 -spec mark_fetched(torrent_id(), pos_integer(),
-                   pos_integer(), pos_integer()) -> {ok, list(pid())}.
+                   pos_integer(), pos_integer()) -> {ok, boolean()}.
 mark_fetched(TorrentID, Index, Offset, Length) ->
     ChunkSrv = lookup_chunk_server(TorrentID),
     call(ChunkSrv, {mark_fetched, self(), Index, Offset, Length}).
@@ -418,10 +418,9 @@ handle_call({mark_valid, _, Index}, _, State) ->
 
 handle_call({mark_fetched, _Pid, _Index, _Offset, _Length}, _, State) ->
     %% If we are in endgame mode, requests for a chunk may have been
-    %% sent to more than one peer. Return a list of other peers that
-    %% a request for this chunk has been sent to so that the caller
-    %% can send a cancel-message to all of them.
-    {reply, {ok, []}, State};
+    %% sent to more than one peer. Return a boolean indicating if the
+    %% peer was the first one to mark this chunk as fetched.
+    {reply, {ok, true}, State};
 
 handle_call({mark_stored, Pid, Index, Offset, Length}, _, State) ->
     %% The calling process has written this chunk to disk.
@@ -644,7 +643,7 @@ mark_fetched_noop_case() ->
     Pid = spawn_link(fun() ->
         true = ?chunk_server:register_peer(10),
         {ok, [{0, 0, 1}]} = ?chunk_server:request_chunks(10, Has, 1),
-        {ok, []} = ?chunk_server:mark_fetched(10, 0, 0, 1)
+        {ok, true} = ?chunk_server:mark_fetched(10, 0, 0, 1)
     end),
     _ = monitor(process, Pid),
     ok  = receive {'DOWN', _, process, Pid, _} -> ok end,
