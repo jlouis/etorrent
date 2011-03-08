@@ -12,10 +12,12 @@
 -export([start_link/1, start_link/2]).
 
 %% API (Use)
--export([connect/2, connect/3, close/1,
+-export([connect/2, connect/3,
+         close/1,
 	 send/2,
 	 recv/2, recv/3,
-	 listen/1, accept/0]).
+	 listen/0, listen/1,
+         accept/0]).
 
 %% Internally used API
 -export([register_process/2,
@@ -49,14 +51,12 @@
 %% Options is a proplist of options, given in the spec.
 %% @end
 %% @todo Strengthen spec
--spec start_link(integer(), proplists:proplist()) ->
-			any().
+-spec start_link(integer(), proplists:proplist()) -> any().
 start_link(Port, Opts) ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [Port, Opts], []).
 
 %% @equiv start_link(Port, [])
--spec start_link(integer()) ->
-			any().
+-spec start_link(integer()) -> any().
 start_link(Port) ->
     start_link(Port, []).
 
@@ -108,6 +108,10 @@ close({utp_sock, Pid}) ->
 listen(QLen) ->
     call({listen, QLen}).
 
+%% @equiv listen(5)
+listen() ->
+    listen(5).
+
 %% @doc New unknown incoming packet
 incoming_new(#packet { ty = st_syn } = Packet, Addr, Port) ->
     %% SYN packet, so pass it in
@@ -154,7 +158,7 @@ reply(To, Msg) ->
 %%--------------------------------------------------------------------
 init([Port, Opts]) ->
     {ok, Socket} = gen_udp:open(Port, [binary, {active, once}] ++ Opts),
-    true = ets:new(?TAB, [named_table, protected, set]),
+    ets:new(?TAB, [named_table, protected, set]),
     {ok, #state{ monitored = gb_trees:empty(),
 		 listen_queue = closed,
 		 socket = Socket }}.

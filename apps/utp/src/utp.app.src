@@ -5,8 +5,8 @@
   {registered,
    [
    ]},
-  {applications, [kernel, stdlib, crypto]},
-  %% {mod, {etorrent_app, []}},
+  {applications, [kernel, stdlib, gproc]},
+  %% {mod, {utp_app, []}},
   {env, []}
  ]
 }.

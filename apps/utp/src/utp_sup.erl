@@ -3,7 +3,7 @@
 %%% @copyright (C) 2011, Jesper Louis andersen
 %%% @doc Supervisor for the gen_utp framework
 %%% @end
--module(gen_utp_sup).
+-module(utp_sup).
 
 -behaviour(supervisor).
 
@@ -39,7 +39,7 @@ start_link(Port) ->
 init([Port]) ->
     init([Port, []]);
 init([Port, Opts]) ->
-    RestartStrategy = all_for_one,
+    RestartStrategy = one_for_all,
     MaxRestarts = 10,
     MaxSecondsBetweenRestarts = 3600,
 
