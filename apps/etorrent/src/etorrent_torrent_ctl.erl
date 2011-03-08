@@ -19,7 +19,7 @@
 -ignore_xref([{'start_link', 3}, {start, 1}, {initializing, 2},
 	      {started, 2}]).
 %% API
--export([start_link/3, completed/1, check_torrent/1]).
+-export([start_link/3, completed/1, check_torrent/1, piece_stored/2]).
 
 %% gen_fsm callbacks
 -export([init/1, handle_event/3, initializing/2, started/2,
@@ -55,12 +55,18 @@ check_torrent(Pid) ->
 completed(Pid) ->
     gen_fsm:send_event(Pid, completed).
 
+%% @doc Notify the torrent that a piece has been downloaded.
+%% @end
+-spec piece_stored(pid(), pos_integer()) -> ok.
+piece_stored(Pid, PieceIndex) ->
+    gen_fsm:send_event(Pid, {piece_stored, PieceIndex}).
+
+
 %% ====================================================================
 
 %% @private
 init([Parent, Id, {Torrent, TorrentFile, TorrentIH}, PeerId]) ->
     etorrent_table:new_torrent(TorrentFile, TorrentIH, Parent, Id),
-    etorrent_chunk_mgr:new(Id),
     gproc:add_local_name({torrent, Id, control}),
     {ok, initializing, #state{id = Id,
                               torrent = Torrent,
@@ -135,7 +141,22 @@ started(check_torrent, S) ->
 started(completed, #state { id = Id, tracker_pid = TrackerPid } = S) ->
     etorrent_event:completed_torrent(Id),
     etorrent_tracker_communication:completed(TrackerPid),
-    {next_state, started, S}.
+    {next_state, started, S};
+
+started({piece_stored, Index}, State) ->
+    #state{id=TorrentID} = State,
+    %% @todo From etorrent_io:check_pieces
+    case etorrent_io:check_piece(TorrentID, Index) of
+        {ok, PieceSize} ->
+            ok = etorrent_torrent:statechange(TorrentID, [{subtract_left, PieceSize}]),
+            ok = etorrent_piece_mgr:statechange(TorrentID, Index, fetched),
+            Have = fun(Pid) -> etorrent_peer_control:have(Pid, Index) end,
+            _  = etorrent_table:foreach_peer(TorrentID, Have),
+            ok;
+        wrong_hash ->
+            ok = etorrent_piece_mgr:statechange(TorrentID, Index, not_fetched)
+    end,
+    {next_state, started, State}.
 
 %% @private
 handle_event(Msg, SN, S) ->
@@ -246,11 +267,11 @@ initialize_pieces_from_bitfield(Id, BitField, Hashes) ->
     L = length(Hashes),
     {ok, Set} = etorrent_proto_wire:decode_bitfield(L, BitField),
     F = fun (PN) ->
-                case gb_sets:is_element(PN, Set) of
-                    true -> fetched;
-                    false -> not_fetched
-                end
-        end,
+        case etorrent_pieceset:is_member(PN, Set) of
+            true -> fetched;
+            false -> not_fetched
+        end
+    end,
     Pieces = [{PN, Hash, dummy, F(PN)}
 	      || {PN, Hash} <- lists:zip(lists:seq(0, L - 1),
 					 Hashes)],

@@ -51,11 +51,14 @@
 -define(AWAIT_TIMEOUT, 10*1000).
 
 -export([start_link/2,
-	 allocate/1,
+	     allocate/1,
+         piece_size/2,
+         piece_sizes/1,
          read_piece/2,
-	 piece_size/2,
          read_chunk/4,
          write_chunk/4,
+         file_paths/1,
+         file_sizes/1,
          register_directory/1,
          lookup_directory/1,
          await_directory/1,
@@ -66,7 +69,7 @@
          await_open_file/2]).
 
 -export([check_piece/2,
-	 check_piece_completion/2]).
+         check_piece_completion/2]).
 
 -export([init/1,
          handle_call/3,
@@ -124,6 +127,15 @@ allocate(TorrentId, FilePath, BytesToWrite) ->
     ok = schedule_io_operation(TorrentId, FilePath),
     {ok, FilePid} = await_open_file(TorrentId, FilePath),
     ok = etorrent_io_file:allocate(FilePid, BytesToWrite).
+
+piece_sizes(Torrent) ->
+    PieceMap  = make_piece_map(Torrent),
+    AllPositions = array:sparse_to_orddict(PieceMap),
+    [begin
+        BlockLengths = [Length || {_, _, Length} <- Positions],
+        PieceLength  = lists:sum(BlockLengths),
+        {PieceIndex, PieceLength}
+    end || {PieceIndex, Positions} <- AllPositions].
 
 %% @doc
 %% Read a piece into memory from disc.
@@ -209,6 +221,30 @@ write_file_blocks(TorrentID, Chunk, [{Path, Offset, Length}|T]=L) ->
         ok ->
             write_file_blocks(TorrentID, Rest, T)
     end.
+
+file_path_len(T) ->
+    case etorrent_metainfo:get_files(T) of
+	[One] -> [One];
+	More when is_list(More) ->
+	    Name = etorrent_metainfo:get_name(T),
+	    [{filename:join([Name, Path]), Len} || {Path, Len} <- More]
+    end.
+
+%% @doc
+%% Return the relative paths of all files included in the .torrent.
+%% If the .torrent includes more than one file, the torrent name is
+%% prepended to all file paths.
+%% @end
+file_paths(Torrent) ->
+    [Path || {Path, _} <- file_path_len(Torrent)].
+
+%% @doc
+%% Returns the relative paths and sizes of all files included in the .torrent.
+%% If the .torrent includes more than one file, the torrent name is prepended
+%% to all file paths.
+%% @end
+file_sizes(Torrent) ->
+    file_path_len(Torrent).
 
 %% @doc
 %% Register the current process as the directory server for
