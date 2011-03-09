@@ -20,8 +20,8 @@
 
 %% api functions
 -export([start_link/2,
-         add_peer/1,
-         add_piece/2,
+         add_peer/2,
+         add_piece/3,
          get_order/2]).
 
 %% gen_server callbacks
@@ -76,18 +76,18 @@ start_link(TorrentID, NumPieces) ->
 
 %% @doc
 %% @end
--spec add_peer(torrent_id()) -> {ok, pieceset()}.
-add_peer(TorrentID) ->
+-spec add_peer(torrent_id(), pieceset()) -> ok.
+add_peer(TorrentID, Pieceset) ->
     SrvPid = lookup_scarcity_server(TorrentID),
-    gen_server:call(SrvPid, {add_peer, self()}).
+    gen_server:call(SrvPid, {add_peer, self(), Pieceset}).
 
 
 %% @doc
 %% @end
--spec add_piece(torrent_id(), pos_integer()) -> {ok, pieceset()}.
-add_piece(TorrentID, PieceIndex) ->
+-spec add_piece(torrent_id(), pos_integer(), pieceset()) -> ok.
+add_piece(TorrentID, Index, Pieceset) ->
     SrvPid = lookup_scarcity_server(TorrentID),
-    gen_server:call(SrvPid, {add_piece, self(), PieceIndex}).
+    gen_server:call(SrvPid, {add_piece, self(), Index, Pieceset}).
 
 %% @doc
 %% @end
@@ -109,24 +109,21 @@ init([TorrentID, NumPieces]) ->
 
 
 %% @private
-handle_call({add_peer, PeerPid}, _, State) ->
+handle_call({add_peer, PeerPid, Pieceset}, _, State) ->
     #state{num_pieces=NumPieces, peer_monitors=Monitors} = State,
-    Pieceset = etorrent_pieceset:new(NumPieces),
     NewMonitors = etorrent_monitorset:insert(PeerPid, Pieceset, Monitors),
     NewState = State#state{peer_monitors=NewMonitors},
-    {reply, {ok, Pieceset}, NewState};
+    {reply, ok, NewState};
 
-handle_call({add_piece, Pid, PieceIndex}, _, State) ->
+handle_call({add_piece, Pid, PieceIndex, Pieceset}, _, State) ->
     #state{peer_monitors=Monitors, num_peers=Numpeers} = State,
     Prev = array:get(PieceIndex, Numpeers),
     NewNumpeers = array:set(PieceIndex, Prev + 1, Numpeers),
-    Pieceset = etorrent_monitorset:fetch(Pid, Monitors),
-    NewPieceset = etorrent_pieceset:insert(PieceIndex, Pieceset),
-    NewMonitors = etorrent_monitorset:update(Pid, NewPieceset, Monitors),
+    NewMonitors = etorrent_monitorset:update(Pid, Pieceset, Monitors),
     NewState = State#state{
         peer_monitors=NewMonitors,
         num_peers=NewNumpeers},
-    {reply, {ok, NewPieceset}, NewState};
+    {reply, ok, NewState};
 
 handle_call({get_order, Pieceset}, _, State) ->
     #state{num_peers=Numpeers} = State,
@@ -169,6 +166,9 @@ code_change(_, State, _) ->
 -define(scarcity, ?MODULE).
 -define(pieceset, etorrent_pieceset).
 
+pieces(Pieces) ->
+    ?pieceset:from_list(Pieces, 8).
+
 scarcity_server_test_() ->
     {setup,
         fun()  -> application:start(gproc) end,
@@ -192,26 +192,23 @@ server_registers_case() ->
 
 initial_ordering_case() ->
     {ok, _} = ?scarcity:start_link(2, 8),
-    Pieces  = ?pieceset:from_list([0,1,2,3,4,5,6,7], 8),
-    {ok, Order} = ?scarcity:get_order(2, Pieces),
+    {ok, Order} = ?scarcity:get_order(2, pieces([0,1,2,3,4,5,6,7])),
     ?assertEqual([0,1,2,3,4,5,6,7], Order).
 
 empty_ordering_case() ->
     {ok, _} = ?scarcity:start_link(3, 8),
-    Pieces  = ?pieceset:from_list([], 8),
-    {ok, Order} = ?scarcity:get_order(3, Pieces),
+    {ok, Order} = ?scarcity:get_order(3, pieces([])),
     ?assertEqual([], Order).
 
 init_pieceset_case() ->
     {ok, _} = ?scarcity:start_link(4, 8),
-    {ok, Set} = ?scarcity:add_peer(4),
-    ?assertEqual([], ?pieceset:to_list(Set)).
+    ?assertEqual(ok, ?scarcity:add_peer(4, pieces([]))).
 
 one_available_case() ->
     {ok, _} = ?scarcity:start_link(5, 8),
-    {ok, _} = ?scarcity:add_peer(5),
-    {ok, _} = ?scarcity:add_piece(5, 0),
-    Pieces  = ?pieceset:from_list([0,1,2,3,4,5,6,7], 8),
+    ok = ?scarcity:add_peer(5, pieces([])),
+    ?assertEqual(ok, ?scarcity:add_piece(5, 0, pieces([0]))),
+    Pieces  = pieces([0,1,2,3,4,5,6,7]),
     {ok, Order} = ?scarcity:get_order(5, Pieces),
     ?assertEqual([1,2,3,4,5,6,7,0], Order).
 
@@ -219,15 +216,15 @@ decrement_on_exit_case() ->
     {ok, _} = ?scarcity:start_link(6, 8),
     Main = self(),
     Pid = spawn_link(fun() ->
-        {ok, _} = ?scarcity:add_peer(6),
-        {ok, _} = ?scarcity:add_piece(6, 0),
-        {ok, _} = ?scarcity:add_piece(6, 2),
+        ok = ?scarcity:add_peer(6, pieces([])),
+        ok = ?scarcity:add_piece(6, 0, pieces([0])),
+        ok = ?scarcity:add_piece(6, 2, pieces([0,2])),
         Main ! done,
         receive die -> ok end
     end),
     receive done -> ok end,
     Pieces  = ?pieceset:from_list([0,1,2,3,4,5,6,7], 8),
-    {ok, O1} = ?scarcity:get_order(6, Pieces),
+    {ok, O1} = ?scarcity:get_order(6, pieces([0,1,2,3,4,5,6,7])),
     ?assertEqual([1,3,4,5,6,7,0,2], O1),
     Ref = monitor(process, Pid),
     Pid ! die,
