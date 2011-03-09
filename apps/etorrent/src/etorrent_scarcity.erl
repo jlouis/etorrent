@@ -103,7 +103,7 @@ init([TorrentID, NumPieces]) ->
     InitState = #state{
         torrent_id=TorrentID,
         num_pieces=NumPieces,
-        num_peers=array:new(),
+        num_peers=array:new([{default, 0}]),
         peer_monitors=etorrent_monitorset:new()},
     {ok, InitState}.
 
@@ -118,10 +118,11 @@ handle_call({add_peer, PeerPid}, _, State) ->
 
 handle_call({add_piece, Pid, PieceIndex}, _, State) ->
     #state{peer_monitors=Monitors, num_peers=Numpeers} = State,
-    NewNumpeers = etorrent_scarcity:increment(PieceIndex, Numpeers),
+    Prev = array:get(PieceIndex, Numpeers),
+    NewNumpeers = array:set(PieceIndex, Prev + 1, Numpeers),
     Pieceset = etorrent_monitorset:fetch(Pid, Monitors),
     NewPieceset = etorrent_pieceset:insert(PieceIndex, Pieceset),
-    NewMonitors = etorrent_monitorset:insert(Pid, NewPieceset, Monitors),
+    NewMonitors = etorrent_monitorset:update(Pid, NewPieceset, Monitors),
     NewState = State#state{
         peer_monitors=NewMonitors,
         num_peers=NewNumpeers},
@@ -175,7 +176,9 @@ scarcity_server_test_() ->
         [?_test(register_case()),
          ?_test(server_registers_case()),
          ?_test(initial_ordering_case()),
-         ?_test(empty_ordering_case())]}.
+         ?_test(empty_ordering_case()),
+         ?_test(init_pieceset_case()),
+         ?_test(one_available_case())]}.
 
 register_case() ->
     true = ?scarcity:register_scarcity_server(0),
@@ -198,5 +201,17 @@ empty_ordering_case() ->
     {ok, Order} = ?scarcity:get_order(3, Pieces),
     ?assertEqual([], Order).
 
+init_pieceset_case() ->
+    {ok, _} = ?scarcity:start_link(4, 8),
+    {ok, Set} = ?scarcity:add_peer(4),
+    ?assertEqual([], ?pieceset:to_list(Set)).
+
+one_available_case() ->
+    {ok, _} = ?scarcity:start_link(5, 8),
+    {ok, _} = ?scarcity:add_peer(5),
+    {ok, _} = ?scarcity:add_piece(5, 0),
+    Pieces  = ?pieceset:from_list([0,1,2,3,4,5,6,7], 8),
+    {ok, Order} = ?scarcity:get_order(5, Pieces),
+    ?assertEqual([1,2,3,4,5,6,7,0], Order).
 
 -endif.
