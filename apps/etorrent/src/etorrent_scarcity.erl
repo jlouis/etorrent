@@ -178,7 +178,8 @@ scarcity_server_test_() ->
          ?_test(initial_ordering_case()),
          ?_test(empty_ordering_case()),
          ?_test(init_pieceset_case()),
-         ?_test(one_available_case())]}.
+         ?_test(one_available_case()),
+         ?_test(decrement_on_exit_case())]}.
 
 register_case() ->
     true = ?scarcity:register_scarcity_server(0),
@@ -213,5 +214,25 @@ one_available_case() ->
     Pieces  = ?pieceset:from_list([0,1,2,3,4,5,6,7], 8),
     {ok, Order} = ?scarcity:get_order(5, Pieces),
     ?assertEqual([1,2,3,4,5,6,7,0], Order).
+
+decrement_on_exit_case() ->
+    {ok, _} = ?scarcity:start_link(6, 8),
+    Main = self(),
+    Pid = spawn_link(fun() ->
+        {ok, _} = ?scarcity:add_peer(6),
+        {ok, _} = ?scarcity:add_piece(6, 0),
+        {ok, _} = ?scarcity:add_piece(6, 2),
+        Main ! done,
+        receive die -> ok end
+    end),
+    receive done -> ok end,
+    Pieces  = ?pieceset:from_list([0,1,2,3,4,5,6,7], 8),
+    {ok, O1} = ?scarcity:get_order(6, Pieces),
+    ?assertEqual([1,3,4,5,6,7,0,2], O1),
+    Ref = monitor(process, Pid),
+    Pid ! die,
+    receive {'DOWN', Ref, _, _, _} -> ok end,
+    {ok, O2} = ?scarcity:get_order(6, Pieces),
+    ?assertEqual([0,1,2,3,4,5,6,7], O2).
 
 -endif.
