@@ -1,15 +1,28 @@
 -module(etorrent_scarcity).
 -behaviour(gen_server).
 %% @author Magnus Klaar <magnus.klaar@sgsstudentbostader.se>
-%% @doc A set of pieces ordered by scarcity
+%% @doc A server to track how many peers provide each piece
 %%
-%% This module implements a piece set that is ordered by the number of peers
-%% that provide a valid copy of the piece. This is implemented by inserting
-%% {NumPeers, PieceIndex} pairs into an ordered set.
+%% The scarcity server associates a counter with each piece. When
+%% a peer comes online it registers it's prescence to the scarcity
+%% server. After the peer has registered it's precence it is responsible
+%% for keeping the scarcity server updated with additions to the
+%% set of pieces that it's providing, the peer is also expected to
+%% provide a copy of the updated piece set to the server.
 %%
-%% An array mapping piece indexes to the number of peers providing the piece
-%% is also maintained to ensure that we don't need to scan through the set
-%% for each update.
+%% The server is expected to increment the counter and reprioritize
+%% the set of pieces of a torrent when the scarcity changes. When a
+%% peer exits the server is responsible for decrementing the counter
+%% for each piece that was provided by the peerl.
+%%
+%% The purpose of the server is not to provide a mapping between
+%% peers and pieces to other processes.
+%%
+%% ## notes on implementation
+%% A complete piece set is provided on each update in order to reduce
+%% the amount of effort spent on keeping the two sets synced. This also
+%% reduces memory usage for torrents with more than 512 pieces due to
+%% the way piece sets are implemented (2011-03-09).
 %% @end
 
 
@@ -19,7 +32,7 @@
          await_scarcity_server/1]).
 
 %% api functions
--export([start_link/2,
+-export([start_link/1,
          add_peer/2,
          add_piece/3,
          get_order/2]).
@@ -39,26 +52,25 @@
 
 -record(state, {
     torrent_id :: torrent_id(),
-    num_pieces :: pos_integer(),
     num_peers  :: array(),
     peer_monitors :: monitorset()}).
 
 
-%% @doc
+%% @doc Register as the scarcity server for a torrent
 %% @end
 -spec register_scarcity_server(torrent_id()) -> true.
 register_scarcity_server(TorrentID) ->
     gproc:add_local_name({etorrent, TorrentID, scarcity}).
 
 
-%% @doc
+%% @doc Lookup the scarcity server for a torrent
 %% @end
 -spec lookup_scarcity_server(torrent_id()) -> pid().
 lookup_scarcity_server(TorrentID) ->
     gproc:lookup_local_name({etorrent, TorrentID, scarcity}).
 
 
-%% @doc
+%% @doc Wait for the scarcity server of a torrent to register
 %% @end
 -spec await_scarcity_server(torrent_id()) -> pid().
 await_scarcity_server(TorrentID) ->
@@ -67,14 +79,20 @@ await_scarcity_server(TorrentID) ->
     Pid.
 
 
-%% @doc
+%% @doc Start a scarcity server
+%% The server will always register itself as the scarcity
+%% server for the given torrent as soon as it has started.
 %% @end
--spec start_link(torrent_id(), pos_integer()) -> {ok, pid()}.
-start_link(TorrentID, NumPieces) ->
-    gen_server:start_link(?MODULE, [TorrentID, NumPieces], []).
+-spec start_link(torrent_id()) -> {ok, pid()}.
+start_link(TorrentID) ->
+    gen_server:start_link(?MODULE, [TorrentID], []).
 
 
-%% @doc
+%% @doc Register as a peer
+%% Calling this function will register the current process
+%% as a peer under the given torrent. The peer must provide
+%% an initial set of pieces to the server in order to relieve
+%% the server from handling peers crashing before providing one.
 %% @end
 -spec add_peer(torrent_id(), pieceset()) -> ok.
 add_peer(TorrentID, Pieceset) ->
@@ -82,14 +100,20 @@ add_peer(TorrentID, Pieceset) ->
     gen_server:call(SrvPid, {add_peer, self(), Pieceset}).
 
 
-%% @doc
+%% @doc Add this peer as the provider of a piece
+%% Add this peer as the provider of a piece and send an updated
+%% version of the piece set to the server.
 %% @end
 -spec add_piece(torrent_id(), pos_integer(), pieceset()) -> ok.
 add_piece(TorrentID, Index, Pieceset) ->
     SrvPid = lookup_scarcity_server(TorrentID),
     gen_server:call(SrvPid, {add_piece, self(), Index, Pieceset}).
 
-%% @doc
+
+%% @doc Get a list of pieces ordered by scarcity
+%% The returned list will only contain pieces that are also members
+%% of the piece set. If two pieces are equally scarce the piece index
+%% is used to rank the pieces.
 %% @end
 -spec get_order(torrent_id(), pieceset()) -> {ok, [pos_integer()]}.
 get_order(TorrentID, Pieceset) ->
@@ -98,11 +122,10 @@ get_order(TorrentID, Pieceset) ->
 
 
 %% @private
-init([TorrentID, NumPieces]) ->
+init([TorrentID]) ->
     register_scarcity_server(TorrentID),
     InitState = #state{
         torrent_id=TorrentID,
-        num_pieces=NumPieces,
         num_peers=array:new([{default, 0}]),
         peer_monitors=etorrent_monitorset:new()},
     {ok, InitState}.
@@ -110,9 +133,16 @@ init([TorrentID, NumPieces]) ->
 
 %% @private
 handle_call({add_peer, PeerPid, Pieceset}, _, State) ->
-    #state{num_pieces=NumPieces, peer_monitors=Monitors} = State,
+    #state{peer_monitors=Monitors, num_peers=Numpeers} = State,
+    Piecelist = etorrent_pieceset:to_list(Pieceset),
+    NewNumpeers = lists:foldl(fun(Index, Acc) ->
+        Prev = array:get(Index, Acc),
+        array:set(Index, Prev + 1, Acc)
+    end, Numpeers, Piecelist),
     NewMonitors = etorrent_monitorset:insert(PeerPid, Pieceset, Monitors),
-    NewState = State#state{peer_monitors=NewMonitors},
+    NewState = State#state{
+        peer_monitors=NewMonitors,
+        num_peers=NewNumpeers},
     {reply, ok, NewState};
 
 handle_call({add_piece, Pid, PieceIndex, Pieceset}, _, State) ->
@@ -137,6 +167,7 @@ handle_call({get_order, Pieceset}, _, State) ->
 handle_cast(_, State) ->
     {noreply, State}.
 
+
 %% @private
 handle_info({'DOWN', _, process, Pid, _}, State) ->
     #state{peer_monitors=Monitors, num_peers=Numpeers} = State,
@@ -153,13 +184,16 @@ handle_info({'DOWN', _, process, Pid, _}, State) ->
         num_peers=NewNumpeers},
     {noreply, NewState}.
 
+
 %% @private
 terminate(_, State) ->
     {ok, State}.
 
+
 %% @private
 code_change(_, State, _) ->
     {ok, State}.
+
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -187,25 +221,25 @@ register_case() ->
     ?assertEqual(self(), ?scarcity:await_scarcity_server(0)).
 
 server_registers_case() ->
-    {ok, Pid} = ?scarcity:start_link(1, 1),
+    {ok, Pid} = ?scarcity:start_link(1),
     ?assertEqual(Pid, ?scarcity:lookup_scarcity_server(1)).
 
 initial_ordering_case() ->
-    {ok, _} = ?scarcity:start_link(2, 8),
+    {ok, _} = ?scarcity:start_link(2),
     {ok, Order} = ?scarcity:get_order(2, pieces([0,1,2,3,4,5,6,7])),
     ?assertEqual([0,1,2,3,4,5,6,7], Order).
 
 empty_ordering_case() ->
-    {ok, _} = ?scarcity:start_link(3, 8),
+    {ok, _} = ?scarcity:start_link(3),
     {ok, Order} = ?scarcity:get_order(3, pieces([])),
     ?assertEqual([], Order).
 
 init_pieceset_case() ->
-    {ok, _} = ?scarcity:start_link(4, 8),
+    {ok, _} = ?scarcity:start_link(4),
     ?assertEqual(ok, ?scarcity:add_peer(4, pieces([]))).
 
 one_available_case() ->
-    {ok, _} = ?scarcity:start_link(5, 8),
+    {ok, _} = ?scarcity:start_link(5),
     ok = ?scarcity:add_peer(5, pieces([])),
     ?assertEqual(ok, ?scarcity:add_piece(5, 0, pieces([0]))),
     Pieces  = pieces([0,1,2,3,4,5,6,7]),
@@ -213,11 +247,10 @@ one_available_case() ->
     ?assertEqual([1,2,3,4,5,6,7,0], Order).
 
 decrement_on_exit_case() ->
-    {ok, _} = ?scarcity:start_link(6, 8),
+    {ok, _} = ?scarcity:start_link(6),
     Main = self(),
     Pid = spawn_link(fun() ->
-        ok = ?scarcity:add_peer(6, pieces([])),
-        ok = ?scarcity:add_piece(6, 0, pieces([0])),
+        ok = ?scarcity:add_peer(6, pieces([0])),
         ok = ?scarcity:add_piece(6, 2, pieces([0,2])),
         Main ! done,
         receive die -> ok end
