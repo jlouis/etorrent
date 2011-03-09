@@ -1,4 +1,5 @@
 -module(etorrent_scarcity).
+-behaviour(gen_server).
 %% @author Magnus Klaar <magnus.klaar@sgsstudentbostader.se>
 %% @doc A set of pieces ordered by scarcity
 %%
@@ -11,237 +12,191 @@
 %% for each update.
 %% @end
 
--export([from_list/1,
-         to_list/1,
-         insert/3,
-         delete/2,
-         increment/2,
-         decrement/2,
-         iterator/1,
-         next/1]).
 
--record(scarcity, {
-    counters :: array(),
-    ordering :: gb_set()}).
+%% gproc entries
+-export([register_scarcity_server/1,
+         lookup_scarcity_server/1,
+         await_scarcity_server/1]).
 
--opaque scarcity() :: #scarcity{}.
--export_type([scarcity/0]).
-    
+%% api functions
+-export([start_link/2,
+         add_peer/1,
+         add_piece/2,
+         get_order/2]).
 
-%% @doc
-%% Return an indexed scarcity list based on the input. The input
-%% must be list of piece indexes paired with the numberof peers
-%% currently provide a valid copy of the piece.
-%% @end
--spec from_list(list({pos_integer(), pos_integer()})) -> scarcity().
-from_list(ScarcityList) ->
-    [error(badarg) || {I,S} <- ScarcityList, (I < 0) or (S < 0)],
-    InitCounters = array:from_orddict(ScarcityList),
-    InitOrdering = gb_sets:from_list([{S,I} || {I,S} <- ScarcityList]),
-    #scarcity{counters=InitCounters, ordering=InitOrdering}.
+%% gen_server callbacks
+-export([init/1,
+         handle_call/3,
+         handle_cast/2,
+         handle_info/2,
+         terminate/2,
+         code_change/3]).
 
 
-%% @doc
-%% Returned a list of piece indexes ordered by how many peers are
-%% currently provide a valid copy of the piece. The returned list
-%% is sorted in increasing order.
-%% @end
--spec to_list(#scarcity{}) -> list(pos_integer()).
-to_list(Scarcity) ->
-    #scarcity{ordering=Ordering} = Scarcity,
-    [Index || {_, Index} <- gb_sets:to_list(Ordering)].
+-type torrent_id() :: etorrent_types:torrent_id().
+-type pieceset() :: etorrent_pieceset:pieceset().
+-type monitorset() :: etorrent_monitorset:monitorset().
+
+-record(state, {
+    torrent_id :: torrent_id(),
+    num_pieces :: pos_integer(),
+    num_peers  :: array(),
+    peer_monitors :: monitorset()}).
 
 
 %% @doc
-%% Insert a new piece with an initial number of providing peers into the
-%% scarcity list. The piece index must be larger than or equal to zero.
-%% It is up the calling process to check that the piece index is not higher
-%% than the number of pieces in the torrent.
 %% @end
--spec insert(pos_integer(), pos_integer(), #scarcity{}) -> scarcity().
-insert(Index, Count, Scarcity) ->
-    #scarcity{counters=Counters, ordering=Ordering} = Scarcity,
-    assert_not_member(Index, Counters),
-    assert_positive(Count),
-
-    NewCounters = array:set(Index, Count, Counters),
-    NewOrdering = gb_sets:insert({Count, Index}, Ordering),
-
-    #scarcity{counters=NewCounters, ordering=NewOrdering}.
+-spec register_scarcity_server(torrent_id()) -> true.
+register_scarcity_server(TorrentID) ->
+    gproc:add_local_name({etorrent, TorrentID, scarcity}).
 
 
 %% @doc
-%% Delete a piece from the scarcify. The piece must be a member of
-%% the scarcity list or the function will throw error(badarg).
 %% @end
--spec delete(pos_integer(), #scarcity{}) -> scarcity().
-delete(Index, Scarcity) ->
-    #scarcity{counters=Counters, ordering=Ordering} = Scarcity,
-    assert_member(Index, Counters),
-
-    Count = array:get(Index, Counters),
-    NewCounters = array:reset(Index, Counters),
-    NewOrdering = gb_sets:delete({Count, Index}, Ordering),
-
-    #scarcity{counters=NewCounters, ordering=NewOrdering}.
+-spec lookup_scarcity_server(torrent_id()) -> pid().
+lookup_scarcity_server(TorrentID) ->
+    gproc:lookup_local_name({etorrent, TorrentID, scarcity}).
 
 
 %% @doc
-%% Increment the number of peers providing a piece by one and
-%% reprioritize the pieces in the scarcity list.
 %% @end
--spec increment(pos_integer(), #scarcity{}) -> scarcity().
-increment(Index, Scarcity) ->
-    #scarcity{counters=Counters, ordering=Ordering} = Scarcity,
-    assert_member(Index, Counters),
-
-    Count    = array:get(Index, Counters),
-    NewCount = Count + 1,
-    NewCounters = array:set(Index, NewCount, Counters),
-    TmpOrdering = gb_sets:delete({Count, Index}, Ordering),
-    NewOrdering = gb_sets:insert({NewCount, Index}, TmpOrdering),
-
-    #scarcity{counters=NewCounters, ordering=NewOrdering}.
+-spec await_scarcity_server(torrent_id()) -> pid().
+await_scarcity_server(TorrentID) ->
+    Name = {etorrent, TorrentID, scarcity},
+    {Pid, undefined} = gproc:await({n, l, Name}, 5000),
+    Pid.
 
 
 %% @doc
-%% Decrement the number of peers providing a piece by one and
-%% reprioritize the pieces in the scarcity list.
 %% @end
--spec decrement(pos_integer(), #scarcity{}) -> scarcity().
-decrement(Index, Scarcity) ->
-    #scarcity{counters=Counters, ordering=Ordering} = Scarcity,
-    assert_member(Index, Counters),
-
-    Count    = array:get(Index, Counters),
-    NewCount = Count - 1,
-    assert_positive(NewCount),
-    NewCounters = array:set(Index, NewCount, Counters),
-    TmpOrdering = gb_sets:delete({Count, Index}, Ordering),
-    NewOrdering = gb_sets:insert({NewCount, Index}, TmpOrdering),
-
-    #scarcity{counters=NewCounters, ordering=NewOrdering}.
+-spec start_link(torrent_id(), pos_integer()) -> {ok, pid()}.
+start_link(TorrentID, NumPieces) ->
+    gen_server:start_link(?MODULE, [TorrentID, NumPieces], []).
 
 
 %% @doc
-%% Return an iterator that tranverses the pieces in the scarcity
-%% list in the same order as the list returned by :to_list/1.
 %% @end
--spec iterator(#scarcity{}) -> term().
-iterator(Scarcity) ->
-    #scarcity{ordering=Ordering} = Scarcity,
-    gb_sets:iterator(Ordering).
+-spec add_peer(torrent_id()) -> {ok, pieceset()}.
+add_peer(TorrentID) ->
+    SrvPid = lookup_scarcity_server(TorrentID),
+    gen_server:call(SrvPid, {add_peer, self()}).
 
 
 %% @doc
-%% Return the head and tail of an iterator. If the end of the
-%% iterator has been reached none is returned.
 %% @end
--spec next(term()) -> none | {pos_integer(), term()}.
-next(Iterator) ->
-    case gb_sets:next(Iterator) of
-        none ->
-            none;
-        {{_, Index}, NewIterator} ->
-            {Index, NewIterator}
-    end.
-
-
-%% @doc  
-%% Ensure that a piece is a member of the scarcity list.
-%% @end
--spec assert_member(pos_integer(), array()) -> ok.
-assert_member(Index, Counters) ->
-    case array:get(Index, Counters) of
-        undefined ->
-            error(badarg);
-        _  ->
-            ok
-    end.
-
+-spec add_piece(torrent_id(), pos_integer()) -> {ok, pieceset()}.
+add_piece(TorrentID, PieceIndex) ->
+    SrvPid = lookup_scarcity_server(TorrentID),
+    gen_server:call(SrvPid, {add_piece, self(), PieceIndex}).
 
 %% @doc
-%% Ensure that a piece is not a member of the scarcity list.
 %% @end
--spec assert_not_member(pos_integer(), array()) -> ok.
-assert_not_member(Index, Counters) ->
-    case array:get(Index, Counters) of
-        undefined ->
-            ok;
-        _ ->
-            error(badarg)
-    end.
+-spec get_order(torrent_id(), pieceset()) -> {ok, [pos_integer()]}.
+get_order(TorrentID, Pieceset) ->
+    SrvPid = lookup_scarcity_server(TorrentID),
+    gen_server:call(SrvPid, {get_order, Pieceset}).
 
 
-%% @doc
-%% Ensure that a piece index is not negative, it really shouldn't be.
-%% @end
--spec assert_positive(pos_integer()) -> ok.
-assert_positive(Integer) ->
-    case Integer < 0 of
-        false ->
-            ok;
-        true ->
-            error(badarg)
-    end.
+%% @private
+init([TorrentID, NumPieces]) ->
+    register_scarcity_server(TorrentID),
+    InitState = #state{
+        torrent_id=TorrentID,
+        num_pieces=NumPieces,
+        num_peers=array:new(),
+        peer_monitors=etorrent_monitorset:new()},
+    {ok, InitState}.
 
+
+%% @private
+handle_call({add_peer, PeerPid}, _, State) ->
+    #state{num_pieces=NumPieces, peer_monitors=Monitors} = State,
+    Pieceset = etorrent_pieceset:new(NumPieces),
+    NewMonitors = etorrent_monitorset:insert(PeerPid, Pieceset, Monitors),
+    NewState = State#state{peer_monitors=NewMonitors},
+    {reply, {ok, Pieceset}, NewState};
+
+handle_call({add_piece, Pid, PieceIndex}, _, State) ->
+    #state{peer_monitors=Monitors, num_peers=Numpeers} = State,
+    NewNumpeers = etorrent_scarcity:increment(PieceIndex, Numpeers),
+    Pieceset = etorrent_monitorset:fetch(Pid, Monitors),
+    NewPieceset = etorrent_pieceset:insert(PieceIndex, Pieceset),
+    NewMonitors = etorrent_monitorset:insert(Pid, NewPieceset, Monitors),
+    NewState = State#state{
+        peer_monitors=NewMonitors,
+        num_peers=NewNumpeers},
+    {reply, {ok, NewPieceset}, NewState};
+
+handle_call({get_order, Pieceset}, _, State) ->
+    #state{num_peers=Numpeers} = State,
+    Piecelist = lists:sort(fun(A, B) ->
+        array:get(A, Numpeers) =< array:get(B, Numpeers)
+    end, etorrent_pieceset:to_list(Pieceset)),
+    {reply, {ok, Piecelist}, State}.
+
+
+%% @private
+handle_cast(_, State) ->
+    {noreply, State}.
+
+%% @private
+handle_info({'DOWN', _, process, Pid, _}, State) ->
+    #state{peer_monitors=Monitors, num_peers=Numpeers} = State,
+    %% Decrement the counter for each piece that this peer provided.
+    Pieceset = etorrent_monitorset:fetch(Pid, Monitors),
+    Piecelist = etorrent_pieceset:to_list(Pieceset),
+    NewNumpeers = lists:foldl(fun(Index, Acc) ->
+        PrevCount = array:get(Index, Acc),
+        array:set(Index, PrevCount - 1, Acc)
+    end, Numpeers, Piecelist),
+    NewMonitors = etorrent_monitorset:delete(Pid, Monitors),
+    NewState = State#state{
+        peer_monitors=NewMonitors,
+        num_peers=NewNumpeers},
+    {noreply, NewState}.
+
+%% @private
+terminate(_, State) ->
+    {ok, State}.
+
+%% @private
+code_change(_, State, _) ->
+    {ok, State}.
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
--define(mod, ?MODULE).
+-define(scarcity, ?MODULE).
+-define(pieceset, etorrent_pieceset).
 
-new_all_unordered_test() ->
-    S0 = ?mod:from_list([{0,0},{1,0},{2,0}]),
-    ?assertEqual([0,1,2], ?mod:to_list(S0)).
+scarcity_server_test_() ->
+    {setup,
+        fun()  -> application:start(gproc) end,
+        fun(_) -> application:stop(gproc) end,
+        [?_test(register_case()),
+         ?_test(server_registers_case()),
+         ?_test(initial_ordering_case()),
+         ?_test(empty_ordering_case())]}.
 
-new_all_ordered_test() ->
-    S0 = ?mod:from_list([{0,0},{1,1},{2,2}]),
-    ?assertEqual([0,1,2], ?mod:to_list(S0)).
+register_case() ->
+    true = ?scarcity:register_scarcity_server(0),
+    ?assertEqual(self(), ?scarcity:lookup_scarcity_server(0)),
+    ?assertEqual(self(), ?scarcity:await_scarcity_server(0)).
 
-new_all_reversed_test() ->
-    S0 = ?mod:from_list([{0,2},{1,1},{2,0}]),
-    ?assertEqual([2,1,0], ?mod:to_list(S0)).
+server_registers_case() ->
+    {ok, Pid} = ?scarcity:start_link(1, 1),
+    ?assertEqual(Pid, ?scarcity:lookup_scarcity_server(1)).
 
-increment_test() ->
-    S0 = ?mod:from_list([{0,0}, {1,1}, {2,2}]),
-    S1 = ?mod:increment(0, S0),
-    S2 = ?mod:increment(0, S1),
-    S3 = ?mod:increment(0, S2),
-    S4 = ?mod:increment(0, S3),
-    ?assertEqual([1,2,0], ?mod:to_list(S4)).
+initial_ordering_case() ->
+    {ok, _} = ?scarcity:start_link(2, 8),
+    Pieces  = ?pieceset:from_list([0,1,2,3,4,5,6,7], 8),
+    {ok, Order} = ?scarcity:get_order(2, Pieces),
+    ?assertEqual([0,1,2,3,4,5,6,7], Order).
 
-decrement_test() ->
-    S0 = ?mod:from_list([{0,0}, {1,1}, {2,4}]),
-    S1 = ?mod:decrement(2, S0),
-    S2 = ?mod:decrement(2, S1),
-    S3 = ?mod:decrement(2, S2),
-    S4 = ?mod:decrement(2, S3),
-    ?assertEqual([2,0,1], ?mod:to_list(S4)).
+empty_ordering_case() ->
+    {ok, _} = ?scarcity:start_link(3, 8),
+    Pieces  = ?pieceset:from_list([], 8),
+    {ok, Order} = ?scarcity:get_order(3, Pieces),
+    ?assertEqual([], Order).
 
-delete_test() ->
-    S0 = ?mod:from_list([{0,0},{1,1},{2,2}]),
-    S1 = ?mod:delete(0, S0),
-    S2 = ?mod:delete(1, S0),
-    S3 = ?mod:delete(2, S0),
-    ?assertEqual([1,2], ?mod:to_list(S1)),
-    ?assertEqual([0,2], ?mod:to_list(S2)),
-    ?assertEqual([0,1], ?mod:to_list(S3)).
-
-delete_nonmember_test() ->
-    S0 = ?mod:from_list([{0,0},{2,2}]),
-    ?assertError(badarg, ?mod:delete(1, S0)).
-
-insert_member_test() ->
-    S0 = ?mod:from_list([{0,0},{1,1},{2,2}]),
-    ?assertError(badarg, ?mod:insert(1, 1, S0)).
-
-iterator_test() ->
-    S0 = ?mod:from_list([{0,0},{2,2}]),
-    I0 = ?mod:iterator(S0),
-    {E1,I1} = ?mod:next(I0),
-    {E2,I2} = ?mod:next(I1),
-    ?assertEqual(0, E1),
-    ?assertEqual(2, E2),
-    ?assertEqual(none, ?mod:next(I2)).
 
 -endif.
