@@ -13,7 +13,6 @@
 
 -behaviour(gen_server).
 
--include("types.hrl").
 -include("log.hrl").
 
 %% API

@@ -16,7 +16,6 @@
 %% their encoding.</p>
 -module(etorrent_bcoding).
 -author("Jesper Louis Andersen <jesper.louis.andersen@gmail.com>").
--include("types.hrl").
 -include("log.hrl").
 
 -ifdef(TEST).
@@ -32,6 +31,8 @@
 -export([get_value/2, get_value/3, get_info_value/2, get_info_value/3,
 	 get_binary_value/2, get_binary_value/3,
 	 get_string_value/2, get_string_value/3]).
+
+-type bcode() :: etorrent_types:bcode().
 
 %%====================================================================
 %% API

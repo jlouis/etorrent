@@ -12,7 +12,6 @@
 -module(etorrent_upnp_net).
 -behaviour(gen_server).
 
--include("types.hrl").
 -include("log.hrl").
 
 -ifdef(TEST).
@@ -103,7 +102,7 @@ description(Cat, Prop) ->
 %%      NT: upnp:event
 %%      TIMEOUT: Second-requested subscription duration'''
 %% @end
--spec subscribe(upnp_service()) -> {ok, string()} | {error, _Reason}.
+-spec subscribe(etorrent_types:upnp_service()) -> {ok, string()} | {error, _Reason}.
 subscribe(Service) ->
     {PubUrl, SubUrl} = build_sub_url(Service),
     case ibrowse:send_req(SubUrl, [{"TIMEOUT", "infinite"},
@@ -144,7 +143,7 @@ subscribe(Service) ->
 %%      HOST: publisher host:publisher port
 %%      SID: uuid:subscription UUID'''
 %% @end
--spec unsubscribe(upnp_service()) -> ok.
+-spec unsubscribe(etorrent_types:upnp_service()) -> ok.
 unsubscribe(Service) ->
     {_PubUrl, SubUrl} = build_sub_url(Service),
     ibrowse:send_req(SubUrl, [{"SID", "uuid:" ++ proplists:get_value(sid, Service)}],
@@ -153,7 +152,7 @@ unsubscribe(Service) ->
 
 %% @doc Add a port mapping to given UPnP service.
 %% @end
--spec add_port_mapping(upnp_service(), tcp | udp, integer()) ->
+-spec add_port_mapping(etorrent_types:upnp_service(), tcp | udp, integer()) ->
                         ok | {failed, integer(), string()} | {error, _Reason}.
 add_port_mapping(Service, Proto, Port) ->
     Args = [{"NewRemoteHost",       ""},
@@ -319,7 +318,9 @@ discover(ST) ->
 %% @doc Retrieve given UPnP device's detailed description and extract
 %%      devices and services info from it.
 %% @end
--spec recv_desc(upnp_device()) -> {ok, [upnp_device()], [upnp_service()]} | {error, _Reason}.
+-spec recv_desc(etorrent_types:upnp_device()) ->
+                       {ok, [etorrent_types:upnp_device()],
+                            [etorrent_types:upnp_service()]} | {error, _Reason}.
 recv_desc(D) ->
     Url = binary_to_list(proplists:get_value(loc, D)),
     {ok, Pid} = ibrowse:spawn_link_worker_process(Url),
@@ -349,14 +350,14 @@ recv_desc(D) ->
 %%      services and receives results and errors back. All communications
 %%      are sent as SOAP messages via HTTP.
 %% @end
--spec invoke_action(upnp_service(), string(), [{string(), string()}]) ->
+-spec invoke_action(etorrent_types:upnp_service(), string(), [{string(), string()}]) ->
                     ok | {failed, integer(), string()} | {error, _Reason}.
 invoke_action(Service, Action, Args) ->
     gen_server:call(?SERVER, {invoke_action, Service, Action, Args}, infinity).
 
 
 %% Construct publisher and subscriber Url for given sercvice.
--spec build_sub_url(upnp_service()) -> {string(), string()}.
+-spec build_sub_url(etorrent_types:upnp_service()) -> {string(), string()}.
 build_sub_url(Service) ->
     PubHost = lists:append([inet_parse:ntoa(proplists:get_value(local_addr, Service)),
                             ":", integer_to_list(etorrent_upnp_httpd:get_port())]),

@@ -7,7 +7,6 @@
 %% @end
 -module(etorrent_io_file).
 -behaviour(gen_server).
--include("types.hrl").
 -define(GC_TIMEOUT, 5000).
 
 
@@ -24,6 +23,13 @@
          handle_info/2,
          terminate/2,
          code_change/3]).
+
+
+-type torrent_id() :: etorrent_types:torrent_id().
+-type file_path() :: etorrent_types:file_path().
+-type block_len() :: etorrent_types:block_len().
+-type block_bin() :: etorrent_types:block_bin().
+-type block_offset() :: etorrent_types:block_offset().
 
 -record(state, {
     torrent :: torrent_id(),

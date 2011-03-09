@@ -5,10 +5,13 @@
 %% @end
 -module(etorrent_io_sup).
 -behaviour(supervisor).
--include("types.hrl").
 
 -export([start_link/2]).
 -export([init/1]).
+
+-type bcode() :: etorrent_types:bcode().
+-type torrent_id() :: etorrent_types:torrent_id().
+
 
 %% @doc Initiate the supervisor.
 %% <p>The arguments are the ID of the torrent and the

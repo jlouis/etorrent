@@ -11,7 +11,6 @@
 
 -behaviour(gen_server).
 -include("log.hrl").
--include("types.hrl").
 
 -ifdef(TEST).
 -include_lib("eqc/include/eqc.hrl").
@@ -26,6 +25,7 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
+-type tier() :: etorrent_types:tier().
 -record(state, {queued_message = none :: none | started,
                 %% The hard timer is the time we *must* wait on the tracker.
                 %% soft timer may be overridden if we want to change state.
