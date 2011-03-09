@@ -12,7 +12,8 @@
 
 	 enqueue_sender/3,
 	 enqueue_receiver/3,
-
+         putback_receiver/4,
+         dequeue_receiver/1,
 	 dequeue_packet/2,
 
 	 bytes_in_recv_buffer/1
@@ -30,6 +31,18 @@ mk() ->
 
 enqueue_receiver(From, Length, #proc_info { receiver_q = RQ } = PI) ->
     NQ = queue:in({receiver, From, Length, <<>>}, RQ),
+    PI#proc_info { receiver_q = NQ }.
+
+dequeue_receiver(#proc_info { receiver_q = RQ } = PI) ->
+    case queue:out(RQ) of
+        {{value, Item}, NQ} ->
+            {Item, PI#proc_info { receiver_q = NQ }};
+        {empty, _Q} ->
+            empty
+    end.
+
+putback_receiver(From, Length, Data, #proc_info { receiver_q = RQ} = PI) ->
+    NQ = queue:in_r({receiver, From, Length, Data}, RQ),
     PI#proc_info { receiver_q = NQ }.
 
 enqueue_sender(From, Data, #proc_info { sender_q = SQ } = PI) ->

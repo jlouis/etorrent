@@ -506,13 +506,13 @@ satisfy_buffer(From, Length, Res, Buffer) ->
     end.
 
 satisfy_recvs(Processes, Buffer) ->
-    case utp_process:dequeue_recv(Processes) of
+    case utp_process:dequeue_receiver(Processes) of
 	{ok, {receiver, Length, From, Res}, N_Processes} ->
 	    case satisfy_buffer(From, Length, Res, Buffer) of
 		{ok, N_Buffer} ->
 		    satisfy_recvs(N_Processes, N_Buffer);
 		{rb_drained, F, L, R, N_Buffer} ->
-		    {rb_drained, utp_process:putback_receiver(F, L, R), N_Buffer}
+		    {rb_drained, utp_process:putback_receiver(F, L, R, N_Processes), N_Buffer}
 	    end;
 	empty ->
 	    {ok, Processes, Buffer}

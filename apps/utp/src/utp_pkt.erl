@@ -15,7 +15,7 @@
 	 buffer_putback/2,
 	 fill_window/5,
 	 rb_drained/1,
-	 zerowindow_timeout/1
+	 zerowindow_timeout/2
 	 ]).
 
 -ifdef(NOT_BOUND).
@@ -126,9 +126,8 @@ mk_buf(OptRecv) ->
 	last_recv_window = OptRecv
        }.
 
-seqno(#packet { seq_no = S}) ->
-    S;
-seqno(#pkt_wrap { packet = #packet { seq_no = S} }) -> S.
+seqno(#pkt_wrap { packet = #packet { seq_no = S} }) ->
+    S.
 
 
 packet_size(_Socket) ->
@@ -236,7 +235,7 @@ consider_nagle(#pkt_buf { send_window_packets = 1,
 			  retransmission_queue = RQ,
 			  reorder_count = ReorderCount
 			  }) ->
-    {ok, PktW} = retransmit_q_find(SeqNo-1, RQ),
+    {value, PktW} = retransmit_q_find(SeqNo-1, RQ),
     case PktW#pkt_wrap.transmissions of
 	0 ->
 	    case ReorderCount of
@@ -317,7 +316,7 @@ fill_window(ConnId, SockInfo, ProcInfo, PktInfo, PktBuf) ->
 					       ProcInfo, [],
 					       PktInfo#pkt_info.pkt_size),
     {ok, PKB1, PktWrap} = mk_packets(Packets, PktInfo#pkt_info.pkt_size, PktBuf, []),
-    {ok, FilledPackets} = transmit_packets(PktWrap, PktInfo, SockInfo, ConnId, []),
+    FilledPackets = transmit_packets(PktWrap, PktInfo, SockInfo, ConnId, []),
     PKB2 = enqueue_packets(FilledPackets, PKB1),
     {ok, PKB2, ProcInfo1}.
 
@@ -348,7 +347,7 @@ packets_to_transmit(PacketSize,
 	    case Nagle of
 		none ->
 		    [{full, N - Inflight}];
-		{nagle, _TRef, Bin} ->
+		{nagle, Bin} ->
 		    [{partial, PacketSize - byte_size(Bin)}, {full, N - (Inflight + 1)}]
 	    end;
 	Inflight == N ->
@@ -392,13 +391,12 @@ mk_packets([{full, Bin} | Rest], PSz,
     mk_packets(Rest, PSz, PKB#pkt_buf { seq_no = SeqNo+1 }, [Pkt | Acc]);
 mk_packets([{nagle, Bin}], PSz,
  		 #pkt_buf { send_nagle = {nagle, NBin} } = PKB, Acc) ->
-     mk_packets([], PSz,
- 		     PKB#pkt_buf {
- 		       send_nagle = {nagle, <<NBin/binary, Bin/binary>>}}, Acc);
+    mk_packets([], PSz,
+               PKB#pkt_buf {
+                 send_nagle = {nagle, <<NBin/binary, Bin/binary>>}}, Acc);
 mk_packets([{nagle, Bin}], PSz,
  		 #pkt_buf { send_nagle = none } = PKB, Acc) ->
-     mk_packets([], PSz,
- 		     PKB#pkt_buf { send_nagle = {nagle, Bin}}, Acc).
+    mk_packets([], PSz, PKB#pkt_buf { send_nagle = {nagle, Bin}}, Acc).
 
 
 send_inflight(#pkt_buf { seq_no = SeqNo,
@@ -446,9 +444,15 @@ rb_drained(#pkt_buf {
        true -> ok
     end.
 
-zerowindow_timeout(PKI = #pkt_info { peer_adv_window = 0 }) ->
-                   PKI   #pkt_info { peer_adv_window = packet_size(PKI) };
-zerowindow_timeout(PKI) -> PKI.
+zerowindow_timeout(TRef, #pkt_info { peer_adv_window = 0,
+                                     zero_window_timeout = {set, TRef}} = PKI) ->
+                   PKI#pkt_info { peer_adv_window = packet_size(PKI),
+                                  zero_window_timeout = none };
+zerowindow_timeout(TRef,  #pkt_info { zero_window_timeout = {set, TRef}} = PKI) ->
+    PKI#pkt_info { zero_window_timeout = none };
+zerowindow_timeout(_TRef,  #pkt_info { zero_window_timeout = {set, _TRef1}} = PKI) ->
+    PKI.
+
 
 -ifdef(NOT_BOUND).
 
