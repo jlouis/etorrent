@@ -2,7 +2,6 @@
 %% @doc TODO
 %% @end
 -module(etorrent_dht_net).
--include("types.hrl").
 
 -ifdef(TEST).
 -include_lib("eqc/include/eqc.hrl").
@@ -55,6 +54,18 @@
          get_peers_search/2,
          announce/5,
          return/4]).
+
+-type nodeinfo() :: etorrent_types:nodeinfo().
+-type peerinfo() :: etorrent_types:peerinfo().
+-type trackerinfo() :: etorrent_types:trackerinfo().
+-type infohash() :: etorrent_types:infohash().
+-type token() :: etorrent_types:token().
+-type bdict() :: etorrent_types:bdict().
+-type dht_qtype() :: etorrent_types:dht_qtype().
+-type ipaddr() :: etorrent_types:ipaddr().
+-type nodeid() :: etorrent_types:nodeid().
+-type portnum() :: etorrent_types:portnum().
+-type transaction() :: etorrent_types:transaction().
 
 -spec node_port() -> portnum().
 -spec ping(ipaddr(), portnum()) -> pang | nodeid().

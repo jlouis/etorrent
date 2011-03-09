@@ -13,7 +13,6 @@
 -behaviour(gen_server).
 
 -include("etorrent_rate.hrl").
--include("types.hrl").
 -include("log.hrl").
 
 %% API

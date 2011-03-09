@@ -7,7 +7,6 @@
 
 -module(etorrent_upnp_proto).
 
--include("types.hrl").
 -include("log.hrl").
 -include_lib("xmerl/include/xmerl.hrl").
 
@@ -16,6 +15,7 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
+-define(UPNP_RD_NAME, <<"rootdevice">>). %% Literal name of UPnP root device
 
 %% API
 -export([parse_msearch_resp/1,
@@ -39,8 +39,8 @@
 %%      ST: search target
 %%      USN: advertisement UUID'''
 %% @end
--spec parse_msearch_resp(string()) -> {ok, device, upnp_device()}
-                                    | {ok, service, upnp_service()}
+-spec parse_msearch_resp(string()) -> {ok, device,  etorrent_types:upnp_device()}
+                                    | {ok, service, etorrent_types:upnp_service()}
                                     | {ok, uuid}
                                     | {error, _Reason}.
 parse_msearch_resp(Resp) ->
@@ -109,7 +109,8 @@ parse_msearch_resp(Resp) ->
 %%      </service>'''
 %% @end
 -spec parse_description(inet:ip_address(), string())
-        -> {ok, [upnp_device()], [upnp_service()]} | {error, _Reason}.
+        -> {ok, [etorrent_types:upnp_device()],
+                [etorrent_types:upnp_service()]} | {error, _Reason}.
 parse_description(LocalAddr, Desc) ->
     try
         {Xml, _} = xmerl_scan:string(Desc, [{space, normalize}]),
@@ -141,7 +142,7 @@ ll_parse_desc(LocalAddr, DS, {DAcc, SAcc}) ->
     end.
     
 
--spec parse_device_desc(inet:ip_address(), string()) -> upnp_device().
+-spec parse_device_desc(inet:ip_address(), string()) -> etorrent_types:upnp_device().
 parse_device_desc(LocalAddr, Desc) ->
     T = extract_xml_text(xmerl_xpath:string("deviceType/text()", Desc)),
     [_, _, _, Type|_] = re:split(T, ":", [{return, binary}]),
@@ -156,7 +157,8 @@ parse_device_desc(LocalAddr, Desc) ->
      proplists:property(local_addr,     LocalAddr)].
 
 
--spec parse_service_desc(inet:ip_address(), binary(), string()) -> upnp_service().
+-spec parse_service_desc(inet:ip_address(), binary(), string()) ->
+                                etorrent_types:upnp_service().
 parse_service_desc(LocalAddr, UUID, Desc) ->
     [T, SUrl, CUrl, EUrl] = [begin
         N = xmerl_xpath:string(U ++ "/text()", Desc),
@@ -190,7 +192,7 @@ parse_service_desc(LocalAddr, UUID, Desc) ->
 %%      </s:Body>
 %%      </s:Envelope>'''
 %% @end
--spec build_ctl_msg(upnp_service(), string(), [{string(), string()}]) -> string().
+-spec build_ctl_msg(etorrent_types:upnp_service(), string(), [{string(), string()}]) -> string().
 build_ctl_msg(S, Action, Args) ->
     %% Die, SOAP, die.
     MHdr = "<?xml version=\"1.0\"?>"
@@ -281,8 +283,8 @@ guess_sub_resp(Resp) ->
 %%          Other variable names and values (if any) go here.
 %%      </e:propertyset>
 %% @end
-%% @todo See the explanation in ``etorrent_upnp_httpd''. 
--spec parse_notify_msg(binary()) -> upnp_notify() | undefined.
+%% @todo See the explanation in ``etorrent_upnp_httpd''.
+-spec parse_notify_msg(binary()) -> etorrent_types:upnp_notify() | undefined.
 parse_notify_msg(_Msg) ->
     undefined.
 

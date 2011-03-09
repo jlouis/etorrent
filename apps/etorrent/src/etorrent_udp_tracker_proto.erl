@@ -10,7 +10,6 @@
 %% @end
 -module(etorrent_udp_tracker_proto).
 
--include("types.hrl").
 -include("log.hrl").
 
 -behaviour(gen_server).
@@ -29,6 +28,8 @@
 -define(SCRAPE, 2).
 -define(ERROR, 3).
 
+-type ipaddr() :: etorrent_types:ipaddr().
+-type portnum() :: etorrent_types:portnum().
 -type action() :: connect | announce | scrape | error.
 -type event() :: none | completed | started | stopped.
 -type announce_opt() :: {interval | leechers | seeders, pos_integer()}.

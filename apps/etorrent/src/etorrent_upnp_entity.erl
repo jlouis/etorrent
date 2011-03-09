@@ -5,7 +5,6 @@
 -module(etorrent_upnp_entity).
 -behaviour(gen_server).
 
--include("types.hrl").
 -include("log.hrl").
 
 -ifdef(TEST).
@@ -31,10 +30,11 @@
 
 
 -record(state, {cat     :: 'device' | 'service',
-                prop    :: upnp_device() | upnp_service()}).
+                prop    :: etorrent_types:upnp_device() |
+                           etorrent_types:upnp_service()}).
 
 -define(SERVER, ?MODULE).
-
+-define(UPNP_RD_NAME, <<"rootdevice">>). %% Literal name of UPnP root device
 
 %%===================================================================
 %% API
@@ -73,7 +73,7 @@ unsubscribe(Cat, Prop) ->
     
 
 %% @todo See explanation in ``etorrent_upnp_httpd''.
--spec notify(upnp_notify()) -> ok.
+-spec notify(etorrent_types:upnp_notify()) -> ok.
 notify(_Content) ->
     ok.
 
@@ -208,8 +208,9 @@ is_subscribed(Prop) ->
     Sid = proplists:get_value(sid, Prop),
     Sid =/= undefined.
 
--spec do_unsubscribe(device | service, upnp_device() | upnp_service()) ->
-                    upnp_device() | upnp_service().
+-spec do_unsubscribe(device | service,
+                     etorrent_types:upnp_device() | etorrent_types:upnp_service()) ->
+                    etorrent_types:upnp_device() | etorrent_types:upnp_service().
 do_unsubscribe(Cat, Prop) ->
     NewProp = case Cat of
         service ->

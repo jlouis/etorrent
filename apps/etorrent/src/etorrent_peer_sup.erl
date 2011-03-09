@@ -9,10 +9,7 @@
 %% it shouldn't really try to keep it around. We'll just try another.</p>
 %% @end
 -module(etorrent_peer_sup).
-
 -behaviour(supervisor).
-
--include("types.hrl").
 
 %% API
 -export([start_link/7]).
@@ -22,6 +19,11 @@
 
 -define(SERVER, ?MODULE).
 -ignore_xref([{'start_link', 6}]).
+
+-type ipaddr() :: etorrent_types:ipaddr().
+-type portnum() :: etorrent_types:portnum().
+-type capabilities() :: etorrent_types:capabilities().
+
 %% ====================================================================
 
 %% @doc Start the peer

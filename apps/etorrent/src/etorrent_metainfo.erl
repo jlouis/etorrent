@@ -9,8 +9,10 @@
 -module(etorrent_metainfo).
 -author("Jesper Louis Andersen <jesper.louis.andersen@gmail.com>").
 
+-type bcode() :: etorrent_types:bcode().
+-type tier() :: etorrent_types:tier().
+
 -include("log.hrl").
--include("types.hrl").
 
 -ifdef(TEST).
 -include_lib("eqc/include/eqc.hrl").

@@ -2,10 +2,7 @@
 %% @doc Supervise a pool of torrents.
 %% @end
 -module(etorrent_torrent_pool).
-
 -behaviour(supervisor).
-
--include("types.hrl").
 
 %% API
 -export([start_link/0, start_child/3, terminate_child/1]).
@@ -15,6 +12,8 @@
 
 -define(SERVER, ?MODULE).
 -ignore_xref([{'start_link', 0}]).
+
+-type bcode() :: etorrent_types:bcode().
 
 %% ====================================================================
 -spec start_link() -> {ok, pid()} | ignore | {error, term()}.

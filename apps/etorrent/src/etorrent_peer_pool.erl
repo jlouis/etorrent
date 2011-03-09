@@ -3,10 +3,7 @@
 %% <p>This module is a simple supervisor of Peers</p>
 %% @end
 -module(etorrent_peer_pool).
-
 -behaviour(supervisor).
-
--include("types.hrl").
 -include("log.hrl").
 
 %% API
@@ -16,6 +13,11 @@
 -export([init/1]).
 -ignore_xref([{'start_link', 1}]).
 -define(SERVER, ?MODULE).
+
+-type ipaddr() :: etorrent_types:ipaddr().
+-type portnum() :: etorrent_types:portnum().
+-type capabilities() :: etorrent_types:capabilities().
+
 
 %% ====================================================================
 

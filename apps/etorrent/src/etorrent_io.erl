@@ -42,7 +42,6 @@
 %% @end
 -module(etorrent_io).
 -behaviour(gen_server).
--include("types.hrl").
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -79,6 +78,16 @@
          code_change/3]).
 
 
+-type block_len() :: etorrent_types:block_len().
+-type block_offset() :: etorrent_types:block_offset().
+-type bcode() :: etorrent_types:bcode().
+-type piece_bin() :: etorrent_types:piece_bin().
+-type chunk_len() :: etorrent_types:chunk_len().
+-type chunk_offset() :: etorrent_types:chunk_offset().
+-type chunk_bin() :: etorrent_types:chunk_bin().
+-type piece_index() :: etorrent_types:piece_index().
+-type file_path() :: etorrent_types:file_path().
+-type torrent_id() :: etorrent_types:torrent_id().
 -type block_pos() :: {string(), block_offset(), block_len()}.
 
 -record(io_file, {

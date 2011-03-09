@@ -6,11 +6,9 @@
 %% table access.</p>
 %% @end
 -module(etorrent_table).
-
--include("types.hrl").
+-behaviour(gen_server).
 -include("log.hrl").
 
--behaviour(gen_server).
 
 %% API
 %% Startup/init
@@ -36,6 +34,9 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3]).
 
+
+-type ipaddr() :: etorrent_types:ipaddr().
+-type portnum() :: etorrent_types:portnum().
 %% The path map tracks file system paths and maps them to integers.
 -record(path_map, {id :: {'_' | '$1' | non_neg_integer(), '_' | non_neg_integer()},
                    path :: string() | '_'}). % (IDX) File system path minus work dir
@@ -248,7 +249,8 @@ foreach_peer_of_tracker(TrackerUrl, F) ->
 %% @doc Inserts a UPnP entity into its dedicated ETS table.
 %% @end
 -spec register_upnp_entity(pid(), device | service,
-                           upnp_device() | upnp_service()) -> true.
+                           etorrent_types:upnp_device() |
+                           etorrent_types:upnp_service()) -> true.
 register_upnp_entity(Pid, Cat, Entity) ->
     Id = etorrent_upnp_entity:id(Cat, Entity),
     add_monitor({upnp, Cat, Entity}, Pid),
@@ -257,7 +259,9 @@ register_upnp_entity(Pid, Cat, Entity) ->
 %% @doc Returns the pid that governs given UPnP entity.
 %% @end
 -spec lookup_upnp_entity(device | service,
-                         upnp_device() | upnp_service()) -> {ok, pid()} | {error, not_found}.
+                         etorrent_types:upnp_device() |
+                         etorrent_types:upnp_service()) ->
+                                {ok, pid()} | {error, not_found}.
 lookup_upnp_entity(Cat, Entity) ->
     case ets:lookup(?TAB_UPNP, etorrent_upnp_entity:id(Cat, Entity)) of
         [{_Id, Pid, _Cat, _Entity}] -> {ok, Pid};
@@ -267,7 +271,8 @@ lookup_upnp_entity(Cat, Entity) ->
 %% @doc Updates UPnP ETS table with information of given UPnP entity.
 %% @end
 -spec update_upnp_entity(pid(), device | service,
-                         upnp_device() | upnp_service()) -> true.
+                         etorrent_types:upnp_device() |
+                         etorrent_types:upnp_service()) -> true.
 update_upnp_entity(Pid, Cat, Entity) ->
     EntityId = etorrent_upnp_entity:id(Cat, Entity),
     true = ets:insert(?TAB_UPNP, {EntityId, Pid, Cat, Entity}).

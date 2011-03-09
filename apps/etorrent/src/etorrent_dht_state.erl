@@ -42,7 +42,6 @@
 %% @end
 -module(etorrent_dht_state).
 -behaviour(gen_server).
--include("types.hrl").
 -import(ordsets, [add_element/2, del_element/2, subtract/2]).
 -import(error_logger, [info_msg/2, error_msg/2]).
 -define(K, 8). 
@@ -70,6 +69,11 @@
          dump_state/1,
          dump_state/3,
          load_state/1]).
+
+-type ipaddr() :: etorrent_types:ipaddr().
+-type nodeid() :: etorrent_types:nodeid().
+-type portnum() :: etorrent_types:portnum().
+-type nodeinfo() :: etorrent_types:nodeinfo().
 
 -spec node_id() -> nodeid().
 -spec safe_insert_node(ipaddr(), portnum()) ->

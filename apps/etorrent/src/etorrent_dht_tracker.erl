@@ -3,7 +3,6 @@
 %% @end
 -module(etorrent_dht_tracker).
 -behaviour(gen_server).
--include("types.hrl").
 -define(dht_net, etorrent_dht_net).
 -define(dht_state, etorrent_dht_state).
 -export([start_link/0,
@@ -15,6 +14,13 @@
 
 -export([trigger_announce/0]).
 
+
+-type ipaddr() :: etorrent_types:ipaddr().
+-type peerinfo() :: etorrent_types:peerinfo().
+-type infohash() :: etorrent_types:infohash().
+-type portnum() :: etorrent_types:portnum().
+-type nodeinfo() :: etorrent_types:nodeinfo().
+
 -spec start_link(infohash(), integer()) -> {'ok', pid()}.
 -spec announce(pid()) -> 'ok'.
 -spec announce(infohash(), ipaddr(), portnum()) -> 'true'.
@@ -24,7 +30,7 @@
     infohash  :: infohash(),
     torrentid :: integer(),
     btport=0  :: portnum(),
-    interval=10*60*1000,
+    interval=10*60*1000 :: integer(),
     timer_ref :: reference(),
     nodes=[]  :: list(nodeinfo())}).
 

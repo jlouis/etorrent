@@ -48,7 +48,6 @@
 -module(etorrent_chunk_mgr).
 -behaviour(gen_server).
 
--include("types.hrl").
 -include("log.hrl").
 
 -include_lib("stdlib/include/ms_transform.hrl").

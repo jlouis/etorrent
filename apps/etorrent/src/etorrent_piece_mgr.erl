@@ -8,9 +8,7 @@
 -module(etorrent_piece_mgr).
 
 -include_lib("stdlib/include/qlc.hrl").
--include("types.hrl").
 
--behaviour(gen_server).
 
 %% API
 -export([start_link/0, decrease_missing_chunks/2, statechange/3,
@@ -24,6 +22,7 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
+-type torrent_id() :: etorrent_types:torrent_id().
 %% Individual pieces are represented via the piece record
 -record(piece, {idpn :: {torrent_id(), integer() | '$1' | '_' },
                 hash :: binary() | '_' ,
