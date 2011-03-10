@@ -81,6 +81,8 @@ handshake(Socket, PeerId) ->
 	    check_torrent_state(Socket, Caps, IP, Port, InfoHash, PeerId),
 	ok = handover_control(Socket, RecvPid, ControlPid)
     catch
+        error:{badmatch, {error, enotconn}} ->
+            ok;
 	throw:{error, _Reason} ->
 	    gen_tcp:close(Socket),
 	    ok;
