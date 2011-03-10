@@ -11,7 +11,6 @@
          current_time_us/0,
          current_time_ms/0,
 	 payload_size/1,
-	 send_packet/3,
 	 encode/2,
 	 decode/1]).
 
@@ -41,16 +40,6 @@ current_time_us() ->
 current_time_ms() ->
     {M, S, Micro} = os:timestamp(),
     (Micro / 1000) + S*1000 + M*1000000*1000.
-
-timediff(Ts, Last) ->
-    Ts - Last. %% @todo this has to be a lot more clever than it currently is!
-
--spec send_packet(packet(), timestamp(), term()) -> ok | {error, term()}.
-send_packet(Packet, LastTS, Socket) ->
-    TS = current_time_us(),
-    Diff = timediff(TS,LastTS), %% @todo is this correct at all?
-    Encoded = encode(Packet, Diff),
-    gen_udp:send(Socket, Encoded).
 
 -spec encode(packet(), timestamp()) -> binary().
 encode(#packet { ty = Type,

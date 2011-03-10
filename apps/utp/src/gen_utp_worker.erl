@@ -91,16 +91,7 @@
 	  packet_size :: integer(),
 	  port        :: 0..16#FFFF,
 	  socket      :: gen_udp:socket(),
-
-	  %% Stuff pertaining to the Packet Mgmt
-	  ack_no             :: integer(),
-	  cur_window         :: integer(),
-	  cur_window_packets :: integer(),
-	  fast_resend_seq_no :: integer(),
-	  max_send           :: integer(),
-	  max_window         :: integer(),
-	  max_window_user    :: integer(),
-	  retransmit_timeout :: integer()
+          timestamp_difference :: integer()
 	 }).
 
 %% STATE RECORDS
@@ -158,9 +149,11 @@ reply(To, Msg) ->
     gen_fsm:reply(To, Msg).
 
 send_pkt(#sock_info { socket = Socket,
-		  addr = Addr, port = Port }, Packet) ->
+                      addr = Addr,
+                      port = Port,
+                      timestamp_difference = TSDiff}, Packet) ->
     %% @todo Handle timestamping here!!
-    gen_udp:send(Socket, Addr, Port, utp_proto:encode(Packet, 0,0)).
+    gen_udp:send(Socket, Addr, Port, utp_proto:encode(Packet, TSDiff)).
 
 %%%===================================================================
 %%% gen_fsm callbacks
@@ -199,10 +192,7 @@ init([Socket, Addr, Port, Options]) ->
 			    port = Port,
 			    opts = Options,
 			    socket = Socket,
-			    retransmit_timeout = ?SYN_TIMEOUT,
-			    cur_window_packets = 0,
-			    fast_resend_seq_no = 1, % SeqNo
-			    max_window = utp_pkt:packet_size(Socket)
+                            timestamp_difference = 0 % @todo check this value
 			  },
     {ok, state_name, #state{ sock_info = SockInfo,
                              pkt_info  = PktInfo,
