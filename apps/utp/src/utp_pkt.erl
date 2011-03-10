@@ -62,8 +62,8 @@
 	  last_maxed_out_window :: integer()
 	 }).
 
--type t() :: #pkt_info{}.
 
+-type t() :: #pkt_info{}.
 
 -record(pkt_wrap, {
 	  packet            :: utp_proto:packet(),

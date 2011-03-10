@@ -100,47 +100,21 @@
 	  max_send           :: integer(),
 	  max_window         :: integer(),
 	  max_window_user    :: integer(),
-	  retransmit_timeout,
-
-
-	  %% General timing
-	  timing %% This is probably wrong, it belongs int he pkt_info structure
-	 }).
-
--record(timing, {
-	  ack_time,
-	  bytes_since_ack,
-	  last_got_packet,
-	  last_sent_packet,
-	  last_measured_delay,
-	  last_rwin_decay,
-	  last_send_quota
+	  retransmit_timeout :: integer()
 	 }).
 
 %% STATE RECORDS
 %% ----------------------------------------------------------------------
--record(state_idle, { sock_info :: #sock_info{},
-		      pkt_info  :: utp_pkt:t(),
-		      timeout   :: reference() }).
-
--record(state_syn_sent, { sock_info    :: #sock_info{},
-			  pkt_info     :: utp_pkt:t(),
-			  conn_id_send :: integer(),
-			  seq_no       :: integer(), % @todo probably need more here
-					          % Push into #conn{} state
-			  connector    :: {reference(), pid()},
-			  timeout      :: reference(),
-			  last_rcv_win :: integer
-			}).
-
--record(state_connected, { sock_info    :: #sock_info{},
-			   pkt_info     :: utp_pkt:t(),
-			   pkt_buf      :: utp_pkt:buf(),
-			   proc_info    :: utp_process:t(),
-			   conn_id_send :: integer(),
-			   seq_no       :: integer(),
-			   ack_no       :: integer(),
-			   timeout      :: reference() }).
+-record(state, { sock_info    :: #sock_info{},
+                 pkt_info     :: utp_pkt:t(),
+                 pkt_buf      :: utp_pkt:buf(),
+                 proc_info    :: utp_process:t(),
+                 last_rcv_win :: term(),
+                 conn_id_send :: integer(),
+                 seq_no       :: integer(),
+                 ack_no       :: integer(),
+                 connector    :: {reference(), pid()},
+                 timeout      :: reference() }).
 
 %%%===================================================================
 
@@ -213,14 +187,13 @@ init([Socket, Addr, Port, Options]) ->
 
     %% @todo All these are probably wrong. They have to be timers instead and set
     %%       in the future accordingly (ack_time, etc)
-    Timing = #timing {
-      ack_time = Current_Time + ?DEFAULT_ACK_TIME,
-      last_got_packet = Current_Time,
-      last_sent_packet = Current_Time,
-      last_measured_delay = Current_Time + ?DEFAULT_ACK_TIME,
-      last_rwin_decay = Current_Time - ?MAX_WINDOW_DECAY,
-      last_send_quota = Current_Time
-    },
+    Timing = {todo,
+              {ack_time, Current_Time + ?DEFAULT_ACK_TIME},
+              {last_got_packet, Current_Time},
+              {last_sent_packet, Current_Time},
+              {last_measured_delay, Current_Time + ?DEFAULT_ACK_TIME},
+              {last_rwin_decay, Current_Time - ?MAX_WINDOW_DECAY},
+              {last_send_quota, Current_Time}},
 
     PktInfo  = utp_pkt:mk(),
     SockInfo = #sock_info { addr = Addr,
@@ -230,12 +203,11 @@ init([Socket, Addr, Port, Options]) ->
 			    retransmit_timeout = ?SYN_TIMEOUT,
 			    cur_window_packets = 0,
 			    fast_resend_seq_no = 1, % SeqNo
-			    max_window = utp_pkt:packet_size(Socket),
-			    timing = Timing
+			    max_window = utp_pkt:packet_size(Socket)
 			  },
-    {ok, state_name, #state_idle{ sock_info = SockInfo,
-				  pkt_info  = PktInfo,
-				  timeout = TRef }}.
+    {ok, state_name, #state{ sock_info = SockInfo,
+                             pkt_info  = PktInfo,
+                             timeout = TRef }}.
 
 %% @private
 idle(close, S) ->
@@ -249,13 +221,13 @@ idle(Msg, S) ->
 syn_sent({pkt, #packet { ty = st_state,
 			 seq_no = PktSeqNo },
 	       _Timing},
-	 #state_syn_sent { sock_info = SockInfo,
+	 #state { sock_info = SockInfo,
 			   conn_id_send = Conn_id_send,
 			   seq_no = SeqNo,
 			   connector = From
 			 }) ->
     reply(From, ok),
-    {next_state, connected, #state_connected { sock_info = SockInfo,
+    {next_state, connected, #state { sock_info = SockInfo,
 					       conn_id_send = Conn_id_send,
 					       seq_no = SeqNo,
 					       ack_no = PktSeqNo }};
@@ -268,7 +240,7 @@ syn_sent(Msg, S) ->
 
 %% @private
 connected({pkt, Pkt, {_TS, _TSDiff, RecvTime}},
-	  #state_connected { pkt_info = PKI,
+	  #state { pkt_info = PKI,
 			     pkt_buf  = PB,
 			     proc_info = PRI
 			     } = S) ->
@@ -286,11 +258,11 @@ connected({pkt, Pkt, {_TS, _TSDiff, RecvTime}},
 			{PR, PB}
 		end,
 	    {next_state, connected,
-	     S#state_connected { pkt_info = N_PKI,
+	     S#state { pkt_info = N_PKI,
 				 pkt_buf = N_PB,
 				 proc_info = N_PRI }}
     end;
-connected(close, #state_connected { sock_info = SockInfo } = S) ->
+connected(close, #state { sock_info = SockInfo } = S) ->
     %% Close down connection!
     ok = utp_pkt:send_fin(SockInfo),
     {next_state, fin_sent, S};
@@ -300,7 +272,7 @@ connected(Msg, S) ->
     {next_state, connected, S}.
 
 %% @private
-connected_full(close, #state_connected { sock_info = SockInfo } = S) ->
+connected_full(close, #state { sock_info = SockInfo } = S) ->
     %% Close down connection!
     ok = utp_pkt:send_fin(SockInfo),
     {next_state, fin_sent, S};
@@ -365,7 +337,7 @@ destroy(Msg, S) ->
 %%                   {stop, Reason, Reply, NewState}
 %% @end
 %%--------------------------------------------------------------------
-idle(connect, From, #state_idle { sock_info = SockInfo,
+idle(connect, From, #state { sock_info = SockInfo,
 				  timeout = TRef }) ->
     Conn_id_recv = utp_proto:mk_connection_id(),
     gen_utp:register_process(self(), Conn_id_recv),
@@ -378,13 +350,13 @@ idle(connect, From, #state_idle { sock_info = SockInfo,
 			  extension = ?SYN_EXTS
 			}, % Rest are defaults
     ok = send(SockInfo, SynPacket),
-    {next_state, syn_sent, #state_syn_sent { sock_info = SockInfo,
-					     last_rcv_win = utp_pkt:rcv_window(),
-					     timeout = TRef,
-					     seq_no = 2,
-					     conn_id_send = Conn_id_send,
-					     connector = From }};
-idle({accept, SYN}, _From, #state_idle { sock_info = SockInfo }) ->
+    {next_state, syn_sent, #state { sock_info = SockInfo,
+                                    last_rcv_win = utp_pkt:rcv_window(),
+                                    timeout = TRef,
+                                    seq_no = 2,
+                                    conn_id_send = Conn_id_send,
+                                    connector = From }};
+idle({accept, SYN}, _From, #state { sock_info = SockInfo }) ->
     %% @todo timeout handling from the syn packet!
     Conn_id_recv = SYN#packet.conn_id + 1,
     gen_utp:register_process(self(), Conn_id_recv),
@@ -399,30 +371,30 @@ idle({accept, SYN}, _From, #state_idle { sock_info = SockInfo }) ->
 			  extension = ?SYN_EXTS
 			},
     ok = send(SockInfo, AckPacket),
-    {reply, ok, connected, #state_connected { sock_info = SockInfo,
+    {reply, ok, connected, #state { sock_info = SockInfo,
 					      seq_no = SeqNo + 1,
 					      ack_no = AckNo,
 					      conn_id_send = Conn_id_send }};
 idle(_Msg, _From, S) ->
     {reply, idle, {error, enotconn}, S}.
 
-connected({recv, Length}, From, #state_connected { proc_info = PI } = S) ->
+connected({recv, Length}, From, #state { proc_info = PI } = S) ->
     %% @todo Try to satisfy receivers
-    {next_state, connected, S#state_connected {
+    {next_state, connected, S#state {
 			   proc_info = utp_process:enqueue_receiver(From, Length, PI) }};
-connected({send, Data}, From, #state_connected {
+connected({send, Data}, From, #state {
 			  conn_id_send = ConnId,
 			  proc_info = PI,
 			  sock_info = SockInfo,
 			  pkt_info  = PKI,
 			  pkt_buf   = PKB } = S) ->
     ProcInfo = utp_process:enqueue_sender(From, Data, PI),
-    {ok, ProcInfo1, PKB1} = utp_pkt:fill_window(ConnId,
+    {ok, PKB1, ProcInfo1} = utp_pkt:fill_window(ConnId,
 						SockInfo,
 						ProcInfo,
 						PKI,
 						PKB),
-    {next_state, connected, S#state_connected {
+    {next_state, connected, S#state {
 			      proc_info = ProcInfo1,
 			      pkt_buf   = PKB1 }};
 connected(Msg, From, S) ->
@@ -445,12 +417,12 @@ connected(Msg, From, S) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_event({timeout, TRef, zerowindow_timeout},
-	     SN, #state_connected {
+	     SN, #state {
 	      pkt_info = PKI
 	      } = State)
   when SN == syn_sent; SN == connected; SN == connected_full; SN == fin_sent ->
     PKI1 = utp_pkt:zerowindow_timeout(TRef, PKI),
-    {next_state, SN, State#state_connected { pkt_info = PKI1 }};
+    {next_state, SN, State#state { pkt_info = PKI1 }};
 handle_event({timeout, _TRef, zerowindow_timeout}, SN, State) ->
     {next_state, SN, State}; % Ignore, stray zerowindow timeout
 handle_event(_Event, StateName, State) ->

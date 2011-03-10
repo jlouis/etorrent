@@ -22,7 +22,7 @@
 	  receiver_q :: queue(),
 	  sender_q   :: queue()
 }).
--type t() :: #proc_info{}.
+-opaque t() :: #proc_info{}.
 -export_type([t/0]).
 
 mk() ->
@@ -36,7 +36,7 @@ enqueue_receiver(From, Length, #proc_info { receiver_q = RQ } = PI) ->
 dequeue_receiver(#proc_info { receiver_q = RQ } = PI) ->
     case queue:out(RQ) of
         {{value, Item}, NQ} ->
-            {Item, PI#proc_info { receiver_q = NQ }};
+            {ok, Item, PI#proc_info { receiver_q = NQ }};
         {empty, _Q} ->
             empty
     end.

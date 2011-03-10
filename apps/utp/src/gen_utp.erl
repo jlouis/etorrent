@@ -15,7 +15,7 @@
 -export([connect/2, connect/3,
          close/1,
 	 send/2,
-	 recv/2, recv/3,
+	 recv/2,
 	 listen/0, listen/1,
          accept/0]).
 
@@ -35,15 +35,16 @@
 -define(SERVER, ?MODULE).
 -define(TAB, ?MODULE).
 
--record(state, { monitored :: gb_tree(),
-	         socket    :: gen_udp:socket(),
-	         listen_queue :: closed | {queue, integer(), integer(), queue()} }).
-
 -record(accept_queue,
 	{ acceptors      :: queue(),
 	  incoming_conns :: queue(),
 	  q_len          :: integer(),
 	  max_q_len      :: integer() }).
+
+-record(state, { monitored :: gb_tree(),
+	         socket    :: gen_udp:socket(),
+	         listen_queue :: closed | #accept_queue{} }).
+
 
 %%%===================================================================
 
@@ -86,17 +87,12 @@ accept() ->
 send({utp_sock, Pid}, Msg) ->
     gen_utp_worker:send(Pid, Msg).
 
-%% @equiv recv(Socket, Length, infinity)
--spec recv(utp_socket(), integer()) -> {ok, binary()} | {error, term()}.
-recv(Socket, Length) ->
-    recv(Socket, Length, infinity).
-
 %% @doc Receive a message with a timeout
 %% @end
--spec recv(utp_socket(), integer(), infinity | integer()) ->
+-spec recv(utp_socket(), integer()) ->
 		  {ok, binary()} | {error, term()}.
-recv({utp_sock, Pid}, Length, Timeout) ->
-    gen_utp_worker:recv(Pid, Length, Timeout).
+recv({utp_sock, Pid}, Length) ->
+    gen_utp_worker:recv(Pid, Length).
 
 %% @doc Close down a socket (nonblocking)
 %% @end
@@ -181,6 +177,7 @@ handle_call(accept, _From, #state { listen_queue = closed } = S) ->
     {reply, {error, no_listen}, S};
 handle_call(accept, From, #state { listen_queue = Q,
 				   socket = Socket } = S) ->
+    false = Q =:= closed,
     {ok, Pairings, NewQ} = push_acceptor(From, Q),
     [accept_incoming_conn(Socket, Acc, SYN) || {Acc, SYN} <- Pairings],
     {noreply, S#state { listen_queue = NewQ }};
