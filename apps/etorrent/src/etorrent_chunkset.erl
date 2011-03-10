@@ -1,5 +1,4 @@
 -module(etorrent_chunkset).
--include("types.hrl").
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").

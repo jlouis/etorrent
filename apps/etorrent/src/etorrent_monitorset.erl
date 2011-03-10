@@ -1,5 +1,4 @@
 -module(etorrent_monitorset).
--include("types.hrl").
 -export([new/0,
          size/1,
          insert/3,

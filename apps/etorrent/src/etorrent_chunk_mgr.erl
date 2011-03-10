@@ -85,6 +85,10 @@
 
 -type pieceset()   :: etorrent_pieceset:pieceset().
 -type monitorset() :: etorrent_monitorset:monitorset().
+-type torrent_id() :: etorrent_types:torrent_id().
+-type chunk_len() :: etorrent_types:chunk_len().
+-type chunk_offset() :: etorrent_types:chunk_offset().
+-type piece_index() :: etorrent_types:piece_index().
 
 -record(state, {
     torrent_id      :: pos_integer(),
