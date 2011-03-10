@@ -1,5 +1,4 @@
 -module(etorrent_pieceset).
--include("types.hrl").
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
