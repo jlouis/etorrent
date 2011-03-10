@@ -51,19 +51,35 @@ start_child_tracker(Pid, UrlTiers, InfoHash, Local_Peer_Id, TorrentId) ->
 %% ====================================================================
 
 %% @private
-init([{Torrent, TorrentFile, TorrentIH}, PeerId, Id]) ->
-    FSPool = {fs_pool,
-              {etorrent_io_sup, start_link, [Id, Torrent]},
-              transient, infinity, supervisor, [etorrent_io_sup]},
-    %FS = {fs,
-    %      {etorrent_fs, start_link, [Id]},
-    %      permanent, 2000, worker, [etorrent_fs]},
-    Control = {control,
-               {etorrent_torrent_ctl, start_link,
-               [Id, {Torrent, TorrentFile, TorrentIH}, PeerId]},
-               permanent, 20000, worker, [etorrent_torrent_ctl]},
-    PeerPool = {peer_pool_sup,
-                {etorrent_peer_pool, start_link, [Id]},
-                transient, infinity, supervisor, [etorrent_peer_pool]},
-    %{ok, {{one_for_all, 1, 60}, [FSPool, FS, Control, PeerPool]}}.
-    {ok, {{one_for_all, 1, 60}, [Control, FSPool, PeerPool]}}.
+init([{Torrent, TorrentPath, TorrentIH}, PeerID, TorrentID]) ->
+    Children = [
+        torrent_control_spec(TorrentID, Torrent, TorrentPath, TorrentIH, PeerID),
+        chunk_manager_spec(TorrentID, Torrent),
+        io_sup_spec(TorrentID, Torrent),
+        peer_pool_spec(TorrentID)],
+    {ok, {{one_for_all, 1, 60}, Children}}.
+
+chunk_manager_spec(TorrentID, Torrent) ->
+    ValidPieces = [], % TODO - retrieve this from a persistent state-file/table.
+    PieceSizes  = etorrent_io:piece_sizes(Torrent), 
+    ChunkSize   = 16#4000, % TODO - get this value from a configuration file
+    Args = [TorrentID, ChunkSize, ValidPieces, PieceSizes, lookup],
+    {chunk_mgr,
+        {etorrent_chunk_mgr, start_link, Args},
+        permanent, 20000, worker, [etorrent_chunk_mgr]}.
+
+torrent_control_spec(TorrentID, Torrent, TorrentFile, TorrentIH, PeerID) ->
+    {control,
+        {etorrent_torrent_ctl, start_link,
+         [TorrentID, {Torrent, TorrentFile, TorrentIH}, PeerID]},
+        permanent, 20000, worker, [etorrent_torrent_ctl]}.
+
+io_sup_spec(TorrentID, Torrent) ->
+    {fs_pool,
+        {etorrent_io_sup, start_link, [TorrentID, Torrent]},
+        transient, infinity, supervisor, [etorrent_io_sup]}.
+
+peer_pool_spec(TorrentID) ->
+    {peer_pool_sup,
+        {etorrent_peer_pool, start_link, [TorrentID]},
+        transient, infinity, supervisor, [etorrent_peer_pool]}.

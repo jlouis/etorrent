@@ -90,9 +90,8 @@ fetched(Id) ->
 bitfield(Id) when is_integer(Id) ->
     {value, NP} = etorrent_torrent:num_pieces(Id),
     Fetched = fetched(Id),
-    etorrent_proto_wire:encode_bitfield(
-      NP,
-      gb_sets:from_list(Fetched)).
+    Pieceset = etorrent_pieceset:from_list(Fetched, NP),
+    etorrent_proto_wire:encode_bitfield(NP, Pieceset).
 
 %% This call adds a monitor on a torrent controller, so its removal gives
 %% us a way to remove the pieces associated with that torrent.
@@ -115,9 +114,9 @@ num_not_fetched(Id) when is_integer(Id) ->
 %% Function: check_interest(Id, PieceSet) -> interested | not_interested | invalid_piece
 %% Description: Given a set of pieces, return if we are interested in any of them.
 %%--------------------------------------------------------------------
-check_interest(Id, PieceSet) when is_integer(Id) ->
-    It = gb_sets:iterator(PieceSet),
-    find_interest_piece(Id, gb_sets:next(It), []).
+check_interest(Id, Pieceset) when is_integer(Id) ->
+    PieceList = etorrent_pieceset:to_list(Pieceset),
+    find_interest_piece(Id, PieceList, []).
 
 %%--------------------------------------------------------------------
 %% Function: select(Id) -> [#piece]
@@ -283,20 +282,20 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 %%% Internal functions
 %%--------------------------------------------------------------------
-find_interest_piece(_Id, none, []) ->
+find_interest_piece(_Id, [], []) ->
     not_interested;
-find_interest_piece(_Id, none, Acc) ->
+find_interest_piece(_Id, [], Acc) ->
     {interested, Acc};
-find_interest_piece(Id, {Pn, Next}, Acc) ->
+find_interest_piece(Id, [Pn|Next], Acc) ->
     case ets:lookup(?TAB, {Id, Pn}) of
         [] ->
             invalid_piece;
         [#piece{ state = State}] ->
             case State of
                 fetched ->
-                    find_interest_piece(Id, gb_sets:next(Next), Acc);
+                    find_interest_piece(Id, Next, Acc);
                 _Other ->
-                    find_interest_piece(Id, gb_sets:next(Next), [Pn | Acc])
+                    find_interest_piece(Id, Next, [Pn | Acc])
             end
     end.
 

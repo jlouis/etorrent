@@ -42,12 +42,3 @@ file_server_sup_spec(TorrentID, Workdir, Files) ->
     {{TorrentID, file_server_sup},
         {etorrent_io_file_sup, start_link, Args},
         permanent, 2000, supervisor, [etorrent_file_io_sup]}.
-
-
-
-
-
-
-
-
-

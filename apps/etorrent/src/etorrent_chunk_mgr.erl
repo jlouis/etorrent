@@ -46,215 +46,468 @@
 %% @end
 %%-------------------------------------------------------------------
 -module(etorrent_chunk_mgr).
+-behaviour(gen_server).
 
 -include("log.hrl").
 
 -include_lib("stdlib/include/ms_transform.hrl").
 
--behaviour(gen_server).
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
 
 %% @todo: What pid is the chunk recording pid? Control or SendPid?
 %% API
--export([start_link/0, store_chunk/2, putback_chunks/1,
-         mark_fetched/2, pick_chunks/3,
-         new/1, endgame_remove_chunk/3]).
+-export([start_link/5,
+         mark_valid/2,
+         mark_fetched/4,
+         mark_stored/4,
+         mark_dropped/4,
+         mark_all_dropped/1,
+         request_chunks/3]).
+
+%% gproc registry entries
+-export([register_chunk_server/1,
+         unregister_chunk_server/1,
+         lookup_chunk_server/1,
+         register_peer/1]).
+
 
 %% gen_server callbacks
--export([init/1, handle_call/3, handle_cast/2, handle_info/2,
-         terminate/2, code_change/3]).
+-export([init/1,
+         handle_call/3,
+         handle_cast/2,
+         handle_info/2,
+         terminate/2,
+         code_change/3]).
 
-%% A mapping containing the chunks tracking
--record(chunk, {idt :: {integer() | '_' | '$1',
-			integer() | '_' | '$1',
-			not_fetched | fetched | {assigned, pid() | '_'} | '_'},
-                chunk :: integer() | {integer() | '_', integer() | '_'} | '_' | '$2'}).
+-import(gen_server, [call/2, cast/2]).
 
--record(state, { torrent_dict,
-	         monitored_peers = gb_sets:empty() }).
+-type pieceset()   :: etorrent_pieceset:pieceset().
+-type monitorset() :: etorrent_monitorset:monitorset().
+-type torrent_id() :: etorrent_types:torrent_id().
+-type chunk_len() :: etorrent_types:chunk_len().
+-type chunk_offset() :: etorrent_types:chunk_offset().
+-type piece_index() :: etorrent_types:piece_index().
 
--define(SERVER, ?MODULE).
--define(TAB, etorrent_chunk_tbl).
--define(STORE_CHUNK_TIMEOUT, 20).
--define(PICK_CHUNKS_TIMEOUT, 20).
+-record(state, {
+    torrent_id      :: pos_integer(),
+    torrent_pid     :: pid(),
+    chunk_size      :: pos_integer(),
+    %% Piece state sets
+    pieces_valid    :: pieceset(),
+    pieces_begun    :: pieceset(),
+    pieces_assigned :: pieceset(),
+    pieces_stored   :: pieceset(),
+    %% Chunk sets for pieces
+    chunks_assigned :: array(),
+    chunks_stored   :: array(),
+    %% Chunks assigned to peers
+    peer_monitors   :: monitorset()}).
+
+%% # Open requests
+%% A gb_tree mapping {PieceIndex, Offset} to Chunklength
+%% is kept as the state of each monitored process.
+%%
+%% # Piece states
+%% As the download of a torrent progresses, and regresses, each piece
+%% enters and leaves a sequence of states.
+%% 
+%% ## Sequence
+%% 1. Invalid
+%% 2. Begun
+%% 3. Assigned
+%% 4. Stored
+%% 5. Valid
+%% 
+%% ## Invalid
+%% By default all pieces are considered as invalid. A piece
+%% is invalid if it is not a member of the set of valid pieces
+%%
+%% ## Begun
+%% When the download of a piece has begun the piece enters
+%% the begun state. While the piece is in this state it is
+%% still considered valid, but it enables the chunk server
+%% prioritize these pieces.
+%% A piece never leaves the begun state.
+%%
+%% ## Assigned
+%% When all chunks of the piece has been assigned to be downloaded
+%% from a set of peers, when the chunk set of the piece is empty,
+%% the piece enters the assigned state. If a piece has entered the
+%% assigned state it is considered begun.
+%% A piece leaves the assigned state if it has not yet entered the
+%% stored if a request has been dropped.
+%%
+%% ## Stored
+%% When all chunks of a piece has been marked as stored the piece
+%% enters the stored state. A piece is in the stored state until
+%% it has been validated.
+%% A piece must not leave the stored state.
+%%
+%% ## Valid
+%% A piece enters the valid state when it has been marked as valid.
+%% A piece may noy leave the valid state.
+%%
+%% # Chunk sets
+%% ## Assigned chunks
+%% A set of chunks that has not yet been assigned to a peer is
+%% associated with each piece. When this set is empty the piece
+%% enters the assigned state.
+%%
+%% ## Stored chunks
+%% A set of chunks that has not yet been written to disk is associated
+%% with each piece. When this set is empty the piece enters the stored
+%% state. 
+%%
+%% # Dropped requests
+%% A request may be dropped in three ways.
+%% - calling mark_dropped/3
+%% - calling mark_all_dropped/1
+%% - the peer crashes
+%%
+%% If mark_dropped/3 is called the chunk should be removed from
+%% the set of open requests and inserted into the set of assigned
+%% chunks for the piece.
+%%
+%% If mark_all_dropped/1 is called all chunks should be removed from
+%% the set of open requests and inserted into the chunk sets of each piece.
+%%
+%% If the peer crashes all chunks should be inserted into the chunk sets
+%% of each piece and the peer should be removed from the set of monitored
+%% peers.
+%%
+
+-spec register_chunk_server(torrent_id()) -> true.
+register_chunk_server(TorrentID) ->
+    gproc:reg({n, l, chunk_server_key(TorrentID)}).
+
+-spec unregister_chunk_server(torrent_id()) -> true.
+unregister_chunk_server(TorrentID) ->
+    gproc:unreg({n, l, chunk_server_key(TorrentID)}).
+
+-spec lookup_chunk_server(torrent_id()) -> pid().
+lookup_chunk_server(TorrentID) ->
+    gproc:lookup_pid({n, l, chunk_server_key(TorrentID)}).
+
+-spec register_peer(torrent_id()) -> true.
+register_peer(TorrentID) ->
+    ChunkSrv = lookup_chunk_server(TorrentID),
+    gen_server:call(ChunkSrv, {register_peer, self()}).
+
+chunk_server_key(TorrentID) ->
+    {etorrent, TorrentID, chunk_server}.
 
 
--ignore_xref([{start_link, 0}]).
+%% @doc
+%% Start a new chunk server for a set of pieces, a subset of the
+%% pieces may already have been fetched.
+%% @end
+start_link(TorrentID, ChunkSize, Fetched, Sizes, TorrentPid) ->
+    Args = [TorrentID, ChunkSize, Fetched, Sizes, TorrentPid],
+    gen_server:start_link(?MODULE, Args, []).
+
+%% @doc
+%% Mark a piece as completly stored to disk and validated.
+%% @end
+-spec mark_valid(torrent_id(), pos_integer()) ->
+          ok | {error, not_stored | valid}.
+mark_valid(TorrentID, PieceIndex) ->
+    ChunkSrv = lookup_chunk_server(TorrentID),
+    call(ChunkSrv, {mark_valid, self(), PieceIndex}).
+
+
+%% @doc
+%% Mark a chunk as fetched but not written to file.
+%% @end
+-spec mark_fetched(torrent_id(), pos_integer(),
+                   pos_integer(), pos_integer()) -> {ok, list(pid())}.
+mark_fetched(TorrentID, Index, Offset, Length) ->
+    ChunkSrv = lookup_chunk_server(TorrentID),
+    call(ChunkSrv, {mark_fetched, self(), Index, Offset, Length}).
+
+%& @doc
+%% Mark a chunk as fetched and written to file.
+%% @end
+-spec mark_stored(torrent_id(), pos_integer(),
+                  pos_integer(), pos_integer()) -> ok.
+mark_stored(TorrentID, Index, Offset, Length) ->
+    ChunkSrv = lookup_chunk_server(TorrentID),
+    call(ChunkSrv, {mark_stored, self(), Index, Offset, Length}).
+
+%& @doc
+%% Reinsert a chunk into the request queue.
+%% @end
+-spec mark_dropped(torrent_id(), pos_integer(),
+                  pos_integer(), pos_integer()) -> ok.
+mark_dropped(TorrentID, Index, Offset, Length) ->
+    ChunkSrv = lookup_chunk_server(TorrentID),
+    cast(ChunkSrv, {mark_dropped, self(), Index, Offset, Length}).
+
+%% @doc
+%% Mark all currently open requests as dropped.
+%% @end
+-spec mark_all_dropped(torrent_id()) -> ok.
+mark_all_dropped(TorrentID) ->
+    ChunkSrv = lookup_chunk_server(TorrentID),
+    call(ChunkSrv, {mark_all_dropped, self()}).
+
+
+%% @doc
+%% Request a 
+%% @end
+-spec request_chunks(torrent_id(), pieceset(), pos_integer()) ->
+    {ok, list({piece_index(), chunk_offset(), chunk_len()})}
+    | {error, not_interested | assigned}.
+request_chunks(TorrentID, Pieceset, Numchunks) ->
+    ChunkSrv = lookup_chunk_server(TorrentID),
+    call(ChunkSrv, {request_chunks, self(), Pieceset, Numchunks}).
+
 
 %%====================================================================
-%% @doc Spawn the process and register it.
-%% @end
--spec start_link() -> ignore | {ok, pid()} | {error, any()}.
-start_link() ->
-    gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
-
-%% @doc Mark a given chunk as fetched.
-%% @end
--spec mark_fetched(integer(), {integer(), integer(), integer()}) -> found | assigned.
-mark_fetched(Id, {Index, Offset, Len}) ->
-    gen_server:call(?SERVER, {mark_fetched, Id, Index, Offset, Len}).
-
-%% @doc Store the chunk in the chunk table.
-%%   As a side-effect, check the piece if it is fully fetched.
-%% @end
--spec store_chunk(integer(), {integer(), integer(), binary()}) -> ok.
-store_chunk(Id, {Index, Offset, D}) ->
-    gen_server:cast(?SERVER, {store_chunk, Id, self(), {Index, Offset, D}}).
-
-%% @doc Find all chunks assigned to Pid and mark them as not_fetched
-%%   This is called by a peer when the remote chokes.
-%% @end
--spec putback_chunks(pid()) -> ok.
-putback_chunks(Pid) ->
-    gen_server:cast(?SERVER, {putback_chunks, Pid}).
-
-%% @doc Remove a chunk in the endgame from its assignment
-%% <p>This call forces the removal of a chunk from its assigned pid()
-%% in endgame mode. It makes sure we strike out chunks which are being
-%% downloaded by other peers than the peer it was originally assigned to.</p>
-%% @end.
--spec endgame_remove_chunk(pid(), integer(), {integer(), integer(), integer()}) -> ok.
-endgame_remove_chunk(SendPid, Id, {Index, Offset, Len}) ->
-    gen_server:call(?SERVER, {endgame_remove_chunk, SendPid, Id, {Index, Offset, Len}},
-		    infinity).
-
-%% @doc Return some chunks for downloading.
-%% @end
--type chunk_lst() :: [{integer(), [{integer(), integer()}]}].
--spec pick_chunks(integer(), unknown | gb_set(), integer()) ->
-    none_eligible | not_interested | {ok | endgame, chunk_lst()}.
-pick_chunks(_Id, unknown, _N) ->
-    none_eligible;
-pick_chunks(Id, Set, N) ->
-    case pick_chunks(pick_chunked, {self(), Id, Set, [], N, none}) of
-	not_interested -> pick_chunks_endgame(Id, Set, N, not_interested);
-	{ok, []}       -> pick_chunks_endgame(Id, Set, N, none_eligible);
-	{ok, Items}    -> {ok, Items}
-    end.
-
-% @doc Request the managing of a new torrent identified by Id
-% <p>Note that the calling Pid is tracked as being the owner of the torrent.
-% If the calling Pid dies, then the torrent will be assumed stopped</p>
-% @end
--spec new(integer()) -> ok.
-new(Id) ->
-    gen_server:call(?SERVER, {new, Id}, infinity).
-
-%% ----------------------------------------------------------------------
-
-%% @doc Choose up to Max chunks from a given {TorrentID, PieceNum} pair.
-%%  Will return {ok, {Index, Chunks}, size(Chunks)}.
-%% @end
--spec select_chunks_by_piecenum({pos_integer(), pos_integer()}, pos_integer()) ->
-			   {ok, {pos_integer(), term()}, non_neg_integer()} | {error, already_taken}.
-select_chunks_by_piecenum({TorrentId, Pn}, Max) ->
-    gen_server:call(?SERVER, {select_chunks_by_piecenum, {TorrentId, Pn}, Max},
-		    infinity).
-
-
-%%====================================================================
-%% @private
-init([]) ->
-    random:seed(now()),
-    _Tid = ets:new(?TAB, [bag, protected, named_table, {keypos, #chunk.idt}]),
-    D = dict:new(),
-    {ok, #state{ torrent_dict = D }}.
 
 %% @private
-handle_call({new, Id}, {Pid, _Tag}, S) ->
-    ManageDict = dict:store(Pid, Id, S#state.torrent_dict),
-    _ = erlang:monitor(process, Pid),
-    {reply, ok, S#state { torrent_dict = ManageDict }};
-handle_call({mark_fetched, Id, Index, Offset, _Len}, _From, S) ->
-    case ets:match_object(?TAB, #chunk { idt = {Id, Index, not_fetched},
-					 chunk = {Offset, '_'} }) of
-	[] -> {reply, assigned, S};
-	[Obj] -> ets:delete_object(?TAB, Obj),
-		 {reply, found, S}
-    end;
-%% @todo: If we have an idt with {assigned, pid()}, do we have chunk = Offset?
-handle_call({select_chunks_by_piecenum, {Id, Pn}, Max}, {Pid, _Tag}, S) ->
-    case ets:lookup(?TAB, {Id, Pn, not_fetched}) of
-	[] ->
-	    {reply, {error, already_taken}, S};
-	Selected when is_list(Selected) ->
-	    %% Get up to Max chunks
-	    {Return, _Rest} = etorrent_utils:gsplit(Max, Selected),
-	    %% Assign chunk to Pid
-	    Chunks = [begin
-			  ets:delete_object(?TAB, C),
-			  ets:insert(?TAB,
-				     [C#chunk {
-				idt = {Id, Pn, {assigned, Pid}} }]),
-			  C#chunk.chunk
-		      end || C <- Return],
-	    MP = ensure_monitor(Pid, S#state.monitored_peers),
-	    {reply,
-	     {ok, {Pn, Chunks}, length(Chunks)},
-	     S#state { monitored_peers = MP }}
-    end;
-handle_call({chunkify_piece, {Id, Pn}}, _From, S) ->
-    chunkify_piece(Id, Pn),
-    {reply, ok, S};
-handle_call({endgame_remove_chunk, SendPid, Id, {Index, Offset, _Len}},
-            _From, S) ->
-    ets:match_delete(?TAB,
-		      #chunk { idt = {Id, Index, {assigned, SendPid}},
-			       chunk = Offset }),
-    {reply, ok, S};
-handle_call(_Request, _From, State) ->
-    Reply = ok,
-    {reply, Reply, State}.
+init([TorrentID, ChunkSize, FetchedPieces, PieceSizes, InitTorrentPid]) ->
+    true = register_chunk_server(TorrentID),
 
-ensure_monitor(Pid, Set) ->
-    case gb_sets:is_member(Pid, Set) of
-	true ->
-	    Set;
-	false ->
-	    erlang:monitor(process, Pid),
-	    gb_sets:add(Pid, Set)
-    end.
+    NumPieces = length(PieceSizes),
+    PiecesValid   = etorrent_pieceset:from_list(FetchedPieces, NumPieces),
 
-%% @private
-handle_cast({store_chunk, Id, Pid, {Index, Offset, Data}}, S) ->
-    ok = etorrent_io:write_chunk(Id, Index, Offset, Data),
-    %% Add the newly fetched data to the fetched list
-    Present = update_fetched(Id, Index, {Offset, byte_size(Data)}),
-    %% Update chunk assignment
-    update_chunk_assignment(Id, Index, Pid, {Offset, byte_size(Data)}),
-    %% Countdown number of missing chunks
-    case Present of
-        fetched -> ok;
-        true    -> ok;
-        false   ->
-            case etorrent_piece_mgr:decrease_missing_chunks(Id, Index) of
-                full -> check_piece(Id, Index);
-                X    -> X
-            end
+    %% Initialize a full chunkset for all pieces that are left to download
+    %% but don't mark them as begun before a chunk has been deleted from
+    %% any of the chunksets.
+    %% Initialize an empty chunkset for all valid pieces.
+    AllIndexes = lists:seq(0, NumPieces - 1),
+    AllPieces = etorrent_pieceset:from_list(AllIndexes, NumPieces),
+    PiecesInvalid = etorrent_pieceset:difference(AllPieces, PiecesValid),
+    InvalidList = etorrent_pieceset:to_list(PiecesInvalid),
+    ValidList = etorrent_pieceset:to_list(PiecesValid),
+    States = [{N, false} || N <- InvalidList] ++ [{N, true} || N <- ValidList],
+    ChunkList = [begin
+        Size = orddict:fetch(N, PieceSizes),
+        Set = case IsValid of
+            false -> etorrent_chunkset:new(Size, ChunkSize);
+            true  -> etorrent_chunkset:from_list(Size, ChunkSize, [])
+        end,
+        {N, Set}
+    end || {N, IsValid} <- lists:sort(States)],
+    ChunkSets = array:from_orddict(ChunkList),
+    
+    %% Make it possible to inject the pid of the torrent in tests
+    TorrentPid = case InitTorrentPid of
+        lookup ->
+            {TPid, _} = gproc:await({n, l, {torrent, TorrentID, control}}),
+            TPid;
+        _ when is_pid(InitTorrentPid) ->
+            InitTorrentPid
     end,
-    {noreply, S};
-% @todo This only works if {assigned, pid()} has chunks as a 3-tuple
-handle_cast({putback_chunks, Pid}, S) ->
-    remove_chunks_for_pid(Pid),
-    {noreply, S};
-handle_cast(Msg, State) ->
-    ?WARN([unknown_msg, Msg]),
-    {noreply, State}.
 
-%% @private
-handle_info({'DOWN', _Ref, process, Pid, _Reason}, S) ->
-    case dict:find(Pid, S#state.torrent_dict) of
-	{ok, Id} ->
-	    clear_torrent_entries(Id),
-	    ManageDict = dict:erase(Pid, S#state.torrent_dict),
-	    {noreply, S#state { torrent_dict = ManageDict }};
-	error ->
-	    %% Not found, assume it is a Pid of a process
-	    remove_chunks_for_pid(Pid),
-	    {noreply, S#state { monitored_peers =
-				  gb_sets:del_element(Pid,
-						      S#state.monitored_peers) }}
+    InitState = #state{
+        torrent_id=TorrentID,
+        torrent_pid=TorrentPid,
+        chunk_size=ChunkSize,
+        pieces_valid=PiecesValid,
+        %% All valid pieces are also begun, assigned and stored
+        pieces_begun=PiecesValid,
+        pieces_assigned=PiecesValid,
+        pieces_stored=PiecesValid,
+        %% Initially, the sets of assigned and stored chunks are equal
+        chunks_assigned=ChunkSets,
+        chunks_stored=ChunkSets,
+        peer_monitors=etorrent_monitorset:new()},
+    {ok, InitState}.
+
+
+handle_call({register_peer, PeerPid}, _, State) ->
+    %% Add a new peer to the set of monitored peers. Set the initial state
+    %% of the monitored peer to an empty set open requests so that we don't
+    %% need to check for this during the lifetime of the peer.
+    #state{peer_monitors=PeerMonitors} = State,
+    OpenReqs = gb_trees:empty(),
+    NewMonitors = etorrent_monitorset:insert(PeerPid, OpenReqs, PeerMonitors),
+    NewState = State#state{peer_monitors=NewMonitors},
+    {reply, true, NewState};
+
+handle_call({request_chunks, PeerPid, Peerset, Numchunks}, _, State) ->
+    #state{
+        pieces_begun=Begun,
+        pieces_assigned=Assigned,
+        pieces_stored=Stored,
+        chunks_assigned=AssignedChunks,
+        peer_monitors=Peers} = State,
+
+    %% Consider pieces that has an empty chunkset 
+    
+    %% If this peer has no pieces that we are already downloading, begin
+    %% downloading a new piece if this peer has any interesting pieces.
+    Optimal = etorrent_pieceset:intersection(Peerset,
+              etorrent_pieceset:difference(Begun, Assigned)),
+    SubOptimal = etorrent_pieceset:difference(Peerset, Assigned),
+    HasOptimal = not etorrent_pieceset:is_empty(Optimal),
+    HasSubOptimal = not etorrent_pieceset:is_empty(SubOptimal),
+
+    PieceIndex = case {HasOptimal, HasSubOptimal} of
+        %% None that we are not already downloading
+        %% and none that we would want to download
+        {false, false} ->
+            Interesting = etorrent_pieceset:difference(Peerset, Stored),
+            case etorrent_pieceset:is_empty(Interesting) of
+                true  -> not_interested;
+                false -> assigned
+            end;
+        %% None that we are not already downloading
+        %% but one ore more that we would want to download
+        {false, _} ->
+            etorrent_pieceset:min(SubOptimal);
+        %% One or more that we are already downloading
+        {_, _} ->
+            etorrent_pieceset:min(Optimal)
+    end,
+
+    case PieceIndex of
+        not_interested ->
+            {reply, {error, not_interested}, State};
+        assigned ->
+            {reply, {error, assigned}, State};
+        Index ->
+            Chunkset = array:get(Index, AssignedChunks),
+            Chunks   = etorrent_chunkset:min(Chunkset, Numchunks),
+            NewChunkset = etorrent_chunkset:delete(Chunks, Chunkset),
+            NewAssignedChunks = array:set(Index, NewChunkset, AssignedChunks),
+            NewBegun = etorrent_pieceset:insert(Index, Begun),
+            %% Add the chunk to this peer's set of open requests
+            OpenReqs = etorrent_monitorset:fetch(PeerPid, Peers),
+            NewReqs  = lists:foldl(fun({Offs, Len}, Acc) ->
+                gb_trees:insert({Index, Offs}, Len, Acc)
+            end, OpenReqs, Chunks),
+            NewPeers = etorrent_monitorset:update(PeerPid, NewReqs, Peers),
+            %% The piece is in the assigned state if this was the last chunk
+            NewAssigned = case etorrent_chunkset:size(NewChunkset) of
+                0 -> etorrent_pieceset:insert(Index, Assigned);
+                _ -> Assigned
+            end,
+
+            NewState = State#state{
+                pieces_begun=NewBegun,
+                pieces_assigned=NewAssigned,
+                chunks_assigned=NewAssignedChunks,
+                peer_monitors=NewPeers},
+            ReturnValue = [{Index, Offs, Len} || {Offs, Len} <- Chunks],
+            {reply, {ok, ReturnValue}, NewState}
     end;
-handle_info(_Info, State) ->
+
+handle_call({mark_valid, _, Index}, _, State) ->
+    %% Mark a piece as valid if all chunks of the
+    %% piece has been marked as stored.
+    #state{
+        pieces_valid=Valid,
+        chunks_assigned=PieceChunks} = State,
+    IsValid = etorrent_pieceset:is_member(Index, Valid),
+    Chunks = array:get(Index, PieceChunks),
+    BytesLeft = etorrent_chunkset:size(Chunks),
+    case {IsValid, BytesLeft} of
+        {true, _} ->
+            {reply, {error, valid}, State};
+        {false, 0} ->
+            NewValid = etorrent_pieceset:insert(Index, Valid),
+            NewState = State#state{pieces_valid=NewValid},
+            {reply, ok, NewState};
+        {false, _} ->
+            {reply, {error, not_stored}, State}
+    end;
+
+handle_call({mark_fetched, _Pid, _Index, _Offset, _Length}, _, State) ->
+    %% If we are in endgame mode, requests for a chunk may have been
+    %% sent to more than one peer. Return a list of other peers that
+    %% a request for this chunk has been sent to so that the caller
+    %% can send a cancel-message to all of them.
+    {reply, {ok, []}, State};
+
+handle_call({mark_stored, Pid, Index, Offset, Length}, _, State) ->
+    %% The calling process has written this chunk to disk.
+    %% Remove it from the list of open requests of the peer.
+    #state{
+        torrent_pid=TorrentPid,
+        pieces_stored=Stored,
+        peer_monitors=Peers,
+        chunks_stored=ChunksStored} = State,
+    OpenReqs = etorrent_monitorset:fetch(Pid, Peers),
+    NewReqs  = gb_trees:delete({Index, Offset}, OpenReqs),
+    NewPeers = etorrent_monitorset:update(Pid, NewReqs, Peers),
+    %% Update the set of chunks in the piece that has been written to disk.
+    Chunks = array:get(Index, ChunksStored),
+    NewChunks = etorrent_chunkset:delete(Offset, Length, Chunks),
+    NewChunksStored = array:set(Index, NewChunks, ChunksStored),
+    %% Check if all chunks in this piece has been written to disk now.
+    NewStored = case etorrent_chunkset:size(NewChunks) of
+        0 ->
+            ok = etorrent_torrent_ctl:piece_stored(TorrentPid, Index),
+            etorrent_pieceset:insert(Index, Stored);
+        _ ->
+            Stored
+    end,
+    NewState = State#state{
+        pieces_stored=NewStored,
+        chunks_stored=NewChunksStored,
+        peer_monitors=NewPeers},
+    {reply, ok, NewState};
+
+
+
+handle_call({mark_all_dropped, Pid}, _, State) ->
+    %% When marking all requests as dropped, send a series of
+    %% mark_dropped-messages to ourselves. The state of each
+    %% piece should be restored eventually.
+    #state{peer_monitors=Peers} = State,
+
+    %% Add the chunks back to the chunkset of each piece.
+    OpenReqs = etorrent_monitorset:fetch(Pid, Peers),
+    _ = [begin
+        cast(self(), {mark_dropped, Pid, Index, Offset, Length})
+    end || {Index, Offset, Length} <- chunk_list(OpenReqs)],
+    {reply, ok, State}.
+
+handle_cast({mark_dropped, Pid, Index, Offset, Length}, State) ->
+    #state{
+        pieces_assigned=Assigned,
+        chunks_assigned=AssignedChunks,
+        peer_monitors=Peers} = State,
+     %% Reemove the chunk from the peer's set of open requests
+     OpenReqs = etorrent_monitorset:fetch(Pid, Peers),
+     NewReqs  = gb_trees:delete({Index, Offset}, OpenReqs),
+     NewPeers = etorrent_monitorset:update(Pid, NewReqs, Peers),
+ 
+     %% Add the chunk back to the chunkset of the piece.
+     Chunks = array:get(Index, AssignedChunks),
+     NewChunks = etorrent_chunkset:insert(Offset, Length, Chunks),
+     NewAssignedChunks = array:set(Index, NewChunks, AssignedChunks),
+
+     %% This piece is no longer in the assigned state
+     NewAssigned = etorrent_pieceset:delete(Index, Assigned),
+ 
+     NewState = State#state{
+         pieces_assigned=NewAssigned,
+         chunks_assigned=NewAssignedChunks,
+         peer_monitors=NewPeers},
+    {noreply, NewState};
+
+handle_cast({demonitor, Pid}, State) ->
+    %% This message should be received after all mark_dropped messages.
+    %% At this point the set of open requests for the peer should be empty.
+    #state{peer_monitors=Peers} = State,
+    NewPeers = etorrent_monitorset:delete(Pid, Peers),
+    NewState = State#state{peer_monitors=NewPeers},
+    {noreply, NewState}.
+
+handle_info({'DOWN', _, process, Pid, _}, State) ->
+    %% When a peer crashes, send a series of mark-dropped messages
+    %% and a demonitor-message to ourselves.
+    #state{peer_monitors=Peers} = State,
+    OpenReqs = etorrent_monitorset:fetch(Pid, Peers),
+    _ = [begin
+        cast(self(), {mark_dropped, Pid, Index, Offset, Length})
+    end || {Index, Offset, Length} <- chunk_list(OpenReqs)],
+    _ = cast(self(), {demonitor, Pid}),
     {noreply, State}.
 
 %% @private
@@ -265,188 +518,172 @@ terminate(_Reason, _State) ->
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
-
-%%--------------------------------------------------------------------
-
-%% @doc Find all entries for a given torrent file and clear them out
-%% @end
-clear_torrent_entries(Id) ->
-    ets:match_delete(?TAB, #chunk { idt = {Id, '_', '_'}, chunk = '_'}).
-
-%% @doc Find all remaining chunks for a torrent matching PieceSet
-%% @end
-%% @todo Consider using ets:fun2ms here to parse-transform the matches
--spec find_remaining_chunks(integer(), set()) ->
-    [{integer(), integer(), integer()}].
-find_remaining_chunks(Id, PieceSet) ->
-    %% Note that the chunk table is often very small.
-    MatchHeadAssign = #chunk { idt = {Id, '$1', {assigned, '_'}}, chunk = '$2'},
-    MatchHeadNotFetch = #chunk { idt = {Id, '$1', not_fetched}, chunk = '$2'},
-    RowsA = ets:select(?TAB, [{MatchHeadAssign, [], [{{'$1', '$2'}}]}]),
-    RowsN = ets:select(?TAB, [{MatchHeadNotFetch, [], [{{'$1', '$2'}}]}]),
-    Eligible = [{PN, Chunk} || {PN, Chunk} <- RowsA ++ RowsN,
-                                gb_sets:is_element(PN, PieceSet)],
-    [{PN, Os, Sz} || {PN, {Os, Sz}} <- Eligible].
-
-%% @doc Chunkify a new piece.
 %%
-%%  Find a piece in the PieceSet which has not been chunked
-%%  yet and chunk it. Returns either ok if a piece was chunked or none_eligible
-%%  if we can't find anything to chunk up in the PieceSet.
+%% Given a tree of a peers currently open requests, return a list of
+%% tuples containing the piece index, offset and length of each request.
 %%
-%% @end
--spec chunkify_new_piece(integer(), gb_set()) -> {ok, pos_integer()} | none_eligible.
-chunkify_new_piece(Id, PieceSet) when is_integer(Id) ->
-    case etorrent_piece_mgr:find_new(Id, PieceSet) of
-        none -> none_eligible;
-        {P, Pn} when is_integer(Pn) ->
-	    ok = gen_server:call(?SERVER, {chunkify_piece, {Id, P}},
-				 infinity),
-	    {ok, Pn}
-    end.
+-spec chunk_list(gb_tree()) -> [{pos_integer(), pos_integer(), pos_integer()}].
+chunk_list(OpenReqs) ->
+    [{I,O,L} || {{I,O},L} <- gb_trees:to_list(OpenReqs)].
 
-%% Check the piece Idx on torrent Id for completion
-check_piece(Id, Idx) ->
-    _ = spawn_link(etorrent_io, check_piece_completion, [Id, Idx]),
-    ets:match_delete(?TAB, #chunk { idt = {Id, Idx, '_'}, _ = '_'}).
+-ifdef(TEST).
+-define(chunk_server, ?MODULE).
 
 
-%% @doc Add a chunked piece to the chunk table
-%%   Given a PieceNumber, cut it up into chunks and add those
-%%   to the chunk table.
-%% @end
--spec chunkify_piece(integer(), etorrent:piece_mgr_piece()) -> ok. %% @todo: term() is #piece{}, opaque export it
-chunkify_piece(Id, P) ->
-    {Id, Idx, Chunks} = etorrent_piece_mgr:chunkify_piece(Id, P),
-    ets:insert(?TAB, [#chunk { idt = {Id, Idx, not_fetched}, chunk = CH }
-		      || CH <- Chunks]),
-    etorrent_torrent:decrease_not_fetched(Id),
-    ok.
+initial_chunk_server(ID) ->
+    {ok, Pid} = ?chunk_server:start_link(ID, 1, [], [{0, 2}, {1, 2}, {2, 2}], self()),
+    true = ?chunk_server:register_peer(ID),
+    Pid.
 
-%% @doc Search for piece chunks to download from a peer
-%%   We are given an iterator of the pieces the peer has. We search the
-%%   the iterator for a pieces we have already chunked and are downloading.
-%%   If found, return the #chunk{} object. Otherwise return 'none'
-%% @end
--spec find_chunked_chunks(pos_integer(), term(), A) -> A | pos_integer().
-find_chunked_chunks(_Id, none, Res) -> Res;
-find_chunked_chunks(Id, {Pn, Iter}, _Res) ->
-    case ets:member(?TAB, {Id, Pn, not_fetched}) of
-	false ->
-	    find_chunked_chunks(Id, gb_sets:next(Iter), found_chunked);
-	true ->
-	    Pn
-    end.
+chunk_server_test_() ->
+    {setup,
+        fun()  -> application:start(gproc) end,
+        fun(_) -> application:stop(gproc) end,
+        [?_test(lookup_registered_case()),
+         ?_test(unregister_case()),
+         ?_test(not_interested_case()),
+         ?_test(not_interested_valid_case()),
+         ?_test(request_one_case()),
+         ?_test(mark_dropped_case()),
+         ?_test(mark_all_dropped_case()),
+         ?_test(drop_none_on_exit_case()),
+         ?_test(drop_all_on_exit_case()),
+         ?_test(marked_stored_not_dropped_case()),
+         ?_test(mark_fetched_noop_case()),
+         ?_test(mark_valid_not_stored_case()),
+         ?_test(mark_valid_stored_case()),
+         ?_test(all_stored_marks_stored_case()),
+         ?_test(get_all_request_case())
+        ]}.
 
-update_fetched(Id, Index, {Offset, _Len}) ->
-    case etorrent_piece_mgr:fetched(Id, Index) of
-        true -> fetched;
-        false ->
-	    case ets:match_object(?TAB, #chunk { idt = {Id, Index, fetched},
-						 chunk = Offset }) of
-		[] ->
-		    ets:insert(?TAB,
-			       #chunk { idt = {Id, Index, fetched},
-					chunk = Offset }),
-		    false;
-		[_Obj] ->
-		    true
-	    end
-    end.
+lookup_registered_case() ->
+    ?assertEqual(true, ?chunk_server:register_chunk_server(0)),
+    ?assertEqual(self(), ?chunk_server:lookup_chunk_server(0)).
 
-update_chunk_assignment(Id, Index, Pid,
-                        {Offset, _Len}) ->
-    ets:match_delete(?TAB, #chunk { idt = {Id, Index, {assigned, Pid}},
-				    chunk = {Offset, '_'} }).
+unregister_case() ->
+    ?assertEqual(true, ?chunk_server:register_chunk_server(3)),
+    ?assertEqual(true, ?chunk_server:unregister_chunk_server(3)),
+    ?assertError(badarg, ?chunk_server:lookup_chunk_server(3)).
 
-%%
-%% There are 0 remaining chunks to be desired, return the chunks so far
-pick_chunks(_Operation, {_Pid, _Id, _PieceSet, SoFar, 0, _Res}) ->
-    {ok, SoFar};
-%%
-%% Pick chunks from the already chunked pieces
-pick_chunks(pick_chunked, Tup = {_, Id, _, _, _, _}) ->
-    Candidates = etorrent_piece_mgr:chunked_pieces(Id),
-    CandidateSet = gb_sets:from_list(Candidates),
-    pick_chunks({pick_among, CandidateSet}, Tup);
-pick_chunks({pick_among, CandidateSet}, {Pid, Id, PieceSet, SoFar, Remaining, Res}) ->
-    Iter = gb_sets:iterator( gb_sets:intersection(CandidateSet, PieceSet) ),
-    case find_chunked_chunks(Id, gb_sets:next(Iter), Res) of
-        none ->
-            pick_chunks(chunkify_piece, {Pid, Id, PieceSet, SoFar, Remaining, none});
-        found_chunked ->
-            pick_chunks(chunkify_piece, {Pid, Id, PieceSet, SoFar, Remaining, found_chunked});
-	PN when is_integer(PN) ->
-	    case select_chunks_by_piecenum({Id, PN}, Remaining) of
-		{ok, {PieceNum, Chunks}, Size} ->
-		    pick_chunks(pick_chunked, {Pid, Id,
-					       gb_sets:del_element(PieceNum, PieceSet),
-					       [{PieceNum, Chunks} | SoFar],
-					       Remaining - Size, Res});
-		{error, already_taken} ->
-		    %% So somebody else took this, try again
-		    pick_chunks(pick_chunked, {Pid, Id, PieceSet, SoFar, Remaining, Res})
-	    end
-    end;
+not_interested_case() ->
+    _ = initial_chunk_server(1),
+    Has = etorrent_pieceset:from_list([], 3),
+    Ret = ?chunk_server:request_chunks(1, Has, 1),
+    ?assertEqual({error, not_interested}, Ret).
 
-%%
-%% Find a new piece to chunkify. Give up if no more pieces can be chunkified
-pick_chunks(chunkify_piece, {Pid, Id, PieceSet, SoFar, Remaining, Res}) ->
-    case chunkify_new_piece(Id, PieceSet) of
-        {ok, P} ->
-	    CandidateSet = gb_sets:from_list([P]),
-            pick_chunks({pick_among, CandidateSet}, {Pid, Id, PieceSet, SoFar, Remaining, Res});
-        none_eligible when SoFar =:= [], Res =:= none ->
-            not_interested;
-        none_eligible when SoFar =:= [], Res =:= found_chunked ->
-            {ok, []};
-        none_eligible ->
-            {ok, SoFar}
-    end;
-%% Handle the endgame for a torrent gracefully
-pick_chunks(endgame, {Id, PieceSet, N}) ->
-    Remaining = find_remaining_chunks(Id, PieceSet),
-    Shuffled = etorrent_utils:list_shuffle(Remaining),
-    Grouped = gather(
-		lists:sort(
-		  lists:sublist(Shuffled, N))),
-    {endgame, etorrent_utils:list_shuffle(Grouped)}.
+not_interested_valid_case() ->
+    ID = 9,
+    {ok, _} = ?chunk_server:start_link(ID, 1, [0], [{0, 2}, {1, 2}, {2, 2}], self()),
+    true = ?chunk_server:register_peer(ID),
+    Has = etorrent_pieceset:from_list([0], 3),
+    Ret = ?chunk_server:request_chunks(ID, Has, 1),
+    ?assertEqual({error, not_interested}, Ret).
 
-%% Gather like pieces in the endgame
-gather([]) -> [];
-gather([{PN, Off, Sz} | R]) ->
-    gather(PN, [{Off, Sz}], R).
+request_one_case() ->
+    _ = initial_chunk_server(2),
+    Has = etorrent_pieceset:from_list([0], 3),
+    Ret = ?chunk_server:request_chunks(1, Has, 1),
+    ?assertEqual({ok, [{0, 0, 1}]}, Ret).
 
-gather(PN, Item, []) ->
-    [{PN, lists:sort(Item)}];
-gather(PN, Items, [{PN, Off, Sz} | Next]) ->
-    gather(PN, [{Off, Sz} | Items], Next);
-gather(PN, Items, [{PN2, Off, Sz} | Next]) ->
-    [{PN, lists:sort(Items)} | gather(PN2, [{Off, Sz}], Next)].
+mark_dropped_case() ->
+    _ = initial_chunk_server(4),
+    Has = etorrent_pieceset:from_list([0], 3),
+    {ok, [{0, 0, 1}]} = ?chunk_server:request_chunks(4, Has, 1),
+    {ok, [{0, 1, 1}]} = ?chunk_server:request_chunks(4, Has, 1),
+    ok  = ?chunk_server:mark_dropped(4, 0, 0, 1),
+    Ret = ?chunk_server:request_chunks(4, Has, 1),
+    ?assertEqual({ok, [{0, 0, 1}]}, Ret).
+
+mark_all_dropped_case() ->
+    _ = initial_chunk_server(5),
+    Has = etorrent_pieceset:from_list([0], 3),
+    ?assertMatch({ok, [{0, 0, 1}]}, ?chunk_server:request_chunks(5, Has, 1)),
+    ?assertMatch({ok, [{0, 1, 1}]}, ?chunk_server:request_chunks(5, Has, 1)),
+    ok = ?chunk_server:mark_all_dropped(5),
+    ?assertMatch({ok, [{0, 0, 1}]}, ?chunk_server:request_chunks(5, Has, 1)),
+    ?assertMatch({ok, [{0, 1, 1}]}, ?chunk_server:request_chunks(5, Has, 1)).
+
+drop_all_on_exit_case() ->
+    _ = initial_chunk_server(6),
+    Has = etorrent_pieceset:from_list([0], 3),
+    Pid = spawn_link(fun() ->
+        true = ?chunk_server:register_peer(6),
+        {ok, [{0, 0, 1}]} = ?chunk_server:request_chunks(6, Has, 1),
+        {ok, [{0, 1, 1}]} = ?chunk_server:request_chunks(6, Has, 1)
+    end),
+    _ = monitor(process, Pid),
+    ok  = receive {'DOWN', _, process, Pid, _} -> ok end,
+    timer:sleep(10),
+    ?assertMatch({ok, [{0, 0, 1}]}, ?chunk_server:request_chunks(6, Has, 1)),
+    ?assertMatch({ok, [{0, 1, 1}]}, ?chunk_server:request_chunks(6, Has, 1)).
+
+drop_none_on_exit_case() ->
+    _ = initial_chunk_server(7),
+    Has = etorrent_pieceset:from_list([0], 3),
+    Pid = spawn_link(fun() -> true = ?chunk_server:register_peer(7) end),
+    _ = monitor(process, Pid),
+    ok  = receive {'DOWN', _, process, Pid, _} -> ok end,
+    ?assertMatch({ok, [{0, 0, 1}]}, ?chunk_server:request_chunks(7, Has, 1)),
+    ?assertMatch({ok, [{0, 1, 1}]}, ?chunk_server:request_chunks(7, Has, 1)).
+
+marked_stored_not_dropped_case() ->
+    _ = initial_chunk_server(8),
+    Has = etorrent_pieceset:from_list([0], 3),
+    Pid = spawn_link(fun() ->
+        true = ?chunk_server:register_peer(8),
+        {ok, [{0, 0, 1}]} = ?chunk_server:request_chunks(8, Has, 1),
+        ok = ?chunk_server:mark_stored(8, 0, 0, 1)
+    end),
+    _ = monitor(process, Pid),
+    ok  = receive {'DOWN', _, process, Pid, _} -> ok end,
+    ?assertMatch({ok, [{0, 1, 1}]}, ?chunk_server:request_chunks(8, Has, 1)).
+
+mark_fetched_noop_case() ->
+    _ = initial_chunk_server(10),
+    Has = etorrent_pieceset:from_list([0], 3),
+    Pid = spawn_link(fun() ->
+        true = ?chunk_server:register_peer(10),
+        {ok, [{0, 0, 1}]} = ?chunk_server:request_chunks(10, Has, 1),
+        {ok, []} = ?chunk_server:mark_fetched(10, 0, 0, 1)
+    end),
+    _ = monitor(process, Pid),
+    ok  = receive {'DOWN', _, process, Pid, _} -> ok end,
+    timer:sleep(10),
+    ?assertMatch({ok, [{0, 0, 1}]}, ?chunk_server:request_chunks(10, Has, 1)).
 
 
--spec pick_chunks_endgame(integer(), gb_set(), integer(), X) -> X | {endgame, [#chunk{}]}.
-pick_chunks_endgame(Id, Set, Remaining, Ret) ->
-    case etorrent_torrent:is_endgame(Id) of
-        false -> Ret; %% No endgame yet
-        true -> pick_chunks(endgame, {Id, Set, Remaining})
-    end.
+mark_valid_not_stored_case() ->
+    _ = initial_chunk_server(11),
+    Ret = ?chunk_server:mark_valid(11, 0),
+    ?assertEqual({error, not_stored}, Ret).
 
-remove_chunks_for_pid(Pid) ->
-    for_each_chunk(
-      Pid,
-      fun(C) ->
-	      {Id, Idx, _} = C#chunk.idt,
-	      ets:insert(?TAB,
-			 #chunk { idt = {Id, Idx, not_fetched},
-				  chunk = C#chunk.chunk }),
-	      ets:delete_object(?TAB, C)
-      end).
+mark_valid_stored_case() ->
+    _ = initial_chunk_server(12),
+    Has = etorrent_pieceset:from_list([0,1], 3),
+    {ok, [{0, 0, 1}]} = ?chunk_server:request_chunks(12, Has, 1),
+    {ok, [{0, 1, 1}]} = ?chunk_server:request_chunks(12, Has, 1),
+    ok  = ?chunk_server:mark_stored(12, 0, 0, 1),
+    ok  = ?chunk_server:mark_stored(12, 0, 1, 1),
+    ?assertEqual(ok, ?chunk_server:mark_valid(12, 0)),
+    ?assertEqual({error, valid}, ?chunk_server:mark_valid(12, 0)).
 
-for_each_chunk(Pid, F) when is_pid(Pid) ->
-    MatchHead = #chunk { idt = {'_', '_', {assigned, Pid}}, _ = '_'},
-    for_each_chunk(MatchHead, F);
-for_each_chunk(MatchHead, F) ->
-    Rows = ets:select(?TAB, [{MatchHead, [], ['$_']}]),
-    lists:foreach(F, Rows),
-    ok.
+all_stored_marks_stored_case() ->
+    _ = initial_chunk_server(13),
+    Has = etorrent_pieceset:from_list([0,1], 3),
+    {ok, [{0, 0, 1}]} = ?chunk_server:request_chunks(13, Has, 1),
+    {ok, [{0, 1, 1}]} = ?chunk_server:request_chunks(13, Has, 1),
+    ?assertMatch({ok, [{1, 0, 1}]}, ?chunk_server:request_chunks(13, Has, 1)),
+    ?assertMatch({ok, [{1, 1, 1}]}, ?chunk_server:request_chunks(13, Has, 1)).
+
+get_all_request_case() ->
+    _ = initial_chunk_server(14),
+    Has = etorrent_pieceset:from_list([0,1,2], 3),
+    {ok, [{0, 0, 1}]} = ?chunk_server:request_chunks(14, Has, 1),
+    {ok, [{0, 1, 1}]} = ?chunk_server:request_chunks(14, Has, 1),
+    {ok, [{1, 0, 1}]} = ?chunk_server:request_chunks(14, Has, 1),
+    {ok, [{1, 1, 1}]} = ?chunk_server:request_chunks(14, Has, 1),
+    {ok, [{2, 0, 1}]} = ?chunk_server:request_chunks(14, Has, 1),
+    {ok, [{2, 1, 1}]} = ?chunk_server:request_chunks(14, Has, 1),
+    ?assertEqual({error, assigned}, ?chunk_server:request_chunks(14, Has, 1)).
+
+-endif.

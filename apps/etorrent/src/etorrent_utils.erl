@@ -166,13 +166,14 @@ prop_group_count() ->
 		  Grouped)
 	    end).
 
-shuffle_list(List) ->                                          
+shuffle_list(List) ->
     random:seed(now()),
-    {NewList, _} = lists:foldl( fun(_El, {Acc,Rest}) ->          
+    {NewList, _} = lists:foldl( fun(_El, {Acc,Rest}) ->
         RandomEl = lists:nth(random:uniform(length(Rest)), Rest),
-        {[RandomEl|Acc], lists:delete(RandomEl, Rest)}            
-    end, {[],List}, List),                                        
+        {[RandomEl|Acc], lists:delete(RandomEl, Rest)}
+    end, {[],List}, List),
     NewList.
+
 proplist_utils_test() ->
     Prop1 = lists:zip(lists:seq(1, 15), lists:seq(1, 15)),
     Prop2 = lists:zip(lists:seq(5, 20), lists:seq(5, 20)),
@@ -182,10 +183,20 @@ proplist_utils_test() ->
     ?assert(compare_proplists(Prop1, shuffle_list(Prop1))),
     ok.
 
+eqc_count_test_() ->
+    %% Run the first eqc-based test with a higher timeout value
+    %% beacause it takes time for EQC to authenticate when it's autostarted.
+    {timeout, 1000, [?_assert(eqc:quickcheck(prop_group_count()))]}.
 
-eqc_test() ->
-    ?assert(eqc:quickcheck(prop_group_count())),
+eqc_gsplit_test() ->
     ?assert(eqc:quickcheck(prop_gsplit_split())).
 
 -endif.
 -endif.
+
+
+
+
+
+
+
