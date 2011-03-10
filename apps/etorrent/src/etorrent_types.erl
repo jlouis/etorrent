@@ -1,15 +1,39 @@
-%% Various types spanning multiple modules.
+-module(etorrent_types).
+
+-export_type([
+    tier/0,
+    bitfield/0,
+    capabilities/0,
+    torrent_id/0,
+    file_path/0,
+    from_tag/0,
+    piece_index/0,
+    piece_bin/0,
+    chunk_offset/0,
+    chunk_len/0,
+    chunk_bin/0,
+    block_len/0,
+    block_offset/0,
+    block_bin/0,
+    tracker_event/0,
+    infohash/0,
+    nodeinfo/0,
+    peerinfo/0,
+    transaction/0,
+    trackerinfo/0,
+    dht_qtype/0]).
+
 -type tier() :: [string()].
 -type bitfield() :: binary().
 -type capabilities() :: extended_messaging.
+
 % The bcode() type:
--type bstring() :: {'string', string()}.
--type binteger() :: {'integer', integer()}.
--type bcode() :: integer()
-	       | binary()
-	       | [bcode()]
-	       | [{string(), bcode()}].
--type bdict() :: [{string(), bcode()}].
+-type bcode() ::
+    integer()
+	| binary()
+	| [bcode()]
+	| [{binary(), bcode()}].
+
 -type torrent_id() :: integer().
 -type file_path() :: string().
 
@@ -47,10 +71,4 @@
 -type token() :: binary().
 -type transaction() :: binary().
 -type trackerinfo() :: {nodeid(), ipaddr(), portnum(), token()}.
--type dht_qtype() :: 'ping' | 'find_node'
-                   | 'get_peers' | 'announce'.
-
-
-
-
-
+-type dht_qtype() :: 'ping' | 'find_node' | 'get_peers' | 'announce'.

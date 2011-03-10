@@ -14,7 +14,8 @@
 -behaviour(gen_fsm).
 
 -include("log.hrl").
--include("types.hrl").
+
+-type bcode() :: etorrent_types:bcode().
 
 -ignore_xref([{'start_link', 3}, {start, 1}, {initializing, 2},
 	      {started, 2}]).

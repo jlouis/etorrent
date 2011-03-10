@@ -15,7 +15,6 @@
 %% udp_tracker processes.</p>
 %%@end
 -module(etorrent_udp_tracker).
--include("types.hrl").
 -include("log.hrl").
 
 -behaviour(gen_server).
@@ -30,6 +29,9 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3]).
 
+-type ipaddr() :: etorrent_types:ipaddr().
+-type portnum() :: etorrent_types:portnum().
+-type from_tag() :: etorrent_types:from_tag().
 -record(state, { try_count = -1 :: integer(),
 	         tracker        :: tracker_id(),
 		 ty             :: announce | connid_gather,
