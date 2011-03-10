@@ -109,7 +109,6 @@
                  pkt_info     :: utp_pkt:t(),
                  pkt_buf      :: utp_pkt:buf(),
                  proc_info    :: utp_process:t(),
-                 last_rcv_win :: term(),
                  conn_id_send :: integer(),
                  seq_no       :: integer(),
                  ack_no       :: integer(),
@@ -183,7 +182,7 @@ send_pkt(#sock_info { socket = Socket,
 init([Socket, Addr, Port, Options]) ->
     TRef = erlang:send_after(?SYN_TIMEOUT, self(), syn_timeout),
 
-    Current_Time = utp_proto:get_current_time_millis(),
+    Current_Time = utp_proto:current_time_ms(),
 
     %% @todo All these are probably wrong. They have to be timers instead and set
     %%       in the future accordingly (ack_time, etc)
@@ -253,7 +252,7 @@ connected({pkt, Pkt, {_TS, _TSDiff, RecvTime}},
 			case utp_pkt:rb_drained(PB) of
 			    ok -> ok;
 			    send_ack -> todo;
-			    set_timer -> todo
+			    ack_timer -> todo
 			end,
 			{PR, PB}
 		end,
@@ -262,61 +261,61 @@ connected({pkt, Pkt, {_TS, _TSDiff, RecvTime}},
 				 pkt_buf = N_PB,
 				 proc_info = N_PRI }}
     end;
-connected(close, #state { sock_info = SockInfo } = S) ->
+connected(close, #state { sock_info = SockInfo } = State) ->
     %% Close down connection!
     ok = utp_pkt:send_fin(SockInfo),
-    {next_state, fin_sent, S};
-connected(Msg, S) ->
+    {next_state, fin_sent, State};
+connected(Msg, State) ->
     %% Ignore messages
     error_logger:warning_report([async_message, connected, Msg]),
-    {next_state, connected, S}.
+    {next_state, connected, State}.
 
 %% @private
-connected_full(close, #state { sock_info = SockInfo } = S) ->
+connected_full(close, #state { sock_info = SockInfo } = State) ->
     %% Close down connection!
     ok = utp_pkt:send_fin(SockInfo),
-    {next_state, fin_sent, S};
-connected_full(Msg, S) ->
+    {next_state, fin_sent, State};
+connected_full(Msg, State) ->
     %% Ignore messages
     error_logger:warning_report([async_message, connected_full, Msg]),
-    {next_state, connected_full, S}.
+    {next_state, connected_full, State}.
 
 %% @private
-got_fin(close, S) ->
-    {next_state, destroy_delay, S};
-got_fin(Msg, S) ->
+got_fin(close, State) ->
+    {next_state, destroy_delay, State};
+got_fin(Msg, State) ->
     %% Ignore messages
     error_logger:warning_report([async_message, got_fin, Msg]),
-    {next_state, got_fin, S}.
+    {next_state, got_fin, State}.
 
 %% @private
 %% Die deliberately on close for now
-destroy_delay(Msg, S) ->
+destroy_delay(Msg, State) ->
     %% Ignore messages
     error_logger:warning_report([async_message, destroy_delay, Msg]),
-    {next_state, destroy_delay, S}.
+    {next_state, destroy_delay, State}.
 
 %% @private
 %% Die deliberately on close for now
-fin_sent(Msg, S) ->
+fin_sent(Msg, State) ->
     %% Ignore messages
     error_logger:warning_report([async_message, fin_sent, Msg]),
-    {next_state, fin_sent, S}.
+    {next_state, fin_sent, State}.
 
 %% @private
-reset(close, S) ->
-    {next_state, destroy, S};
-reset(Msg, S) ->
+reset(close, State) ->
+    {next_state, destroy, State};
+reset(Msg, State) ->
     %% Ignore messages
     error_logger:warning_report([async_message, reset, Msg]),
-    {next_state, reset, S}.
+    {next_state, reset, State}.
 
 %% @private
 %% Die deliberately on close for now
-destroy(Msg, S) ->
+destroy(Msg, State) ->
     %% Ignore messages
     error_logger:warning_report([async_message, destroy, Msg]),
-    {next_state, destroy, S}.
+    {next_state, destroy, State}.
 
 
 %%--------------------------------------------------------------------
@@ -351,7 +350,6 @@ idle(connect, From, #state { sock_info = SockInfo,
 			}, % Rest are defaults
     ok = send(SockInfo, SynPacket),
     {next_state, syn_sent, #state { sock_info = SockInfo,
-                                    last_rcv_win = utp_pkt:rcv_window(),
                                     timeout = TRef,
                                     seq_no = 2,
                                     conn_id_send = Conn_id_send,
@@ -375,31 +373,31 @@ idle({accept, SYN}, _From, #state { sock_info = SockInfo }) ->
 					      seq_no = SeqNo + 1,
 					      ack_no = AckNo,
 					      conn_id_send = Conn_id_send }};
-idle(_Msg, _From, S) ->
-    {reply, idle, {error, enotconn}, S}.
+idle(_Msg, _From, State) ->
+    {reply, idle, {error, enotconn}, State}.
 
-connected({recv, Length}, From, #state { proc_info = PI } = S) ->
+connected({recv, Length}, From, #state { proc_info = PI } = State) ->
     %% @todo Try to satisfy receivers
-    {next_state, connected, S#state {
+    {next_state, connected, State#state {
 			   proc_info = utp_process:enqueue_receiver(From, Length, PI) }};
 connected({send, Data}, From, #state {
 			  conn_id_send = ConnId,
 			  proc_info = PI,
 			  sock_info = SockInfo,
 			  pkt_info  = PKI,
-			  pkt_buf   = PKB } = S) ->
+			  pkt_buf   = PKB } = State) ->
     ProcInfo = utp_process:enqueue_sender(From, Data, PI),
     {ok, PKB1, ProcInfo1} = utp_pkt:fill_window(ConnId,
 						SockInfo,
 						ProcInfo,
 						PKI,
 						PKB),
-    {next_state, connected, S#state {
+    {next_state, connected, State#state {
 			      proc_info = ProcInfo1,
 			      pkt_buf   = PKB1 }};
-connected(Msg, From, S) ->
+connected(Msg, From, State) ->
     error_logger:warning_report([sync_message, connected, Msg, From]),
-    {next_state, connected, S}.
+    {next_state, connected, State}.
 
 
 

@@ -8,6 +8,8 @@
 -endif.
 
 -export([mk_connection_id/0,
+         current_time_us/0,
+         current_time_ms/0,
 	 payload_size/1,
 	 send_packet/3,
 	 encode/2,
@@ -35,6 +37,10 @@ current_time_us() ->
     {M, S, Micro} = os:timestamp(),
     S1 = M*1000000 + S,
     Micro + S1*1000000.
+
+current_time_ms() ->
+    {M, S, Micro} = os:timestamp(),
+    (Micro / 1000) + S*1000 + M*1000000*1000.
 
 timediff(Ts, Last) ->
     Ts - Last. %% @todo this has to be a lot more clever than it currently is!
