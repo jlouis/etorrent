@@ -73,7 +73,7 @@
 -type pieceset() :: etorrent_pieceset:pieceset().
 -type monitorset() :: etorrent_monitorset:monitorset().
 
--record(subscription, {
+-record(watcher, {
     pid :: pid(),
     ref :: reference(),
     tag :: term(),
@@ -83,7 +83,7 @@
     torrent_id :: torrent_id(),
     num_peers  :: array(),
     peer_monitors :: monitorset(),
-    subscriptions :: [#subscription{}]}).
+    watchers :: [#watcher{}]}).
 
 
 %% @doc Register as the scarcity server for a torrent
@@ -167,7 +167,7 @@ init([TorrentID]) ->
         torrent_id=TorrentID,
         num_peers=array:new([{default, 0}]),
         peer_monitors=etorrent_monitorset:new(),
-        subscriptions=[]},
+        watchers=[]},
     {ok, InitState}.
 
 
@@ -176,10 +176,10 @@ handle_call({add_peer, PeerPid, Pieceset}, _, State) ->
     #state{
         peer_monitors=Monitors,
         num_peers=Numpeers,
-        subscriptions=Subscriptions} = State,
+        watchers=Watchers} = State,
     NewNumpeers = increment(Pieceset, Numpeers),
     NewMonitors = etorrent_monitorset:insert(PeerPid, Pieceset, Monitors),
-    send_updates(Pieceset, Subscriptions, NewNumpeers),
+    send_updates(Pieceset, Watchers, NewNumpeers),
     NewState = State#state{
         peer_monitors=NewMonitors,
         num_peers=NewNumpeers},
@@ -189,11 +189,11 @@ handle_call({add_piece, Pid, PieceIndex, Pieceset}, _, State) ->
     #state{
         peer_monitors=Monitors,
         num_peers=Numpeers,
-        subscriptions=Subscriptions} = State,
+        watchers=Watchers} = State,
     Prev = array:get(PieceIndex, Numpeers),
     NewNumpeers = array:set(PieceIndex, Prev + 1, Numpeers),
     NewMonitors = etorrent_monitorset:update(Pid, Pieceset, Monitors),
-    send_updates(PieceIndex, Subscriptions, NewNumpeers),
+    send_updates(PieceIndex, Watchers, NewNumpeers),
     NewState = State#state{
         peer_monitors=NewMonitors,
         num_peers=NewNumpeers},
@@ -207,22 +207,22 @@ handle_call({get_order, Pieceset}, _, State) ->
 handle_call({watch, Pid, Tag, Pieceset}, _, State) ->
     #state{
         num_peers=Numpeers,
-        subscriptions=Subscriptions} = State,
+        watchers=Watchers} = State,
     %% Use a monitor reference as the subscription reference,
     %% this let's us tear down subscriptions when client processes
     %% crash. Currently the interface of the monitorset module does
     %% not let us associate values with monitor references so there
     %% is no benefit to using it in this case.
     Ref = monitor(process, Pid),
-    Subscription = #subscription{
+    Watcher = #watcher{
         pid=Pid,
         ref=Ref,
         tag=Tag,
         pieceset=Pieceset},
-    NewSubscriptions = [Subscription|Subscriptions],
+    NewWatchers = [Watcher|Watchers],
     Piecelist = sorted_piecelist(Pieceset, Numpeers),
     NewState = State#state{
-        subscriptions=NewSubscriptions},
+        watchers=NewWatchers},
     {reply, {ok, Ref, Piecelist}, NewState}.
 
 
@@ -236,7 +236,7 @@ handle_info({'DOWN', Ref, process, Pid, _}, State) ->
     #state{
         peer_monitors=Monitors,
         num_peers=Numpeers,
-        subscriptions=Subscriptions} = State,
+        watchers=Watchers} = State,
     %% We are monitoring two types of clients, peers and
     %% subscribers. If a peer exits we want to update the counters
     %% and notify the subscribers. If a subscriber exits we want
@@ -247,14 +247,14 @@ handle_info({'DOWN', Ref, process, Pid, _}, State) ->
             Pieceset = etorrent_monitorset:fetch(Pid, Monitors),
             NewNumpeers = decrement(Pieceset, Numpeers),
             NewMonitors = etorrent_monitorset:delete(Pid, Monitors),
-            send_updates(Pieceset, Subscriptions, NewNumpeers),
+            send_updates(Pieceset, Watchers, NewNumpeers),
             INewState = State#state{
                 peer_monitors=NewMonitors,
                 num_peers=NewNumpeers},
             INewState;
         false ->
-            NewSubscriptions = lists:keydelete(Ref, #subscription.ref, Subscriptions),
-            State#state{subscriptions=NewSubscriptions}
+            NewWatchers = lists:keydelete(Ref, #watcher.ref, Watchers),
+            State#state{watchers=NewWatchers}
     end,
     {noreply, NewState}.
 
@@ -295,31 +295,31 @@ increment(Pieceset, Numpeers) ->
     end, Numpeers, Piecelist).
 
 
--spec send_updates(pieceset() | pos_integer(), [#subscription{}], array()) -> ok.
-send_updates(Index, Subscriptions, Numpeers) when is_integer(Index) ->
-    Matching = [Sub || #subscription{pieceset=Pieceset}=Sub <- Subscriptions,
-        etorrent_pieceset:is_member(Index, Pieceset)],
-    [send_update(Sub, Numpeers) || Sub <- Matching],
+-spec send_updates(pieceset() | pos_integer(), [#watcher{}], array()) -> ok.
+send_updates(Index, Watchers, Numpeers) when is_integer(Index) ->
+    Matching = [Watch || #watcher{pieceset=Watchedset}=Watch <- Watchers,
+        etorrent_pieceset:is_member(Index, Watchedset)],
+    [send_update(Watcher, Numpeers) || Watcher <- Matching],
     ok;
 
-send_updates(Pieceset, Subscriptions, Numpeers) ->
-    IsMatching = fun(SubPieceset) ->
-        Intersection = etorrent_pieceset:intersection(Pieceset, SubPieceset),
+send_updates(Pieceset, Watchers, Numpeers) ->
+    IsMatching = fun(Watchedset) ->
+        Intersection = etorrent_pieceset:intersection(Pieceset, Watchedset),
         not etorrent_pieceset:is_empty(Intersection)
     end,
-    Matching = [Sub || #subscription{pieceset=SubPieceset}=Sub <- Subscriptions,
-        IsMatching(SubPieceset)],
-    [send_update(Sub, Numpeers) || Sub <- Matching],
+    Matching = [Watch || #watcher{pieceset=Watchedset}=Watch <- Watchers,
+        IsMatching(Watchedset)],
+    [send_update(Watcher, Numpeers) || Watcher <- Matching],
     ok.
 
 
--spec send_update(#subscription{}, array()) -> ok.
-send_update(Subscription, Numpeers) ->
-    #subscription{
+-spec send_update(#watcher{}, array()) -> ok.
+send_update(Watcher, Numpeers) ->
+    #watcher{
         pid=Pid,
         ref=Ref,
         tag=Tag,
-        pieceset=Pieceset} = Subscription,
+        pieceset=Pieceset} = Watcher,
     Piecelist = sorted_piecelist(Pieceset, Numpeers),
     Pid ! {scarcity, Ref, Tag, Piecelist},
     ok.
