@@ -104,7 +104,8 @@
                  seq_no       :: integer(),
                  ack_no       :: integer(),
                  connector    :: {reference(), pid()},
-                 timeout      :: reference() }).
+                 syn_timeout  :: reference()
+               }).
 
 %%%===================================================================
 
@@ -173,20 +174,6 @@ send_pkt(#sock_info { socket = Socket,
 %% @end
 %%--------------------------------------------------------------------
 init([Socket, Addr, Port, Options]) ->
-    TRef = erlang:send_after(?SYN_TIMEOUT, self(), syn_timeout),
-
-    Current_Time = utp_proto:current_time_ms(),
-
-    %% @todo All these are probably wrong. They have to be timers instead and set
-    %%       in the future accordingly (ack_time, etc)
-    Timing = {todo,
-              {ack_time, Current_Time + ?DEFAULT_ACK_TIME},
-              {last_got_packet, Current_Time},
-              {last_sent_packet, Current_Time},
-              {last_measured_delay, Current_Time + ?DEFAULT_ACK_TIME},
-              {last_rwin_decay, Current_Time - ?MAX_WINDOW_DECAY},
-              {last_send_quota, Current_Time}},
-
     PktInfo  = utp_pkt:mk(),
     SockInfo = #sock_info { addr = Addr,
 			    port = Port,
@@ -195,8 +182,7 @@ init([Socket, Addr, Port, Options]) ->
                             timestamp_difference = 0 % @todo check this value
 			  },
     {ok, state_name, #state{ sock_info = SockInfo,
-                             pkt_info  = PktInfo,
-                             timeout = TRef }}.
+                             pkt_info  = PktInfo }}.
 
 %% @private
 idle(close, S) ->
@@ -211,15 +197,17 @@ syn_sent({pkt, #packet { ty = st_state,
 			 seq_no = PktSeqNo },
 	       _Timing},
 	 #state { sock_info = SockInfo,
-			   conn_id_send = Conn_id_send,
-			   seq_no = SeqNo,
-			   connector = From
-			 }) ->
+                  conn_id_send = Conn_id_send,
+                  seq_no = SeqNo,
+                  connector = From,
+                  syn_timeout = TRef
+                }) ->
+    gen_fsm:cancel_timer(TRef),
     reply(From, ok),
     {next_state, connected, #state { sock_info = SockInfo,
-					       conn_id_send = Conn_id_send,
-					       seq_no = SeqNo,
-					       ack_no = PktSeqNo }};
+                                     conn_id_send = Conn_id_send,
+                                     seq_no = SeqNo,
+                                     ack_no = PktSeqNo }};
 syn_sent(close, _S) ->
     todo_alter_rto;
 syn_sent(Msg, S) ->
@@ -326,8 +314,8 @@ destroy(Msg, State) ->
 %%                   {stop, Reason, Reply, NewState}
 %% @end
 %%--------------------------------------------------------------------
-idle(connect, From, #state { sock_info = SockInfo,
-				  timeout = TRef }) ->
+idle(connect, From, State = #state { sock_info = SockInfo }) ->
+    TRef = gen_fsm:send_after(?SYN_TIMEOUT, syn_timeout),
     Conn_id_recv = utp_proto:mk_connection_id(),
     gen_utp:register_process(self(), Conn_id_recv),
 
@@ -339,11 +327,11 @@ idle(connect, From, #state { sock_info = SockInfo,
 			  extension = ?SYN_EXTS
 			}, % Rest are defaults
     ok = send(SockInfo, SynPacket),
-    {next_state, syn_sent, #state { sock_info = SockInfo,
-                                    timeout = TRef,
-                                    seq_no = 2,
-                                    conn_id_send = Conn_id_send,
-                                    connector = From }};
+    {next_state, syn_sent, State#state {
+                             syn_timeout = TRef,
+                             seq_no = 2, % @todo pkt_buf stuff :/
+                             conn_id_send = Conn_id_send, %@todo Where does this belong?
+                             connector = From }};
 idle({accept, SYN}, _From, #state { sock_info = SockInfo }) ->
     %% @todo timeout handling from the syn packet!
     Conn_id_recv = SYN#packet.conn_id + 1,
