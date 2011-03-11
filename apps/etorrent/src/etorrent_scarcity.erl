@@ -359,7 +359,12 @@ scarcity_server_test_() ->
          ?_test(empty_ordering_case()),
          ?_test(init_pieceset_case()),
          ?_test(one_available_case()),
-         ?_test(decrement_on_exit_case())]}.
+         ?_test(decrement_on_exit_case()),
+         ?_test(init_watch_case()),
+         ?_test(add_peer_update_case()),
+         ?_test(add_piece_update_case()),
+         ?_test(peer_exit_update_case()),
+         ?_test(local_unwatch_case())]}.
 
 register_case() ->
     true = ?scarcity:register_scarcity_server(0),
@@ -410,5 +415,60 @@ decrement_on_exit_case() ->
     receive {'DOWN', Ref, _, _, _} -> ok end,
     {ok, O2} = ?scarcity:get_order(6, Pieces),
     ?assertEqual([0,1,2,3,4,5,6,7], O2).
+
+init_watch_case() ->
+    {ok, _} = ?scarcity:start_link(7),
+    {ok, Ref, Order} = ?scarcity:watch(7, seven, pieces([0,2,4,6])),
+    ?assert(is_reference(Ref)),
+    ?assertEqual([0,2,4,6], Order).
+
+add_peer_update_case() ->
+    {ok, _} = ?scarcity:start_link(8),
+    {ok, Ref, _} = ?scarcity:watch(8, eight, pieces([0,2,4,6])),
+    ok = ?scarcity:add_peer(8, pieces([0,2])),
+    receive
+        {scarcity, Ref, Tag, Order} ->
+            ?assertEqual(eight, Tag),
+            ?assertEqual([4,6,0,2], Order)
+    end.
+
+add_piece_update_case() ->
+    {ok, _} = ?scarcity:start_link(9),
+    {ok, Ref, _} = ?scarcity:watch(9, nine, pieces([0,2,4,6])),
+    ok = ?scarcity:add_peer(9, pieces([])),
+    ok = ?scarcity:add_piece(9, 2, pieces([2])),
+    receive
+        {scarcity, Ref, nine, Order} ->
+            ?assertEqual([0,4,6,2], Order)
+    end.
+
+peer_exit_update_case() ->
+    {ok, _} = ?scarcity:start_link(10),
+    Main = self(),
+    Pid = spawn_link(fun() ->
+        ok = ?scarcity:add_peer(10, pieces([0,1,2,3])),
+        Main ! done,
+        receive die -> ok end
+    end),
+    receive done -> ok end,
+    {ok, Ref, _} = ?scarcity:watch(10, ten, pieces([0,2,4,6])),
+    Pid ! die,
+    receive
+        {scarcity, Ref, ten, Order} ->
+            ?assertEqual([0,2,4,6], Order)
+    end.
+
+local_unwatch_case() ->
+    {ok, _} = ?scarcity:start_link(11),
+    {ok, Ref, _} = ?scarcity:watch(11, eleven, pieces([0,2,4,6])),
+    ?assertEqual(ok, ?scarcity:unwatch(11, Ref)),
+    ok = ?scarcity:add_peer(11, pieces([0,1,2,3,4,5,6,7])),
+    %% Assume that the message is sent before the add_peer call returns
+    receive
+        {scarcity, Ref, _, _} ->
+            ?assert(false)
+        after 0 ->
+            ?assert(true)
+    end.
 
 -endif.
