@@ -252,6 +252,7 @@ terminate(_, State) ->
 code_change(_, State, _) ->
     {ok, State}.
 
+-spec sorted_piecelist(pieceset(), array()) -> [pos_integer()].
 sorted_piecelist(Pieceset, Numpeers) ->
     Piecelist = etorrent_pieceset:to_list(Pieceset),
     lists:sort(fun(A, B) ->
