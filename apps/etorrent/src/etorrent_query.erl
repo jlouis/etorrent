@@ -51,8 +51,9 @@ merge_peer_states(PeerList, StateList) ->
                      Cleaned = proplists:delete(ip,
                                 proplists:delete(pid,
                                  Merged)),
-                     [{ip, iolist_to_binary(io_lib:format("~B.~B.~B.~B", [B1, B2, B3, B4]))}] ++
-                         Cleaned
+                     proplists:normalize(
+                       [{ip, iolist_to_binary(io_lib:format("~B.~B.~B.~B", [B1, B2, B3, B4]))}] ++
+                           Cleaned)
              end).
 
 merge_by([], _, _, _) -> [];
