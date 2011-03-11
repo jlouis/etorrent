@@ -65,7 +65,7 @@ start(Filename, CallBack) when is_list(Filename), is_function(CallBack, 0) ->
 %% @end
 -spec list() -> ok.
 list() ->
-    All = etorrent_torrent:all(),
+    All = etorrent_query:torrent_list(),
     A   = lists:sort(
 	    fun(PL1, PL2) ->
 		    proplists:get_value(id, PL1) =< proplists:get_value(id, PL2)
