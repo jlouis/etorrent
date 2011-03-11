@@ -58,7 +58,8 @@
          add_peer/2,
          add_piece/3,
          get_order/2,
-         watch/3]).
+         watch/3,
+         unwatch/2]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -159,6 +160,14 @@ watch(TorrentID, Tag, Pieceset) ->
     SrvPid = lookup_scarcity_server(TorrentID),
     gen_server:call(SrvPid, {watch, self(), Tag, Pieceset}).
 
+%% @doc Cancel updates to changes in scarcity
+%%
+%% @end
+-spec unwatch(torrent_id(), reference()) -> ok.
+unwatch(TorrentID, Ref) ->
+    SrvPid = lookup_scarcity_server(TorrentID),
+    gen_server:call(SrvPid, {unwatch, Ref}).
+
 
 %% @private
 init([TorrentID]) ->
@@ -223,7 +232,14 @@ handle_call({watch, Pid, Tag, Pieceset}, _, State) ->
     Piecelist = sorted_piecelist(Pieceset, Numpeers),
     NewState = State#state{
         watchers=NewWatchers},
-    {reply, {ok, Ref, Piecelist}, NewState}.
+    {reply, {ok, Ref, Piecelist}, NewState};
+
+handle_call({unwatch, Ref}, _, State) ->
+    #state{watchers=Watchers} = State,
+    demonitor(Ref),
+    NewWatchers = lists:keydelete(Ref, #watcher.ref, Watchers),
+    NewState = State#state{watchers=NewWatchers},
+    {reply, ok, NewState}.
 
 
 %% @private
