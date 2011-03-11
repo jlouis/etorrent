@@ -225,6 +225,7 @@ handle_call({watch, Pid, Tag, Pieceset}, _, State) ->
         subscriptions=NewSubscriptions},
     {reply, {ok, Ref, Piecelist}, NewState}.
 
+
 %% @private
 handle_cast(_, State) ->
     {noreply, State}.
@@ -267,12 +268,14 @@ terminate(_, State) ->
 code_change(_, State, _) ->
     {ok, State}.
 
+
 -spec sorted_piecelist(pieceset(), array()) -> [pos_integer()].
 sorted_piecelist(Pieceset, Numpeers) ->
     Piecelist = etorrent_pieceset:to_list(Pieceset),
     lists:sort(fun(A, B) ->
         array:get(A, Numpeers) =< array:get(B, Numpeers)
     end, Piecelist).
+
 
 -spec decrement(pieceset(), array()) -> array().
 decrement(Pieceset, Numpeers) ->
@@ -282,6 +285,7 @@ decrement(Pieceset, Numpeers) ->
         array:set(Index, PrevCount - 1, Acc)
     end, Numpeers, Piecelist).
 
+
 -spec increment(pieceset(), array()) -> array().
 increment(Pieceset, Numpeers) ->
     Piecelist = etorrent_pieceset:to_list(Pieceset),
@@ -289,6 +293,7 @@ increment(Pieceset, Numpeers) ->
         PrevCount = array:get(Index, Acc),
         array:set(Index, PrevCount + 1, Acc)
     end, Numpeers, Piecelist).
+
 
 -spec send_updates(pieceset() | pos_integer(), [#subscription{}], array()) -> ok.
 send_updates(Index, Subscriptions, Numpeers) when is_integer(Index) ->
@@ -306,6 +311,7 @@ send_updates(Pieceset, Subscriptions, Numpeers) ->
         IsMatching(SubPieceset)],
     [send_update(Sub, Numpeers) || Sub <- Matching],
     ok.
+
 
 -spec send_update(#subscription{}, array()) -> ok.
 send_update(Subscription, Numpeers) ->
