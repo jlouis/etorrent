@@ -18,12 +18,23 @@
 -export([get_path/2, insert_path/2, delete_paths/1]).
 
 %% Peer information
--export([get_peer_info/1, new_peer/6, connected_peer/3,
-	 foreach_peer/2, foreach_peer_of_tracker/2, statechange_peer/2]).
+-export([
+         all_peers/0,
+         connected_peer/3,
+	 foreach_peer/2, foreach_peer_of_tracker/2,
+         get_peer_info/1,
+         new_peer/6,
+         statechange_peer/2
+        ]).
 
 %% Torrent information
--export([all_torrents/0, statechange_torrent/2, get_torrent/1, acquire_check_token/1,
-	 new_torrent/4]).
+-export([
+         acquire_check_token/1,
+         all_torrents/0,
+         get_torrent/1,
+	 new_torrent/4,
+         statechange_torrent/2
+        ]).
 
 %% UPnP entity information
 -export([register_upnp_entity/3,
@@ -80,6 +91,13 @@ start_link() ->
 all_torrents() ->
     Objs = ets:match_object(tracking_map, '_'),
     [proplistify_tmap(O) || O <- Objs].
+
+%% @doc Return a status on all peers in the main table
+%% @end
+-spec all_peers() -> [proplist:proplist()].
+all_peers() ->
+    Objs = ets:match_object(peers, '_'),
+    [proplistify_peers(O) || O <- Objs].
 
 %% @doc Alter the state of the Tracking map identified by Id
 %%   <p>by What (see alter_map/2).</p>
@@ -345,6 +363,14 @@ proplistify_tmap(#tracking_map { id = Id, filename = FN, supervisor_pid = SPid,
 				 info_hash = IH, state = S }) ->
     [proplists:property(K,V) || {K, V} <- [{id, Id}, {filename, FN}, {supervisor, SPid},
 					   {info_hash, IH}, {state, S}]].
+
+proplistify_peers(#peer {
+                     pid = Pid, ip = IP, port = Port,
+                     torrent_id = TorrentId, state = State
+                    }) ->
+    [proplists:property(K, V) || {K, V} <- [{pid, Pid}, {ip, IP}, {port, Port},
+                                            {torrent_id, TorrentId},
+                                            {state, State}]].
 
 add_monitor(Type, Pid) ->
     gen_server:call(?SERVER, {monitor_pid, Type, Pid}).
