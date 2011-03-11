@@ -8,7 +8,13 @@
 -module(etorrent_webui).
 
 -include("etorrent_version.hrl").
--export([list/3, log/3]).
+-export([
+         list/3,
+         list_json/3,
+         log/3,
+         log_json/3,
+         peers_json/3
+        ]).
 
 -ignore_xref([{list, 3}, {log, 3}]).
 %% =======================================================================
@@ -17,21 +23,38 @@
 %% @end
 -spec log(binary(), ignore, ignore) -> ok.
 log(SessId, _Env, _Input) ->
-    Entries = etorrent_memory_logger:all_entries(),
+    Entries = etorrent_query:log_list(),
     [ok = mod_esi:deliver(SessId, format_log_entry(E)) ||
         E <- lists:keysort(1, Entries)],
+    ok.
+
+log_json(SessId, _Env, _Input) ->
+    Entries = etorrent_query:log_list(),
+    ok = mod_esi:deliver(SessId, dwrap(Entries)),
+    ok.
+
+peers_json(SessId, _Env, _Input) ->
+    Entries = etorrent_query:peer_list(),
+    ok = mod_esi:deliver(SessId, dwrap(Entries)),
     ok.
 
 % @doc Request retrieval of the list of currently serving torrents
 % @end
 -spec list(binary(), ignore, ignore) -> ok.
-list(SessID, _Env, _Input) ->
+list(SessId, _Env, _Input) ->
     {ok, Rates2} = list_rates(),
-    ok = mod_esi:deliver(SessID, table_header()),
+    ok = mod_esi:deliver(SessId, table_header()),
     {ok, Table} = list_torrents(),
-    ok = mod_esi:deliver(SessID, Table),
-    ok = mod_esi:deliver(SessID, table_footer()),
-    ok = mod_esi:deliver(SessID, Rates2),
+    ok = mod_esi:deliver(SessId, Table),
+    ok = mod_esi:deliver(SessId, table_footer()),
+    ok = mod_esi:deliver(SessId, Rates2),
+    ok.
+
+-spec list_json(binary(), ignore, ignore) -> ok.
+list_json(SessId, _Env, _Input) ->
+    Torrents = etorrent_query:torrent_list(),
+    JSON = dwrap(Torrents),
+    ok = mod_esi:deliver(SessId, JSON),
     ok.
 
 %% =======================================================================
@@ -59,7 +82,7 @@ ratio(_Up, 0.0) -> 0.0;
 ratio(Up, Down) -> Up / Down.
 
 list_torrents() ->
-    A = etorrent_torrent:all(),
+    A = etorrent_query:torrent_list(),
     Rows = [begin
 		Id = proplists:get_value(id, R),
 		SL = proplists:get_value(rate_sparkline, R),
@@ -123,3 +146,11 @@ show_sparkline([I | R]) ->
 
 conv_number(I) when is_integer(I) -> integer_to_list(I);
 conv_number(F) when is_float(F)   -> float_to_list(F).
+
+%% @doc Wrap a JSON term into a 'd' dictionary. 
+%%  This avoids a certain type of cross browser attacks by disallowing
+%%  the outer element to be a list. The problem is that an array can
+%%  be reprototyped in JS, which then opens you up to nasty attacks.
+%% @end
+dwrap(Term) ->
+    mochijson2:encode([{d, Term}]).

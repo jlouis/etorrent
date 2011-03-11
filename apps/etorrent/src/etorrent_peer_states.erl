@@ -18,21 +18,22 @@
 -define(DEFAULT_SNUB_TIME, 30).
 
 %% API
--export([start_link/0,
+-export([start_link/0]).
 
-         set_choke/2, set_unchoke/2, set_interested/2, set_not_interested/2,
-         set_local_choke/2, set_local_unchoke/2,
+-export([
+         all_peers/0,
 
-         set_recv_rate/4, set_send_rate/3,
-
+         get_global_rate/0,
+         get_peer_state/2, get_pids_interest/2,
+         get_recv_rate/2,
+         get_send_rate/2,
          get_state/2,
          get_torrent_rate/2,
 
-         get_recv_rate/2,
-         get_send_rate/2,
-         get_peer_state/2, get_pids_interest/2,
-
-         get_global_rate/0]).
+         set_choke/2, set_unchoke/2, set_interested/2, set_not_interested/2,
+         set_local_choke/2, set_local_unchoke/2,
+         set_recv_rate/4, set_send_rate/3
+        ]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -56,6 +57,13 @@
 -spec start_link() -> ignore | {ok, pid()} | {error, term()}.
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
+
+%% @doc Return the states of all peers
+%% @end
+-spec all_peers() -> [proplists:proplist()].
+all_peers() ->
+    Objs = ets:match_object(etorrent_peer_state, '_'),
+    [proplistify(O) || O <- Objs].
 
 %% @doc Update a peer state to `choked'
 %% <p><em>Clarification:</em> This state is what the remote peer has
@@ -334,3 +342,13 @@ fetch_rate(Where, Id, Pid) ->
 add_monitor(Pid) ->
     gen_server:cast(?SERVER, {monitor, Pid}).
 
+
+proplistify(#peer_state { pid = {TorrentId, Pid},
+                          choke_state = Chokestate,
+                          interest_state = Intereststate,
+                          local_choke = Localchoke }) ->
+    [{pid, Pid},
+     {torrent_id, TorrentId},
+     {choke_state, Chokestate},
+     {interest_state, Intereststate},
+     {local_choke, Localchoke}].
