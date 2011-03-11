@@ -18,6 +18,28 @@
 %% The purpose of the server is not to provide a mapping between
 %% peers and pieces to other processes.
 %%
+%% %% # Change notifications
+%% A client can subscribe to changes in the ordering of a set of pieces.
+%% This is an asynchronous version of get_order/2 with additions to provide
+%% continious updates, versioning and context.
+%%
+%% The client must provide the server with the set of pieces to monitor,
+%% a client defined tag for the subscription. The server will provide the
+%% client with a unique reference to the subscription.
+%%
+%% The server should provide the client with the ordering of the pieces
+%% at the time of the call. This ensures that the client does not have
+%% to retrieve it after the subscription has been established.
+%%
+%% The server will send an updated order to the client each time the order
+%% changes, the client defined tag and the subscription reference is
+%% included in each update.
+%%
+%% The client is expected to cancel and resubscribe if the set of pieces
+%% changes. The client is also expected to handle updates that are tagged
+%% with an expired subcription reference. The server is expected to cancel
+%% subscriptions when a client crashes.
+%%
 %% ## notes on implementation
 %% A complete piece set is provided on each update in order to reduce
 %% the amount of effort spent on keeping the two sets synced. This also
