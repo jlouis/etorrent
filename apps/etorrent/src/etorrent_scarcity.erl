@@ -173,23 +173,27 @@ init([TorrentID]) ->
 
 %% @private
 handle_call({add_peer, PeerPid, Pieceset}, _, State) ->
-    #state{peer_monitors=Monitors, num_peers=Numpeers} = State,
-    Piecelist = etorrent_pieceset:to_list(Pieceset),
-    NewNumpeers = lists:foldl(fun(Index, Acc) ->
-        Prev = array:get(Index, Acc),
-        array:set(Index, Prev + 1, Acc)
-    end, Numpeers, Piecelist),
+    #state{
+        peer_monitors=Monitors,
+        num_peers=Numpeers,
+        subscriptions=Subscriptions} = State,
+    NewNumpeers = increment(Pieceset, Numpeers),
     NewMonitors = etorrent_monitorset:insert(PeerPid, Pieceset, Monitors),
+    send_updates(Pieceset, Subscriptions, NewNumpeers),
     NewState = State#state{
         peer_monitors=NewMonitors,
         num_peers=NewNumpeers},
     {reply, ok, NewState};
 
 handle_call({add_piece, Pid, PieceIndex, Pieceset}, _, State) ->
-    #state{peer_monitors=Monitors, num_peers=Numpeers} = State,
+    #state{
+        peer_monitors=Monitors,
+        num_peers=Numpeers,
+        subscriptions=Subscriptions} = State,
     Prev = array:get(PieceIndex, Numpeers),
     NewNumpeers = array:set(PieceIndex, Prev + 1, Numpeers),
     NewMonitors = etorrent_monitorset:update(Pid, Pieceset, Monitors),
+    send_updates(PieceIndex, Subscriptions, NewNumpeers),
     NewState = State#state{
         peer_monitors=NewMonitors,
         num_peers=NewNumpeers},
@@ -227,15 +231,30 @@ handle_cast(_, State) ->
 
 
 %% @private
-handle_info({'DOWN', _, process, Pid, _}, State) ->
-    #state{peer_monitors=Monitors, num_peers=Numpeers} = State,
-    %% Decrement the counter for each piece that this peer provided.
-    Pieceset = etorrent_monitorset:fetch(Pid, Monitors),
-    NewNumpeers = decrement(Pieceset, Numpeers),
-    NewMonitors = etorrent_monitorset:delete(Pid, Monitors),
-    NewState = State#state{
-        peer_monitors=NewMonitors,
-        num_peers=NewNumpeers},
+handle_info({'DOWN', Ref, process, Pid, _}, State) ->
+    #state{
+        peer_monitors=Monitors,
+        num_peers=Numpeers,
+        subscriptions=Subscriptions} = State,
+    %% We are monitoring two types of clients, peers and
+    %% subscribers. If a peer exits we want to update the counters
+    %% and notify the subscribers. If a subscriber exits we want
+    %% to tear down the subscription. Assume that all monitors
+    %% that are not peer monitors are active subscription references.
+    NewState = case etorrent_monitorset:is_member(Pid, Monitors) of
+        true ->
+            Pieceset = etorrent_monitorset:fetch(Pid, Monitors),
+            NewNumpeers = decrement(Pieceset, Numpeers),
+            NewMonitors = etorrent_monitorset:delete(Pid, Monitors),
+            send_updates(Pieceset, Subscriptions, NewNumpeers),
+            INewState = State#state{
+                peer_monitors=NewMonitors,
+                num_peers=NewNumpeers},
+            INewState;
+        false ->
+            NewSubscriptions = lists:keydelete(Ref, #subscription.ref, Subscriptions),
+            State#state{subscriptions=NewSubscriptions}
+    end,
     {noreply, NewState}.
 
 
@@ -262,6 +281,43 @@ decrement(Pieceset, Numpeers) ->
         PrevCount = array:get(Index, Acc),
         array:set(Index, PrevCount - 1, Acc)
     end, Numpeers, Piecelist).
+
+-spec increment(pieceset(), array()) -> array().
+increment(Pieceset, Numpeers) ->
+    Piecelist = etorrent_pieceset:to_list(Pieceset),
+    lists:foldl(fun(Index, Acc) ->
+        PrevCount = array:get(Index, Acc),
+        array:set(Index, PrevCount + 1, Acc)
+    end, Numpeers, Piecelist).
+
+-spec send_updates(pieceset() | pos_integer(), [#subscription{}], array()) -> ok.
+send_updates(Index, Subscriptions, Numpeers) when is_integer(Index) ->
+    Matching = [Sub || #subscription{pieceset=Pieceset}=Sub <- Subscriptions,
+        etorrent_pieceset:is_member(Index, Pieceset)],
+    [send_update(Sub, Numpeers) || Sub <- Matching],
+    ok;
+
+send_updates(Pieceset, Subscriptions, Numpeers) ->
+    IsMatching = fun(SubPieceset) ->
+        Intersection = etorrent_pieceset:intersection(Pieceset, SubPieceset),
+        not etorrent_pieceset:is_empty(Intersection)
+    end,
+    Matching = [Sub || #subscription{pieceset=SubPieceset}=Sub <- Subscriptions,
+        IsMatching(SubPieceset)],
+    [send_update(Sub, Numpeers) || Sub <- Matching],
+    ok.
+
+-spec send_update(#subscription{}, array()) -> ok.
+send_update(Subscription, Numpeers) ->
+    #subscription{
+        pid=Pid,
+        ref=Ref,
+        tag=Tag,
+        pieceset=Pieceset} = Subscription,
+    Piecelist = sorted_piecelist(Pieceset, Numpeers),
+    Pid ! {scarcity, Ref, Tag, Piecelist},
+    ok.
+
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
