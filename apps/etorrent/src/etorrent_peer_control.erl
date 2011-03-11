@@ -276,7 +276,8 @@ handle_message({request, Index, Offset, Len}, S) ->
 handle_message({cancel, Index, Offset, Len}, S) ->
     etorrent_peer_send:cancel(S#state.send_pid, Index, Offset, Len),
     {ok, S};
-handle_message({have, PieceNum}, S) -> peer_have(PieceNum, S);
+handle_message({have, PieceNum}, S) ->
+    peer_have(PieceNum, S);
 handle_message({suggest, Idx}, S) ->
     ?INFO([{peer_id, S#state.remote_peer_id}, {suggest, Idx}]),
     {ok, S};
@@ -285,6 +286,7 @@ handle_message(have_none, #state{remote_pieces=PS}=S) when PS =/= unknown ->
 handle_message(have_none, #state{fast_extension=true, torrent_id=TorrentID}=S) ->
     {value, NumPieces} = etorrent_torrent:num_pieces(TorrentID),
     Pieceset = etorrent_pieceset:new(NumPieces),
+    ok = etorrent_scarcity:add_peer(TorrentID, Pieceset),
     NewState = S#state{
         remote_pieces=Pieceset,
         pieces_left=NumPieces,
@@ -298,6 +300,7 @@ handle_message(have_all, #state{fast_extension=true, torrent_id=TorrentID}=S) ->
     {value, NumPieces} = etorrent_torrent:num_pieces(TorrentID),
     AllPieces = lists:seq(0, NumPieces - 1),
     FullSet = etorrent_pieceset:from_list(AllPieces, NumPieces),
+    ok = etorrent_scarcity:add_peer(TorrentID, FullSet),
     NewState = S#state{
         remote_pieces=FullSet,
         pieces_left=0,
@@ -317,6 +320,7 @@ handle_message({bitfield, Bin}, State) ->
         remote_peer_id=RemoteID} = State,
     {value, Size} = etorrent_torrent:num_pieces(TorrentID),
     Pieceset = etorrent_pieceset:from_binary(Bin, Size),
+    ok = etorrent_scarcity:add_peer(TorrentID, Pieceset),
     Left = PiecesLeft - etorrent_pieceset:size(Pieceset),
     case Left of
         0 -> ok = etorrent_table:statechange_peer(self(), seeder);
@@ -507,14 +511,16 @@ peer_have(PN, #state{remote_pieces=unknown}=State) ->
     NewState = State#state{remote_pieces=Pieceset},
     peer_have(PN, NewState);
 peer_have(PN, State) ->
-    case etorrent_piece_mgr:valid(State#state.torrent_id, PN) of
+    #state{torrent_id=TorrentID} = State,
+    case etorrent_piece_mgr:valid(TorrentID, PN) of
         true ->
             Left = State#state.pieces_left - 1,
-            case peer_seeds(State#state.torrent_id, Left) of
+            case peer_seeds(TorrentID, Left) of
                 ok ->
-                    case etorrent_piece_mgr:interesting(State#state.torrent_id, PN) of
+                    case etorrent_piece_mgr:interesting(TorrentID, PN) of
                         true ->
                             PS = etorrent_pieceset:insert(PN, State#state.remote_pieces),
+                            ok = etorrent_scarcity:add_piece(TorrentID, PN, PS),
                             NS = State#state{remote_pieces=PS, pieces_left=Left, seeder= Left == 0},
                             case State#state.local_interested of
                                 true ->
