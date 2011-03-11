@@ -57,7 +57,8 @@
 -export([start_link/1,
          add_peer/2,
          add_piece/3,
-         get_order/2]).
+         get_order/2,
+         watch_pieces/3]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -72,10 +73,17 @@
 -type pieceset() :: etorrent_pieceset:pieceset().
 -type monitorset() :: etorrent_monitorset:monitorset().
 
+-record(subscription, {
+    pid :: pid(),
+    ref :: reference(),
+    tag :: term(),
+    pieceset :: pieceset()}).
+
 -record(state, {
     torrent_id :: torrent_id(),
     num_peers  :: array(),
-    peer_monitors :: monitorset()}).
+    peer_monitors :: monitorset(),
+    subscriptions :: [#subscription{}]}).
 
 
 %% @doc Register as the scarcity server for a torrent
@@ -142,6 +150,15 @@ get_order(TorrentID, Pieceset) ->
     SrvPid = lookup_scarcity_server(TorrentID),
     gen_server:call(SrvPid, {get_order, Pieceset}).
 
+%% @doc Receive updates to changes in scarcity
+%% 
+%% @end
+-spec watch_pieces(torrent_id(), term(), pieceset()) ->
+    {ok, reference(), [pos_integer()]}.
+watch_pieces(TorrentID, Tag, Pieceset) ->
+    SrvPid = lookup_scarcity_server(TorrentID),
+    gen_server:call(SrvPid, {watch, self(), Tag, Pieceset}).
+
 
 %% @private
 init([TorrentID]) ->
@@ -149,7 +166,8 @@ init([TorrentID]) ->
     InitState = #state{
         torrent_id=TorrentID,
         num_peers=array:new([{default, 0}]),
-        peer_monitors=etorrent_monitorset:new()},
+        peer_monitors=etorrent_monitorset:new(),
+        subscriptions=[]},
     {ok, InitState}.
 
 
@@ -179,11 +197,29 @@ handle_call({add_piece, Pid, PieceIndex, Pieceset}, _, State) ->
 
 handle_call({get_order, Pieceset}, _, State) ->
     #state{num_peers=Numpeers} = State,
-    Piecelist = lists:sort(fun(A, B) ->
-        array:get(A, Numpeers) =< array:get(B, Numpeers)
-    end, etorrent_pieceset:to_list(Pieceset)),
-    {reply, {ok, Piecelist}, State}.
+    Piecelist = sorted_piecelist(Pieceset, Numpeers),
+    {reply, {ok, Piecelist}, State};
 
+handle_call({watch, Pid, Tag, Pieceset}, _, State) ->
+    #state{
+        num_peers=Numpeers,
+        subscriptions=Subscriptions} = State,
+    %% Use a monitor reference as the subscription reference,
+    %% this let's us tear down subscriptions when client processes
+    %% crash. Currently the interface of the monitorset module does
+    %% not let us associate values with monitor references so there
+    %% is no benefit to using it in this case.
+    Ref = monitor(process, Pid),
+    Subscription = #subscription{
+        pid=Pid,
+        ref=Ref,
+        tag=Tag,
+        pieceset=Pieceset},
+    NewSubscriptions = [Subscription|Subscriptions],
+    Piecelist = sorted_piecelist(Pieceset, Numpeers),
+    NewState = State#state{
+        subscriptions=NewSubscriptions},
+    {reply, {ok, Ref, Piecelist}, NewState}.
 
 %% @private
 handle_cast(_, State) ->
@@ -216,6 +252,11 @@ terminate(_, State) ->
 code_change(_, State, _) ->
     {ok, State}.
 
+sorted_piecelist(Pieceset, Numpeers) ->
+    Piecelist = etorrent_pieceset:to_list(Pieceset),
+    lists:sort(fun(A, B) ->
+        array:get(A, Numpeers) =< array:get(B, Numpeers)
+    end, Piecelist).
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
