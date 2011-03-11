@@ -231,11 +231,7 @@ handle_info({'DOWN', _, process, Pid, _}, State) ->
     #state{peer_monitors=Monitors, num_peers=Numpeers} = State,
     %% Decrement the counter for each piece that this peer provided.
     Pieceset = etorrent_monitorset:fetch(Pid, Monitors),
-    Piecelist = etorrent_pieceset:to_list(Pieceset),
-    NewNumpeers = lists:foldl(fun(Index, Acc) ->
-        PrevCount = array:get(Index, Acc),
-        array:set(Index, PrevCount - 1, Acc)
-    end, Numpeers, Piecelist),
+    NewNumpeers = decrement(Pieceset, Numpeers),
     NewMonitors = etorrent_monitorset:delete(Pid, Monitors),
     NewState = State#state{
         peer_monitors=NewMonitors,
@@ -258,6 +254,14 @@ sorted_piecelist(Pieceset, Numpeers) ->
     lists:sort(fun(A, B) ->
         array:get(A, Numpeers) =< array:get(B, Numpeers)
     end, Piecelist).
+
+-spec decrement(pieceset(), array()) -> array().
+decrement(Pieceset, Numpeers) ->
+    Piecelist = etorrent_pieceset:to_list(Pieceset),
+    lists:foldl(fun(Index, Acc) ->
+        PrevCount = array:get(Index, Acc),
+        array:set(Index, PrevCount - 1, Acc)
+    end, Numpeers, Piecelist).
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
