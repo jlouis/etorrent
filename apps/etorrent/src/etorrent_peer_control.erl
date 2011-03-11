@@ -506,17 +506,17 @@ peer_have(PN, #state{remote_pieces=unknown}=State) ->
     Pieceset = etorrent_pieceset:new(NumPieces),
     NewState = State#state{remote_pieces=Pieceset},
     peer_have(PN, NewState);
-peer_have(PN, S) ->
-    case etorrent_piece_mgr:valid(S#state.torrent_id, PN) of
+peer_have(PN, State) ->
+    case etorrent_piece_mgr:valid(State#state.torrent_id, PN) of
         true ->
-            Left = S#state.pieces_left - 1,
-            case peer_seeds(S#state.torrent_id, Left) of
+            Left = State#state.pieces_left - 1,
+            case peer_seeds(State#state.torrent_id, Left) of
                 ok ->
-                    case etorrent_piece_mgr:interesting(S#state.torrent_id, PN) of
+                    case etorrent_piece_mgr:interesting(State#state.torrent_id, PN) of
                         true ->
-                            PS = etorrent_pieceset:insert(PN, S#state.remote_pieces),
-                            NS = S#state{remote_pieces=PS, pieces_left=Left, seeder= Left == 0},
-                            case S#state.local_interested of
+                            PS = etorrent_pieceset:insert(PN, State#state.remote_pieces),
+                            NS = State#state{remote_pieces=PS, pieces_left=Left, seeder= Left == 0},
+                            case State#state.local_interested of
                                 true ->
                                     try_to_queue_up_pieces(NS);
                                 false ->
@@ -524,15 +524,15 @@ peer_have(PN, S) ->
                                     try_to_queue_up_pieces(NS#state{local_interested = true})
                             end;
                         false ->
-                            NSS = S#state { pieces_left = Left, seeder = Left == 0},
+                            NSS = State#state { pieces_left = Left, seeder = Left == 0},
                             {ok, NSS}
                     end;
-                stop -> {stop, S}
+                stop -> {stop, normal, State}
             end;
         false ->
-            {ok, {IP, Port}} = inet:peername(S#state.socket),
-            etorrent_peer_mgr:enter_bad_peer(IP, Port, S#state.remote_peer_id),
-            {stop, normal, S}
+            {ok, {IP, Port}} = inet:peername(State#state.socket),
+            etorrent_peer_mgr:enter_bad_peer(IP, Port, State#state.remote_peer_id),
+            {stop, normal, State}
     end.
 
 peer_seeds(Id, 0) ->
