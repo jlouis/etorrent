@@ -58,7 +58,7 @@
          add_peer/2,
          add_piece/3,
          get_order/2,
-         watch_pieces/3]).
+         watch/3]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -153,9 +153,9 @@ get_order(TorrentID, Pieceset) ->
 %% @doc Receive updates to changes in scarcity
 %% 
 %% @end
--spec watch_pieces(torrent_id(), term(), pieceset()) ->
+-spec watch(torrent_id(), term(), pieceset()) ->
     {ok, reference(), [pos_integer()]}.
-watch_pieces(TorrentID, Tag, Pieceset) ->
+watch(TorrentID, Tag, Pieceset) ->
     SrvPid = lookup_scarcity_server(TorrentID),
     gen_server:call(SrvPid, {watch, self(), Tag, Pieceset}).
 
