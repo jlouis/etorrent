@@ -18,7 +18,7 @@
 %% The purpose of the server is not to provide a mapping between
 %% peers and pieces to other processes.
 %%
-%% %% # Change notifications
+%% # Change notifications
 %% A client can subscribe to changes in the ordering of a set of pieces.
 %% This is an asynchronous version of get_order/2 with additions to provide
 %% continious updates, versioning and context.
@@ -39,6 +39,11 @@
 %% changes. The client is also expected to handle updates that are tagged
 %% with an expired subcription reference. The server is expected to cancel
 %% subscriptions when a client crashes.
+%%
+%% Change notifications are rate limitied to an interval specified by the
+%% client when the client subscription is initialialized. If an update
+%% is triggered too son after a prevous update the update is supressed
+%% and an update is scheduled to be sent once the interval has passed. 
 %%
 %% ## notes on implementation
 %% A complete piece set is provided on each update in order to reduce
@@ -78,7 +83,9 @@
     pid :: pid(),
     ref :: reference(),
     tag :: term(),
-    pieceset :: pieceset()}).
+    pieceset :: pieceset(),
+    changed :: boolean(),
+    timer_ref :: reference()}).
 
 -record(state, {
     torrent_id :: torrent_id(),
