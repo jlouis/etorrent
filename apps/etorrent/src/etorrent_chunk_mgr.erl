@@ -147,7 +147,10 @@
 %%
 %% ## Valid
 %% A piece enters the valid state when it has been marked as valid.
-%% A piece may noy leave the valid state.
+%% A piece may not leave the valid state.
+%%
+%% # Priority of pieces
+%% TODO
 %%
 %% # Chunk sets
 %% ## Assigned chunks
