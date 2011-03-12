@@ -79,6 +79,15 @@ graph: depgraph.png depgraph.pdf
 depgraph.dot: compile
 	./tools/graph apps/etorrent/ebin $@ etorrent
 
+TABFILES=/usr/bin/env python -c \
+    "import glob; print '\n'.join([file for file \
+     in glob.glob('apps/*/src/*.erl') \
+     if [line for line in open(file).readlines() \
+     if line.startswith('\t')]])"
+tabs:
+	@echo "You have mutilated $(shell $(TABFILES) | wc -l) files:";
+	@$(TABFILES)
+
 
 .PHONY: all compile tags dialyze run tracer clean \
 	 deps eunit rel xref dev console console-perf graph \
