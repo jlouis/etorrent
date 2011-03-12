@@ -1,17 +1,16 @@
 ### "Real" TODO:
 
-* Dialyzer run
+* Go through initial connect code and update with new knowledge.
 * Try to spawn code, make a connection. Get the connection code to work.
 * Try to transfer data on the UTP socket, don't close the socket again.
 * Write code for socket teardown.
 * Test closing the socket as well.
 
-
 * Handle outgoing timestamping
 * Timers, retransmits, acks
 * Window Size incoming (SKIP THIS FOR NOW, we can just use the incoming advertised window)
   * Study this.
-  * Window is changed in the selective ack code
+  * Window is changed in the selective ack code, and in LEDBAT Congestion Control
   * max_window is our maximal window, which can be manipulated
     window_decay is one place
     reset on timeout is a second
