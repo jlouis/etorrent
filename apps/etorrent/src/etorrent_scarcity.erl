@@ -84,8 +84,14 @@
     ref :: reference(),
     tag :: term(),
     pieceset :: pieceset(),
-    changed :: boolean(),
-    timer_ref :: reference()}).
+    interval :: pos_integer(),
+    changed  :: boolean(),
+    timer_ref :: none | reference()}).
+
+%% Watcher states:
+%% waiting: changed=false, timer_ref=none
+%% limited: changed=false, timer_ref=reference()
+%% updated: changed=true,  timer_ref=reference()
 
 -record(state, {
     torrent_id :: torrent_id(),
@@ -164,8 +170,17 @@ get_order(TorrentID, Pieceset) ->
 -spec watch(torrent_id(), term(), pieceset()) ->
     {ok, reference(), [pos_integer()]}.
 watch(TorrentID, Tag, Pieceset) ->
+    watch(TorrentID, Tag, Pieceset, 0).
+
+
+%% @doc Receive updates to changes in scarcity
+%%
+%% @end
+-spec watch(torrent_id(), term(), pieceset(), pos_integer()) ->
+    {ok, reference(), [pos_integer()]}.
+watch(TorrentID, Tag, Pieceset, Interval) ->
     SrvPid = lookup_scarcity_server(TorrentID),
-    gen_server:call(SrvPid, {watch, self(), Tag, Pieceset}).
+    gen_server:call(SrvPid, {watch, self(), Interval, Tag, Pieceset}).
 
 %% @doc Cancel updates to changes in scarcity
 %%
@@ -195,10 +210,11 @@ handle_call({add_peer, PeerPid, Pieceset}, _, State) ->
         watchers=Watchers} = State,
     NewNumpeers = increment(Pieceset, Numpeers),
     NewMonitors = etorrent_monitorset:insert(PeerPid, Pieceset, Monitors),
-    send_updates(Pieceset, Watchers, NewNumpeers),
+    NewWatchers = send_updates(Pieceset, Watchers, NewNumpeers),
     NewState = State#state{
         peer_monitors=NewMonitors,
-        num_peers=NewNumpeers},
+        num_peers=NewNumpeers,
+        watchers=NewWatchers},
     {reply, ok, NewState};
 
 handle_call({add_piece, Pid, PieceIndex, Pieceset}, _, State) ->
@@ -209,10 +225,11 @@ handle_call({add_piece, Pid, PieceIndex, Pieceset}, _, State) ->
     Prev = array:get(PieceIndex, Numpeers),
     NewNumpeers = array:set(PieceIndex, Prev + 1, Numpeers),
     NewMonitors = etorrent_monitorset:update(Pid, Pieceset, Monitors),
-    send_updates(PieceIndex, Watchers, NewNumpeers),
+    NewWatchers = send_updates(PieceIndex, Watchers, NewNumpeers),
     NewState = State#state{
         peer_monitors=NewMonitors,
-        num_peers=NewNumpeers},
+        num_peers=NewNumpeers,
+        watchers=NewWatchers},
     {reply, ok, NewState};
 
 handle_call({get_order, Pieceset}, _, State) ->
@@ -220,31 +237,36 @@ handle_call({get_order, Pieceset}, _, State) ->
     Piecelist = sorted_piecelist(Pieceset, Numpeers),
     {reply, {ok, Piecelist}, State};
 
-handle_call({watch, Pid, Tag, Pieceset}, _, State) ->
-    #state{
-        num_peers=Numpeers,
-        watchers=Watchers} = State,
+handle_call({watch, Pid, Interval, Tag, Pieceset}, _, State) ->
+    #state{num_peers=Numpeers, watchers=Watchers} = State,
     %% Use a monitor reference as the subscription reference,
     %% this let's us tear down subscriptions when client processes
     %% crash. Currently the interface of the monitorset module does
     %% not let us associate values with monitor references so there
     %% is no benefit to using it in this case.
-    Ref = monitor(process, Pid),
+    MRef = monitor(process, Pid),
+    TRef = erlang:start_timer(Interval, self(), MRef),
     Watcher = #watcher{
         pid=Pid,
-        ref=Ref,
+        ref=MRef,
         tag=Tag,
-        pieceset=Pieceset},
+        pieceset=Pieceset,
+        interval=Interval,
+        %% The initial state of a watcher is limited.
+        changed=false,
+        timer_ref=TRef},
     NewWatchers = [Watcher|Watchers],
+    NewState = State#state{watchers=NewWatchers},
     Piecelist = sorted_piecelist(Pieceset, Numpeers),
-    NewState = State#state{
-        watchers=NewWatchers},
-    {reply, {ok, Ref, Piecelist}, NewState};
+    {reply, {ok, MRef, Piecelist}, NewState};
 
-handle_call({unwatch, Ref}, _, State) ->
+handle_call({unwatch, MRef}, _, State) ->
     #state{watchers=Watchers} = State,
-    demonitor(Ref),
-    NewWatchers = lists:keydelete(Ref, #watcher.ref, Watchers),
+    demonitor(MRef),
+    Watcher = lists:keyfind(MRef, #watcher.ref, Watchers),
+    #watcher{timer_ref=TRef} = Watcher,
+    case TRef of none -> ok; _ -> erlang:cancel_timer(TRef) end,
+    NewWatchers = lists:keydelete(TRef, #watcher.ref, Watchers),
     NewState = State#state{watchers=NewWatchers},
     {reply, ok, NewState}.
 
@@ -255,7 +277,7 @@ handle_cast(_, State) ->
 
 
 %% @private
-handle_info({'DOWN', Ref, process, Pid, _}, State) ->
+handle_info({'DOWN', MRef, process, Pid, _}, State) ->
     #state{
         peer_monitors=Monitors,
         num_peers=Numpeers,
@@ -270,15 +292,38 @@ handle_info({'DOWN', Ref, process, Pid, _}, State) ->
             Pieceset = etorrent_monitorset:fetch(Pid, Monitors),
             NewNumpeers = decrement(Pieceset, Numpeers),
             NewMonitors = etorrent_monitorset:delete(Pid, Monitors),
-            send_updates(Pieceset, Watchers, NewNumpeers),
+            NewWatchers = send_updates(Pieceset, Watchers, NewNumpeers),
             INewState = State#state{
                 peer_monitors=NewMonitors,
-                num_peers=NewNumpeers},
+                num_peers=NewNumpeers,
+                watchers=NewWatchers},
             INewState;
         false ->
-            NewWatchers = lists:keydelete(Ref, #watcher.ref, Watchers),
+            Watcher = lists:keyfind(MRef, #watcher.ref, Watchers),
+            #watcher{timer_ref=TRef} = Watcher,
+            case TRef of none -> ok; _ -> erlang:cancel_timer(TRef) end,
+            NewWatchers = lists:keydelete(MRef, #watcher.ref, Watchers),
             State#state{watchers=NewWatchers}
     end,
+    {noreply, NewState};
+
+handle_info({timeout, _, MRef}, State) ->
+    #state{num_peers=Numpeers, watchers=Watchers} = State,
+    Watcher = lists:keyfind(MRef, #watcher.ref, Watchers),
+    #watcher{changed=Changed} = Watcher,
+    NewWatcher = case Changed of
+        %% If the watcher is still in the 'limited' state no update
+        %% should be sent and the watcher should enter 'waiting'.
+        false ->
+            Watcher#watcher{timer_ref=none};
+        %% If the watcher is in the 'updated' state an update should
+        %% be sent and the watcher should enter 'limited'.
+        true ->
+            NewTRef = send_update(Watcher, Numpeers),
+            Watcher#watcher{changed=false, timer_ref=NewTRef}
+    end,
+    NewWatchers = lists:keyreplace(MRef, #watcher.ref, Watchers, NewWatcher),
+    NewState = State#state{watchers=NewWatchers},
     {noreply, NewState}.
 
 
@@ -318,34 +363,58 @@ increment(Pieceset, Numpeers) ->
     end, Numpeers, Piecelist).
 
 
--spec send_updates(pieceset() | pos_integer(), [#watcher{}], array()) -> ok.
+-spec send_updates(pieceset() | pos_integer(), [#watcher{}], array()) ->
+    [#watcher{}].
 send_updates(Index, Watchers, Numpeers) when is_integer(Index) ->
-    Matching = [Watch || #watcher{pieceset=Watchedset}=Watch <- Watchers,
-        etorrent_pieceset:is_member(Index, Watchedset)],
-    [send_update(Watcher, Numpeers) || Watcher <- Matching],
-    ok;
+    HasChanged = fun(Watchedset) ->
+        etorrent_pieceset:is_member(Index, Watchedset)
+    end,
+    [send_update(HasChanged, Watcher, Numpeers) || Watcher <- Watchers];
 
 send_updates(Pieceset, Watchers, Numpeers) ->
-    IsMatching = fun(Watchedset) ->
-        Intersection = etorrent_pieceset:intersection(Pieceset, Watchedset),
-        not etorrent_pieceset:is_empty(Intersection)
+    HasChanged = fun(Watchedset) ->
+        Inter = etorrent_pieceset:intersection(Pieceset, Watchedset),
+        not etorrent_pieceset:is_empty(Inter)
     end,
-    Matching = [Watch || #watcher{pieceset=Watchedset}=Watch <- Watchers,
-        IsMatching(Watchedset)],
-    [send_update(Watcher, Numpeers) || Watcher <- Matching],
-    ok.
+    [send_update(HasChanged, Watcher, Numpeers) || Watcher <- Watchers].
 
+-spec send_update(fun((pieceset()) -> boolean()), #watcher{}, array()) -> ok.
+send_update(HasChanged, Watcher, Numpeers) ->
+    #watcher{
+        pieceset=Pieceset,
+        changed=Changed,
+        timer_ref=TRef} = Watcher,
+    case {Changed, TRef} of
+        %% waiting
+        {false, none} ->
+            case HasChanged(Pieceset) of
+                %% waiting -> limited
+                true ->
+                    NewTRef = send_update(Watcher, Numpeers),
+                    Watcher#watcher{timer_ref=NewTRef};
+                %% waiting -> waiting
+                false ->
+                    Watcher
+            end;
+        %% limited -> updated
+        {false, TRef} ->
+            Watcher#watcher{changed=HasChanged(Pieceset)};
+        %% updated -> updated
+        {true, TRef} ->
+            Watcher
+    end.
 
--spec send_update(#watcher{}, array()) -> ok.
+-spec send_update(#watcher{}, array()) -> reference().
 send_update(Watcher, Numpeers) ->
     #watcher{
         pid=Pid,
-        ref=Ref,
+        ref=MRef,
         tag=Tag,
-        pieceset=Pieceset} = Watcher,
+        pieceset=Pieceset,
+        interval=Interval} = Watcher,
     Piecelist = sorted_piecelist(Pieceset, Numpeers),
-    Pid ! {scarcity, Ref, Tag, Piecelist},
-    ok.
+    Pid ! {scarcity, MRef, Tag, Piecelist},
+    erlang:start_timer(Interval, self(), MRef).
 
 
 -ifdef(TEST).
@@ -436,7 +505,9 @@ add_peer_update_case() ->
     receive
         {scarcity, Ref, Tag, Order} ->
             ?assertEqual(eight, Tag),
-            ?assertEqual([4,6,0,2], Order)
+            ?assertEqual([4,6,0,2], Order);
+        Other ->
+            ?assertEqual(make_ref(), Other)
     end.
 
 add_piece_update_case() ->
