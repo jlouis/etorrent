@@ -50,8 +50,11 @@
          terminate/2,
          code_change/3]).
 
+
 -type server() :: native | pid().
 -type mode() :: instant | queue.
+-opaque timeserver() :: server().
+-export_type([timeserver/0]).
 
 -record(timer, {
     type :: message | timeout,
@@ -226,8 +229,6 @@ delete_timers(List, Timers) ->
 min_interval(Timers) ->
     %% Assume that timers are sorted by interval.
     case Timers of
-        [] ->
-            error(badarg);
         [H|_] ->
             #timer{interval=Interval} = H,
             Interval
