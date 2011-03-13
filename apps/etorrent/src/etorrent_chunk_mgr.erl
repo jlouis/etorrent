@@ -155,13 +155,12 @@
 %%
 %% ## Stored
 %% When all chunks of a piece in the Assigned state has been marked
-%% as stored the piece enters the Stored state. A piece will only
-%% leave the Stored state and enter the Valid state once the piece
-%% has been marked as valid.
+%% as stored the piece enters the Stored state. The piece will leave
+%% the stored state and enter the Valid state if it is marked as valid.
 %%
 %% ## Valid
-%% A piece enters the valid state from the Stored state.
-%% A piece can never leave the Valid state.
+%% A piece enters the valid state from the Stored state.  A piece will
+%% never leave the Valid state.
 %%
 %% # Priority of pieces
 %% The chunk server uses the scarcity server to keep an updated
@@ -374,10 +373,10 @@ handle_call({register_peer, PeerPid}, _, State) ->
 
 handle_call({request_chunks, PeerPid, Peerset, Numchunks}, _, State) ->
     #state{
+        pieces_valid=Valid,
         pieces_unassigned=Unassigned,
         pieces_begun=Begun,
         pieces_assigned=Assigned,
-        pieces_stored=Stored,
         chunks_assigned=AssignedChunks,
         peer_monitors=Peers} = State,
 
@@ -407,13 +406,15 @@ handle_call({request_chunks, PeerPid, Peerset, Numchunks}, _, State) ->
     end,
 
     PieceIndex = case Targetstate of
-        %% None that we are not already downloading
-        %% and none that we would want to download
         none ->
-            Interesting = etorrent_pieceset:difference(Peerset, Stored),
+            %% We know that the peer has no pieces in the Unassigned or
+            %% Begun states. This leaves us with Assigned, Stored and
+            %% Valid pieces. If the peer has any pieces that are not
+            %% in the Valid state we are still interested.
+            Interesting = etorrent_pieceset:difference(Peerset, Valid),
             case etorrent_pieceset:is_empty(Interesting) of
-                true  -> not_interested;
-                false -> assigned
+                false -> assigned;
+                true  -> not_interested
             end;
         %% One or more that we are already downloading
         begun ->
@@ -434,7 +435,6 @@ handle_call({request_chunks, PeerPid, Peerset, Numchunks}, _, State) ->
             Chunks   = etorrent_chunkset:min(Chunkset, Numchunks),
             NewChunkset = etorrent_chunkset:delete(Chunks, Chunkset),
             NewAssignedChunks = array:set(Index, NewChunkset, AssignedChunks),
-            NewBegun = etorrent_pieceset:insert(Index, Begun),
             %% Add the chunk to this peer's set of open requests
             OpenReqs = etorrent_monitorset:fetch(PeerPid, Peers),
             NewReqs  = lists:foldl(fun({Offs, Len}, Acc) ->
@@ -514,11 +514,9 @@ handle_call({mark_valid, _, Index}, _, State) ->
         not_stored ->
             {reply, {error, not_stored}, State};
         stored ->
-            NewStored = etorrent_pieceset:delete(Index, Stored),
+            %% A piece never leaves the stored state if it is marked valid.
             NewValid = etorrent_pieceset:insert(Index, Valid),
-            NewState = State#state{
-                pieces_stored=NewStored,
-                pieces_valid=NewValid},
+            NewState = State#state{pieces_valid=NewValid},
             {reply, ok, NewState}
     end;
 
@@ -600,6 +598,7 @@ handle_call({mark_all_dropped, Pid}, _, State) ->
 
 handle_cast({mark_dropped, Pid, Index, Offset, Length}, State) ->
     #state{
+        pieces_begun=Begun,
         pieces_assigned=Assigned,
         chunks_assigned=AssignedChunks,
         peer_monitors=Peers} = State,
@@ -613,10 +612,12 @@ handle_cast({mark_dropped, Pid, Index, Offset, Length}, State) ->
      NewChunks = etorrent_chunkset:insert(Offset, Length, Chunks),
      NewAssignedChunks = array:set(Index, NewChunks, AssignedChunks),
 
-     %% This piece is no longer in the assigned state
+     %% Assigned -> Begun
      NewAssigned = etorrent_pieceset:delete(Index, Assigned),
+     NewBegun = etorrent_pieceset:insert(Index, Begun),
  
      NewState = State#state{
+         pieces_begun=NewBegun,
          pieces_assigned=NewAssigned,
          chunks_assigned=NewAssignedChunks,
          peer_monitors=NewPeers},
@@ -761,7 +762,7 @@ drop_all_on_exit_case({N, Time, SPid, CPid}) ->
     end),
     _ = monitor(process, Pid),
     ok  = receive {'DOWN', _, process, Pid, _} -> ok end,
-    timer:sleep(10),
+    timer:sleep(100),
     ?assertMatch({ok, [{0, 0, 1}]}, ?chunk_server:request_chunks(N, Has, 1)),
     ?assertMatch({ok, [{0, 1, 1}]}, ?chunk_server:request_chunks(N, Has, 1)).
 
