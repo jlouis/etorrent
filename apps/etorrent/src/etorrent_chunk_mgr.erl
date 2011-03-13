@@ -90,6 +90,11 @@
 -type chunk_offset() :: etorrent_types:chunk_offset().
 -type piece_index() :: etorrent_types:piece_index().
 
+-record(pieceprio, {
+    tag :: atom(),
+    ref :: reference(),
+    pieces :: [pos_integer()]}).
+
 -record(state, {
     torrent_id      :: pos_integer(),
     torrent_pid     :: pid(),
@@ -103,7 +108,10 @@
     chunks_assigned :: array(),
     chunks_stored   :: array(),
     %% Chunks assigned to peers
-    peer_monitors   :: monitorset()}).
+    peer_monitors   :: monitorset(),
+    %% Piece priority lists
+    prio_begun :: #pieceprio{},
+    prio_unassigned :: #pieceprio{}}).
 
 %% # Open requests
 %% A gb_tree mapping {PieceIndex, Offset} to Chunklength
@@ -317,6 +325,16 @@ init([TorrentID, ChunkSize, FetchedPieces, PieceSizes, InitTorrentPid]) ->
             InitTorrentPid
     end,
 
+    %% TODO - initiate priority watch
+    PriorityBegun = #pieceprio{
+        tag=begun,
+        ref=make_ref(),
+        pieces=[]},
+    PriorityUnassigned = #pieceprio{
+        tag=unassigned,
+        ref=make_ref(),
+        pieces=[]},
+
     InitState = #state{
         torrent_id=TorrentID,
         torrent_pid=TorrentPid,
@@ -329,7 +347,9 @@ init([TorrentID, ChunkSize, FetchedPieces, PieceSizes, InitTorrentPid]) ->
         %% Initially, the sets of assigned and stored chunks are equal
         chunks_assigned=ChunkSets,
         chunks_stored=ChunkSets,
-        peer_monitors=etorrent_monitorset:new()},
+        peer_monitors=etorrent_monitorset:new(),
+        prio_begun=PriorityBegun,
+        prio_unassigned=PriorityUnassigned},
     {ok, InitState}.
 
 
