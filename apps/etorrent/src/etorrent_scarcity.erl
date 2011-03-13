@@ -473,7 +473,7 @@ server_registers_case() ->
     ?assertEqual(Pid, ?scarcity:lookup_scarcity_server(1)).
 
 initial_ordering_case({N, Time, Pid}) ->
-    {ok, Order} = ?scarcity:get_order(2, pieces([0,1,2,3,4,5,6,7])),
+    {ok, Order} = ?scarcity:get_order(N, pieces([0,1,2,3,4,5,6,7])),
     ?assertEqual([0,1,2,3,4,5,6,7], Order).
 
 empty_ordering_case({N, Time, Pid}) ->
@@ -484,39 +484,39 @@ init_pieceset_case({N, Time, Pid}) ->
     ?assertEqual(ok, ?scarcity:add_peer(4, pieces([]))).
 
 one_available_case({N, Time, Pid}) ->
-    ok = ?scarcity:add_peer(5, pieces([])),
-    ?assertEqual(ok, ?scarcity:add_piece(5, 0, pieces([0]))),
+    ok = ?scarcity:add_peer(N, pieces([])),
+    ?assertEqual(ok, ?scarcity:add_piece(N, 0, pieces([0]))),
     Pieces  = pieces([0,1,2,3,4,5,6,7]),
-    {ok, Order} = ?scarcity:get_order(5, Pieces),
+    {ok, Order} = ?scarcity:get_order(N, Pieces),
     ?assertEqual([1,2,3,4,5,6,7,0], Order).
 
 decrement_on_exit_case({N, Time, _}) ->
     Main = self(),
     Pid = spawn_link(fun() ->
-        ok = ?scarcity:add_peer(6, pieces([0])),
-        ok = ?scarcity:add_piece(6, 2, pieces([0,2])),
+        ok = ?scarcity:add_peer(N, pieces([0])),
+        ok = ?scarcity:add_piece(N, 2, pieces([0,2])),
         Main ! done,
         receive die -> ok end
     end),
     receive done -> ok end,
     Pieces  = ?pieceset:from_list([0,1,2,3,4,5,6,7], 8),
-    {ok, O1} = ?scarcity:get_order(6, pieces([0,1,2,3,4,5,6,7])),
+    {ok, O1} = ?scarcity:get_order(N, pieces([0,1,2,3,4,5,6,7])),
     ?assertEqual([1,3,4,5,6,7,0,2], O1),
     Ref = monitor(process, Pid),
     Pid ! die,
     receive {'DOWN', Ref, _, _, _} -> ok end,
-    {ok, O2} = ?scarcity:get_order(6, Pieces),
+    {ok, O2} = ?scarcity:get_order(N, Pieces),
     ?assertEqual([0,1,2,3,4,5,6,7], O2).
 
 init_watch_case({N, Time, Pid}) ->
-    {ok, Ref, Order} = ?scarcity:watch(7, seven, pieces([0,2,4,6])),
+    {ok, Ref, Order} = ?scarcity:watch(N, seven, pieces([0,2,4,6])),
     ?assert(is_reference(Ref)),
     ?assertEqual([0,2,4,6], Order).
 
 add_peer_update_case({N, Time, Pid}) ->
-    {ok, Ref, _} = ?scarcity:watch(8, eight, pieces([0,2,4,6])),
+    {ok, Ref, _} = ?scarcity:watch(N, eight, pieces([0,2,4,6])),
     ?assertEqual(1, ?timer:fire(Time)),
-    ok = ?scarcity:add_peer(8, pieces([0,2])),
+    ok = ?scarcity:add_peer(N, pieces([0,2])),
     receive
         {scarcity, Ref, Tag, Order} ->
             ?assertEqual(eight, Tag),
@@ -527,8 +527,8 @@ add_peer_update_case({N, Time, Pid}) ->
 
 add_piece_update_case({N, Time, Pid}) ->
     {ok, Ref, _} = ?scarcity:watch(9, nine, pieces([0,2,4,6])),
-    ok = ?scarcity:add_peer(9, pieces([])),
-    ok = ?scarcity:add_piece(9, 2, pieces([2])),
+    ok = ?scarcity:add_peer(N, pieces([])),
+    ok = ?scarcity:add_piece(N, 2, pieces([2])),
     ?assertEqual(5000, ?timer:step(Time)),
     ?assertEqual(1, ?timer:fire(Time)),
     receive
@@ -573,12 +573,12 @@ noaggregate_update_case({N, Time, Pid}) ->
 peer_exit_update_case({N, Time, _}) ->
     Main = self(),
     Pid = spawn_link(fun() ->
-        ok = ?scarcity:add_peer(10, pieces([0,1,2,3])),
+        ok = ?scarcity:add_peer(N, pieces([0,1,2,3])),
         Main ! done,
         receive die -> ok end
     end),
     receive done -> ok end,
-    {ok, Ref, _} = ?scarcity:watch(10, ten, pieces([0,2,4,6])),
+    {ok, Ref, _} = ?scarcity:watch(N, ten, pieces([0,2,4,6])),
     Pid ! die,
     ?assertEqual(1, ?timer:fire(Time)),
     receive
@@ -587,9 +587,9 @@ peer_exit_update_case({N, Time, _}) ->
     end.
 
 local_unwatch_case({N, Time, Pid}) ->
-    {ok, Ref, _} = ?scarcity:watch(11, eleven, pieces([0,2,4,6])),
-    ?assertEqual(ok, ?scarcity:unwatch(11, Ref)),
-    ok = ?scarcity:add_peer(11, pieces([0,1,2,3,4,5,6,7])),
+    {ok, Ref, _} = ?scarcity:watch(N, eleven, pieces([0,2,4,6])),
+    ?assertEqual(ok, ?scarcity:unwatch(N, Ref)),
+    ok = ?scarcity:add_peer(N, pieces([0,1,2,3,4,5,6,7])),
     %% Assume that the message is sent before the add_peer call returns
     receive
         {scarcity, Ref, _, _} ->
