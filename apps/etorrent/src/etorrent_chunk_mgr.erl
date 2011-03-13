@@ -165,7 +165,8 @@
 %% # Priority of pieces
 %% The chunk server uses the scarcity server to keep an updated
 %% list of pieces, ordered by priority, for two subsets of the
-%% pieces in a torrent.
+%% pieces in a torrent. Every time these piece sets are update
+%% these piece lists need to be updated.
 %%
 %% ## Begun
 %% The chunk server is biased towards choosing pieces that we are
@@ -373,12 +374,15 @@ handle_call({register_peer, PeerPid}, _, State) ->
 
 handle_call({request_chunks, PeerPid, Peerset, Numchunks}, _, State) ->
     #state{
+        torrent_id=TorrentID,
         pieces_valid=Valid,
         pieces_unassigned=Unassigned,
         pieces_begun=Begun,
         pieces_assigned=Assigned,
         chunks_assigned=AssignedChunks,
-        peer_monitors=Peers} = State,
+        peer_monitors=Peers,
+        prio_unassigned=PrioUnassigned,
+        prio_begun=PrioBegun} = State,
 
     %% If this peer has any pieces that we have begun downloading, pick
     %% one of those pieces over any unassigned pieces.
@@ -447,46 +451,67 @@ handle_call({request_chunks, PeerPid, Peerset, Numchunks}, _, State) ->
             %% Unassigned -> Assigned
             %% Begun -> Begun
             %% Begun -> Assigned
+            %%
             %% The piece may have gone directly from Unassigned to Assigned.
             %% Check if it has been assigned before making any transitions.
-            %% TODO - we want an is_empty function in etorrent_chunkset
-            Wasassigned = etorrent_chunkset:size(NewChunkset) == 0,
-            NewUnassigned = case Targetstate of
-                %% Begun -> Begun
-                begun ->
-                    Unassigned;
-                %% Unassigned -> Begun|Assigned
-                unassigned ->
-                    etorrent_pieceset:delete(Index, Unassigned)
+            Transitionstate = case etorrent_chunkset:size(NewChunkset) == 0 of
+                true -> assigned;
+                false -> begun
+            end,
+            %% Update piece sets and keep track of which sets were updated
+            case {Targetstate, Transitionstate} of
+                {unassigned, begun} ->
+                    NewUnassigned = etorrent_pieceset:delete(Index, Unassigned),
+                    NewBegun = etorrent_pieceset:insert(Index, Begun),
+                    NewAssigned = Assigned,
+                    UnassignedUpdated = true,
+                    BegunUpdated = true;
+                {unassigned, assigned} ->
+                    NewUnassigned = etorrent_pieceset:delete(Index, Unassigned),
+                    NewBegun = Begun,
+                    NewAssigned = etorrent_pieceset:insert(Index, Assigned),
+                    UnassignedUpdated = true,
+                    BegunUpdated = false;
+                {begun, begun} ->
+                    NewUnassigned = Unassigned,
+                    NewBegun = Begun,
+                    NewAssigned = Assigned,
+                    UnassignedUpdated = false,
+                    BegunUpdated = false;
+                {begun, assigned} ->
+                    NewUnassigned = Unassigned,
+                    NewBegun = etorrent_pieceset:delete(Index, Begun),
+                    NewAssigned = etorrent_pieceset:insert(Index, Assigned),
+                    UnassignedUpdated = false,
+                    BegunUpdated = true
             end,
 
-            NewBegun = case Targetstate of
-                %% Begun -> Assigned
-                begun when Wasassigned ->
-                    etorrent_pieceset:delete(Index, Begun);
-                %% Begun -> Begun
-                begun ->
-                    Begun;
-                %% Unassigned -> Assigned
-                unassigned when Wasassigned ->
-                    Begun;
-                %% Unassigned -> Begun
-                unassigned ->
-                    etorrent_pieceset:insert(Index, Begun)
+            %% Only update the piece priority lists if the piece set that
+            %% they track was updated in this piece state transition.
+            %% Should probably refactor this into a function as well.
+            NewPrioUnassigned = case UnassignedUpdated of
+                false ->
+                    PrioUnassigned;
+                true ->
+                    #pieceprio{ref=PURef, tag=PUTag} = PrioUnassigned,
+                    ok = etorrent_scarcity:unwatch(TorrentID, PURef),
+                    PU = etorrent_scarcity:watch(TorrentID, PUTag, NewUnassigned),
+                    {ok, NewPURef, NewPUList} = PU,
+                    #pieceprio{ref=NewPURef, tag=PUTag, pieces=NewPUList}
             end,
 
-            NewAssigned = case Targetstate of
-                %% Unassigned|Begun -> Assigned
-                _ when Wasassigned ->
-                    etorrent_pieceset:insert(Index, Assigned);
-                %% Begun -> Begun
-                begun ->
-                    Assigned;
-                %% Unassigned -> Begun
-                unassigned ->
-                    Assigned
+            NewPrioBegun = case BegunUpdated of
+                false ->
+                    PrioBegun;
+                true ->
+                    #pieceprio{ref=PBRef, tag=PBTag} = PrioBegun,
+                    ok = etorrent_scarcity:unwatch(TorrentID, PBRef),
+                    PB = etorrent_scarcity:watch(TorrentID, PBTag, NewBegun),
+                    {ok, NewPBRef, NewPBList} = PB,
+                    #pieceprio{ref=NewPBRef, tag=PBTag, pieces=NewPBList}
             end,
-            %% TODO - update order watches if Unassigned or Begun changed
+
+
             NewState = State#state{
                 pieces_unassigned=NewUnassigned,
                 pieces_begun=NewBegun,
@@ -703,7 +728,8 @@ chunk_server_test_() ->
          ?_test(mark_valid_not_stored_case(test_env(11, []))),
          ?_test(mark_valid_stored_case(test_env(12, []))),
          ?_test(all_stored_marks_stored_case(test_env(13, []))),
-         ?_test(get_all_request_case(test_env(14, [])))
+         ?_test(get_all_request_case(test_env(14, []))),
+         ?_test(unassigned_to_assigned_case(test_env(15, [])))
         ]}.
 
 test_env(N, Valid) ->
@@ -827,5 +853,10 @@ get_all_request_case({N, Time, SPid, CPid}) ->
     {ok, [{2, 0, 1}]} = ?chunk_server:request_chunks(N, Has, 1),
     {ok, [{2, 1, 1}]} = ?chunk_server:request_chunks(N, Has, 1),
     ?assertEqual({error, assigned}, ?chunk_server:request_chunks(N, Has, 1)).
+
+unassigned_to_assigned_case({N, Time, SPid, CPid}) ->
+    Has = etorrent_pieceset:from_list([0], 3),
+    {ok, [{0,0,1}, {0,1,1}]} = ?chunk_server:request_chunks(N, Has, 2),
+    ?assertEqual({error, assigned}, ?chunk_server:request_chunks(N, Has, 1)).   
 
 -endif.
