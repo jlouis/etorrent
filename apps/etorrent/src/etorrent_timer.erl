@@ -20,12 +20,12 @@
 %% the timer service. Processes that rely on timers must provide
 %% a way to let the parent process inject the timer service.
 %%
-%% The interface provided to the test code is effectively only
-%% the step/1 function that fires the next timer, see Guarantees.
-%% This also decreases the timeout of all remaining timers by the
-%% interval of the timer that fired to ensure the relative order
-%% of existing and new timers.
-%%
+%% The interface provided to the test code is the step/1 and fire/1
+%% functions. The step/1 function jumps ahead in time to the next
+%% timer event but does not fire it. The fire/1 function jumps ahead
+%% in time to the next timer event and fires all timers with an interval
+%% of 0 milliseconds.
+%% 
 %% #Guarantees
 %% The erlang timer service does not guarantee that multiple timers
 %% that are created consequently with the same time is delivered
@@ -39,8 +39,8 @@
          send_after/4,
          start_timer/4,
          cancel/2,
-         fire_now/1,
-         fire_later/1]).
+         step/1,
+         fire/1]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -55,15 +55,13 @@
 
 -record(timer, {
     type :: message | timeout,
-    fired :: boolean(),
     reference :: reference(),
-    interval :: pos_integer(),
-    process  :: pid(),
-    message  :: term()}).
+    interval  :: pos_integer(),
+    process   :: pid(),
+    message   :: term()}).
 
 -record(state, {
     mode :: mode(),
-    ahead :: boolean(),
     timers :: list()}).
 
 
@@ -76,7 +74,7 @@ start_link(Mode) ->
 send_after(Server, Time, Dest, Msg) ->
     case Server of
         native -> erlang:send_after(Time, Dest, Msg);
-        Server -> gen_server:call(Server, {send_after, Time, Dest, Msg})
+        Server -> gen_server:call(Server, {message, Time, Dest, Msg})
     end.
 
 
@@ -84,7 +82,7 @@ send_after(Server, Time, Dest, Msg) ->
 start_timer(Server, Time, Dest, Msg) ->
     case Server of
         native -> erlang:start_timer(Time, Dest, Msg);
-        Server -> gen_server:call(Server, {start_timer, Time, Dest, Msg})
+        Server -> gen_server:call(Server, {timeout, Time, Dest, Msg})
     end.
 
 
@@ -96,19 +94,24 @@ cancel(Server, Timer) ->
     end.
 
 
--spec fire_now(server()) -> pos_integer().
-fire_now(Server) ->
+%% Return the number of milliseconds that passed
+-spec step(server()) -> pos_integer().
+step(Server) ->
     case Server of
         native -> error(badarg);
-        Server -> gen_server:call(Server, fire_now)
+        Server -> gen_server:call(Server, step)
     end.
 
 
--spec fire_later(server()) -> pos_integer().
-fire_later(Server) ->
+%% Return the number of timers that fired
+-spec fire(server()) -> pos_integer().
+fire(Server) ->
+    %% Always step before firing timers, bad things will
+    %% not happen if fire is called immidiately after step.
+    step(Server),
     case Server of
         native -> error(badarg);
-        Server -> gen_server:call(Server, fire_later)
+        Server -> gen_server:call(Server, fire)
     end.
 
 
@@ -133,7 +136,7 @@ handle_call({Type, Time, Dest, Data}, _, State) ->
         message=Msg},
     case Mode of
         instant ->
-            Dest ! Msg,
+            deliver(Timer),
             {reply, Ref, State};
         queue ->
             NewTimers = sort_timers([Timer|Timers]),
@@ -148,50 +151,54 @@ handle_call({cancel, Ref}, _, State) ->
         %% Timer has already fired and message has been delivered
         false ->
             {reply, false, State};
-        %% Timer has been fired with fire_later, it's a bit unclear what we
-        %% should do at this point but the most practical thing to do would
-        %% be to deliver the message before this call returns to create a case
-        %%  where the message is delivered but not received when a timer
-        %% is cancelled.
-        #timer{fired=true} ->
+        %% Deliver the message before this call returns to let us step
+        %% ahead in time and create a case where the timer has fired and
+        %% the message is in the inbox when the client cancels a timer.
+        #timer{interval=0} ->
             deliver(Timer),
             NewTimers = delete_timer(Timer, Timers),
             NewState = State#state{timers=NewTimers},
             {reply, false, NewState};
-        %% Timer has not been fired. We should not try to infer that any time
-        %% has passed since the timer was created since this could be called
-        %% immidiately after a timer is created. Never deliver a message in this
-        %% case so that tests can rely on clean cancellations of timers.
-        #timer{fired=false} ->
+        %% Timer has not yet fired, just delete the timer and
+        %% return the amount of milliseconds left on the timer.
+        _ ->
             #timer{interval=Interval} = Timer,
             NewTimers = delete_timer(Timer, Timers),
             NewState = State#state{timers=NewTimers},
             {reply, Interval, NewState}
     end;
 
-handle_call(fire_now, _, State) ->
-    %% TODO - catch up with timers that has been fired using fire_later
+handle_call(step, _, State) ->
     #state{timers=Timers} = State,
     Min = min_interval(Timers),
-    %% Fire and delete all timers that share the lowest interval
-    Now = with_interval(Min, Timers),
-    TmpTimers = lists:foldl(fun(Timer, Acc) ->
-        deliver(Timer),
-        delete_timer(Timer, Acc)
-    end, Timers, Now),
-    %% Subtract the lowest interval from all remaining timers.
-    NewTimers = subtract(Min, TmpTimers),
+    NewTimers = subtract(Min, Timers),
     NewState = State#state{timers=NewTimers},
-    {reply, length(Now), NewState};
+    {reply, Min, NewState};
 
-handle_call(fire_later, _, _) ->
-    %% TODO - implement me
+handle_call(fire, _, State) ->
+    #state{timers=Timers} = State,
+    FiredTimers = with_interval(0, Timers),
+    [deliver(Timer) || Timer <- FiredTimers],
+    NewTimers = delete_timers(FiredTimers, Timers),
+    NewState = State#state{timers=NewTimers},
+    NumFired = length(FiredTimers),
+    {reply, NumFired, NewState}.
+    
+
+handle_cast(_, _) ->
     error(badarg).
 
-handle_cast(_, _) -> error(badarg).
-handle_info(_, _) -> error(badarg).
-terminate(_, _) -> error(badarg).
-code_change(_, _, _) -> error(badarg).
+
+handle_info(_, _) ->
+    error(badarg).
+
+
+terminate(_, State) ->
+    {ok, State}.
+
+
+code_change(_, _, _) ->
+    error(badarg).
 
 
     
@@ -205,6 +212,11 @@ find_timer(Ref, Timers) ->
 delete_timer(Timer, Timers) ->
     #timer{reference=Ref} = Timer,
     lists:keydelete(Ref, #timer.reference, Timers).
+
+delete_timers(List, Timers) ->
+    lists:foldl(fun(Timer, Acc) ->
+        delete_timer(Timer, Acc)
+    end, Timers, List).
 
 min_interval(Timers) ->
     %% Assume that timers are sorted by interval.
@@ -226,3 +238,55 @@ deliver(Timer) ->
 
 subtract(Time, Timers) ->
     [E#timer{interval=(I - Time)} || #timer{interval=I}=E <- Timers].
+
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-define(timer, etorrent_timer).
+
+assertMessage(Msg) ->
+    receive
+        Msg ->
+            ?assert(true);
+        Other ->
+            ?assertEqual(Msg, Other)
+        after 0 ->
+            ?assertEqual(Msg, make_ref())
+    end.
+
+
+instant_send_test() ->
+    {ok, Pid} = ?timer:start_link(instant),
+    Msg = make_ref(),
+    Ref = ?timer:send_after(Pid, 1000, self(), Msg),
+    assertMessage(Msg).
+
+
+instant_timeout_test() ->
+    {ok, Pid} = ?timer:start_link(instant),
+    Msg = make_ref(),
+    Ref = ?timer:start_timer(Pid, 1000, self(), Msg),
+    assertMessage({timeout, Ref, Msg}).
+
+step_and_fire_test() ->
+    {ok, Pid} = ?timer:start_link(queue),
+    ?timer:send_after(Pid, 1000, self(), a),
+    Ref = ?timer:start_timer(Pid, 3000, self(), b),
+    ?timer:send_after(Pid, 6000, self(), c),
+
+    ?assertEqual(1000, ?timer:step(Pid)),
+    ?assertEqual(0, ?timer:step(Pid)),
+    ?assertEqual(1, ?timer:fire(Pid)),
+    assertMessage(a),
+
+    ?assertEqual(2000, ?timer:step(Pid)),
+    ?assertEqual(0, ?timer:step(Pid)),
+    ?assertEqual(1, ?timer:fire(Pid)),
+    assertMessage({timeout, Ref, b}),
+
+    ?assertEqual(3000, ?timer:step(Pid)),
+    ?assertEqual(0, ?timer:step(Pid)),
+    ?assertEqual(1, ?timer:fire(Pid)),
+    assertMessage(c).
+
+
+-endif.
