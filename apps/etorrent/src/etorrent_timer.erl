@@ -170,10 +170,15 @@ handle_call({cancel, Ref}, _, State) ->
 
 handle_call(step, _, State) ->
     #state{timers=Timers} = State,
-    Min = min_interval(Timers),
-    NewTimers = subtract(Min, Timers),
-    NewState = State#state{timers=NewTimers},
-    {reply, Min, NewState};
+    case Timers of
+        [] ->
+            {reply, 0, State};
+        _ ->
+            Min = min_interval(Timers),
+            NewTimers = subtract(Min, Timers),
+            NewState = State#state{timers=NewTimers},
+            {reply, Min, NewState}
+    end;
 
 handle_call(fire, _, State) ->
     #state{timers=Timers} = State,
@@ -253,6 +258,16 @@ assertMessage(Msg) ->
             ?assertEqual(Msg, make_ref())
     end.
 
+assertNoMessage() ->
+    Ref = {no_message, make_ref()},
+    self() ! Ref,
+    receive
+        Ref ->
+            ?assert(true);
+        Other ->
+            ?assertEqual(Ref, Other)
+    end.
+
 
 instant_send_test() ->
     {ok, Pid} = ?timer:start_link(instant),
@@ -288,5 +303,25 @@ step_and_fire_test() ->
     ?assertEqual(1, ?timer:fire(Pid)),
     assertMessage(c).
 
+cancel_and_step_test() ->
+    {ok, Pid} = ?timer:start_link(queue),
+    Msg = make_ref(),
+    Ref = ?timer:start_timer(Pid, 6000, self(), Msg),
+    ?assertEqual(6000, ?timer:cancel(Pid, Ref)),
+    ?assertEqual(0, ?timer:step(Pid)),
+    assertNoMessage().
+
+step_and_cancel_test() ->
+    {ok, Pid} = ?timer:start_link(queue),
+    Ref = ?timer:send_after(Pid, 500, self(), a),
+    500 = ?timer:step(Pid),
+    ?assertEqual(false, ?timer:cancel(Pid, Ref)),
+    assertMessage(a).
+
+duplicate_cancel_test() ->
+    {ok, Pid} = ?timer:start_link(queue),
+    Ref = ?timer:send_after(Pid, 500, self(), b),
+    ?assertEqual(500, ?timer:cancel(Pid, Ref)),
+    ?assertEqual(false, ?timer:cancel(Pid, Ref)).
 
 -endif.
