@@ -498,23 +498,28 @@ handle_call({request_chunks, PeerPid, Peerset, Numchunks}, _, State) ->
     end;
 
 handle_call({mark_valid, _, Index}, _, State) ->
-    %% Mark a piece as valid if all chunks of the
-    %% piece has been marked as stored.
     #state{
-        pieces_valid=Valid,
-        chunks_assigned=PieceChunks} = State,
+        pieces_stored=Stored,
+        pieces_valid=Valid} = State,
+    IsStored = etorrent_pieceset:is_member(Index, Stored),
     IsValid = etorrent_pieceset:is_member(Index, Valid),
-    Chunks = array:get(Index, PieceChunks),
-    BytesLeft = etorrent_chunkset:size(Chunks),
-    case {IsValid, BytesLeft} of
-        {true, _} ->
+    Piecestate = if
+        IsValid -> valid;
+        IsStored -> stored;
+        true -> not_stored
+    end,
+    case Piecestate of
+        valid ->
             {reply, {error, valid}, State};
-        {false, 0} ->
+        not_stored ->
+            {reply, {error, not_stored}, State};
+        stored ->
+            NewStored = etorrent_pieceset:delete(Index, Stored),
             NewValid = etorrent_pieceset:insert(Index, Valid),
-            NewState = State#state{pieces_valid=NewValid},
-            {reply, ok, NewState};
-        {false, _} ->
-            {reply, {error, not_stored}, State}
+            NewState = State#state{
+                pieces_stored=NewStored,
+                pieces_valid=NewValid},
+            {reply, ok, NewState}
     end;
 
 handle_call({mark_fetched, _Pid, _Index, _Offset, _Length}, _, State) ->
