@@ -122,7 +122,8 @@
 %% enters and leaves a sequence of states.
 %% 
 %% ## Sequence
-%% 1. Invalid
+%% 0. Invalid
+%% 1. Unassigned
 %% 2. Begun
 %% 3. Assigned
 %% 4. Stored
@@ -132,30 +133,34 @@
 %% By default all pieces are considered as invalid. A piece
 %% is invalid if it is not a member of the set of valid pieces
 %%
+%% ## Unassigned
+%% When the chunk server is initialized all invalid pieces enter
+%% the Unassigned state. A piece leaves the unassigned state when
+%% the piece enters the begun state.
+%%
 %% ## Begun
 %% When the download of a piece has begun the piece enters
-%% the begun state. While the piece is in this state it is
-%% still considered valid, but it enables the chunk server
-%% prioritize these pieces.
-%% A piece never leaves the begun state.
+%% the begun state. While the piece is in the Begun state it is
+%% still considered invalid, but it enables the chunk server
+%% prioritize these pieces. A piece leaves the begun state
+%% when it enters the Assigned state.
 %%
 %% ## Assigned
 %% When all chunks of the piece has been assigned to be downloaded
-%% from a set of peers, when the chunk set of the piece is empty,
-%% the piece enters the assigned state. If a piece has entered the
-%% assigned state it is considered begun.
-%% A piece leaves the assigned state if it has not yet entered the
-%% stored if a request has been dropped.
+%% from a set of peers the piece enters the Assigned state.
+%% A piece leaves the Assigned state and reenters the Begun state if
+%% a request is marked as dropped before the piece has entered the
+%% Stored state.
 %%
 %% ## Stored
-%% When all chunks of a piece has been marked as stored the piece
-%% enters the stored state. A piece is in the stored state until
-%% it has been validated.
-%% A piece must not leave the stored state.
+%% When all chunks of a piece in the Assigned state has been marked
+%% as stored the piece enters the Stored state. A piece will only
+%% leave the Stored state and enter the Valid state once the piece
+%% has been marked as valid.
 %%
 %% ## Valid
-%% A piece enters the valid state when it has been marked as valid.
-%% A piece may not leave the valid state.
+%% A piece enters the valid state from the Stored state.
+%% A piece can never leave the Valid state.
 %%
 %% # Priority of pieces
 %% The chunk server uses the scarcity server to keep an updated
