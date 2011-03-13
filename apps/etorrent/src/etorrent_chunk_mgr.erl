@@ -150,7 +150,19 @@
 %% A piece may not leave the valid state.
 %%
 %% # Priority of pieces
-%% TODO
+%% The chunk server uses the scarcity server to keep an updated
+%% list of pieces, ordered by priority, for two subsets of the
+%% pieces in a torrent.
+%%
+%% ## Begun
+%% The chunk server is biased towards choosing pieces that we are
+%% already downloading. This set should be relatively small but is
+%% accessed frequently during a download.
+%%
+%% ## Unassigned
+%% If the chunk server can't find a begun piece it will pick and begin
+%% downloading the most scarce piece from the set of unassigned pieces.
+%% This set should be relatively large initially and accessed infrequently.
 %%
 %% # Chunk sets
 %% ## Assigned chunks
