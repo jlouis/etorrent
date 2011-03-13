@@ -100,10 +100,11 @@
     torrent_pid     :: pid(),
     chunk_size      :: pos_integer(),
     %% Piece state sets
-    pieces_valid    :: pieceset(),
-    pieces_begun    :: pieceset(),
-    pieces_assigned :: pieceset(),
-    pieces_stored   :: pieceset(),
+    pieces_valid      :: pieceset(),
+    pieces_unassigned :: pieceset(),
+    pieces_begun      :: pieceset(),
+    pieces_assigned   :: pieceset(),
+    pieces_stored     :: pieceset(),
     %% Chunk sets for pieces
     chunks_assigned :: array(),
     chunks_stored   :: array(),
@@ -299,7 +300,8 @@ init([TorrentID, ChunkSize, FetchedPieces, PieceSizes, InitTorrentPid]) ->
     true = register_chunk_server(TorrentID),
 
     NumPieces = length(PieceSizes),
-    PiecesValid   = etorrent_pieceset:from_list(FetchedPieces, NumPieces),
+    PiecesValid = etorrent_pieceset:from_list(FetchedPieces, NumPieces),
+    PiecesNone = etorrent_pieceset:from_list([], NumPieces),
 
     %% Initialize a full chunkset for all pieces that are left to download
     %% but don't mark them as begun before a chunk has been deleted from
@@ -343,11 +345,14 @@ init([TorrentID, ChunkSize, FetchedPieces, PieceSizes, InitTorrentPid]) ->
         torrent_id=TorrentID,
         torrent_pid=TorrentPid,
         chunk_size=ChunkSize,
+        %% All Valid pieces stay Valid
         pieces_valid=PiecesValid,
-        %% All valid pieces are also begun, assigned and stored
-        pieces_begun=PiecesValid,
-        pieces_assigned=PiecesValid,
-        pieces_stored=PiecesValid,
+        %% All Invalid pieces are Unassigned
+        pieces_unassigned=PiecesInvalid,
+        %% No pieces have are yet Begun, Assigned or Stored
+        pieces_begun=PiecesNone,
+        pieces_assigned=PiecesNone,
+        pieces_stored=PiecesNone,
         %% Initially, the sets of assigned and stored chunks are equal
         chunks_assigned=ChunkSets,
         chunks_stored=ChunkSets,
@@ -369,44 +374,54 @@ handle_call({register_peer, PeerPid}, _, State) ->
 
 handle_call({request_chunks, PeerPid, Peerset, Numchunks}, _, State) ->
     #state{
+        pieces_unassigned=Unassigned,
         pieces_begun=Begun,
         pieces_assigned=Assigned,
         pieces_stored=Stored,
         chunks_assigned=AssignedChunks,
         peer_monitors=Peers} = State,
 
-    %% Consider pieces that has an empty chunkset 
-    
-    %% If this peer has no pieces that we are already downloading, begin
-    %% downloading a new piece if this peer has any interesting pieces.
-    Optimal = etorrent_pieceset:intersection(Peerset,
-              etorrent_pieceset:difference(Begun, Assigned)),
+    %% If this peer has any pieces that we have begun downloading, pick
+    %% one of those pieces over any unassigned pieces.
+    Optimal = etorrent_pieceset:intersection(Peerset, Begun),
     HasOptimal = not etorrent_pieceset:is_empty(Optimal),
-    {SubOptimal, HasSubOptimal} = case HasOptimal of
+
+    %% If this peer doesn't have any pieces that we have already begun
+    %% downloading we should consider any unassigned pieces that this
+    %% peer has available.
+    {SubOptimal, HasSuboptimal} = case HasOptimal of
         true ->
             {false, false};
         false ->
-            ISubOptimal = etorrent_pieceset:difference(Peerset, Assigned),
+            ISubOptimal = etorrent_pieceset:intersection(Peerset, Unassigned),
             IHasSubOptimal = not etorrent_pieceset:is_empty(ISubOptimal),
             {ISubOptimal, IHasSubOptimal}
     end,
+    
+    %% We target pieces of different states depending upon what
+    %% the peer has available and the current piece states.
+    Targetstate = if
+        HasOptimal -> begun;
+        HasSuboptimal -> unassigned;
+        true -> none
+    end,
 
-    PieceIndex = case {HasOptimal, HasSubOptimal} of
+    PieceIndex = case Targetstate of
         %% None that we are not already downloading
         %% and none that we would want to download
-        {false, false} ->
+        none ->
             Interesting = etorrent_pieceset:difference(Peerset, Stored),
             case etorrent_pieceset:is_empty(Interesting) of
                 true  -> not_interested;
                 false -> assigned
             end;
+        %% One or more that we are already downloading
+        begun ->
+            etorrent_pieceset:min(Optimal);
         %% None that we are not already downloading
         %% but one ore more that we would want to download
-        {false, _} ->
-            etorrent_pieceset:min(SubOptimal);
-        %% One or more that we are already downloading
-        {_, _} ->
-            etorrent_pieceset:min(Optimal)
+        unassigned ->
+            etorrent_pieceset:min(SubOptimal)
     end,
 
     case PieceIndex of
@@ -426,13 +441,54 @@ handle_call({request_chunks, PeerPid, Peerset, Numchunks}, _, State) ->
                 gb_trees:insert({Index, Offs}, Len, Acc)
             end, OpenReqs, Chunks),
             NewPeers = etorrent_monitorset:update(PeerPid, NewReqs, Peers),
-            %% The piece is in the assigned state if this was the last chunk
-            NewAssigned = case etorrent_chunkset:size(NewChunkset) of
-                0 -> etorrent_pieceset:insert(Index, Assigned);
-                _ -> Assigned
+
+            %% We need to consider four transitions at this point:
+            %% Unassigned -> Begun
+            %% Unassigned -> Assigned
+            %% Begun -> Begun
+            %% Begun -> Assigned
+            %% The piece may have gone directly from Unassigned to Assigned.
+            %% Check if it has been assigned before making any transitions.
+            %% TODO - we want an is_empty function in etorrent_chunkset
+            Wasassigned = etorrent_chunkset:size(NewChunkset) == 0,
+            NewUnassigned = case Targetstate of
+                %% Begun -> Begun
+                begun ->
+                    Unassigned;
+                %% Unassigned -> Begun|Assigned
+                unassigned ->
+                    etorrent_pieceset:delete(Index, Unassigned)
             end,
 
+            NewBegun = case Targetstate of
+                %% Begun -> Assigned
+                begun when Wasassigned ->
+                    etorrent_pieceset:delete(Index, Begun);
+                %% Begun -> Begun
+                begun ->
+                    Begun;
+                %% Unassigned -> Assigned
+                unassigned when Wasassigned ->
+                    Begun;
+                %% Unassigned -> Begun
+                unassigned ->
+                    etorrent_pieceset:insert(Index, Begun)
+            end,
+
+            NewAssigned = case Targetstate of
+                %% Unassigned|Begun -> Assigned
+                _ when Wasassigned ->
+                    etorrent_pieceset:insert(Index, Assigned);
+                %% Begun -> Begun
+                begun ->
+                    Assigned;
+                %% Unassigned -> Begun
+                unassigned ->
+                    Assigned
+            end,
+            %% TODO - update order watches if Unassigned or Begun changed
             NewState = State#state{
+                pieces_unassigned=NewUnassigned,
                 pieces_begun=NewBegun,
                 pieces_assigned=NewAssigned,
                 chunks_assigned=NewAssignedChunks,
