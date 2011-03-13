@@ -548,7 +548,28 @@ handle_info({'DOWN', _, process, Pid, _}, State) ->
         cast(self(), {mark_dropped, Pid, Index, Offset, Length})
     end || {Index, Offset, Length} <- chunk_list(OpenReqs)],
     _ = cast(self(), {demonitor, Pid}),
-    {noreply, State}.
+    {noreply, State};
+
+handle_info({scarcity, Tag, Ref, Piecelist}, State) ->
+    #state{prio_begun=Begun, prio_unassigned=Unass} = State,
+    %% Verify that the tag is valid before verifying the reference
+    #pieceprio{tag=Beguntag, ref=Begunref} = Begun,
+    #pieceprio{tag=Unasstag, ref=Unassref} = Unass,
+    case Tag of
+        Beguntag -> ok;
+        Unasstag -> ok
+    end,
+    %% Verify that the reference belongs to an active subscription
+    NewState = case Ref of
+        Begunref ->
+            NewBegun = Begun#pieceprio{pieces=Piecelist},
+            State#state{prio_begun=NewBegun};
+        Unassref ->
+            NewUnass = Unass#pieceprio{pieces=Piecelist},
+            State#state{prio_unassigned=NewUnass}
+    end,
+    {noreply, NewState}.
+
 
 %% @private
 terminate(_Reason, _State) ->
