@@ -534,6 +534,7 @@ handle_call({mark_stored, Pid, Index, Offset, Length}, _, State) ->
     %% Remove it from the list of open requests of the peer.
     #state{
         torrent_pid=TorrentPid,
+        pieces_assigned=Assigned,
         pieces_stored=Stored,
         peer_monitors=Peers,
         chunks_stored=ChunksStored} = State,
@@ -544,18 +545,42 @@ handle_call({mark_stored, Pid, Index, Offset, Length}, _, State) ->
     Chunks = array:get(Index, ChunksStored),
     NewChunks = etorrent_chunkset:delete(Offset, Length, Chunks),
     NewChunksStored = array:set(Index, NewChunks, ChunksStored),
-    %% Check if all chunks in this piece has been written to disk now.
-    NewStored = case etorrent_chunkset:size(NewChunks) of
-        0 ->
-            ok = etorrent_torrent_ctl:piece_stored(TorrentPid, Index),
-            etorrent_pieceset:insert(Index, Stored);
-        _ ->
-            Stored
+
+    %% If all chunks in this piece has been written to disk we want
+    %% to move the piece from the Assigned state to the Stored state.
+    %% The piece must be Assigned before entering the Stored state
+    %% so we don't need to consider a transition from Begun to Stored.
+    Wasassigned = etorrent_pieceset:is_member(Index, Assigned),
+    Wasstored = etorrent_chunkset:size(NewChunks) == 0,
+    Piecestate = if
+        Wasassigned -> assigned;
+        true -> begun
     end,
-    NewState = State#state{
-        pieces_stored=NewStored,
-        chunks_stored=NewChunksStored,
-        peer_monitors=NewPeers},
+    NewState = case Piecestate of
+        %% Begun -> Begun
+        begun ->
+            IState = State#state{
+                chunks_stored=NewChunksStored,
+                peer_monitors=NewPeers},
+            IState;
+        %% Assigned -> Assigned
+        assigned when not Wasstored ->
+            IState = State#state{
+                chunks_stored=NewChunksStored,
+                peer_monitors=NewPeers},
+            IState;
+        %% Assigned -> Stored
+        assigned ->
+            ok = etorrent_torrent_ctl:piece_stored(TorrentPid, Index),
+            NewAssigned = etorrent_pieceset:delete(Index, Assigned),
+            NewStored = etorrent_pieceset:insert(Index, Stored),
+            IState = State#state{
+                chunks_stored=NewChunksStored,
+                peer_monitors=NewPeers,
+                pieces_assigned=NewAssigned,
+                pieces_stored=NewStored},
+            IState
+    end,
     {reply, ok, NewState};
 
 
