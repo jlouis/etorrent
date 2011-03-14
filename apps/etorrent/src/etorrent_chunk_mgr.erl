@@ -332,14 +332,10 @@ init([TorrentID, ChunkSize, FetchedPieces, PieceSizes, InitTorrentPid]) ->
             InitTorrentPid
     end,
 
-    PiecesBegun = etorrent_pieceset:from_list([], NumPieces),
     etorrent_scarcity:await_scarcity_server(TorrentID),
-    PBTag = begun,
-    PUTag = unassigned,
-    {ok, PBRef, PBList} = etorrent_scarcity:watch(TorrentID, PBTag, PiecesBegun),
-    {ok, PURef, PUList} = etorrent_scarcity:watch(TorrentID, PUTag, PiecesInvalid),
-    PriorityBegun = #pieceprio{tag=PBTag, ref=PBRef, pieces=PBList},
-    PriorityUnass = #pieceprio{tag=PUTag, ref=PURef, pieces=PUList},
+    PiecesBegun = etorrent_pieceset:from_list([], NumPieces),
+    PriorityBegun = init_priority(TorrentID, begun, PiecesBegun),
+    PriorityUnass = init_priority(TorrentID, unassigned, PiecesInvalid),
 
     InitState = #state{
         torrent_id=TorrentID,
@@ -682,6 +678,9 @@ terminate(_Reason, _State) ->
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
+init_priority(TorrentID, Tag, Pieceset) ->
+    {ok, Ref, List} = etorrent_scarcity:watch(TorrentID, Tag, Pieceset),
+    #pieceprio{ref=Ref, tag=Tag, pieces=List}.
 
 update_priority(TorrentID, Pieceprio, Pieceset) ->
     #pieceprio{ref=Ref, tag=Tag} = Pieceprio,
