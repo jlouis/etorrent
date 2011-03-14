@@ -18,6 +18,7 @@
          intersection/2,
          difference/2,
          size/1,
+         first/2,
          min/1]).
 
 -record(pieceset, {
@@ -212,6 +213,25 @@ size(<<0:1, Rest/bitstring>>, Acc) ->
 size(<<>>, Acc) ->
     Acc.
 
+%% @doc Return the first member of the list that is a member of the set
+%% If no element of the list is a member of the set the function exits
+%% with reason badarg. This function assumes that all pieces in the lists
+%% are valid.
+%% @end
+-spec first([non_neg_integer()], pieceset()) -> non_neg_integer().
+first(Pieces, Pieceset) ->
+    #pieceset{elements=Elements} = Pieceset,
+    first_(Pieces, Elements).
+
+first_([], _) ->
+    error(badarg);
+first_([H|T], Elements) ->
+    <<_:H/bitstring, Status:1, _/bitstring>> = Elements,
+    case Status of
+        1 -> H;
+        0 -> first_(T, Elements)
+    end.
+
 %% @doc
 %% Return the lowest piece index that is a member of this set.
 %% If the piece set is empty, exit with reason badarg
@@ -322,6 +342,13 @@ min_test_() ->
      ?_assertEqual(0, ?set:min(?set:from_list([0], 8))),
      ?_assertEqual(1, ?set:min(?set:from_list([1,7], 8))),
      ?_assertEqual(15, ?set:min(?set:from_list([15], 16)))].
+
+first_test_() ->
+    Set = ?set:from_list([0,1,2,4,8,16,17], 18),
+    [?_assertEqual(0, ?set:first([0,1], Set)),
+     ?_assertEqual(1, ?set:first([1,0], Set)),
+     ?_assertEqual(17, ?set:first([17,0,1], Set)),
+     ?_assertError(badarg, ?set:first([9,15], Set))].
 
 %%
 %% Modifying the contents of a pieceset
