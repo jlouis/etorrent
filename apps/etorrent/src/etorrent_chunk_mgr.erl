@@ -488,27 +488,13 @@ handle_call({request_chunks, PeerPid, Peerset, Numchunks}, _, State) ->
 
             %% Only update the piece priority lists if the piece set that
             %% they track was updated in this piece state transition.
-            %% Should probably refactor this into a function as well.
             NewPrioUnassigned = case UnassignedUpdated of
-                false ->
-                    PrioUnassigned;
-                true ->
-                    #pieceprio{ref=PURef, tag=PUTag} = PrioUnassigned,
-                    ok = etorrent_scarcity:unwatch(TorrentID, PURef),
-                    PU = etorrent_scarcity:watch(TorrentID, PUTag, NewUnassigned),
-                    {ok, NewPURef, NewPUList} = PU,
-                    #pieceprio{ref=NewPURef, tag=PUTag, pieces=NewPUList}
+                false -> PrioUnassigned;
+                true  -> update_priority(TorrentID, PrioUnassigned, NewUnassigned)
             end,
-
             NewPrioBegun = case BegunUpdated of
-                false ->
-                    PrioBegun;
-                true ->
-                    #pieceprio{ref=PBRef, tag=PBTag} = PrioBegun,
-                    ok = etorrent_scarcity:unwatch(TorrentID, PBRef),
-                    PB = etorrent_scarcity:watch(TorrentID, PBTag, NewBegun),
-                    {ok, NewPBRef, NewPBList} = PB,
-                    #pieceprio{ref=NewPBRef, tag=PBTag, pieces=NewPBList}
+                false -> PrioBegun;
+                true  -> update_priority(TorrentID, PrioBegun, NewBegun)
             end,
 
 
@@ -696,6 +682,13 @@ terminate(_Reason, _State) ->
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
+
+update_priority(TorrentID, Pieceprio, Pieceset) ->
+    #pieceprio{ref=Ref, tag=Tag} = Pieceprio,
+    ok = etorrent_scarcity:unwatch(TorrentID, Ref),
+    {ok, NewRef, NewList} = etorrent_scarcity:watch(TorrentID, Tag, Pieceset),
+    #pieceprio{ref=NewRef, tag=Tag, pieces=NewList}.
+
 %%
 %% Given a tree of a peers currently open requests, return a list of
 %% tuples containing the piece index, offset and length of each request.
@@ -857,6 +850,6 @@ get_all_request_case({N, Time, SPid, CPid}) ->
 unassigned_to_assigned_case({N, Time, SPid, CPid}) ->
     Has = etorrent_pieceset:from_list([0], 3),
     {ok, [{0,0,1}, {0,1,1}]} = ?chunk_server:request_chunks(N, Has, 2),
-    ?assertEqual({error, assigned}, ?chunk_server:request_chunks(N, Has, 1)).   
+    ?assertEqual({error, assigned}, ?chunk_server:request_chunks(N, Has, 1)).
 
 -endif.
