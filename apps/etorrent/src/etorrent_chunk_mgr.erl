@@ -70,6 +70,7 @@
 -export([register_chunk_server/1,
          unregister_chunk_server/1,
          lookup_chunk_server/1,
+         await_chunk_server/1,
          register_peer/1]).
 
 
@@ -219,6 +220,12 @@ unregister_chunk_server(TorrentID) ->
 lookup_chunk_server(TorrentID) ->
     gproc:lookup_pid({n, l, chunk_server_key(TorrentID)}).
 
+-spec await_chunk_server(torrent_id()) -> pid().
+await_chunk_server(TorrentID) ->
+    Name = {n, l, chunk_server_key(TorrentID)},
+    {Pid, undefined} = gproc:await(Name, 5000),
+    Pid.
+
 -spec register_peer(torrent_id()) -> true.
 register_peer(TorrentID) ->
     ChunkSrv = lookup_chunk_server(TorrentID),
@@ -297,6 +304,7 @@ request_chunks(TorrentID, Pieceset, Numchunks) ->
 
 %% @private
 init([TorrentID, ChunkSize, FetchedPieces, PieceSizes, InitTorrentPid]) ->
+    etorrent_scarcity:await_scarcity_server(TorrentID),
     true = register_chunk_server(TorrentID),
 
     NumPieces = length(PieceSizes),
@@ -332,7 +340,6 @@ init([TorrentID, ChunkSize, FetchedPieces, PieceSizes, InitTorrentPid]) ->
             InitTorrentPid
     end,
 
-    etorrent_scarcity:await_scarcity_server(TorrentID),
     PiecesBegun = etorrent_pieceset:from_list([], NumPieces),
     PriorityBegun = init_priority(TorrentID, begun, PiecesBegun),
     PriorityUnass = init_priority(TorrentID, unassigned, PiecesInvalid),
@@ -605,10 +612,13 @@ handle_call({mark_all_dropped, Pid}, _, State) ->
 
 handle_cast({mark_dropped, Pid, Index, Offset, Length}, State) ->
     #state{
+        torrent_id=TorrentID,
         pieces_begun=Begun,
         pieces_assigned=Assigned,
         chunks_assigned=AssignedChunks,
-        peer_monitors=Peers} = State,
+        peer_monitors=Peers,
+        prio_begun=PrioBegun} = State,
+
      %% Reemove the chunk from the peer's set of open requests
      OpenReqs = etorrent_monitorset:fetch(Pid, Peers),
      NewReqs  = gb_trees:delete({Index, Offset}, OpenReqs),
@@ -622,6 +632,7 @@ handle_cast({mark_dropped, Pid, Index, Offset, Length}, State) ->
      %% Assigned -> Begun
      NewAssigned = etorrent_pieceset:delete(Index, Assigned),
      NewBegun = etorrent_pieceset:insert(Index, Begun),
+     NewPrioBegun = update_priority(TorrentID, PrioBegun, NewBegun),
  
      NewState = State#state{
          pieces_begun=NewBegun,
@@ -649,7 +660,7 @@ handle_info({'DOWN', _, process, Pid, _}, State) ->
     _ = cast(self(), {demonitor, Pid}),
     {noreply, State};
 
-handle_info({scarcity, Tag, Ref, Piecelist}, State) ->
+handle_info({scarcity, Ref, Tag, Piecelist}, State) ->
     #state{prio_begun=Begun, prio_unassigned=Unass} = State,
     %% Verify that the tag is valid before verifying the reference
     #pieceprio{tag=Beguntag, ref=Begunref} = Begun,
@@ -665,7 +676,9 @@ handle_info({scarcity, Tag, Ref, Piecelist}, State) ->
             State#state{prio_begun=NewBegun};
         Unassref ->
             NewUnass = Unass#pieceprio{pieces=Piecelist},
-            State#state{prio_unassigned=NewUnass}
+            State#state{prio_unassigned=NewUnass};
+        _ ->
+            State
     end,
     {noreply, NewState}.
 
@@ -708,6 +721,7 @@ chunk_server_test_() ->
         fun(_) -> application:stop(gproc) end,
         [?_test(lookup_registered_case()),
          ?_test(unregister_case()),
+         ?_test(register_two_case()),
          ?_test(not_interested_case(test_env(2, []))),
          ?_test(not_interested_valid_case(test_env(3, [0]))),
          ?_test(request_one_case(test_env(4, []))),
@@ -739,6 +753,18 @@ unregister_case() ->
     ?assertEqual(true, ?chunk_server:register_chunk_server(1)),
     ?assertEqual(true, ?chunk_server:unregister_chunk_server(1)),
     ?assertError(badarg, ?chunk_server:lookup_chunk_server(1)).
+
+register_two_case() ->
+    {Pid, Ref} = erlang:spawn_monitor(fun() ->
+        receive go -> ok end,
+        true = ?chunk_server:register_chunk_server(20),
+        receive die -> ok end
+    end),
+    link(Pid),
+    Pid ! go,
+    erlang:yield(),
+    ?assertError(badarg, ?chunk_server:register_chunk_server(20)),
+    Pid ! die.
 
 not_interested_case({N, Time, SPid, CPid}) ->
     Has = etorrent_pieceset:from_list([], 3),

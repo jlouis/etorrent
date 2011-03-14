@@ -142,6 +142,7 @@ incoming_msg(Pid, Msg) ->
 
 %% @private
 init([TrackerUrl, LocalPeerId, InfoHash, Id, {IP, Port}, Caps, Socket]) ->
+    etorrent_chunk_mgr:await_chunk_server(Id),
     random:seed(now()),
     ok = etorrent_table:new_peer(TrackerUrl, IP, Port, Id, self(), leeching),
     ok = etorrent_choker:monitor(self()),
@@ -231,7 +232,9 @@ format_status(_Opt, [_Pdict, S]) ->
 		 {ok, IPP} -> IPP;
 		 {error, Reason} -> {port_error, Reason}
 	     end,
-    Term = [{remote_peer_id, S#state.remote_peer_id},
+    Term = [
+        {torrent_id,     S#state.torrent_id},
+        {remote_peer_id, S#state.remote_peer_id},
 	    {info_hash,      S#state.info_hash},
 	    {socket_info,    IPPort}],
     [{data,  [{"State",  Term}]}].
