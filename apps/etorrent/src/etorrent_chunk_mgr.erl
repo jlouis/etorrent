@@ -457,7 +457,7 @@ handle_call({request_chunks, PeerPid, Peerset, Numchunks}, _, State) ->
             %%
             %% The piece may have gone directly from Unassigned to Assigned.
             %% Check if it has been assigned before making any transitions.
-            Transitionstate = case etorrent_chunkset:size(NewChunkset) == 0 of
+            Transitionstate = case etorrent_chunkset:is_empty(NewChunkset) of
                 true -> assigned;
                 false -> begun
             end,
@@ -563,7 +563,7 @@ handle_call({mark_stored, Pid, Index, Offset, Length}, _, State) ->
     %% The piece must be Assigned before entering the Stored state
     %% so we don't need to consider a transition from Begun to Stored.
     Wasassigned = etorrent_pieceset:is_member(Index, Assigned),
-    Wasstored = etorrent_chunkset:size(NewChunks) == 0,
+    Wasstored = etorrent_chunkset:is_empty(NewChunks),
     Piecestate = if
         Wasassigned -> assigned;
         true -> begun
