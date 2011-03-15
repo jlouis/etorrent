@@ -425,11 +425,13 @@ handle_call({request_chunks, PeerPid, Peerset, Numchunks}, _, State) ->
             end;
         %% One or more that we are already downloading
         begun ->
-            etorrent_pieceset:min(Optimal);
+            #pieceprio{pieces=BegunPriolist} = PrioBegun,
+            etorrent_pieceset:first(BegunPriolist, Optimal);
         %% None that we are not already downloading
         %% but one ore more that we would want to download
         unassigned ->
-            etorrent_pieceset:min(SubOptimal)
+            #pieceprio{pieces=UnassignedPriolist} = PrioUnassigned,
+            etorrent_pieceset:first(UnassignedPriolist, SubOptimal)
     end,
 
     case PieceIndex of
@@ -506,7 +508,9 @@ handle_call({request_chunks, PeerPid, Peerset, Numchunks}, _, State) ->
                 pieces_begun=NewBegun,
                 pieces_assigned=NewAssigned,
                 chunks_assigned=NewAssignedChunks,
-                peer_monitors=NewPeers},
+                peer_monitors=NewPeers,
+                prio_unassigned=NewPrioUnassigned,
+                prio_begun=NewPrioBegun},
             ReturnValue = [{Index, Offs, Len} || {Offs, Len} <- Chunks],
             {reply, {ok, ReturnValue}, NewState}
     end;
@@ -638,7 +642,8 @@ handle_cast({mark_dropped, Pid, Index, Offset, Length}, State) ->
          pieces_begun=NewBegun,
          pieces_assigned=NewAssigned,
          chunks_assigned=NewAssignedChunks,
-         peer_monitors=NewPeers},
+         peer_monitors=NewPeers,
+         prio_begun=NewPrioBegun},
     {noreply, NewState};
 
 handle_cast({demonitor, Pid}, State) ->
