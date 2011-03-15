@@ -56,8 +56,7 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
-%% @todo: What pid is the chunk recording pid? Control or SendPid?
-%% API
+%% peer API
 -export([start_link/5,
          mark_valid/2,
          mark_fetched/4,
@@ -65,6 +64,14 @@
          mark_dropped/4,
          mark_all_dropped/1,
          request_chunks/3]).
+
+%% stats API
+-export([num_invalid/1,
+         num_unassigned/1,
+         num_begun/1,
+         num_assigned/1,
+         num_stored/1,
+         num_valid/1]).
 
 %% gproc registry entries
 -export([register_chunk_server/1,
@@ -90,6 +97,7 @@
 -type chunk_len() :: etorrent_types:chunk_len().
 -type chunk_offset() :: etorrent_types:chunk_offset().
 -type piece_index() :: etorrent_types:piece_index().
+-type piece_state() :: invalid | unassigned | begun | assigned | stored | valid.
 
 -record(pieceprio, {
     tag :: atom(),
@@ -299,6 +307,42 @@ request_chunks(TorrentID, Pieceset, Numchunks) ->
     ChunkSrv = lookup_chunk_server(TorrentID),
     call(ChunkSrv, {request_chunks, self(), Pieceset, Numchunks}).
 
+
+%% @doc Return the number of invalid pieces
+%% @end
+-spec num_invalid(torrent_id()) -> non_neg_integer().
+num_invalid(TorrentID) ->
+    num_in_state(TorrentID, invalid).
+
+%% @doc Return the number of unassigned pieces
+-spec num_unassigned(torrent_id()) -> non_neg_integer().
+num_unassigned(TorrentID) ->
+    num_in_state(TorrentID, unassigned).
+
+%% @doc Return the number of begun pieces
+-spec num_begun(torrent_id()) -> non_neg_integer().
+num_begun(TorrentID) ->
+    num_in_state(TorrentID, begun).
+
+%% @doc Return the number of assigned pieces
+-spec num_assigned(torrent_id()) -> non_neg_integer().
+num_assigned(TorrentID) ->
+    num_in_state(TorrentID, assigned).
+
+%% @doc Return the number of stored pieces
+-spec num_stored(torrent_id()) -> non_neg_integer().
+num_stored(TorrentID) ->
+    num_in_state(TorrentID, stored).
+
+%% @doc Return the number of validated pieces
+-spec num_valid(torrent_id()) -> non_neg_integer().
+num_valid(TorrentID) ->
+    num_in_state(TorrentID, valid).
+
+-spec num_in_state(torrent_id(), piece_state()) -> non_neg_integer().
+num_in_state(TorrentID, Piecestate) ->
+    ChunkSrv = lookup_chunk_server(TorrentID),
+    gen_server:call(ChunkSrv, {num_in_state, Piecestate}).
 
 %%====================================================================
 
@@ -599,8 +643,6 @@ handle_call({mark_stored, Pid, Index, Offset, Length}, _, State) ->
     end,
     {reply, ok, NewState};
 
-
-
 handle_call({mark_all_dropped, Pid}, _, State) ->
     %% When marking all requests as dropped, send a series of
     %% mark_dropped-messages to ourselves. The state of each
@@ -612,7 +654,26 @@ handle_call({mark_all_dropped, Pid}, _, State) ->
     _ = [begin
         cast(self(), {mark_dropped, Pid, Index, Offset, Length})
     end || {Index, Offset, Length} <- chunk_list(OpenReqs)],
-    {reply, ok, State}.
+    {reply, ok, State};
+
+handle_call({num_in_state, Piecestate}, _, State) ->
+    Stateset = case Piecestate of
+        invalid -> State#state.pieces_valid;
+        unassigned -> State#state.pieces_unassigned;
+        begun -> State#state.pieces_begun;
+        assigned -> State#state.pieces_assigned;
+        stored -> State#state.pieces_stored;
+        valid -> State#state.pieces_valid
+    end,
+    Return = case Stateset of
+        invalid ->
+            Total = etorrent_pieceset:capacity(Stateset),
+            Valid = etorrent_pieceset:size(Stateset),
+            Total - Valid;
+        _ ->
+            etorrent_pieceset:size(Stateset)
+    end,
+    {reply, Return, State}.
 
 handle_cast({mark_dropped, Pid, Index, Offset, Length}, State) ->
     #state{

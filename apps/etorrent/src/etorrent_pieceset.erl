@@ -18,6 +18,7 @@
          intersection/2,
          difference/2,
          size/1,
+         capacity/1,
          first/2,
          foldl/3,
          min/1]).
@@ -213,6 +214,13 @@ size(<<0:1, Rest/bitstring>>, Acc) ->
     size(Rest, Acc);
 size(<<>>, Acc) ->
     Acc.
+
+%% @doc Return the number of pieces that can be members of the set
+%% @end
+-spec capacity(pieceset()) -> non_neg_integer().
+capacity(Pieceset) ->
+    #pieceset{size=Size} = Pieceset,
+    Size.
 
 %% @doc Return the first member of the list that is a member of the set
 %% If no element of the list is a member of the set the function exits
