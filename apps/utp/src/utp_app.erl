@@ -15,7 +15,7 @@
 
 %% @doc Manual startup of the uTP application
 start() ->
-    ok = ensure_started([sasl, gproc]),
+    ok = ensure_started([sasl, gproc, crypto]),
     application:start(utp).
 
 ensure_started([]) ->

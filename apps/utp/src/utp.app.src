@@ -5,7 +5,7 @@
   {registered,
    [
    ]},
-  {applications, [kernel, stdlib, gproc]},
+  {applications, [kernel, stdlib, crypto, gproc]},
   {mod, {utp_app, []}},
   {env, []}
  ]
