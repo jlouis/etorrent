@@ -144,7 +144,7 @@ packet_size(_Socket) ->
     1500.
 
 mk_random_seq_no() ->
-    <<N:16/integer>> = crypto:random_bytes(2),
+    <<N:16/integer>> = crypto:rand_bytes(2),
     N.
 
 send_fin(_SockInfo) ->
