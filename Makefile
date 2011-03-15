@@ -90,6 +90,12 @@ console:
 		-pa ../../apps/etorrent/ebin \
 		-pa ../../deps/riak_err/ebin
 
+console-raw:
+	dev/etorrent-dev/erts-5.8.3/bin/erl \
+		-pa apps/etorrent/ebin \
+		-pa apps/utp/ebin \
+	        -boot start_clean
+
 remsh:
 	erl -name 'foo@127.0.0.1' -remsh 'etorrent@127.0.0.1' -setcookie etorrent
 

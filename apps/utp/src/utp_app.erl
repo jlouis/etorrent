@@ -7,19 +7,34 @@
 -behaviour(application).
 
 %% Application callbacks
--export([start/2, stop/1]).
+-export([start/0, start/2, stop/1]).
 
 %%%===================================================================
 %%% Application callbacks
 %%%===================================================================
 
+%% @doc Manual startup of the uTP application
+start() ->
+    ok = ensure_started([sasl, gproc]),
+    application:start(utp).
+
+ensure_started([]) ->
+    ok;
+ensure_started([App | R]) ->
+    case application:start(App) of
+	ok ->
+	    ensure_started(R);
+	{error, {already_started, App}} ->
+	    ensure_started(R)
+    end.
+
 %% @private
 start(_StartType, _StartArgs) ->
-    case utp_sup:start_link(1729) of
+    case utp_sup:start_link(3333) of
         {ok, Pid} ->
             {ok, Pid};
-        Error ->
-            Error
+        {error, Reason} ->
+            {error, Reason}
     end.
 
 %% @private
