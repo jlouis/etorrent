@@ -225,7 +225,8 @@ handle_info({'DOWN', Ref, process, _Pid, _Reason}, #state { monitored = MM } = S
     CID = gb_trees:get(Ref, MM),
     true = ets:delete(?TAB, CID),
     {noreply, S#state { monitored = gb_trees:delete(Ref, MM)}};
-handle_info(_Info, State) ->
+handle_info(Info, State) ->
+    error_logger:error_report([unknown_handle_info, Info, State]),
     {noreply, State}.
 
 %% @private
