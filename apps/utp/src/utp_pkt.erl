@@ -7,6 +7,8 @@
 	 mk/0,
 	 mk_buf/1,
 
+         init_seqno/2,
+
 	 packet_size/1,
 	 mk_random_seq_no/0,
 	 send_fin/1,
@@ -125,6 +127,9 @@ mk_buf(OptRecv) ->
 	opt_recv_buf_sz = OptRecv,
 	last_recv_window = OptRecv
        }.
+
+init_seqno(#pkt_buf {} = PBuf, SeqNo) ->
+    PBuf#pkt_buf { seq_no = SeqNo }.
 
 seqno(#pkt_wrap { packet = #packet { seq_no = S} }) ->
     S.
