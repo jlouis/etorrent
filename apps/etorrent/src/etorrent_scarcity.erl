@@ -277,7 +277,7 @@ handle_call({unwatch, MRef}, _, State) ->
     Watcher = lists:keyfind(MRef, #watcher.ref, Watchers),
     #watcher{timer_ref=TRef} = Watcher,
     case TRef of none -> ok; _ -> etorrent_timer:cancel(Time, TRef) end,
-    NewWatchers = lists:keydelete(TRef, #watcher.ref, Watchers),
+    NewWatchers = lists:keydelete(MRef, #watcher.ref, Watchers),
     NewState = State#state{watchers=NewWatchers},
     {reply, ok, NewState}.
 
