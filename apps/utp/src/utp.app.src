@@ -6,7 +6,7 @@
    [
    ]},
   {applications, [kernel, stdlib, gproc]},
-  %% {mod, {utp_app, []}},
+  {mod, {utp_app, []}},
   {env, []}
  ]
 }.

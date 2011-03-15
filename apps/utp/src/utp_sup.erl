@@ -36,8 +36,6 @@ start_link(Port) ->
 %%%===================================================================
 
 %% @private
-init([Port]) ->
-    init([Port, []]);
 init([Port, Opts]) ->
     RestartStrategy = one_for_all,
     MaxRestarts = 10,
@@ -51,6 +49,7 @@ init([Port, Opts]) ->
 	      permanent, 15000, worker, [gen_utp_decoder]},
     WorkerPool = {gen_utp_worker_pool, {gen_utp_worker_pool, start_link, []},
 		  transient, infinity, supervisor, [gen_utp_worker_pool]},
+    io:format("Starting up~n"),
     {ok, {SupFlags, [WorkerPool, GenUTPDecoder, GenUTP]}}.
 
 
