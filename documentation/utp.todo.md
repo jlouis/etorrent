@@ -1,6 +1,8 @@
 ### "Real" TODO:
 
 * Try to spawn code, make a connection. Get the connection code to work.
+** We are not accepted in the accept-part of the code. Fix this by looking into what happens
+   in the acceptor code path and fix it.
 * Try to transfer data on the UTP socket, don't close the socket again.
 * Write code for socket teardown.
 * Test closing the socket as well.

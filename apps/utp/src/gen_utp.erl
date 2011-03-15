@@ -69,7 +69,7 @@ connect(Addr, Port) ->
 %% @end
 connect(Addr, Port, Options) ->
     {ok, Socket} = get_socket(),
-    {ok, Pid} = gen_utp_pool:start_child(Socket, Addr, Port, Options),
+    {ok, Pid} = gen_utp_worker_pool:start_child(Socket, Addr, Port, Options),
     gen_utp_worker:connect(Pid).
 
 accept() ->

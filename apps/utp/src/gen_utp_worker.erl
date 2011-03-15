@@ -182,9 +182,9 @@ init([Socket, Addr, Port, Options]) ->
 			    socket = Socket,
                             timestamp_difference = 0 % @todo check this value
 			  },
-    {ok, state_name, #state{ sock_info = SockInfo,
-                             pkt_buf   = PktBuf,
-                             pkt_info  = PktInfo }}.
+    {ok, idle, #state{ sock_info = SockInfo,
+                       pkt_buf   = PktBuf,
+                       pkt_info  = PktInfo }}.
 
 %% @private
 idle(close, S) ->
@@ -329,7 +329,7 @@ idle(connect, From, State = #state { sock_info = SockInfo,
 			  conn_id = Conn_id_recv,
 			  extension = ?SYN_EXTS
 			}, % Rest are defaults
-    ok = send(SockInfo, SynPacket),
+    ok = send_pkt(SockInfo, SynPacket),
     {next_state, syn_sent, State#state {
                              syn_timeout = TRef,
                              pkt_buf     = utp_pkt:init_seqno(PktBuf, 2),
