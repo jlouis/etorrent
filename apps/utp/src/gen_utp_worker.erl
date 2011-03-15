@@ -103,7 +103,6 @@
                  pkt_buf      :: utp_pkt:buf(),
                  proc_info    :: utp_process:t(),
                  conn_id_send :: integer(),
-                 ack_no       :: integer(),
                  connector    :: {reference(), pid()},
                  syn_timeout  :: reference()
                }).
@@ -201,6 +200,7 @@ syn_sent({pkt, #packet { ty = st_state,
 	       _Timing},
 	 #state { sock_info = SockInfo,
                   conn_id_send = Conn_id_send,
+                  pkt_buf = PktBuf,
                   connector = From,
                   syn_timeout = TRef
                 }) ->
@@ -208,7 +208,7 @@ syn_sent({pkt, #packet { ty = st_state,
     reply(From, ok),
     {next_state, connected, #state { sock_info = SockInfo,
                                      conn_id_send = Conn_id_send,
-                                     ack_no = PktSeqNo }};
+                                     pkt_buf = utp_pkt:init_ackno(PktBuf, PktSeqNo)}};
 syn_sent(close, _S) ->
     todo_alter_rto;
 syn_sent(Msg, S) ->
@@ -351,8 +351,9 @@ idle({accept, SYN}, _From, #state { sock_info = SockInfo,
 			},
     ok = send(SockInfo, AckPacket),
     {reply, ok, connected, #state { sock_info = SockInfo,
-                                    pkt_buf = utp_pkt:init_seqno(PktBuf, SeqNo + 1),
-                                    ack_no = AckNo,
+                                    pkt_buf = utp_pkt:init_ackno(
+                                                utp_pkt:init_seqno(PktBuf, SeqNo + 1),
+                                                AckNo),
                                     conn_id_send = Conn_id_send }};
 idle(_Msg, _From, State) ->
     {reply, idle, {error, enotconn}, State}.

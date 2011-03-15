@@ -8,6 +8,7 @@
 	 mk_buf/1,
 
          init_seqno/2,
+         init_ackno/2,
 
 	 packet_size/1,
 	 mk_random_seq_no/0,
@@ -130,6 +131,9 @@ mk_buf(OptRecv) ->
 
 init_seqno(#pkt_buf {} = PBuf, SeqNo) ->
     PBuf#pkt_buf { seq_no = SeqNo }.
+
+init_ackno(#pkt_buf{} = PBuf, AckNo) ->
+    PBuf#pkt_buf { ack_no = AckNo }.
 
 seqno(#pkt_wrap { packet = #packet { seq_no = S} }) ->
     S.
