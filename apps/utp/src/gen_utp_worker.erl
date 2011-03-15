@@ -208,6 +208,7 @@ syn_sent({pkt, #packet { ty = st_state,
     reply(From, ok),
     {next_state, connected, #state { sock_info = SockInfo,
                                      conn_id_send = Conn_id_send,
+                                     syn_timeout = undefined,
                                      pkt_buf = utp_pkt:init_ackno(PktBuf, PktSeqNo)}};
 syn_sent(close, _S) ->
     todo_alter_rto;
@@ -344,7 +345,7 @@ idle({accept, SYN}, _From, #state { sock_info = SockInfo,
     SeqNo = utp_pkt:mk_random_seq_no(),
     AckNo = SYN#packet.ack_no,
     AckPacket = #packet { ty = st_state,
-			  seq_no = SeqNo, % @todo meaning of ++ ?
+			  seq_no = SeqNo,
 			  ack_no = AckNo,
 			  conn_id = Conn_id_send,
 			  extension = ?SYN_EXTS

@@ -1,6 +1,5 @@
 ### "Real" TODO:
 
-* Go through initial connect code and update with new knowledge.
 * Try to spawn code, make a connection. Get the connection code to work.
 * Try to transfer data on the UTP socket, don't close the socket again.
 * Write code for socket teardown.
