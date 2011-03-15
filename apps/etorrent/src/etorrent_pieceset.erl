@@ -1,5 +1,4 @@
 -module(etorrent_pieceset).
--compile(native).
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -20,6 +19,7 @@
          difference/2,
          size/1,
          first/2,
+         foldl/3,
          min/1]).
 
 -record(pieceset, {
@@ -232,6 +232,22 @@ first_([H|T], Elements) ->
         1 -> H;
         0 -> first_(T, Elements)
     end.
+
+%% @doc Iterate over the members of a piece set
+%% @end
+foldl(Fun, Acc, Pieceset) ->
+    #pieceset{elements=Elements} = Pieceset,
+    foldl_(Fun, Acc, Elements, 0).
+
+foldl_(Fun, Acc, <<1:1, Rest/bitstring>>, Index) ->
+    NewAcc = Fun(Index, Acc),
+    foldl_(Fun, NewAcc, Rest, Index + 1);
+foldl_(Fun, Acc, <<0:1, Rest/bitstring>>, Index) ->
+    foldl_(Fun, Acc, Rest, Index + 1);
+foldl_(_, Acc, <<>>, _) ->
+    Acc.
+
+
 
 %% @doc
 %% Return the lowest piece index that is a member of this set.

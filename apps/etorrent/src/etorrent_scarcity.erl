@@ -367,15 +367,19 @@ sorted_piecelist(Piecelist, Numpeers) ->
 
 -spec decrement(pieceset(), array()) -> array().
 decrement(Pieceset, Numpeers) ->
-    Piecelist = etorrent_pieceset:to_list(Pieceset),
-    [ets:update_counter(Numpeers, Piece, -1) || Piece <- Piecelist],
+    etorrent_pieceset:foldl(fun(Piece, Acc) ->
+        ets:update_counter(Numpeers, Piece, -1),
+        Acc
+    end, ok, Pieceset),
     Numpeers.
 
 
 -spec increment(pieceset(), array()) -> array().
 increment(Pieceset, Numpeers) ->
-    Piecelist = etorrent_pieceset:to_list(Pieceset),
-    [ets:update_counter(Numpeers, Piece, 1) || Piece <- Piecelist],
+    etorrent_pieceset:foldl(fun(Piece, Acc) ->
+        ets:update_counter(Numpeers, Piece, 1),
+        Acc
+    end, ok, Pieceset),
     Numpeers.
 
 
