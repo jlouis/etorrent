@@ -745,7 +745,7 @@ chunk_server_test_() ->
 
 test_env(N, Valid) ->
     {ok, Time} = ?timer:start_link(queue),
-    {ok, SPid} = ?scarcity:start_link(N, Time),
+    {ok, SPid} = ?scarcity:start_link(N, Time, 8),
     {ok, CPid}  = ?chunk_server:start_link(N, 1, Valid, [{0, 2}, {1, 2}, {2, 2}], self()),
     true = ?chunk_server:register_peer(N),
     {N, Time, SPid, CPid}.

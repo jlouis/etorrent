@@ -59,8 +59,8 @@
          await_scarcity_server/1]).
 
 %% api functions
--export([start_link/1,
-         start_link/2,
+-export([start_link/2,
+         start_link/3,
          add_peer/2,
          add_piece/3,
          get_order/2,
@@ -86,6 +86,7 @@
     ref :: reference(),
     tag :: term(),
     pieceset :: pieceset(),
+    piecelist :: [pos_integer()],
     interval :: pos_integer(),
     changed  :: boolean(),
     timer_ref :: none | reference()}).
@@ -130,14 +131,14 @@ await_scarcity_server(TorrentID) ->
 %% The server will always register itself as the scarcity
 %% server for the given torrent as soon as it has started.
 %% @end
--spec start_link(torrent_id()) -> {ok, pid()}.
-start_link(TorrentID) ->
-    start_link(TorrentID, native).
+-spec start_link(torrent_id(), pos_integer()) -> {ok, pid()}.
+start_link(TorrentID, Numpieces) ->
+    start_link(TorrentID, native, Numpieces).
 
 
--spec start_link(torrent_id(), timeserver()) -> {ok, pid()}.
-start_link(TorrentID, Timeserver) ->
-    gen_server:start_link(?MODULE, [TorrentID, Timeserver], []).
+-spec start_link(torrent_id(), timeserver(), pos_integer()) -> {ok, pid()}.
+start_link(TorrentID, Timeserver, Numpieces) ->
+    gen_server:start_link(?MODULE, [TorrentID, Timeserver, Numpieces], []).
 
 
 %% @doc Register as a peer
@@ -200,12 +201,17 @@ unwatch(TorrentID, Ref) ->
 
 
 %% @private
-init([TorrentID, Timeserver]) ->
+init([TorrentID, Timeserver, Numpieces]) ->
+    Tab = ets:new(etorrent_scarcity, [set,private]),
+    %% Set all counters to 0 so we don't need to handle default
+    %% values for new pieces anywhere else in the module.
+    [ets:insert(Tab, {I, 0}) || I <- lists:seq(0, Numpieces - 1)],
+
     register_scarcity_server(TorrentID),
     InitState = #state{
         torrent_id=TorrentID,
         timeserver=Timeserver,
-        num_peers=array:new([{default, 0}]),
+        num_peers=Tab,
         peer_monitors=etorrent_monitorset:new(),
         watchers=[]},
     {ok, InitState}.
@@ -233,8 +239,8 @@ handle_call({add_piece, Pid, PieceIndex, Pieceset}, _, State) ->
         peer_monitors=Monitors,
         num_peers=Numpeers,
         watchers=Watchers} = State,
-    Prev = array:get(PieceIndex, Numpeers),
-    NewNumpeers = array:set(PieceIndex, Prev + 1, Numpeers),
+    ets:update_counter(Numpeers, PieceIndex, 1),
+    NewNumpeers = Numpeers,
     NewMonitors = etorrent_monitorset:update(Pid, Pieceset, Monitors),
     NewWatchers = send_updates(PieceIndex, Watchers, NewNumpeers, Time),
     NewState = State#state{
@@ -245,8 +251,9 @@ handle_call({add_piece, Pid, PieceIndex, Pieceset}, _, State) ->
 
 handle_call({get_order, Pieceset}, _, State) ->
     #state{num_peers=Numpeers} = State,
-    Piecelist = sorted_piecelist(Pieceset, Numpeers),
-    {reply, {ok, Piecelist}, State};
+    Piecelist = etorrent_pieceset:to_list(Pieceset),
+    Pieceorder = sorted_piecelist(Piecelist, Numpeers),
+    {reply, {ok, Pieceorder}, State};
 
 handle_call({watch, Pid, Interval, Tag, Pieceset}, _, State) ->
     #state{timeserver=Time, num_peers=Numpeers, watchers=Watchers} = State,
@@ -257,19 +264,21 @@ handle_call({watch, Pid, Interval, Tag, Pieceset}, _, State) ->
     %% is no benefit to using it in this case.
     MRef = monitor(process, Pid),
     TRef = etorrent_timer:start_timer(Time, Interval, self(), MRef),
+    Piecelist = etorrent_pieceset:to_list(Pieceset),
     Watcher = #watcher{
         pid=Pid,
         ref=MRef,
         tag=Tag,
         pieceset=Pieceset,
+        piecelist=Piecelist,
         interval=Interval,
         %% The initial state of a watcher is limited.
         changed=false,
         timer_ref=TRef},
     NewWatchers = [Watcher|Watchers],
     NewState = State#state{watchers=NewWatchers},
-    Piecelist = sorted_piecelist(Pieceset, Numpeers),
-    {reply, {ok, MRef, Piecelist}, NewState};
+    Pieceorder = sorted_piecelist(Piecelist, Numpeers),
+    {reply, {ok, MRef, Pieceorder}, NewState};
 
 handle_call({unwatch, MRef}, _, State) ->
     #state{timeserver=Time, watchers=Watchers} = State,
@@ -350,29 +359,24 @@ code_change(_, State, _) ->
 
 
 -spec sorted_piecelist(pieceset(), array()) -> [pos_integer()].
-sorted_piecelist(Pieceset, Numpeers) ->
-    Piecelist = etorrent_pieceset:to_list(Pieceset),
-    lists:sort(fun(A, B) ->
-        array:get(A, Numpeers) =< array:get(B, Numpeers)
-    end, Piecelist).
+sorted_piecelist(Piecelist, Numpeers) ->
+    Tagged = [{ets:lookup_element(Numpeers, I, 2), I} || I <- Piecelist],
+    Sorted = lists:sort(Tagged),
+    [I || {_, I} <- Sorted].
 
 
 -spec decrement(pieceset(), array()) -> array().
 decrement(Pieceset, Numpeers) ->
     Piecelist = etorrent_pieceset:to_list(Pieceset),
-    lists:foldl(fun(Index, Acc) ->
-        PrevCount = array:get(Index, Acc),
-        array:set(Index, PrevCount - 1, Acc)
-    end, Numpeers, Piecelist).
+    [ets:update_counter(Numpeers, Piece, -1) || Piece <- Piecelist],
+    Numpeers.
 
 
 -spec increment(pieceset(), array()) -> array().
 increment(Pieceset, Numpeers) ->
     Piecelist = etorrent_pieceset:to_list(Pieceset),
-    lists:foldl(fun(Index, Acc) ->
-        PrevCount = array:get(Index, Acc),
-        array:set(Index, PrevCount + 1, Acc)
-    end, Numpeers, Piecelist).
+    [ets:update_counter(Numpeers, Piece, 1) || Piece <- Piecelist],
+    Numpeers.
 
 
 -spec send_updates(pieceset() | pos_integer(), [#watcher{}],
@@ -423,10 +427,10 @@ send_update(Watcher, Numpeers, Time) ->
         pid=Pid,
         ref=MRef,
         tag=Tag,
-        pieceset=Pieceset,
+        piecelist=Piecelist,
         interval=Interval} = Watcher,
-    Piecelist = sorted_piecelist(Pieceset, Numpeers),
-    Pid ! {scarcity, MRef, Tag, Piecelist},
+    Pieceorder = sorted_piecelist(Piecelist, Numpeers),
+    Pid ! {scarcity, MRef, Tag, Pieceorder},
     etorrent_timer:start_timer(Time, Interval, self(), MRef).
 
 
@@ -460,7 +464,7 @@ scarcity_server_test_() ->
 
 test_data(N) ->
     {ok, Time} = ?timer:start_link(queue),
-    {ok, Pid} = ?scarcity:start_link(N, Time),
+    {ok, Pid} = ?scarcity:start_link(N, Time, 16),
     {N, Time, Pid}.
 
 register_case() ->
@@ -469,7 +473,7 @@ register_case() ->
     ?assertEqual(self(), ?scarcity:await_scarcity_server(0)).
 
 server_registers_case() ->
-    {ok, Pid} = ?scarcity:start_link(1),
+    {ok, Pid} = ?scarcity:start_link(1, 16),
     ?assertEqual(Pid, ?scarcity:lookup_scarcity_server(1)).
 
 initial_ordering_case({N, Time, Pid}) ->

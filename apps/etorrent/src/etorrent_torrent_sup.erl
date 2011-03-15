@@ -53,16 +53,17 @@ start_child_tracker(Pid, UrlTiers, InfoHash, Local_Peer_Id, TorrentId) ->
 %% @private
 init([{Torrent, TorrentPath, TorrentIH}, PeerID, TorrentID]) ->
     Children = [
-        scarcity_manager_spec(TorrentID),
+        scarcity_manager_spec(TorrentID, Torrent),
         torrent_control_spec(TorrentID, Torrent, TorrentPath, TorrentIH, PeerID),
         chunk_manager_spec(TorrentID, Torrent),
         io_sup_spec(TorrentID, Torrent),
         peer_pool_spec(TorrentID)],
     {ok, {{one_for_all, 1, 60}, Children}}.
 
-scarcity_manager_spec(TorrentID) ->
+scarcity_manager_spec(TorrentID, Torrent) ->
+    Numpieces = length(etorrent_io:piece_sizes(Torrent)),
     {scarcity_mgr,
-        {etorrent_scarcity, start_link, [TorrentID]},
+        {etorrent_scarcity, start_link, [TorrentID, Numpieces]},
         permanent, brutal_kill, worker, [etorrent_scarcity]}.
 
 
