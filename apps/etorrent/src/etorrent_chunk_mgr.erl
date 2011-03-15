@@ -66,7 +66,8 @@
          request_chunks/3]).
 
 %% stats API
--export([num_invalid/1,
+-export([stats/1,
+         num_invalid/1,
          num_unassigned/1,
          num_begun/1,
          num_assigned/1,
@@ -308,41 +309,69 @@ request_chunks(TorrentID, Pieceset, Numchunks) ->
     call(ChunkSrv, {request_chunks, self(), Pieceset, Numchunks}).
 
 
+%% @doc Print chunk server statistics
+%% @end
+-spec stats(torrent_id()) -> ok.
+stats(TorrentID) ->
+    io:format("Invalid:    ~w~n", [num_invalid(TorrentID)]),
+    io:format("Unassigned: ~w~n", [num_unassigned(TorrentID)]),
+    io:format("Begun:      ~w~n", [num_begun(TorrentID)]),
+    io:format("Assigned:   ~w~n", [num_assigned(TorrentID)]),
+    io:format("Stored:     ~w~n", [num_stored(TorrentID)]),
+    io:format("Valid:      ~w~n", [num_valid(TorrentID)]).
+
 %% @doc Return the number of invalid pieces
 %% @end
 -spec num_invalid(torrent_id()) -> non_neg_integer().
 num_invalid(TorrentID) ->
-    num_in_state(TorrentID, invalid).
+    num_state_members(TorrentID, invalid).
 
 %% @doc Return the number of unassigned pieces
 -spec num_unassigned(torrent_id()) -> non_neg_integer().
 num_unassigned(TorrentID) ->
-    num_in_state(TorrentID, unassigned).
+    num_state_members(TorrentID, unassigned).
 
 %% @doc Return the number of begun pieces
 -spec num_begun(torrent_id()) -> non_neg_integer().
 num_begun(TorrentID) ->
-    num_in_state(TorrentID, begun).
+    num_state_members(TorrentID, begun).
 
 %% @doc Return the number of assigned pieces
 -spec num_assigned(torrent_id()) -> non_neg_integer().
 num_assigned(TorrentID) ->
-    num_in_state(TorrentID, assigned).
+    num_state_members(TorrentID, assigned).
 
 %% @doc Return the number of stored pieces
 -spec num_stored(torrent_id()) -> non_neg_integer().
 num_stored(TorrentID) ->
-    num_in_state(TorrentID, stored).
+    num_state_members(TorrentID, stored).
 
 %% @doc Return the number of validated pieces
 -spec num_valid(torrent_id()) -> non_neg_integer().
 num_valid(TorrentID) ->
-    num_in_state(TorrentID, valid).
+    num_state_members(TorrentID, valid).
 
--spec num_in_state(torrent_id(), piece_state()) -> non_neg_integer().
-num_in_state(TorrentID, Piecestate) ->
+%% @private
+-spec state_members(torrent_id(), piece_state()) -> pieceset().
+state_members(TorrentID, Piecestate) ->
     ChunkSrv = lookup_chunk_server(TorrentID),
-    gen_server:call(ChunkSrv, {num_in_state, Piecestate}).
+    case Piecestate of
+        invalid -> error(badarg);
+        _ -> gen_server:call(ChunkSrv, {state_members, Piecestate})
+    end.
+
+%% @private
+-spec num_state_members(torrent_id(), piece_state()) -> pieceset().
+num_state_members(TorrentID, Piecestate) ->
+    case Piecestate of
+        invalid ->
+            Valid = state_members(TorrentID, valid),
+            Total = etorrent_pieceset:capacity(Valid),
+            Total - etorrent_pieceset:size(Valid);
+        _ ->
+            Members = state_members(TorrentID, Piecestate),
+            etorrent_pieceset:size(Members)
+    end.
 
 %%====================================================================
 
@@ -576,9 +605,11 @@ handle_call({mark_valid, _, Index}, _, State) ->
         not_stored ->
             {reply, {error, not_stored}, State};
         stored ->
-            %% A piece never leaves the stored state if it is marked valid.
+            NewStored = etorrent_pieceset:delete(Index, Stored),
             NewValid = etorrent_pieceset:insert(Index, Valid),
-            NewState = State#state{pieces_valid=NewValid},
+            NewState = State#state{
+                pieces_stored=NewStored,
+                pieces_valid=NewValid},
             {reply, ok, NewState}
     end;
 
@@ -656,24 +687,15 @@ handle_call({mark_all_dropped, Pid}, _, State) ->
     end || {Index, Offset, Length} <- chunk_list(OpenReqs)],
     {reply, ok, State};
 
-handle_call({num_in_state, Piecestate}, _, State) ->
+handle_call({state_members, Piecestate}, _, State) ->
     Stateset = case Piecestate of
-        invalid -> State#state.pieces_valid;
         unassigned -> State#state.pieces_unassigned;
         begun -> State#state.pieces_begun;
         assigned -> State#state.pieces_assigned;
         stored -> State#state.pieces_stored;
         valid -> State#state.pieces_valid
     end,
-    Return = case Stateset of
-        invalid ->
-            Total = etorrent_pieceset:capacity(Stateset),
-            Valid = etorrent_pieceset:size(Stateset),
-            Total - Valid;
-        _ ->
-            etorrent_pieceset:size(Stateset)
-    end,
-    {reply, Return, State}.
+    {reply, Stateset, State}.
 
 handle_cast({mark_dropped, Pid, Index, Offset, Length}, State) ->
     #state{

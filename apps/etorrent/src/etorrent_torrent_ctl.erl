@@ -153,6 +153,7 @@ started({piece_stored, Index}, State) ->
             ok = etorrent_piece_mgr:statechange(TorrentID, Index, fetched),
             Have = fun(Pid) -> etorrent_peer_control:have(Pid, Index) end,
             _  = etorrent_table:foreach_peer(TorrentID, Have),
+            ok = etorrent_chunk_mgr:mark_valid(TorrentID, Index),
             ok;
         wrong_hash ->
             ok = etorrent_piece_mgr:statechange(TorrentID, Index, not_fetched)
