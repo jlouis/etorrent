@@ -57,8 +57,7 @@ handle_cast({packet, P, Addr, Port}, S) ->
 	{ok, {#packet { conn_id = CID } = Packet, TS, TSDiff, RecvTime}} ->
 	    case gen_utp:lookup_registrar(CID) of
 		{ok, Pid} ->
-		    gen_utp_worker:incoming(Pid, {packet, Packet, RecvTime},
-					         {TS, TSDiff, RecvTime});
+		    gen_utp_worker:incoming(Pid, Packet, {TS, TSDiff, RecvTime});
 		not_found ->
 		    gen_utp:incoming_new(Packet, Addr, Port)
 	    end;
