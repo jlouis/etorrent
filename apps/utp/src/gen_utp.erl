@@ -70,7 +70,10 @@ connect(Addr, Port) ->
 connect(Addr, Port, Options) ->
     {ok, Socket} = get_socket(),
     {ok, Pid} = gen_utp_worker_pool:start_child(Socket, Addr, Port, Options),
-    gen_utp_worker:connect(Pid).
+    case gen_utp_worker:connect(Pid) of
+        ok ->
+            {utp_sock, Pid}
+    end.
 
 accept() ->
     %% Accept an incoming connection.
@@ -79,7 +82,10 @@ accept() ->
     %% with the result of the worker process directly, rather than the gen_utp proxy having
     %% to do it.
     {ok, Pid, SynPacket} = call(accept),
-    gen_utp_worker:accept(Pid, SynPacket).
+    case gen_utp_worker:accept(Pid, SynPacket) of
+        ok ->
+            {utp_sock, Pid}
+    end.
 
 %% @doc Send a message on a uTP Socket
 %% @end
