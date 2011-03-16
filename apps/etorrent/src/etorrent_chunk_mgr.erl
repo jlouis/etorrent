@@ -843,16 +843,18 @@ unregister_case() ->
     ?assertError(badarg, ?chunk_server:lookup_chunk_server(1)).
 
 register_two_case() ->
+    Main = self(),
     {Pid, Ref} = erlang:spawn_monitor(fun() ->
-        receive go -> ok end,
+        etorrent_utils:expect(go),
         true = ?chunk_server:register_chunk_server(20),
-        receive die -> ok end
+        Main ! registered,
+        etorrent_utils:expect(die)
     end),
-    link(Pid),
     Pid ! go,
-    erlang:yield(),
+    etorrent_utils:expect(registered),
     ?assertError(badarg, ?chunk_server:register_chunk_server(20)),
-    Pid ! die.
+    Pid ! die,
+    etorrent_utils:wait(Ref).
 
 not_interested_case({N, Time, SPid, CPid}) ->
     Has = etorrent_pieceset:from_list([], 3),

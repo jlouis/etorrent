@@ -13,7 +13,8 @@
 %% "stdlib-like" functions
 -export([gsplit/2, queue_remove/2, group/1,
 	 list_shuffle/1, date_str/1, any_to_list/1,
-     merge_proplists/2, compare_proplists/2]).
+     merge_proplists/2, compare_proplists/2,
+     wait/1, expect/1]).
 
 %% "time-like" functions
 -export([now_subtract_seconds/2]).
@@ -137,6 +138,18 @@ merge_proplists(OldProp, NewProp) ->
     boolean().
 compare_proplists(Prop1, Prop2) ->
     lists:ukeysort(1, Prop1) =:= lists:ukeysort(1, Prop2).
+
+%% @doc Wait for a monitored process to exit
+%% @end
+-spec wait(reference()) -> ok.
+wait(MRef) ->
+    receive {'DOWN', MRef, process, _, _} -> ok end.
+
+%% @doc Wait for a message to arrive
+%% @end
+-spec expect(term()) -> ok.
+expect(Message) ->
+    receive Message -> ok end.
 
 
 %%====================================================================

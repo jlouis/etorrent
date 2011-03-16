@@ -9,6 +9,7 @@
 %% state is believed blindly if present.</p>
 %% @end
 %% @todo Improve the situation and check strength.
+
 -module(etorrent_fast_resume).
 -behaviour(gen_server).
 
