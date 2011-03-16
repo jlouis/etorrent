@@ -238,7 +238,7 @@ await_chunk_server(TorrentID) ->
 -spec register_peer(torrent_id()) -> true.
 register_peer(TorrentID) ->
     ChunkSrv = lookup_chunk_server(TorrentID),
-    gen_server:call(ChunkSrv, {register_peer, self()}).
+    call(ChunkSrv, {register_peer, self()}).
 
 chunk_server_key(TorrentID) ->
     {etorrent, TorrentID, chunk_server}.
@@ -357,7 +357,7 @@ state_members(TorrentID, Piecestate) ->
     ChunkSrv = lookup_chunk_server(TorrentID),
     case Piecestate of
         invalid -> error(badarg);
-        _ -> gen_server:call(ChunkSrv, {state_members, Piecestate})
+        _ -> call(ChunkSrv, {state_members, Piecestate})
     end.
 
 %% @private
