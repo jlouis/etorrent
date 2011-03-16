@@ -7,16 +7,16 @@
 -behaviour(application).
 
 %% Application callbacks
--export([start/0, start/2, stop/1]).
+-export([start/1, start/2, stop/1]).
 
 %%%===================================================================
 %%% Application callbacks
 %%%===================================================================
 
 %% @doc Manual startup of the uTP application
-start() ->
+start(Port) ->
     ok = ensure_started([sasl, gproc, crypto]),
-    application:start(utp).
+    utp_sup:start_link(Port).
 
 ensure_started([]) ->
     ok;
