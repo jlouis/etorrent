@@ -350,7 +350,7 @@ idle({accept, SYN}, _From, #state { sock_info = SockInfo,
 			  conn_id = Conn_id_send,
 			  extension = ?SYN_EXTS
 			},
-    ok = send(SockInfo, AckPacket),
+    ok = send_pkt(SockInfo, AckPacket),
     {reply, ok, connected, #state { sock_info = SockInfo,
                                     pkt_buf = utp_pkt:init_ackno(
                                                 utp_pkt:init_seqno(PktBuf, SeqNo + 1),
