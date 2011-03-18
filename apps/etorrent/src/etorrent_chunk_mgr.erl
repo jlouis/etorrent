@@ -221,7 +221,7 @@ mark_valid(TorrentID, PieceIndex) ->
 %% Mark a chunk as fetched but not written to file.
 %% @end
 -spec mark_fetched(torrent_id(), pos_integer(),
-                   pos_integer(), pos_integer()) -> {ok, list(pid())}.
+                   pos_integer(), pos_integer()) -> {ok, boolean()}.
 mark_fetched(TorrentID, Index, Offset, Length) ->
     ChunkSrv = lookup_chunk_server(TorrentID),
     call(ChunkSrv, {mark_fetched, self(), Index, Offset, Length}).
@@ -258,7 +258,7 @@ mark_all_dropped(TorrentID) ->
 %% @end
 -spec request_chunks(torrent_id(), pieceset(), pos_integer()) ->
     {ok, list({piece_index(), chunk_offset(), chunk_len()})}
-    | {error, not_interested | assigned}.
+    | {ok, not_interested | assigned}.
 request_chunks(TorrentID, Pieceset, Numchunks) ->
     ChunkSrv = lookup_chunk_server(TorrentID),
     call(ChunkSrv, {request_chunks, self(), Pieceset, Numchunks}).
@@ -366,9 +366,9 @@ handle_call({request_chunks, PeerPid, Peerset, Numchunks}, _, State) ->
 
     case PieceIndex of
         not_interested ->
-            {reply, {error, not_interested}, State};
+            {reply, {ok, not_interested}, State};
         assigned ->
-            {reply, {error, assigned}, State};
+            {reply, {ok, assigned}, State};
         Index ->
             Chunkset = array:get(Index, AssignedChunks),
             Chunks   = etorrent_chunkset:min(Chunkset, Numchunks),
@@ -418,10 +418,9 @@ handle_call({mark_valid, _, Index}, _, State) ->
 
 handle_call({mark_fetched, _Pid, _Index, _Offset, _Length}, _, State) ->
     %% If we are in endgame mode, requests for a chunk may have been
-    %% sent to more than one peer. Return a list of other peers that
-    %% a request for this chunk has been sent to so that the caller
-    %% can send a cancel-message to all of them.
-    {reply, {ok, []}, State};
+    %% sent to more than one peer. Return a boolean indicating if the
+    %% peer was the first one to mark this chunk as fetched.
+    {reply, {ok, true}, State};
 
 handle_call({mark_stored, Pid, Index, Offset, Length}, _, State) ->
     %% The calling process has written this chunk to disk.
@@ -569,7 +568,7 @@ not_interested_case() ->
     _ = initial_chunk_server(1),
     Has = etorrent_pieceset:from_list([], 3),
     Ret = ?chunk_server:request_chunks(1, Has, 1),
-    ?assertEqual({error, not_interested}, Ret).
+    ?assertEqual({ok, not_interested}, Ret).
 
 not_interested_valid_case() ->
     ID = 9,
@@ -577,7 +576,7 @@ not_interested_valid_case() ->
     true = ?chunk_server:register_peer(ID),
     Has = etorrent_pieceset:from_list([0], 3),
     Ret = ?chunk_server:request_chunks(ID, Has, 1),
-    ?assertEqual({error, not_interested}, Ret).
+    ?assertEqual({ok, not_interested}, Ret).
 
 request_one_case() ->
     _ = initial_chunk_server(2),
@@ -644,7 +643,7 @@ mark_fetched_noop_case() ->
     Pid = spawn_link(fun() ->
         true = ?chunk_server:register_peer(10),
         {ok, [{0, 0, 1}]} = ?chunk_server:request_chunks(10, Has, 1),
-        {ok, []} = ?chunk_server:mark_fetched(10, 0, 0, 1)
+        {ok, true} = ?chunk_server:mark_fetched(10, 0, 0, 1)
     end),
     _ = monitor(process, Pid),
     ok  = receive {'DOWN', _, process, Pid, _} -> ok end,
@@ -684,6 +683,6 @@ get_all_request_case() ->
     {ok, [{1, 1, 1}]} = ?chunk_server:request_chunks(14, Has, 1),
     {ok, [{2, 0, 1}]} = ?chunk_server:request_chunks(14, Has, 1),
     {ok, [{2, 1, 1}]} = ?chunk_server:request_chunks(14, Has, 1),
-    ?assertEqual({error, assigned}, ?chunk_server:request_chunks(14, Has, 1)).
+    ?assertEqual({ok, assigned}, ?chunk_server:request_chunks(14, Has, 1)).
 
 -endif.

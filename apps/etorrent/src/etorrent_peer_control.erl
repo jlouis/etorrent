@@ -379,8 +379,7 @@ handle_endgame_got_chunk({chunk, Index, Offset, Len}, S) ->
 %% @doc Handle the case where we may be in endgame correctly.
 handle_endgame(_TorrentId, _Chunk, false) -> ok;
 handle_endgame(TorrentId, {Index, Offset, Len}, true) ->
-    {ok, Peers} = etorrent_chunk_mgr:mark_fetched(TorrentId, Index, Offset, Len),
-    [endgame_got_chunk(Pid, {chunk, Index, Offset, Len}) || Pid <- Peers],
+    {ok, First} = etorrent_chunk_mgr:mark_fetched(TorrentId, Index, Offset, Len),
     ok.
 
 %% @doc Process an incoming chunk in normal mode
@@ -390,7 +389,7 @@ handle_got_chunk(Index, Offset, Data, Reqs, TorrentID) ->
     Len = byte_size(Data),
     case gb_sets:is_member({Index, Offset, Len}, Reqs) of
         true ->
-            {ok, []} = etorrent_chunk_mgr:mark_fetched(TorrentID, Index, Offset, Len),
+            {ok, _} = etorrent_chunk_mgr:mark_fetched(TorrentID, Index, Offset, Len),
             ok = etorrent_io:write_chunk(TorrentID, Index, Offset, Data),
             ok = etorrent_chunk_mgr:mark_stored(TorrentID, Index, Offset, Len),
             %% Tell other peers we got the chunk if in endgame
@@ -421,10 +420,10 @@ try_to_queue_up_pieces(State) ->
         N when is_integer(N) ->
             Numchunks = ?HIGH_WATERMARK - N,
             case etorrent_chunk_mgr:request_chunks(TorrentID, Pieceset, Numchunks) of
-                {error, not_interested} ->
+                {ok, not_interested} ->
                     statechange_interested(State, false),
                     {ok, State#state{local_interested=false}};
-                {error, assigned} ->
+                {ok, assigned} ->
                     {ok, State};
                 {ok, Chunks} ->
                     NewRequests = queue_items(SendPid, Chunks, OpenRequests),
