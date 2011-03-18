@@ -27,7 +27,7 @@
 
 mk() ->
     #proc_info { receiver_q = queue:new(),
-		    sender_q   = queue:new() }.
+                 sender_q   = queue:new() }.
 
 enqueue_receiver(From, Length, #proc_info { receiver_q = RQ } = PI) ->
     NQ = queue:in({receiver, From, Length, <<>>}, RQ),

@@ -176,6 +176,7 @@ send_pkt(#sock_info { socket = Socket,
 init([Socket, Addr, Port, Options]) ->
     PktInfo  = utp_pkt:mk(),
     PktBuf   = utp_pkt:mk_buf(?DEFAULT_OPT_RECV_SZ),
+    ProcInfo = utp_process:mk(),
     SockInfo = #sock_info { addr = Addr,
 			    port = Port,
 			    opts = Options,
@@ -184,6 +185,7 @@ init([Socket, Addr, Port, Options]) ->
 			  },
     {ok, idle, #state{ sock_info = SockInfo,
                        pkt_buf   = PktBuf,
+                       proc_info = ProcInfo,
                        pkt_info  = PktInfo }}.
 
 %% @private
@@ -475,6 +477,13 @@ satisfy_recvs(Processes, Buffer) ->
 	empty ->
 	    {ok, Processes, Buffer}
     end.
+
+
+
+
+
+
+
 
 
 
