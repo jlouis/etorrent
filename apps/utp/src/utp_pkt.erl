@@ -93,8 +93,6 @@
           %% Windows
           %% --------------------
           last_recv_window = ?OPT_RECV_BUF :: integer(),
-          send_max_window :: integer(),
-          max_window      :: integer(),
           %% Number of packets currently in the send window
           send_window_packets = 0       :: integer(),
 
