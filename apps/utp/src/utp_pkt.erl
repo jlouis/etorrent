@@ -36,6 +36,8 @@
 
 %% The default RecvBuf size: 200K
 -define(OPT_RECV_BUF, 200 * 1024).
+-define(PACKET_SIZE, 350).
+-define(OPT_SEND_BUF, ?OUTGOING_BUFFER_MAX_SIZE * ?PACKET_SIZE).
 -define(ZERO_WINDOW_DELAY, 15*1000).
 
 %% TYPES
@@ -75,33 +77,34 @@
 	 }).
 -type pkt() :: #pkt_wrap{}.
 
--record(pkt_buf, { recv_buf :: queue(),
-		   reorder_buf = [] :: orddict:orddict(),
-		   %% When we have a working protocol, this retransmission queue is probably
-		   %% Optimization candidate 1 :)
-		   retransmission_queue = [] :: [#pkt_wrap{}],
-		   reorder_count             :: integer(), % When and what to reorder
-		   send_window_packets :: integer(), % Number of packets currently in the send window
-		   ack_no   :: 0..16#FFFF, % Next expected packet
-		   seq_no   :: 0..16#FFFF, % Next Sequence number to use when sending packets
-		   last_ack :: 0..16#FFFF, % Last ack the other end sent us
-		   %% Nagle
-		   send_nagle    :: none | {nagle, binary()},
+-record(pkt_buf, {
+          recv_buf    = queue:new()     :: queue(),
+          reorder_buf = []              :: orddict:orddict(),
+          %% When we have a working protocol, this retransmission queue is probably
+          %% Optimization candidate 1 :)
+          retransmission_queue = []     :: [#pkt_wrap{}],
+          reorder_count = 0             :: integer(), % When and what to reorder
+          ack_no = 0                    :: 0..16#FFFF, % Next expected packet
+          seq_no = 1                    :: 0..16#FFFF, % Next Sequence number to use when sending
+          last_ack = 0                  :: 0..16#FFFF, % Last ack the other end sent us
+          %% Nagle
+          send_nagle = none             :: none | {nagle, binary()},
 
-		   %% Windows
-		   %% --------------------
-		   last_recv_window :: integer(),
-		   send_max_window :: integer(),
-		   max_window      :: integer(),
+          %% Windows
+          %% --------------------
+          last_recv_window = ?OPT_RECV_BUF :: integer(),
+          send_max_window :: integer(),
+          max_window      :: integer(),
+          %% Number of packets currently in the send window
+          send_window_packets = 0       :: integer(),
 
-		   %% Packet buffer settings
-		   %% --------------------
-		   %% Size of the outgoing buffer on the socket
-		   opt_snd_buf_sz   :: integer(),
-		   %% Same, for the recv buffer
-		   opt_recv_buf_sz = ?OPT_RECV_BUF :: integer()
-
-		 }).
+          %% Packet buffer settings
+          %% --------------------
+          %% Size of the outgoing buffer on the socket
+          opt_snd_buf_sz  = ?OPT_SEND_BUF :: integer(),
+          %% Same, for the recv buffer
+          opt_recv_buf_sz = ?OPT_RECV_BUF :: integer()
+         }).
 -type buf() :: #pkt_buf{}.
 
 %% Track send quota available
@@ -123,6 +126,7 @@
 mk() ->
     #pkt_info { }.
 
+mk_buf(none)    -> #pkt_buf{};
 mk_buf(OptRecv) ->
     #pkt_buf {
 	opt_recv_buf_sz = OptRecv,
