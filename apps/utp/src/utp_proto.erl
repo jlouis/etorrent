@@ -68,8 +68,9 @@ decode(Packet) ->
 	  TimeStamp:32/integer,
 	  TimeStampdiff:32/integer,
 	  WindowSize:32/integer,
-	  SeqNo:16/integer, AckNo:16/integer,
-	ExtPayload/binary>> ->
+	  SeqNo:16/integer,
+          AckNo:16/integer,
+          ExtPayload/binary>> ->
 	    {Extensions, Payload} = decode_extensions(Extension, ExtPayload, []),
 	    Ty = decode_type(Type),
 	    if
@@ -150,9 +151,9 @@ g_packet() ->
 	  Extension, Payload},
 	 {g_type(), g_uint16(), g_uint32(), g_uint16(), g_uint16(),
 	  g_extension(), binary()},
-	 #packet { ty = Ty, conn_id = ConnID, win_sz = WindowSize,
-		   seq_no = SeqNo, ack_no = AckNo, extension = Extension,
-		   payload = Payload }).
+                 #packet { ty = Ty, conn_id = ConnID, win_sz = WindowSize,
+                           seq_no = SeqNo, ack_no = AckNo, extension = Extension,
+                           payload = case Ty of st_state -> <<>>; _ -> Payload end }).
 
 prop_ext_dec_inv() ->
     ?FORALL(E, g_extension(),
@@ -162,9 +163,14 @@ prop_ext_dec_inv() ->
 	    end).
 
 prop_decode_inv() ->
-    ?FORALL({P, T1, T2}, {g_packet(), g_timestamp(), g_timestamp()},
+    ?FORALL({P, T1}, {g_packet(), g_timestamp()},
 	    begin
-		{P, T1, T2} =:= decode(encode(P, T1, T2))
+                Encoded = encode(P, T1),
+                {Packet, _, _, _} = decode(Encoded),
+                P =:= Packet
+
+                %%{P1, _, T11, _} = decode(encode(P, T1)),
+                %%{P1, T11} =:= {P, T1}
 	    end).
 
 inverse_extension_test() ->
