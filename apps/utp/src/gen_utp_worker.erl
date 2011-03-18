@@ -205,10 +205,10 @@ syn_sent({pkt, #packet { ty = st_state,
                   pkt_buf = PktBuf,
                   connector = From,
                   syn_timeout = TRef
-                }) ->
+                } = State) ->
     gen_fsm:cancel_timer(TRef),
     reply(From, ok),
-    {next_state, connected, #state { sock_info = SockInfo,
+    {next_state, connected, State#state { sock_info = SockInfo,
                                      conn_id_send = Conn_id_send,
                                      syn_timeout = undefined,
                                      pkt_buf = utp_pkt:init_ackno(PktBuf, PktSeqNo)}};
