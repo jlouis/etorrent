@@ -31,3 +31,5 @@ webui/*.log
 /apps/utp/ebin/utp.app
 /apps/utp/.eunit/
 /documentation/utp.pdf
+/apps/utp/src/TAGS
+/apps/utp/src/tags
