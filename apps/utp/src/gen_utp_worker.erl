@@ -211,7 +211,7 @@ syn_sent({pkt, #packet { ty = st_state,
     {next_state, connected, State#state { sock_info = SockInfo,
                                      conn_id_send = Conn_id_send,
                                      syn_timeout = undefined,
-                                     pkt_buf = utp_pkt:init_ackno(PktBuf, PktSeqNo)}};
+                                     pkt_buf = utp_pkt:dec_window_packets(utp_pkt:init_ackno(PktBuf, PktSeqNo))}};
 syn_sent(close, _S) ->
     todo_alter_rto;
 syn_sent(Msg, S) ->
@@ -224,7 +224,7 @@ connected({pkt, Pkt, {_TS, _TSDiff, RecvTime}},
 	  #state { pkt_info = PKI,
 			     pkt_buf  = PB,
 			     proc_info = PRI
-			     } = S) ->
+                 } = S) ->
     case utp_pkt:handle_packet(RecvTime, connected, Pkt, PKI, PB) of
 	{ok, N_PB1, N_PKI, StateAlter} ->
 	    {N_PRI, N_PB} =
@@ -339,7 +339,7 @@ idle(connect, From, State = #state { sock_info = SockInfo,
     ok = send_pkt(SockInfo, SynPacket),
     {next_state, syn_sent, State#state {
                              syn_timeout = TRef,
-                             pkt_buf     = utp_pkt:init_seqno(PktBuf, 2),
+                             pkt_buf     = utp_pkt:inc_send_window(utp_pkt:init_seqno(PktBuf, 2)),
                              conn_id_send = Conn_id_send, %@todo Where does this belong?
                              connector = From }};
 idle({accept, SYN}, _From, #state { sock_info = SockInfo,

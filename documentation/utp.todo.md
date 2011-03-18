@@ -1,6 +1,13 @@
 ### "Real" TODO:
 
 * Try to transfer data on the UTP socket, don't close the socket again.
+  ** The main problem right now are the inflight packets and the current window size.
+     It needs to be controlled and set correctly, especially on startup. Otherwise, it
+     will not work correctly. What the right value to set is, is not really clear to me entirely
+     at the moment.
+  ** Figure out what the values has to be, especially around the initial window sizes, where
+     we are in a peculiar situation.
+
 * Move lots of data, testing the window code as it is right now.
 * Window alterations
 * Retransmit timers

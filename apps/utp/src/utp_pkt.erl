@@ -10,6 +10,8 @@
          init_seqno/2,
          init_ackno/2,
 
+         inc_send_window/1,
+         dec_send_window/1,
 	 packet_size/1,
 	 mk_random_seq_no/0,
 	 send_fin/1,
@@ -140,6 +142,11 @@ init_ackno(#pkt_buf{} = PBuf, AckNo) ->
 seqno(#pkt_wrap { packet = #packet { seq_no = S} }) ->
     S.
 
+inc_send_window(#pkt_buf { send_window_packets = N } = Buf) ->
+    Buf#pkt_buf { send_window_packets = N+1 }.
+
+dec_send_window(#pkt_buf { send_window_packets = N } = Buf) when N > 1 ->
+    Buf#pkt_buf { send_window_packets = N-1 }.
 
 packet_size(_Socket) ->
     %% @todo FIX get_packet_size/1 to actually work!
@@ -364,7 +371,10 @@ packets_to_transmit(PacketSize,
 		    [{partial, PacketSize - byte_size(Bin)}, {full, N - (Inflight + 1)}]
 	    end;
 	Inflight == N ->
-	    []
+	    [];
+        true ->
+            error_logger:info_report([odd, Inflight, N]),
+            exit(barf)
     end.
 
 dequeue_packets([], PI, Acc, _PacketSize) ->
