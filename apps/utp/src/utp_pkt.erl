@@ -148,6 +148,8 @@ mk_random_seq_no() ->
     N.
 
 send_fin(_SockInfo) ->
+    %% @todo There is something with timers in the original code. Shouldn't be here, but in the
+    %% caller, probably.
     todo.
 
 bit16(N) ->

@@ -270,6 +270,9 @@ got_fin(Msg, State) ->
 
 %% @private
 %% Die deliberately on close for now
+destroy_delay(close, State) ->
+    gen_fsm:start_timer(400, destroy),
+    {next_state, destroy, State};
 destroy_delay(Msg, State) ->
     %% Ignore messages
     error_logger:warning_report([async_message, destroy_delay, Msg]),
@@ -292,6 +295,8 @@ reset(Msg, State) ->
 
 %% @private
 %% Die deliberately on close for now
+destroy(destroy, State) ->
+    {stop, normal, State};
 destroy(Msg, State) ->
     %% Ignore messages
     error_logger:warning_report([async_message, destroy, Msg]),

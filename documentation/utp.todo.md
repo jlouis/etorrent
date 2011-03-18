@@ -1,11 +1,19 @@
 ### "Real" TODO:
 
 * Try to transfer data on the UTP socket, don't close the socket again.
+* Move lots of data, testing the window code as it is right now.
+* Window alterations
+* Retransmit timers
+* Packet Timestamping
+
 * Write code for socket teardown.
+  ** Essentially, you just tag an st_fin flag on top of the last/next packet going out
+     on the socket, and move yourself into the fin_sent state.
+  ** There are a bunch of serious timeout stuff you need to handle to make this work as well,
+     so we need to get a grip on the other parts first.
 * Test closing the socket as well.
 
 * Handle outgoing timestamping
-* Timers, retransmits, acks
 * Window Size incoming (SKIP THIS FOR NOW, we can just use the incoming advertised window)
   * Study this.
   * Window is changed in the selective ack code, and in LEDBAT Congestion Control
