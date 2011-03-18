@@ -53,12 +53,17 @@ add_upnp_entity(Category, Proplist) ->
 -ifdef(EUNIT).
 
 start_upnp_sup_tree() ->
-    etorrent_event:start_link(),
-    etorrent_table:start_link(),
-    etorrent_upnp_sup:start_link().
+    {ok, _} = etorrent_event:start_link(),
+    {ok, _} = etorrent_table:start_link(),
+    {ok, _} = etorrent_upnp_sup:start_link().
+
+upnp_sup_test_() ->
+    {spawn, [
+        ?_test(upnp_sup_tree_start_case()),
+        ?_test(multiple_instances_case())]}.
 
 
-upnp_sup_tree_start_test() ->
+upnp_sup_tree_start_case() ->
     try
         start_upnp_sup_tree(),
         etorrent_upnp_entity:create(device, [{type, <<"InternetGatewayDevice">>},
@@ -73,7 +78,7 @@ upnp_sup_tree_start_test() ->
     end.
 
 
-multiple_instances_test() ->
+multiple_instances_case() ->
     %% may need to run multiple instances, e.g. when doing test. make sure
     %% embeded mochiweb http server will not conflict with each other in
     %% that case.
