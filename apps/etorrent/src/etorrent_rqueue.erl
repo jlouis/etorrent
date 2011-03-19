@@ -67,7 +67,8 @@ new(Lowthreshold, Highthreshold) ->
     InitQueue.
 
 
-%% @doc
+%% @doc Push a request onto the end of the request queue
+%% The queue returns a new queue including the new request.
 %% @end
 -spec push(pieceindex(), chunkoffset(),
            chunklength(), #requestqueue{}) -> requestqueue().
@@ -77,7 +78,8 @@ push(Pieceindex, Offset, Length, Requestqueue) ->
     Requestqueue#requestqueue{queue=NewQueue}.
 
 
-%% @doc
+%% @doc Push a list of requests onto the end of the request queue
+%% The function returns a new queue including the new requests.
 %% @end
 -spec push([requestspec()], #requestqueue{}) -> requestqueue().
 push(Requests, Requestqueue) ->
@@ -87,7 +89,8 @@ push(Requests, Requestqueue) ->
     Requestqueue#requestqueue{queue=NewQueue}.
 
 
-%% @doc
+%% @doc Return the head of the request queue and the tail of the queue
+%% If the request queue is empty the function will throw a badarg error.
 %% @end
 -spec pop(#requestqueue{}) -> {requestspec(), requestqueue()}.
 pop(Requestqueue) ->
@@ -101,7 +104,8 @@ pop(Requestqueue) ->
     end.
 
 
-%% @doc
+%% @doc Return the head of the queue
+%% If the queue is empty this function will return false.
 %% @end
 -spec peek(#requestqueue{}) -> false | requestspec().
 peek(Requestqueue) ->
@@ -112,7 +116,7 @@ peek(Requestqueue) ->
     end.
 
 
-%% @doc
+%% @doc Return the number of requests in the queue.
 %% @end
 -spec size(#requestqueue{}) -> non_neg_integer().
 size(Requestqueue) ->
@@ -154,7 +158,11 @@ is_low(Requestqueue) ->
     queue:len(Queue) =< Low.
 
 
-%% @doc
+%% @doc Return the number of requests needed to fill the queue.
+%% If the queue already contains the number of requests specified
+%% by the high threshold of the request queue zero is returned.
+%% If not, the number of requests needed to hit the high threshold
+%% is returned regardless of whether the queue is low or not.
 %% @end
 -spec needs(#requestqueue{}) -> non_neg_integer().
 needs(Requestqueue) ->
@@ -230,7 +238,8 @@ push_list_test_() ->
     [?_assertEqual({0,0,1}, R0),
      ?_assertEqual({0,1,1}, R1),
      ?_assertEqual({0,2,1}, R2),
-     ?_assertEqual([{0,0,1},{0,1,1},{0,2,1}], ?rqueue:to_list(Q2))].
+     ?_assertEqual([{0,0,1},{0,1,1},{0,2,1}], ?rqueue:to_list(Q2)),
+     ?_assertEqual([], ?rqueue:to_list(OQ2))].
 
 
 
