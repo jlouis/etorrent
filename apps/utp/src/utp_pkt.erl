@@ -10,8 +10,6 @@
          init_seqno/2,
          init_ackno/2,
 
-         inc_send_window/1,
-         dec_send_window/1,
 	 packet_size/1,
 	 mk_random_seq_no/0,
 	 send_fin/1,
@@ -49,14 +47,14 @@
 	  eof_pkt :: 0..16#FFFF, % The packet with the EOF flag
 
 	  %% @todo: Consider renaming this to peer_advertised_window
-	  peer_adv_window :: integer(), % Called max_window_user in the libutp code
+	  peer_advertised_window :: integer(), % Called max_window_user in the libutp code
 
 	  %% The maximal size of packets.
 	  pkt_size :: integer(),
 	  %% The current window size in the send direction, in bytes.
 	  cur_window :: integer(),
-	  %% Maximal window size int he send direction, in bytes.
-	  max_window :: integer(),
+	  %% Maximal window size int the send direction, in bytes.
+	  max_send_window :: integer(),
 
 	  %% Timeouts,
 	  %% --------------------
@@ -122,6 +120,12 @@
 %% API
 %% ----------------------------------------------------------------------
 
+max_window_send(#pkt_buf { opt_snd_buf_sz = SendBufSz },
+                #pkt_info { peer_advertised_window = AdvertisedWindow,
+                            max_send_window = MaxSendWindow }) ->
+    lists:min([SendBufSz, AdvertisedWindow, MaxSendWindow]).
+
+
 -spec mk() -> t().
 mk() ->
     #pkt_info { }.
@@ -141,12 +145,6 @@ init_ackno(#pkt_buf{} = PBuf, AckNo) ->
 
 seqno(#pkt_wrap { packet = #packet { seq_no = S} }) ->
     S.
-
-inc_send_window(#pkt_buf { send_window_packets = N } = Buf) ->
-    Buf#pkt_buf { send_window_packets = N+1 }.
-
-dec_send_window(#pkt_buf { send_window_packets = N } = Buf) when N > 1 ->
-    Buf#pkt_buf { send_window_packets = N-1 }.
 
 packet_size(_Socket) ->
     %% @todo FIX get_packet_size/1 to actually work!
@@ -231,9 +229,9 @@ handle_fin(_, _, PKI) -> {[], PKI}.
 handle_window_size(0, PKI) ->
     TRef = erlang:send_after(?ZERO_WINDOW_DELAY, self(), zero_window_timeout),
     PKI#pkt_info { zero_window_timeout = {set, TRef},
-		   peer_adv_window = 0};
+		   peer_advertised_window = 0};
 handle_window_size(WindowSize, PKI) ->
-    PKI#pkt_info { peer_adv_window = WindowSize }.
+    PKI#pkt_info { peer_advertised_window = WindowSize }.
 
 update_send_buffer(AcksAhead, WindowStart, PB) ->
     {Acked, PB} = update_send_buffer1(AcksAhead, WindowStart, PB),
@@ -331,7 +329,7 @@ buffer_dequeue(#pkt_buf { recv_buf = Q } = Buf) ->
 
 
 fill_window(ConnId, SockInfo, ProcInfo, PktInfo, PktBuf) ->
-    PacketsToTransmit = packets_to_transmit(PktInfo#pkt_info.pkt_size, PktBuf),
+    PacketsToTransmit = packets_to_transmit(PktBuf, PktInfo),
     {ok, Packets, ProcInfo1} = dequeue_packets(PacketsToTransmit,
 					       ProcInfo, [],
 					       PktInfo#pkt_info.pkt_size),
@@ -346,6 +344,9 @@ enqueue_packets(Packets, #pkt_buf { retransmission_queue = RQ } = PacketBuf) ->
 send_packet(SI, FilledPkt) ->
     gen_utp_worker:send_pkt(SI, FilledPkt).
 
+%% @doc Transmit packets and add the remaining information missing in the packets
+%% This is the list step, where the ConnID and Window Size are stamped into the packets
+%% @end
 transmit_packets([], _, _, _, Acc) ->
     lists:reverse(Acc);
 transmit_packets([#pkt_wrap {
@@ -358,54 +359,78 @@ transmit_packets([#pkt_wrap {
     send_packet(SI, FilledPkt),
     transmit_packets(Rest, PKI, SI, ConnId, [FilledPkt | Acc]).
 
-packets_to_transmit(PacketSize,
-		    #pkt_buf { send_window_packets = N,
-			       send_nagle = Nagle } = PktBuf) ->
-    Inflight = send_inflight(PktBuf),
-    if
-	Inflight < N ->
-	    case Nagle of
-		none ->
-		    [{full, N - Inflight}];
-		{nagle, Bin} ->
-		    [{partial, PacketSize - byte_size(Bin)}, {full, N - (Inflight + 1)}]
-	    end;
-	Inflight == N ->
-	    [];
-        true ->
-            error_logger:info_report([odd, Inflight, N]),
-            exit(barf)
+%% @doc Build a list of packets to transmit.
+%% This function constructs a packet list based on the amount of Bytes we have free in the
+%% window and by considering the state of the Nagle packet. Essentially, we produce a
+%% cookbook for later stages to go over and process
+%% @end
+packets_to_transmit(#pkt_buf { send_nagle = Nagle } = PktBuf,
+                    #pkt_info { pkt_size = PacketSize } = PktInfo) ->
+    BytesFreeInWindow = bytes_free(PktBuf, PktInfo),
+    case Nagle of
+        none ->
+            packets_to_transmit1(BytesFreeInWindow, PacketSize);
+        {nagle, Bin} ->
+            case PacketSize - byte_size(Bin) of
+                Free when Free =< BytesFreeInWindow ->
+                    [{partial, Free} | packets_to_transmit1(BytesFreeInWindow - Free, PacketSize)];
+                Free when Free > BytesFreeInWindow ->
+                    [{nagle_fill, BytesFreeInWindow}]
+            end
     end.
 
+packets_to_transmit1(0, _) ->
+    [];
+packets_to_transmit1(Bytes, Size) when Size =< Bytes ->
+    [{full, Bytes div Size}, {nagle_fill, Bytes rem Size}];
+packets_to_transmit1(Bytes, Size) when Size > Bytes ->
+    [{nagle_fill, Bytes}].
+
+dequeue_packet(PI, Sz) ->
+    case utp_process:dequeue_packet(PI, Sz) of
+        none ->
+            {none, PI};
+        {value, Bin, PI1} when byte_size(Bin) == Sz ->
+            {{full, Bin}, PI1};
+        {value, Bin, PI1} when byte_size(Bin) < Sz ->
+            {{partial, Bin}, PI1}
+    end.
+
+%% @doc Transform the cookbook into a list of binaries
+%% This uses the process structure to fill up the planned packets with binary data
+%% @end
 dequeue_packets([], PI, Acc, _PacketSize) ->
     {ok, lists:reverse(Acc), PI};
-dequeue_packets([{partial, Sz} | R], PI, Acc, PacketSize) ->
-    dequeue_packets1(Sz, PI, Acc, R, partial, PacketSize);
-dequeue_packets([{full, 0}], PI, Acc, PacketSize) ->
-    dequeue_packets([], PI, Acc, PacketSize);
-dequeue_packets([{full, N} | R], PI, Acc, PacketSize) ->
-    dequeue_packets1(PacketSize, PI, Acc, [{full, N-1} | R], full, PacketSize).
-
-dequeue_packets1(Sz, PI, Acc, R, Ty, PSz) ->
-    case utp_process:dequeue_packet(PI, Sz) of
-	none ->
-	    dequeue_packets([], PI, Acc, PSz);
-	{value, Bin, PI1} when byte_size(Bin) == Sz ->
-	    dequeue_packets(R, PI1, [{Ty, Bin} | Acc], PSz);
-	{value, Bin, PI1} when byte_size(Bin) < Sz ->
-	    dequeue_packets(R, PI1, [{nagle, Bin} | Acc], PSz)
+dequeue_packets([{full, 0} | Rest], PI, Acc, PacketSize) ->
+    dequeue_packets(Rest, PI, Acc, PacketSize);
+dequeue_packets([{full, K} | Rest], PI, Acc, PacketSize) ->
+    dequeue_packets([{packet, PacketSize}, {full, K-1} | Rest], PI, Acc, PacketSize);
+dequeue_packets([{Ty, Sz} | Rest], PI, Acc, PacketSize) ->
+    {R, PI1} = dequeue_packet(PI, Sz),
+    case R of
+        none ->
+            dequeue_packets([], PI1, Acc, PacketSize);
+        {Exhaust, Bin} ->
+            dequeue_packets(case Exhaust of
+                                full -> Rest;
+                                partial -> []
+                            end, PI1,
+                            [{Ty, Bin} | Acc],
+                            PacketSize)
     end.
 
-
+%% @doc create #packet{} structures from binaries
+%% Fill in seq_no's and other stuff as well...
+%% @end
 mk_packets([], _PSz, PKB, Acc) ->
     {ok, PKB, lists:reverse(Acc)};
 mk_packets([{partial, Bin} | Rest], PSz,
 		 #pkt_buf { send_nagle = {nagle, NBin}} = PKB, Acc) ->
     PSz = byte_size(Bin) + byte_size(NBin),
-    mk_packets([{full, <<Bin/binary, NBin/binary>>} | Rest],
+    mk_packets([{packet, <<Bin/binary, NBin/binary>>} | Rest],
 		     PSz,
 		     PKB#pkt_buf { send_nagle = none }, Acc);
-mk_packets([{full, Bin} | Rest], PSz,
+mk_packets([{packet, Bin} | Rest], PSz,
 		 #pkt_buf { seq_no = SeqNo } = PKB, Acc) ->
     Pkt = mk_pkt(Bin,
 		 PKB#pkt_buf.last_recv_window,
@@ -421,10 +446,6 @@ mk_packets([{nagle, Bin}], PSz,
  		 #pkt_buf { send_nagle = none } = PKB, Acc) ->
     mk_packets([], PSz, PKB#pkt_buf { send_nagle = {nagle, Bin}}, Acc).
 
-
-send_inflight(#pkt_buf { seq_no = SeqNo,
-			 last_ack = AckNo }) ->
-    bit16(SeqNo - AckNo).
 
 mk_pkt(Bin, WinSz, SeqNo, AckNo) ->
     #pkt_wrap {
@@ -467,19 +488,53 @@ rb_drained(#pkt_buf {
        true -> ok
     end.
 
-zerowindow_timeout(TRef, #pkt_info { peer_adv_window = 0,
+zerowindow_timeout(TRef, #pkt_info { peer_advertised_window = 0,
                                      zero_window_timeout = {set, TRef}} = PKI) ->
-                   PKI#pkt_info { peer_adv_window = packet_size(PKI),
+                   PKI#pkt_info { peer_advertised_window = packet_size(PKI),
                                   zero_window_timeout = none };
 zerowindow_timeout(TRef,  #pkt_info { zero_window_timeout = {set, TRef}} = PKI) ->
     PKI#pkt_info { zero_window_timeout = none };
 zerowindow_timeout(_TRef,  #pkt_info { zero_window_timeout = {set, _TRef1}} = PKI) ->
     PKI.
 
+bytes_free(PktBuf, PktInfo) ->
+    MaxSend = max_window_send(PktBuf, PktInfo),
+    case inflight_packets(PktBuf) of
+        buffer_full ->
+            0;
+        buffer_empty ->
+            MaxSend;
+        {ok, Inflight} when Inflight =< MaxSend ->
+            MaxSend - Inflight;
+        {ok, _Inflight} ->
+            0
+    end.
+
+payload_size(#pkt_wrap { packet = Packet }) ->
+    byte_size(Packet#packet.payload).
+
+inflight_packets(#pkt_buf{ retransmission_queue = [],
+                           send_nagle = none }) ->
+    buffer_empty;
+inflight_packets(#pkt_buf{ retransmission_queue = [],
+                           send_nagle = {nagle, Bin}}) ->
+    {ok, byte_size(Bin)};
+inflight_packets(#pkt_buf{ retransmission_queue = Q,
+                           send_nagle = N }) ->
+    Nagle = case N of
+                none -> 0;
+                {nagle, Bin} -> byte_size(Bin)
+            end,
+    case lists:sum([payload_size(Pkt) || Pkt <- Q]) + Nagle of
+        Sum when Sum >= ?OUTGOING_BUFFER_MAX_SIZE - 1 ->
+            buffer_full;
+        Sum ->
+            {ok, Sum}
+    end.
 
 -ifdef(NOT_BOUND).
 
-%% @todo: Do we need this beast at all?
+%% We don't need this function at all. There is so much wrong about it...
 can_write(CurrentTime, Size, PacketSize, CurrentWindow,
 	  #pkt_buf { send_max_window = SendMaxWindow,
 		     send_window_packets = SendWindowPackets,
@@ -489,7 +544,6 @@ can_write(CurrentTime, Size, PacketSize, CurrentWindow,
     %% We can't send more than what one of the windows will bound us by.
     %% So the max send value is the minimum over these:
     MaxSend = lists:min([MaxWindow, OptSndBuf, SendMaxWindow]),
-    PacketExceed = CurrentWindow + PacketSize >= MaxWindow,
     Res = if
 	      SendWindowPackets >= ?OUTGOING_BUFFER_MAX_SIZE-1 ->
 		  false;
@@ -506,6 +560,7 @@ can_write(CurrentTime, Size, PacketSize, CurrentWindow,
     %% @todo Why the heck do we have this side-effect here? The last_maxed_out_window
     %% should be set in other ways I think. It has nothing to do with the question of
     %% we can write on the socket or not!
+    PacketExceed = CurrentWindow + PacketSize >= MaxWindow,
     {Res, PKI#pkt_info {
 	    last_maxed_out_window =
 		case PacketExceed of
@@ -516,3 +571,8 @@ can_write(CurrentTime, Size, PacketSize, CurrentWindow,
 	       end
 	  }}.
 -endif.
+
+
+
+
+
