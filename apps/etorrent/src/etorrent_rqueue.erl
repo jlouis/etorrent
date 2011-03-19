@@ -17,6 +17,7 @@
 
 -export([new/0,
          new/2,
+         to_list/1,
          push/2,
          push/4,
          pop/1,
@@ -45,6 +46,14 @@
 -spec new() -> requestqueue().
 new() ->
     new(2, 10).
+
+
+%% @doc Get the list of chunks in the request queue
+%% @end
+-spec to_list(#requestqueue{}) -> [requestspec()].
+to_list(Requestqueue) ->
+    #requestqueue{queue=Queue} = Requestqueue,
+    queue:to_list(Queue).
 
 
 %% @doc Create an empty request queue and specify pipeline thresholds
@@ -167,7 +176,8 @@ empty_test_() ->
      ?_assertError(badarg, ?rqueue:pop(Q0)),
      ?_assertEqual(false, ?rqueue:peek(Q0)),
      ?_assertNot(?rqueue:is_head(0, 0, 0, Q0)),
-     ?_assertNot(?rqueue:has_offset(0, 0, Q0))].
+     ?_assertNot(?rqueue:has_offset(0, 0, Q0)),
+     ?_assertEqual([], ?rqueue:to_list(Q0))].
 
 one_request_test_() ->
     Q0 = ?rqueue:new(),
@@ -175,7 +185,9 @@ one_request_test_() ->
     {Req, Q2} = ?rqueue:pop(Q1),
     [?_assertEqual(1, ?rqueue:size(Q1)),
      ?_assertEqual({0,0,1}, ?rqueue:peek(Q1)),
-     ?_assertEqual({0,0,1}, Req)].
+     ?_assertEqual({0,0,1}, Req),
+     ?_assertEqual([{0,0,1}], ?rqueue:to_list(Q1)),
+     ?_assertEqual([], ?rqueue:to_list(Q2))].
 
 head_check_test_() ->
     Q0 = ?rqueue:new(),
@@ -217,7 +229,8 @@ push_list_test_() ->
     {R2, OQ2} = ?rqueue:pop(OQ1),
     [?_assertEqual({0,0,1}, R0),
      ?_assertEqual({0,1,1}, R1),
-     ?_assertEqual({0,2,1}, R2)].
+     ?_assertEqual({0,2,1}, R2),
+     ?_assertEqual([{0,0,1},{0,1,1},{0,2,1}], ?rqueue:to_list(Q2))].
 
 
 
