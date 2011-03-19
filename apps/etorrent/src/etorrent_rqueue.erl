@@ -17,6 +17,7 @@
 
 -export([new/0,
          new/2,
+         push/2,
          push/4,
          pop/1,
          peek/1,
@@ -69,6 +70,16 @@ push(Pieceindex, Offset, Length, Requestqueue) ->
 
 %% @doc
 %% @end
+-spec push([requestspec()], #requestqueue{}) -> requestqueue().
+push(Requests, Requestqueue) ->
+    #requestqueue{queue=Queue} = Requestqueue,
+    TmpQueue = queue:from_list(Requests),
+    NewQueue = queue:join(Queue, TmpQueue),
+    Requestqueue#requestqueue{queue=NewQueue}.
+
+
+%% @doc
+%% @end
 -spec pop(#requestqueue{}) -> {requestspec(), requestqueue()}.
 pop(Requestqueue) ->
     #requestqueue{queue=Queue} = Requestqueue,
@@ -76,7 +87,8 @@ pop(Requestqueue) ->
         {empty, _} ->
             error(badarg);
         {{value, Head}, Tail} ->
-            {Head, Tail}
+            NewReqs = Requestqueue#requestqueue{queue=Tail},
+            {Head, NewReqs}
     end.
 
 
@@ -195,6 +207,18 @@ needs_test_() ->
      ?_assertEqual(1, ?rqueue:needs(Q2)),
      ?_assertEqual(0, ?rqueue:needs(Q3)),
      ?_assertEqual(0, ?rqueue:needs(Q4))].
+
+push_list_test_() ->
+    Q0 = ?rqueue:new(),
+    Q1 = ?rqueue:push(0, 0, 1, Q0),
+    Q2 = ?rqueue:push([{0,1,1},{0,2,1}], Q1),
+    {R0, OQ0} = ?rqueue:pop(Q2),
+    {R1, OQ1} = ?rqueue:pop(OQ0),
+    {R2, OQ2} = ?rqueue:pop(OQ1),
+    [?_assertEqual({0,0,1}, R0),
+     ?_assertEqual({0,1,1}, R1),
+     ?_assertEqual({0,2,1}, R2)].
+
 
 
 -endif.
