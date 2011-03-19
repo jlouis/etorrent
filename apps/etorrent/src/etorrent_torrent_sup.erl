@@ -64,7 +64,7 @@ scarcity_manager_spec(TorrentID, Torrent) ->
     Numpieces = length(etorrent_io:piece_sizes(Torrent)),
     {scarcity_mgr,
         {etorrent_scarcity, start_link, [TorrentID, Numpieces]},
-        permanent, brutal_kill, worker, [etorrent_scarcity]}.
+        permanent, 5000, worker, [etorrent_scarcity]}.
 
 
 chunk_manager_spec(TorrentID, Torrent) ->
@@ -74,20 +74,20 @@ chunk_manager_spec(TorrentID, Torrent) ->
     Args = [TorrentID, ChunkSize, ValidPieces, PieceSizes, lookup],
     {chunk_mgr,
         {etorrent_chunk_mgr, start_link, Args},
-        permanent, brutal_kill, worker, [etorrent_chunk_mgr]}.
+        permanent, 5000, worker, [etorrent_chunk_mgr]}.
 
 torrent_control_spec(TorrentID, Torrent, TorrentFile, TorrentIH, PeerID) ->
     {control,
         {etorrent_torrent_ctl, start_link,
          [TorrentID, {Torrent, TorrentFile, TorrentIH}, PeerID]},
-        permanent, brutal_kill, worker, [etorrent_torrent_ctl]}.
+        permanent, 5000, worker, [etorrent_torrent_ctl]}.
 
 io_sup_spec(TorrentID, Torrent) ->
     {fs_pool,
         {etorrent_io_sup, start_link, [TorrentID, Torrent]},
-        transient, brutal_kill, supervisor, [etorrent_io_sup]}.
+        transient, 5000, supervisor, [etorrent_io_sup]}.
 
 peer_pool_spec(TorrentID) ->
     {peer_pool_sup,
         {etorrent_peer_pool, start_link, [TorrentID]},
-        transient, brutal_kill, supervisor, [etorrent_peer_pool]}.
+        transient, 5000, supervisor, [etorrent_peer_pool]}.
