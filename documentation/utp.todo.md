@@ -1,12 +1,11 @@
 ### "Real" TODO:
 
 * Try to transfer data on the UTP socket, don't close the socket again.
-  ** The main problem right now are the inflight packets and the current window size.
-     It needs to be controlled and set correctly, especially on startup. Otherwise, it
-     will not work correctly. What the right value to set is, is not really clear to me entirely
-     at the moment.
-  ** Figure out what the values has to be, especially around the initial window sizes, where
-     we are in a peculiar situation.
+  ** The problem is that our reliance on the packet count inflight is wrong and can't be used.
+     We should be relying on some other measure to figure out how much data we can transfer
+     out of the system.
+  ** The original code asks via is_writable() if it can send out data. As long as it can,
+     it enqueues another packet, and then it transfers that packet to the wire.
 
 * Move lots of data, testing the window code as it is right now.
 * Window alterations
