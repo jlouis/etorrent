@@ -49,7 +49,7 @@ update(Pid, Value, Monitorset) ->
 -spec delete(pid(), monitorset()) -> monitorset().
 delete(Pid, Monitorset) ->
     {MRef, _} = gb_trees:get(Pid, Monitorset),
-    true = demonitor(MRef, [flush]),
+    true = erlang:demonitor(MRef, [flush]),
     gb_trees:delete(Pid, Monitorset).
 
 %% @doc
