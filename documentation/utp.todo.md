@@ -1,12 +1,13 @@
 ### "Real" TODO:
 
-* Try to transfer data on the UTP socket, don't close the socket again.
-  ** The problem is that our reliance on the packet count inflight is wrong and can't be used.
-     We should be relying on some other measure to figure out how much data we can transfer
-     out of the system.
-  ** The original code asks via is_writable() if it can send out data. As long as it can,
-     it enqueues another packet, and then it transfers that packet to the wire.
+* Move PacketSize to the #pkt_buf{} structure. Will kill PktInfo from a lot of the code.
+* Rework the fill_window loop by considering nagling first and keeping a queue:new() with binary
+  packets. Use the queue to fill packets inflight and then finally consider if the last element
+  of the queue should be nagled or not (consider packet size for this). (The second step of
+  this should only need ProcessInfo and remaining bytes + the queue).
+* Have a separate loop fold over the queue and then write out packets.
 
+* Try to transfer data on the UTP socket, don't close the socket again.
 * Move lots of data, testing the window code as it is right now.
 * Window alterations
 * Retransmit timers
