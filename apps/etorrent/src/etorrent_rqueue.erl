@@ -97,7 +97,7 @@ pop(Requestqueue) ->
     #requestqueue{queue=Queue} = Requestqueue,
     case queue:out(Queue) of
         {empty, _} ->
-            error(badarg);
+            erlang:error(badarg);
         {{value, Head}, Tail} ->
             NewReqs = Requestqueue#requestqueue{queue=Tail},
             {Head, NewReqs}
