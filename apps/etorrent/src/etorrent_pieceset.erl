@@ -53,7 +53,7 @@ from_binary(Bin, Size) when is_binary(Bin) ->
     %% All bits used for padding must be set to 0
     case PadValue of
         0 -> #pieceset{size=Size, elements=Elements};
-        _ -> error(badarg)
+        _ -> erlang:error(badarg)
     end.
 
 %% @doc
@@ -103,12 +103,12 @@ to_list(<<>>, _) ->
 %% @end
 -spec is_member(non_neg_integer(), pieceset()) -> boolean().
 is_member(PieceIndex, _) when PieceIndex < 0 ->
-    error(badarg);
+    erlang:error(badarg);
 is_member(PieceIndex, Pieceset) ->
     #pieceset{size=Size, elements=Elements} = Pieceset,
     case PieceIndex < Size of
         false ->
-            error(badarg);
+            erlang:error(badarg);
         true ->
             <<_:PieceIndex/bitstring, Status:1, _/bitstring>> = Elements,
             Status > 0
@@ -130,12 +130,12 @@ is_empty(Pieceset) ->
 %% @end
 -spec insert(non_neg_integer(), pieceset()) -> pieceset().
 insert(PieceIndex, _) when PieceIndex < 0 ->
-    error(badarg);
+    erlang:error(badarg);
 insert(PieceIndex, Pieceset) ->
     #pieceset{size=Size, elements=Elements} = Pieceset,
     case PieceIndex < Size of
         false ->
-            error(badarg);
+            erlang:error(badarg);
         true ->
             <<Low:PieceIndex/bitstring, _:1, High/bitstring>> = Elements,
             Updated = <<Low/bitstring, 1:1, High/bitstring>>,
@@ -149,12 +149,12 @@ insert(PieceIndex, Pieceset) ->
 %% @end
 -spec delete(non_neg_integer(), pieceset()) -> pieceset().
 delete(PieceIndex, _) when PieceIndex < 0 ->
-    error(badarg);
+    erlang:error(badarg);
 delete(PieceIndex, Pieceset) ->
     #pieceset{size=Size, elements=Elements} = Pieceset,
     case PieceIndex < Size of
         false ->
-            error(badarg);
+            erlang:error(badarg);
         true ->
             <<Low:PieceIndex/bitstring, _:1, High/bitstring>> = Elements,
             Updated = <<Low/bitstring, 0:1, High/bitstring>>,
@@ -171,7 +171,7 @@ intersection(Set0, Set1) ->
     #pieceset{size=Size1, elements=Elements1} = Set1,
     case Size0 == Size1 of
         false ->
-            error(badarg);
+            erlang:error(badarg);
         true ->
             <<E0:Size0>> = Elements0,
             <<E1:Size1>> = Elements1,
@@ -190,7 +190,7 @@ difference(Set0, Set1) ->
     #pieceset{size=Size1, elements=Elements1} = Set1,
     case Size0 == Size1 of
         false ->
-            error(badarg);
+            erlang:error(badarg);
         true ->
             <<E0:Size0>> = Elements0,
             <<E1:Size1>> = Elements1,
@@ -270,9 +270,9 @@ min_(Elements, Offset) ->
     Half = bit_size(Elements) div 2,
     case Elements of
         <<>> ->
-            error(badarg);
+            erlang:error(badarg);
         <<0:1>> ->
-            error(badarg);
+            erlang:error(badarg);
         <<1:1>> ->
             Offset;
         <<0:Half, Rest/bitstring>> ->

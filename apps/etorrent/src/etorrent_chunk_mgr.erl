@@ -91,6 +91,8 @@
          code_change/3]).
 
 -import(gen_server, [call/2, cast/2]).
+-compile({no_auto_import,[monitor/2]}).
+-import(erlang, [monitor/2]).
 
 -type pieceset()   :: etorrent_pieceset:pieceset().
 -type monitorset() :: etorrent_monitorset:monitorset().
@@ -796,6 +798,7 @@ update_priority(TorrentID, Pieceprio, Pieceset) ->
 chunk_list(OpenReqs) ->
     [{I,O,L} || {{I,O},L} <- gb_trees:to_list(OpenReqs)].
 
+
 -ifdef(TEST).
 -define(chunk_server, ?MODULE).
 -define(scarcity, etorrent_scarcity).
@@ -967,3 +970,4 @@ unassigned_to_assigned_case({N, Time, SPid, CPid}) ->
     ?assertEqual({error, assigned}, ?chunk_server:request_chunks(N, Has, 1)).
 
 -endif.
+

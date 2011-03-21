@@ -27,19 +27,26 @@
          statechange_peer/2
         ]).
 
-%% Torrent information
--export([
-         acquire_check_token/1,
-         all_torrents/0,
-         get_torrent/1,
-	 new_torrent/4,
-         statechange_torrent/2
-        ]).
+
 
 %% UPnP entity information
 -export([register_upnp_entity/3,
          lookup_upnp_entity/2,
          update_upnp_entity/3]).
+
+%% Torrent information
+-export([all_torrents/0,
+         new_torrent/4,
+         statechange_torrent/2,
+         get_torrent/1,
+	 acquire_check_token/1]).
+
+%% Histogram handling code
+-export([
+         histogram_enter/2,
+         histogram/1,
+         histogram_delete/1]).
+
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -49,27 +56,27 @@
 -type ipaddr() :: etorrent_types:ipaddr().
 -type portnum() :: etorrent_types:portnum().
 %% The path map tracks file system paths and maps them to integers.
--record(path_map, {id :: {'_' | '$1' | non_neg_integer(), '_' | non_neg_integer()},
-                   path :: string() | '_'}). % (IDX) File system path minus work dir
+-record(path_map, {id :: {'_' | '$1' | non_neg_integer(), '_'
+			      | non_neg_integer()},
+                   path :: string() | '_'}). % File system path -- work dir
 
 -record(peer, {pid :: pid() | '_' | '$1', % We identify each peer with it's pid.
                tracker_url_hash :: integer() | '_', % Which tracker this peer comes from.
                                               % A tracker is identified by the hash of its url.
                ip :: ipaddr() | '_',  % Ip of peer in question
-               port :: portnum() | '_', % Port of peer in question
-               torrent_id :: non_neg_integer() | '_', % (IDX) Torrent Id this peer belongs to
+               port :: non_neg_integer() | '_', % Port of peer in question
+               torrent_id :: non_neg_integer() | '_', % Torrent Id for peer
                state :: 'seeding' | 'leeching' | '_'}).
 
 -type(tracking_map_state() :: 'started' | 'stopped' | 'checking' | 'awaiting' | 'duplicate').
 
-%% The tracking map tracks torrent id's to filenames, etc. It is the high-level view
+%% The tracking map tracks torrent id's to filenames, etc. It is the
+%% high-level view
 -record(tracking_map, {id :: '_' | integer(), %% Unique identifier of torrent
                        filename :: '_' | string(),    %% The filename
-                       supervisor_pid :: '_' | pid(), %% The Pid of who is supervising
-                       info_hash :: '_' | binary(),
+                       supervisor_pid :: '_' | pid(), %% Who is supervising
+                       info_hash :: '_' | binary() | 'unknown',
                        state :: '_' | tracking_map_state()}).
-
-
 
 -record(state, { monitoring :: dict() }).
 
@@ -137,8 +144,26 @@ get_torrent({filename, FN}) ->
 	    not_found
     end.
 
-%% @doc Map a {PathId, TorrentId} pair to a Path (string()).
+%% @doc Enter a Piece Number in the histogram
 %% @end
+-spec histogram_enter(pid(), pos_integer()) -> true.
+histogram_enter(Pid, PN) ->
+    ets:insert_new(histogram, {Pid, PN}).
+
+%% @doc Return the histogram part of the peer represented by Pid
+%% @end
+-spec histogram(pid()) -> [pos_integer()].
+histogram(Pid) ->
+    ets:lookup_element(histogram, Pid, 2).
+
+%% @doc Delete the histogram for a Pid
+%% @end
+-spec histogram_delete(pid()) -> true.
+histogram_delete(Pid) ->
+    ets:delete(histogram, Pid).
+
+% @doc Map a {PathId, TorrentId} pair to a Path (string()).
+% @end
 -spec get_path(integer(), integer()) -> {ok, string()}.
 get_path(Id, TorrentId) when is_integer(Id) ->
     Pth = ets:lookup_element(path_map, {Id, TorrentId}, #path_map.path),
@@ -302,7 +327,7 @@ init([]) ->
     ets:new(path_map, [public, {keypos, #path_map.id}, named_table]),
     ets:new(peers, [named_table, {keypos, #peer.pid}, public]),
     ets:new(tracking_map, [named_table, {keypos, #tracking_map.id}, public]),
-    ets:new(?TAB_UPNP, [named_table, public, set]),
+    ets:new(histogram, [named_table, {keypos, 1}, public, bag]),
     {ok, #state{ monitoring = dict:new() }}.
 
 %% @private

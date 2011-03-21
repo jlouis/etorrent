@@ -7,6 +7,9 @@
          fetch/2,
          is_member/2]).
 
+-compile({no_auto_import,[monitor/2, demonitor/1]}).
+-import(erlang, [monitor/2, demonitor/1]).
+
 -type monitorset() :: gb_tree().
 -export_type([monitorset/0]).
 
@@ -46,7 +49,7 @@ update(Pid, Value, Monitorset) ->
 -spec delete(pid(), monitorset()) -> monitorset().
 delete(Pid, Monitorset) ->
     {MRef, _} = gb_trees:get(Pid, Monitorset),
-    true = demonitor(MRef, [flush]),
+    true = erlang:demonitor(MRef, [flush]),
     gb_trees:delete(Pid, Monitorset).
 
 %% @doc

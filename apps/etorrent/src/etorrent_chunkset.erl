@@ -55,7 +55,7 @@ size(Chunkset) ->
 -spec min(chunkset()) -> {pos_integer(), pos_integer()}.
 min(Chunkset) ->
     case min_(Chunkset) of
-        none  -> error(badarg);
+        none  -> erlang:error(badarg);
         Other -> Other
     end.
 
@@ -74,10 +74,10 @@ min_(Chunkset) ->
 %% Get at most N chunks from the beginning of the chunkset.
 %% @end
 min(_, Numchunks) when Numchunks < 1 ->
-    error(badarg);
+    erlang:error(badarg);
 min(Chunkset, Numchunks) ->
     case min_(Chunkset, Numchunks) of
-        [] -> error(badarg);
+        [] -> erlang:error(badarg);
         List -> List
     end.
 
@@ -112,9 +112,9 @@ delete([{Offset, Length}|T], Chunkset) ->
 %% 
 %% @end
 delete(_, Length, _) when Length < 1 ->
-    error(badarg);
+    erlang:error(badarg);
 delete(Offset, _, _) when Offset < 0 ->
-    error(badarg);
+    erlang:error(badarg);
 delete(Offset, Length, Chunkset) ->
     #chunkset{chunks=Chunks} = Chunkset,
     NewChunks = delete_(Offset, Offset + Length - 1, Chunks),
@@ -141,14 +141,14 @@ delete_(ChStart, ChEnd, [H|T]) ->
 %%
 %% @end
 insert(Offset, _, _) when Offset < 0 ->
-    error(badarg);
+    erlang:error(badarg);
 insert(_, Length, _) when Length < 1 ->
-    error(badarg);
+    erlang:error(badarg);
 insert(Offset, Length, Chunkset) ->
     #chunkset{piece_len=PieceLen, chunks=Chunks} = Chunkset,
     case (Offset + Length) > PieceLen of
         true ->
-            error(badarg);
+            erlang:error(badarg);
         false ->
             NewChunks = insert_(Offset, Offset + Length - 1, Chunks),
             Chunkset#chunkset{chunks=NewChunks}
