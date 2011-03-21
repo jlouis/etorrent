@@ -53,7 +53,7 @@ merge_peer_states(PeerList, StateList) ->
                                  Merged)),
                      proplists:normalize(
                        [{ip, iolist_to_binary(io_lib:format("~B.~B.~B.~B", [B1, B2, B3, B4]))}] ++
-                           Cleaned)
+                           Cleaned, [])
              end).
 
 merge_by([], _, _, _) -> [];
