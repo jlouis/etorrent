@@ -6,7 +6,8 @@
 %%% Created : 19 Jul 2008 by Jesper Louis Andersen <jlouis@ogre.home>
 %%%-------------------------------------------------------------------
 
-%%% @todo: Monitor peers and retry them. In general, we need peer management here.
+%%% @todo: Monitor peers and retry them.
+%%%        In general, we need peer management here.
 -module(etorrent_peer_mgr).
 -behaviour(gen_server).
 

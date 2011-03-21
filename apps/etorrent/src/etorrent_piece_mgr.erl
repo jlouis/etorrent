@@ -18,6 +18,8 @@
 	 chunkify_piece/2, select/1,
          add_monitor/2, num_not_fetched/1, check_interest/2, add_pieces/2, chunk/3]).
 
+-export([increase_count/2, decrease_count/2]).
+
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
@@ -25,8 +27,12 @@
 -type torrent_id() :: etorrent_types:torrent_id().
 %% Individual pieces are represented via the piece record
 -record(piece, {idpn :: {torrent_id(), integer() | '$1' | '_' },
-                hash :: binary() | '_' ,
+                hash :: binary() | '_',
+                id, % (IDX) Id of this piece owning this piece, again for an index
+                piece_number, % Piece Number of piece, replicated for fast qlc access
+                files, % File operations to manipulate piece
                 left = unknown :: unknown | integer() | '_', % Chunks left
+		count = 0, % How many peers has this piece
                 state :: fetched | not_fetched | chunked | '_' }).
 
 -type piece() :: #piece{}.
@@ -61,6 +67,12 @@ add_pieces(Id, Pieces) ->
 
 chunk(Id, Idx, N) ->
     gen_server:call(?SERVER, {chunk, Id, Idx, N}).
+
+increase_count(Id, PN) ->
+    alter_count(Id, PN, 1).
+
+decrease_count(Id, PN) ->
+    alter_count(Id, PN, -1).
 
 %%--------------------------------------------------------------------
 %% Function: t_decrease_missing_chunks/2
@@ -158,15 +170,15 @@ interesting(Id, Pn) when is_integer(Id) ->
 -spec find_new(integer(), gb_set()) -> none | {#piece{}, pos_integer()}.
 find_new(Id, GBSet) ->
     Iter = gb_sets:iterator(GBSet),
-    find_new_worker(Id, gb_sets:next(Iter)).
+    find_new_1(Id, gb_sets:next(Iter)).
 
-find_new_worker(_Id, none) -> none;
-find_new_worker(Id, {PN, Nxt}) ->
+find_new_1(_Id, none) -> none;
+find_new_1(Id, {PN, Nxt}) ->
     case ets:lookup(?TAB, {Id, PN}) of
         [] ->
-            find_new_worker(Id, gb_sets:next(Nxt));
+            find_new_1(Id, gb_sets:next(Nxt));
         [#piece{ state = not_fetched } = P] -> {P, PN};
-        [_P] -> find_new_worker(Id, gb_sets:next(Nxt))
+        [_P] -> find_new_1(Id, gb_sets:next(Nxt))
     end.
 
 %% (@todo: Somewhat expensive, but we start here) Chunked pieces
@@ -310,13 +322,49 @@ chunkify_piece(Id, #piece{ state = State, idpn = {Id, PN} }) ->
 %% @doc Break a piece into logical chunks
 %%   From a size, break it up into the off/len pairs we need
 %% @end
--spec chunkify(integer()) -> [{integer(), integer()}].
-chunkify(Sz) when is_integer(Sz) ->
-    chunkify(0, Sz).
+%% First, we call the version of the function doing the grunt work.
+chunkify(Operations) ->
+    chunkify(0, 0, [], Operations, ?DEFAULT_CHUNK_SIZE).
 
-chunkify(Off, Sz) when Sz =< ?DEFAULT_CHUNK_SIZE ->
-    %% Last chunk
-    [{Off, Sz}];
-chunkify(Off, Sz) ->
-    [{Off, ?DEFAULT_CHUNK_SIZE}
-     | chunkify(Off + ?DEFAULT_CHUNK_SIZE, Sz - ?DEFAULT_CHUNK_SIZE)].
+%% Suppose the next File operation on the piece has 0 bytes in size, then it
+%%  is exhausted and must be thrown away.
+chunkify(AtOffset, EatenBytes, Operations,
+         [{_Path, _Offset, 0} | Rest], Left) ->
+    chunkify(AtOffset, EatenBytes, Operations, Rest, Left);
+
+%% There are no more file operations to carry out. Hence we reached the end of
+%%   the piece and we just return the last chunk operation. Remember to reverse
+%%   the list of operations for that chunk as we build it in reverse.
+chunkify(AtOffset, EatenBytes, Operations, [], _Sz) ->
+    [{AtOffset, EatenBytes, lists:reverse(Operations)}];
+
+%% There are no more bytes left to add to this chunk. Recurse by calling
+%%   on the rest of the problem and add our chunk to the front when coming
+%%   back. Remember to reverse the Operations list built in reverse.
+chunkify(AtOffset, EatenBytes, Operations, OpsLeft, 0) ->
+    R = chunkify(AtOffset + EatenBytes, 0, [], OpsLeft, ?DEFAULT_CHUNK_SIZE),
+    [{AtOffset, EatenBytes, lists:reverse(Operations)} | R];
+
+%% The next file we are processing have a larger size than what is left for this
+%%   chunk. Hence we can just eat off that many bytes from the front file.
+chunkify(AtOffset, EatenBytes, Operations,
+         [{Path, Offset, Size} | Rest], Left) when Left =< Size ->
+    chunkify(AtOffset, EatenBytes + Left,
+             [{Path, Offset, Left} | Operations],
+             [{Path, Offset+Left, Size - Left} | Rest],
+             0);
+
+%% The next file does *not* have enough bytes left, so we eat all the bytes
+%%   we can get from it, and move on to the next file.
+chunkify(AtOffset, EatenBytes, Operations,
+        [{Path, Offset, Size} | Rest], Left) when Left > Size ->
+    chunkify(AtOffset, EatenBytes + Size,
+             [{Path, Offset, Size} | Operations],
+             Rest,
+             Left - Size).
+
+alter_count(I, PN, C) ->
+    R = ets:update_counter(?TAB, {I, PN}, {#piece.count, C}),
+    true = R =< 0,
+    ok.
+

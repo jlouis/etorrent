@@ -527,6 +527,7 @@ code_change(_OldVsn, State, _Extra) ->
 chunk_list(OpenReqs) ->
     [{I,O,L} || {{I,O},L} <- gb_trees:to_list(OpenReqs)].
 
+
 -ifdef(TEST).
 -define(chunk_server, ?MODULE).
 
@@ -688,3 +689,4 @@ get_all_request_case() ->
     ?assertEqual({ok, assigned}, ?chunk_server:request_chunks(14, Has, 1)).
 
 -endif.
+
