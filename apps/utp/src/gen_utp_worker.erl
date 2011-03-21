@@ -27,8 +27,7 @@
 %% Internal API
 -export([
 	 incoming/3,
-	 reply/2,
-	 send_pkt/2
+	 reply/2
 	]).
 
 %% gen_fsm callbacks
@@ -81,25 +80,11 @@
 -define(MAX_WINDOW_DECAY, 100). % ms
 
 -define(DEFAULT_OPT_RECV_SZ, 8192). %% @todo Fix this
-
--type ip_address() :: {byte(), byte(), byte(), byte()}.
-
-%% @todo Decide how to split up these records in a nice way.
-%% @todo Right now it is just the god record!
--record(sock_info, {
-	  %% Stuff pertaining to the socket:
-	  addr        :: string() | ip_address(),
-	  opts        :: proplists:proplist(), %% Options on the socket
-	  packet_size :: integer(),
-	  port        :: 0..16#FFFF,
-	  socket      :: gen_udp:socket(),
-          conn_id     :: integer(),
-          timestamp_difference :: integer()
-	 }).
+-define(DEFAULT_PACKET_SIZE, 350). %% @todo Fix, arbitrary at the moment
 
 %% STATE RECORDS
 %% ----------------------------------------------------------------------
--record(state, { sock_info    :: #sock_info{},
+-record(state, { sock_info    :: utp_sock_info:t(),
                  pkt_info     :: utp_pkt:t(),
                  pkt_buf      :: utp_pkt:buf(),
                  proc_info    :: utp_process:t(),
@@ -149,13 +134,6 @@ incoming(Pid, Packet, Timing) ->
 reply(To, Msg) ->
     gen_fsm:reply(To, Msg).
 
-send_pkt(#sock_info { socket = Socket,
-                      addr = Addr,
-                      port = Port,
-                      timestamp_difference = TSDiff}, Packet) ->
-    %% @todo Handle timestamping here!!
-    gen_udp:send(Socket, Addr, Port, utp_proto:encode(Packet, TSDiff)).
-
 %%%===================================================================
 %%% gen_fsm callbacks
 %%%===================================================================
@@ -177,12 +155,7 @@ init([Socket, Addr, Port, Options]) ->
     PktInfo  = utp_pkt:mk(),
     PktBuf   = utp_pkt:mk_buf(?DEFAULT_OPT_RECV_SZ),
     ProcInfo = utp_process:mk(),
-    SockInfo = #sock_info { addr = Addr,
-			    port = Port,
-			    opts = Options,
-			    socket = Socket,
-                            timestamp_difference = 0 % @todo check this value
-			  },
+    SockInfo = utp_socket:mk(Addr, Options, ?DEFAULT_PACKET_SIZE, Port, Socket),
     {ok, idle, #state{ sock_info = SockInfo,
                        pkt_buf   = PktBuf,
                        proc_info = ProcInfo,
@@ -334,9 +307,9 @@ idle(connect, From, State = #state { sock_info = SockInfo,
 			  conn_id = Conn_id_recv,
 			  extension = ?SYN_EXTS
 			}, % Rest are defaults
-    ok = send_pkt(SockInfo, SynPacket),
+    ok = utp_socket:send_pkt(SockInfo, SynPacket),
     {next_state, syn_sent, State#state {
-                             sock_info = set_conn_id(ConnIdSend, SockInfo),
+                             sock_info = utp_socket:set_conn_id(ConnIdSend, SockInfo),
                              syn_timeout = TRef,
                              pkt_buf     = utp_pkt:init_seqno(PktBuf, 2),
                              connector = From }};
@@ -355,8 +328,8 @@ idle({accept, SYN}, _From, #state { sock_info = SockInfo,
 			  conn_id = Conn_id_send,
 			  extension = ?SYN_EXTS
 			},
-    ok = send_pkt(SockInfo, AckPacket),
-    {reply, ok, connected, #state { sock_info = set_conn_id(Conn_id_send, SockInfo),
+    ok = utp_socket:send_pkt(SockInfo, AckPacket),
+    {reply, ok, connected, #state { sock_info = utp_socket:set_conn_id(Conn_id_send, SockInfo),
                                     pkt_buf = utp_pkt:init_ackno(
                                                 utp_pkt:init_seqno(PktBuf, SeqNo + 1),
                                                 AckNo)}};
@@ -473,17 +446,6 @@ satisfy_recvs(Processes, Buffer) ->
 	empty ->
 	    {ok, Processes, Buffer}
     end.
-
-set_conn_id(Cid, SockInfo) ->
-    SockInfo#sock_info { conn_id = Cid }.
-
-
-
-
-
-
-
-
 
 
 

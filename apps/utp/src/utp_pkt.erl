@@ -357,8 +357,38 @@ fill_packets(N, Sz, Q, Proc) when Sz =< N ->
             {queue:in(Bin, Q), Proc1}
     end.
 
-transmit_queue(_Q, _Buf, _SockInfo) ->
-    todo.
+transmit_packet(Bin,
+                WindowSize,
+                #pkt_buf { seq_no = SeqNo,
+                           ack_no = AckNo,
+                           retransmission_queue = RetransQueue } = Buf,
+                SockInfo) ->
+    P = #packet { ty = st_data,
+                  conn_id = utp_sock_info:conn_id(SockInfo),
+                  win_sz  = WindowSize,
+                  seq_no  = SeqNo,
+                  ack_no  = AckNo,
+                  extension = [],
+                  payload = Bin },
+    ok = utp_socket:send_packet(SockInfo, P),
+    Wrap = #pkt_wrap { packet = P,
+                       transmissions = 0,
+                       need_resend = false },
+    Buf#pkt_buf { seq_no = SeqNo+1,
+                  retransmission_queue = [Wrap | RetransQueue]
+                }.
+
+transmit_queue(Q, WindowSize, #pkt_buf { pkt_size = Sz } = Buf, SockInfo) ->
+    {R, NQ} = queue:out(Q),
+    case R of
+        empty ->
+            Buf;
+        {value, Data} when byte_size(Data) < Sz ->
+            Buf#pkt_buf { send_nagle = {nagle, Data}};
+        {value, Data} when byte_size(Data) == Sz ->
+            NewBuf = transmit_packet(Data, WindowSize, Buf, SockInfo),
+            transmit_queue(NQ, WindowSize, NewBuf, SockInfo)
+    end.
 
 fill_window(SockInfo, ProcInfo, PktInfo, PktBuf) ->
     {BytesFree1, TransmitQueue1,
@@ -368,11 +398,8 @@ fill_window(SockInfo, ProcInfo, PktInfo, PktBuf) ->
     {TransmitQueue2, ProcInfo2} =  fill_packets(BytesFree1,
                                                 PktBuf1#pkt_buf.pkt_size,
                                                 TransmitQueue1, ProcInfo1),
-    PKB2 = transmit_queue(TransmitQueue2, PktBuf1, SockInfo),
+    PKB2 = transmit_queue(TransmitQueue2, todo_win_sz_here, PktBuf1, SockInfo),
     {ok, PKB2, ProcInfo2}.
-
-send_packet(SI, FilledPkt) ->
-    gen_utp_worker:send_pkt(SI, FilledPkt).
 
 update_last_recv_window(#pkt_buf { opt_recv_buf_sz = RSz } = PB,
 		        ProcInfo) ->
