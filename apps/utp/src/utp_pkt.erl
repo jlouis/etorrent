@@ -17,7 +17,6 @@
 	 buffer_dequeue/1,
 	 buffer_putback/2,
 	 fill_window/4,
-	 rb_drained/1,
 	 zerowindow_timeout/2
 	 ]).
 
@@ -26,10 +25,6 @@
 	 can_write/6
 	 ]).
 -endif.
-
--export([
-	 update_last_recv_window/2
-	 ]).
 
 %% DEFINES
 %% ----------------------------------------------------------------------
@@ -90,10 +85,6 @@
 
           %% Windows
           %% --------------------
-          %% Last advertised receive window in bytes
-          %% @todo This is probably wrong to keep around. It is much better to calculate it
-          %% as-needed where it is used. It is essentially derived data.
-          last_recv_window = ?OPT_RECV_BUF :: integer(),
           %% Number of packets currently in the send window
           send_window_packets = 0       :: integer(),
 
@@ -137,8 +128,7 @@ mk() ->
 mk_buf(none)    -> #pkt_buf{};
 mk_buf(OptRecv) ->
     #pkt_buf {
-	opt_recv_buf_sz = OptRecv,
-	last_recv_window = OptRecv
+	opt_recv_buf_sz = OptRecv
        }.
 
 init_seqno(#pkt_buf {} = PBuf, SeqNo) ->
@@ -361,9 +351,9 @@ fill_packets(N, Sz, Q, Proc) when Sz =< N ->
     end.
 
 transmit_packet(Bin,
+                WindowSize,
                 #pkt_buf { seq_no = SeqNo,
                            ack_no = AckNo,
-                           last_recv_window = WindowSize,
                            retransmission_queue = RetransQueue } = Buf,
                 SockInfo) ->
     P = #packet { ty = st_data,
@@ -381,7 +371,7 @@ transmit_packet(Bin,
                   retransmission_queue = [Wrap | RetransQueue]
                 }.
 
-transmit_queue(Q, #pkt_buf { pkt_size = Sz } = Buf, SockInfo) ->
+transmit_queue(Q, WindowSize, #pkt_buf { pkt_size = Sz } = Buf, SockInfo) ->
     {R, NQ} = queue:out(Q),
     case R of
         empty ->
@@ -389,16 +379,16 @@ transmit_queue(Q, #pkt_buf { pkt_size = Sz } = Buf, SockInfo) ->
         {value, Data} when byte_size(Data) < Sz ->
             Buf#pkt_buf { send_nagle = {nagle, Data}};
         {value, Data} when byte_size(Data) == Sz ->
-            NewBuf = transmit_packet(Data, Buf, SockInfo),
-            transmit_queue(NQ, NewBuf, SockInfo)
+            NewBuf = transmit_packet(Data, WindowSize, Buf, SockInfo),
+            transmit_queue(NQ, WindowSize, NewBuf, SockInfo)
     end.
 
 consider_nagle_transmit(#pkt_buf { retransmission_queue = [], send_nagle = none } = Buf,
-                        _SockInfo) ->
+                        _SockInfo, _WindowSize) ->
     Buf;
 consider_nagle_transmit(#pkt_buf { retransmission_queue = [], send_nagle = {nagle, Bin} } = Buf,
-                        SockInfo) ->
-    transmit_packet(Bin, Buf, SockInfo).
+                        SockInfo, WindowSize) ->
+    transmit_packet(Bin, WindowSize, Buf, SockInfo).
 
 fill_window(SockInfo, ProcInfo, PktInfo, PktBuf) ->
     {BytesFree1, TransmitQueue1,
@@ -408,36 +398,18 @@ fill_window(SockInfo, ProcInfo, PktInfo, PktBuf) ->
     {TransmitQueue2, ProcInfo2} =  fill_packets(BytesFree1,
                                                 PktBuf1#pkt_buf.pkt_size,
                                                 TransmitQueue1, ProcInfo1),
-    PKB1 = update_last_recv_window(PktBuf1, ProcInfo2),
-    PKB2 = transmit_queue(TransmitQueue2, PKB1, SockInfo),
-    PKB3 = consider_nagle_transmit(PKB2, SockInfo),
+    WindowSize = last_recv_window(PktBuf1, ProcInfo2),
+    PKB2 = transmit_queue(TransmitQueue2, WindowSize, PktBuf1, SockInfo),
+    PKB3 = consider_nagle_transmit(PKB2, SockInfo, WindowSize),
     {ok, PKB3, ProcInfo2}.
 
-update_last_recv_window(#pkt_buf { opt_recv_buf_sz = RSz } = PB,
-		        ProcInfo) ->
+last_recv_window(#pkt_buf { opt_recv_buf_sz = RSz },
+                 ProcInfo) ->
     BufSize = pkt_process:bytes_in_recv_buffer(ProcInfo),
-    NewBufSize = if RSz > BufSize -> RSz - BufSize;
-		    true          -> 0
-		 end,
-    PB#pkt_buf { last_recv_window = NewBufSize }.
-
-receive_window(#pkt_buf {
-		  recv_buf = Q,
-		  opt_recv_buf_sz = Sz
-		 }) ->
-    BufSize = lists:sum([byte_size(Payload) || Payload <- queue:to_list(Q)]),
-    if Sz > BufSize -> Sz - BufSize;
-	true -> 0
-    end.
-
-rb_drained(#pkt_buf {
-	      last_recv_window = LastWin
-	     } = PBuf) ->
-    NewWin = receive_window(PBuf),
-    if NewWin > LastWin, LastWin == 0 -> send_ack;
-       NewWin > LastWin -> ack_timer;
-       true -> ok
-    end.
+    Size = if RSz > BufSize -> RSz - BufSize;
+              true          -> 0
+           end,
+    Size.
 
 zerowindow_timeout(TRef, #pkt_info { peer_advertised_window = 0,
                                      zero_window_timeout = {set, TRef}} = PKI) ->
