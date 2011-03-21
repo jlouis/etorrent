@@ -93,6 +93,7 @@
 	  packet_size :: integer(),
 	  port        :: 0..16#FFFF,
 	  socket      :: gen_udp:socket(),
+          conn_id     :: integer(),
           timestamp_difference :: integer()
 	 }).
 
@@ -102,7 +103,6 @@
                  pkt_info     :: utp_pkt:t(),
                  pkt_buf      :: utp_pkt:buf(),
                  proc_info    :: utp_process:t(),
-                 conn_id_send :: integer(),
                  connector    :: {reference(), pid()},
                  syn_timeout  :: reference()
                }).
@@ -201,7 +201,6 @@ syn_sent({pkt, #packet { ty = st_state,
 			 seq_no = PktSeqNo },
 	       _Timing},
 	 #state { sock_info = SockInfo,
-                  conn_id_send = Conn_id_send,
                   pkt_buf = PktBuf,
                   connector = From,
                   syn_timeout = TRef
@@ -209,7 +208,6 @@ syn_sent({pkt, #packet { ty = st_state,
     gen_fsm:cancel_timer(TRef),
     reply(From, ok),
     {next_state, connected, State#state { sock_info = SockInfo,
-                                          conn_id_send = Conn_id_send,
                                           syn_timeout = undefined,
                                           pkt_buf = utp_pkt:init_ackno(PktBuf, PktSeqNo)}};
 syn_sent(close, _S) ->
@@ -329,7 +327,7 @@ idle(connect, From, State = #state { sock_info = SockInfo,
     Conn_id_recv = utp_proto:mk_connection_id(),
     gen_utp:register_process(self(), Conn_id_recv),
 
-    Conn_id_send = Conn_id_recv + 1,
+    ConnIdSend = Conn_id_recv + 1,
     SynPacket = #packet { ty = st_syn,
 			  seq_no = 1,
 			  ack_no = 0,
@@ -338,9 +336,9 @@ idle(connect, From, State = #state { sock_info = SockInfo,
 			}, % Rest are defaults
     ok = send_pkt(SockInfo, SynPacket),
     {next_state, syn_sent, State#state {
+                             sock_info = set_conn_id(ConnIdSend, SockInfo),
                              syn_timeout = TRef,
                              pkt_buf     = utp_pkt:init_seqno(PktBuf, 2),
-                             conn_id_send = Conn_id_send, %@todo Where does this belong?
                              connector = From }};
 idle({accept, SYN}, _From, #state { sock_info = SockInfo,
                                     pkt_buf   = PktBuf }) ->
@@ -358,11 +356,11 @@ idle({accept, SYN}, _From, #state { sock_info = SockInfo,
 			  extension = ?SYN_EXTS
 			},
     ok = send_pkt(SockInfo, AckPacket),
-    {reply, ok, connected, #state { sock_info = SockInfo,
+    {reply, ok, connected, #state { sock_info = set_conn_id(Conn_id_send, SockInfo),
                                     pkt_buf = utp_pkt:init_ackno(
                                                 utp_pkt:init_seqno(PktBuf, SeqNo + 1),
-                                                AckNo),
-                                    conn_id_send = Conn_id_send }};
+                                                AckNo)}};
+
 idle(_Msg, _From, State) ->
     {reply, idle, {error, enotconn}, State}.
 
@@ -371,14 +369,12 @@ connected({recv, Length}, From, #state { proc_info = PI } = State) ->
     {next_state, connected, State#state {
 			   proc_info = utp_process:enqueue_receiver(From, Length, PI) }};
 connected({send, Data}, From, #state {
-			  conn_id_send = ConnId,
+                          sock_info = SockInfo,
 			  proc_info = PI,
-			  sock_info = SockInfo,
 			  pkt_info  = PKI,
 			  pkt_buf   = PKB } = State) ->
     ProcInfo = utp_process:enqueue_sender(From, Data, PI),
-    {ok, PKB1, ProcInfo1} = utp_pkt:fill_window(ConnId,
-						SockInfo,
+    {ok, PKB1, ProcInfo1} = utp_pkt:fill_window(SockInfo,
 						ProcInfo,
 						PKI,
 						PKB),
@@ -478,6 +474,8 @@ satisfy_recvs(Processes, Buffer) ->
 	    {ok, Processes, Buffer}
     end.
 
+set_conn_id(Cid, SockInfo) ->
+    SockInfo#sock_info { conn_id = Cid }.
 
 
 

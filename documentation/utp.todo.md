@@ -1,10 +1,11 @@
 ### "Real" TODO:
 
-* Move PacketSize to the #pkt_buf{} structure. Will kill PktInfo from a lot of the code.
 * Rework the fill_window loop by considering nagling first and keeping a queue:new() with binary
   packets. Use the queue to fill packets inflight and then finally consider if the last element
   of the queue should be nagled or not (consider packet size for this). (The second step of
   this should only need ProcessInfo and remaining bytes + the queue).
+** First, fill the nagle packet up based on the procinfo modules queue.
+
 * Have a separate loop fold over the queue and then write out packets.
 
 * Try to transfer data on the UTP socket, don't close the socket again.
@@ -14,25 +15,24 @@
 * Packet Timestamping
 
 * Write code for socket teardown.
-  ** Essentially, you just tag an st_fin flag on top of the last/next packet going out
-     on the socket, and move yourself into the fin_sent state.
-  ** There are a bunch of serious timeout stuff you need to handle to make this work as well,
-     so we need to get a grip on the other parts first.
+** Essentially, you just tag an st_fin flag on top of the last/next packet going out
+   on the socket, and move yourself into the fin_sent state.
+** There are a bunch of serious timeout stuff you need to handle to make this work as well,
+   so we need to get a grip on the other parts first.
 * Test closing the socket as well.
 
 * Handle outgoing timestamping
 * Window Size incoming (SKIP THIS FOR NOW, we can just use the incoming advertised window)
-  * Study this.
-  * Window is changed in the selective ack code, and in LEDBAT Congestion Control
-  * max_window is our maximal window, which can be manipulated
-    window_decay is one place
-    reset on timeout is a second
-    in LEDBAT CControl is a third
-    initialized to the packet size when starting out
-    maybe_decay_win adjusts the window, based on the selective ack information
-
-  * max_window_user is the other ends max_window (call it max_window_peer)
-    It is *essentially* what we get from the other end!
+** Study this.
+** Window is changed in the selective ack code, and in LEDBAT Congestion Control
+** max_window is our maximal window, which can be manipulated
+   window_decay is one place
+   reset on timeout is a second
+   in LEDBAT CControl is a third
+   initialized to the packet size when starting out
+   maybe_decay_win adjusts the window, based on the selective ack information
+** max_window_user is the other ends max_window (call it max_window_peer)
+   It is *essentially* what we get from the other end!
 
 * Timestamp handling
 * Close down

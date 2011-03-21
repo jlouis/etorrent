@@ -16,6 +16,7 @@
          dequeue_receiver/1,
 	 dequeue_packet/2,
 
+         fill_via_send_queue/2,
 	 bytes_in_recv_buffer/1
 	]).
 -record(proc_info, {
@@ -49,6 +50,33 @@ enqueue_sender(From, Data, #proc_info { sender_q = SQ } = PI) ->
     NQ = queue:in({sender, From, Data}, SQ),
     PI#proc_info { sender_q = NQ }.
 
+fill_via_send_queue(0, _Q) ->
+    zero;
+fill_via_send_queue(N, #proc_info { sender_q = SQ } = PI) ->
+    case dequeue(N, SQ, <<>>) of
+        {done, Bin, SQ1} ->
+            {filled, Bin, PI#proc_info { sender_q = SQ1}};
+        {partial, Bin, SQ1} ->
+            {partial, Bin, PI#proc_info { sender_q = SQ1}};
+        zero ->
+            zero
+    end.
+
+dequeue(0, _Q, <<>>) ->
+    zero;
+dequeue(0, Q, Bin) ->
+    {done, Bin, Q};
+dequeue(N, Q, Acc) ->
+    {R, NQ} = queue:out(Q),
+    case R of
+        empty ->
+            {partial, Acc, NQ};
+        {value, {sender, _From, Data}} when byte_size(Data) =< N ->
+            dequeue(N - byte_size(Data), NQ, <<Acc/binary, Data/binary>>);
+        {value, {sender, From, Data}} when byte_size(Data) > N ->
+            <<Take:N/binary, Rest/binary>> = Data,
+            dequeue(0, queue:in_r({sender, From, Rest}, NQ), <<Acc/binary, Take/binary>>)
+    end.
 
 dequeue_packet(#proc_info { sender_q = SQ } = PI, Size) when Size > 0 ->
     case dequeue_packet(<<>>, SQ, Size) of

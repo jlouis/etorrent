@@ -16,7 +16,7 @@
 	 handle_packet/5,
 	 buffer_dequeue/1,
 	 buffer_putback/2,
-	 fill_window/5,
+	 fill_window/4,
 	 rb_drained/1,
 	 zerowindow_timeout/2
 	 ]).
@@ -49,8 +49,6 @@
 	  %% @todo: Consider renaming this to peer_advertised_window
 	  peer_advertised_window :: integer(), % Called max_window_user in the libutp code
 
-	  %% The maximal size of packets.
-	  pkt_size :: integer(),
 	  %% The current window size in the send direction, in bytes.
 	  cur_window :: integer(),
 	  %% Maximal window size int the send direction, in bytes.
@@ -101,7 +99,10 @@
           %% Size of the outgoing buffer on the socket
           opt_snd_buf_sz  = ?OPT_SEND_BUF :: integer(),
           %% Same, for the recv buffer
-          opt_recv_buf_sz = ?OPT_RECV_BUF :: integer()
+          opt_recv_buf_sz = ?OPT_RECV_BUF :: integer(),
+
+	  %% The maximal size of packets.
+	  pkt_size :: integer()
          }).
 -type buf() :: #pkt_buf{}.
 
@@ -328,139 +329,50 @@ buffer_dequeue(#pkt_buf { recv_buf = Q } = Buf) ->
     end.
 
 
-fill_window(ConnId, SockInfo, ProcInfo, PktInfo, PktBuf) ->
-    PacketsToTransmit = packets_to_transmit(PktBuf, PktInfo),
-    {ok, Packets, ProcInfo1} = dequeue_packets(PacketsToTransmit,
-					       ProcInfo, [],
-					       PktInfo#pkt_info.pkt_size),
-    {ok, PKB1, PktWrap} = mk_packets(Packets, PktInfo#pkt_info.pkt_size, PktBuf, []),
-    FilledPackets = transmit_packets(PktWrap, PktInfo, SockInfo, ConnId, []),
-    PKB2 = enqueue_packets(FilledPackets, PKB1),
-    {ok, PKB2, ProcInfo1}.
+fill_nagle(0, Q, Buf, Proc) ->
+    {0, Q, Buf, Proc};
+fill_nagle(N, Q, #pkt_buf { send_nagle = none } = Buf, Proc) ->
+    {N, Q, Buf, Proc}; % No nagle, skip
+fill_nagle(N, Q, #pkt_buf { send_nagle = {nagle, NagleBin},
+                            pkt_size = Sz} = Buf, Proc) ->
+    K = byte_size(NagleBin),
+    true = K < Sz,
+    Space = Sz - K,
+    ToFill = lists:min([Space, N]),
+    case utp_process:fill_via_send_queue(ToFill, Proc) of
+        {filled, Bin, Proc1} ->
+            {N - ToFill, queue:in(<<NagleBin/binary, Bin/binary>>, Q),
+             Buf #pkt_buf { send_nagle = none }, Proc1};
+        {partial, Bin, Proc1} ->
+            {0, Q, Buf#pkt_buf { send_nagle = {nagle, <<NagleBin/binary, Bin/binary>>}}, Proc1}
+    end.
 
-enqueue_packets(Packets, #pkt_buf { retransmission_queue = RQ } = PacketBuf) ->
-    PacketBuf#pkt_buf { retransmission_queue = Packets ++ RQ }.
+fill_packets(0, _Sz, Q, Proc) ->
+    {Q, Proc};
+fill_packets(N, Sz, Q, Proc) when Sz =< N ->
+    case utp_process:fill_via_send_queue(Sz, Proc) of
+        {filled, Bin, Proc1} ->
+            fill_packets(N - Sz, Sz, queue:in(Bin, Q), Proc1);
+        {partial, Bin, Proc1} ->
+            {queue:in(Bin, Q), Proc1}
+    end.
+
+transmit_queue(_Q, _Buf, _SockInfo) ->
+    todo.
+
+fill_window(SockInfo, ProcInfo, PktInfo, PktBuf) ->
+    {BytesFree1, TransmitQueue1,
+     PktBuf1, ProcInfo1} = fill_nagle(bytes_free(PktBuf, PktInfo),
+                                      queue:new(),
+                                      PktBuf, ProcInfo),
+    {TransmitQueue2, ProcInfo2} =  fill_packets(BytesFree1,
+                                                PktBuf1#pkt_buf.pkt_size,
+                                                TransmitQueue1, ProcInfo1),
+    PKB2 = transmit_queue(TransmitQueue2, PktBuf1, SockInfo),
+    {ok, PKB2, ProcInfo2}.
 
 send_packet(SI, FilledPkt) ->
     gen_utp_worker:send_pkt(SI, FilledPkt).
-
-%% @doc Transmit packets and add the remaining information missing in the packets
-%% This is the list step, where the ConnID and Window Size are stamped into the packets
-%% @end
-transmit_packets([], _, _, _, Acc) ->
-    lists:reverse(Acc);
-transmit_packets([#pkt_wrap {
-		     packet = Pkt,
-		     transmissions = 0,
-		     need_resend = false } | Rest], PKI, SI, ConnId, Acc) ->
-    FilledPkt = Pkt#packet {
-		  conn_id = ConnId,
-		  win_sz  = PKI#pkt_info.cur_window },
-    send_packet(SI, FilledPkt),
-    transmit_packets(Rest, PKI, SI, ConnId, [FilledPkt | Acc]).
-
-%% @doc Build a list of packets to transmit.
-%% This function constructs a packet list based on the amount of Bytes we have free in the
-%% window and by considering the state of the Nagle packet. Essentially, we produce a
-%% cookbook for later stages to go over and process
-%% @end
-packets_to_transmit(#pkt_buf { send_nagle = Nagle } = PktBuf,
-                    #pkt_info { pkt_size = PacketSize } = PktInfo) ->
-    BytesFreeInWindow = bytes_free(PktBuf, PktInfo),
-    case Nagle of
-        none ->
-            packets_to_transmit1(BytesFreeInWindow, PacketSize);
-        {nagle, Bin} ->
-            case PacketSize - byte_size(Bin) of
-                Free when Free =< BytesFreeInWindow ->
-                    [{partial, Free} | packets_to_transmit1(BytesFreeInWindow - Free, PacketSize)];
-                Free when Free > BytesFreeInWindow ->
-                    [{nagle_fill, BytesFreeInWindow}]
-            end
-    end.
-
-packets_to_transmit1(0, _) ->
-    [];
-packets_to_transmit1(Bytes, Size) when Size =< Bytes ->
-    [{full, Bytes div Size}, {nagle_fill, Bytes rem Size}];
-packets_to_transmit1(Bytes, Size) when Size > Bytes ->
-    [{nagle_fill, Bytes}].
-
-dequeue_packet(PI, Sz) ->
-    case utp_process:dequeue_packet(PI, Sz) of
-        none ->
-            {none, PI};
-        {value, Bin, PI1} when byte_size(Bin) == Sz ->
-            {{full, Bin}, PI1};
-        {value, Bin, PI1} when byte_size(Bin) < Sz ->
-            {{partial, Bin}, PI1}
-    end.
-
-%% @doc Transform the cookbook into a list of binaries
-%% This uses the process structure to fill up the planned packets with binary data
-%% @end
-dequeue_packets([], PI, Acc, _PacketSize) ->
-    {ok, lists:reverse(Acc), PI};
-dequeue_packets([{full, 0} | Rest], PI, Acc, PacketSize) ->
-    dequeue_packets(Rest, PI, Acc, PacketSize);
-dequeue_packets([{full, K} | Rest], PI, Acc, PacketSize) ->
-    dequeue_packets([{packet, PacketSize}, {full, K-1} | Rest], PI, Acc, PacketSize);
-dequeue_packets([{Ty, Sz} | Rest], PI, Acc, PacketSize) ->
-    {R, PI1} = dequeue_packet(PI, Sz),
-    case R of
-        none ->
-            dequeue_packets([], PI1, Acc, PacketSize);
-        {Exhaust, Bin} ->
-            dequeue_packets(case Exhaust of
-                                full -> Rest;
-                                partial -> []
-                            end, PI1,
-                            [{Ty, Bin} | Acc],
-                            PacketSize)
-    end.
-
-%% @doc create #packet{} structures from binaries
-%% Fill in seq_no's and other stuff as well...
-%% @end
-mk_packets([], _PSz, PKB, Acc) ->
-    {ok, PKB, lists:reverse(Acc)};
-mk_packets([{partial, Bin} | Rest], PSz,
-		 #pkt_buf { send_nagle = {nagle, NBin}} = PKB, Acc) ->
-    PSz = byte_size(Bin) + byte_size(NBin),
-    mk_packets([{packet, <<Bin/binary, NBin/binary>>} | Rest],
-		     PSz,
-		     PKB#pkt_buf { send_nagle = none }, Acc);
-mk_packets([{packet, Bin} | Rest], PSz,
-		 #pkt_buf { seq_no = SeqNo } = PKB, Acc) ->
-    Pkt = mk_pkt(Bin,
-		 PKB#pkt_buf.last_recv_window,
-		 PKB#pkt_buf.seq_no+1,
-		 PKB#pkt_buf.last_ack),
-    mk_packets(Rest, PSz, PKB#pkt_buf { seq_no = SeqNo+1 }, [Pkt | Acc]);
-mk_packets([{nagle, Bin}], PSz,
- 		 #pkt_buf { send_nagle = {nagle, NBin} } = PKB, Acc) ->
-    mk_packets([], PSz,
-               PKB#pkt_buf {
-                 send_nagle = {nagle, <<NBin/binary, Bin/binary>>}}, Acc);
-mk_packets([{nagle, Bin}], PSz,
- 		 #pkt_buf { send_nagle = none } = PKB, Acc) ->
-    mk_packets([], PSz, PKB#pkt_buf { send_nagle = {nagle, Bin}}, Acc).
-
-
-mk_pkt(Bin, WinSz, SeqNo, AckNo) ->
-    #pkt_wrap {
-	%% Will fill in the remaining entries later
-	packet = #packet {
-	  ty = st_data,
-	  conn_id = undefined,
-	  win_sz = WinSz,
-	  seq_no = SeqNo,
-	  ack_no = AckNo,
-	  extension = [],
-	  payload = Bin
-	 },
-	transmissions = 0,
-	need_resend = false }.
 
 update_last_recv_window(#pkt_buf { opt_recv_buf_sz = RSz } = PB,
 		        ProcInfo) ->
