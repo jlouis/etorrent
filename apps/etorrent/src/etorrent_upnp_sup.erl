@@ -52,44 +52,51 @@ add_upnp_entity(Category, Proplist) ->
 
 -ifdef(EUNIT).
 
-start_upnp_sup_tree() ->
-    {ok, _} = etorrent_event:start_link(),
-    {ok, _} = etorrent_table:start_link(),
-    {ok, _} = etorrent_upnp_sup:start_link().
+
+shutdown(Pid) ->
+    Ref = erlang:monitor(process, Pid),
+    unlink(Pid),
+    exit(Pid, shutdown),
+    receive {'DOWN', Ref, _, _, _} -> ok end.
+
+setup_upnp_sup_tree() ->
+    {ok, Pid0} = etorrent_event:start_link(),
+    {ok, Pid1} = etorrent_table:start_link(),
+    {ok, Pid2} = etorrent_upnp_sup:start_link(),
+    {Pid0, Pid1, Pid2}.
+
+teardown_upnp_sup_tree({Pid0, Pid1, Pid2}) ->
+    ok = shutdown(Pid0),
+    ok = shutdown(Pid1),
+    ok = shutdown(Pid2).
 
 upnp_sup_test_() ->
-    {spawn, [
+    {foreach,
+        fun setup_upnp_sup_tree/0,
+        fun teardown_upnp_sup_tree/1, [
         ?_test(upnp_sup_tree_start_case()),
         ?_test(multiple_instances_case())]}.
 
 
 upnp_sup_tree_start_case() ->
-    try
-        start_upnp_sup_tree(),
-        etorrent_upnp_entity:create(device, [{type, <<"InternetGatewayDevice">>},
-                                             {uuid, <<"whatever">>}]),
-        etorrent_upnp_entity:create(service, [{type, <<"WANIPConnection">>},
-                                              {uuid, <<"whatever">>}]),
-        etorrent_upnp_entity:update(service, [{type, <<"WANIPConnection">>},
-                                              {uuid, <<"whatever">>},
-                                              {loc, {192,168,1,1}}])
-    catch
-        _:_ -> ?assert(false)
-    end.
+    etorrent_upnp_entity:create(device, [{type, <<"InternetGatewayDevice">>},
+                                         {uuid, <<"whatever">>}]),
+    etorrent_upnp_entity:create(service, [{type, <<"WANIPConnection">>},
+                                          {uuid, <<"whatever">>}]),
+    etorrent_upnp_entity:update(service, [{type, <<"WANIPConnection">>},
+                                          {uuid, <<"whatever">>},
+                                          {loc, {192,168,1,1}}]),
+    ?assert(true).
 
 
 multiple_instances_case() ->
     %% may need to run multiple instances, e.g. when doing test. make sure
     %% embeded mochiweb http server will not conflict with each other in
     %% that case.
-    try
-        start_upnp_sup_tree(),
-        %% simulates parallel run by starting another (default) mochiweb server 
-        {ok, _Server} = mochiweb_http:start([{name, multiple_instances_test},
-                                             {loop, {mochiweb_http, default_body}}])
-    catch
-        _:_ -> ?assert(false)
-    end.
+    %% simulates parallel run by starting another (default) mochiweb server 
+    {ok, _Server} = mochiweb_http:start([{name, multiple_instances_test},
+                                         {loop, {mochiweb_http, default_body}}]),
+    ?assert(true).
 
 
 %% @todo: Can do way more unit tests here.
