@@ -1,13 +1,5 @@
 ### "Real" TODO:
 
-* Rework the fill_window loop by considering nagling first and keeping a queue:new() with binary
-  packets. Use the queue to fill packets inflight and then finally consider if the last element
-  of the queue should be nagled or not (consider packet size for this). (The second step of
-  this should only need ProcessInfo and remaining bytes + the queue).
-** First, fill the nagle packet up based on the procinfo modules queue.
-
-* Have a separate loop fold over the queue and then write out packets.
-
 * Try to transfer data on the UTP socket, don't close the socket again.
 * Move lots of data, testing the window code as it is right now.
 * Window alterations

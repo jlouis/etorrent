@@ -90,6 +90,9 @@
 
           %% Windows
           %% --------------------
+          %% Last advertised receive window in bytes
+          %% @todo This is probably wrong to keep around. It is much better to calculate it
+          %% as-needed where it is used. It is essentially derived data.
           last_recv_window = ?OPT_RECV_BUF :: integer(),
           %% Number of packets currently in the send window
           send_window_packets = 0       :: integer(),
@@ -358,9 +361,9 @@ fill_packets(N, Sz, Q, Proc) when Sz =< N ->
     end.
 
 transmit_packet(Bin,
-                WindowSize,
                 #pkt_buf { seq_no = SeqNo,
                            ack_no = AckNo,
+                           last_recv_window = WindowSize,
                            retransmission_queue = RetransQueue } = Buf,
                 SockInfo) ->
     P = #packet { ty = st_data,
@@ -378,7 +381,7 @@ transmit_packet(Bin,
                   retransmission_queue = [Wrap | RetransQueue]
                 }.
 
-transmit_queue(Q, WindowSize, #pkt_buf { pkt_size = Sz } = Buf, SockInfo) ->
+transmit_queue(Q, #pkt_buf { pkt_size = Sz } = Buf, SockInfo) ->
     {R, NQ} = queue:out(Q),
     case R of
         empty ->
@@ -386,16 +389,16 @@ transmit_queue(Q, WindowSize, #pkt_buf { pkt_size = Sz } = Buf, SockInfo) ->
         {value, Data} when byte_size(Data) < Sz ->
             Buf#pkt_buf { send_nagle = {nagle, Data}};
         {value, Data} when byte_size(Data) == Sz ->
-            NewBuf = transmit_packet(Data, WindowSize, Buf, SockInfo),
-            transmit_queue(NQ, WindowSize, NewBuf, SockInfo)
+            NewBuf = transmit_packet(Data, Buf, SockInfo),
+            transmit_queue(NQ, NewBuf, SockInfo)
     end.
 
 consider_nagle_transmit(#pkt_buf { retransmission_queue = [], send_nagle = none } = Buf,
-                        _WindowSize, _SockInfo) ->
+                        _SockInfo) ->
     Buf;
 consider_nagle_transmit(#pkt_buf { retransmission_queue = [], send_nagle = {nagle, Bin} } = Buf,
-                        WindowSize, SockInfo) ->
-    transmit_packet(Bin, WindowSize, Buf, SockInfo).
+                        SockInfo) ->
+    transmit_packet(Bin, Buf, SockInfo).
 
 fill_window(SockInfo, ProcInfo, PktInfo, PktBuf) ->
     {BytesFree1, TransmitQueue1,
@@ -405,8 +408,9 @@ fill_window(SockInfo, ProcInfo, PktInfo, PktBuf) ->
     {TransmitQueue2, ProcInfo2} =  fill_packets(BytesFree1,
                                                 PktBuf1#pkt_buf.pkt_size,
                                                 TransmitQueue1, ProcInfo1),
-    PKB2 = transmit_queue(TransmitQueue2, todo_win_sz_here, PktBuf1, SockInfo),
-    PKB3 = consider_nagle_transmit(PKB2, todo_win_sz_here, SockInfo),
+    PKB1 = update_last_recv_window(PktBuf1, ProcInfo2),
+    PKB2 = transmit_queue(TransmitQueue2, PKB1, SockInfo),
+    PKB3 = consider_nagle_transmit(PKB2, SockInfo),
     {ok, PKB3, ProcInfo2}.
 
 update_last_recv_window(#pkt_buf { opt_recv_buf_sz = RSz } = PB,
