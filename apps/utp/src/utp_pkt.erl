@@ -438,7 +438,7 @@ zerowindow_timeout(_TRef,  #pkt_info { zero_window_timeout = {set, _TRef1}} = PK
 
 bytes_free(PktBuf, PktInfo) ->
     MaxSend = max_window_send(PktBuf, PktInfo),
-    case inflight_packets(PktBuf) of
+    case inflight_bytes(PktBuf) of
         buffer_full ->
             0;
         buffer_empty ->
@@ -452,13 +452,13 @@ bytes_free(PktBuf, PktInfo) ->
 payload_size(#pkt_wrap { packet = Packet }) ->
     byte_size(Packet#packet.payload).
 
-inflight_packets(#pkt_buf{ retransmission_queue = [],
+inflight_bytes(#pkt_buf{ retransmission_queue = [],
                            send_nagle = none }) ->
     buffer_empty;
-inflight_packets(#pkt_buf{ retransmission_queue = [],
+inflight_bytes(#pkt_buf{ retransmission_queue = [],
                            send_nagle = {nagle, Bin}}) ->
     {ok, byte_size(Bin)};
-inflight_packets(#pkt_buf{ retransmission_queue = Q,
+inflight_bytes(#pkt_buf{ retransmission_queue = Q,
                            send_nagle = N }) ->
     Nagle = case N of
                 none -> 0;
