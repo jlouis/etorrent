@@ -10,7 +10,13 @@
         code_change/3]).
 
 init('_') -> ok.
-handle_call('_', '_', '_') -> ok.
+
+
+handle_call({register_peer, Pid}, _, State) ->
+    %% Initialize peer data structures
+    {reply, ok, State}.
+
+
 handle_cast('_', '_') -> ok.
 handle_info('_', '_') -> ok.
 terminate('_', '_') -> ok.
