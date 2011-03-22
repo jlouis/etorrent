@@ -367,7 +367,7 @@ transmit_packet(Bin,
                            retransmission_queue = RetransQueue } = Buf,
                 SockInfo) ->
     P = #packet { ty = st_data,
-                  conn_id = utp_sock_info:conn_id(SockInfo),
+                  conn_id = utp_socket:conn_id(SockInfo),
                   win_sz  = WindowSize,
                   seq_no  = SeqNo,
                   ack_no  = AckNo,

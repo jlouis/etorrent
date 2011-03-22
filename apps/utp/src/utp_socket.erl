@@ -4,6 +4,7 @@
 
 -export([
          mk/5,
+         conn_id/1,
          set_conn_id/2
         ]).
 
@@ -37,6 +38,9 @@ mk(Addr, Opts, PacketSize, Port, Socket) ->
                  conn_id = not_set,
                  timestamp_difference = 0
                }.
+
+conn_id(#sock_info { conn_id = C }) ->
+    C.
 
 send_pkt(#sock_info { socket = Socket,
                       addr = Addr,
