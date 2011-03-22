@@ -1,6 +1,8 @@
 ### "Real" TODO:
 
 * Try to transfer data on the UTP socket, don't close the socket again.
+** This should be tried for real now. ^^^
+
 * Move lots of data, testing the window code as it is right now.
 * Window alterations
 * Retransmit timers

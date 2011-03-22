@@ -91,7 +91,7 @@ accept() ->
 %% @end
 -spec send(utp_socket(), iolist()) -> ok | {error, term()}.
 send({utp_sock, Pid}, Msg) ->
-    gen_utp_worker:send(Pid, Msg).
+    gen_utp_worker:send(Pid, iolist_to_binary(Msg)).
 
 %% @doc Receive a message with a timeout
 %% @end

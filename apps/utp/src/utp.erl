@@ -26,7 +26,8 @@ ensure_started([App | R]) ->
 
 connector() ->
     start(3334),
-    gen_utp:connect("localhost", 3333).
+    Sock = gen_utp:connect("localhost", 3333),
+    gen_utp:send(Sock, "HELLO").
 
 connectee() ->
     start(3333),

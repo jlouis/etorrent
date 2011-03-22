@@ -96,7 +96,8 @@
           opt_recv_buf_sz = ?OPT_RECV_BUF :: integer(),
 
 	  %% The maximal size of packets.
-	  pkt_size :: integer()
+          %% @todo Discover this one
+	  pkt_size = 1000 :: integer()
          }).
 -type buf() :: #pkt_buf{}.
 
@@ -415,11 +416,11 @@ fill_window(SockInfo, ProcQueue, PktWindow, PktBuf) ->
 
 last_recv_window(#pkt_buf { opt_recv_buf_sz = RSz },
                  ProcQueue) ->
-    BufSize = pkt_process:bytes_in_recv_buffer(ProcQueue),
-    Size = if RSz > BufSize -> RSz - BufSize;
-              true          -> 0
-           end,
-    Size.
+    BufSize = utp_process:bytes_in_recv_buffer(ProcQueue),
+    case RSz - BufSize of
+        K when K > 0 -> K;
+        _Otherwise   -> 0
+    end.
 
 zerowindow_timeout(TRef, #pkt_window { peer_advertised_window = 0,
                                      zero_window_timeout = {set, TRef}} = PKI) ->
