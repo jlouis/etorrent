@@ -60,6 +60,14 @@ common_test: rel
 	mkdir -p logs
 	${CT_RUN} -spec etorrent_test.spec
 
+cover_test:
+	mkdir -p logs
+# Unpack stuff.
+	rm -fr rel/etorrent/lib/etorrent-*/ebin
+	cd rel/etorrent/lib && unzip -o etorrent-*.ez
+# Run cover test
+	${CT_RUN} -spec etorrent_test.spec -cover etorrent.coverspec
+
 console:
 	dev/etorrent-dev/bin/etorrent console \
 		-pa ../../apps/etorrent/ebin \
