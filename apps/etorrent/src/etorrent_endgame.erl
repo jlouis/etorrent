@@ -16,13 +16,22 @@ handle_call({register_peer, Pid}, _, State) ->
     %% Initialize peer data structures
     {reply, ok, State};
 
+handle_call({sent_request, Pid, Index, Offset, Length}, _, State) ->
+    %% Add the chunk to the set of open requests
+    %% Add the peer as the only one having sent the request
+    {reply, ok, State};
+
+handle_call({which_peers, Pid, Index, Offset, Length}, _, State) ->
+    %% Find out which other peers have sent the request
+    {reply, {ok, []}, State};
+
 handle_call({request_chunks, Pid, Peerset, Numchunks}, _, State) ->
     %% Find out which chunks are a good fit
     %% Add Pid the set of peers having open requests for these chunks
     %% Return the chunks to the peer
     {reply, {ok, []}, State};
 
-handle_call({mark_fetched, Pid, Index, Offset, Length}, _ State) ->
+handle_call({mark_fetched, Pid, Index, Offset, Length}, _, State) ->
     %% Ensure that request_chunks does not return this chunk unless
     %% the peer crashes
     {reply, ok, State};
