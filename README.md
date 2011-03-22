@@ -53,13 +53,19 @@ especially if the client behaves badly.
 ## Required software:
 
    * rebar - you need a working rebar installation to build etorrent.
-     The rebar must have commit 618b292c3d84.
+     The rebar must have commit 618b292c3d84. It is known that rebar
+     version `rebar version: 2 date: 20110310_155239 vcs: git 2e1b4da`
+     works, and later versions probably will too.
    * Erlang/OTP R13B04 or R14 - the etorrent system is written in
      Erlang and thus requires a working Erlang distribution to
      work. It may work with older versions, but has mostly been tested
      with newer versions.
-   * A proper operating system (e.g., some UNIX-derivative). Windows
-     support has been tested by mulander and is reported to work with
+
+     If you have the option, running on R14B02 is preferred. The
+     developers are usually running on fairly recent Erlang/OTP
+     releases, so you have much better chances with these systems.
+   * A UNIX-derivative or Windows as the operating system
+     Support has been tested by mulander and is reported to work with
      some manual labor. For details see the Windows getting started section.
 
 ## GETTING STARTED

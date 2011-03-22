@@ -37,13 +37,14 @@
 -record(requestqueue, {
     low_limit  :: non_neg_integer(),
     high_limit :: pos_integer(),
-    queue :: queue()}).
--opaque requestqueue() :: #requestqueue{}.
+    queue      :: queue()}).
+-opaque rqueue() :: #requestqueue{}.
+-export_type([rqueue/0]).
 
 
 %% @doc Create an empty request queue with default pipeline thresholds
 %% @end
--spec new() -> requestqueue().
+-spec new() -> rqueue().
 new() ->
     new(2, 10).
 
@@ -58,7 +59,7 @@ to_list(Requestqueue) ->
 
 %% @doc Create an empty request queue and specify pipeline thresholds
 %% @end
--spec new(non_neg_integer(), pos_integer()) -> requestqueue().
+-spec new(non_neg_integer(), pos_integer()) -> rqueue().
 new(Lowthreshold, Highthreshold) ->
     InitQueue = #requestqueue{
         low_limit=Lowthreshold,
@@ -71,7 +72,7 @@ new(Lowthreshold, Highthreshold) ->
 %% The queue returns a new queue including the new request.
 %% @end
 -spec push(pieceindex(), chunkoffset(),
-           chunklength(), #requestqueue{}) -> requestqueue().
+           chunklength(), #requestqueue{}) -> rqueue().
 push(Pieceindex, Offset, Length, Requestqueue) ->
     #requestqueue{queue=Queue} = Requestqueue,
     NewQueue = queue:in({Pieceindex, Offset, Length}, Queue),
@@ -81,7 +82,7 @@ push(Pieceindex, Offset, Length, Requestqueue) ->
 %% @doc Push a list of requests onto the end of the request queue
 %% The function returns a new queue including the new requests.
 %% @end
--spec push([requestspec()], #requestqueue{}) -> requestqueue().
+-spec push([requestspec()], #requestqueue{}) -> rqueue().
 push(Requests, Requestqueue) ->
     #requestqueue{queue=Queue} = Requestqueue,
     TmpQueue = queue:from_list(Requests),
@@ -92,7 +93,7 @@ push(Requests, Requestqueue) ->
 %% @doc Return the head of the request queue and the tail of the queue
 %% If the request queue is empty the function will throw a badarg error.
 %% @end
--spec pop(#requestqueue{}) -> {requestspec(), requestqueue()}.
+-spec pop(#requestqueue{}) -> {requestspec(), rqueue()}.
 pop(Requestqueue) ->
     #requestqueue{queue=Queue} = Requestqueue,
     case queue:out(Queue) of
@@ -107,12 +108,12 @@ pop(Requestqueue) ->
 %% @doc Return the head of the queue
 %% If the queue is empty this function will return false.
 %% @end
--spec peek(#requestqueue{}) -> false | requestspec().
+-spec peek(rqueue()) -> false | requestspec().
 peek(Requestqueue) ->
     #requestqueue{queue=Queue} = Requestqueue,
-    case queue:is_empty(Queue) of
-        true  -> false;
-        false -> queue:get(Queue)
+    case queue:peek(Queue) of
+        empty -> false;
+        {value, {_,_,_}=Head} -> Head
     end.
 
 
@@ -127,19 +128,21 @@ size(Requestqueue) ->
 %% @doc Check if a request is at the head of the request queue
 %% @end
 -spec is_head(pieceindex(), chunkoffset(),
-              chunklength(), #requestqueue{}) -> boolean().
+              chunklength(), rqueue()) -> boolean().
 is_head(Pieceindex, Offset, Length, Requestqueue) ->
-    Req = {Pieceindex, Offset, Length},
+    I = Pieceindex,
+    O = Offset,
+    L = Length,
     case peek(Requestqueue) of
-        false -> false;
-        Req   -> true;
-        _     -> false
+        false   -> false;
+        {I,O,L} -> true;
+        _       -> false
     end.
 
 
 %% @doc Check if the offset of a request matches the head of the queue
 %% @end
--spec has_offset(pieceindex(), chunkoffset(), #requestqueue{}) -> boolean().
+-spec has_offset(pieceindex(), chunkoffset(), rqueue()) -> boolean().
 has_offset(Pieceindex, Offset, Requestqueue) ->
     I = Pieceindex,
     O = Offset,

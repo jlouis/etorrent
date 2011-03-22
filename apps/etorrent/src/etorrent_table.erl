@@ -327,6 +327,7 @@ init([]) ->
     ets:new(path_map, [public, {keypos, #path_map.id}, named_table]),
     ets:new(peers, [named_table, {keypos, #peer.pid}, public]),
     ets:new(tracking_map, [named_table, {keypos, #tracking_map.id}, public]),
+    ets:new(?TAB_UPNP, [named_table, public, set]),
     ets:new(histogram, [named_table, {keypos, 1}, public, bag]),
     {ok, #state{ monitoring = dict:new() }}.
 
