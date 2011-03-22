@@ -20,7 +20,7 @@
 	  packet_size :: integer(),
 	  port        :: 0..16#FFFF,
 	  socket      :: gen_udp:socket(),
-          conn_id     :: integer(),
+          conn_id     :: 'not_set' | integer(),
           timestamp_difference :: integer()
 	 }).
 -opaque t() :: #sock_info{}.

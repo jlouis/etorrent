@@ -196,18 +196,15 @@ connected({pkt, Pkt, {_TS, _TSDiff, RecvTime}},
 			     pkt_buf  = PB,
 			     proc_info = PRI
                  } = S) ->
+    %% @todo I think most of this code path is wrong at the moment
     case utp_pkt:handle_packet(RecvTime, connected, Pkt, PKI, PB) of
 	{ok, N_PB1, N_PKI, StateAlter} ->
 	    {N_PRI, N_PB} =
 		case satisfy_recvs(PRI, N_PB1) of
-		    {ok, PR, PB} -> {PR, PB};
-		    {rb_drained, PR, PB} ->
-			case utp_pkt:rb_drained(PB) of
-			    ok -> ok;
-			    send_ack -> todo;
-			    ack_timer -> todo
-			end,
-			{PR, PB}
+		    {ok, PR1, PB1} ->
+                        {PR1, PB1};
+		    {rb_drained, _PR, _PB} ->
+                        todo
 		end,
 	    {next_state, connected,
 	     S#state { pkt_info = N_PKI,
