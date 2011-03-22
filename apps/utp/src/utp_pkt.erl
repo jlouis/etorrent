@@ -37,7 +37,7 @@
 
 %% TYPES
 %% ----------------------------------------------------------------------
--record(pkt_info, {
+-record(pkt_window, {
 	  got_fin :: boolean(),
 	  eof_pkt :: 0..16#FFFF, % The packet with the EOF flag
 
@@ -61,7 +61,7 @@
 	 }).
 
 
--type t() :: #pkt_info{}.
+-type t() :: #pkt_window{}.
 
 -record(pkt_wrap, {
 	  packet            :: utp_proto:packet(),
@@ -116,14 +116,14 @@
 %% ----------------------------------------------------------------------
 
 max_window_send(#pkt_buf { opt_snd_buf_sz = SendBufSz },
-                #pkt_info { peer_advertised_window = AdvertisedWindow,
+                #pkt_window { peer_advertised_window = AdvertisedWindow,
                             max_send_window = MaxSendWindow }) ->
     lists:min([SendBufSz, AdvertisedWindow, MaxSendWindow]).
 
 
 -spec mk() -> t().
 mk() ->
-    #pkt_info { }.
+    #pkt_window { }.
 
 mk_buf(none)    -> #pkt_buf{};
 mk_buf(OptRecv) ->
@@ -163,7 +163,7 @@ handle_packet(_CurrentTimeMs,
 			payload = Payload,
 			win_sz  = WindowSize,
 			ty = Type } = _Packet,
-	      PktInfo,
+	      PktWindow,
 	      PacketBuffer) ->
     %% Assertions
     %% ------------------------------
@@ -184,7 +184,7 @@ handle_packet(_CurrentTimeMs,
     end,
     %% State update
     %% ------------------------------
-    {FinState, N_PKI} = handle_fin(Type, SeqNo, PktInfo),
+    {FinState, N_PKI} = handle_fin(Type, SeqNo, PktWindow),
     N_PB = case update_recv_buffer(SeqAhead, Payload, PacketBuffer) of
 	       duplicate -> PacketBuffer; % Perhaps do something else here
 	       #pkt_buf{} = PB -> PB
@@ -215,17 +215,17 @@ handle_packet(_CurrentTimeMs,
     {ok, N_PB1#pkt_buf { last_ack = AckNo },
          N_PKI1, FinState ++ DestroyState ++ NagleState}.
 
-handle_fin(st_fin, SeqNo, #pkt_info { got_fin = false } = PKI) ->
-    {[fin], PKI#pkt_info { got_fin = true,
+handle_fin(st_fin, SeqNo, #pkt_window { got_fin = false } = PKI) ->
+    {[fin], PKI#pkt_window { got_fin = true,
 			   eof_pkt = SeqNo }};
 handle_fin(_, _, PKI) -> {[], PKI}.
 
 handle_window_size(0, PKI) ->
     TRef = erlang:send_after(?ZERO_WINDOW_DELAY, self(), zero_window_timeout),
-    PKI#pkt_info { zero_window_timeout = {set, TRef},
+    PKI#pkt_window { zero_window_timeout = {set, TRef},
 		   peer_advertised_window = 0};
 handle_window_size(WindowSize, PKI) ->
-    PKI#pkt_info { peer_advertised_window = WindowSize }.
+    PKI#pkt_window { peer_advertised_window = WindowSize }.
 
 update_send_buffer(AcksAhead, WindowStart, PB) ->
     {Acked, PB} = update_send_buffer1(AcksAhead, WindowStart, PB),
@@ -390,38 +390,38 @@ consider_nagle_transmit(#pkt_buf { retransmission_queue = [], send_nagle = {nagl
                         SockInfo, WindowSize) ->
     transmit_packet(Bin, WindowSize, Buf, SockInfo).
 
-fill_window(SockInfo, ProcInfo, PktInfo, PktBuf) ->
-    {BytesFree1, TransmitQueue1,
-     PktBuf1, ProcInfo1} = fill_nagle(bytes_free(PktBuf, PktInfo),
+fill_window(SockInfo, ProcQueue, PktWindow, PktBuf) ->
+    {RemainingBytes, TransmitQueue1,
+     PktBuf1, ProcQueue1} = fill_nagle(bytes_free(PktBuf, PktWindow),
                                       queue:new(),
-                                      PktBuf, ProcInfo),
-    {TransmitQueue2, ProcInfo2} =  fill_packets(BytesFree1,
-                                                PktBuf1#pkt_buf.pkt_size,
-                                                TransmitQueue1, ProcInfo1),
-    WindowSize = last_recv_window(PktBuf1, ProcInfo2),
+                                      PktBuf, ProcQueue),
+    {TransmitQueue2, ProcQueue2} =  fill_packets(RemainingBytes,
+                                                 PktBuf1#pkt_buf.pkt_size,
+                                                 TransmitQueue1, ProcQueue1),
+    WindowSize = last_recv_window(PktBuf1, ProcQueue2),
     PKB2 = transmit_queue(TransmitQueue2, WindowSize, PktBuf1, SockInfo),
     PKB3 = consider_nagle_transmit(PKB2, SockInfo, WindowSize),
-    {ok, PKB3, ProcInfo2}.
+    {ok, PKB3, ProcQueue2}.
 
 last_recv_window(#pkt_buf { opt_recv_buf_sz = RSz },
-                 ProcInfo) ->
-    BufSize = pkt_process:bytes_in_recv_buffer(ProcInfo),
+                 ProcQueue) ->
+    BufSize = pkt_process:bytes_in_recv_buffer(ProcQueue),
     Size = if RSz > BufSize -> RSz - BufSize;
               true          -> 0
            end,
     Size.
 
-zerowindow_timeout(TRef, #pkt_info { peer_advertised_window = 0,
+zerowindow_timeout(TRef, #pkt_window { peer_advertised_window = 0,
                                      zero_window_timeout = {set, TRef}} = PKI) ->
-                   PKI#pkt_info { peer_advertised_window = packet_size(PKI),
+                   PKI#pkt_window { peer_advertised_window = packet_size(PKI),
                                   zero_window_timeout = none };
-zerowindow_timeout(TRef,  #pkt_info { zero_window_timeout = {set, TRef}} = PKI) ->
-    PKI#pkt_info { zero_window_timeout = none };
-zerowindow_timeout(_TRef,  #pkt_info { zero_window_timeout = {set, _TRef1}} = PKI) ->
+zerowindow_timeout(TRef,  #pkt_window { zero_window_timeout = {set, TRef}} = PKI) ->
+    PKI#pkt_window { zero_window_timeout = none };
+zerowindow_timeout(_TRef,  #pkt_window { zero_window_timeout = {set, _TRef1}} = PKI) ->
     PKI.
 
-bytes_free(PktBuf, PktInfo) ->
-    MaxSend = max_window_send(PktBuf, PktInfo),
+bytes_free(PktBuf, PktWindow) ->
+    MaxSend = max_window_send(PktBuf, PktWindow),
     case inflight_bytes(PktBuf) of
         buffer_full ->
             0;
@@ -484,13 +484,13 @@ can_write(CurrentTime, Size, PacketSize, CurrentWindow,
     %% should be set in other ways I think. It has nothing to do with the question of
     %% we can write on the socket or not!
     PacketExceed = CurrentWindow + PacketSize >= MaxWindow,
-    {Res, PKI#pkt_info {
+    {Res, PKI#pkt_window {
 	    last_maxed_out_window =
 		case PacketExceed of
 		    true ->
 			CurrentTime;
 		    false ->
-			PKI#pkt_info.last_maxed_out_window
+			PKI#pkt_window.last_maxed_out_window
 	       end
 	  }}.
 -endif.
