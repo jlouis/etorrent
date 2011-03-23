@@ -9,7 +9,13 @@
         terminate/2,
         code_change/3]).
 
-init('_') -> ok.
+-record(state, {
+    requests :: gb_tree()}).
+
+init([]) ->
+    InitState = #state{
+        requests=gb_trees:empty()},
+    {ok, InitState}.
 
 
 handle_call({register_peer, Pid}, _, State) ->
@@ -17,9 +23,13 @@ handle_call({register_peer, Pid}, _, State) ->
     {reply, ok, State};
 
 handle_call({sent_request, Pid, Index, Offset, Length}, _, State) ->
-    %% Add the chunk to the set of open requests
-    %% Add the peer as the only one having sent the request
-    {reply, ok, State};
+    #state{requests=Requests} = State,
+    %% Expect that peers only reports sent requests to the endgame
+    %% process if the origin of the request was the chunk manager and
+    %% that the chunk manager does not duplicate requests.
+    NewRequests = gb_trees:insert({Index, Offset, Length}, [Pid], Requests),
+    NewState = State#state{requests=NewRequests},
+    {reply, ok, NewState};
 
 handle_call({which_peers, Pid, Index, Offset, Length}, _, State) ->
     %% Find out which other peers have sent the request
