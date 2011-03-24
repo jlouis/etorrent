@@ -1,8 +1,9 @@
 ### "Real" TODO:
 
 * Try to transfer data on the UTP socket, don't close the socket again.
-** This should be tried for real now. ^^^
-
+** Send path is ok
+** Receive path fails:
+     {utp_pkt,update_send_buffer,3} (badmatch, {pkt_buf, ...})
 * Move lots of data, testing the window code as it is right now.
 * Window alterations
 * Retransmit timers
