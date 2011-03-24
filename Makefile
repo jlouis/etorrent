@@ -73,6 +73,7 @@ test: eunit common_test
 CT_RUN=rel/etorrent/erts-*/bin/ct_run
 ct_src_dir := rel/etorrent/lib/etorrent-${version}/src
 
+<<<<<<< HEAD
 ct_setup: rel
 	echo ${ct_src_dir}
 	mkdir -p logs
@@ -81,6 +82,21 @@ ct_setup: rel
 	cd rel/etorrent/lib && unzip -o etorrent-*.ez
 	mkdir -p ${ct_src_dir} && \
 		cp -r apps/etorrent/src/* ${ct_src_dir}
+=======
+common_test: rel
+	mkdir -p logs
+# Unpack stuff.
+	rm -fr rel/etorrent/lib/etorrent-*/ebin
+	cd rel/etorrent/lib && unzip -o etorrent-*.ez && unzip -o utp-*.ez
+# Run cover test
+	${CT_RUN} -spec etorrent_test.spec
+
+cover_test:
+	mkdir -p logs
+# Unpack stuff.
+	rm -fr rel/etorrent/lib/etorrent-*/ebin
+	cd rel/etorrent/lib && unzip -o etorrent-*.ez && unzip -o utp-*.ez
+>>>>>>> Improve Coverage tracking code.
 # Run cover test
 
 common_test: ct_setup rel
