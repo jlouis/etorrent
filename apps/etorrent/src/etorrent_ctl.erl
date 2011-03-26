@@ -47,7 +47,7 @@ start(File) ->
 %% @end
 -spec start(string(), none | fun (() -> any())) -> ok | {error, term()}.
 start(File, CallBack) ->
-    gen_server:call(?SERVER, {start, File, CallBack}, 15*1000).
+    gen_server:call(?SERVER, {start, File, CallBack}, infinity).
 
 % @doc Check a torrents contents
 % @end
