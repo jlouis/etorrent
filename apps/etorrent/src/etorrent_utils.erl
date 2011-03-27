@@ -169,8 +169,8 @@ shutdown(Pid) ->
 %% @doc Return the first element in the list that matches a condition
 %% If no element matched the condition 'false' is returned.
 %% @end
--spec find(fun((term()) -> boolean()), [term]) -> false.
-find(Condition, []) ->
+-spec find(fun((term()) -> boolean()), [term]) -> false | term().
+find(_, []) ->
     false;
 
 find(Condition, [H|T]) ->
