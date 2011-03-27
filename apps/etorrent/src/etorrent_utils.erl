@@ -22,6 +22,11 @@
 %% "bittorrent-like" functions
 -export([decode_ips/1]).
 
+%% "registry-like" functions
+-export([register/1,
+         lookup/1,
+         await/1]).
+
 %%====================================================================
 
 %% @doc Graceful split.
@@ -159,6 +164,31 @@ shutdown(Pid) ->
     unlink(Pid),
     exit(Pid, shutdown),
     wait(MRef).
+
+
+%% @doc Register the local process under a local name
+%% @end
+-spec register(tuple()) -> true.
+register(Name) ->
+    gproc:add_local_name(Name).
+
+
+%% @doc Resolve a local name to a pid
+%% @end
+-spec lookup(tuple()) -> pid().
+lookup(Name) ->
+    gproc:lookup_local_name(Name).
+
+
+%% @doc Wait until a process registers under a local name
+%% @end
+-spec await(tuple()) -> pid().
+await(Name) ->
+    {Pid, undefined} = gproc:await({n, l, Name}, 5000),
+    Pid.
+
+
+
 
 
 %%====================================================================
