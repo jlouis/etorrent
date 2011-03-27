@@ -25,7 +25,7 @@
 
 
 -record(state, {
-    endgame  :: pid(),
+    endgame  :: etorrent_endgame:originhandle(),
     receiver :: pid(),
     table :: ets:tid()}).
 
@@ -121,7 +121,7 @@ mark_stored(Piece, Offset, Length, {peer, SrvPid}) ->
 init([TorrentID]) ->
     true = register_server(TorrentID),
     Progress = etorrent_progress:await_server(TorrentID),
-    Endgame = etorrent_endgame:await_server(TorrentID),
+    Endgame = etorrent_endgame:originhandle(TorrentID),
     Table = ets:new(none, [private, set]),
     InitState = #state{
         receiver=Progress,
@@ -142,8 +142,7 @@ handle_call({register_peer, Pid}, _, State) ->
 handle_call(start_endgame, _, State) ->
     #state{endgame=Endgame, table=Table} = State,
     ReqTerm  = {'$1', '$2', '$3', '$4'},
-    ReqHead  = {ReqTerm},
-    Requests = ets:select(Table, {ReqHead, [], ReqTerm}),
+    Requests = ets:select(Table, [{{ReqTerm}, [], [ReqTerm]}]),
     [etorrent_endgame:mark_sent(I, O, L, P, Endgame) || {I, O, L, P} <- Requests],
     NewState = State#state{receiver=Endgame},
     {reply, ok, NewState}.
