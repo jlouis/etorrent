@@ -14,7 +14,7 @@
 -export([gsplit/2, queue_remove/2, group/1,
 	 list_shuffle/1, date_str/1, any_to_list/1,
      merge_proplists/2, compare_proplists/2,
-     wait/1, expect/1, shutdown/1]).
+     find/2, wait/1, expect/1, shutdown/1]).
 
 %% "time-like" functions
 -export([now_subtract_seconds/2]).
@@ -166,6 +166,20 @@ shutdown(Pid) ->
     wait(MRef).
 
 
+%% @doc Return the first element in the list that matches a condition
+%% If no element matched the condition 'false' is returned.
+%% @end
+-spec find(fun((term()) -> boolean()), [term]) -> false.
+find(Condition, []) ->
+    false;
+
+find(Condition, [H|T]) ->
+    case Condition(H) of
+        true  -> H;
+        false -> find(Condition, T)
+    end.
+    
+
 %% @doc Register the local process under a local name
 %% @end
 -spec register(tuple()) -> true.
@@ -194,6 +208,16 @@ await(Name) ->
 %%====================================================================
 
 -ifdef(EUNIT).
+-define(utils, ?MODULE).
+
+find_test_nomatch() ->
+    False = fun(_) -> false end,
+    ?assertEqual(false, ?utils:find(False, [1,2,3])).
+
+find_test_match() ->
+    Last = fun(E) -> E == 3 end,
+    ?assertEqual(3, ?utils:find(Last, [1,2,3])).
+
 -ifdef(PROPER).
 
 prop_gsplit_split() ->
