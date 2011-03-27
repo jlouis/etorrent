@@ -45,7 +45,7 @@
 %% on a torrent.</p>
 %% @end
 %%-------------------------------------------------------------------
--module(etorrent_chunk_mgr).
+-module(etorrent_progress).
 -behaviour(gen_server).
 
 -include("log.hrl").

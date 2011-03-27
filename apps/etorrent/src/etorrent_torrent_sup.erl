@@ -55,10 +55,11 @@ init([{Torrent, TorrentPath, TorrentIH}, PeerID, TorrentID]) ->
     Children = [
         scarcity_manager_spec(TorrentID, Torrent),
         torrent_control_spec(TorrentID, Torrent, TorrentPath, TorrentIH, PeerID),
-        chunk_manager_spec(TorrentID, Torrent),
+        progress_spec(TorrentID, Torrent),
         io_sup_spec(TorrentID, Torrent),
         peer_pool_spec(TorrentID)],
     {ok, {{one_for_all, 1, 60}, Children}}.
+
 
 scarcity_manager_spec(TorrentID, Torrent) ->
     Numpieces = length(etorrent_io:piece_sizes(Torrent)),
@@ -66,15 +67,14 @@ scarcity_manager_spec(TorrentID, Torrent) ->
         {etorrent_scarcity, start_link, [TorrentID, Numpieces]},
         permanent, 5000, worker, [etorrent_scarcity]}.
 
-
-chunk_manager_spec(TorrentID, Torrent) ->
+progress_spec(TorrentID, Torrent) ->
     ValidPieces = [], % TODO - retrieve this from a persistent state-file/table.
     PieceSizes  = etorrent_io:piece_sizes(Torrent), 
     ChunkSize   = 16#4000, % TODO - get this value from a configuration file
     Args = [TorrentID, ChunkSize, ValidPieces, PieceSizes, lookup],
     {chunk_mgr,
-        {etorrent_chunk_mgr, start_link, Args},
-        permanent, 5000, worker, [etorrent_chunk_mgr]}.
+        {etorrent_progress, start_link, Args},
+        permanent, 20000, worker, [etorrent_progress]}.
 
 torrent_control_spec(TorrentID, Torrent, TorrentFile, TorrentIH, PeerID) ->
     {control,

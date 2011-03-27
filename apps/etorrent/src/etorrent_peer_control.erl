@@ -20,6 +20,7 @@
         choke/1,
         unchoke/1,
         have/2,
+        cancel/4,
         initialize/2,
         incoming_msg/2,
         stop/1]).
@@ -60,8 +61,7 @@
     local_pieces  = unknown :: unknown | pieceset(),
     piece_request = [] :: list(),
 
-    %% Are we in endgame mode?
-    endgame = false  :: boolean(),
+    download :: etorrent_download:peerhandle(),
     send_pid :: pid(),
     rate  :: etorrent_rate:rate(),
     torrent_id :: integer()}).
@@ -109,7 +109,8 @@ have(Pid, PieceNumber) ->
 %% wish to either cancel the request or remove it from the request
 %% queue before it is sent out if possible.</p>
 %% @end
-endgame_got_chunk(Pid, Chunk) ->
+cancel(Pid, Piece, Offset, Length) ->
+    Chunk = {chunk, Piece, Offset, Length},
     gen_server:cast(Pid, {endgame_got_chunk, Chunk}).
 
 %% @doc Initialize the connection.
@@ -146,7 +147,7 @@ init([TrackerUrl, LocalPeerId, InfoHash, Id, {IP, Port}, Caps, Socket]) ->
     random:seed(now()),
     ok = etorrent_table:new_peer(TrackerUrl, IP, Port, Id, self(), leeching),
     ok = etorrent_choker:monitor(self()),
-    true = etorrent_chunk_mgr:register_peer(Id),
+    Download = etorrent_download:peerhandle(Id),
     {value, NumPieces} = etorrent_torrent:num_pieces(Id),
     gproc:add_local_name({peer, Socket, control}),
     {ok, #state{
@@ -156,7 +157,8 @@ init([TrackerUrl, LocalPeerId, InfoHash, Id, {IP, Port}, Caps, Socket]) ->
        remote_request_set = gb_sets:empty(),
        info_hash = InfoHash,
        torrent_id = Id,
-       extended_messaging = proplists:get_bool(extended_messaging, Caps)}}.
+       extended_messaging = proplists:get_bool(extended_messaging, Caps),
+       download = Download }}.
 
 %% @private
 handle_cast({initialize, Way}, S) ->
@@ -251,9 +253,10 @@ handle_message(keep_alive, S) ->
 handle_message(choke, State) ->
     #state{
         torrent_id=TorrentID,
-        fast_extension=FastEnabled} = State,
+        fast_extension=FastEnabled,
+        download=Download} = State,
     ok = etorrent_peer_states:set_choke(TorrentID, self()),
-    ok = etorrent_chunk_mgr:mark_all_dropped(TorrentID),
+    ok = etorrent_download:mark_dropped(Download),
     NewState = case FastEnabled of
         true ->
             etorrent_table:foreach_peer(TorrentID, fun try_queue_pieces/1),
@@ -342,20 +345,28 @@ handle_message({bitfield, Bin}, State) ->
         invalid_piece ->
             {stop, {invalid_piece_2, RemoteID}, State}
     end;
+
 handle_message({piece, Index, Offset, Data}, State) ->
     #state{
         torrent_id=TorrentID,
-        endgame=InEndgame,
+        download=Download,
         remote_request_set=Requests} = State,
-    case handle_got_chunk(Index, Offset, Data, Requests, TorrentID) of
-	    {ok, Requests} ->
-	        try_to_queue_up_pieces(State);
-        {ok, NewRequests} ->
-            ChunkSpec = {Index, Offset, byte_size(Data)},
-	        handle_endgame(TorrentID, ChunkSpec, InEndgame),
-            NewState = State#state{remote_request_set=NewRequests},
-	        try_to_queue_up_pieces(NewState)
-    end;
+
+    Length = byte_size(Data),
+    NewRequests = case gb_sets:is_member({Index, Offset, Length}, Requests) of
+        true ->
+            ok = etorrent_download:mark_fetched(Index, Offset, Length, Download),
+            ok = etorrent_io:write_chunk(TorrentID, Index, Offset, Data),
+            ok = etorrent_download:mark_stored(Index, Offset, Length, Download),
+            gb_sets:delete({Index, Offset, Length}, Requests);
+        false ->
+            %% Stray piece, we could try to get hold of it but for now we just
+            %% throw it on the floor.
+            Requests
+    end,
+    NewState = State#state{remote_request_set=NewRequests},
+	try_to_queue_up_pieces(State);
+
 handle_message({extended, _, _}, S) when S#state.extended_messaging == false ->
     %% We do not accept extended messages unless they have been enabled.
     {stop, normal, S};
@@ -383,30 +394,6 @@ handle_endgame_got_chunk({chunk, Index, Offset, Len}, S) ->
             S
     end.
 
-%% @doc Handle the case where we may be in endgame correctly.
-handle_endgame(_TorrentId, _Chunk, false) -> ok;
-handle_endgame(TorrentId, {Index, Offset, Len}, true) ->
-    {ok, First} = etorrent_chunk_mgr:mark_fetched(TorrentId, Index, Offset, Len),
-    ok.
-
-%% @doc Process an incoming chunk in normal mode
-%%   returns an updated request set
-%% @end
-handle_got_chunk(Index, Offset, Data, Reqs, TorrentID) ->
-    Len = byte_size(Data),
-    case gb_sets:is_member({Index, Offset, Len}, Reqs) of
-        true ->
-            {ok, _} = etorrent_chunk_mgr:mark_fetched(TorrentID, Index, Offset, Len),
-            ok = etorrent_io:write_chunk(TorrentID, Index, Offset, Data),
-            ok = etorrent_chunk_mgr:mark_stored(TorrentID, Index, Offset, Len),
-            %% Tell other peers we got the chunk if in endgame
-            NewReqs = gb_sets:delete_any({Index, Offset, Len}, Reqs),
-            {ok, NewReqs};
-        false ->
-            %% Stray piece, we could try to get hold of it but for now we just
-            %%   throw it on the floor.
-            {ok, Reqs}
-    end.
 
 %% @doc Description: Try to queue up requests at the other end.
 %%   Is called in many places with the state as input as the final thing
@@ -419,14 +406,15 @@ try_to_queue_up_pieces(State) ->
         torrent_id=TorrentID,
         send_pid=SendPid,
         remote_pieces=Pieceset,
-        remote_request_set=OpenRequests} = State,
+        remote_request_set=OpenRequests,
+        download=Download} = State,
     case gb_sets:size(OpenRequests) of
         N when N > ?LOW_WATERMARK ->
             {ok, State};
         %% Optimization: Only replenish pieces modulo some N
         N when is_integer(N) ->
             Numchunks = ?HIGH_WATERMARK - N,
-            case etorrent_chunk_mgr:request_chunks(TorrentID, Pieceset, Numchunks) of
+            case etorrent_download:request_chunks(Pieceset, Numchunks, Download) of
                 {ok, not_interested} ->
                     statechange_interested(State, false),
                     {ok, State#state{local_interested=false}};
