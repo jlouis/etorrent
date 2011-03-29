@@ -8,6 +8,7 @@
          size/1,
          min/1,
          min/2,
+         is_empty/1,
          delete/2,
          delete/3,
          insert/3,
@@ -89,6 +90,14 @@ min_(Chunkset, Numchunks) ->
             Without = delete(Start, End, Chunkset),
             [Chunk|min_(Without, Numchunks - 1)]
     end.
+
+
+%% @doc Check is a chunkset is empty
+%% @end
+is_empty(Chunkset) ->
+    #chunkset{chunks=Chunks} = Chunkset,
+    Chunks == [].
+
 
 %% @doc
 %%
@@ -178,6 +187,14 @@ min_empty_test() ->
 min_zero_test() ->
     Set = ?set:from_list(2, 1, [{0,0}]),
     ?assertEqual({0,1}, ?set:min(Set)).
+
+is_empty_test() ->
+    Set = ?set:from_list(2, 1, []),
+    ?assert(?set:is_empty(Set)).
+
+not_is_empty_test() ->
+    Set = ?set:from_list(2, 1, [{0,0}]),
+    ?assertNot(?set:is_empty(Set)).
 
 delete_invalid_length_test() ->
     ?assertError(badarg, ?set:delete(0, 0, ?set:new(32, 2))),
