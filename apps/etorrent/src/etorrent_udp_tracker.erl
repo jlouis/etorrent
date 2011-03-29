@@ -32,6 +32,8 @@
 -type ipaddr() :: etorrent_types:ipaddr().
 -type portnum() :: etorrent_types:portnum().
 -type from_tag() :: etorrent_types:from_tag().
+-type tracker_id() :: {ipaddr(), portnum()}.
+-type conn_id() :: integer().
 -record(state, { try_count = -1 :: integer(),
 	         tracker        :: tracker_id(),
 		 ty             :: announce | connid_gather,
@@ -39,8 +41,6 @@
 		 reply = none   :: none | from_tag(),
 		 properties = [] :: [{term(), term()}], % Proplist
 	         tid = none      :: none | binary() }).
--type tracker_id() :: {ipaddr(), portnum()}.
--type conn_id() :: integer().
 
 -define(CONNID_TIMEOUT, timer:seconds(60)).
 
