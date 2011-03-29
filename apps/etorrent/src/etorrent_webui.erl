@@ -25,7 +25,11 @@
 log(SessId, _Env, _Input) ->
     Entries = etorrent_query:log_list(),
     [ok = mod_esi:deliver(SessId, format_log_entry(E)) ||
-        E <- lists:keysort(1, Entries)],
+        E <- lists:sort(fun(X, Y) ->
+                                proplists:get_value(time, X)
+                                    >= proplists:get_value(time, Y)
+                        end,
+                        Entries)],
     ok.
 
 log_json(SessId, _Env, _Input) ->
@@ -58,9 +62,10 @@ list_json(SessId, _Env, _Input) ->
     ok.
 
 %% =======================================================================
-format_log_entry({_Now, LTime, Event}) ->
+format_log_entry(PL) ->
     io_lib:format("<span id='time'>~s</span><span id='event'>~p</span><br>~n",
-        [etorrent_utils:date_str(LTime), Event]).
+        [proplists:get_value(time, PL),
+         proplists:get_value(event, PL)]).
 
 list_rates() ->
     {DownloadRate, UploadRate} = etorrent_peer_states:get_global_rate(),
