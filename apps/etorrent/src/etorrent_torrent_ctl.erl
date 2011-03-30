@@ -20,19 +20,27 @@
 -ignore_xref([{'start_link', 3}, {start, 1}, {initializing, 2},
 	      {started, 2}]).
 %% API
--export([start_link/3, completed/1, check_torrent/1, piece_stored/2]).
+-export([start_link/3,
+         completed/1,
+         check_torrent/1,
+         piece_stored/2,
+         pieces_assigned/1]).
 
 %% gen_fsm callbacks
 -export([init/1, handle_event/3, initializing/2, started/2,
          handle_sync_event/4, handle_info/3, terminate/3,
          code_change/4]).
 
--record(state, {id                :: integer() ,
-                torrent           :: bcode(),   % Parsed torrent file
-                info_hash         :: binary(),  % Infohash of torrent file
-                peer_id           :: binary(),
-                parent_pid        :: pid(),
-                tracker_pid       :: pid()   }).
+-record(state, {
+    id          :: integer() ,
+    torrent     :: bcode(),   % Parsed torrent file
+    info_hash   :: binary(),  % Infohash of torrent file
+    peer_id     :: binary(),
+    parent_pid  :: pid(),
+    tracker_pid :: pid(),
+    progress    :: etorrent_progress:torrenthandle(),
+    pending     :: etorrent_pending:torrenthandle(),
+    endgame     :: etorrent_endgame:torrenthandle()}).
 
 -define(CHECK_WAIT_TIME, 3000).
 
@@ -63,17 +71,32 @@ piece_stored(Pid, PieceIndex) ->
     gen_fsm:send_event(Pid, {piece_stored, PieceIndex}).
 
 
+%% @doc 
+%% @end
+-spec pieces_assigned(pid()) -> ok.
+pieces_assigned(Pid) ->
+    gen_fsm:send_event(Pid, pieces_assigned).
+
+
 %% ====================================================================
 
 %% @private
 init([Parent, Id, {Torrent, TorrentFile, TorrentIH}, PeerId]) ->
     etorrent_table:new_torrent(TorrentFile, TorrentIH, Parent, Id),
     gproc:add_local_name({torrent, Id, control}),
-    {ok, initializing, #state{id = Id,
-                              torrent = Torrent,
-                              info_hash = TorrentIH,
-                              peer_id = PeerId,
-                              parent_pid = Parent}, 0}. % Force timeout instantly.
+    Progress = etorrent_progress:torrenthandle(),
+    Pending = etorrent_pending:torrenthandle(),
+    Endgame = etorrent_endgame:torrenthandle(),
+    InitState = #state{
+        id=Id,
+        torrent=Torrent,
+        info_hash=TorrentIH,
+        peer_id=PeerId,
+        parent_pid=Parent,
+        progress=Progress,
+        pending=Pending,
+        endgame=Endgame},
+    {ok, initializing, InitState, 0}.
 
 %% @private
 %% @todo Split and simplify this monster function
@@ -143,6 +166,14 @@ started(completed, #state { id = Id, tracker_pid = TrackerPid } = S) ->
     etorrent_event:completed_torrent(Id),
     etorrent_tracker_communication:completed(TrackerPid),
     {next_state, started, S};
+
+started(pieces_assigned, State) ->
+    #state{progress=Progress, pending=Pending, endgame=Endgame} = State, 
+    EndgamePid = etorrent_endgame:pid(Endgame),
+    ok = etorrent_progress:deactivate(Progress),
+    ok = etorrent_endgame:activate(Endgame),
+    ok = etorrent_pending:redirect(EndgamePid, Pending),
+    {next_state, started, State};
 
 started({piece_stored, Index}, State) ->
     #state{id=TorrentID} = State,
