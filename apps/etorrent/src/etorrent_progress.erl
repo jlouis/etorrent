@@ -120,11 +120,11 @@
     %% Chunk sets for pieces
     chunks_assigned :: array(),
     chunks_stored   :: array(),
-    %% Chunks assigned to peers
-    peer_monitors   :: monitorset(),
     %% Piece priority lists
     prio_begun :: #pieceprio{},
-    prio_unassigned :: #pieceprio{}}).
+    prio_unassigned :: #pieceprio{},
+    %% Chunk assignment process
+    pending :: etorrent_pending:originhandle()}).
 
 %% # Open requests
 %% A gb_tree mapping {PieceIndex, Offset} to Chunklength
@@ -381,6 +381,7 @@ num_state_members(TorrentID, Piecestate) ->
 init([TorrentID, ChunkSize, FetchedPieces, PieceSizes, InitTorrentPid]) ->
     etorrent_scarcity:await_scarcity_server(TorrentID),
     true = register_chunk_server(TorrentID),
+    Pending = etorrent_pending:originhandle(),
 
     NumPieces = length(PieceSizes),
     PiecesValid = etorrent_pieceset:from_list(FetchedPieces, NumPieces),
@@ -434,21 +435,11 @@ init([TorrentID, ChunkSize, FetchedPieces, PieceSizes, InitTorrentPid]) ->
         %% Initially, the sets of assigned and stored chunks are equal
         chunks_assigned=ChunkSets,
         chunks_stored=ChunkSets,
-        peer_monitors=etorrent_monitorset:new(),
         prio_begun=PriorityBegun,
-        prio_unassigned=PriorityUnass},
+        prio_unassigned=PriorityUnass,
+        pending=Pending},
     {ok, InitState}.
 
-
-handle_call({register_peer, PeerPid}, _, State) ->
-    %% Add a new peer to the set of monitored peers. Set the initial state
-    %% of the monitored peer to an empty set open requests so that we don't
-    %% need to check for this during the lifetime of the peer.
-    #state{peer_monitors=PeerMonitors} = State,
-    OpenReqs = gb_trees:empty(),
-    NewMonitors = etorrent_monitorset:insert(PeerPid, OpenReqs, PeerMonitors),
-    NewState = State#state{peer_monitors=NewMonitors},
-    {reply, true, NewState};
 
 handle_call({request_chunks, PeerPid, Peerset, Numchunks}, _, State) ->
     #state{
@@ -458,9 +449,9 @@ handle_call({request_chunks, PeerPid, Peerset, Numchunks}, _, State) ->
         pieces_begun=Begun,
         pieces_assigned=Assigned,
         chunks_assigned=AssignedChunks,
-        peer_monitors=Peers,
         prio_unassigned=PrioUnassigned,
-        prio_begun=PrioBegun} = State,
+        prio_begun=PrioBegun,
+        pending=Pending} = State,
 
     %% If this peer has any pieces that we have begun downloading, pick
     %% one of those pieces over any unassigned pieces.
@@ -516,15 +507,11 @@ handle_call({request_chunks, PeerPid, Peerset, Numchunks}, _, State) ->
             {reply, {ok, assigned}, State};
         Index ->
             Chunkset = array:get(Index, AssignedChunks),
-            Chunks   = etorrent_chunkset:min(Chunkset, Numchunks),
+            Offsets = etorrent_chunkset:min(Chunkset, Numchunks),
+            Chunks = [{Index, Offs, Len} || {Offs, Len} <- Offsets],
             NewChunkset = etorrent_chunkset:delete(Chunks, Chunkset),
             NewAssignedChunks = array:set(Index, NewChunkset, AssignedChunks),
-            %% Add the chunk to this peer's set of open requests
-            OpenReqs = etorrent_monitorset:fetch(PeerPid, Peers),
-            NewReqs  = lists:foldl(fun({Offs, Len}, Acc) ->
-                gb_trees:insert({Index, Offs}, Len, Acc)
-            end, OpenReqs, Chunks),
-            NewPeers = etorrent_monitorset:update(PeerPid, NewReqs, Peers),
+            ok = etorrent_pending:mark_sent(Chunks, PeerPid, Pending),
 
             %% We need to consider four transitions at this point:
             %% Unassigned -> Begun
@@ -577,17 +564,19 @@ handle_call({request_chunks, PeerPid, Peerset, Numchunks}, _, State) ->
                 true  -> update_priority(TorrentID, PrioBegun, NewBegun)
             end,
 
-
+            %% The piece is in the assigned state if this was the last chunk
+            NewAssigned = case etorrent_chunkset:size(NewChunkset) of
+                0 -> etorrent_pieceset:insert(Index, Assigned);
+                _ -> Assigned
+            end,
             NewState = State#state{
                 pieces_unassigned=NewUnassigned,
                 pieces_begun=NewBegun,
                 pieces_assigned=NewAssigned,
                 chunks_assigned=NewAssignedChunks,
-                peer_monitors=NewPeers,
                 prio_unassigned=NewPrioUnassigned,
                 prio_begun=NewPrioBegun},
-            ReturnValue = [{Index, Offs, Len} || {Offs, Len} <- Chunks],
-            {reply, {ok, ReturnValue}, NewState}
+            {reply, {ok, Chunks}, NewState}
     end;
 
 handle_call({mark_valid, _, Index}, _, State) ->
