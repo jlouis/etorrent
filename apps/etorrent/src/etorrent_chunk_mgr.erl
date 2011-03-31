@@ -866,7 +866,7 @@ not_interested_case({N, Time, SPid, CPid}) ->
 not_interested_valid_case({N, Time, SPid, CPid}) ->
     Has = etorrent_pieceset:from_list([0], 3),
     Ret = ?chunk_server:request_chunks(N, Has, 1),
-    ?assertEqual({error, not_interested}, Ret).
+    ?assertEqual({ok, not_interested}, Ret).
 
 request_one_case({N, Time, SPid, CPid}) ->
     Has = etorrent_pieceset:from_list([0], 3),
@@ -926,7 +926,7 @@ mark_fetched_noop_case({N, Time, SPid, CPid}) ->
     Pid = spawn_link(fun() ->
         true = ?chunk_server:register_peer(N),
         {ok, [{0, 0, 1}]} = ?chunk_server:request_chunks(N, Has, 1),
-        {ok, []} = ?chunk_server:mark_fetched(N, 0, 0, 1)
+        {ok, true} = ?chunk_server:mark_fetched(N, 0, 0, 1)
     end),
     _ = monitor(process, Pid),
     ok  = receive {'DOWN', _, process, Pid, _} -> ok end,
@@ -962,12 +962,12 @@ get_all_request_case({N, Time, SPid, CPid}) ->
     {ok, [{1, 1, 1}]} = ?chunk_server:request_chunks(N, Has, 1),
     {ok, [{2, 0, 1}]} = ?chunk_server:request_chunks(N, Has, 1),
     {ok, [{2, 1, 1}]} = ?chunk_server:request_chunks(N, Has, 1),
-    ?assertEqual({error, assigned}, ?chunk_server:request_chunks(N, Has, 1)).
+    ?assertEqual({ok, assigned}, ?chunk_server:request_chunks(N, Has, 1)).
 
 unassigned_to_assigned_case({N, Time, SPid, CPid}) ->
     Has = etorrent_pieceset:from_list([0], 3),
     {ok, [{0,0,1}, {0,1,1}]} = ?chunk_server:request_chunks(N, Has, 2),
-    ?assertEqual({error, assigned}, ?chunk_server:request_chunks(N, Has, 1)).
+    ?assertEqual({ok, assigned}, ?chunk_server:request_chunks(N, Has, 1)).
 
 -endif.
 
