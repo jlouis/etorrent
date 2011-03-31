@@ -1,14 +1,29 @@
 -module(etorrent_pending).
 -behaviour(gen_server).
+%% This module implements a server process tracking which open
+%% requests have been assigned to each peer process. The process
+%% assigning the requests to peers are responsible for keeping
+%% the request tracking process updated.
+%%
+%% #Peers
+%% Peer processes are responsible for notifying both the request
+%% tracking process and the process that assigned the request
+%% when a request is dropped, fetched or stored.
+%%
+%% When a peer exits the request tracking process must notify the
+%% process that is responsible for assigning requests that the
+%% request has been dropped.
+%%
+%% #Changing assigning process
+%% When endgame mode is activated the assigning process is replaced
+%% with the endgame process. The currently open requests are then sent
+%% to the endgame process. Any requests that have been sent to but
+%% not received by the assigning process is expected to be forwarded
+%% to the endgame process by the previous assigning process.
 
 %% exported functions
 -export([start_link/1,
-         peerhandle/1,
-         originhandle/1,
-         start_endgame/1,
-         mark_sent/5,
-         mark_dropped/4,
-         mark_stored/4]).
+         receiver/2]).
 
 %% gproc registry entries
 -export([register_server/1,
@@ -25,7 +40,6 @@
 
 
 -record(state, {
-    endgame  :: etorrent_endgame:originhandle(),
     receiver :: pid(),
     table :: ets:tid()}).
 
@@ -58,121 +72,81 @@ server_name(TorrentID) ->
 start_link(TorrentID) ->
     gen_server:start_link(?MODULE, [TorrentID], []).
 
-
-%% @doc
-%% @end
--spec peerhandle(torrent_id()) -> peerhandle().
-peerhandle(TorrentID) ->
-    SrvPid = await_server(TorrentID),
-    gen_server:call(SrvPid, {register_peer, self()}),
-    {peer, SrvPid}.
+-spec receiver(pid(), pid()) -> ok.
+receiver(Recvpid, Srvpid) ->
+    ok = gen_server:call(Srvpid, {receiver, Recvpid}).
 
 
-%% @doc
-%% @end
--spec originhandle(torrent_id()) -> originhandle().
-originhandle(TorrentID) ->
-    SrvPid = await_server(TorrentID),
-    {origin, SrvPid}.
-
-
-%% @doc
-%% @end
--spec start_endgame(originhandle()) -> ok.
-start_endgame({origin, SrvPid}) ->
-    ok = gen_server:call(SrvPid, start_endgame),
-    Ref = self() ! make_ref(),
-    bounce_dropped(SrvPid, Ref).
-
-bounce_dropped(SrvPid, Ref) ->
-    receive
-        {dropped, Index, Offset, Length} ->
-            mark_dropped_(SrvPid, Index, Offset, Length),
-            bounce_dropped(SrvPid, Ref);
-        Ref -> ok
-    end.
-
-
-%% @doc
-%% @end
--spec mark_sent(pieceindex(), chunkoffset(), chunklength(),
-                pid(), originhandle()) -> ok.
-mark_sent(Piece, Offset, Length, Pid, {origin, SrvPid}) ->
-    gen_server:cast(SrvPid, {mark_sent, Pid, Piece, Offset, Length}).
-
-
-%% @doc
-%% @end
--spec mark_dropped(pieceindex(), chunkoffset(), chunklength(), peerhandle()) -> ok.
-mark_dropped(Piece, Offset, Length, {peer, SrvPid}) ->
-    mark_dropped_(SrvPid, Piece, Offset, Length).
-
-mark_dropped_(SrvPid, Piece, Offset, Length) ->
-    gen_server:cast(SrvPid, {mark_dropped, self(), Piece, Offset, Length}).
-
-
-%% @doc
-%% @end
--spec mark_stored(pieceindex(), chunkoffset, chunklength(), peerhandle()) -> ok.
-mark_stored(Piece, Offset, Length, {peer, SrvPid}) ->
-    gen_server:cast(SrvPid, {mark_stored, self(), Piece, Offset, Length}).
-
-
+%% @private
 init([TorrentID]) ->
     true = register_server(TorrentID),
-    Progress = etorrent_progress:await_server(TorrentID),
-    Endgame = etorrent_endgame:originhandle(TorrentID),
     Table = ets:new(none, [private, set]),
     InitState = #state{
-        receiver=Progress,
-        endgame=Endgame,
+        receiver=self(),
         table=Table},
     {ok, InitState}.
 
 
-handle_call({register_peer, Pid}, _, State) ->
+handle_call({register_peer, Peerpid}, _, State) ->
     #state{table=Table} = State,
-    Ref = erlang:monitor(process, Pid),
-    case ets:insert_new(Table, {Pid, Ref}) of
+    Ref = erlang:monitor(process, Peerpid),
+    case insert_peer(Table, Peerpid, Ref) of
         true  -> ok;
         false -> erlang:demonitor(Ref)
     end,
     {reply, ok, State};
 
-handle_call(start_endgame, _, State) ->
-    #state{endgame=Endgame, table=Table} = State,
-    ReqTerm  = {'$1', '$2', '$3', '$4'},
-    Requests = ets:select(Table, [{{ReqTerm}, [], [ReqTerm]}]),
-    [etorrent_endgame:mark_sent(I, O, L, P, Endgame) || {I, O, L, P} <- Requests],
-    NewState = State#state{receiver=Endgame},
+handle_call({redirect, Newrecvpid}, _, State) ->
+    #state{table=Table} = State,
+    Requests = list_requests(Table),
+    Assigned = fun({Piece, Offset, Length, Peerpid}) ->
+        etorrent_chunkstate:assigned(Piece, Offset, Length, Peerpid, Newrecvpid)
+    end,
+    [Assigned(Request) || Request <- Requests],
+    NewState = State#state{receiver=Newrecvpid},
     {reply, ok, NewState}.
 
 
-handle_cast({mark_sent, Pid, Index, Offset, Length}, State) ->
+handle_cast(_, State) ->
+    {stop, not_implemented, State}.
+
+
+handle_info({chunk, {assigned, Index, Offset, Length, Peerpid}}, State) ->
+    %% Consider that the peer may have exited before the assigning process
+    %% received the request and sent us this message. If so, bounce back a
+    %% dropped-notification immidiately.
     #state{receiver=Receiver, table=Table} = State,
-    case insert_request(Table, Pid, Index, Offset, Length) of
-        false -> notify(Receiver, Index, Offset, Length);
-        true  -> ok
+    case insert_request(Table, Peerpid, Index, Offset, Length) of
+        true  -> ok;
+        false ->
+            etorrent_chunkstate:dropped(Index, Offset, Length, Peerpid, Receiver)
     end,
     {noreply, State};
 
-handle_cast({mark_stored, Pid, Piece, Offset, Length}, State) ->
+handle_info({chunk, {stored, Piece, Offset, Length, Peerpid}}, State) ->
     #state{table=Table} = State,
-    delete_request(Table, Pid, Piece, Offset, Length),
+    delete_request(Table, Piece, Offset, Length, Peerpid),
     {noreply, State};
 
-handle_cast({mark_dropped, Pid, Piece, Offset, Length}, State) ->
+handle_info({chunk, {dropped, Piece, Offset, Length, Peerpid}}, State) ->
+    %% The peer is expected to send a dropped notification to the
+    %% assigning process before notifying this process.
     #state{receiver=Receiver, table=Table} = State,
-    notify(Receiver, Piece, Offset, Length),
-    delete_request(Table, Pid, Piece, Offset, Length),
-    {noreply, State}.
+    delete_request(Table, Piece, Offset, Length, Peerpid),
+    {noreply, State};
+
+handle_info({chunk, {dropped, Peerpid}}, State) ->
+    %% The same expectations apply as for the previous clause.
+    #state{receiver=Receiver, table=Table} = State,
+    flush_requests(Table, Peerpid),
+    {noreply, State};
 
 
-handle_info({'DOWN', _, process, Pid, _}, State) ->
+handle_info({'DOWN', _, process, Peerpid, _}, State) ->
     #state{receiver=Receiver, table=Table} = State,
-    Chunks = flush_requests(Table, Pid),
-    ok = notify(Receiver, Chunks),
-    true = ets:delete(Table, Pid),
+    Chunks = flush_requests(Table, Peerpid),
+    ok = etorrent_chunkstate:dropped(Chunks, Peerpid, Receiver),
+    ok = delete_peer(Table, Peerpid),
     {noreply, State}.
 
 terminate(_, State) ->
@@ -181,33 +155,42 @@ terminate(_, State) ->
 code_change(_, State, _) ->
     {ok, State}.
 
+%% The ets table contains two types of records:
+%% - {pid(), reference()}
+%% - {integer(), integer(), integer(), pid()}
 
-notify(Receiver, Piece, Offset, Length) ->
-    Receiver ! {dropped, Piece, Offset, Length},
-    ok.
+insert_peer(Table, Peerpid, Ref) ->
+    Row = {Peerpid, Ref},
+    ets:insert_new(Table, Row).
 
-notify(Receiver, Chunks) ->
-    [notify(Receiver, I, O, L) || {I, O, L} <- Chunks],
-    ok.
+delete_peer(Table, Peerpid) ->
+    ets:delete(Table, Peerpid).
 
-delete_request(Table, Pid, Piece, Offset, Length) ->
-    case ets:member(Table, Pid) of
-        false -> ok;
-        true  -> ets:delete(Table, {Pid, Piece, Offset, Length})
-    end.
-
-insert_request(Table, Pid, Piece, Offset, Length) ->
+insert_request(Table, Piece, Offset, Length, Pid) ->
+    Row = {{Piece, Offset, Length, Pid}},
     case ets:member(Table, Pid) of
         false -> false;
-        true -> ets:insert(Table, {{Pid, Piece, Offset, Length}})
+        true -> ets:insert(Table, Row)
+    end.
+
+delete_request(Table, Piece, Offset, Length, Pid) ->
+    Key = {Piece, Offset, Length, Pid},
+    case ets:member(Table, Pid) of
+        false -> ok;
+        true  -> ets:delete(Table, Key)
     end.
 
 flush_requests(Table, Pid) ->
-    Match = {{Pid, '_', '_', '_'}},
+    Match = {{'_', '_', '_', Pid}},
     Rows  = ets:match_object(Table, Match),
     true  = ets:match_delete(Table, Match),
     [{I, O, L} || {_, I, O, L} <- Rows].
-    
+
+list_requests(Table) ->
+    ReqHead = {{'$1', '$2', '$3', '$4'}},
+    ReqTerm =  {'$1', '$2', '$3', '$4'},
+    ets:select(Table, [{ReqHead, [], [ReqTerm]}]).
+
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
