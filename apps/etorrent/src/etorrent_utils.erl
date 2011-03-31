@@ -14,7 +14,7 @@
 -export([gsplit/2, queue_remove/2, group/1,
 	 list_shuffle/1, date_str/1, any_to_list/1,
      merge_proplists/2, compare_proplists/2,
-     wait/1, expect/1]).
+     wait/1, expect/1, shutdown/1]).
 
 %% "time-like" functions
 -export([now_subtract_seconds/2]).
@@ -150,6 +150,15 @@ wait(MRef) ->
 -spec expect(term()) -> ok.
 expect(Message) ->
     receive Message -> ok end.
+
+%% @doc Shutdown a child process
+%% @end
+-spec shutdown(pid()) -> ok.
+shutdown(Pid) ->
+    MRef = erlang:monitor(process, Pid),
+    unlink(Pid),
+    exit(Pid, shutdown),
+    wait(MRef).
 
 
 %%====================================================================
