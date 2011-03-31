@@ -58,12 +58,7 @@
 
 %% peer API
 -export([start_link/5,
-         mark_valid/2,
-         mark_fetched/4,
-         mark_stored/4,
-         mark_dropped/4,
-         mark_all_dropped/1,
-         request_chunks/3]).
+         mark_valid/2]).
 
 %% stats API
 -export([stats/1,
@@ -95,7 +90,6 @@
 -import(erlang, [monitor/2, error/1]).
 
 -type pieceset()   :: etorrent_pieceset:pieceset().
--type monitorset() :: etorrent_monitorset:monitorset().
 -type torrent_id() :: etorrent_types:torrent_id().
 -type chunk_len() :: etorrent_types:chunk_len().
 -type chunk_offset() :: etorrent_types:chunk_offset().
@@ -108,9 +102,9 @@
     pieces :: [pos_integer()]}).
 
 -record(state, {
-    torrent_id      :: pos_integer(),
-    torrent_pid     :: pid(),
-    chunk_size      :: pos_integer(),
+    torrent_id  :: pos_integer(),
+    torrent_pid :: pid(),
+    chunk_size  :: pos_integer(),
     %% Piece state sets
     pieces_valid      :: pieceset(),
     pieces_unassigned :: pieceset(),
@@ -121,15 +115,15 @@
     chunks_assigned :: array(),
     chunks_stored   :: array(),
     %% Piece priority lists
-    prio_begun :: #pieceprio{},
+    prio_begun      :: #pieceprio{},
     prio_unassigned :: #pieceprio{},
-    %% Chunk assignment process
-    pending :: etorrent_pending:originhandle()}).
+    %% Chunk assignment processes
+    pending   :: pid(),
+    assigning :: pid()}).
 
-%% # Open requests
-%% A gb_tree mapping {PieceIndex, Offset} to Chunklength
-%% is kept as the state of each monitored process.
-%%
+-define(in_endgame(State), (State#state.assigning == self())).
+-define(is_assigning(State, Pid), (State#state.assigning == Pid)).
+
 %% # Piece states
 %% As the download of a torrent progresses, and regresses, each piece
 %% enters and leaves a sequence of states.
@@ -257,51 +251,14 @@ start_link(TorrentID, ChunkSize, Fetched, Sizes, TorrentPid) ->
 %% @doc
 %% Mark a piece as completly stored to disk and validated.
 %% @end
--spec mark_valid(torrent_id(), pos_integer()) ->
-          ok | {error, not_stored | valid}.
-mark_valid(TorrentID, PieceIndex) ->
-    ChunkSrv = lookup_chunk_server(TorrentID),
-    call(ChunkSrv, {mark_valid, self(), PieceIndex}).
+-spec mark_valid(pos_integer(), pid()) -> ok.
+mark_valid(Piece, SrvPid) ->
+    SrvPid ! {mark_valid, Piece},
+    ok.
 
 
 %% @doc
-%% Mark a chunk as fetched but not written to file.
-%% @end
--spec mark_fetched(torrent_id(), pos_integer(),
-                   pos_integer(), pos_integer()) -> {ok, boolean()}.
-mark_fetched(TorrentID, Index, Offset, Length) ->
-    ChunkSrv = lookup_chunk_server(TorrentID),
-    call(ChunkSrv, {mark_fetched, self(), Index, Offset, Length}).
-
-%& @doc
-%% Mark a chunk as fetched and written to file.
-%% @end
--spec mark_stored(torrent_id(), pos_integer(),
-                  pos_integer(), pos_integer()) -> ok.
-mark_stored(TorrentID, Index, Offset, Length) ->
-    ChunkSrv = lookup_chunk_server(TorrentID),
-    call(ChunkSrv, {mark_stored, self(), Index, Offset, Length}).
-
-%& @doc
-%% Reinsert a chunk into the request queue.
-%% @end
--spec mark_dropped(torrent_id(), pos_integer(),
-                  pos_integer(), pos_integer()) -> ok.
-mark_dropped(TorrentID, Index, Offset, Length) ->
-    ChunkSrv = lookup_chunk_server(TorrentID),
-    cast(ChunkSrv, {mark_dropped, self(), Index, Offset, Length}).
-
-%% @doc
-%% Mark all currently open requests as dropped.
-%% @end
--spec mark_all_dropped(torrent_id()) -> ok.
-mark_all_dropped(TorrentID) ->
-    ChunkSrv = lookup_chunk_server(TorrentID),
-    call(ChunkSrv, {mark_all_dropped, self()}).
-
-
-%% @doc
-%% Request a 
+%% Request a unique set of chunks from the server.
 %% @end
 -spec request_chunks(torrent_id(), pieceset(), pos_integer()) ->
     {ok, list({piece_index(), chunk_offset(), chunk_len()})}
@@ -381,7 +338,7 @@ num_state_members(TorrentID, Piecestate) ->
 init([TorrentID, ChunkSize, FetchedPieces, PieceSizes, InitTorrentPid]) ->
     etorrent_scarcity:await_scarcity_server(TorrentID),
     true = register_chunk_server(TorrentID),
-    Pending = etorrent_pending:originhandle(),
+    Pending = etorrent_pending:originhandle(TorrentID),
 
     NumPieces = length(PieceSizes),
     PiecesValid = etorrent_pieceset:from_list(FetchedPieces, NumPieces),
@@ -511,7 +468,7 @@ handle_call({request_chunks, PeerPid, Peerset, Numchunks}, _, State) ->
             Chunks = [{Index, Offs, Len} || {Offs, Len} <- Offsets],
             NewChunkset = etorrent_chunkset:delete(Chunks, Chunkset),
             NewAssignedChunks = array:set(Index, NewChunkset, AssignedChunks),
-            ok = etorrent_pending:mark_sent(Chunks, PeerPid, Pending),
+            ok = etorrent_chunkstate:assigned(Chunks, PeerPid, Pending),
 
             %% We need to consider four transitions at this point:
             %% Unassigned -> Begun
@@ -579,7 +536,19 @@ handle_call({request_chunks, PeerPid, Peerset, Numchunks}, _, State) ->
             {reply, {ok, Chunks}, NewState}
     end;
 
-handle_call({mark_valid, _, Index}, _, State) ->
+handle_call({state_members, Piecestate}, _, State) ->
+    Stateset = case Piecestate of
+        unassigned -> State#state.pieces_unassigned;
+        begun -> State#state.pieces_begun;
+        assigned -> State#state.pieces_assigned;
+        stored -> State#state.pieces_stored;
+        valid -> State#state.pieces_valid
+    end,
+    {reply, Stateset, State}.
+
+
+%% @private
+handle_cast({mark_valid, Index}, State) ->
     #state{
         pieces_stored=Stored,
         pieces_valid=Valid} = State,
@@ -602,26 +571,36 @@ handle_call({mark_valid, _, Index}, _, State) ->
                 pieces_stored=NewStored,
                 pieces_valid=NewValid},
             {reply, ok, NewState}
-    end;
+    end.
 
-handle_call({mark_fetched, _Pid, _Index, _Offset, _Length}, _, State) ->
-    %% If we are in endgame mode, requests for a chunk may have been
-    %% sent to more than one peer. Return a boolean indicating if the
-    %% peer was the first one to mark this chunk as fetched.
-    {reply, {ok, true}, State};
 
-handle_call({mark_stored, Pid, Index, Offset, Length}, _, State) ->
-    %% The calling process has written this chunk to disk.
-    %% Remove it from the list of open requests of the peer.
+%% @private
+%% If we receive a notification about a stored chunk there are three
+%% possible cases that we must consider in order to handle it correctly.
+%% 
+%% 1. This process is the assigning process
+%% 2. The notifictation comes from a peer has not received the new process
+%% 3. The notification comes from the new assigning process
+%%
+%% Case #1 and #3 are handled the same way. Case #2 must be forwarded
+%% to the new assigning process unmodified. If it practially guarantees
+%% that the chunk will be fetched twice. In this case we don't bother
+%% to handle it because we expect the assigning process to send copies
+%% of these notifications to this process.
+%%
+handle_info({chunk, {stored, Piece, Offset, Length, Peerpid}}, State)
+when ?in_endgame(State) and not ?is_assigning(State, Peerpid) ->
+    #state{assigning=Assigning} = State,
+    ok = etorrent_chunkstate:stored(Piece, Offset, Length, Peerpid, Assigning),
+    {noreply, State};
+
+handle_info({chunk, {stored, Index, Offset, Length, _}}, State) ->
     #state{
         torrent_pid=TorrentPid,
         pieces_assigned=Assigned,
         pieces_stored=Stored,
-        peer_monitors=Peers,
         chunks_stored=ChunksStored} = State,
-    OpenReqs = etorrent_monitorset:fetch(Pid, Peers),
-    NewReqs  = gb_trees:delete({Index, Offset}, OpenReqs),
-    NewPeers = etorrent_monitorset:update(Pid, NewReqs, Peers),
+
     %% Update the set of chunks in the piece that has been written to disk.
     Chunks = array:get(Index, ChunksStored),
     NewChunks = etorrent_chunkset:delete(Offset, Length, Chunks),
@@ -640,16 +619,10 @@ handle_call({mark_stored, Pid, Index, Offset, Length}, _, State) ->
     NewState = case Piecestate of
         %% Begun -> Begun
         begun ->
-            IState = State#state{
-                chunks_stored=NewChunksStored,
-                peer_monitors=NewPeers},
-            IState;
+            State#state{chunks_stored=NewChunksStored};
         %% Assigned -> Assigned
         assigned when not Wasstored ->
-            IState = State#state{
-                chunks_stored=NewChunksStored,
-                peer_monitors=NewPeers},
-            IState;
+            State#state{chunks_stored=NewChunksStored};
         %% Assigned -> Stored
         assigned ->
             ok = etorrent_torrent_ctl:piece_stored(TorrentPid, Index),
@@ -657,86 +630,43 @@ handle_call({mark_stored, Pid, Index, Offset, Length}, _, State) ->
             NewStored = etorrent_pieceset:insert(Index, Stored),
             IState = State#state{
                 chunks_stored=NewChunksStored,
-                peer_monitors=NewPeers,
                 pieces_assigned=NewAssigned,
                 pieces_stored=NewStored},
             IState
     end,
-    {reply, ok, NewState};
+    {noreply, NewState};
 
-handle_call({mark_all_dropped, Pid}, _, State) ->
-    %% When marking all requests as dropped, send a series of
-    %% mark_dropped-messages to ourselves. The state of each
-    %% piece should be restored eventually.
-    #state{peer_monitors=Peers} = State,
+handle_info({chunk, {dropped, Piece, Offset, Length, Peerpid}}, State)
+when ?in_endgame(State) ->
+    #state{assigning=Assigning} = State,
+    ok = etorrent_chunkstate:dropped(Piece, Offset, Length, Peerpid, Assigning),
+    {noreply, State};
 
-    %% Add the chunks back to the chunkset of each piece.
-    OpenReqs = etorrent_monitorset:fetch(Pid, Peers),
-    _ = [begin
-        cast(self(), {mark_dropped, Pid, Index, Offset, Length})
-    end || {Index, Offset, Length} <- chunk_list(OpenReqs)],
-    {reply, ok, State};
-
-handle_call({state_members, Piecestate}, _, State) ->
-    Stateset = case Piecestate of
-        unassigned -> State#state.pieces_unassigned;
-        begun -> State#state.pieces_begun;
-        assigned -> State#state.pieces_assigned;
-        stored -> State#state.pieces_stored;
-        valid -> State#state.pieces_valid
-    end,
-    {reply, Stateset, State}.
-
-handle_cast({mark_dropped, Pid, Index, Offset, Length}, State) ->
+handle_info({chunk, {dropped, Piece, Offset, Length, _}}, State) ->
     #state{
         torrent_id=TorrentID,
         pieces_begun=Begun,
         pieces_assigned=Assigned,
         chunks_assigned=AssignedChunks,
-        peer_monitors=Peers,
         prio_begun=PrioBegun} = State,
 
-     %% Reemove the chunk from the peer's set of open requests
-     OpenReqs = etorrent_monitorset:fetch(Pid, Peers),
-     NewReqs  = gb_trees:delete({Index, Offset}, OpenReqs),
-     NewPeers = etorrent_monitorset:update(Pid, NewReqs, Peers),
- 
      %% Add the chunk back to the chunkset of the piece.
-     Chunks = array:get(Index, AssignedChunks),
+     Chunks = array:get(Piece, AssignedChunks),
      NewChunks = etorrent_chunkset:insert(Offset, Length, Chunks),
-     NewAssignedChunks = array:set(Index, NewChunks, AssignedChunks),
+     NewAssignedChunks = array:set(Piece, NewChunks, AssignedChunks),
 
      %% Assigned -> Begun
-     NewAssigned = etorrent_pieceset:delete(Index, Assigned),
-     NewBegun = etorrent_pieceset:insert(Index, Begun),
+     NewAssigned = etorrent_pieceset:delete(Piece, Assigned),
+     NewBegun = etorrent_pieceset:insert(Piece, Begun),
      NewPrioBegun = update_priority(TorrentID, PrioBegun, NewBegun),
  
      NewState = State#state{
          pieces_begun=NewBegun,
          pieces_assigned=NewAssigned,
          chunks_assigned=NewAssignedChunks,
-         peer_monitors=NewPeers,
          prio_begun=NewPrioBegun},
     {noreply, NewState};
 
-handle_cast({demonitor, Pid}, State) ->
-    %% This message should be received after all mark_dropped messages.
-    %% At this point the set of open requests for the peer should be empty.
-    #state{peer_monitors=Peers} = State,
-    NewPeers = etorrent_monitorset:delete(Pid, Peers),
-    NewState = State#state{peer_monitors=NewPeers},
-    {noreply, NewState}.
-
-handle_info({'DOWN', _, process, Pid, _}, State) ->
-    %% When a peer crashes, send a series of mark-dropped messages
-    %% and a demonitor-message to ourselves.
-    #state{peer_monitors=Peers} = State,
-    OpenReqs = etorrent_monitorset:fetch(Pid, Peers),
-    _ = [begin
-        cast(self(), {mark_dropped, Pid, Index, Offset, Length})
-    end || {Index, Offset, Length} <- chunk_list(OpenReqs)],
-    _ = cast(self(), {demonitor, Pid}),
-    {noreply, State};
 
 handle_info({scarcity, Ref, Tag, Piecelist}, State) ->
     #state{prio_begun=Begun, prio_unassigned=Unass} = State,
@@ -779,19 +709,12 @@ update_priority(TorrentID, Pieceprio, Pieceset) ->
     {ok, NewRef, NewList} = etorrent_scarcity:watch(TorrentID, Tag, Pieceset),
     #pieceprio{ref=NewRef, tag=Tag, pieces=NewList}.
 
-%%
-%% Given a tree of a peers currently open requests, return a list of
-%% tuples containing the piece index, offset and length of each request.
-%%
--spec chunk_list(gb_tree()) -> [{pos_integer(), pos_integer(), pos_integer()}].
-chunk_list(OpenReqs) ->
-    [{I,O,L} || {{I,O},L} <- gb_trees:to_list(OpenReqs)].
-
 
 -ifdef(TEST).
 -define(chunk_server, ?MODULE).
 -define(scarcity, etorrent_scarcity).
 -define(timer, etorrent_timer).
+-define(pending, etorrent_pending).
 
 
 chunk_server_test_() ->
@@ -835,7 +758,6 @@ teardown_env({Time, SPid, CPid}) ->
     ok = etorrent_utils:shutdown(Time),
     ok = etorrent_utils:shutdown(SPid),
     ok = etorrent_utils:shutdown(CPid).
-
 
 lookup_registered_case() ->
     ?assertEqual(true, ?chunk_server:register_chunk_server(0)),
@@ -976,4 +898,3 @@ unassigned_to_assigned_case() ->
     ?assertEqual({ok, assigned}, ?chunk_server:request_chunks(testid(), Has, 1)).
 
 -endif.
-
