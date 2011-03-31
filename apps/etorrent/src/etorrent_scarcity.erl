@@ -103,6 +103,8 @@
     peer_monitors :: monitorset(),
     watchers :: [#watcher{}]}).
 
+-compile({no_auto_import, [monitor/2, demonitor/1]}).
+-import(erlang, [monitor/2, demonitor/1]).
 
 %% @doc Register as the scarcity server for a torrent
 %% @end
