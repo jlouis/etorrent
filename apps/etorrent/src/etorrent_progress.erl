@@ -57,7 +57,8 @@
 -endif.
 
 %% peer API
--export([start_link/5,
+-export([start_link/1,
+         start_link/5,
          mark_valid/2]).
 
 %% stats API
@@ -95,6 +96,14 @@
 -type chunk_offset() :: etorrent_types:chunk_offset().
 -type piece_index() :: etorrent_types:piece_index().
 -type piece_state() :: invalid | unassigned | begun | assigned | stored | valid.
+-type serverarg() ::
+    {torrentid,   torrent_id()} |
+    {chunksize,   chunk_len()} |
+    {fetched,     [piece_index()]} |
+    {piecesizes,  [{piece_index(), chunk_len()}]} |
+    {torrentpid,  pid()} |
+    {scarcitypid, pid()} |
+    {pendingpid,  pid()}.
 
 -record(pieceprio, {
     tag :: atom(),
@@ -240,13 +249,25 @@ chunk_server_key(TorrentID) ->
     {etorrent, TorrentID, chunk_server}.
 
 
+%% @doc Start a new torrent progress server
+%% @end
+-spec start_link([serverarg()]) -> {ok, pid()}.
+start_link(Args) ->
+    gen_server:start_link(?MODULE, Args, []).
+
+
 %% @doc
 %% Start a new chunk server for a set of pieces, a subset of the
 %% pieces may already have been fetched.
 %% @end
 start_link(TorrentID, ChunkSize, Fetched, Sizes, TorrentPid) ->
-    Args = [TorrentID, ChunkSize, Fetched, Sizes, TorrentPid],
-    gen_server:start_link(?MODULE, Args, []).
+    Args = [
+        {torrentid, TorrentID},
+        {chunksize, ChunkSize},
+        {fetched, Fetched},
+        {piecesizes, Sizes},
+        {torrentpid, TorrentPid}],
+    start_link(Args).
 
 %% @doc
 %% Mark a piece as completly stored to disk and validated.
@@ -335,11 +356,27 @@ num_state_members(TorrentID, Piecestate) ->
 %%====================================================================
 
 %% @private
-init([TorrentID, ChunkSize, FetchedPieces, PieceSizes, InitTorrentPid]) ->
-    etorrent_scarcity:await_scarcity_server(TorrentID),
-    true = register_chunk_server(TorrentID),
-    Pending = etorrent_pending:originhandle(TorrentID),
+init(Serverargs) ->
+    Args = orddict:from_list(Serverargs),
+    TorrentID = orddict:fetch(torrentid, Args),
+    ChunkSize = orddict:fetch(chunksize, Args),
+    FetchedPieces = orddict:fetch(fetched, Args),
+    PieceSizes = orddict:fetch(piecesizes, Args),
+    TorrentPid = case orddict:find(torrentpid, Args) of
+        error -> etorrent_utils:await({n, l, {torrent, TorrentID, control}});
+        {ok, ITorrentPid} -> ITorrentPid
+    end,
+    ScarcityPid = case orddict:find(scarcitypid, Args) of
+        error -> etorrent_scarcity:await_scarcity_server(TorrentID);
+        {ok, IScarcityPid} -> IScarcityPid
+    end,
+    Pending = case orddict:find(pendingpid, Args) of
+        error -> etorrent_pending:await_server(TorrentID);
+        {ok, IPending} -> IPending
+    end,
 
+
+    true = register_chunk_server(TorrentID),
     NumPieces = length(PieceSizes),
     PiecesValid = etorrent_pieceset:from_list(FetchedPieces, NumPieces),
     PiecesNone = etorrent_pieceset:from_list([], NumPieces),
@@ -363,15 +400,6 @@ init([TorrentID, ChunkSize, FetchedPieces, PieceSizes, InitTorrentPid]) ->
         {N, Set}
     end || {N, IsValid} <- lists:sort(States)],
     ChunkSets = array:from_orddict(ChunkList),
-    
-    %% Make it possible to inject the pid of the torrent in tests
-    TorrentPid = case InitTorrentPid of
-        lookup ->
-            {TPid, _} = gproc:await({n, l, {torrent, TorrentID, control}}),
-            TPid;
-        _ when is_pid(InitTorrentPid) ->
-            InitTorrentPid
-    end,
 
     PiecesBegun = etorrent_pieceset:from_list([], NumPieces),
     PriorityBegun = init_priority(TorrentID, begun, PiecesBegun),
@@ -711,16 +739,18 @@ update_priority(TorrentID, Pieceprio, Pieceset) ->
 
 
 -ifdef(TEST).
--define(chunk_server, ?MODULE).
+-define(progress, ?MODULE).
 -define(scarcity, etorrent_scarcity).
 -define(timer, etorrent_timer).
 -define(pending, etorrent_pending).
+-define(chunkstate, etorrent_chunkstate).
 
 
 chunk_server_test_() ->
-    {setup,
+    {setup, local,
         fun()  -> application:start(gproc) end,
         fun(_) -> application:stop(gproc) end,
+    {spawn,
     {foreach, local,
         fun setup_env/0,
         fun teardown_env/1,
@@ -741,17 +771,19 @@ chunk_server_test_() ->
      ?_test(all_stored_marks_stored_case()),
      ?_test(get_all_request_case()),
      ?_test(unassigned_to_assigned_case())
-     ]}}.
+     ]}}}.
 
 
 testid() -> 2.
 
 setup_env() ->
     Valid = [],
+    GProc = whereis(gproc),
     {ok, Time} = ?timer:start_link(queue),
     {ok, SPid} = ?scarcity:start_link(testid(), Time, 8),
-    {ok, CPid} = ?chunk_server:start_link(testid(), 1, Valid, [{0, 2}, {1, 2}, {2, 2}], self()),
-    true = ?chunk_server:register_peer(testid()),
+    {ok, PPid} = ?pending:start_link(testid()),
+    {ok, CPid} = ?progress:start_link(testid(), 1, Valid, [{0, 2}, {1, 2}, {2, 2}], self()),
+    true = ?progress:register_peer(testid()),
     {Time, SPid, CPid}.
 
 teardown_env({Time, SPid, CPid}) ->
@@ -760,141 +792,141 @@ teardown_env({Time, SPid, CPid}) ->
     ok = etorrent_utils:shutdown(CPid).
 
 lookup_registered_case() ->
-    ?assertEqual(true, ?chunk_server:register_chunk_server(0)),
-    ?assertEqual(self(), ?chunk_server:lookup_chunk_server(0)).
+    ?assertEqual(true, ?progress:register_chunk_server(0)),
+    ?assertEqual(self(), ?progress:lookup_chunk_server(0)).
 
 unregister_case() ->
-    ?assertEqual(true, ?chunk_server:register_chunk_server(1)),
-    ?assertEqual(true, ?chunk_server:unregister_chunk_server(1)),
-    ?assertError(badarg, ?chunk_server:lookup_chunk_server(1)).
+    ?assertEqual(true, ?progress:register_chunk_server(1)),
+    ?assertEqual(true, ?progress:unregister_chunk_server(1)),
+    ?assertError(badarg, ?progress:lookup_chunk_server(1)).
 
 register_two_case() ->
     Main = self(),
     {Pid, Ref} = erlang:spawn_monitor(fun() ->
         etorrent_utils:expect(go),
-        true = ?chunk_server:register_chunk_server(20),
+        true = ?progress:register_chunk_server(20),
         Main ! registered,
         etorrent_utils:expect(die)
     end),
     Pid ! go,
     etorrent_utils:expect(registered),
-    ?assertError(badarg, ?chunk_server:register_chunk_server(20)),
+    ?assertError(badarg, ?progress:register_chunk_server(20)),
     Pid ! die,
     etorrent_utils:wait(Ref).
 
 not_interested_case() ->
     Has = etorrent_pieceset:from_list([], 3),
-    Ret = ?chunk_server:request_chunks(testid(), Has, 1),
+    Ret = ?progress:request_chunks(testid(), Has, 1),
     ?assertEqual({ok, not_interested}, Ret).
 
 not_interested_valid_case() ->
     Has = etorrent_pieceset:from_list([0], 3),
-    _   = ?chunk_server:request_chunks(testid(), Has, 2),
-    ok  = ?chunk_server:mark_stored(testid(), 0, 0, 1),
-    ok  = ?chunk_server:mark_stored(testid(), 0, 1, 1),
-    ok  = ?chunk_server:mark_valid(testid(), 0),
-    Ret = ?chunk_server:request_chunks(testid(), Has, 2),
+    _   = ?progress:request_chunks(testid(), Has, 2),
+    ok  = ?progress:mark_stored(testid(), 0, 0, 1),
+    ok  = ?progress:mark_stored(testid(), 0, 1, 1),
+    ok  = ?progress:mark_valid(testid(), 0),
+    Ret = ?progress:request_chunks(testid(), Has, 2),
     ?assertEqual({ok, not_interested}, Ret).
 
 request_one_case() ->
     Has = etorrent_pieceset:from_list([0], 3),
-    Ret = ?chunk_server:request_chunks(testid(), Has, 1),
+    Ret = ?progress:request_chunks(testid(), Has, 1),
     ?assertEqual({ok, [{0, 0, 1}]}, Ret).
 
 mark_dropped_case() ->
     Has = etorrent_pieceset:from_list([0], 3),
-    {ok, [{0, 0, 1}]} = ?chunk_server:request_chunks(testid(), Has, 1),
-    {ok, [{0, 1, 1}]} = ?chunk_server:request_chunks(testid(), Has, 1),
-    ok  = ?chunk_server:mark_dropped(testid(), 0, 0, 1),
-    Ret = ?chunk_server:request_chunks(testid(), Has, 1),
+    {ok, [{0, 0, 1}]} = ?progress:request_chunks(testid(), Has, 1),
+    {ok, [{0, 1, 1}]} = ?progress:request_chunks(testid(), Has, 1),
+    ok  = ?progress:mark_dropped(testid(), 0, 0, 1),
+    Ret = ?progress:request_chunks(testid(), Has, 1),
     ?assertEqual({ok, [{0, 0, 1}]}, Ret).
 
 mark_all_dropped_case() ->
     Has = etorrent_pieceset:from_list([0], 3),
-    ?assertMatch({ok, [{0, 0, 1}]}, ?chunk_server:request_chunks(testid(), Has, 1)),
-    ?assertMatch({ok, [{0, 1, 1}]}, ?chunk_server:request_chunks(testid(), Has, 1)),
-    ok = ?chunk_server:mark_all_dropped(testid()),
-    ?assertMatch({ok, [{0, 0, 1}]}, ?chunk_server:request_chunks(testid(), Has, 1)),
-    ?assertMatch({ok, [{0, 1, 1}]}, ?chunk_server:request_chunks(testid(), Has, 1)).
+    ?assertMatch({ok, [{0, 0, 1}]}, ?progress:request_chunks(testid(), Has, 1)),
+    ?assertMatch({ok, [{0, 1, 1}]}, ?progress:request_chunks(testid(), Has, 1)),
+    ok = ?progress:mark_all_dropped(testid()),
+    ?assertMatch({ok, [{0, 0, 1}]}, ?progress:request_chunks(testid(), Has, 1)),
+    ?assertMatch({ok, [{0, 1, 1}]}, ?progress:request_chunks(testid(), Has, 1)).
 
 drop_all_on_exit_case() ->
     Has = etorrent_pieceset:from_list([0], 3),
     Pid = spawn_link(fun() ->
-        true = ?chunk_server:register_peer(testid()),
-        {ok, [{0, 0, 1}]} = ?chunk_server:request_chunks(testid(), Has, 1),
-        {ok, [{0, 1, 1}]} = ?chunk_server:request_chunks(testid(), Has, 1)
+        true = ?progress:register_peer(testid()),
+        {ok, [{0, 0, 1}]} = ?progress:request_chunks(testid(), Has, 1),
+        {ok, [{0, 1, 1}]} = ?progress:request_chunks(testid(), Has, 1)
     end),
     _ = monitor(process, Pid),
     ok  = receive {'DOWN', _, process, Pid, _} -> ok end,
     timer:sleep(100),
-    ?assertMatch({ok, [{0, 0, 1}]}, ?chunk_server:request_chunks(testid(), Has, 1)),
-    ?assertMatch({ok, [{0, 1, 1}]}, ?chunk_server:request_chunks(testid(), Has, 1)).
+    ?assertMatch({ok, [{0, 0, 1}]}, ?progress:request_chunks(testid(), Has, 1)),
+    ?assertMatch({ok, [{0, 1, 1}]}, ?progress:request_chunks(testid(), Has, 1)).
 
 drop_none_on_exit_case() ->
     Has = etorrent_pieceset:from_list([0], 3),
-    Pid = spawn_link(fun() -> true = ?chunk_server:register_peer(testid()) end),
+    Pid = spawn_link(fun() -> true = ?progress:register_peer(testid()) end),
     _ = monitor(process, Pid),
     ok  = receive {'DOWN', _, process, Pid, _} -> ok end,
-    ?assertMatch({ok, [{0, 0, 1}]}, ?chunk_server:request_chunks(testid(), Has, 1)),
-    ?assertMatch({ok, [{0, 1, 1}]}, ?chunk_server:request_chunks(testid(), Has, 1)).
+    ?assertMatch({ok, [{0, 0, 1}]}, ?progress:request_chunks(testid(), Has, 1)),
+    ?assertMatch({ok, [{0, 1, 1}]}, ?progress:request_chunks(testid(), Has, 1)).
 
 marked_stored_not_dropped_case() ->
     Has = etorrent_pieceset:from_list([0], 3),
     Pid = spawn_link(fun() ->
-        true = ?chunk_server:register_peer(testid()),
-        {ok, [{0, 0, 1}]} = ?chunk_server:request_chunks(testid(), Has, 1),
-        ok = ?chunk_server:mark_stored(testid(), 0, 0, 1)
+        true = ?progress:register_peer(testid()),
+        {ok, [{0, 0, 1}]} = ?progress:request_chunks(testid(), Has, 1),
+        ok = ?progress:mark_stored(testid(), 0, 0, 1)
     end),
     _ = monitor(process, Pid),
     ok  = receive {'DOWN', _, process, Pid, _} -> ok end,
-    ?assertMatch({ok, [{0, 1, 1}]}, ?chunk_server:request_chunks(testid(), Has, 1)).
+    ?assertMatch({ok, [{0, 1, 1}]}, ?progress:request_chunks(testid(), Has, 1)).
 
 mark_fetched_noop_case() ->
     Has = etorrent_pieceset:from_list([0], 3),
     Pid = spawn_link(fun() ->
-        true = ?chunk_server:register_peer(testid()),
-        {ok, [{0, 0, 1}]} = ?chunk_server:request_chunks(testid(), Has, 1),
-        {ok, true} = ?chunk_server:mark_fetched(testid(), 0, 0, 1)
+        true = ?progress:register_peer(testid()),
+        {ok, [{0, 0, 1}]} = ?progress:request_chunks(testid(), Has, 1),
+        {ok, true} = ?progress:mark_fetched(testid(), 0, 0, 1)
     end),
     _ = monitor(process, Pid),
     ok  = receive {'DOWN', _, process, Pid, _} -> ok end,
     timer:sleep(1000),
-    ?assertMatch({ok, [{0, 0, 1}]}, ?chunk_server:request_chunks(testid(), Has, 1)).
+    ?assertMatch({ok, [{0, 0, 1}]}, ?progress:request_chunks(testid(), Has, 1)).
 
 
 mark_valid_not_stored_case() ->
-    Ret = ?chunk_server:mark_valid(testid(), 0),
+    Ret = ?progress:mark_valid(testid(), 0),
     ?assertEqual({error, not_stored}, Ret).
 
 mark_valid_stored_case() ->
     Has = etorrent_pieceset:from_list([0,1], 3),
-    {ok, [{0, 0, 1}]} = ?chunk_server:request_chunks(testid(), Has, 1),
-    {ok, [{0, 1, 1}]} = ?chunk_server:request_chunks(testid(), Has, 1),
-    ok  = ?chunk_server:mark_stored(testid(), 0, 0, 1),
-    ok  = ?chunk_server:mark_stored(testid(), 0, 1, 1),
-    ?assertEqual(ok, ?chunk_server:mark_valid(testid(), 0)),
-    ?assertEqual({error, valid}, ?chunk_server:mark_valid(testid(), 0)).
+    {ok, [{0, 0, 1}]} = ?progress:request_chunks(testid(), Has, 1),
+    {ok, [{0, 1, 1}]} = ?progress:request_chunks(testid(), Has, 1),
+    ok  = ?progress:mark_stored(testid(), 0, 0, 1),
+    ok  = ?progress:mark_stored(testid(), 0, 1, 1),
+    ?assertEqual(ok, ?progress:mark_valid(testid(), 0)),
+    ?assertEqual({error, valid}, ?progress:mark_valid(testid(), 0)).
 
 all_stored_marks_stored_case() ->
     Has = etorrent_pieceset:from_list([0,1], 3),
-    {ok, [{0, 0, 1}]} = ?chunk_server:request_chunks(testid(), Has, 1),
-    {ok, [{0, 1, 1}]} = ?chunk_server:request_chunks(testid(), Has, 1),
-    ?assertMatch({ok, [{1, 0, 1}]}, ?chunk_server:request_chunks(testid(), Has, 1)),
-    ?assertMatch({ok, [{1, 1, 1}]}, ?chunk_server:request_chunks(testid(), Has, 1)).
+    {ok, [{0, 0, 1}]} = ?progress:request_chunks(testid(), Has, 1),
+    {ok, [{0, 1, 1}]} = ?progress:request_chunks(testid(), Has, 1),
+    ?assertMatch({ok, [{1, 0, 1}]}, ?progress:request_chunks(testid(), Has, 1)),
+    ?assertMatch({ok, [{1, 1, 1}]}, ?progress:request_chunks(testid(), Has, 1)).
 
 get_all_request_case() ->
     Has = etorrent_pieceset:from_list([0,1,2], 3),
-    {ok, [{0, 0, 1}]} = ?chunk_server:request_chunks(testid(), Has, 1),
-    {ok, [{0, 1, 1}]} = ?chunk_server:request_chunks(testid(), Has, 1),
-    {ok, [{1, 0, 1}]} = ?chunk_server:request_chunks(testid(), Has, 1),
-    {ok, [{1, 1, 1}]} = ?chunk_server:request_chunks(testid(), Has, 1),
-    {ok, [{2, 0, 1}]} = ?chunk_server:request_chunks(testid(), Has, 1),
-    {ok, [{2, 1, 1}]} = ?chunk_server:request_chunks(testid(), Has, 1),
-    ?assertEqual({ok, assigned}, ?chunk_server:request_chunks(testid(), Has, 1)).
+    {ok, [{0, 0, 1}]} = ?progress:request_chunks(testid(), Has, 1),
+    {ok, [{0, 1, 1}]} = ?progress:request_chunks(testid(), Has, 1),
+    {ok, [{1, 0, 1}]} = ?progress:request_chunks(testid(), Has, 1),
+    {ok, [{1, 1, 1}]} = ?progress:request_chunks(testid(), Has, 1),
+    {ok, [{2, 0, 1}]} = ?progress:request_chunks(testid(), Has, 1),
+    {ok, [{2, 1, 1}]} = ?progress:request_chunks(testid(), Has, 1),
+    ?assertEqual({ok, assigned}, ?progress:request_chunks(testid(), Has, 1)).
 
 unassigned_to_assigned_case() ->
     Has = etorrent_pieceset:from_list([0], 3),
-    {ok, [{0,0,1}, {0,1,1}]} = ?chunk_server:request_chunks(testid(), Has, 2),
-    ?assertEqual({ok, assigned}, ?chunk_server:request_chunks(testid(), Has, 1)).
+    {ok, [{0,0,1}, {0,1,1}]} = ?progress:request_chunks(testid(), Has, 2),
+    ?assertEqual({ok, assigned}, ?progress:request_chunks(testid(), Has, 1)).
 
 -endif.

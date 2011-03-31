@@ -14,7 +14,10 @@
 -export([gsplit/2, queue_remove/2, group/1,
 	 list_shuffle/1, date_str/1, any_to_list/1,
      merge_proplists/2, compare_proplists/2,
-     find/2, wait/1, expect/1, shutdown/1]).
+     find/2, wait/1, expect/1, shutdown/1, ping/1]).
+
+%% "mock-like" functions
+-export([reply/1]).
 
 %% "time-like" functions
 -export([now_subtract_seconds/2]).
@@ -165,6 +168,22 @@ shutdown(Pid) ->
     exit(Pid, shutdown),
     wait(MRef).
 
+%% @doc Ensure that a previous message has been handled
+%% @end
+-spec ping(pid()) -> ok.
+ping(Pid) ->
+    {status, Pid, _, _} = sys:get_status(Pid),
+    ok.
+
+
+%% @doc Handle a gen_server call using a function
+%% @end
+-spec reply(fun((term()) -> term())) -> ok.
+reply(Handler) ->
+    receive {'$gen_call', Client, Call} ->
+        gen_server:reply(Client, Handler(Call))
+    end.
+
 
 %% @doc Return the first element in the list that matches a condition
 %% If no element matched the condition 'false' is returned.
@@ -210,13 +229,29 @@ await(Name) ->
 -ifdef(EUNIT).
 -define(utils, ?MODULE).
 
-find_test_nomatch() ->
+find_nomatch_test() ->
     False = fun(_) -> false end,
     ?assertEqual(false, ?utils:find(False, [1,2,3])).
 
-find_test_match() ->
+find_match_test() ->
     Last = fun(E) -> E == 3 end,
     ?assertEqual(3, ?utils:find(Last, [1,2,3])).
+
+reply_test() ->
+    Pid = spawn_link(fun() ->
+        ?utils:reply(fun(call) -> reply end)
+    end),
+    ?assertEqual(reply, gen_server:call(Pid, call)).
+
+register_test_() ->
+    {setup,
+        fun() -> application:start(gproc) end,
+        fun(_) -> application:stop(gproc) end,
+    ?_test(begin
+        true = ?utils:register(name),
+        ?assertEqual(self(), ?utils:lookup(name)),
+        ?assertEqual(self(), ?utils:await(name))
+    end)}.
 
 -ifdef(PROPER).
 
