@@ -233,7 +233,7 @@ first(Pieces, Pieceset) ->
     first_(Pieces, Elements).
 
 first_([], _) ->
-    error(badarg);
+    erlang:error(badarg);
 first_([H|T], Elements) ->
     <<_:H/bitstring, Status:1, _/bitstring>> = Elements,
     case Status of

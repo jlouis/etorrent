@@ -55,6 +55,8 @@
 -type mode() :: instant | queue.
 -opaque timeserver() :: server().
 -export_type([timeserver/0]).
+-compile({no_auto_import, [error/1]}).
+-import(erlang, [error/1]).
 
 -record(timer, {
     type :: message | timeout,
