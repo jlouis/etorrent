@@ -12,10 +12,8 @@
 -type bcode() :: etorrent_types:bcode().
 -type tier() :: etorrent_types:tier().
 
--include("log.hrl").
-
 -ifdef(TEST).
--include_lib("eqc/include/eqc.hrl").
+-include_lib("proper/include/proper.hrl").
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 

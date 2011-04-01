@@ -16,7 +16,6 @@
 %% their encoding.</p>
 -module(etorrent_bcoding).
 -author("Jesper Louis Andersen <jesper.louis.andersen@gmail.com>").
--include("log.hrl").
 
 -ifdef(TEST).
 -include_lib("proper/include/proper.hrl").
@@ -194,17 +193,6 @@ decode_dict_items(String, Accum) ->
 
 -ifdef(EUNIT).
 -ifdef(PROPER).
-
-dict() ->
-    non_empty(list([{binary(), ?LAZY(bcodegen())}])).
-
-bcodegen() ->
-    ?SIZED(Sz,
-	   oneof([int(),
-		  non_empty(binary()),
-		  resize(Sz div 4, non_empty(list(bcodegen()))),
-		  resize(Sz div 4, dict())])).
-
 
 prop_inv() ->
     ?FORALL(BC, bcode(),
