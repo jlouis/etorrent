@@ -3,7 +3,7 @@
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
 -undef(LET).
--include_lib("eqc/include/eqc.hrl").
+-include_lib("proper/include/proper.hrl").
 -endif.
 
 -export([new/1,
@@ -462,16 +462,14 @@ pad_binary_test() ->
     Set = ?set:from_binary(Bitfield, 4),
     ?assertEqual(Bitfield, ?set:to_binary(Set)).
 
-
--ifdef(EQC).
-
+-ifdef(PROPER).
 prop_min() ->
     ?FORALL({Elem, Size},
     ?SUCHTHAT({E, S}, {nat(), nat()}, E < S andalso S > 1),
         Elem == ?set:min(?set:from_list([Elem], Size))).
 
 prop_min_test() ->
-    eqc:quickcheck(prop_min()).
+    proper:quickcheck(prop_min()).
 
 -endif.
 -endif.

@@ -13,7 +13,7 @@
 -include("log.hrl").
 
 -ifdef(TEST).
--include_lib("eqc/include/eqc.hrl").
+-include_lib("proper/include/proper.hrl").
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
@@ -425,7 +425,7 @@ should_swap_test() ->
     ?assertEqual(false, should_swap_for("http://foo.com", "udp://bar.com")),
     ?assertEqual(true, should_swap_for("http://foo.com", "udp://foo.com/something/more")).
 
--ifdef(EQC).
+-ifdef(PROPER).
 
 scheme() -> oneof([http, udp]).
 
@@ -446,7 +446,7 @@ prop_splice_unsplice_inv() ->
 	    end).
 
 eqc_test() ->
-    ?assert(eqc:quickcheck(prop_splice_unsplice_inv())).
+    ?assert(proper:quickcheck(prop_splice_unsplice_inv())).
 
 -endif.
 -endif.
