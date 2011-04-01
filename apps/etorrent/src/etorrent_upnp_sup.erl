@@ -8,7 +8,7 @@
 -include("log.hrl").
 
 -ifdef(TEST).
--include_lib("eqc/include/eqc.hrl").
+-include_lib("proper/include/proper.hrl").
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 

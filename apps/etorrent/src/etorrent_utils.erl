@@ -4,7 +4,7 @@
 -module(etorrent_utils).
 
 -ifdef(TEST).
--include_lib("eqc/include/eqc.hrl").
+-include_lib("proper/include/proper.hrl").
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
@@ -164,7 +164,7 @@ shutdown(Pid) ->
 %%====================================================================
 
 -ifdef(EUNIT).
--ifdef(EQC).
+-ifdef(PROPER).
 
 prop_gsplit_split() ->
     ?FORALL({N, Ls}, {nat(), list(int())},
@@ -205,20 +205,11 @@ proplist_utils_test() ->
     ?assert(compare_proplists(Prop1, shuffle_list(Prop1))),
     ok.
 
-eqc_count_test_() ->
-    %% Run the first eqc-based test with a higher timeout value
-    %% beacause it takes time for EQC to authenticate when it's autostarted.
-    {timeout, 1000, [?_assert(eqc:quickcheck(prop_group_count()))]}.
+eqc_count_test() ->
+    ?assert(proper:quickcheck(prop_group_count())).
 
 eqc_gsplit_test() ->
-    ?assert(eqc:quickcheck(prop_gsplit_split())).
+    ?assert(proper:quickcheck(prop_gsplit_split())).
 
 -endif.
 -endif.
-
-
-
-
-
-
-
