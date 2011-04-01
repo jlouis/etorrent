@@ -149,9 +149,14 @@ compare_proplists(Prop1, Prop2) ->
 
 %% @doc Wait for a monitored process to exit
 %% @end
--spec wait(reference()) -> ok.
-wait(MRef) ->
-    receive {'DOWN', MRef, process, _, _} -> ok end.
+-spec wait(reference() | pid) -> ok.
+wait(MRef) when is_reference(MRef) ->
+    receive {'DOWN', MRef, process, _, _} -> ok end;
+
+wait(Pid) when is_pid(Pid) ->
+    MRef = erlang:monitor(process, Pid),
+    wait(MRef).
+
 
 %% @doc Wait for a message to arrive
 %% @end
