@@ -23,6 +23,7 @@
 
 %% exported functions
 -export([start_link/1,
+         register/1,
          receiver/2]).
 
 %% gproc registry entries
@@ -72,9 +73,19 @@ server_name(TorrentID) ->
 start_link(TorrentID) ->
     gen_server:start_link(?MODULE, [TorrentID], []).
 
+
+%% @doc
+%% @end
+-spec register(pid()) -> ok.
+register(Srvpid) ->
+    gen_server:call(Srvpid, {register, self()}).
+
+
+%% @doc
+%% @end
 -spec receiver(pid(), pid()) -> ok.
 receiver(Recvpid, Srvpid) ->
-    ok = gen_server:call(Srvpid, {receiver, Recvpid}).
+    gen_server:call(Srvpid, {receiver, Recvpid}).
 
 
 %% @private
@@ -87,7 +98,7 @@ init([TorrentID]) ->
     {ok, InitState}.
 
 
-handle_call({register_peer, Peerpid}, _, State) ->
+handle_call({register, Peerpid}, _, State) ->
     #state{table=Table} = State,
     Ref = erlang:monitor(process, Peerpid),
     case insert_peer(Table, Peerpid, Ref) of
@@ -195,5 +206,31 @@ list_requests(Table) ->
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
 -define(pending, ?MODULE).
+
+
+testid() -> 0.
+testpid() -> get({pending, testid()}).
+
+setup_env() ->
+    {ok, Pid} = ?pending:start_link(testid()),
+    put({pending, testid()}, Pid),
+    Pid.
+
+teardown_env(Pid) ->
+    erase({pending, testid()}),
+    ok = etorrent_utils:shutdown(Pid).
+
+pending_test_() ->
+    {setup, local,
+        fun() -> application:start(gproc) end,
+        fun(_) -> application:stop(gproc) end,
+    {foreach, local,
+        fun setup_env/0,
+        fun teardown_env/1,
+    [?_test(test_registers())]}}.
+
+test_registers() ->
+    ?assertEqual(testpid(), ?pending:await_server(testid())),
+    ?assertEqual(testpid(), ?pending:lookup_server(testid())).
 
 -endif.
