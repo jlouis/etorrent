@@ -28,6 +28,7 @@
 
 %% "registry-like" functions
 -export([register/1,
+         unregister/1,
          lookup/1,
          await/1]).
 
@@ -219,11 +220,18 @@ register(Name) ->
     gproc:add_local_name(Name).
 
 
+%% @doc Unregister the local process from a name
+%% @end
+-spec unregister(tuple()) -> true.
+unregister(Name) ->
+    gproc:unreg({n, l, Name}).
+
+
 %% @doc Resolve a local name to a pid
 %% @end
 -spec lookup(tuple()) -> pid().
 lookup(Name) ->
-    gproc:lookup_local_name(Name).
+    gproc:lookup_pid({n, l, Name}).
 
 
 %% @doc Wait until a process registers under a local name

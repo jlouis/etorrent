@@ -223,23 +223,21 @@
 
 -spec register_server(torrent_id()) -> true.
 register_server(TorrentID) ->
-    gproc:reg({n, l, chunk_server_key(TorrentID)}).
+    etorrent_utils:register(server_name(TorrentID)).
 
 -spec unregister_server(torrent_id()) -> true.
 unregister_server(TorrentID) ->
-    gproc:unreg({n, l, chunk_server_key(TorrentID)}).
+    etorrent_utils:unregister(server_name(TorrentID)).
 
 -spec lookup_server(torrent_id()) -> pid().
 lookup_server(TorrentID) ->
-    gproc:lookup_pid({n, l, chunk_server_key(TorrentID)}).
+    etorrent_utils:lookup(server_name(TorrentID)).
 
 -spec await_server(torrent_id()) -> pid().
 await_server(TorrentID) ->
-    Name = {n, l, chunk_server_key(TorrentID)},
-    {Pid, undefined} = gproc:await(Name, 5000),
-    Pid.
+    etorrent_utils:await(server_name(TorrentID)).
 
-chunk_server_key(TorrentID) ->
+server_name(TorrentID) ->
     {etorrent, TorrentID, chunk_server}.
 
 
