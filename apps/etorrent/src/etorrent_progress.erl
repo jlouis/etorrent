@@ -239,11 +239,6 @@ await_server(TorrentID) ->
     {Pid, undefined} = gproc:await(Name, 5000),
     Pid.
 
--spec register(torrent_id()) -> true.
-register(TorrentID) ->
-    ChunkSrv = lookup_server(TorrentID),
-    call(ChunkSrv, {register, self()}).
-
 chunk_server_key(TorrentID) ->
     {etorrent, TorrentID, chunk_server}.
 
@@ -425,7 +420,7 @@ init(Serverargs) ->
     {ok, InitState}.
 
 
-handle_call({request, PeerPid, Peerset, Numchunks}, _, State) ->
+handle_call({request_chunks, PeerPid, Peerset, Numchunks}, _, State) ->
     #state{
         torrent_id=TorrentID,
         pieces_valid=Valid,
@@ -802,11 +797,11 @@ double_check_env() ->
     ?assert(is_pid(progress())).
 
 lookup_registered_case() ->
-    ?assertEqual(true, ?pending:register_server(0)),
+    ?assertEqual(true, ?progress:register_server(0)),
     ?assertEqual(self(), ?progress:lookup_server(0)).
 
 unregister_case() ->
-    ?assertEqual(true, ?pending:register_server(1)),
+    ?assertEqual(true, ?progress:register_server(1)),
     ?assertEqual(true, ?progress:unregister_server(1)),
     ?assertError(badarg, ?progress:lookup_server(1)).
 
@@ -826,12 +821,12 @@ register_two_case() ->
 
 not_interested_case() ->
     Has = etorrent_pieceset:from_list([], 3),
-    Ret = ?chunkstate:request(progress(), Has, 1),
+    Ret = ?chunkstate:request(1, Has, progress()),
     ?assertEqual({ok, not_interested}, Ret).
 
 not_interested_valid_case() ->
     Has = etorrent_pieceset:from_list([0], 3),
-    _   = ?chunkstate:request(progress(), Has, 2),
+    _   = ?chunkstate:request(2, Has, progress()),
     ok  = ?progress:mark_stored(testid(), 0, 0, 1),
     ok  = ?progress:mark_stored(testid(), 0, 1, 1),
     ok  = ?progress:mark_valid(testid(), 0),
