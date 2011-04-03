@@ -14,7 +14,8 @@
 -export([gsplit/2, queue_remove/2, group/1,
 	 list_shuffle/1, date_str/1, any_to_list/1,
      merge_proplists/2, compare_proplists/2,
-     find/2, wait/1, expect/1, shutdown/1, ping/1]).
+     find/2, wait/1, expect/1, shutdown/1, ping/1,
+     first/0]).
 
 %% "mock-like" functions
 -export([reply/1]).
@@ -163,6 +164,13 @@ wait(Pid) when is_pid(Pid) ->
 -spec expect(term()) -> ok.
 expect(Message) ->
     receive Message -> ok end.
+
+%% @doc Return the first message from the inbox
+%% @end
+-spec first() -> term().
+first() ->
+    receive Message -> Message end.
+
 
 %% @doc Shutdown a child process
 %% @end
