@@ -111,7 +111,6 @@ handle_call({receiver, Newrecvpid}, _, State) ->
     Assigned = fun({Piece, Offset, Length, Peerpid}) ->
         etorrent_chunkstate:assigned(Piece, Offset, Length, Peerpid, Newrecvpid)
     end,
-    erlang:display(Requests),
     [Assigned(Request) || Request <- Requests],
     NewState = State#state{receiver=Newrecvpid},
     {reply, ok, NewState}.
@@ -192,9 +191,10 @@ delete_request(Table, Piece, Offset, Length, Pid) ->
     end.
 
 flush_requests(Table, Pid) ->
-    Match = ets:fun2ms(fun({{I, O, L, P}}) -> {I, O, L} end),
-    Requests  = ets:select(Table, Match),
-    ets:select_delete(Table, Match),
+    Select = ets:fun2ms(fun({{I, O, L, P}}) when P == Pid -> {I, O, L} end),
+    Delete = ets:fun2ms(fun({{_, _, _, P}}) -> P == Pid end),
+    Requests  = ets:select(Table, Select),
+    ets:select_delete(Table, Delete),
     Requests.
 
 list_requests(Table) ->
@@ -321,10 +321,8 @@ test_drop_all_for_pid() ->
     ?expect(assign),
     ?chunks:assigned(0, 0, 1, Pid, testpid()),
     ?chunks:assigned(0, 1, 1, Pid, testpid()),
-    Pid ! drop,
-    ?expect(dropped),
-    Pid ! die,
-    ?wait(Pid),
+    Pid ! drop, ?expect(dropped),
+    Pid ! die, ?wait(Pid),
     ?ping(testpid()),
     self() ! none,
     ?assertEqual(none, ?first()).
