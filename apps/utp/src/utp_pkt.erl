@@ -262,7 +262,7 @@ consider_nagle(#pkt_buf { send_window_packets = 1,
     end.
 
 update_send_buffer1(0, _WindowStart, PB) ->
-    PB; %% Essentially a duplicate ACK, but we don't do anything about it
+    {0, PB}; %% Essentially a duplicate ACK, but we don't do anything about it
 update_send_buffer1(AckAhead, WindowStart,
 		   #pkt_buf { retransmission_queue = RQ } = PB) ->
     {AckedPackets, N_RQ} = lists:partition(
