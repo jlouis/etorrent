@@ -22,7 +22,7 @@
 %% @doc
 %% @end
 request(Numchunks, Peerset, Srvpid) ->
-    Call = {request_chunks, self(), Peerset, Numchunks},
+    Call = {chunk, {request, Numchunks, Peerset, self()}},
     gen_server:call(Srvpid, Call).
 
 
@@ -116,7 +116,7 @@ request_test() ->
     Set  = make_ref(),
     Num  = make_ref(),
     Srv = spawn_link(fun() ->
-        etorrent_utils:reply(fun({request_chunks, Num, Set, Peer}) -> ok end)
+        etorrent_utils:reply(fun({chunk, {request, Num, Set, Peer}}) -> ok end)
     end),
     ?assertEqual(ok, ?chunkstate:request(Num, Set, Srv)).
 
