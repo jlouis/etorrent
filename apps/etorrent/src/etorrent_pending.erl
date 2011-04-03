@@ -1,5 +1,6 @@
 -module(etorrent_pending).
 -behaviour(gen_server).
+-include_lib("stdlib/include/ms_transform.hrl").
 %% This module implements a server process tracking which open
 %% requests have been assigned to each peer process. The process
 %% assigning the requests to peers are responsible for keeping
@@ -44,15 +45,10 @@
     receiver :: pid(),
     table :: ets:tid()}).
 
--opaque peerhandle() :: {peer, pid()}.
--opaque originhandle() :: {origin, pid()}.
--export_type([peerhandle/0, originhandle/0]).
-
 -type torrent_id()  :: etorrent_types:torrent_id().
 -type pieceindex()  :: etorrent_types:pieceindex().
 -type chunkoffset() :: etorrent_types:chunkoffset().
 -type chunklength() :: etorrent_types:chunklength().
-
 
 register_server(TorrentID) ->
     etorrent_utils:register(server_name(TorrentID)).
@@ -91,7 +87,7 @@ receiver(Recvpid, Srvpid) ->
 %% @private
 init([TorrentID]) ->
     true = register_server(TorrentID),
-    Table = ets:new(none, [private, set]),
+    Table = ets:new(none, [private, set, {keypos, 1}]),
     InitState = #state{
         receiver=self(),
         table=Table},
@@ -101,18 +97,21 @@ init([TorrentID]) ->
 handle_call({register, Peerpid}, _, State) ->
     #state{table=Table} = State,
     Ref = erlang:monitor(process, Peerpid),
-    case insert_peer(Table, Peerpid, Ref) of
+    Reply = case insert_peer(Table, Peerpid, Ref) of
         true  -> ok;
-        false -> erlang:demonitor(Ref)
+        false ->
+            erlang:demonitor(Ref),
+            error
     end,
     {reply, ok, State};
 
-handle_call({redirect, Newrecvpid}, _, State) ->
+handle_call({receiver, Newrecvpid}, _, State) ->
     #state{table=Table} = State,
     Requests = list_requests(Table),
     Assigned = fun({Piece, Offset, Length, Peerpid}) ->
         etorrent_chunkstate:assigned(Piece, Offset, Length, Peerpid, Newrecvpid)
     end,
+    erlang:display(Requests),
     [Assigned(Request) || Request <- Requests],
     NewState = State#state{receiver=Newrecvpid},
     {reply, ok, NewState}.
@@ -127,7 +126,7 @@ handle_info({chunk, {assigned, Index, Offset, Length, Peerpid}}, State) ->
     %% received the request and sent us this message. If so, bounce back a
     %% dropped-notification immidiately.
     #state{receiver=Receiver, table=Table} = State,
-    case insert_request(Table, Peerpid, Index, Offset, Length) of
+    case insert_request(Table, Index, Offset, Length, Peerpid) of
         true  -> ok;
         false ->
             etorrent_chunkstate:dropped(Index, Offset, Length, Peerpid, Receiver)
@@ -175,7 +174,8 @@ insert_peer(Table, Peerpid, Ref) ->
     ets:insert_new(Table, Row).
 
 delete_peer(Table, Peerpid) ->
-    ets:delete(Table, Peerpid).
+    true = ets:delete(Table, Peerpid),
+    ok.
 
 insert_request(Table, Piece, Offset, Length, Pid) ->
     Row = {{Piece, Offset, Length, Pid}},
@@ -192,27 +192,32 @@ delete_request(Table, Piece, Offset, Length, Pid) ->
     end.
 
 flush_requests(Table, Pid) ->
-    Match = {{'_', '_', '_', Pid}},
-    Rows  = ets:match_object(Table, Match),
-    true  = ets:match_delete(Table, Match),
-    [{I, O, L} || {_, I, O, L} <- Rows].
+    Match = ets:fun2ms(fun({{I, O, L, P}}) -> {I, O, L} end),
+    Requests  = ets:select(Table, Match),
+    ets:select_delete(Table, Match),
+    Requests.
 
 list_requests(Table) ->
-    ReqHead = {{'$1', '$2', '$3', '$4'}},
-    ReqTerm =  {'$1', '$2', '$3', '$4'},
-    ets:select(Table, [{ReqHead, [], [ReqTerm]}]).
+    Match = ets:fun2ms(fun({{I, O, L, P}}) -> {I, O, L, P} end),
+    ets:select(Table, Match).
 
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
 -define(pending, ?MODULE).
+-define(chunks, etorrent_chunkstate).
+-define(expect, etorrent_utils:expect).
+-define(wait, etorrent_utils:wait).
+-define(ping, etorrent_utils:ping).
+-define(first, etorrent_utils:first).
 
 
 testid() -> 0.
-testpid() -> get({pending, testid()}).
+testpid() -> ?pending:await_server(testid()).
 
 setup_env() ->
     {ok, Pid} = ?pending:start_link(testid()),
+    ok = ?pending:receiver(self(), Pid),
     put({pending, testid()}, Pid),
     Pid.
 
@@ -224,13 +229,129 @@ pending_test_() ->
     {setup, local,
         fun() -> application:start(gproc) end,
         fun(_) -> application:stop(gproc) end,
+    {inorder,
     {foreach, local,
         fun setup_env/0,
         fun teardown_env/1,
-    [?_test(test_registers())]}}.
+    [?_test(test_registers()),
+     ?_test(test_register_peer()),
+     ?_test(test_assigned_dropped()),
+     ?_test(test_stored_not_dropped()),
+     ?_test(test_dropped_not_dropped()),
+     ?_test(test_drop_all_for_pid()),
+     ?_test(test_change_receiver()),
+     ?_test(test_drop_on_down())
+    ]}}}.
 
 test_registers() ->
-    ?assertEqual(testpid(), ?pending:await_server(testid())),
-    ?assertEqual(testpid(), ?pending:lookup_server(testid())).
+    ?assert(is_pid(?pending:await_server(testid()))),
+    ?assert(is_pid(?pending:lookup_server(testid()))).
+
+test_register_peer() ->
+    ?assertEqual(ok, ?pending:register(testpid())).
+
+test_register_twice() ->
+    ?assertEqual(ok, ?pending:register(testpid())),
+    ?assertEqual(error, ?pending:register(testpid())).
+
+test_assigned_dropped() ->
+    Main = self(),
+    Pid = spawn_link(fun() ->
+        ok = ?pending:register(testpid()),
+        Main ! assign,
+        ?expect(die)
+    end),
+    ?expect(assign),
+    ?chunks:assigned(0, 0, 1, Pid, testpid()),
+    ?chunks:assigned(0, 1, 1, Pid, testpid()),
+    Pid ! die,
+    ?wait(Pid),
+    ?expect({chunk, {dropped, 0, 0, 1, Pid}}),
+    ?expect({chunk, {dropped, 0, 1, 1, Pid}}).
+
+test_stored_not_dropped() ->
+    Main = self(),
+    Pid = spawn_link(fun() ->
+        ok = ?pending:register(testpid()),
+        Main ! assign,
+        ?expect(store),
+        ?chunks:stored(0, 0, 1, self(), testpid()),
+        Main ! stored,
+        ?expect(die)
+    end),
+    ?expect(assign),
+    ?chunks:assigned(0, 0, 1, Pid, testpid()),
+    ?chunks:assigned(0, 1, 1, Pid, testpid()),
+    Pid ! store,
+    ?expect(stored),
+    Pid ! die,
+    ?wait(Pid),
+    ?expect({chunk, {dropped, 0, 1, 1, Pid}}).
+
+test_dropped_not_dropped() ->
+    Main = self(),
+    Pid = spawn_link(fun() ->
+        ok = ?pending:register(testpid()),
+        Main ! assign,
+        ?expect(drop),
+        ?chunks:dropped(0, 0, 1, self(), testpid()),
+        Main ! dropped,
+        ?expect(die)
+    end),
+    ?expect(assign),
+    ?chunks:assigned(0, 0, 1, Pid, testpid()),
+    ?chunks:assigned(0, 1, 1, Pid, testpid()),
+    Pid ! drop,
+    ?expect(dropped),
+    Pid ! die,
+    ?wait(Pid),
+    ?expect({chunk, {dropped, 0, 1, 1, Pid}}).
+
+test_drop_all_for_pid() ->
+    Main = self(),
+    Pid = spawn_link(fun() ->
+        ok = ?pending:register(testpid()),
+        Main ! assign,
+        ?expect(drop),
+        ?chunks:dropped(self(), testpid()),
+        Main ! dropped,
+        ?expect(die)
+    end),
+    ?expect(assign),
+    ?chunks:assigned(0, 0, 1, Pid, testpid()),
+    ?chunks:assigned(0, 1, 1, Pid, testpid()),
+    Pid ! drop,
+    ?expect(dropped),
+    Pid ! die,
+    ?wait(Pid),
+    ?ping(testpid()),
+    self() ! none,
+    ?assertEqual(none, ?first()).
+
+test_change_receiver() ->
+    Main = self(),
+    Pid = spawn_link(fun() ->
+        ?pending:receiver(self(), testpid()),
+        {peer, Peer} = ?first(),
+        ?chunks:assigned(0, 0, 1, Peer, testpid()),
+        ?chunks:assigned(0, 1, 1, Peer, testpid()),
+        ?pending:receiver(Main, testpid()),
+        ?expect(die)
+    end),
+    Peer = spawn_link(fun() ->
+        ?pending:register(testpid()),
+        Pid ! {peer, self()},
+        ?expect(die)
+    end),
+    ?expect({chunk, {assigned, 0, 0, 1, Peer}}),
+    ?expect({chunk, {assigned, 0, 1, 1, Peer}}),
+    Pid ! die,  ?wait(Pid),
+    Peer ! die, ?wait(Peer).
+
+test_drop_on_down() ->
+    Peer = spawn_link(fun() -> ?pending:register(testpid()) end),
+    ?wait(Peer),
+    ?chunks:assigned(0, 0, 1, Peer, testpid()),
+    ?expect({chunk, {dropped, 0, 0, 1, Peer}}).
 
 -endif.
