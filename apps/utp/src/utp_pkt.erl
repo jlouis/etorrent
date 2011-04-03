@@ -165,7 +165,7 @@ handle_packet(_CurrentTimeMs,
 			win_sz  = WindowSize,
 			ty = Type } = _Packet,
 	      PktWindow,
-	      PacketBuffer) ->
+	      PacketBuffer) when PktWindow =/= undefined ->
     %% Assertions
     %% ------------------------------
     SeqAhead = bit16(SeqNo - PacketBuffer#pkt_buf.ack_no),
