@@ -85,7 +85,7 @@
 %% STATE RECORDS
 %% ----------------------------------------------------------------------
 -record(state, { sock_info    :: utp_sock_info:t(),
-                 pkt_info     :: utp_pkt:t(),
+                 pkt_window   :: utp_pkt:t(),
                  pkt_buf      :: utp_pkt:buf(),
                  proc_info    :: utp_process:t(),
                  connector    :: {reference(), pid()},
@@ -152,14 +152,14 @@ reply(To, Msg) ->
 %% @end
 %%--------------------------------------------------------------------
 init([Socket, Addr, Port, Options]) ->
-    PktInfo  = utp_pkt:mk(),
+    PktWindow  = utp_pkt:mk(),
     PktBuf   = utp_pkt:mk_buf(?DEFAULT_OPT_RECV_SZ),
     ProcInfo = utp_process:mk(),
     SockInfo = utp_socket:mk(Addr, Options, ?DEFAULT_PACKET_SIZE, Port, Socket),
     {ok, idle, #state{ sock_info = SockInfo,
                        pkt_buf   = PktBuf,
                        proc_info = ProcInfo,
-                       pkt_info  = PktInfo }}.
+                       pkt_window  = PktWindow }}.
 
 %% @private
 idle(close, S) ->
@@ -192,9 +192,9 @@ syn_sent(Msg, S) ->
 
 %% @private
 connected({pkt, Pkt, {_TS, _TSDiff, RecvTime}},
-	  #state { pkt_info = PKI,
-			     pkt_buf  = PB,
-			     proc_info = PRI
+	  #state { pkt_window = PKI,
+                   pkt_buf  = PB,
+                   proc_info = PRI
                  } = S) ->
     %% @todo I think most of this code path is wrong at the moment
     case utp_pkt:handle_packet(RecvTime, connected, Pkt, PKI, PB) of
@@ -207,7 +207,7 @@ connected({pkt, Pkt, {_TS, _TSDiff, RecvTime}},
                         todo
 		end,
 	    {next_state, connected,
-	     S#state { pkt_info = N_PKI,
+	     S#state { pkt_window = N_PKI,
 				 pkt_buf = N_PB,
 				 proc_info = N_PRI }}
     end;
@@ -311,7 +311,7 @@ idle(connect, From, State = #state { sock_info = SockInfo,
                              pkt_buf     = utp_pkt:init_seqno(PktBuf, 2),
                              connector = From }};
 idle({accept, SYN}, _From, #state { sock_info = SockInfo,
-                                    pkt_buf   = PktBuf }) ->
+                                    pkt_buf   = PktBuf } = State) ->
     %% @todo timeout handling from the syn packet!
     Conn_id_recv = SYN#packet.conn_id + 1,
     gen_utp:register_process(self(), Conn_id_recv),
@@ -341,7 +341,7 @@ connected({recv, Length}, From, #state { proc_info = PI } = State) ->
 connected({send, Data}, From, #state {
                           sock_info = SockInfo,
 			  proc_info = PI,
-			  pkt_info  = PKI,
+			  pkt_window  = PKI,
 			  pkt_buf   = PKB } = State) ->
     ProcInfo = utp_process:enqueue_sender(From, Data, PI),
     {ok, PKB1, ProcInfo1} = utp_pkt:fill_window(SockInfo,
@@ -372,11 +372,11 @@ connected(Msg, From, State) ->
 %%--------------------------------------------------------------------
 handle_event({timeout, TRef, zerowindow_timeout},
 	     SN, #state {
-	      pkt_info = PKI
+	      pkt_window = PKI
 	      } = State)
   when SN == syn_sent; SN == connected; SN == connected_full; SN == fin_sent ->
     PKI1 = utp_pkt:zerowindow_timeout(TRef, PKI),
-    {next_state, SN, State#state { pkt_info = PKI1 }};
+    {next_state, SN, State#state { pkt_window = PKI1 }};
 handle_event({timeout, _TRef, zerowindow_timeout}, SN, State) ->
     {next_state, SN, State}; % Ignore, stray zerowindow timeout
 handle_event(_Event, StateName, State) ->
