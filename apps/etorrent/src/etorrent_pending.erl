@@ -43,7 +43,7 @@
 
 -record(state, {
     receiver :: pid(),
-    table :: ets:tid()}).
+    table :: tid()}).
 
 -type torrent_id()  :: etorrent_types:torrent_id().
 -type pieceindex()  :: etorrent_types:pieceindex().
