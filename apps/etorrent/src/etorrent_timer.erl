@@ -195,22 +195,10 @@ handle_call(fire, _, State) ->
     {reply, NumFired, NewState}.
     
 
-handle_cast(_, _) ->
-    error(badarg).
-
-
-handle_info(_, _) ->
-    error(badarg).
-
-
-terminate(_, State) ->
-    {ok, State}.
-
-
-code_change(_, _, _) ->
-    error(badarg).
-
-
+handle_cast(_, State) -> {stop, not_implemented, State}.
+handle_info(_, State) -> {stop, not_implemented, State}.
+terminate(_, State) -> {ok, State}.
+code_change(_, State, _) -> {ok, State}.
     
 
 sort_timers(Timers) ->
