@@ -21,7 +21,7 @@
 
 %% @doc
 %% @end
-request(Peerset, Numchunks, Srvpid) ->
+request(Numchunks, Peerset, Srvpid) ->
     Call = {request_chunks, self(), Peerset, Numchunks},
     gen_server:call(Srvpid, Call).
 
@@ -108,8 +108,17 @@ forward_(Pid, Tailref) ->
 -include_lib("eunit/include/eunit.hrl").
 -define(chunkstate, ?MODULE).
 
-pop() -> receive Msg -> Msg end.
+pop() -> etorrent_utils:first().
 make_pid() -> spawn(fun erlang:now/0).
+
+request_test() ->
+    Peer = self(),
+    Set  = make_ref(),
+    Num  = make_ref(),
+    Srv = spawn_link(fun() ->
+        etorrent_utils:reply(fun({request_chunks, Num, Set, Peer}) -> ok end)
+    end),
+    ?assertEqual(ok, ?chunkstate:request(Num, Set, Srv)).
 
 assigned_test() ->
     Pid = make_pid(),
