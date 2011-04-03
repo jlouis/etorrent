@@ -326,10 +326,10 @@ idle({accept, SYN}, _From, #state { sock_info = SockInfo,
 			  extension = ?SYN_EXTS
 			},
     ok = utp_socket:send_pkt(SockInfo, AckPacket),
-    {reply, ok, connected, #state { sock_info = utp_socket:set_conn_id(Conn_id_send, SockInfo),
-                                    pkt_buf = utp_pkt:init_ackno(
-                                                utp_pkt:init_seqno(PktBuf, SeqNo + 1),
-                                                AckNo)}};
+    {reply, ok, connected, State#state { sock_info = utp_socket:set_conn_id(Conn_id_send, SockInfo),
+                                         pkt_buf = utp_pkt:init_ackno(
+                                                     utp_pkt:init_seqno(PktBuf, SeqNo + 1),
+                                                     AckNo)}};
 
 idle(_Msg, _From, State) ->
     {reply, idle, {error, enotconn}, State}.
