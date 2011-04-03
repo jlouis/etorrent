@@ -123,8 +123,7 @@
     chunks_assigned :: array(),
     chunks_stored   :: array(),
     %% Piece priority lists
-    prio_begun      :: #pieceprio{},
-    prio_unassigned :: #pieceprio{},
+    piece_priority  :: #pieceprio{},
     %% Chunk assignment processes
     pending   :: pid(),
     assigning :: pid()}).
@@ -178,14 +177,11 @@
 %%
 %% # Priority of pieces
 %% The chunk server uses the scarcity server to keep an updated
-%% list of pieces, ordered by priority, for two subsets of the
-%% pieces in a torrent. Every time these piece sets are update
-%% these piece lists need to be updated.
+%% list of pieces, ordered by priority, Every time the unassugned
+%% piece set is update the piece list need to be updated.
 %%
 %% ## Begun
-%% The chunk server is biased towards choosing pieces that we are
-%% already downloading. This set should be relatively small but is
-%% accessed frequently during a download.
+%% The piece with the lowest piece index is prioritized over other pieces.
 %%
 %% ## Unassigned
 %% If the chunk server can't find a begun piece it will pick and begin
@@ -382,9 +378,7 @@ init(Serverargs) ->
     end || {N, IsValid} <- lists:sort(States)],
     ChunkSets = array:from_orddict(ChunkList),
 
-    PiecesBegun = etorrent_pieceset:from_list([], NumPieces),
-    PriorityBegun = init_priority(TorrentID, begun, PiecesBegun),
-    PriorityUnass = init_priority(TorrentID, unassigned, PiecesInvalid),
+    PiecePriority = init_priority(TorrentID, unassigned, PiecesInvalid),
 
     InitState = #state{
         torrent_id=TorrentID,
@@ -401,8 +395,7 @@ init(Serverargs) ->
         %% Initially, the sets of assigned and stored chunks are equal
         chunks_assigned=ChunkSets,
         chunks_stored=ChunkSets,
-        prio_begun=PriorityBegun,
-        prio_unassigned=PriorityUnass,
+        piece_priority=PiecePriority,
         pending=Pending},
     {ok, InitState}.
 
@@ -415,8 +408,7 @@ handle_call({chunk, {request, Numchunks, Peerset, PeerPid}}, _, State) ->
         pieces_begun=Begun,
         pieces_assigned=Assigned,
         chunks_assigned=AssignedChunks,
-        prio_unassigned=PrioUnassigned,
-        prio_begun=PrioBegun,
+        piece_priority=PiecePriority,
         pending=Pending} = State,
 
     %% If this peer has any pieces that we have begun downloading, pick
@@ -457,12 +449,11 @@ handle_call({chunk, {request, Numchunks, Peerset, PeerPid}}, _, State) ->
             end;
         %% One or more that we are already downloading
         begun ->
-            #pieceprio{pieces=BegunPriolist} = PrioBegun,
-            etorrent_pieceset:first(BegunPriolist, Optimal);
+            etorrent_pieceset:min(Optimal);
         %% None that we are not already downloading
         %% but one ore more that we would want to download
         unassigned ->
-            #pieceprio{pieces=UnassignedPriolist} = PrioUnassigned,
+            #pieceprio{pieces=UnassignedPriolist} = PiecePriority,
             etorrent_pieceset:first(UnassignedPriolist, SubOptimal)
     end,
 
@@ -497,51 +488,37 @@ handle_call({chunk, {request, Numchunks, Peerset, PeerPid}}, _, State) ->
                     NewUnassigned = etorrent_pieceset:delete(Index, Unassigned),
                     NewBegun = etorrent_pieceset:insert(Index, Begun),
                     NewAssigned = Assigned,
-                    UnassignedUpdated = true,
-                    BegunUpdated = true;
+                    UnassignedUpdated = true;
                 {unassigned, assigned} ->
                     NewUnassigned = etorrent_pieceset:delete(Index, Unassigned),
                     NewBegun = Begun,
                     NewAssigned = etorrent_pieceset:insert(Index, Assigned),
-                    UnassignedUpdated = true,
-                    BegunUpdated = false;
+                    UnassignedUpdated = true;
                 {begun, begun} ->
                     NewUnassigned = Unassigned,
                     NewBegun = Begun,
                     NewAssigned = Assigned,
-                    UnassignedUpdated = false,
-                    BegunUpdated = false;
+                    UnassignedUpdated = false;
                 {begun, assigned} ->
                     NewUnassigned = Unassigned,
                     NewBegun = etorrent_pieceset:delete(Index, Begun),
                     NewAssigned = etorrent_pieceset:insert(Index, Assigned),
-                    UnassignedUpdated = false,
-                    BegunUpdated = true
+                    UnassignedUpdated = false
             end,
 
-            %% Only update the piece priority lists if the piece set that
-            %% they track was updated in this piece state transition.
-            NewPrioUnassigned = case UnassignedUpdated of
-                false -> PrioUnassigned;
-                true  -> update_priority(TorrentID, PrioUnassigned, NewUnassigned)
-            end,
-            NewPrioBegun = case BegunUpdated of
-                false -> PrioBegun;
-                true  -> update_priority(TorrentID, PrioBegun, NewBegun)
+            %% Only update the piece priority lists if a piece in the
+            %% unassigned state was removed because of this request.
+            NewPiecePriority = case UnassignedUpdated of
+                false -> PiecePriority;
+                true  -> update_priority(TorrentID, PiecePriority, NewUnassigned)
             end,
 
-            %% The piece is in the assigned state if this was the last chunk
-            NewAssigned = case etorrent_chunkset:size(NewChunkset) of
-                0 -> etorrent_pieceset:insert(Index, Assigned);
-                _ -> Assigned
-            end,
             NewState = State#state{
                 pieces_unassigned=NewUnassigned,
                 pieces_begun=NewBegun,
                 pieces_assigned=NewAssigned,
                 chunks_assigned=NewAssignedChunks,
-                prio_unassigned=NewPrioUnassigned,
-                prio_begun=NewPrioBegun},
+                piece_priority=NewPiecePriority},
             {reply, {ok, Chunks}, NewState}
     end;
 
@@ -659,8 +636,7 @@ handle_info({chunk, {dropped, Piece, Offset, Length, _}}, State) ->
         torrent_id=TorrentID,
         pieces_begun=Begun,
         pieces_assigned=Assigned,
-        chunks_assigned=AssignedChunks,
-        prio_begun=PrioBegun} = State,
+        chunks_assigned=AssignedChunks} = State,
 
      %% Add the chunk back to the chunkset of the piece.
      Chunks = array:get(Piece, AssignedChunks),
@@ -670,33 +646,24 @@ handle_info({chunk, {dropped, Piece, Offset, Length, _}}, State) ->
      %% Assigned -> Begun
      NewAssigned = etorrent_pieceset:delete(Piece, Assigned),
      NewBegun = etorrent_pieceset:insert(Piece, Begun),
-     NewPrioBegun = update_priority(TorrentID, PrioBegun, NewBegun),
  
      NewState = State#state{
          pieces_begun=NewBegun,
          pieces_assigned=NewAssigned,
-         chunks_assigned=NewAssignedChunks,
-         prio_begun=NewPrioBegun},
+         chunks_assigned=NewAssignedChunks},
     {noreply, NewState};
 
 
 handle_info({scarcity, Ref, Tag, Piecelist}, State) ->
-    #state{prio_begun=Begun, prio_unassigned=Unass} = State,
+    #state{piece_priority=PiecePriority} = State,
     %% Verify that the tag is valid before verifying the reference
-    #pieceprio{tag=Beguntag, ref=Begunref} = Begun,
-    #pieceprio{tag=Unasstag, ref=Unassref} = Unass,
-    case Tag of
-        Beguntag -> ok;
-        Unasstag -> ok
-    end,
-    %% Verify that the reference belongs to an active subscription
+    #pieceprio{ref=PrioRef} = PiecePriority,
+    %% Verify that the reference belongs to the active subscription
+    %% If not, drop the update and hope that it was a stray one.
     NewState = case Ref of
-        Begunref ->
-            NewBegun = Begun#pieceprio{pieces=Piecelist},
-            State#state{prio_begun=NewBegun};
-        Unassref ->
-            NewUnass = Unass#pieceprio{pieces=Piecelist},
-            State#state{prio_unassigned=NewUnass};
+        PrioRef ->
+            NewPriority = PiecePriority#pieceprio{pieces=Piecelist},
+            State#state{piece_priority=NewPriority};
         _ ->
             State
     end,
