@@ -103,7 +103,7 @@ handle_call({register, Peerpid}, _, State) ->
             erlang:demonitor(Ref),
             error
     end,
-    {reply, ok, State};
+    {reply, Reply, State};
 
 handle_call({receiver, Newrecvpid}, _, State) ->
     #state{table=Table} = State,
@@ -235,6 +235,7 @@ pending_test_() ->
         fun teardown_env/1,
     [?_test(test_registers()),
      ?_test(test_register_peer()),
+     ?_test(test_register_twice()),
      ?_test(test_assigned_dropped()),
      ?_test(test_stored_not_dropped()),
      ?_test(test_dropped_not_dropped()),
