@@ -146,7 +146,7 @@ handle_info({chunk, {dropped, Piece, Offset, Length, Peerpid}}, State) ->
 
 handle_info({chunk, {dropped, Peerpid}}, State) ->
     %% The same expectations apply as for the previous clause.
-    #state{receiver=Receiver, table=Table} = State,
+    #state{table=Table} = State,
     flush_requests(Table, Peerpid),
     {noreply, State};
 
@@ -323,7 +323,6 @@ test_drop_all_for_pid() ->
     ?chunks:assigned(0, 1, 1, Pid, testpid()),
     Pid ! drop, ?expect(dropped),
     Pid ! die, ?wait(Pid),
-    ?ping(testpid()),
     self() ! none,
     ?assertEqual(none, ?first()).
 
