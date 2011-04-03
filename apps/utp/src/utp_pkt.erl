@@ -221,11 +221,11 @@ handle_fin(st_fin, SeqNo, #pkt_window { got_fin = false } = PKI) ->
 			   eof_pkt = SeqNo }};
 handle_fin(_, _, PKI) -> {[], PKI}.
 
-handle_window_size(0, PKI) ->
+handle_window_size(0, #pkt_window{} = PKI) ->
     TRef = erlang:send_after(?ZERO_WINDOW_DELAY, self(), zero_window_timeout),
     PKI#pkt_window { zero_window_timeout = {set, TRef},
 		   peer_advertised_window = 0};
-handle_window_size(WindowSize, PKI) ->
+handle_window_size(WindowSize, #pkt_window {} = PKI) ->
     PKI#pkt_window { peer_advertised_window = WindowSize }.
 
 update_send_buffer(AcksAhead, WindowStart, PB) ->
