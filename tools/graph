@@ -10,15 +10,24 @@ write_to(Dir, Filename, Prefix) ->
     xref:add_directory(s, Dir),
     {ok, Calls} = xref:q(s, "XC"),
 
-    AllMods = [{a2l(From), a2l(To)} || {{From,_,_}, {To,_,_}} <- Calls],
+
+    AllMods = lists:usort([{a2l(From), a2l(To)}
+                           || {{From,_,_}, {To,_,_}} <- Calls,
+                              From =/= To]),
+    io:format("~p~n", [AllMods]),
     PrefMods = prefixed(Prefix, AllMods),
     Mods = ordsets:from_list(PrefMods),
 
-    {Remaining, Clusters} = build_cluster(Mods, ["etorrent_dht",
-						 "etorrent_io",
-						 "etorrent_udp",
-						 "etorrent_peer",
-						 "etorrent_fs"], []),
+    {Remaining, Clusters} = build_cluster(Mods,
+                                          [
+                                           "etorrent_torrent",
+                                           "etorrent_dht",
+                                           "etorrent_peer",
+                                           "etorrent_upnp",
+                                           "etorrent_http",
+                                           "etorrent_udp",
+                                           "etorrent_io"
+                                           ], []),
     Graph = graph(Remaining),
 
     file:write_file(
@@ -40,6 +49,7 @@ build_cluster(Mods, [], Acc) -> {Mods, Acc};
 build_cluster(Mods, [Cls | R], Acc) ->
     NM = prefixed(Cls, Mods),
     Txt = ["subgraph cluster_", Cls, " {",
+           "style=rounded; penwidth=3; "
 	   "label = ", Cls, $;,
 	   "color = deepskyblue4;",
 	   "fontsize = 14",
@@ -47,13 +57,26 @@ build_cluster(Mods, [Cls | R], Acc) ->
     build_cluster(Mods -- NM, R, [Txt | Acc]).
 
 header() ->
-    ["rankdir=LR;",
-     "node [fontname=\"URW Gothic L\",fontsize=12,shape=plaintext,labelfontname=Helvetica];",
-     "labeljust = l;",
+    ["node [fontname=\"URW Gothic L\",fontsize=12,shape=plaintext,labelfontname=Helvetica];",
+     "rankdir=LR; labeljust = l; nodesep=1.2; ranksep=1.2; ",
      "labelloc = t;",
      "fontsize = 24;",
      "fontname=\"URW Gothic L\";",
+     "concentrate=true;",
      "label = \"Etorrent dependency graph\""].
 
 main([Dir, Filename, Prefix]) ->
     write_to(Dir, Filename, Prefix).
+
+
+
+
+
+
+
+
+
+
+
+
+
