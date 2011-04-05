@@ -61,7 +61,7 @@ init([]) ->
 	         monitors = gb_trees:empty() }}.
 
 %% @private
-handle_event({completed_torrent, Id}, #state { table = T} = State) ->
+handle_event({completed_torrent, Id}, #state { table = T } = State) ->
     case etorrent_table:get_torrent(Id) of
 	not_found ->
 	    ok; % Dead, ignore
@@ -82,7 +82,7 @@ handle_call({install_callbacks, TorrentPid, IH, CBPropList},
     MRef = erlang:monitor(process, TorrentPid),
     NewM = gb_trees:insert(MRef, IH, M),
     {ok, ok, S#state { table = NewT,
-			  monitors = NewM }};
+                       monitors = NewM }};
 handle_call(Request, State) ->
     ?WARN([unknown_request, Request]),
     Reply = ok,
@@ -94,7 +94,7 @@ handle_info({'DOWN', Ref, process, _Pid, _Reason},
     {value, IH} = gb_trees:lookup(Ref, M),
     {ok,
      S#state { monitors = gb_trees:delete(Ref, M),
-	      table    = gb_trees:delete(IH, T) }};
+               table    = gb_trees:delete(IH, T) }};
 handle_info(_Info, State) ->
     {ok, State}.
 
@@ -112,7 +112,13 @@ perform_callback(none) ->
     ok;
 perform_callback({value, CBs}) ->
     CompFun = proplists:get_value(completion, CBs),
-    spawn(CompFun),
+    spawn(fun() ->
+                  try CompFun ()
+                  catch
+                      ErrType:Error ->
+                          ?ERR([callback_error, ErrType, Error])
+                  end
+          end),
     ok.
 
 
