@@ -1,4 +1,0 @@
-%%{import, "cover.db"}.
-{export, "cover.db"}.
-{level, details}.
-{incl_dirs_r, ["apps"]}.

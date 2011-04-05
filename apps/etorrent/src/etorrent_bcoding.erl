@@ -16,10 +16,9 @@
 %% their encoding.</p>
 -module(etorrent_bcoding).
 -author("Jesper Louis Andersen <jesper.louis.andersen@gmail.com>").
--include("log.hrl").
 
 -ifdef(TEST).
--include_lib("eqc/include/eqc.hrl").
+-include_lib("proper/include/proper.hrl").
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
@@ -193,17 +192,7 @@ decode_dict_items(String, Accum) ->
     end.
 
 -ifdef(EUNIT).
--ifdef(EQC).
-
-dict() ->
-    non_empty(list([{binary(), ?LAZY(bcode())}])).
-
-bcode() ->
-    ?SIZED(Sz,
-	   oneof([int(),
-		  non_empty(binary()),
-		  resize(Sz div 4, non_empty(list(bcode()))),
-		  resize(Sz div 4, dict())])).
+-ifdef(PROPER).
 
 prop_inv() ->
     ?FORALL(BC, bcode(),
@@ -214,7 +203,7 @@ prop_inv() ->
 	    end).
 
 eqc_test() ->
-    ?assert(eqc:quickcheck(prop_inv())).
+    ?assert(proper:quickcheck(prop_inv())).
 
 
 -endif.

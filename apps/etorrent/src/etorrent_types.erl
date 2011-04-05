@@ -1,6 +1,7 @@
 -module(etorrent_types).
 
 -export_type([
+    bcode/0,
     tier/0,
     bitfield/0,
     capabilities/0,
@@ -22,6 +23,8 @@
     transaction/0,
     trackerinfo/0,
     dht_qtype/0,
+    token/0,
+    portnum/0,
     upnp_device/0,
     upnp_service/0,
     upnp_notify/0]).
@@ -34,8 +37,8 @@
 -type bcode() ::
     integer()
 	| binary()
-	| [bcode()]
-	| [{binary(), bcode()}].
+	| [bcode(),...]
+	| [{binary(), bcode()},...].
 
 -type torrent_id() :: integer().
 -type file_path() :: string().

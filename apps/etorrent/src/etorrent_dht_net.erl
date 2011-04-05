@@ -4,12 +4,8 @@
 -module(etorrent_dht_net).
 
 -ifdef(TEST).
--include_lib("eqc/include/eqc.hrl").
+-include_lib("proper/include/proper.hrl").
 -include_lib("eunit/include/eunit.hrl").
--endif.
-
--ifdef(EQC).
--export([prop_query_inv/0, prop_inv_compact/0]).
 -endif.
 
 -behaviour(gen_server).
@@ -731,6 +727,37 @@ node_infos_to_compact([{ID, {A0, A1, A2, A3}, Port}|T], Acc) ->
     CNode = <<ID:160, A0, A1, A2, A3, Port:16>>,
     node_infos_to_compact(T, <<Acc/binary, CNode/binary>>).
 
+-type octet() :: byte().
+%-type portnum() :: char().
+-type dht_node() :: {{octet(), octet(), octet(), octet()}, portnum()}.
+-type integer_id() :: non_neg_integer().
+-type node_id() :: integer_id().
+-type info_hash() :: integer_id().
+%-type token() :: binary().
+%-type transaction() ::binary().
+
+-type ping_query() ::
+    {ping, transaction(), {{'id', node_id()}}}.
+
+-type find_node_query() ::
+   {find_node, transaction(),
+        {{'id', node_id()}, {'target', node_id()}}}.
+
+-type get_peers_query() ::
+   {get_peers, transaction(),
+        {{'id', node_id()}, {'info_hash', info_hash()}}}.
+
+-type announce_query() ::
+   {announce, transaction(),
+        {{'id', node_id()}, {'info_hash', info_hash()},
+         {'token', token()}, {'port', portnum()}}}.
+
+-type dht_query() ::
+    ping_query() |
+    find_node_query() |
+    get_peers_query() |
+    announce_query().
+
 -ifdef(EUNIT).
 
 fetch_id(Params) ->
@@ -834,53 +861,8 @@ valid_token_test() ->
     ?assertEqual(false, is_valid_token(<<"not there at all!">>,
 				       IP, Port, TokenValues)).
 
--ifdef(EQC).
+-ifdef(PROPER).
 
-octet() ->
-   choose(0, 255).
-
-portnum() ->
-   choose(0, 16#FFFF).
-
-dht_node() ->
-   {{octet(), octet(), octet(), octet()}, portnum()}.
-
-integer_id() ->
-    ?LET(ID, binary(20), etorrent_dht:integer_id(ID)). 
-
-node_id() ->
-    integer_id().
-
-info_hash() ->
-    integer_id().
-
-token() ->
-   binary(20).
-
-transaction() ->
-   binary(2).
-
-ping_query() ->
-   {ping, [{<<"id">>, node_id()}]}.
-
-find_node_query() ->
-   {find_node, [{<<"id">>, node_id()},
-                {<<"target">>, node_id()}]}.
-
-get_peers_query() ->
-   {get_peers, [{<<"id">>, node_id()},
-                {<<"info_hash">>, info_hash()}]}.
-
-announce_query() ->
-   {announce, [{<<"id">>, node_id()},
-               {<<"info_hash">>, info_hash()},
-               {<<"token">>, token()},
-               {<<"port">>, portnum()}]}.
-
-dht_query() ->
-   All = [ping_query(), find_node_query(), get_peers_query(), announce_query()],
-    oneof([{Method, transaction(), lists:sort(Params)}
-           || {Method, Params} <- All]).
 
 prop_inv_compact() ->
    ?FORALL(Input, list(dht_node()),
@@ -891,11 +873,17 @@ prop_inv_compact() ->
        end).
 
 prop_inv_compact_test() ->
-    ?assert(eqc:quickcheck(prop_inv_compact())).
+    ?assert(proper:quickcheck(prop_inv_compact())).
+
+tobin(Atom) ->
+    iolist_to_binary(atom_to_list(Atom)).
 
 prop_query_inv() ->
-   ?FORALL(InQ, dht_query(),
+   ?FORALL(TmpQ, dht_query(),
        begin
+           {TmpMethod, TmpMsgId, TmpParams} = TmpQ,
+           InQ  = {TmpMethod, <<0, TmpMsgId/binary>>,
+                   lists:sort([{tobin(K),V} || {K, V} <- tuple_to_list(TmpParams)])},
            {Method, MsgId, Params} = InQ,
            EncQ = iolist_to_binary(encode_query(Method, MsgId, Params)),
            OutQ = decode_msg(EncQ),
@@ -903,7 +891,7 @@ prop_query_inv() ->
        end).
 
 prop_query_inv_test() ->
-    ?assert(eqc:quickcheck(prop_query_inv())).
+    ?assert(proper:quickcheck(prop_query_inv())).
 
 -endif. %% EQC
 -endif.

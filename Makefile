@@ -1,6 +1,11 @@
 ## Etorrent Makefile
 ## Try to keep it so simple it can be run with BSD-make as well as
 ## GNU-make
+
+# Version here is used by the test suite. It should be possible to figure
+# it out automatically, but for now, hardcode.
+version=1.2.1
+
 all: compile
 
 deps:
@@ -55,18 +60,20 @@ test: eunit common_test
 
 ## Use the ct_run in the built release
 CT_RUN=rel/etorrent/erts-*/bin/ct_run
+ct_src_dir := rel/etorrent/lib/etorrent-${version}/src
 
-common_test: rel
-	mkdir -p logs
-	${CT_RUN} -spec etorrent_test.spec
-
-cover_test:
+ct_setup: rel
+	echo ${ct_src_dir}
 	mkdir -p logs
 # Unpack stuff.
 	rm -fr rel/etorrent/lib/etorrent-*/ebin
 	cd rel/etorrent/lib && unzip -o etorrent-*.ez
+	mkdir -p ${ct_src_dir} && \
+		cp -r apps/etorrent/src/* ${ct_src_dir}
 # Run cover test
-	${CT_RUN} -spec etorrent_test.spec -cover etorrent.coverspec
+
+common_test: ct_setup rel
+	${CT_RUN} -spec etorrent_test.spec
 
 console:
 	dev/etorrent-dev/bin/etorrent console \
@@ -99,7 +106,7 @@ tabs:
 
 .PHONY: all compile tags dialyze run tracer clean \
 	 deps eunit rel xref dev console console-perf graph \
-	 test testclean common_test
+	 test testclean common_test ct_setup
 
 %.png: %.dot
 	dot -Tpng $< > $@
