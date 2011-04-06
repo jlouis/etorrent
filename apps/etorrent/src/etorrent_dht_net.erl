@@ -63,22 +63,6 @@
 -type portnum() :: etorrent_types:portnum().
 -type transaction() :: etorrent_types:transaction().
 
--spec node_port() -> portnum().
--spec ping(ipaddr(), portnum()) -> pang | nodeid().
--spec find_node(ipaddr(), portnum(), nodeid()) ->
-    {'error', 'timeout'} | {nodeid(), list(nodeinfo())}.
--spec find_node_search(nodeid()) -> list(nodeinfo()).
--spec find_node_search(nodeid(), list(nodeinfo())) -> list(nodeinfo()).
--spec get_peers(ipaddr(), portnum(), infohash()) ->
-    {nodeid(), token(), list(peerinfo()), list(nodeinfo())}.
--spec get_peers_search(infohash()) ->
-    {list(trackerinfo()), list(peerinfo()), list(nodeinfo())}.
--spec get_peers_search(infohash(), list(nodeinfo())) ->
-    {list(trackerinfo()), list(peerinfo()), list(nodeinfo())}.
--spec announce(ipaddr(), portnum(), infohash(), token(), portnum()) ->
-    {'error', 'timeout'} | nodeid().
--spec return(ipaddr(), portnum(), transaction(), list()) -> 'ok'.
-
 % gen_server callbacks
 -export([init/1,
          handle_call/3,
@@ -130,12 +114,15 @@ token_lifetime() ->
 start_link(DHTPort) ->
     gen_server:start({local, srv_name()}, ?MODULE, [DHTPort], []).
 
+-spec node_port() -> portnum().
 node_port() ->
     gen_server:call(srv_name(), {get_node_port}).
+
 
 %
 %
 %
+-spec ping(ipaddr(), portnum()) -> pang | nodeid().
 ping(IP, Port) ->
     case gen_server:call(srv_name(), {ping, IP, Port}) of
         timeout -> pang;
@@ -146,6 +133,8 @@ ping(IP, Port) ->
 %
 %
 %
+-spec find_node(ipaddr(), portnum(), nodeid()) ->
+    {'error', 'timeout'} | {nodeid(), list(nodeinfo())}.
 find_node(IP, Port, Target)  ->
     case gen_server:call(srv_name(), {find_node, IP, Port, Target}) of
         timeout ->
@@ -159,6 +148,8 @@ find_node(IP, Port, Target)  ->
 %
 %
 %
+-spec get_peers(ipaddr(), portnum(), infohash()) ->
+    {nodeid(), token(), list(peerinfo()), list(nodeinfo())}.
 get_peers(IP, Port, InfoHash)  ->
     Call = {get_peers, IP, Port, InfoHash},
     case gen_server:call(srv_name(), Call) of
@@ -168,9 +159,6 @@ get_peers(IP, Port, InfoHash)  ->
             decode_response(get_peers, Values)
     end.
 
-
-
-
 %
 % Recursively search for the 100 nodes that are the closest to
 % the local DHT node.
@@ -179,23 +167,29 @@ get_peers(IP, Port, InfoHash)  ->
 %     - Which nodes has been queried?
 %     - Which nodes has responded?
 %     - Which nodes has not been queried?
+-spec find_node_search(nodeid()) -> list(nodeinfo()).
 find_node_search(NodeID) ->
     Width = search_width(),
     Retry = search_retries(),
     Nodes = etorrent_dht_state:closest_to(NodeID, Width),
     dht_iter_search(find_node, NodeID, Width, Retry, Nodes).
 
+-spec find_node_search(nodeid(), list(nodeinfo())) -> list(nodeinfo()).
 find_node_search(NodeID, Nodes) ->
     Width = search_width(),
     Retry = search_retries(),
     dht_iter_search(find_node, NodeID, Width, Retry, Nodes).
 
+-spec get_peers_search(infohash()) ->
+    {list(trackerinfo()), list(peerinfo()), list(nodeinfo())}.
 get_peers_search(InfoHash) ->
     Width = search_width(),
     Retry = search_retries(),
     Nodes = etorrent_dht_state:closest_to(InfoHash, Width), 
     dht_iter_search(get_peers, InfoHash, Width, Retry, Nodes).
 
+-spec get_peers_search(infohash(), list(nodeinfo())) ->
+    {list(trackerinfo()), list(peerinfo()), list(nodeinfo())}.
 get_peers_search(InfoHash, Nodes) ->
     Width = search_width(),
     Retry = search_retries(),
@@ -311,6 +305,8 @@ dht_iter_search(SearchType, Target, Width, Retry, Retries,
 %
 %
 %
+-spec announce(ipaddr(), portnum(), infohash(), token(), portnum()) ->
+    {'error', 'timeout'} | nodeid().
 announce(IP, Port, InfoHash, Token, BTPort) ->
     Announce = {announce, IP, Port, InfoHash, Token, BTPort},
     case gen_server:call(srv_name(), Announce) of
@@ -322,6 +318,7 @@ announce(IP, Port, InfoHash, Token, BTPort) ->
 %
 %
 %
+-spec return(ipaddr(), portnum(), transaction(), list()) -> 'ok'.
 return(IP, Port, ID, Response) ->
     ok = gen_server:call(srv_name(), {return, IP, Port, ID, Response}).
 

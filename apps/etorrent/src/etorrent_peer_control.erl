@@ -488,13 +488,9 @@ complete_connection_setup(Socket, TorrentId, ExtendedMSG) ->
     etorrent_peer_send:bitfield(SendPid, BF),
     SendPid.
 
-%%--------------------------------------------------------------------
-%% @spec statechange_interested(WasInterested, SendPid, GoInterested)
-%%          -> ok
 %% @doc Set interested in peer or not according to what GoInterested
 %%      is, if not yet.
 %% @end
-%%--------------------------------------------------------------------
 statechange_interested(State, IsInterested) ->
     #state{
         local_interested=WasInterested,
