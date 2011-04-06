@@ -2,7 +2,7 @@
 %% @doc A Server for maintaining the the routing table in DHT
 %%
 %% @todo Document all exported functions.
-%% 
+%%
 %% This module implements a server maintaining the
 %% DHT routing table. The nodes in the routing table
 %% is distributed across a set of buckets. The bucket
@@ -44,7 +44,7 @@
 -behaviour(gen_server).
 -import(ordsets, [add_element/2, del_element/2, subtract/2]).
 -import(error_logger, [info_msg/2, error_msg/2]).
--define(K, 8). 
+-define(K, 8).
 -define(in_range(IDExpr, MinExpr, MaxExpr),
     ((IDExpr >= MinExpr) and (IDExpr < MaxExpr))).
 
@@ -74,24 +74,6 @@
 -type nodeid() :: etorrent_types:nodeid().
 -type portnum() :: etorrent_types:portnum().
 -type nodeinfo() :: etorrent_types:nodeinfo().
-
--spec node_id() -> nodeid().
--spec safe_insert_node(ipaddr(), portnum()) ->
-    {'error', 'timeout'} | boolean().
--spec safe_insert_node(nodeid(), ipaddr(), portnum()) ->
-    {'error', 'timeout'} | boolean().
--spec safe_insert_nodes(list(nodeinfo())) -> 'ok'.
--spec unsafe_insert_node(nodeid(), ipaddr(), portnum()) ->
-    boolean().
--spec unsafe_insert_nodes(list(nodeinfo())) -> 'ok'.
--spec is_interesting(nodeid(), ipaddr(), portnum()) -> boolean().
--spec closest_to(nodeid()) -> list(nodeinfo()).
--spec closest_to(nodeid(), pos_integer()) -> list(nodeinfo()).
--spec log_request_timeout(nodeid(), ipaddr(), portnum()) -> 'ok'.
--spec log_request_success(nodeid(), ipaddr(), portnum()) -> 'ok'.
--spec log_request_from(nodeid(), ipaddr(), portnum()) -> 'ok'.
--spec keepalive(nodeid(), ipaddr(), portnum()) -> 'ok'.
--spec refresh(any(), list(nodeinfo()), list(nodeinfo())) -> 'ok'.
 
 -export([init/1,
          handle_call/3,
@@ -129,6 +111,7 @@ srv_name() ->
 start_link(StateFile) ->
     gen_server:start_link({local, srv_name()}, ?MODULE, [StateFile], []).
 
+-spec node_id() -> nodeid().
 node_id() ->
     gen_server:call(srv_name(), {node_id}).
 
@@ -137,6 +120,8 @@ node_id() ->
 % a ping query to it first. This function must be used when we
 % don't know the node id of a node.
 %
+-spec safe_insert_node(ipaddr(), portnum()) ->
+    {'error', 'timeout'} | boolean().
 safe_insert_node(IP, Port) ->
     case unsafe_ping(IP, Port) of
         pang -> {error, timeout};
@@ -153,6 +138,8 @@ safe_insert_node(IP, Port) ->
 % inserted into the routing table, true if the node was interesting and was
 % inserted into the routing table.
 %
+-spec safe_insert_node(nodeid(), ipaddr(), portnum()) ->
+    {'error', 'timeout'} | boolean().
 safe_insert_node(ID, IP, Port) ->
     case is_interesting(ID, IP, Port) of
         false -> false;
@@ -168,6 +155,7 @@ safe_insert_node(ID, IP, Port) ->
         end
     end.
 
+-spec safe_insert_nodes(list(nodeinfo())) -> 'ok'.
 safe_insert_nodes(NodeInfos) ->
     [spawn_link(?MODULE, safe_insert_node, [ID, IP, Port])
      || {ID, IP, Port} <- NodeInfos],
@@ -179,10 +167,13 @@ safe_insert_nodes(NodeInfos) ->
 % or get_peers search.
 % This function returns a boolean value to indicate to the caller if the
 % node was actually inserted into the routing table or not.
-% 
+%
+-spec unsafe_insert_node(nodeid(), ipaddr(), portnum()) ->
+    boolean().
 unsafe_insert_node(ID, IP, Port) ->
     _WasInserted = gen_server:call(srv_name(), {insert_node, ID, IP, Port}).
 
+-spec unsafe_insert_nodes(list(nodeinfo())) -> 'ok'.
 unsafe_insert_nodes(NodeInfos) ->
     [spawn_link(?MODULE, unsafe_insert_node, [ID, IP, Port])
     || {ID, IP, Port} <- NodeInfos],
@@ -194,24 +185,30 @@ unsafe_insert_nodes(NodeInfos) ->
 % to avoid issuing ping-queries to every node sending
 % this node a query.
 %
+
+-spec is_interesting(nodeid(), ipaddr(), portnum()) -> boolean().
 is_interesting(ID, IP, Port) ->
     gen_server:call(srv_name(), {is_interesting, ID, IP, Port}).
 
-
+-spec closest_to(nodeid()) -> list(nodeinfo()).
 closest_to(NodeID) ->
     closest_to(NodeID, 8).
 
+-spec closest_to(nodeid(), pos_integer()) -> list(nodeinfo()).
 closest_to(NodeID, NumNodes) ->
     gen_server:call(srv_name(), {closest_to, NodeID, NumNodes}).
 
+-spec log_request_timeout(nodeid(), ipaddr(), portnum()) -> 'ok'.
 log_request_timeout(ID, IP, Port) ->
     Call = {request_timeout, ID, IP, Port},
     gen_server:call(srv_name(), Call).
 
+-spec log_request_success(nodeid(), ipaddr(), portnum()) -> 'ok'.
 log_request_success(ID, IP, Port) ->
     Call = {request_success, ID, IP, Port},
     gen_server:call(srv_name(), Call).
 
+-spec log_request_from(nodeid(), ipaddr(), portnum()) -> 'ok'.
 log_request_from(ID, IP, Port) ->
     Call = {request_from, ID, IP, Port},
     gen_server:call(srv_name(), Call).
@@ -222,6 +219,7 @@ dump_state() ->
 dump_state(Filename) ->
     gen_server:call(srv_name(), {dump_state, Filename}).
 
+-spec keepalive(nodeid(), ipaddr(), portnum()) -> 'ok'.
 keepalive(ID, IP, Port) ->
     case safe_ping(IP, Port) of
         ID    -> log_request_success(ID, IP, Port);
@@ -268,8 +266,9 @@ unsafe_ping(IP, Port) ->
 % in the bucket until enough nodes that falls within the range of the bucket
 % has been returned to replace the inactive nodes in the bucket.
 %
+-spec refresh(any(), list(nodeinfo()), list(nodeinfo())) -> 'ok'.
 refresh(Range, Inactive, Active) ->
-    % Try to refresh the routing table using the inactive nodes first, 
+    % Try to refresh the routing table using the inactive nodes first,
     % If they turn out to be reachable the problem's solved.
     do_refresh(Range, Inactive ++ Active, []).
 
@@ -282,7 +281,7 @@ do_refresh(Range, [{ID, IP, Port}|T], IDs) ->
         {_, CloseNodes} ->
             do_refresh_inserts(Range, CloseNodes)
     end,
-    case Continue of 
+    case Continue of
         false -> ok;
         true  -> do_refresh(Range, T, [ID|IDs])
     end.
@@ -339,7 +338,7 @@ init([StateFile]) ->
 
     % Insert any nodes loaded from the persistent state later
     % when we are up and running. Use unsafe insertions or the
-    % whole state will be lost if etorrent starts without 
+    % whole state will be lost if etorrent starts without
     % internet connectivity.
     [spawn(?MODULE, unsafe_insert_node, [ensure_bin_id(ID), IP, Port])
     || {ID, IP, Port} <- NodeList],
@@ -363,7 +362,7 @@ init([StateFile]) ->
     {ok, State}.
 
 %% @private
-handle_call({is_interesting, InputID, IP, Port}, _From, State) -> 
+handle_call({is_interesting, InputID, IP, Port}, _From, State) ->
     ID = ensure_int_id(InputID),
     #state{
         node_id=Self,
@@ -373,7 +372,7 @@ handle_call({is_interesting, InputID, IP, Port}, _From, State) ->
     IsInteresting = case b_is_member(ID, IP, Port, Buckets) of
         true -> false;
         false ->
-            BMembers = b_members(ID, Buckets),   
+            BMembers = b_members(ID, Buckets),
             Inactive = inactive_nodes(BMembers, NTimeout, NTimers),
             case (Inactive =/= []) or (length(BMembers) < ?K) of
                 true -> true;
@@ -460,7 +459,7 @@ handle_call({insert_node, InputID, IP, Port}, _From, State) ->
             DelBTimers = lists:foldl(fun(Range, Acc) ->
                 del_timer(Range, Acc)
             end, PrevBTimers, DelRanges),
-            
+
             lists:foldl(fun(Range, Acc) ->
                 BMembers = b_members(Range, NewBuckets),
                 LRecent = least_recent(BMembers, NewNTimers),
@@ -474,7 +473,7 @@ handle_call({insert_node, InputID, IP, Port}, _From, State) ->
         node_timers=NewNTimers,
         buck_timers=NewBTimers},
     {reply, ((not IsPrevMember) and IsNewMember), NewState};
-            
+
 
 
 
@@ -539,7 +538,7 @@ handle_call({request_success, InputID, IP, Port}, _, State) ->
             BTimer       = bucket_timer_from(
                                BActive, BTimeout, LNRecent, NTimeout, Range),
             NewBTimers    = add_timer(Range, BActive, BTimer, TmpBTimers),
-            
+
             State#state{
                 node_timers=NewNTimers,
                 buck_timers=NewBTimers}
@@ -582,7 +581,7 @@ handle_info({inactive_node, InputID, IP, Port}, State) ->
         buckets=Buckets,
         node_timers=PrevNTimers,
         node_timeout=NTimeout} = State,
-    
+
     IsMember = b_is_member(ID, IP, Port, Buckets),
     HasTimed = case IsMember of
         false -> false;
@@ -719,7 +718,7 @@ when ?in_range(ID, Min, Max) ->
     end;
 
 b_insert_(Self, ID, IP, Port, [H|T]) ->
-    [H|b_insert_(Self, ID, IP, Port, T)]. 
+    [H|b_insert_(Self, ID, IP, Port, T)].
 
 %
 % Get all ranges present in a bucket list
@@ -834,7 +833,7 @@ bucket_timer_from(Time, BTimeout, LeastRecent, NTimeout, Range) ->
             SumTimeout = NTimeout + NTimeout,
             timer_from(LeastRecent, SumTimeout, Msg)
     end.
-    
+
 
 timer_from(Time, Timeout, Msg) ->
     Interval = ms_between(Time, Timeout),
