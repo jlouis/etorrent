@@ -97,7 +97,7 @@ handle_call(activate, _, State) ->
     NewState = State#state{active=true},
     {reply, ok, NewState};
 
-handle_call({request_chunks, Pid, Peerset, _}, _, State) ->
+handle_call({chunk, {request, _, Peerset, Pid}}, _, State) ->
     #state{pending=Pending, requests=Requests} = State,
     Request = etorrent_util:find(
         fun({{Index, _, _}, Peers}) ->
@@ -121,7 +121,7 @@ handle_cast(_, State) ->
 
 
 %% @private
-handle_info({mark_dropped, Pid, Index, Offset, Length}, State) ->
+handle_info({chunk, {dropped, Index, Offset, Length, Pid}}, State) ->
     #state{requests=Requests} = State,
     Chunk = {Index, Offset, Length},
     case gb_trees:lookup(Chunk, Requests) of
@@ -132,7 +132,7 @@ handle_info({mark_dropped, Pid, Index, Offset, Length}, State) ->
             {noreply, NewState}
     end;
 
-handle_info({mark_fetched, Pid, Index, Offset, Length}, State) ->
+handle_info({chunk, {fetched, Index, Offset, Length, Pid}}, State) ->
     #state{requests=Requests} = State,
     Chunk = {Index, Offset, Length},
     case gb_trees:lookup(Chunk, Requests) of
