@@ -29,7 +29,9 @@
 -record(state, {
     active   :: boolean(),
     pending  :: pid(),
-    requests :: gb_tree()}).
+    requests :: gb_tree(),
+    fetched  :: gb_tree(),
+    stored   :: gb_tree()}).
 
 
 server_name(TorrentID) ->
@@ -83,7 +85,9 @@ init([TorrentID]) ->
     InitState = #state{
         active=false,
         pending=Pending,
-        requests=gb_trees:empty()},
+        requests=gb_trees:empty(),
+        fetched=gb_trees:empty(),
+        stored=gb_sets:empty()},
     {ok, InitState}.
 
 
@@ -99,16 +103,16 @@ handle_call(activate, _, State) ->
 
 handle_call({chunk, {request, _, Peerset, Pid}}, _, State) ->
     #state{pending=Pending, requests=Requests} = State,
-    Request = etorrent_util:find(
+    Request = etorrent_utils:find(
         fun({{Index, _, _}, Peers}) ->
-            etorrent_pieceset:is_member(Index, Peerset)
-            and not lists:member(Pid, Peers)
+            (etorrent_pieceset:is_member(Index, Peerset))
+            andalso (not lists:member(Pid, Peers))
         end, gb_trees:to_list(Requests)),
     case Request of
         false ->
             {reply, {ok, assigned}, State};
         {{Index, Offset, Length}=Chunk, Peers} ->
-            etorrent_pending:mark_sent(Index, Offset, Length, Pid, Pending),
+            etorrent_chunkstate:assigned(Index, Offset, Length, Pid, Pending),
             NewRequests = gb_trees:update(Chunk, [Pid|Peers], Requests),
             NewState = State#state{requests=NewRequests},
             {reply, {ok, [Chunk]}, NewState}
@@ -121,28 +125,47 @@ handle_cast(_, State) ->
 
 
 %% @private
-handle_info({chunk, {dropped, Index, Offset, Length, Pid}}, State) ->
-    #state{requests=Requests} = State,
+handle_info({chunk, {assigned, Index, Offset, Length, Pid}}, State) ->
+    %% Load a request that was assigned by etorrent_progress
+    #state{active=true, requests=Requests} = State,
     Chunk = {Index, Offset, Length},
-    case gb_trees:lookup(Chunk, Requests) of
-        none -> {noreply, State};
-        {value, Peers} ->
-            NewRequests = gb_trees:update(Chunk, Peers -- [Pid], Requests),
-            NewState = State#state{requests=NewRequests},
-            {noreply, NewState}
-    end;
+    NewRequests = gb_trees:insert(Chunk, [Pid], Requests),
+    NewState = State#state{requests=NewRequests},
+    {noreply, NewState};
+
+handle_info({chunk, {dropped, Index, Offset, Length, Pid}}, State) ->
+    #state{active=true, requests=Requests, fetched=Fetched} = State,
+    Chunk = {Index, Offset, Length},
+    {WasFetcher, NewFetched} = case gb_trees:lookup(Chunk, Fetched) of
+        none -> {false, Fetched};
+        {value, Pid} -> {true, gb_trees:delete(Chunk, Fetched)}
+    end,
+    NewRequests = case gb_trees:lookup(Chunk, Requests) of
+        none when WasFetcher -> gb_trees:insert(Chunk, [], Requests);
+        none -> Requests;
+        {value, Peers} -> gb_trees:update(Chunk, Peers -- [Pid], Requests)
+    end,
+    NewState = State#state{requests=NewRequests, fetched=NewFetched},
+    {noreply, NewState};
 
 handle_info({chunk, {fetched, Index, Offset, Length, Pid}}, State) ->
-    #state{requests=Requests} = State,
+    #state{active=true, requests=Requests, fetched=Fetched} = State,
     Chunk = {Index, Offset, Length},
-    case gb_trees:lookup(Chunk, Requests) of
-        none -> {noreply, State};
+    {NewFetched, NewRequests} = case gb_trees:lookup(Chunk, Requests) of
+        none -> {Fetched, Requests};
         {value, Peers} ->
             [etorrent_peer_control:cancel(Peer, Index, Offset, Length) || Peer <- Peers],
-            NewRequests = gb_trees:delete(Chunk, Requests),
-            NewState = State#state{requests=NewRequests},
-            {noreply, NewState}
-    end.
+            IFetched = gb_trees:insert(Chunk, Pid, Fetched),
+            IRequests = gb_trees:delete(Chunk, Requests),
+            {IFetched, IRequests}
+    end,
+    NewState = State#state{requests=NewRequests, fetched=NewFetched},
+    {noreply, NewState};
+
+handle_info({chunk, {stored, Index, Offset, Length, Pid}}, State) ->
+    #state{active=true, requests=Requests} = State,
+    NewState = State#state{},
+    {noreply, NewState}.
 
 terminate(_, State) ->
     {ok, State}.
@@ -158,10 +181,14 @@ code_change(_, State, _) ->
 
 testid() -> 0.
 testpid() -> ?endgame:lookup_server(testid()).
+testset() -> etorrent_pieceset:from_list([0], 8).
+pending() -> ?pending:lookup_server(testid()).
 
 setup() ->
     {ok, PPid} = ?pending:start_link(testid()),
     {ok, EPid} = ?endgame:start_link(testid()),
+    ok = ?pending:receiver(EPid, PPid),
+    ok = ?pending:register(PPid),
     {PPid, EPid}.
 
 teardown({PPid, EPid}) ->
@@ -179,7 +206,10 @@ endgame_test_() ->
         fun teardown/1, [
     ?_test(test_registers()),
     ?_test(test_starts_inactive()),
-    ?_test(test_activated())
+    ?_test(test_activated()),
+    ?_test(test_active_one_assigned()),
+    ?_test(test_active_one_dropped()),
+    ?_test(test_active_one_fetched())
     ]}}.
 
 test_registers() ->
@@ -192,6 +222,62 @@ test_starts_inactive() ->
 test_activated() ->
     ?assertEqual(ok, ?endgame:activate(testpid())),
     ?assert(?endgame:is_active(testpid())).
+
+test_active_one_assigned() ->
+    ok = ?endgame:activate(testpid()),
+    Main = self(),
+    Pid = spawn_link(fun() ->
+        ?pending:register(pending()),
+        ?chunkstate:assigned(0, 0, 1, self(), testpid()),
+        Main ! assigned,
+        etorrent_utils:expect(die)
+    end),
+    etorrent_utils:expect(assigned),
+    ?assertEqual({ok, [{0, 0, 1}]}, ?chunkstate:request(1, testset(), testpid())),
+    ?assertEqual({ok, assigned}, ?chunkstate:request(1, testset(), testpid())),
+    Pid ! die, etorrent_utils:wait(Pid).
+
+test_active_one_dropped() ->
+    ok = ?endgame:activate(testpid()),
+    Main = self(),
+    Pid = spawn_link(fun() ->
+        ?pending:register(pending()),
+        ?chunkstate:assigned(0, 0, 1, self(), testpid()),
+        ?chunkstate:dropped(0, 0, 1, self(), testpid()),
+        Main ! dropped,
+        etorrent_utils:expect(die)
+    end),
+    etorrent_utils:expect(dropped),
+    ?assertEqual({ok, [{0, 0, 1}]}, ?chunkstate:request(1, testset(), testpid())),
+    Pid ! die, etorrent_utils:wait(Pid).
+
+test_active_one_fetched() ->
+    ok = ?endgame:activate(testpid()),
+    Main = self(),
+    %% Spawn a separate process to introduce the chunk into endgame
+    Orig = spawn_link(fun() ->
+        ?pending:register(pending()),
+        ?chunkstate:assigned(0, 0, 1, self(), testpid()),
+        Main ! assigned,
+        etorrent_utils:expect(die)
+    end),
+    etorrent_utils:expect(assigned),
+    %% Spawn a process that aquires the chunk from endgame and marks it as fetched
+    Pid = spawn_link(fun() ->
+        ?pending:register(pending()),
+        {ok, [{0,0,1}]} = ?chunkstate:request(1, testset(), testpid()),
+        ?chunkstate:fetched(0, 0, 1, self(), testpid()),
+        Main ! fetched,
+        etorrent_utils:expect(die)
+    end),
+    etorrent_utils:expect(fetched),
+    %% Expect endgame to not send out requests for the fetched chunk
+    ?assertEqual({ok, assigned}, ?chunkstate:request(1, testset(), testpid())),
+    Pid ! die, etorrent_utils:wait(Pid),
+    etorrent_utils:ping(pending()),
+    etorrent_utils:ping(testpid()),
+    %% Expect endgame to send out request if the chunk is dropped before it's stored
+    ?assertEqual({ok, [{0, 0, 1}]}, ?chunkstate:request(1, testset(), testpid())).
 
 
 
