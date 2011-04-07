@@ -3,13 +3,8 @@
 
 %% exported functions
 -export([start_link/1,
-         peerhandle/1,
-         originhandle/1,
          is_active/1,
-         request_chunks/3,
-         mark_sent/5,
-         mark_dropped/4,
-         mark_fetched/4]).
+         activate/1]).
 
 %% gproc registry entries
 -export([register_server/1,
@@ -33,12 +28,8 @@
 
 -record(state, {
     active   :: boolean(),
-    pending  :: etorrent_pending:originhandle(),
+    pending  :: pid(),
     requests :: gb_tree()}).
-
--opaque peerhandle() :: {peer, pid()}.
--opaque originhandle() :: {origin, pid()}.
--export_type([peerhandle/0, originhandle/0]).
 
 
 server_name(TorrentID) ->
@@ -70,63 +61,25 @@ await_server(TorrentID) ->
 start_link(TorrentID) ->
     gen_server:start_link(?MODULE, [TorrentID], []).
 
-%% @doc
-%% @end
--spec peerhandle(torrent_id()) -> peerhandle().
-peerhandle(TorrentID) ->
-    {peer, await_server(TorrentID)}.
-
 
 %% @doc
 %% @end
--spec originhandle(torrent_id()) -> originhandle().
-originhandle(TorrentID) ->
-    {origin, await_server(TorrentID)}.
-
-
-%% @doc
-%% @end
--spec is_active(peerhandle()) -> boolean().
+-spec is_active(pid()) -> boolean().
 is_active(SrvPid) ->
     gen_server:call(SrvPid, is_active).
 
-%% @doc
-%% @end
--spec request_chunks(pieceset(), non_neg_integer(), peerhandle()) ->
-    {ok, [chunkspec()] | assigned}.
-request_chunks(Peerset, Numchunks, {peer, SrvPid}) ->
-    gen_server:call(SrvPid, {request_chunks, self(), Peerset, Numchunks}).
-
 
 %% @doc
 %% @end
--spec mark_sent(pieceindex, chunkoffset(), chunklength(),
-                pid(), originhandle()) -> ok.
-mark_sent(Piece, Offset, Length, Pid, {origin, SrvPid}) ->
-    gen_server:cast(SrvPid, {mark_sent, Pid, Piece, Offset, Length}),
-    ok.
-
-
-%% @doc
-%% @end
--spec mark_dropped(pieceindex(), chunkoffset(), chunklength(), peerhandle()) -> ok.
-mark_dropped(Piece, Offset, Length, {peer, SrvPid}) ->
-    SrvPid ! {mark_dropped, self(), Piece, Offset, Length},
-    ok.
-
-
-%% @doc
-%% @end
--spec mark_fetched(pieceindex(), chunkoffset(), chunklength(), peerhandle()) -> ok.
-mark_fetched(Piece, Offset, Length, {peer, SrvPid}) ->
-    SrvPid ! {mark_fetched, self(), Piece, Offset, Length},
-    ok.
+-spec activate(pid()) -> ok.
+activate(SrvPid) ->
+    gen_server:call(SrvPid, activate).
 
 
 %% @private
 init([TorrentID]) ->
     true = register_server(TorrentID),
-    Pending = etorrent_pending:originhandle(TorrentID),
+    Pending = etorrent_pending:await_server(TorrentID),
     InitState = #state{
         active=false,
         pending=Pending,
@@ -138,6 +91,11 @@ init([TorrentID]) ->
 handle_call(is_active, _, State) ->
     #state{active=IsActive} = State,
     {reply, IsActive, State};
+
+handle_call(activate, _, State) ->
+    #state{active=false} = State,
+    NewState = State#state{active=true},
+    {reply, ok, NewState};
 
 handle_call({request_chunks, Pid, Peerset, _}, _, State) ->
     #state{pending=Pending, requests=Requests} = State,
@@ -191,3 +149,50 @@ terminate(_, State) ->
 
 code_change(_, State, _) ->
     {ok, State}.
+
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-define(endgame, ?MODULE).
+-define(pending, etorrent_pending).
+-define(chunkstate, etorrent_chunkstate).
+
+testid() -> 0.
+testpid() -> ?endgame:lookup_server(testid()).
+
+setup() ->
+    {ok, PPid} = ?pending:start_link(testid()),
+    {ok, EPid} = ?endgame:start_link(testid()),
+    {PPid, EPid}.
+
+teardown({PPid, EPid}) ->
+    ok = etorrent_utils:shutdown(EPid),
+    ok = etorrent_utils:shutdown(PPid).
+
+
+
+endgame_test_() ->
+    {setup, local,
+        fun() -> application:start(gproc) end,
+        fun(_) -> application:stop(gproc) end,
+    {foreach, local,
+        fun setup/0,
+        fun teardown/1, [
+    ?_test(test_registers()),
+    ?_test(test_starts_inactive()),
+    ?_test(test_activated())
+    ]}}.
+
+test_registers() ->
+    ?assert(is_pid(?endgame:lookup_server(testid()))),
+    ?assert(is_pid(?endgame:await_server(testid()))).
+
+test_starts_inactive() ->
+    ?assertNot(?endgame:is_active(testpid())).
+
+test_activated() ->
+    ?assertEqual(ok, ?endgame:activate(testpid())),
+    ?assert(?endgame:is_active(testpid())).
+
+
+
+-endif.
