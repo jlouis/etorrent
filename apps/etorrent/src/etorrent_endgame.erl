@@ -163,8 +163,21 @@ handle_info({chunk, {fetched, Index, Offset, Length, Pid}}, State) ->
     {noreply, NewState};
 
 handle_info({chunk, {stored, Index, Offset, Length, Pid}}, State) ->
-    #state{active=true, requests=Requests} = State,
-    NewState = State#state{},
+    #state{active=true,
+        requests=Requests,
+        fetched=Fetched,
+        stored=Stored} = State,
+    Chunk = {Index, Offset, Length},
+    NewState = case gb_trees:lookup(Chunk, Fetched) of
+        none -> State;
+        {value, _} -> 
+            NewFetched = gb_trees:delete(Chunk, Fetched),
+            NewStored = gb_sets:insert(Chunk, Stored),
+            INewState = State#state{
+                fetched=NewFetched,
+                stored=NewStored},
+            INewState
+    end,
     {noreply, NewState}.
 
 terminate(_, State) ->
@@ -172,6 +185,7 @@ terminate(_, State) ->
 
 code_change(_, State, _) ->
     {ok, State}.
+
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -212,7 +226,8 @@ endgame_test_() ->
     ?_test(test_activated()),
     ?_test(test_active_one_assigned()),
     ?_test(test_active_one_dropped()),
-    ?_test(test_active_one_fetched())
+    ?_test(test_active_one_fetched()),
+    ?_test(test_active_one_stored())
     ]}}.
 
 test_registers() ->
@@ -277,7 +292,36 @@ test_active_one_fetched() ->
     etorrent_utils:ping(pending()),
     etorrent_utils:ping(testpid()),
     %% Expect endgame to send out request if the chunk is dropped before it's stored
-    ?assertEqual({ok, [{0, 0, 1}]}, ?chunkstate:request(1, testset(), testpid())).
+    ?assertEqual({ok, [{0, 0, 1}]}, ?chunkstate:request(1, testset(), testpid())),
+    Orig ! die, etorrent_utils:wait(Orig).
+
+test_active_one_stored() ->
+    ok = ?endgame:activate(testpid()),
+    %% Spawn a separate process to introduce the chunk into endgame
+    Orig = spawn_link(fun() ->
+        ?pending:register(pending()),
+        ?chunkstate:assigned(0, 0, 1, self(), testpid()),
+        mainpid() ! assigned,
+        etorrent_utils:expect(die)
+    end),
+    etorrent_utils:expect(assigned),
+    %% Spawn a process that aquires the chunk from endgame and marks it as stored
+    Pid = spawn_link(fun() ->
+        ?pending:register(pending()),
+        {ok, [{0,0,1}]} = ?chunkstate:request(1, testset(), testpid()),
+        ?chunkstate:fetched(0, 0, 1, self(), testpid()),
+        ?chunkstate:stored(0, 0, 1, self(), testpid()),
+        mainpid() ! stored,
+        etorrent_utils:expect(die)
+    end),
+    etorrent_utils:expect(stored),
+    ?assertEqual({ok, assigned}, ?chunkstate:request(1, testset(), testpid())),
+    Pid ! die, etorrent_utils:wait(Pid),
+    etorrent_utils:ping(pending()),
+    etorrent_utils:ping(testpid()),
+    ?assertEqual({ok, assigned}, ?chunkstate:request(1, testset(), testpid())),
+    Orig ! die, etorrent_utils:wait(Orig).
+
 
 
 
