@@ -102,7 +102,10 @@ handle_call(activate, _, State) ->
     {reply, ok, NewState};
 
 handle_call({chunk, {request, _, Peerset, Pid}}, _, State) ->
-    #state{pending=Pending, requests=Requests} = State,
+    #state{
+        active=true,
+        pending=Pending,
+        requests=Requests} = State,
     Request = etorrent_utils:find(
         fun({{Index, _, _}, Peers}) ->
             (etorrent_pieceset:is_member(Index, Peerset))
@@ -127,14 +130,19 @@ handle_cast(_, State) ->
 %% @private
 handle_info({chunk, {assigned, Index, Offset, Length, Pid}}, State) ->
     %% Load a request that was assigned by etorrent_progress
-    #state{active=true, requests=Requests} = State,
+    #state{
+        active=true,
+        requests=Requests} = State,
     Chunk = {Index, Offset, Length},
     NewRequests = gb_trees:insert(Chunk, [Pid], Requests),
     NewState = State#state{requests=NewRequests},
     {noreply, NewState};
 
 handle_info({chunk, {dropped, Index, Offset, Length, Pid}}, State) ->
-    #state{active=true, requests=Requests, fetched=Fetched} = State,
+    #state{
+        active=true,
+        requests=Requests,
+        fetched=Fetched} = State,
     Chunk = {Index, Offset, Length},
     {WasFetcher, NewFetched} = case gb_trees:lookup(Chunk, Fetched) of
         none -> {false, Fetched};
@@ -149,7 +157,10 @@ handle_info({chunk, {dropped, Index, Offset, Length, Pid}}, State) ->
     {noreply, NewState};
 
 handle_info({chunk, {fetched, Index, Offset, Length, Pid}}, State) ->
-    #state{active=true, requests=Requests, fetched=Fetched} = State,
+    #state{
+        active=true,
+        requests=Requests,
+        fetched=Fetched} = State,
     Chunk = {Index, Offset, Length},
     {NewFetched, NewRequests} = case gb_trees:lookup(Chunk, Requests) of
         none -> {Fetched, Requests};
@@ -163,7 +174,8 @@ handle_info({chunk, {fetched, Index, Offset, Length, Pid}}, State) ->
     {noreply, NewState};
 
 handle_info({chunk, {stored, Index, Offset, Length, Pid}}, State) ->
-    #state{active=true,
+    #state{
+        active=true,
         requests=Requests,
         fetched=Fetched,
         stored=Stored} = State,
