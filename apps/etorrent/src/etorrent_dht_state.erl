@@ -653,20 +653,30 @@ dump_state(Filename, Self, NodeList) ->
     file:write_file(Filename, term_to_binary(PersistentState)).
 
 load_state(Filename) ->
+    ErrorFmt = "Failed to load state from ~s (~w)",
     case file:read_file(Filename) of
         {ok, BinState} ->
-            PersistentState = binary_to_term(BinState),
-            {value, {_, Self}}  = lists:keysearch(node_id, 1, PersistentState),
-            {value, {_, Nodes}} = lists:keysearch(node_set, 1, PersistentState),
-            error_logger:info_msg("Loaded state from ~s", [Filename]),
-            {Self, Nodes};
-
+            case (catch load_state_(BinState)) of
+                {'EXIT', Reason}  ->
+                    ErrorArgs = [Filename, Reason],
+                    error_logger:error_msg(ErrorFmt, ErrorArgs),
+                    {etorrent_dht:random_id(), []};
+                {_, _}=State ->
+                    error_logger:info_msg("Loaded state from ~s", [Filename]),
+                    State
+            end;
         {error, Reason} ->
-            error_logger:error_msg("Failed to load state from ~s (~w)", [Filename, Reason]),
-            Self  = etorrent_dht:random_id(),
-            Nodes = [],
-            {Self, Nodes}
+            ErrorArgs = [Filename, Reason],
+            error_logger:error_msg(ErrorFmt, ErrorArgs),
+            {etorrent_dht:random_id(), []}
     end.
+
+load_state_(BinState) ->
+    PersistentState = binary_to_term(BinState),
+    {value, {_, Self}}  = lists:keysearch(node_id, 1, PersistentState),
+    {value, {_, Nodes}} = lists:keysearch(node_set, 1, PersistentState),
+    {Self, Nodes}.
+
 
 %% @private
 code_change(_, _, State) ->
