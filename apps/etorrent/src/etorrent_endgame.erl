@@ -183,8 +183,10 @@ testid() -> 0.
 testpid() -> ?endgame:lookup_server(testid()).
 testset() -> etorrent_pieceset:from_list([0], 8).
 pending() -> ?pending:lookup_server(testid()).
+mainpid() -> etorrent_utils:lookup(?MODULE).
 
 setup() ->
+    etorrent_utils:register(?MODULE),
     {ok, PPid} = ?pending:start_link(testid()),
     {ok, EPid} = ?endgame:start_link(testid()),
     ok = ?pending:receiver(EPid, PPid),
@@ -192,6 +194,7 @@ setup() ->
     {PPid, EPid}.
 
 teardown({PPid, EPid}) ->
+    etorrent_utils:unregister(?MODULE),
     ok = etorrent_utils:shutdown(EPid),
     ok = etorrent_utils:shutdown(PPid).
 
@@ -225,11 +228,10 @@ test_activated() ->
 
 test_active_one_assigned() ->
     ok = ?endgame:activate(testpid()),
-    Main = self(),
     Pid = spawn_link(fun() ->
         ?pending:register(pending()),
         ?chunkstate:assigned(0, 0, 1, self(), testpid()),
-        Main ! assigned,
+        mainpid() ! assigned,
         etorrent_utils:expect(die)
     end),
     etorrent_utils:expect(assigned),
@@ -239,12 +241,11 @@ test_active_one_assigned() ->
 
 test_active_one_dropped() ->
     ok = ?endgame:activate(testpid()),
-    Main = self(),
     Pid = spawn_link(fun() ->
         ?pending:register(pending()),
         ?chunkstate:assigned(0, 0, 1, self(), testpid()),
         ?chunkstate:dropped(0, 0, 1, self(), testpid()),
-        Main ! dropped,
+        mainpid() ! dropped,
         etorrent_utils:expect(die)
     end),
     etorrent_utils:expect(dropped),
@@ -253,12 +254,11 @@ test_active_one_dropped() ->
 
 test_active_one_fetched() ->
     ok = ?endgame:activate(testpid()),
-    Main = self(),
     %% Spawn a separate process to introduce the chunk into endgame
     Orig = spawn_link(fun() ->
         ?pending:register(pending()),
         ?chunkstate:assigned(0, 0, 1, self(), testpid()),
-        Main ! assigned,
+        mainpid() ! assigned,
         etorrent_utils:expect(die)
     end),
     etorrent_utils:expect(assigned),
@@ -267,7 +267,7 @@ test_active_one_fetched() ->
         ?pending:register(pending()),
         {ok, [{0,0,1}]} = ?chunkstate:request(1, testset(), testpid()),
         ?chunkstate:fetched(0, 0, 1, self(), testpid()),
-        Main ! fetched,
+        mainpid() ! fetched,
         etorrent_utils:expect(die)
     end),
     etorrent_utils:expect(fetched),
