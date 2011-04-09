@@ -21,11 +21,6 @@
 -type portnum() :: etorrent_types:portnum().
 -type nodeinfo() :: etorrent_types:nodeinfo().
 
--spec start_link(infohash(), integer()) -> {'ok', pid()}.
--spec announce(pid()) -> 'ok'.
--spec announce(infohash(), ipaddr(), portnum()) -> 'true'.
--spec get_peers(infohash()) -> list(peerinfo()).
-
 -record(state, {
     infohash  :: infohash(),
     torrentid :: integer(),
@@ -53,10 +48,12 @@ start_link() ->
         _ -> ok
     end.
 
+-spec start_link(infohash(), integer()) -> {'ok', pid()}.
 start_link(InfoHash, TorrentID) ->
     Args = [{infohash, InfoHash}, {torrentid, TorrentID}],
     gen_server:start_link(?MODULE, Args, []).
 
+-spec announce(pid()) -> 'ok'.
 announce(TrackerPid) ->
     gen_server:cast(TrackerPid, announce).
 
@@ -66,6 +63,7 @@ announce(TrackerPid) ->
 % registered peers for a torrent is exceeded, one or more peers are
 % deleted.
 %
+-spec announce(infohash(), ipaddr(), portnum()) -> 'true'.
 announce(InfoHash, {_,_,_,_}=IP, Port) when is_integer(InfoHash), is_integer(Port) ->
     % Always delete a random peer when inserting a new
     % peer into the table. If limit is not reached yet, the
@@ -78,6 +76,7 @@ announce(InfoHash, {_,_,_,_}=IP, Port) when is_integer(InfoHash), is_integer(Por
 %
 % Get the peers that are registered as members of this swarm.
 %
+-spec get_peers(infohash()) -> list(peerinfo()).
 get_peers(InfoHash) ->
     GetSpec = [{{InfoHash,'$1','$2','_'},[],[{{'$1','$2'}}]}],
     case ets:select(tab_name(), GetSpec, max_per_torrent()) of

@@ -282,6 +282,7 @@ guess_sub_resp(Resp) ->
 %%          </e:property>
 %%          Other variable names and values (if any) go here.
 %%      </e:propertyset>
+%%      '''
 %% @end
 %% @todo See the explanation in ``etorrent_upnp_httpd''.
 -spec parse_notify_msg(binary()) -> etorrent_types:upnp_notify() | undefined.

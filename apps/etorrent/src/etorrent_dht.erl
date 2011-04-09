@@ -16,13 +16,6 @@
 
 -type nodeinfo() :: etorrent_types:nodeinfo().
 -type nodeid() :: etorrent_types:nodeid().
--spec integer_id(list(byte()) | binary()) -> nodeid().
--spec list_id(nodeid()) -> list(byte()).
--spec random_id() -> nodeid().
--spec closest_to(nodeid(), list(nodeinfo()), integer()) ->
-    list(nodeinfo()).
--spec distance(nodeid(), nodeid()) -> nodeid().
-
 % supervisor callbacks
 -export([init/1]).
 
@@ -70,19 +63,24 @@ find_self() ->
     Self = etorrent_dht_state:node_id(),
     etorrent_dht_net:find_node_search(Self).
 
+-spec integer_id(list(byte()) | binary()) -> nodeid().
 integer_id(<<ID:160>>) ->
     ID;
 integer_id(StrID) when is_list(StrID) ->
     integer_id(list_to_binary(StrID)).
 
+-spec list_id(nodeid()) -> list(byte()).
 list_id(ID) when is_integer(ID) ->
     binary_to_list(<<ID:160>>).
 
+-spec random_id() -> nodeid().
 random_id() ->
     Byte  = fun() -> random:uniform(256) - 1 end,
     Bytes = [Byte() || _ <- lists:seq(1, 20)],
     integer_id(Bytes).
 
+-spec closest_to(nodeid(), list(nodeinfo()), integer()) ->
+    list(nodeinfo()).
 closest_to(InfoHash, NodeList, NumNodes) ->
     WithDist = [{distance(ID, InfoHash), ID, IP, Port}
                || {ID, IP, Port} <- NodeList],
@@ -95,6 +93,7 @@ closest_to(InfoHash, NodeList, NumNodes) ->
     end,
     [{NID, NIP, NPort} || {_, NID, NIP, NPort} <- Limited].
 
+-spec distance(nodeid(), nodeid()) -> nodeid().
 distance(BID0, BID1) when is_binary(BID0), is_binary(BID1) ->
     <<ID0:160>> = BID0,
     <<ID1:160>> = BID1,
