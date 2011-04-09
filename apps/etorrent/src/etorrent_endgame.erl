@@ -29,7 +29,7 @@
 -record(state, {
     active   :: boolean(),
     pending  :: pid(),
-    requests :: gb_tree(),
+    assigned :: gb_tree(),
     fetched  :: gb_tree(),
     stored   :: gb_tree()}).
 
@@ -85,7 +85,7 @@ init([TorrentID]) ->
     InitState = #state{
         active=false,
         pending=Pending,
-        requests=gb_trees:empty(),
+        assigned=gb_trees:empty(),
         fetched=gb_trees:empty(),
         stored=gb_sets:empty()},
     {ok, InitState}.
@@ -105,19 +105,19 @@ handle_call({chunk, {request, _, Peerset, Pid}}, _, State) ->
     #state{
         active=true,
         pending=Pending,
-        requests=Requests} = State,
+        assigned=Assigned} = State,
     Request = etorrent_utils:find(
-        fun({{Index, _, _}, Peers}) ->
-            (etorrent_pieceset:is_member(Index, Peerset))
-            andalso (not lists:member(Pid, Peers))
-        end, gb_trees:to_list(Requests)),
+        fun({Index, _, _}=Chunk) ->
+            etorrent_pieceset:is_member(Index, Peerset)
+            andalso not has_assigned(Chunk, Pid, Assigned)
+        end, get_assigned(Assigned)),
     case Request of
         false ->
             {reply, {ok, assigned}, State};
-        {{Index, Offset, Length}=Chunk, Peers} ->
+        {Index, Offset, Length}=Chunk ->
             etorrent_chunkstate:assigned(Index, Offset, Length, Pid, Pending),
-            NewRequests = gb_trees:update(Chunk, [Pid|Peers], Requests),
-            NewState = State#state{requests=NewRequests},
+            NewAssigned = add_assigned(Chunk, Pid, Assigned),
+            NewState = State#state{assigned=NewAssigned},
             {reply, {ok, [Chunk]}, NewState}
     end.
 
@@ -132,71 +132,186 @@ handle_info({chunk, {assigned, Index, Offset, Length, Pid}}, State) ->
     %% Load a request that was assigned by etorrent_progress
     #state{
         active=true,
-        requests=Requests} = State,
+        assigned=Assigned} = State,
     Chunk = {Index, Offset, Length},
-    NewRequests = gb_trees:insert(Chunk, [Pid], Requests),
-    NewState = State#state{requests=NewRequests},
+    NewAssigned = add_assigned(Chunk, Pid, Assigned),
+    NewState = State#state{assigned=NewAssigned},
     {noreply, NewState};
 
 handle_info({chunk, {dropped, Index, Offset, Length, Pid}}, State) ->
     #state{
         active=true,
-        requests=Requests,
-        fetched=Fetched} = State,
+        assigned=Assigned,
+        fetched=Fetched,
+        stored=Stored} = State,
     Chunk = {Index, Offset, Length},
-    {WasFetcher, NewFetched} = case gb_trees:lookup(Chunk, Fetched) of
-        none -> {false, Fetched};
-        {value, Pid} -> {true, gb_trees:delete(Chunk, Fetched)}
+    Isstored = is_stored(Chunk, Stored),
+    Isfetched = Isstored orelse is_fetched(Chunk, Fetched),
+    Wasfetched = Isfetched orelse has_fetched(Chunk, Pid, Fetched),
+    NewState = if
+        Isstored ->
+            State;
+        Isfetched and Wasfetched ->
+            NewFetched = del_fetched(Chunk, Pid, Fetched),
+            Stillfetched = is_fetched(Chunk, NewFetched),
+            if  Stillfetched ->
+                    State#state{fetched=NewFetched};
+                not Stillfetched  ->
+                    NewAssigned = add_assigned(Chunk, Assigned),
+                    State#state{assigned=NewAssigned, fetched=NewFetched}
+            end;
+        Isfetched ->
+            State;
+        true ->
+            NewAssigned = del_assigned(Chunk, Pid, Assigned),
+            State#state{assigned=NewAssigned}
     end,
-    NewRequests = case gb_trees:lookup(Chunk, Requests) of
-        none when WasFetcher -> gb_trees:insert(Chunk, [], Requests);
-        none -> Requests;
-        {value, Peers} -> gb_trees:update(Chunk, Peers -- [Pid], Requests)
-    end,
-    NewState = State#state{requests=NewRequests, fetched=NewFetched},
     {noreply, NewState};
 
 handle_info({chunk, {fetched, Index, Offset, Length, Pid}}, State) ->
     #state{
         active=true,
-        requests=Requests,
-        fetched=Fetched} = State,
+        assigned=Assigned,
+        fetched=Fetched,
+        stored=Stored} = State,
     Chunk = {Index, Offset, Length},
-    {NewFetched, NewRequests} = case gb_trees:lookup(Chunk, Requests) of
-        none -> {Fetched, Requests};
-        {value, Peers} ->
-            [etorrent_peer_control:cancel(Peer, Index, Offset, Length) || Peer <- Peers],
-            IFetched = gb_trees:insert(Chunk, Pid, Fetched),
-            IRequests = gb_trees:delete(Chunk, Requests),
-            {IFetched, IRequests}
+    Isstored = is_stored(Chunk, Stored),
+    Isfetched = Isstored orelse is_fetched(Chunk, Fetched),
+    Notify = fun(Peer) ->
+        etorrent_chunkstate:fetched(Index, Offset, Length, Pid, Peer)
     end,
-    NewState = State#state{requests=NewRequests, fetched=NewFetched},
+    NewState = if
+        Isstored ->
+            State;
+        Isfetched ->
+            NewFetched = add_fetched(Chunk, Pid, Fetched),
+            State#state{fetched=NewFetched};
+        not Isfetched ->
+            NewFetched = add_fetched(Chunk, Pid, Fetched),
+            NewAssigned = del_assigned(Chunk, Assigned),
+            [Notify(Peer) || Peer <- get_assigned(Chunk, Assigned)],
+            State#state{ assigned=NewAssigned, fetched=NewFetched}
+    end,
     {noreply, NewState};
 
 handle_info({chunk, {stored, Index, Offset, Length, Pid}}, State) ->
     #state{
         active=true,
-        requests=Requests,
+        assigned=Assigned,
         fetched=Fetched,
         stored=Stored} = State,
     Chunk = {Index, Offset, Length},
-    NewState = case gb_trees:lookup(Chunk, Fetched) of
-        none -> State;
-        {value, _} -> 
-            NewFetched = gb_trees:delete(Chunk, Fetched),
-            NewStored = gb_sets:insert(Chunk, Stored),
-            INewState = State#state{
-                fetched=NewFetched,
-                stored=NewStored},
-            INewState
-    end,
-    {noreply, NewState}.
+    case has_fetched(Chunk, Pid, Fetched) of
+        false ->
+            {noreply, State};
+        true ->
+            NewState = State#state{
+                fetched=del_fetched(Chunk, Pid, Fetched),
+                stored=add_stored(Chunk, Stored)},
+            {noreply, NewState}
+    end.
 
 terminate(_, State) ->
     {ok, State}.
 
 code_change(_, State, _) ->
     {ok, State}.
+
+
+%% @doc Get the list of all assigned chunks
+-spec get_assigned(gb_tree()) -> [chunkspec()].
+get_assigned(Assigned) ->
+    gb_trees:keys(Assigned).
+
+%% @doc Get the list of peers that has been assigned a chunk
+-spec get_assigned(chunkspec(), gb_tree()) -> [pid()].
+get_assigned(Chunk, Assigned) ->
+    gb_trees:get(Chunk, Assigned).
+
+%% @doc Check if a peer has been assigned a chunk
+-spec has_assigned(chunkspec(), pid(), gb_tree()) -> boolean().
+has_assigned(Chunk, Pid, Assigned) ->
+    has_peer(Chunk, Pid, Assigned).
+
+-spec add_assigned(chunkspec(), gb_tree()) -> gb_tree().
+add_assigned(Chunk, Assigned) ->
+    gb_trees:insert(Chunk, [], Assigned).
+
+%% @doc Append a peer to the list of peers that has been assigned a chunk
+-spec add_assigned(chunkspec(), pid(), gb_tree()) -> gb_tree().
+add_assigned(Chunk, Pid, Assigned) ->
+    add_peer(Chunk, Pid, Assigned).
+
+%% @doc Delete a peer from the list of peers that has been assigned a chunk
+-spec del_assigned(chunkspec(), pid(), gb_tree()) -> gb_tree().
+del_assigned(Chunk, Pid, Assigned) ->
+    del_peer(Chunk, Pid, Assigned).
+
+%% @doc Delete all peers from the list of peers that has been assigned a chunk
+-spec del_assigned(chunkspec(), gb_tree()) -> gb_tree().
+del_assigned(Chunk, Assigned) ->
+    gb_trees:delete(Chunk, Assigned).
+
+%% @doc Append a peer to the list of peers that has fetched a chunk
+-spec add_fetched(chunkspec(), pid(), gb_tree()) -> gb_tree().
+add_fetched(Chunk, Pid, Fetched) ->
+    add_peer(Chunk, Pid, Fetched).
+
+%% @doc Delete a peer from the list of peers that has fetched a chunk
+-spec del_fetched(chunkspec(), pid(), gb_tree()) -> gb_tree().
+del_fetched(Chunk, Pid, Fetched) ->
+    del_peer(Chunk, Pid, Fetched).
+
+%% @doc Check if a chunk is a member of the set of fetched chunks
+-spec is_fetched(chunkspec(), gb_tree()) -> boolean().
+is_fetched(Chunk, Fetched) ->
+    gb_trees:is_defined(Chunk, Fetched)
+    andalso length(gb_trees:get(Chunk, Fetched)) > 0.
+
+%% @doc Check if a peer has fetched a chunk
+-spec has_fetched(chunkspec(), pid(), gb_tree()) -> boolean().
+has_fetched(Chunk, Pid, Fetched) ->
+    has_peer(Chunk, Pid, Fetched).
+
+
+%% @doc Add a chunk to the set of stored chunks
+-spec add_stored(chunkspec(), gb_set()) -> gb_set().
+add_stored(Chunk, Stored) ->
+    gb_sets:insert(Chunk, Stored).
+
+%% @doc Check if a chunk is a member of the set of stored chunks
+-spec is_stored(chunkspec(), gb_set()) -> boolean().
+is_stored(Chunk, Stored) ->
+    gb_sets:is_member(Chunk, Stored).
+
+%% @doc Add a peer to a set of peers that are associated with a chunk
+-spec add_peer(chunkspec(), pid(), gb_tree()) -> gb_tree().
+add_peer(Chunk, Pid, Requests) ->
+    case gb_trees:lookup(Chunk, Requests) of
+        none ->
+            gb_trees:insert(Chunk, [Pid], Requests);
+        {value, Pids} ->
+            %% Assert that a peer only fetches a chunk once
+            not lists:member(Pid, Pids) orelse error(badarg),
+            gb_trees:update(Chunk, [Pid|Pids], Requests)
+    end.
+
+%% @doc Delete a peer from a set of peers associated with a chunk
+-spec del_peer(chunkspec(), pid(), gb_tree()) -> gb_tree().
+del_peer(Chunk, Pid, Requests) ->
+    case gb_trees:lookup(Chunk, Requests) of
+        none ->
+            Requests;
+        {value, Pids} ->
+            NewPids = Pids -- [Pid],
+            gb_trees:update(Chunk, NewPids, Requests)
+    end.
+
+%% @doc Check if a peer is a member of the set of peers associated with a chunk
+-spec has_peer(chunkspec(), pid(), gb_tree()) -> boolean().
+has_peer(Chunk, Pid, Requests) ->
+    gb_trees:is_defined(Chunk, Requests)
+    andalso lists:member(Pid, gb_trees:get(Chunk, Requests)).
 
 
 -ifdef(TEST).
@@ -290,19 +405,25 @@ test_active_one_fetched() ->
     end),
     etorrent_utils:expect(assigned),
     %% Spawn a process that aquires the chunk from endgame and marks it as fetched
-    Pid = spawn_link(fun() ->
+    Fetch = fun() -> spawn_link(fun() ->
         ?pending:register(pending()),
         {ok, [{0,0,1}]} = ?chunkstate:request(1, testset(), testpid()),
         ?chunkstate:fetched(0, 0, 1, self(), testpid()),
         mainpid() ! fetched,
         etorrent_utils:expect(die)
-    end),
+    end) end,
+    Pid0 = Fetch(),
+    Pid1 = Fetch(),
     etorrent_utils:expect(fetched),
     %% Expect endgame to not send out requests for the fetched chunk
     ?assertEqual({ok, assigned}, ?chunkstate:request(1, testset(), testpid())),
-    Pid ! die, etorrent_utils:wait(Pid),
-    etorrent_utils:ping(pending()),
-    etorrent_utils:ping(testpid()),
+    Pid0 ! die, etorrent_utils:wait(Pid0),
+    etorrent_utils:ping([pending(), testpid()]),
+    ?assertEqual({ok, assigned}, ?chunkstate:request(1, testset(), testpid())),
+    %% Expect endgame to not send out requests if two peers have fetched the request
+    ?assertEqual({ok, assigned}, ?chunkstate:request(1, testset(), testpid())),
+    Pid1 ! die, etorrent_utils:wait(Pid1),
+    etorrent_utils:ping([pending(), testpid()]),
     %% Expect endgame to send out request if the chunk is dropped before it's stored
     ?assertEqual({ok, [{0, 0, 1}]}, ?chunkstate:request(1, testset(), testpid())),
     Orig ! die, etorrent_utils:wait(Orig).
@@ -329,8 +450,7 @@ test_active_one_stored() ->
     etorrent_utils:expect(stored),
     ?assertEqual({ok, assigned}, ?chunkstate:request(1, testset(), testpid())),
     Pid ! die, etorrent_utils:wait(Pid),
-    etorrent_utils:ping(pending()),
-    etorrent_utils:ping(testpid()),
+    etorrent_utils:ping([pending(), testpid()]),
     ?assertEqual({ok, assigned}, ?chunkstate:request(1, testset(), testpid())),
     Orig ! die, etorrent_utils:wait(Orig).
 
