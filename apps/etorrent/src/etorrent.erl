@@ -46,7 +46,10 @@ start(Filename) when is_list(Filename) ->
 
 %% @doc Start downloading torrent given by Filename
 %% When the torrent is completed, the Callback function is executed
-%% in its own newly spawned process
+%% in its own newly spawned process. If the Callback crashes, it will do so
+%% with an error logged message, but the Callback itself is responsible for detecting
+%% that this is the case and install an eventual exception/exit handler on its
+%% execution so it can be caught.
 %% @end
 start(Filename, {Ref, Pid})
   when is_list(Filename), is_reference(Ref), is_pid(Pid) ->
