@@ -3,6 +3,7 @@
          update/2,
          request_chunks/3,
          chunk_dropped/4,
+         chunks_dropped/2,
          chunk_fetched/4,
          chunk_stored/4]).
 
@@ -78,6 +79,20 @@ chunk_dropped(Piece, Offset, Length, Handle) ->
     #tservices{pending=Pending, progress=Progress} = Handle,
     ok = etorrent_chunkstate:dropped(Piece, Offset, Length, self(), Progress),
     ok = etorrent_chunkstate:dropped(Piece, Offset, Length, self(), Pending).
+
+
+%% @doc
+%% @end
+-spec chunks_dropped([chunkspec()], tservices()) -> ok.
+chunks_dropped(Chunks, Handle) when ?endgame(Handle) ->
+    #tservices{pending=Pending, endgame=Endgame} = Handle,
+    ok = etorrent_chunkstate:dropped(Chunks, self(), Endgame),
+    ok = etorrent_chunkstate:dropped(Chunks, self(), Pending);
+
+chunks_dropped(Chunks, Handle) ->
+    #tservices{pending=Pending, progress=Progress} = Handle,
+    ok = etorrent_chunkstate:dropped(Chunks, self(), Progress),
+    ok = etorrent_chunkstate:dropped(Chunks, self(), Pending).
 
 
 %% @doc
