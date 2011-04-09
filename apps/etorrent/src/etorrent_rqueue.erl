@@ -27,7 +27,9 @@
          is_head/4,
          has_offset/3,
          is_low/1,
-         needs/1]).
+         needs/1,
+         member/4,
+         delete/4]).
 
 
 -type pieceindex() :: etorrent_types:piece_index().
@@ -184,6 +186,28 @@ needs(Requestqueue) ->
         false -> 0
     end.
 
+%% @doc Check if a request queue contains a specific request
+%% @end
+-spec member(pieceindex(), chunkoffset(),
+             chunklength(), #requestqueue{}) -> boolean().
+member(Piece, Offset, Length, Requestqueue) ->
+    %% The implementation of queue will not change in a 1000 years
+    #requestqueue{queue={Q0, Q1}} = Requestqueue,
+    Chunk = {Piece, Offset, Length},
+    lists:member(Chunk, Q0) orelse lists:member(Chunk, Q1).
+
+
+%% @doc Delete a specific request from the request queue
+%% @end
+-spec delete(pieceindex(), chunkoffset(),
+             chunklength(), #requestqueue{}) -> rqueue().
+delete(Piece, Offset, Length, Requestqueue) ->
+    %% The implementation of queue will not change in a 1000 years
+    #requestqueue{queue={Q0, Q1}} = Requestqueue,
+    Chunk = {Piece, Offset, Length},
+    Queue = {lists:delete(Chunk, Q0), lists:delete(Chunk, Q1)},
+    #requestqueue{queue=Queue}.
+
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -252,7 +276,18 @@ push_list_test_() ->
      ?_assertEqual([{0,0,1},{0,1,1},{0,2,1}], ?rqueue:to_list(Q2)),
      ?_assertEqual([], ?rqueue:to_list(OQ2))].
 
-
+member_delete_test() ->
+    Q0 = ?rqueue:new(),
+    Q1 = ?rqueue:push(0, 0, 1, Q0),
+    Q2 = ?rqueue:push(0, 1, 1, Q1),
+    ?assert(?rqueue:member(0, 0, 1, Q1)),
+    ?assertNot(?rqueue:member(0, 1, 1, Q1)),
+    ?assert(?rqueue:member(0, 1, 1, Q2)),
+    Q3 = ?rqueue:delete(0, 1, 1, Q2),
+    ?assertNot(?rqueue:member(0, 1, 1, Q3)),
+    ?assert(?rqueue:member(0, 0, 1, Q3)),
+    Q4 = ?rqueue:delete(0, 0, 1, Q3),
+    ?assertNot(?rqueue:member(0, 0, 1, Q4)).
 
 -endif.
 
