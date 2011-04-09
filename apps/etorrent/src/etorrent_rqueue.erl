@@ -192,9 +192,9 @@ needs(Requestqueue) ->
              chunklength(), #requestqueue{}) -> boolean().
 member(Piece, Offset, Length, Requestqueue) ->
     %% The implementation of queue will not change in a 1000 years
-    #requestqueue{queue={Q0, Q1}} = Requestqueue,
+    #requestqueue{queue=Queue} = Requestqueue,
     Chunk = {Piece, Offset, Length},
-    lists:member(Chunk, Q0) orelse lists:member(Chunk, Q1).
+    queue:member(Chunk, Queue).
 
 
 %% @doc Delete a specific request from the request queue
@@ -203,10 +203,10 @@ member(Piece, Offset, Length, Requestqueue) ->
              chunklength(), #requestqueue{}) -> rqueue().
 delete(Piece, Offset, Length, Requestqueue) ->
     %% The implementation of queue will not change in a 1000 years
-    #requestqueue{queue={Q0, Q1}} = Requestqueue,
+    #requestqueue{queue=Queue} = Requestqueue,
     Chunk = {Piece, Offset, Length},
-    Queue = {lists:delete(Chunk, Q0), lists:delete(Chunk, Q1)},
-    #requestqueue{queue=Queue}.
+    NewQueue = queue:filter(fun(Item) -> Item =/= Chunk end, Queue),
+    Requestqueue#requestqueue{queue=NewQueue}.
 
 
 -ifdef(TEST).
