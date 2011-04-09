@@ -19,7 +19,6 @@
         terminate/2,
         code_change/3]).
 
--type pieceset()    :: etorrent_pieceset:pieceset().
 -type torrent_id()  :: etorrent_types:torrent_id().
 -type pieceindex()  :: etorrent_types:pieceindex().
 -type chunkoffset() :: etorrent_types:chunkoffset().
