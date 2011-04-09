@@ -99,9 +99,8 @@ pop(Requestqueue) ->
     case queue:out(Queue) of
         {empty, _} ->
             erlang:error(badarg);
-        {{value, Head}, Tail} ->
-            NewReqs = Requestqueue#requestqueue{queue=Tail},
-            {Head, NewReqs}
+        {{value, _}, Tail} ->
+            Requestqueue#requestqueue{queue=Tail}
     end.
 
 
@@ -193,10 +192,9 @@ empty_test_() ->
 one_request_test_() ->
     Q0 = ?rqueue:new(),
     Q1 = ?rqueue:push(0, 0, 1, Q0),
-    {Req, Q2} = ?rqueue:pop(Q1),
+    Q2 = ?rqueue:pop(Q1),
     [?_assertEqual(1, ?rqueue:size(Q1)),
      ?_assertEqual({0,0,1}, ?rqueue:peek(Q1)),
-     ?_assertEqual({0,0,1}, Req),
      ?_assertEqual([{0,0,1}], ?rqueue:to_list(Q1)),
      ?_assertEqual([], ?rqueue:to_list(Q2))].
 
@@ -235,12 +233,12 @@ push_list_test_() ->
     Q0 = ?rqueue:new(),
     Q1 = ?rqueue:push(0, 0, 1, Q0),
     Q2 = ?rqueue:push([{0,1,1},{0,2,1}], Q1),
-    {R0, OQ0} = ?rqueue:pop(Q2),
-    {R1, OQ1} = ?rqueue:pop(OQ0),
-    {R2, OQ2} = ?rqueue:pop(OQ1),
-    [?_assertEqual({0,0,1}, R0),
-     ?_assertEqual({0,1,1}, R1),
-     ?_assertEqual({0,2,1}, R2),
+    OQ0 = ?rqueue:pop(Q2),
+    OQ1 = ?rqueue:pop(OQ0),
+    OQ2 = ?rqueue:pop(OQ1),
+    [?_assertEqual({0,0,1}, ?rqueue:peek(Q2)),
+     ?_assertEqual({0,1,1}, ?rqueue:peek(OQ0)),
+     ?_assertEqual({0,2,1}, ?rqueue:peek(OQ1)),
      ?_assertEqual([{0,0,1},{0,1,1},{0,2,1}], ?rqueue:to_list(Q2)),
      ?_assertEqual([], ?rqueue:to_list(OQ2))].
 
