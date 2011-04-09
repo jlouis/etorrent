@@ -365,7 +365,7 @@ handle_message({piece, Index, Offset, Data}, State) ->
             Requests
     end,
     NewState = State#state{remote_request_set=NewRequests},
-	try_to_queue_up_pieces(State);
+	try_to_queue_up_pieces(NewState);
 
 handle_message({extended, _, _}, S) when S#state.extended_messaging == false ->
     %% We do not accept extended messages unless they have been enabled.
@@ -403,7 +403,6 @@ try_to_queue_up_pieces(#state { remote_choked = true } = S) ->
     {ok, S};
 try_to_queue_up_pieces(State) ->
     #state{
-        torrent_id=TorrentID,
         send_pid=SendPid,
         remote_pieces=Pieceset,
         remote_request_set=OpenRequests,
