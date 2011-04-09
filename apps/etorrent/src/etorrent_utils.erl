@@ -314,7 +314,11 @@ test_register_group() ->
     end),
     ?utils:expect(registered),
     ?assertEqual([self(),Pid], lists:sort(?utils:lookup_members(group))),
-    Pid ! die, ?utils:wait(Pid).
+    ?utils:unregister_member(group),
+    ?assertEqual([Pid], ?utils:lookup_members(group)),
+    Pid ! die, ?utils:wait(Pid),
+    ?utils:ping(whereis(gproc)),
+    ?assertEqual([], ?utils:lookup_members(group)).
 
 
 -ifdef(PROPER).
