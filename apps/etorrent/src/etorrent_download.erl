@@ -59,11 +59,11 @@ update({endgame, Inendgame}, Handle) when is_boolean(Inendgame) ->
     {ok, assigned | not_interested | [chunkspec()]}.
 request_chunks(Numchunks, Peerset, Handle) when ?endgame(Handle) ->
     #tservices{endgame=Endgame} = Handle,
-    etorrent_chunkstate:request_chunks(Numchunks, Peerset, Endgame);
+    etorrent_chunkstate:request(Numchunks, Peerset, Endgame);
 
 request_chunks(Numchunks, Peerset, Handle) ->
     #tservices{progress=Progress} = Handle,
-    etorrent_chunkstate:request_chunks(Numchunks, Peerset, Progress).
+    etorrent_chunkstate:request(Numchunks, Peerset, Progress).
 
 
 %% @doc
@@ -71,13 +71,13 @@ request_chunks(Numchunks, Peerset, Handle) ->
 -spec chunk_dropped(pieceindex(), chunkoffset(), chunklength(), tservices()) -> ok.
 chunk_dropped(Piece, Offset, Length, Handle) when ?endgame(Handle) ->
     #tservices{pending=Pending, endgame=Endgame} = Handle,
-    ok = etorrent_chunkstate:dropped(Piece, Offset, Length, Endgame),
-    ok = etorrent_chunkstate:dropped(Piece, Offset, Length, Pending);
+    ok = etorrent_chunkstate:dropped(Piece, Offset, Length, self(), Endgame),
+    ok = etorrent_chunkstate:dropped(Piece, Offset, Length, self(), Pending);
 
 chunk_dropped(Piece, Offset, Length, Handle) ->
     #tservices{pending=Pending, progress=Progress} = Handle,
-    ok = etorrent_chunkstate:dropped(Piece, Offset, Length, Progress),
-    ok = etorrent_chunkstate:dropped(Piece, Offset, Length, Pending).
+    ok = etorrent_chunkstate:dropped(Piece, Offset, Length, self(), Progress),
+    ok = etorrent_chunkstate:dropped(Piece, Offset, Length, self(), Pending).
 
 
 %% @doc
@@ -85,7 +85,7 @@ chunk_dropped(Piece, Offset, Length, Handle) ->
 -spec chunk_fetched(pieceindex(), chunkoffset(), chunklength(), tservices()) -> ok.
 chunk_fetched(Piece, Offset, Length, Handle) when ?endgame(Handle) ->
     #tservices{endgame=Endgame} = Handle,
-    ok = etorrent_chunkstate:fetched(Piece, Offset, Length, Endgame);
+    ok = etorrent_chunkstate:fetched(Piece, Offset, Length, self(), Endgame);
 
 chunk_fetched(_, _, _, _) ->
     ok.
@@ -96,5 +96,5 @@ chunk_fetched(_, _, _, _) ->
 -spec chunk_stored(pieceindex(), chunkoffset(), chunklength(), tservices()) -> ok.
 chunk_stored(Piece, Offset, Length, Handle) ->
    #tservices{pending=Pending, progress=Progress} = Handle,
-    ok = etorrent_chunkstate:stored(Piece, Offset, Length, Progress),
-    ok = etorrent_chunkstate:stored(Piece, Offset, Length, Pending).
+    ok = etorrent_chunkstate:stored(Piece, Offset, Length, self(), Progress),
+    ok = etorrent_chunkstate:stored(Piece, Offset, Length, self(), Pending).

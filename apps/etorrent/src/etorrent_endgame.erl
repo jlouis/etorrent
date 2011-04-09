@@ -30,7 +30,7 @@
     pending  :: pid(),
     assigned :: gb_tree(),
     fetched  :: gb_tree(),
-    stored   :: gb_tree()}).
+    stored   :: gb_set()}).
 
 
 server_name(TorrentID) ->
