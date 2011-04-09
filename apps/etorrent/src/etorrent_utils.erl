@@ -28,8 +28,11 @@
 
 %% "registry-like" functions
 -export([register/1,
+         register_member/1,
          unregister/1,
+         unregister_member/1,
          lookup/1,
+         lookup_members/1,
          await/1]).
 
 %%====================================================================
@@ -223,6 +226,12 @@ find(Condition, [H|T]) ->
 register(Name) ->
     gproc:add_local_name(Name).
 
+%% @doc Register the local process as a member of a group
+%% @end
+-spec register_member(tuple()) -> true.
+register_member(Group) ->
+    gproc:reg({p, l, Group}, member).
+
 
 %% @doc Unregister the local process from a name
 %% @end
@@ -230,12 +239,24 @@ register(Name) ->
 unregister(Name) ->
     gproc:unreg({n, l, Name}).
 
+%% @doc Unregister the local process as a member of a group
+%% @end
+-spec unregister_member(tuple()) -> true.
+unregister_member(Group) ->
+    gproc:unreg({p, l, Group}).
+
 
 %% @doc Resolve a local name to a pid
 %% @end
 -spec lookup(tuple()) -> pid().
 lookup(Name) ->
     gproc:lookup_pid({n, l, Name}).
+
+%% @doc Lookup the process id's of all members of a group
+%% @end
+-spec lookup_members(tuple()) -> [pid()].
+lookup_members(Group) ->
+    gproc:lookup_pids({p, l, Group}).
 
 
 %% @doc Wait until a process registers under a local name
@@ -272,11 +293,29 @@ register_test_() ->
     {setup,
         fun() -> application:start(gproc) end,
         fun(_) -> application:stop(gproc) end,
-    ?_test(begin
-        true = ?utils:register(name),
-        ?assertEqual(self(), ?utils:lookup(name)),
-        ?assertEqual(self(), ?utils:await(name))
-    end)}.
+    [?_test(test_register()),
+     ?_test(test_register_group())
+    ]}.
+
+test_register() ->
+    true = ?utils:register(name),
+    ?assertEqual(self(), ?utils:lookup(name)),
+    ?assertEqual(self(), ?utils:await(name)).
+
+test_register_group() ->
+    ?assertEqual([], ?utils:lookup_members(group)),
+    true = ?utils:register_member(group),
+    ?assertEqual([self()], ?utils:lookup_members(group)),
+    Main = self(),
+    Pid = spawn_link(fun() ->
+        ?utils:register_member(group),
+        Main ! registered,
+        ?utils:expect(die)
+    end),
+    ?utils:expect(registered),
+    ?assertEqual([self(),Pid], lists:sort(?utils:lookup_members(group))),
+    Pid ! die, ?utils:wait(Pid).
+
 
 -ifdef(PROPER).
 
