@@ -17,6 +17,7 @@
 
 -export([new/0,
          new/2,
+         flush/1,
          to_list/1,
          push/2,
          push/4,
@@ -49,14 +50,6 @@ new() ->
     new(2, 10).
 
 
-%% @doc Get the list of chunks in the request queue
-%% @end
--spec to_list(#requestqueue{}) -> [requestspec()].
-to_list(Requestqueue) ->
-    #requestqueue{queue=Queue} = Requestqueue,
-    queue:to_list(Queue).
-
-
 %% @doc Create an empty request queue and specify pipeline thresholds
 %% @end
 -spec new(non_neg_integer(), pos_integer()) -> rqueue().
@@ -66,6 +59,22 @@ new(Lowthreshold, Highthreshold) ->
         high_limit=Highthreshold,
         queue=queue:new()},
     InitQueue.
+
+
+%% @doc Remove all items from a request queue and return an empty queue
+%% @end
+-spec flush(rqueue()) -> rqueue().
+flush(Requestqueue) ->
+    #requestqueue{low_limit=Low, high_limit=High} = Requestqueue,
+    new(Low, High).
+
+
+%% @doc Get the list of chunks in the request queue
+%% @end
+-spec to_list(#requestqueue{}) -> [requestspec()].
+to_list(Requestqueue) ->
+    #requestqueue{queue=Queue} = Requestqueue,
+    queue:to_list(Queue).
 
 
 %% @doc Push a request onto the end of the request queue
@@ -196,7 +205,8 @@ one_request_test_() ->
     [?_assertEqual(1, ?rqueue:size(Q1)),
      ?_assertEqual({0,0,1}, ?rqueue:peek(Q1)),
      ?_assertEqual([{0,0,1}], ?rqueue:to_list(Q1)),
-     ?_assertEqual([], ?rqueue:to_list(Q2))].
+     ?_assertEqual([], ?rqueue:to_list(Q2)),
+     ?_assertEqual(0, ?rqueue:size(?rqueue:flush(Q1)))].
 
 head_check_test_() ->
     Q0 = ?rqueue:new(),
