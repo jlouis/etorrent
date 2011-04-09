@@ -38,9 +38,9 @@
     peer_id     :: binary(),
     parent_pid  :: pid(),
     tracker_pid :: pid(),
-    progress    :: etorrent_progress:torrenthandle(),
-    pending     :: etorrent_pending:torrenthandle(),
-    endgame     :: etorrent_endgame:torrenthandle()}).
+    progress    :: pid(),
+    pending     :: pid(),
+    endgame     :: pid()}).
 
 -define(CHECK_WAIT_TIME, 3000).
 
@@ -84,9 +84,9 @@ pieces_assigned(Pid) ->
 init([Parent, Id, {Torrent, TorrentFile, TorrentIH}, PeerId]) ->
     etorrent_table:new_torrent(TorrentFile, TorrentIH, Parent, Id),
     gproc:add_local_name({torrent, Id, control}),
-    Progress = etorrent_progress:torrenthandle(),
-    Pending = etorrent_pending:torrenthandle(),
-    Endgame = etorrent_endgame:torrenthandle(),
+    Progress = etorrent_progress:await_server(Id),
+    Pending = etorrent_pending:await_server(Id),
+    Endgame = etorrent_endgame:await_server(Id),
     InitState = #state{
         id=Id,
         torrent=Torrent,
@@ -169,10 +169,8 @@ started(completed, #state { id = Id, tracker_pid = TrackerPid } = S) ->
 
 started(pieces_assigned, State) ->
     #state{progress=Progress, pending=Pending, endgame=Endgame} = State, 
-    EndgamePid = etorrent_endgame:pid(Endgame),
-    ok = etorrent_progress:deactivate(Progress),
     ok = etorrent_endgame:activate(Endgame),
-    ok = etorrent_pending:redirect(EndgamePid, Pending),
+    ok = etorrent_pending:receiver(Endgame, Pending),
     {next_state, started, State};
 
 started({piece_stored, Index}, State) ->
