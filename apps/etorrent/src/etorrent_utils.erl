@@ -184,9 +184,13 @@ shutdown(Pid) ->
 
 %% @doc Ensure that a previous message has been handled
 %% @end
--spec ping(pid()) -> ok.
-ping(Pid) ->
+-spec ping(pid() | [pid()]) -> ok.
+ping(Pid) when is_pid(Pid) ->
     {status, Pid, _, _} = sys:get_status(Pid),
+    ok;
+
+ping(Pids) ->
+    [ping(Pid) || Pid <- Pids],
     ok.
 
 
