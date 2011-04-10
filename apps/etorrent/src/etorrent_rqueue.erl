@@ -73,7 +73,7 @@ flush(Requestqueue) ->
 
 %% @doc Get the list of chunks in the request queue
 %% @end
--spec to_list(#requestqueue{}) -> [requestspec()].
+-spec to_list(rqueue()) -> [requestspec()].
 to_list(Requestqueue) ->
     #requestqueue{queue=Queue} = Requestqueue,
     queue:to_list(Queue).
@@ -83,7 +83,7 @@ to_list(Requestqueue) ->
 %% The queue returns a new queue including the new request.
 %% @end
 -spec push(pieceindex(), chunkoffset(),
-           chunklength(), #requestqueue{}) -> rqueue().
+           chunklength(), rqueue()) -> rqueue().
 push(Pieceindex, Offset, Length, Requestqueue) ->
     #requestqueue{queue=Queue} = Requestqueue,
     NewQueue = queue:in({Pieceindex, Offset, Length}, Queue),
@@ -93,7 +93,7 @@ push(Pieceindex, Offset, Length, Requestqueue) ->
 %% @doc Push a list of requests onto the end of the request queue
 %% The function returns a new queue including the new requests.
 %% @end
--spec push([requestspec()], #requestqueue{}) -> rqueue().
+-spec push([requestspec()], rqueue()) -> rqueue().
 push(Requests, Requestqueue) ->
     #requestqueue{queue=Queue} = Requestqueue,
     TmpQueue = queue:from_list(Requests),
@@ -105,7 +105,7 @@ push(Requests, Requestqueue) ->
 %% If the request queue is empty the function will throw a badarg error.
 %% TODO - rename this function tail and add pop function
 %% @end
--spec pop(#requestqueue{}) -> rqueue().
+-spec pop(rqueue()) -> rqueue().
 pop(Requestqueue) ->
     #requestqueue{queue=Queue} = Requestqueue,
     case queue:out(Queue) of
@@ -130,7 +130,7 @@ peek(Requestqueue) ->
 
 %% @doc Return the number of requests in the queue.
 %% @end
--spec size(#requestqueue{}) -> non_neg_integer().
+-spec size(rqueue()) -> non_neg_integer().
 size(Requestqueue) ->
     #requestqueue{queue=Queue} = Requestqueue,
     queue:len(Queue).
@@ -166,7 +166,7 @@ has_offset(Pieceindex, Offset, Requestqueue) ->
 
 %% @doc Check if the number or open requests is below the pipeline threshold
 %% @end
--spec is_low(#requestqueue{}) -> boolean().
+-spec is_low(rqueue()) -> boolean().
 is_low(Requestqueue) ->
     #requestqueue{low_limit=Low, queue=Queue} = Requestqueue,
     queue:len(Queue) =< Low.
@@ -178,7 +178,7 @@ is_low(Requestqueue) ->
 %% If not, the number of requests needed to hit the high threshold
 %% is returned regardless of whether the queue is low or not.
 %% @end
--spec needs(#requestqueue{}) -> non_neg_integer().
+-spec needs(rqueue()) -> non_neg_integer().
 needs(Requestqueue) ->
     #requestqueue{high_limit=High, queue=Queue} = Requestqueue,
     Length = queue:len(Queue),
@@ -190,7 +190,7 @@ needs(Requestqueue) ->
 %% @doc Check if a request queue contains a specific request
 %% @end
 -spec member(pieceindex(), chunkoffset(),
-             chunklength(), #requestqueue{}) -> boolean().
+             chunklength(), rqueue()) -> boolean().
 member(Piece, Offset, Length, Requestqueue) ->
     %% The implementation of queue will not change in a 1000 years
     #requestqueue{queue=Queue} = Requestqueue,
@@ -201,7 +201,7 @@ member(Piece, Offset, Length, Requestqueue) ->
 %% @doc Delete a specific request from the request queue
 %% @end
 -spec delete(pieceindex(), chunkoffset(),
-             chunklength(), #requestqueue{}) -> rqueue().
+             chunklength(), rqueue()) -> rqueue().
 delete(Piece, Offset, Length, Requestqueue) ->
     %% The implementation of queue will not change in a 1000 years
     #requestqueue{queue=Queue} = Requestqueue,
