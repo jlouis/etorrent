@@ -1,11 +1,16 @@
 -module(etorrent_download).
+
+%% exported functions
 -export([await_servers/1,
-         update/2,
          request_chunks/3,
          chunk_dropped/4,
          chunks_dropped/2,
          chunk_fetched/4,
          chunk_stored/4]).
+
+%% update functions
+-export([activate_endgame/1,
+         update/2]).
 
 -type torrent_id()  :: etorrent_types:torrent_id().
 -type pieceset()    :: etorrent_pieceset:pieceset().
@@ -45,6 +50,14 @@ await_servers(TorrentID) ->
         histogram=Histogram,
         endgame=Endgame},
     Handle.
+
+
+%% @doc
+%% @end
+-spec activate_endgame(pid()) -> ok.
+activate_endgame(Pid) ->
+    Pid ! {download, {endgame, true}},
+    ok.
 
 
 %% @doc
