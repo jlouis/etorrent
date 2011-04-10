@@ -315,7 +315,7 @@ state_members(TorrentID, Piecestate) ->
     call(ChunkSrv, {state_members, Piecestate}).
 
 %% @private
--spec num_state_members(torrent_id(), piece_state()) -> pieceset().
+-spec num_state_members(torrent_id(), piece_state()) -> integer().
 num_state_members(TorrentID, Piecestate) ->
     case Piecestate of
         invalid ->
