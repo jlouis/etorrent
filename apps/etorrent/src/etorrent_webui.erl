@@ -21,7 +21,7 @@
 
 %% @doc Request retrieval of the in-memory log file
 %% @end
--spec log(binary(), ignore, ignore) -> ok.
+-spec log(pid(), ignore, ignore) -> ok.
 log(SessId, _Env, _Input) ->
     Entries = etorrent_query:log_list(),
     [ok = mod_esi:deliver(SessId, format_log_entry(E)) ||
@@ -32,11 +32,13 @@ log(SessId, _Env, _Input) ->
                         Entries)],
     ok.
 
+-spec log_json(pid(), ignore, ignore) -> ok.
 log_json(SessId, _Env, _Input) ->
     Entries = etorrent_query:log_list(),
     ok = mod_esi:deliver(SessId, dwrap(Entries)),
     ok.
 
+-spec peers_json(pid(), ignore, ignore) -> ok.
 peers_json(SessId, _Env, _Input) ->
     Entries = etorrent_query:peer_list(),
     ok = mod_esi:deliver(SessId, dwrap(Entries)),
@@ -44,7 +46,7 @@ peers_json(SessId, _Env, _Input) ->
 
 % @doc Request retrieval of the list of currently serving torrents
 % @end
--spec list(binary(), ignore, ignore) -> ok.
+-spec list(pid(), ignore, ignore) -> ok.
 list(SessId, _Env, _Input) ->
     {ok, Rates2} = list_rates(),
     ok = mod_esi:deliver(SessId, table_header()),
@@ -54,7 +56,7 @@ list(SessId, _Env, _Input) ->
     ok = mod_esi:deliver(SessId, Rates2),
     ok.
 
--spec list_json(binary(), ignore, ignore) -> ok.
+-spec list_json(pid(), ignore, ignore) -> ok.
 list_json(SessId, _Env, _Input) ->
     Torrents = etorrent_query:torrent_list(),
     JSON = dwrap(Torrents),
