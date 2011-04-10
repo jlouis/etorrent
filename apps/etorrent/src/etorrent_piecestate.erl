@@ -2,7 +2,7 @@
 %% This module provides a common interface for processes
 %% handling piece state changes.
 
--export([begun/2,
+-export([unassigned/2,
          stored/2,
          valid/2]).
 
@@ -10,9 +10,9 @@
 
 %% @doc
 %% @end
--spec begun(pieceindex(), pid()) -> ok.
-begun(Piece, Srvpid) ->
-    Srvpid ! {piece, {begun, Piece}},
+-spec unassigned(pieceindex(), pid()) -> ok.
+unassigned(Piece, Srvpid) ->
+    Srvpid ! {piece, {unassigned, Piece}},
     ok.
 
 
@@ -35,9 +35,9 @@ valid(Piece, Srvpid) ->
 -include_lib("eunit/include/eunit.hrl").
 -define(piecestate, ?MODULE).
 
-begun_test() ->
-    ?assertEqual(ok, ?piecestate:begun(0, self())),
-    ?assertEqual({piece, {begun, 0}}, etorrent_utils:first()).
+unassigned_test() ->
+    ?assertEqual(ok, ?piecestate:unassigned(0, self())),
+    ?assertEqual({piece, {unassigned, 0}}, etorrent_utils:first()).
 
 stored_test() ->
     ?assertEqual(ok, ?piecestate:stored(0, self())),
