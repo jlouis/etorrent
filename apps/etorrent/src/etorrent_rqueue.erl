@@ -103,8 +103,9 @@ push(Requests, Requestqueue) ->
 
 %% @doc Return the head of the request queue and the tail of the queue
 %% If the request queue is empty the function will throw a badarg error.
+%% TODO - rename this function tail and add pop function
 %% @end
--spec pop(#requestqueue{}) -> {requestspec(), rqueue()}.
+-spec pop(#requestqueue{}) -> rqueue().
 pop(Requestqueue) ->
     #requestqueue{queue=Queue} = Requestqueue,
     case queue:out(Queue) of
