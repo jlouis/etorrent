@@ -312,10 +312,7 @@ num_valid(TorrentID) ->
 -spec state_members(torrent_id(), piece_state()) -> pieceset().
 state_members(TorrentID, Piecestate) ->
     ChunkSrv = lookup_server(TorrentID),
-    case Piecestate of
-        invalid -> error(badarg);
-        _ -> call(ChunkSrv, {state_members, Piecestate})
-    end.
+    call(ChunkSrv, {state_members, Piecestate}).
 
 %% @private
 -spec num_state_members(torrent_id(), piece_state()) -> pieceset().
@@ -330,7 +327,6 @@ num_state_members(TorrentID, Piecestate) ->
             etorrent_pieceset:size(Members)
     end.
 
-%%====================================================================
 
 %% @private
 init(Serverargs) ->
