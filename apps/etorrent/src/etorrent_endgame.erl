@@ -26,11 +26,12 @@
 -type chunkspec()   :: {pieceindex(), chunkoffset(), chunklength()}.
 
 -record(state, {
-    active   :: boolean(),
-    pending  :: pid(),
-    assigned :: gb_tree(),
-    fetched  :: gb_tree(),
-    stored   :: gb_set()}).
+    torrent_id :: torrent_id(),
+    active     :: boolean(),
+    pending    :: pid(),
+    assigned   :: gb_tree(),
+    fetched    :: gb_tree(),
+    stored     :: gb_set()}).
 
 
 server_name(TorrentID) ->
@@ -82,6 +83,7 @@ init([TorrentID]) ->
     true = register_server(TorrentID),
     Pending = etorrent_pending:await_server(TorrentID),
     InitState = #state{
+        torrent_id=TorrentID,
         active=false,
         pending=Pending,
         assigned=gb_trees:empty(),
@@ -96,8 +98,10 @@ handle_call(is_active, _, State) ->
     {reply, IsActive, State};
 
 handle_call(activate, _, State) ->
-    #state{active=false} = State,
+    #state{active=false, torrent_id=TorrentID} = State,
     NewState = State#state{active=true},
+    Peers = etorrent_peer_control:lookup_peers(TorrentID),
+    [etorrent_download:activate_endgame(Peer) || Peer <- Peers],
     {reply, ok, NewState};
 
 handle_call({chunk, {request, _, Peerset, Pid}}, _, State) ->
