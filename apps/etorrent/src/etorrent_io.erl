@@ -371,16 +371,16 @@ schedule_io_operation(Directory, RelPath) ->
 %% it is better than the fs-checker it came from.
 %% @end
 -spec check_piece_completion(torrent_id(), integer()) -> ok.
-check_piece_completion(TorrentID, Idx) ->
-    case check_piece(TorrentID, Idx) of
+check_piece_completion(TorrentID, Index) ->
+    case check_piece(TorrentID, Index) of
 	{ok, PieceSize} ->
             ok = etorrent_torrent:statechange(TorrentID, [{subtract_left, PieceSize}]),
-            ok = etorrent_piece_mgr:statechange(TorrentID, Idx, fetched),
-            _  = etorrent_table:foreach_peer(TorrentID,
-                     fun(Pid) -> etorrent_peer_control:have(Pid, Idx) end),
+            ok = etorrent_piece_mgr:statechange(TorrentID, Index, fetched),
+            Peers = etorrent_peer_control:lookup_peers(TorrentID),
+            [etorrent_piecestate:valid(Index, Peer) || Peer <- Peers],
             ok;
         wrong_hash ->
-            ok = etorrent_piece_mgr:statechange(TorrentID, Idx, not_fetched)
+            ok = etorrent_piece_mgr:statechange(TorrentID, Index, not_fetched)
     end.
 
 %% @doc Search the ETS tables for the Piece with Index and
