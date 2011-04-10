@@ -19,11 +19,15 @@
 -export([start_link/7,
         choke/1,
         unchoke/1,
-        have/2,
-        cancel/4,
         initialize/2,
         incoming_msg/2,
         stop/1]).
+
+%% gproc registry entries
+-export([register_server/2,
+         lookup_server/2,
+         await_server/2,
+         lookup_peers/1]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -34,37 +38,36 @@
          code_change/3,
          format_status/2]).
 
+-type torrentid() :: etorrent_types:torrent_id().
 -type pieceset() :: etorrent_pieceset:pieceset().
+-type rqueue() :: etorrent_rqueue:rqueue().
 
 -record(state, {
     remote_peer_id :: none_set | binary(),
-    local_peer_id :: binary(),
-    info_hash ::  binary(),
+    local_peer_id = exit(required) :: binary(),
+    info_hash = exit(required) ::  binary(),
 
     %% Peer support extended messages
     extended_messaging = false:: boolean(),
     %% Peer uses fast extension
     fast_extension = false :: boolean(),
-    %% How many pieces are there left before the peer
-    %% has every pieces?
-    pieces_left :: integer(),
+    %% Does the peer have all pieces?
     seeder = false :: boolean(),
     socket = none  :: none | gen_tcp:socket(),
 
     remote_choked = true :: boolean(),
     local_interested = false :: boolean(),
-    remote_request_set = gb_sets:empty() :: gb_set(),
+    remote_request_set = exit(required) :: rqueue(),
 
     %% Keep two piecesets, the set of pieces that we have
     %% validated, and the set of pieces that the peer has.
     remote_pieces = unknown :: unknown | pieceset(),
     local_pieces  = unknown :: unknown | pieceset(),
-    piece_request = [] :: list(),
 
-    download :: etorrent_download:peerhandle(),
+    download = exit(required) :: etorrent_download:tservices(),
     send_pid :: pid(),
-    rate  :: etorrent_rate:rate(),
-    torrent_id :: integer()}).
+    rate     = exit(required) :: etorrent_rate:rate(),
+    torrent_id = exit(required) :: integer()}).
 
 -define(DEFAULT_CHUNK_SIZE, 16384). % Default size for a chunk. All clients use this.
 -define(HIGH_WATERMARK, 30). % How many chunks to queue up to
@@ -73,6 +76,40 @@
 -ignore_xref([{start_link, 6}]).
 
 %%====================================================================
+
+%% @doc Register the current process as a peer process
+%% @end
+register_server(TorrentID, PeerID) ->
+    etorrent_utils:register(server_name(TorrentID, PeerID)),
+    etorrent_utils:register_member(group_name(TorrentID)).
+
+%% @doc Lookup the process id of a specific peer.
+%% @end
+lookup_server(TorrentID, PeerID) ->
+    etorrent_utils:lookup(server_name(TorrentID, PeerID)).
+
+%% @doc
+%% @end
+await_server(TorrentID, PeerID) ->
+    etorrent_utils:await(server_name(TorrentID, PeerID)).
+
+%% @doc
+%% @end
+-spec lookup_peers(torrentid()) -> [pid()].
+lookup_peers(TorrentID) ->
+    etorrent_utils:lookup_members(group_name(TorrentID)).
+
+
+%% @doc Name of a specific peer process
+server_name(TorrentID, PeerID) ->
+    {etorrent, TorrentID, peer, PeerID}.
+
+%& @doc Name of all peers in a torrent
+group_name(TorrentID) ->
+    {etorrent, TorrentID, peers}.
+
+
+
 
 %% @doc Starts the server
 %% @end
@@ -97,21 +134,6 @@ choke(Pid) ->
 %% @end
 unchoke(Pid) ->
     gen_server:cast(Pid, unchoke).
-
-%% @doc Tell the peer we have just received piece PieceNumber.
-%% <p>The intended caller of this function is the {@link etorrent_piece_mgr}</p>
-%% @end
-have(Pid, PieceNumber) ->
-    gen_server:cast(Pid, {have, PieceNumber}).
-
-%% @doc We got a chunk while in endgame mode, handle it.
-%% <p>The logic is that the chunk may be queued up for this peer. We
-%% wish to either cancel the request or remove it from the request
-%% queue before it is sent out if possible.</p>
-%% @end
-cancel(Pid, Piece, Offset, Length) ->
-    Chunk = {chunk, Piece, Offset, Length},
-    gen_server:cast(Pid, {endgame_got_chunk, Chunk}).
 
 %% @doc Initialize the connection.
 %% <p>The `Way' parameter tells the client of the connection is
@@ -142,23 +164,25 @@ incoming_msg(Pid, Msg) ->
 %%====================================================================
 
 %% @private
-init([TrackerUrl, LocalPeerId, InfoHash, Id, {IP, Port}, Caps, Socket]) ->
-    etorrent_chunk_mgr:await_chunk_server(Id),
+init([TrackerUrl, LocalPeerId, InfoHash, TorrentID, {IP, Port}, Caps, Socket]) ->
+    %% Use socket handle as remote peer-id.
+    register_server(TorrentID, Socket),
     random:seed(now()),
-    ok = etorrent_table:new_peer(TrackerUrl, IP, Port, Id, self(), leeching),
+    ok = etorrent_table:new_peer(TrackerUrl, IP, Port, TorrentID, self(), leeching),
     ok = etorrent_choker:monitor(self()),
-    Download = etorrent_download:peerhandle(Id),
-    {value, NumPieces} = etorrent_torrent:num_pieces(Id),
-    gproc:add_local_name({peer, Socket, control}),
-    {ok, #state{
+    Download = etorrent_download:await_servers(TorrentID),
+    {value, NumPieces} = etorrent_torrent:num_pieces(TorrentID),
+    Requests = etorrent_rqueue:new(),
+    Extended = proplists:get_bool(extended_messaging, Caps),
+    State = #state{
+       torrent_id=TorrentID,
        socket = Socket,
-       pieces_left = NumPieces,
        local_peer_id = LocalPeerId,
-       remote_request_set = gb_sets:empty(),
-       info_hash = InfoHash,
-       torrent_id = Id,
-       extended_messaging = proplists:get_bool(extended_messaging, Caps),
-       download = Download }}.
+       remote_request_set=Requests,
+       info_hash=InfoHash,
+       extended_messaging=Extended,
+       download=Download},
+    {ok, State}.
 
 %% @private
 handle_cast({initialize, Way}, S) ->
@@ -185,19 +209,6 @@ handle_cast(unchoke, S) ->
 handle_cast(interested, State) ->
     statechange_interested(State, true),
     {noreply, State#state{local_interested=true}};
-handle_cast({have, PN}, #state{remote_pieces=unknown, send_pid=SPid}=S) ->
-    etorrent_peer_send:have(SPid, PN),
-    {noreply, S};
-handle_cast({have, PN}, #state{remote_pieces=PS, send_pid=SPid}=State) ->
-    %% Don't send duplicate have-messages
-    case etorrent_pieceset:is_member(PN, PS) of
-        true  -> ok;
-        false -> ok = etorrent_peer_send:have(SPid, PN)
-    end,
-    {noreply, State};
-handle_cast({endgame_got_chunk, Chunk}, S) ->
-    NS = handle_endgame_got_chunk(Chunk, S),
-    {noreply, NS};
 handle_cast(try_queue_pieces, S) ->
     {ok, NS} = try_to_queue_up_pieces(S),
     {noreply, NS};
@@ -209,9 +220,38 @@ handle_cast(Msg, State) ->
 
 
 %% @private
-handle_info({tcp, _P, _Packet}, State) ->
+handle_info({chunk, {fetched, Index, Offset, Length, _}}, State) ->
+    #state{send_pid=SendPid, remote_request_set=Requests} = State,
+    Hasrequest = etorrent_rqueue:member(Index, Offset, Length, Requests),
+    NewRequests = if
+        not Hasrequest ->
+            Requests;
+        Hasrequest ->
+            etorrent_peer_send:cancel(SendPid, Index, Offset, Length),
+            etorrent_rqueue:delete(Index, Offset, Length, Requests)
+    end,
+    NewState = State#state{remote_request_set=NewRequests},
+    {noreply, NewState};
+
+handle_info({piece, {valid, Piece}}, State) ->
+    #state{send_pid=SendPid} = State,
+    etorrent_peer_send:have(SendPid, Piece),
+    {noreply, State};
+
+handle_info({piece, {unassigned, _}}, State) ->
+    {ok, NewState} = try_to_queue_up_pieces(State),
+    {noreply, NewState};
+
+handle_info({download, Update}, State) ->
+    #state{download=Download} = State,
+    NewDownload = etorrent_download:update(Update, Download),
+    NewState = State#state{download=NewDownload},
+    {noreply, NewState};
+
+handle_info({tcp, _, _}, State) ->
     ?ERR([wrong_controller]),
     {noreply, State};
+
 handle_info(Info, State) ->
     ?WARN([unknown_msg, Info]),
     {noreply, State}.
@@ -254,15 +294,21 @@ handle_message(choke, State) ->
     #state{
         torrent_id=TorrentID,
         fast_extension=FastEnabled,
+        remote_request_set=Requests,
         download=Download} = State,
     ok = etorrent_peer_states:set_choke(TorrentID, self()),
-    ok = etorrent_download:mark_dropped(Download),
     NewState = case FastEnabled of
         true ->
-            etorrent_table:foreach_peer(TorrentID, fun try_queue_pieces/1),
+            %% If the Fast Extension is enabled a CHOKE message does
+            %% not imply that all outstanding requests are dropped.
             State#state{remote_choked=true};
         false ->
-            State#state{remote_choked=true, remote_request_set=gb_sets:empty()}
+            %% A CHOKE message implies that all outstanding requests has been dropped.
+            Chunks = etorrent_rqueue:to_list(Requests),
+            ok = etorrent_download:chunks_dropped(Chunks, Download),
+            NewRequests = etorrent_rqueue:flush(Requests),
+            etorrent_table:foreach_peer(TorrentID, fun try_queue_pieces/1),
+            State#state{remote_choked=true, remote_request_set=NewRequests}
     end,
     {ok, NewState};
 handle_message(unchoke, S) ->
@@ -295,7 +341,6 @@ handle_message(have_none, #state{fast_extension=true, torrent_id=TorrentID}=S) -
     ok = etorrent_scarcity:add_peer(TorrentID, Pieceset),
     NewState = S#state{
         remote_pieces=Pieceset,
-        pieces_left=NumPieces,
         seeder=false},
     {ok, NewState};
 
@@ -309,7 +354,6 @@ handle_message(have_all, #state{fast_extension=true, torrent_id=TorrentID}=S) ->
     ok = etorrent_scarcity:add_peer(TorrentID, FullSet),
     NewState = S#state{
         remote_pieces=FullSet,
-        pieces_left=0,
         seeder=true},
     {ok, NewState};
 
@@ -322,20 +366,16 @@ handle_message({bitfield, _}, State) when State#state.remote_pieces /= unknown -
 handle_message({bitfield, Bin}, State) ->
     #state{
         torrent_id=TorrentID,
-        pieces_left=PiecesLeft,
         remote_peer_id=RemoteID} = State,
-    {value, Size} = etorrent_torrent:num_pieces(TorrentID),
-    Pieceset = etorrent_pieceset:from_binary(Bin, Size),
+    {value, Numpieces} = etorrent_torrent:num_pieces(TorrentID),
+    Pieceset = etorrent_pieceset:from_binary(Bin, Numpieces),
     ok = etorrent_scarcity:add_peer(TorrentID, Pieceset),
-    Left = PiecesLeft - etorrent_pieceset:size(Pieceset),
-    case Left of
-        0 -> ok = etorrent_table:statechange_peer(self(), seeder);
-        _ -> ok
-    end,
+    Left = Numpieces - etorrent_pieceset:size(Pieceset),
+    IsSeeder = Left == 0,
+    IsSeeder andalso etorrent_table:statechange_peer(self(), seeder),
     NewState = State#state{
         remote_pieces=Pieceset,
-        pieces_left=Left,
-        seeder=(Left == 0)},
+        seeder=IsSeeder},
     case etorrent_piece_mgr:check_interest(TorrentID, Pieceset) of
         {interested, _} ->
             statechange_interested(NewState, true),
@@ -351,14 +391,13 @@ handle_message({piece, Index, Offset, Data}, State) ->
         torrent_id=TorrentID,
         download=Download,
         remote_request_set=Requests} = State,
-
     Length = byte_size(Data),
-    NewRequests = case gb_sets:is_member({Index, Offset, Length}, Requests) of
+    NewRequests = case etorrent_rqueue:is_head(Index, Offset, Length, Requests) of
         true ->
-            ok = etorrent_download:mark_fetched(Index, Offset, Length, Download),
+            ok = etorrent_download:chunk_fetched(Index, Offset, Length, Download),
             ok = etorrent_io:write_chunk(TorrentID, Index, Offset, Data),
-            ok = etorrent_download:mark_stored(Index, Offset, Length, Download),
-            gb_sets:delete({Index, Offset, Length}, Requests);
+            ok = etorrent_download:chunk_stored(Index, Offset, Length, Download),
+            etorrent_rqueue:pop(Requests);
         false ->
             %% Stray piece, we could try to get hold of it but for now we just
             %% throw it on the floor.
@@ -380,20 +419,6 @@ handle_message(Unknown, S) ->
     ?WARN([unknown_message, Unknown]),
     {stop, normal, S}.
 
-%% @doc handle the case where we get a chunk while in endgame mode.
-%%   Note: This is when we get it from <i>another</i> peer than ourselves
-%% @end
-handle_endgame_got_chunk({chunk, Index, Offset, Len}, S) ->
-    case gb_sets:is_member({Index, Offset, Len}, S#state.remote_request_set) of
-        true ->
-            %% Delete the element from the request set.
-            RS = gb_sets:delete({Index, Offset, Len}, S#state.remote_request_set),
-            etorrent_peer_send:cancel(S#state.send_pid, Index, Offset, Len),
-            S#state { remote_request_set = RS };
-        false ->
-            S
-    end.
-
 
 %% @doc Description: Try to queue up requests at the other end.
 %%   Is called in many places with the state as input as the final thing
@@ -405,36 +430,27 @@ try_to_queue_up_pieces(State) ->
     #state{
         send_pid=SendPid,
         remote_pieces=Pieceset,
-        remote_request_set=OpenRequests,
+        remote_request_set=Requests,
         download=Download} = State,
-    case gb_sets:size(OpenRequests) of
-        N when N > ?LOW_WATERMARK ->
+    case etorrent_rqueue:is_low(Requests) of
+        false ->
             {ok, State};
-        %% Optimization: Only replenish pieces modulo some N
-        N when is_integer(N) ->
-            Numchunks = ?HIGH_WATERMARK - N,
-            case etorrent_download:request_chunks(Pieceset, Numchunks, Download) of
+        true ->
+            Numchunks = etorrent_rqueue:needs(Requests),
+            case etorrent_download:request_chunks(Numchunks, Pieceset, Download) of
                 {ok, not_interested} ->
                     statechange_interested(State, false),
                     {ok, State#state{local_interested=false}};
                 {ok, assigned} ->
                     {ok, State};
                 {ok, Chunks} ->
-                    NewRequests = queue_items(SendPid, Chunks, OpenRequests),
+                    NewRequests = etorrent_rqueue:push(Chunks, Requests),
+                    [etorrent_peer_send:local_request(SendPid, Chunk)
+                    || Chunk <- Chunks],
                     NewState = State#state{remote_request_set=NewRequests},
                     {ok, NewState}
             end
     end.
-
-%% @doc Send chunk messages for each chunk we decided to queue.
-%%   also add these chunks to the piece request set.
-%% @end
--spec queue_items(pid(), list(), gb_set()) -> gb_set().
-queue_items(SendPid, Chunks, Requestset) ->
-    lists:foldl(fun({_, _, _}=Chunk, Acc) ->
-        etorrent_peer_send:local_request(SendPid, Chunk),
-        gb_sets:insert(Chunk, Acc)
-    end, Requestset, Chunks).
 
 % @doc Initialize the connection, depending on the way the connection is
 connection_initialize(incoming, S) ->
@@ -495,43 +511,76 @@ peer_have(PN, #state{remote_pieces=unknown}=State) ->
     Pieceset = etorrent_pieceset:new(NumPieces),
     NewState = State#state{remote_pieces=Pieceset},
     peer_have(PN, NewState);
-peer_have(PN, State) ->
-    #state{torrent_id=TorrentID} = State,
-    case etorrent_piece_mgr:valid(TorrentID, PN) of
+peer_have(Piece, State) ->
+    #state{
+        torrent_id=TorrentID,
+        remote_pieces=Pieceset,
+        local_interested=WasInterested} = State,
+    Valid = etorrent_pieceset:is_valid(Piece, Pieceset),
+    Member = Valid andalso etorrent_pieceset:is_member(Piece, Pieceset),
+
+    %% Only update the set of valid pieces that the peer provides if
+    %% the piece index is valid and it's the first and only notification.
+    NewPieceset = if
+        Valid andalso not Member ->
+            IPieceset = etorrent_pieceset:insert(Piece, Pieceset),
+            ok = etorrent_scarcity:add_piece(TorrentID, Piece, IPieceset),
+            IPieceset;
+        true -> false
+    end,
+
+    %% Only check if we are interested in the pieces that this peer provides
+    %% if we are not already interested and we're not going to disconnect.
+    %% If we were already interested this notification does not change that.
+    IsInterested = if
+        Valid andalso not Member andalso not WasInterested ->
+            etorrent_piece_mgr:interesting(TorrentID, Piece);
         true ->
-            Left = State#state.pieces_left - 1,
-            case peer_seeds(TorrentID, Left) of
-                ok ->
-                    case etorrent_piece_mgr:interesting(TorrentID, PN) of
-                        true ->
-                            PS = etorrent_pieceset:insert(PN, State#state.remote_pieces),
-                            ok = etorrent_scarcity:add_piece(TorrentID, PN, PS),
-                            NS = State#state{remote_pieces=PS, pieces_left=Left, seeder= Left == 0},
-                            case State#state.local_interested of
-                                true ->
-                                    try_to_queue_up_pieces(NS);
-                                false ->
-                                    statechange_interested(NS, true),
-                                    try_to_queue_up_pieces(NS#state{local_interested = true})
-                            end;
-                        false ->
-                            NSS = State#state { pieces_left = Left, seeder = Left == 0},
-                            {ok, NSS}
-                    end;
-                stop -> {stop, normal, State}
-            end;
-        false ->
+            WasInterested
+    end,
+
+    %% Only check if the peer became a seeder if we are also seeding.
+    IsSeeding = etorrent_torrent:is_seeding(TorrentID),
+    PeerSeeds = if
+        Valid andalso not Member andalso IsSeeding ->
+            Numpieces = etorrent_pieceset:capacity(NewPieceset),
+            Havepieces = etorrent_pieceset:size(NewPieceset),
+            Havepieces == Numpieces;
+        %% Default to false, we're losing information here because we never
+        %% check if another peer is seeding if we are not seeding the torrent.
+        true -> false
+    end,
+
+    
+    if  %% Mark the peer as a bad apple if the piece index is invalid
+        %% for this torrent or if the have-message is a duplicate.
+        (not Valid) orelse (Valid andalso Member) ->
             {ok, {IP, Port}} = inet:peername(State#state.socket),
             etorrent_peer_mgr:enter_bad_peer(IP, Port, State#state.remote_peer_id),
-            {stop, normal, State}
+            {stop, normal, State};
+
+        %% If both we and the peer is seeding there is not point in staying
+        %% connected, close the connection.
+        IsSeeding andalso PeerSeeds ->
+            {stop, normal, State};
+
+        %% If we became interested, notify the peer and queue up some pieces.
+        (not WasInterested) andalso IsInterested ->
+            statechange_interested(State, true),
+            NewState = State#state{
+                remote_pieces=NewPieceset,
+                local_interested=true},
+            try_to_queue_up_pieces(NewState);
+
+        %% If we're interested, try to aquire some new requests using the
+        %% updated set of available pieces.
+        IsInterested ->
+            NewState = State#state{remote_pieces=NewPieceset},
+            try_to_queue_up_pieces(NewState);
+
+        %% If we're not interested the new piece doesn't change anything.
+        %% Just update the current state to include the new piece.
+        not IsInterested ->
+            NewState = State#state{remote_pieces=NewPieceset},
+            {ok, NewState}
     end.
-
-peer_seeds(Id, 0) ->
-    ok = etorrent_table:statechange_peer(self(), seeder),
-    case etorrent_torrent:is_seeding(Id) of
-        true  -> stop;
-        false -> ok
-    end;
-peer_seeds(_Id, _N) -> ok.
-
-
