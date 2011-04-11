@@ -2,11 +2,21 @@
 %% This module provides a common interface for processes
 %% handling piece state changes.
 
--export([unassigned/2,
+-export([invalid/2,
+         unassigned/2,
          stored/2,
          valid/2]).
 
 -type pieceindex() :: etorrent_types:pieceindex().
+
+
+%% @doc
+%% @end
+-spec invalid(pieceindex(), pid()) -> ok.
+invalid(Piece, Srvpid) ->
+    Srvpid ! {piece, {invalid, Piece}},
+    ok.
+
 
 %% @doc
 %% @end
@@ -34,6 +44,10 @@ valid(Piece, Srvpid) ->
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
 -define(piecestate, ?MODULE).
+
+invalid_test() ->
+    ?assertEqual(ok, ?piecestate:invalid(0, self())),
+    ?assertEqual({piece, {invalid, 0}}, etorrent_utils:first()).
 
 unassigned_test() ->
     ?assertEqual(ok, ?piecestate:unassigned(0, self())),
