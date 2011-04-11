@@ -535,8 +535,6 @@ peer_have_(Piece, State) ->
         remote_pieces=Pieceset,
         local_interested=Interested} = State,
 
-    %% Only update the set of valid pieces that the peer provides if
-    %% the piece index is valid and it's the first and only notification.
     NewPieceset = etorrent_pieceset:insert(Piece, Pieceset),
     ok = etorrent_scarcity:add_piece(TorrentID, Piece, Pieceset),
 
