@@ -445,7 +445,7 @@ satisfy_buffer(From, Length, Res, Buffer) ->
 
 satisfy_recvs(Processes, Buffer) ->
     case utp_process:dequeue_receiver(Processes) of
-	{ok, {receiver, Length, From, Res}, N_Processes} ->
+	{ok, {receiver, From, Length, Res}, N_Processes} = D ->
 	    case satisfy_buffer(From, Length, Res, Buffer) of
 		{ok, N_Buffer} ->
 		    satisfy_recvs(N_Processes, N_Buffer);
