@@ -84,7 +84,7 @@ accept() ->
     {ok, Pid, SynPacket} = call(accept),
     case gen_utp_worker:accept(Pid, SynPacket) of
         ok ->
-            {utp_sock, Pid}
+            {ok, {utp_sock, Pid}}
     end.
 
 %% @doc Send a message on a uTP Socket

@@ -195,7 +195,7 @@ connected({pkt, Pkt, {_TS, _TSDiff, RecvTime}},
 	  #state { pkt_window = PKI,
                    pkt_buf  = PB,
                    proc_info = PRI
-                 } = S) ->
+                 } = State) ->
     %% @todo I think most of this code path is wrong at the moment
     case utp_pkt:handle_packet(RecvTime, connected, Pkt, PKI, PB) of
 	{ok, N_PB1, N_PKI, StateAlter} ->
@@ -204,10 +204,13 @@ connected({pkt, Pkt, {_TS, _TSDiff, RecvTime}},
 		    {ok, PR1, PB1} ->
                         {PR1, PB1};
 		    {rb_drained, _PR, _PB} ->
-                        todo
+                        %% @todo What should happen when when the Receive Buffer has just
+                        %% been drained? We ought to do something about this, but what,
+                        %% specifically should be done?
+                        error(todo)
 		end,
 	    {next_state, connected,
-	     S#state { pkt_window = N_PKI,
+	     State#state { pkt_window = N_PKI,
 				 pkt_buf = N_PB,
 				 proc_info = N_PRI }}
     end;

@@ -32,4 +32,6 @@ connector() ->
 connectee() ->
     start(3333),
     gen_utp:listen(),
-    gen_utp:accept().
+    {ok, Port} = gen_utp:accept(),
+    gen_utp:recv(Port, 5).
+
