@@ -13,6 +13,7 @@
          to_list/1,
          is_member/2,
          is_empty/1,
+         is_full/1,
          insert/2,
          delete/2,
          intersection/2,
@@ -25,6 +26,7 @@
 
 -record(pieceset, {
     size :: non_neg_integer(),
+    csize :: non_neg_integer() | none,
     elements :: binary()}).
 
 -opaque pieceset() :: #pieceset{}.
@@ -122,6 +124,27 @@ is_empty(Pieceset) ->
     #pieceset{size=Size, elements=Elements} = Pieceset,
     <<Memberbits:Size>> = Elements,
     Memberbits == 0.
+
+
+%% @doc Returns true if there are no members missing from the set
+%% @end
+-spec is_full(pieceset()) -> boolean().
+is_full(Pieceset) ->
+    #pieceset{elements=Elements} = Pieceset,
+    is_full_(Elements).
+
+is_full_(<<Pieces:16, Rest/bitstring>>) ->
+    (Pieces == 16#FFFF) andalso is_full_(Rest);
+is_full_(<<Pieces:8, Rest/bitstring>>) ->
+    (Pieces == 16#FF) andalso is_full_(Rest);
+is_full_(<<1:1, Rest/bitstring>>) ->
+    is_full_(Rest);
+is_full_(<<>>) ->
+    true;
+is_full_(_) ->
+    false.
+
+
 
 %% @doc
 %% Insert a piece into the piece index. If the piece index is
@@ -462,14 +485,43 @@ pad_binary_test() ->
     Set = ?set:from_binary(Bitfield, 4),
     ?assertEqual(Bitfield, ?set:to_binary(Set)).
 
+
 -ifdef(PROPER).
 prop_min() ->
+    ?FORALL({ET, ST},
+    ?SUCHTHAT({E, S}, {non_neg_integer(), non_neg_integer()}, S > 1),
+    begin
+        Elem = erlang:min(ET, ST),
+        Size = erlang:max(ET, ST),
+        Elem == ?set:min(?set:from_list([Elem], Size))
+    end).
+
+prop_full() ->
+    ?FORALL(Size, nat(),
+    begin
+        All = lists:seq(0, Size - 1),
+        Set = ?set:from_list(All, Size),
+        ?set:is_full(Set)
+    end).
+
+prop_not_full() ->
     ?FORALL({Elem, Size},
-    ?SUCHTHAT({E, S}, {nat(), nat()}, E < S andalso S > 1),
-        Elem == ?set:min(?set:from_list([Elem], Size))).
+    ?SUCHTHAT({E, S}, {nat(), nat()}, E < S),
+    begin
+        All = lists:seq(0, Size - 1),
+        Not = lists:delete(Elem, All),
+        Set = ?set:from_list(Not, Size),
+        not ?set:is_full(Set)
+    end).
 
 prop_min_test() ->
-    proper:quickcheck(prop_min()).
+    ?assertEqual(true, proper:quickcheck(prop_min())).
+
+prop_full_test() ->
+    ?assertEqual(true, proper:quickcheck(prop_full())).
+
+prop_not_full_test() ->
+    ?assertEqual(true, proper:quickcheck(prop_not_full())).
 
 -endif.
 -endif.
