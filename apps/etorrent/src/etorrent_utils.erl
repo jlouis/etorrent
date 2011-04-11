@@ -33,7 +33,8 @@
          unregister_member/1,
          lookup/1,
          lookup_members/1,
-         await/1]).
+         await/1,
+         await/2]).
 
 %%====================================================================
 
@@ -263,9 +264,12 @@ lookup_members(Group) ->
 %% @end
 -spec await(tuple()) -> pid().
 await(Name) ->
-    {Pid, undefined} = gproc:await({n, l, Name}, 5000),
-    Pid.
+    await(Name, 5000).
 
+-spec await(tuple(), non_neg_integer()) -> pid().
+await(Name, Timeout) ->
+    {Pid, undefined} = gproc:await({n, l, Name}, Timeout),
+    Pid.
 
 
 
