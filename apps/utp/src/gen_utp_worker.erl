@@ -199,20 +199,21 @@ connected({pkt, Pkt, {_TS, _TSDiff, RecvTime}},
     %% @todo I think most of this code path is wrong at the moment
     case utp_pkt:handle_packet(RecvTime, connected, Pkt, PKI, PB) of
 	{ok, N_PB1, N_PKI, StateAlter} ->
+            error_logger:info_report([contents, PRI]),
 	    {N_PRI, N_PB} =
 		case satisfy_recvs(PRI, N_PB1) of
 		    {ok, PR1, PB1} ->
                         {PR1, PB1};
-		    {rb_drained, _PR, _PB} ->
-                        %% @todo What should happen when when the Receive Buffer has just
-                        %% been drained? We ought to do something about this, but what,
-                        %% specifically should be done?
-                        error(todo)
+		    {rb_drained, PR1, PB1} ->
+                        %% @todo Here is the point where we should make a check on the receive window
+                        %% If the window has grown, and the last window was 0, then immediately
+                        %% send out an ACK. Otherwise install a timer.
+                        {PR1, PB1}
 		end,
 	    {next_state, connected,
 	     State#state { pkt_window = N_PKI,
-				 pkt_buf = N_PB,
-				 proc_info = N_PRI }}
+                           pkt_buf = N_PB,
+                           proc_info = N_PRI }}
     end;
 connected(close, #state { sock_info = SockInfo } = State) ->
     %% Close down connection!
@@ -337,10 +338,17 @@ idle({accept, SYN}, _From, #state { sock_info = SockInfo,
 idle(_Msg, _From, State) ->
     {reply, idle, {error, enotconn}, State}.
 
-connected({recv, Length}, From, #state { proc_info = PI } = State) ->
+connected({recv, Length}, From, #state { proc_info = PI,
+                                         pkt_buf   = PKB } = State) ->
     %% @todo Try to satisfy receivers
-    {next_state, connected, State#state {
-			   proc_info = utp_process:enqueue_receiver(From, Length, PI) }};
+    PI1 = utp_process:enqueue_receiver(From, Length, PI),
+    case satisfy_recvs(PI1, PKB) of
+        {_, N_PRI, N_PKB} ->
+            {next_state, connected,
+             State#state {
+               proc_info = N_PRI,
+               pkt_buf   = N_PKB } }
+    end;
 connected({send, Data}, From, #state {
                           sock_info = SockInfo,
 			  proc_info = PI,
