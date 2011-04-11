@@ -91,7 +91,7 @@ console:
 		-pa ../../deps/riak_err/ebin
 
 console-raw:
-	dev/etorrent-dev/erts-5.8.3/bin/erl \
+	dev/etorrent-dev/erts-5.8.4/bin/erl \
 		-pa apps/etorrent/ebin \
 		-pa apps/utp/ebin \
 	        -boot start_clean
