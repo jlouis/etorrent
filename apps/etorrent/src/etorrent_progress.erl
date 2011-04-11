@@ -837,7 +837,8 @@ marked_stored_not_dropped_case() ->
     Pid = spawn_link(fun() ->
         ok = ?pending:register(pending()),
         {ok, [{0, 0, 1}]} = ?chunkstate:request(1, Has, progress()),
-        ok = ?chunkstate:stored(0, 0, 1, self(), progress())
+        ok = ?chunkstate:stored(0, 0, 1, self(), progress()),
+        ok = ?chunkstate:stored(0, 0, 1, self(), pending())
     end),
     etorrent_utils:wait(Pid),
     ?assertMatch({ok, [{0, 1, 1}]}, ?chunkstate:request(1, Has, progress())).
