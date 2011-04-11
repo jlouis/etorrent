@@ -511,76 +511,50 @@ peer_have(PN, #state{remote_pieces=unknown}=State) ->
     Pieceset = etorrent_pieceset:new(NumPieces),
     NewState = State#state{remote_pieces=Pieceset},
     peer_have(PN, NewState);
+
 peer_have(Piece, State) ->
+    #state{
+        remote_peer_id=PeerID,
+        socket=Socket,
+        remote_pieces=Pieceset} = State,
+    Valid = etorrent_pieceset:is_valid(Piece, Pieceset),
+    Member = Valid andalso etorrent_pieceset:is_member(Piece, Pieceset),
+    if  %% The peer notified us about a valid piece twice or notified
+        %% us about a piece that does not exist in this torrent.
+        (not Valid) or Member ->
+            {ok, {IP, Port}} = inet:peername(Socket),
+            etorrent_peer_mgr:enter_bad_peer(IP, Port, PeerID),
+            {stop, normal, State};
+        true ->
+            peer_have_(Piece, State)
+    end.
+
+peer_have_(Piece, State) ->
     #state{
         torrent_id=TorrentID,
         remote_pieces=Pieceset,
-        local_interested=WasInterested} = State,
-    Valid = etorrent_pieceset:is_valid(Piece, Pieceset),
-    Member = Valid andalso etorrent_pieceset:is_member(Piece, Pieceset),
+        local_interested=Interested} = State,
 
     %% Only update the set of valid pieces that the peer provides if
     %% the piece index is valid and it's the first and only notification.
-    NewPieceset = if
-        Valid andalso not Member ->
-            IPieceset = etorrent_pieceset:insert(Piece, Pieceset),
-            ok = etorrent_scarcity:add_piece(TorrentID, Piece, IPieceset),
-            IPieceset;
-        true -> false
-    end,
+    NewPieceset = etorrent_pieceset:insert(Piece, Pieceset),
+    ok = etorrent_scarcity:add_piece(TorrentID, Piece, Pieceset),
 
-    %% Only check if we are interested in the pieces that this peer provides
-    %% if we are not already interested and we're not going to disconnect.
-    %% If we were already interested this notification does not change that.
-    IsInterested = if
-        Valid andalso not Member andalso not WasInterested ->
-            etorrent_piece_mgr:interesting(TorrentID, Piece);
-        true ->
-            WasInterested
-    end,
-
-    %% Only check if the peer became a seeder if we are also seeding.
+    NewInterested = Interested orelse etorrent_piece_mgr:interesting(TorrentID, Piece),
     IsSeeding = etorrent_torrent:is_seeding(TorrentID),
-    PeerSeeds = if
-        Valid andalso not Member andalso IsSeeding ->
-            Numpieces = etorrent_pieceset:capacity(NewPieceset),
-            Havepieces = etorrent_pieceset:size(NewPieceset),
-            Havepieces == Numpieces;
-        %% Default to false, we're losing information here because we never
-        %% check if another peer is seeding if we are not seeding the torrent.
-        true -> false
-    end,
+    PeerSeeds = IsSeeding andalso etorrent_pieceset:is_full(NewPieceset),
 
-    
-    if  %% Mark the peer as a bad apple if the piece index is invalid
-        %% for this torrent or if the have-message is a duplicate.
-        (not Valid) orelse (Valid andalso Member) ->
-            {ok, {IP, Port}} = inet:peername(State#state.socket),
-            etorrent_peer_mgr:enter_bad_peer(IP, Port, State#state.remote_peer_id),
-            {stop, normal, State};
-
-        %% If both we and the peer is seeding there is not point in staying
-        %% connected, close the connection.
+    TmpState = if
         IsSeeding andalso PeerSeeds ->
             {stop, normal, State};
-
-        %% If we became interested, notify the peer and queue up some pieces.
-        (not WasInterested) andalso IsInterested ->
+        (not Interested) andalso NewInterested ->
             statechange_interested(State, true),
-            NewState = State#state{
-                remote_pieces=NewPieceset,
-                local_interested=true},
-            try_to_queue_up_pieces(NewState);
-
-        %% If we're interested, try to aquire some new requests using the
-        %% updated set of available pieces.
-        IsInterested ->
-            NewState = State#state{remote_pieces=NewPieceset},
-            try_to_queue_up_pieces(NewState);
-
-        %% If we're not interested the new piece doesn't change anything.
-        %% Just update the current state to include the new piece.
-        not IsInterested ->
-            NewState = State#state{remote_pieces=NewPieceset},
-            {ok, NewState}
+            State#state{remote_pieces=NewPieceset, local_interested=true};
+        true ->
+            State#state{remote_pieces=NewPieceset}
+    end,
+    case TmpState of
+        {stop, Reason, NewState} -> {stop, Reason, NewState};
+        _ when NewInterested -> try_to_queue_up_pieces(TmpState);
+        _ -> {ok, TmpState}
     end.
