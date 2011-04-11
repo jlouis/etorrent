@@ -131,6 +131,7 @@ is_empty(Pieceset) ->
 -spec is_full(pieceset()) -> boolean().
 is_full(Pieceset) ->
     #pieceset{elements=Elements} = Pieceset,
+    is_binary(Elements) orelse error(badarg),
     is_full_(Elements).
 
 is_full_(<<Pieces:16, Rest/bitstring>>) ->
