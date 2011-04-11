@@ -243,6 +243,9 @@ retransmit_q_find(SeqNo, [PW|R]) ->
 	    retransmit_q_find(SeqNo, R)
     end.
 
+
+%% @todo I don't like this code that much. It is keyed on a lot of crap which I am
+%% not sure I am going to maintain in the long run.
 consider_nagle(#pkt_buf { send_window_packets = 1,
 			  seq_no = SeqNo,
 			  retransmission_queue = RQ,
@@ -255,11 +258,13 @@ consider_nagle(#pkt_buf { send_window_packets = 1,
 		0 ->
 		    [send_ack, sent_ack];
 		_ ->
-		    []
+		    [send_ack]
 	    end;
 	_ ->
 	    []
-    end.
+    end;
+consider_nagle(#pkt_buf {}) -> [].
+
 
 update_send_buffer1(0, _WindowStart, PB) ->
     {0, PB}; %% Essentially a duplicate ACK, but we don't do anything about it
