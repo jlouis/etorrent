@@ -387,14 +387,14 @@ extended_msg_contents(Port, ClientVersion, ReqQ) ->
 	[{<<"p">>, Port},
 	 {<<"v">>, ClientVersion},
 	 {<<"reqq">>, ReqQ},
-	 {<<"m">>, empty_dict}])).
+	 {<<"m">>, {}}])).
 
 
 -ifdef(EUNIT).
 
 ext_msg_contents_test() ->
     Expected = <<"d1:mde1:pi1729e4:reqqi100e1:v20:Etorrent v-test-casee">>,
-    Computed = extended_msg_contents(1729, "Etorrent v-test-case", 100),
+    Computed = extended_msg_contents(1729, <<"Etorrent v-test-case">>, 100),
     ?assertEqual(Expected, Computed).
 
 -endif.

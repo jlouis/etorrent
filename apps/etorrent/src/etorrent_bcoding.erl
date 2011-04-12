@@ -42,15 +42,14 @@
 %%  between an empty list and dict for a client for which it matter. We don't
 %%  care and take both to be []
 %% @end
--spec encode(bcode() | empty_list | empty_dict) -> iolist().
+-spec encode(etorrent_types:bcode()) -> iolist().
 encode(N) when is_integer(N) -> ["i", integer_to_list(N), "e"];
 encode(B) when is_binary(B) -> [integer_to_list(byte_size(B)), ":", B];
-encode(empty_dict) -> "de";
+encode({}) -> "de";
 encode([{B,_}|_] = D) when is_binary(B) ->
     SortedD = lists:keysort(1, D),
     ["d", [[encode(K), encode(V)] || {K,V} <- SortedD], "e"];
-encode(empty_list) -> "le";
-encode([]) -> exit(empty_list_in_bcode);
+encode([]) -> "le";
 encode(L) when is_list(L) -> ["l", [encode(I) || I <- L], "e"].
 
 %% @doc Decode a string or binary to a bcode() structure
@@ -59,6 +58,8 @@ encode(L) when is_list(L) -> ["l", [encode(I) || I <- L], "e"].
 decode(Bin) when is_binary(Bin) -> decode(binary_to_list(Bin));
 decode(String) when is_list(String) ->
     try
+        %% Don't check _Extra here. Some bcoding encoders fail to produce it
+        %% correctly and adds garbage in the end.
         {Res, _Extra} = decode_b(String),
         {ok, Res}
     catch
@@ -179,14 +180,14 @@ decode_list_items(Items, Accum) ->
     end.
 
 decode_dict(String) ->
-    {Items, Rest} = decode_dict_items(String, []),
-    {lists:reverse(Items), Rest}.
+    decode_dict_items(String, []).
 
 decode_dict_items([], Accum) ->
     {Accum, []};
 decode_dict_items(String, Accum) ->
     case decode_b(String) of
-        {end_of_data, Rest} -> {Accum, Rest};
+        {end_of_data, Rest} when Accum == [] -> {{}, Rest};
+        {end_of_data, Rest} -> {lists:reverse(Accum), Rest};
         {Key, Rest1} -> {Value, Rest2} = decode_b(Rest1),
                         decode_dict_items(Rest2, [{Key, Value} | Accum])
     end.
