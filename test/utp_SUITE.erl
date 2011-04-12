@@ -58,7 +58,7 @@ connect_n_communicate(Config) ->
                   timer:sleep(3000),
                   rpc:call(C1, utp, connector1, [])
           end),
-    {ok, <<"HELLO">>} = rpc:call(C2, utp, connectee1, []),
+    {<<"HELLO">>, <<"WORLD">>} = rpc:call(C2, utp, connectee1, []),
 
     ok.
 

@@ -27,11 +27,14 @@ ensure_started([App | R]) ->
 connector1() ->
     start(3334),
     Sock = gen_utp:connect("localhost", 3333),
-    gen_utp:send(Sock, "HELLO").
+    gen_utp:send(Sock, "HELLO"),
+    gen_utp:send(Sock, "WORLD").
 
 connectee1() ->
     start(3333),
     gen_utp:listen(),
     {ok, Port} = gen_utp:accept(),
-    gen_utp:recv(Port, 5).
+    {ok, R1} = gen_utp:recv(Port, 5),
+    {ok, R2} = gen_utp:recv(Port, 5),
+    {R1, R2}.
 
