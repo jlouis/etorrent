@@ -7,10 +7,10 @@
 	 init_per_suite/1, end_per_suite/1,
 	 init_per_testcase/2, end_per_testcase/2]).
 
--export([connect/0, connect/1]).
+-export([connect_n_communicate/0, connect_n_communicate/1]).
 
 suite() ->
-    [{timetrap, {minutes, 3}}].
+    [{timetrap, {seconds, 20}}].
 
 %% Setup/Teardown
 %% ----------------------------------------------------------------------
@@ -31,9 +31,8 @@ end_per_suite(Config) ->
     test_server:stop_node(?config(connectee, Config)),
     ok.
 
-init_per_testcase(connect, Config) ->
-    Config.
-
+init_per_testcase(connect_n_communicate, Config) ->
+    Config;
 init_per_testcase(_Case, Config) ->
     Config.
 
@@ -44,16 +43,23 @@ end_per_testcase(_Case, _Config) ->
 %% Tests
 %% ----------------------------------------------------------------------
 groups() ->
-    [{main_group, [shuffle], [connect]}].
+    [{main_group, [shuffle], [connect_n_communicate]}].
 
 all() ->
     [{group, main_group}].
 
-connect() ->
+connect_n_communicate() ->
     [].
 
-connect(Config) ->
-    
+connect_n_communicate(Config) ->
+    C1 = ?config(connector, Config),
+    C2 = ?config(connectee, Config),
+    spawn(fun() ->
+                  timer:sleep(3000),
+                  rpc:call(C1, utp, connector1, [])
+          end),
+    {ok, <<"HELLO">>} = rpc:call(C2, utp, connectee1, []),
+
     ok.
 
 %% Helpers

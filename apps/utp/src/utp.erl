@@ -5,8 +5,8 @@
          ]).
 
 -export([
-         connector/0,
-         connectee/0
+         connector1/0,
+         connectee1/0
          ]).
 
 %% @doc Manual startup of the uTP application
@@ -24,12 +24,12 @@ ensure_started([App | R]) ->
 	    ensure_started(R)
     end.
 
-connector() ->
+connector1() ->
     start(3334),
     Sock = gen_utp:connect("localhost", 3333),
     gen_utp:send(Sock, "HELLO").
 
-connectee() ->
+connectee1() ->
     start(3333),
     gen_utp:listen(),
     {ok, Port} = gen_utp:accept(),
