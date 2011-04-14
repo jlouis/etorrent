@@ -8,6 +8,7 @@
          interesting/3,
          seeder/1,
          seeder/2,
+         pieces/1,
          requests/1,
          requests/2,
          needreqs/1]).
@@ -43,6 +44,13 @@ new(Numpieces) ->
         seeder=false,
         requests=Requests},
     State.
+
+
+-spec pieces(peerstate()) -> pieceset().
+pieces(Peerstate) ->
+    #peerstate{pieces=Pieces} = Peerstate,
+    is_integer(Pieces) andalso erlang:error(badarg),
+    Pieces.
 
 
 -spec hasset(binary(), peerstate()) -> peerstate().
@@ -105,7 +113,8 @@ interested(Status, Peerstate) ->
 
 -spec interesting(pieceindex(), peerstate()) -> unchanged | true.
 interesting(Piece, Peerstate) ->
-    #peerstate{interested=Status, pieces=Pieces} = Peerstate,
+    #peerstate{interested=Status} = Peerstate,
+    Pieces = pieces(Peerstate),
     NewStatus = case Status of
         %% If we are already interested this won't change that
         true  -> true;
@@ -166,6 +175,36 @@ needreqs(Peerstate) ->
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
+-define(state, ?MODULE).
+-define(pset, etorrent_pieceset).
+
+testsize() -> 8.
+
+defaults_test_() ->
+    State = ?state:new(testsize()),
+    [?_assert(?state:choked(State)),
+     ?_assertNot(?state:interested(State)),
+     ?_assertError(badarg, ?state:pieces(State)),
+     ?_assertError(badarg, ?state:interesting(0, State))].
+
+initset_test_() ->
+    State = ?state:new(testsize()),
+    P0 = ?state:pieces(?state:hasone(0, State)),
+    P1 = ?state:pieces(?state:hasset(<<1:1, 0:7>>, State)),
+    P2 = ?state:pieces(?state:hasall(State)),
+    P3 = ?state:pieces(?state:hasnone(State)),
+    [?_assertEqual(?pset:from_list([0], testsize()), P0),
+     ?_assertEqual(?pset:from_list([0], testsize()), P1),
+     ?_assertEqual(?pset:from_list([0,1,2,3,4,5,6,7], testsize()), P2),
+     ?_assertEqual(?pset:from_list([], testsize()), P3)].
+
+immutable_set_test_() ->
+    S0 = ?state:new(testsize()),
+    S1 = ?state:hasnone(S0),
+    [?_assertError(badarg, ?state:hasset(<<1:1, 0:7>>, S1)),
+     ?_assertError(badarg, ?state:hasall(S1)),
+     ?_assertError(badarg, ?state:hasnone(S1)),
+     ?_assertEqual(?state:hasone(0, S0), ?state:hasone(0, S1))].
 
 -endif.
 
