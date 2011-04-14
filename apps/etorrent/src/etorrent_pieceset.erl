@@ -7,6 +7,8 @@
 -endif.
 
 -export([new/1,
+         empty/1,
+         full/1,
          from_binary/2,
          to_binary/1,
          from_list/2,
@@ -40,6 +42,27 @@
 new(Size) ->
     Elements = <<0:Size>>,
     #pieceset{size=Size, elements=Elements}.
+
+%% @doc Alias for etorrent_pieceset:new/1
+%% @end
+-spec empty(non_neg_integer()) -> pieceset().
+empty(Size) ->
+    new(Size).
+
+%% @doc
+%% @end
+-spec full(non_neg_integer()) -> pieceset().
+full(Size) ->
+    Elements = full_(Size, <<>>),
+    #pieceset{size=Size, elements=Elements}.
+
+full_(0, Set) ->
+    Set;
+full_(N, Set) when N >= 16 ->
+    full_(N - 16, <<16#FFFF:16, Set/bitstring>>);
+full_(N, Set) ->
+    full_(N - 1, <<1:1, Set/bitstring>>).
+
 
 %% @doc
 %% Create a piece set based on a bitfield. The bitfield is
@@ -131,7 +154,7 @@ is_empty(Pieceset) ->
 -spec is_full(pieceset()) -> boolean().
 is_full(Pieceset) ->
     #pieceset{elements=Elements} = Pieceset,
-    is_binary(Elements) orelse error(badarg),
+    is_bitstring(Elements) orelse error(badarg),
     is_full_(Elements).
 
 is_full_(<<Pieces:16, Rest/bitstring>>) ->
@@ -489,16 +512,14 @@ pad_binary_test() ->
 
 -ifdef(PROPER).
 prop_min() ->
-    ?FORALL({ET, ST},
-    ?SUCHTHAT({E, S}, {non_neg_integer(), non_neg_integer()}, S > 1),
+    ?FORALL({Elem, Size},
+    ?SUCHTHAT({E, S}, {non_neg_integer(), pos_integer()}, E < S),
     begin
-        Elem = erlang:min(ET, ST),
-        Size = erlang:max(ET, ST),
         Elem == ?set:min(?set:from_list([Elem], Size))
     end).
 
 prop_full() ->
-    ?FORALL(Size, nat(),
+    ?FORALL(Size, pos_integer(),
     begin
         All = lists:seq(0, Size - 1),
         Set = ?set:from_list(All, Size),
@@ -507,7 +528,7 @@ prop_full() ->
 
 prop_not_full() ->
     ?FORALL({Elem, Size},
-    ?SUCHTHAT({E, S}, {nat(), nat()}, E < S),
+    ?SUCHTHAT({E, S}, {non_neg_integer(), pos_integer()}, E < S),
     begin
         All = lists:seq(0, Size - 1),
         Not = lists:delete(Elem, All),
