@@ -206,5 +206,19 @@ immutable_set_test_() ->
      ?_assertError(badarg, ?state:hasnone(S1)),
      ?_assertEqual(?state:hasone(0, S0), ?state:hasone(0, S1))].
 
+consistent_choked_test_() ->
+    S0 = ?state:new(testsize()),
+    S1 = ?state:choked(false, S0),
+    [?_assertError(badarg, ?state:choked(true, S0)),
+     ?_assertError(badarg, ?state:choked(false, S1)),
+     ?_assertNot(?state:choked(S1))].
+
+consistent_interested_test_() ->
+    S0 = ?state:new(testsize()),
+    S1 = ?state:interested(true, S0),
+    [?_assertError(badarg, ?state:interested(false, S0)),
+     ?_assertError(badarg, ?state:interested(true, S1)),
+     ?_assert(?state:interested(S1))].
+
 -endif.
 
