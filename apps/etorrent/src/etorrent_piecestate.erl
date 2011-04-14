@@ -41,6 +41,16 @@ valid(Piece, Srvpid) ->
     Srvpid ! {piece, {valid, Piece}},
     ok.
 
+notify(Pieces, Status, Pid) when is_list(Pieces) ->
+    [notify(Piece, Status, Pid) || Piece <- Pieces],
+    ok;
+notify(Piece, Status, Pids) when is_list(Pids) ->
+    [notify(Piece, Status, Pid) || Pid <- Pids],
+    ok;
+notify(Piece, Status, Pid) ->
+    Pid ! {piece, {Status, Piece}},
+    ok.
+
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
 -define(piecestate, ?MODULE).
