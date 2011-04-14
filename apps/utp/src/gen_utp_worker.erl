@@ -194,12 +194,19 @@ syn_sent(Msg, S) ->
 connected({pkt, Pkt, {_TS, _TSDiff, RecvTime}},
 	  #state { pkt_window = PKI,
                    pkt_buf  = PB,
-                   proc_info = PRI
+                   proc_info = PRI,
+                   sock_info = SockInfo
                  } = State) ->
     %% @todo I think most of this code path is wrong at the moment
     case utp_pkt:handle_packet(RecvTime, connected, Pkt, PKI, PB) of
-	{ok, N_PB1, N_PKI, StateAlter} ->
+	{ok, N_PB1, N_PKI, Messages} ->
             error_logger:info_report([contents, PRI]),
+            case proplists:get_value(send_ack, Messages) of
+                true ->
+                    utp_pkt:send_ack(SockInfo, PB);
+                false ->
+                    ok
+            end,
 	    {N_PRI, N_PB} =
 		case satisfy_recvs(PRI, N_PB1) of
 		    {ok, PR1, PB1} ->
@@ -445,7 +452,7 @@ satisfy_buffer(From, Length, Res, Buffer) ->
 
 satisfy_recvs(Processes, Buffer) ->
     case utp_process:dequeue_receiver(Processes) of
-	{ok, {receiver, From, Length, Res}, N_Processes} = D ->
+	{ok, {receiver, From, Length, Res}, N_Processes} ->
 	    case satisfy_buffer(From, Length, Res, Buffer) of
 		{ok, N_Buffer} ->
 		    satisfy_recvs(N_Processes, N_Buffer);

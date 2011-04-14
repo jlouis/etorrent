@@ -154,6 +154,10 @@ send_fin(_SockInfo) ->
     %% caller, probably.
     todo.
 
+send_ack(_SockInfo, Buf) ->
+    %% @todo Send out an ack message here
+    todo.
+
 bit16(N) ->
     N band 16#FFFF.
 
