@@ -433,16 +433,10 @@ handle_call({chunk, {request, Numchunks, Peerset, PeerPid}}, _, State) ->
     end,
 
     PieceIndex = case Targetstate of
+        %% Assume that the peer has pieces that are interesting but
+        %% all requests for these pieces have been assigned.
         none ->
-            %% We know that the peer has no pieces in the Unassigned or
-            %% Begun states. This leaves us with Assigned, Stored and
-            %% Valid pieces. If the peer has any pieces that are not
-            %% in the Valid state we are still interested.
-            Interesting = etorrent_pieceset:difference(Peerset, Valid),
-            case etorrent_pieceset:is_empty(Interesting) of
-                false -> assigned;
-                true  -> not_interested
-            end;
+            assigned;
         %% One or more that we are already downloading
         begun ->
             etorrent_pieceset:min(Optimal);
@@ -454,8 +448,6 @@ handle_call({chunk, {request, Numchunks, Peerset, PeerPid}}, _, State) ->
     end,
 
     case PieceIndex of
-        not_interested ->
-            {reply, {ok, not_interested}, State};
         assigned ->
             {reply, {ok, assigned}, State};
         Index ->
@@ -706,8 +698,8 @@ chunk_server_test_() ->
      ?_test(unregister_case()),
      ?_test(register_two_case()),
      ?_test(double_check_env()),
-     ?_test(not_interested_case()),
-     ?_test(not_interested_valid_case()),
+     ?_test(assigned_case()),
+     ?_test(assigned_valid_case()),
      ?_test(request_one_case()),
      ?_test(mark_dropped_case()),
      ?_test(mark_all_dropped_case()),
@@ -773,19 +765,19 @@ register_two_case() ->
     Pid ! die,
     etorrent_utils:wait(Ref).
 
-not_interested_case() ->
+assigned_case() ->
     Has = etorrent_pieceset:from_list([], 3),
     Ret = ?chunkstate:request(1, Has, progress()),
-    ?assertEqual({ok, not_interested}, Ret).
+    ?assertEqual({ok, assigned}, Ret).
 
-not_interested_valid_case() ->
+assigned_valid_case() ->
     Has = etorrent_pieceset:from_list([0], 3),
     _   = ?chunkstate:request(2, Has, progress()),
     ok  = ?chunkstate:stored(0, 0, 1, self(), progress()),
     ok  = ?chunkstate:stored( 0, 1, 1, self(), progress()),
     ok  = ?piecestate:valid(0, progress()),
     Ret = ?chunkstate:request(2, Has, progress()),
-    ?assertEqual({ok, not_interested}, Ret).
+    ?assertEqual({ok, assigned}, Ret).
 
 request_one_case() ->
     Has = etorrent_pieceset:from_list([0], 3),
