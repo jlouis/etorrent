@@ -386,24 +386,34 @@ transmit_packet(Bin,
                   retransmission_queue = [Wrap | RetransQueue]
                 }.
 
-transmit_queue(Q, WindowSize, #pkt_buf { pkt_size = Sz } = Buf, SockInfo) ->
+transmit_queue(Q, WindowSize, #pkt_buf { pkt_size = Sz,
+                                         retransmission_queue = RQ } = Buf, SockInfo) ->
     {R, NQ} = queue:out(Q),
     case R of
         empty ->
             Buf;
         {value, Data} when byte_size(Data) < Sz ->
-            Buf#pkt_buf { send_nagle = {nagle, Data}};
+            case RQ of
+                [] ->
+                    NewBuf = transmit_packet(Data, WindowSize, Buf, SockInfo),
+                    transmit_queue(NQ, WindowSize, NewBuf, SockInfo);
+                L when is_list(L) ->
+                    true = queue:is_empty(NQ),
+                    Buf#pkt_buf { send_nagle = {nagle, Data}}
+            end;
         {value, Data} when byte_size(Data) == Sz ->
             NewBuf = transmit_packet(Data, WindowSize, Buf, SockInfo),
             transmit_queue(NQ, WindowSize, NewBuf, SockInfo)
     end.
 
-consider_nagle_transmit(#pkt_buf { retransmission_queue = [], send_nagle = none } = Buf,
+consider_nagle_transmit(#pkt_buf { send_nagle = none } = Buf,
                         _SockInfo, _WindowSize) ->
     Buf;
 consider_nagle_transmit(#pkt_buf { retransmission_queue = [], send_nagle = {nagle, Bin} } = Buf,
                         SockInfo, WindowSize) ->
     transmit_packet(Bin, WindowSize, Buf, SockInfo).
+
+
 
 fill_window(SockInfo, ProcQueue, PktWindow, PktBuf) ->
     FreeInWindow = bytes_free(PktBuf, PktWindow),
