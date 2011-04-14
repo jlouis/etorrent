@@ -204,7 +204,7 @@ connected({pkt, Pkt, {_TS, _TSDiff, RecvTime}},
             case proplists:get_value(send_ack, Messages) of
                 true ->
                     utp_pkt:send_ack(SockInfo, PB);
-                false ->
+                undefined ->
                     ok
             end,
 	    {N_PRI, N_PB} =
