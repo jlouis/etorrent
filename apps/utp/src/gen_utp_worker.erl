@@ -304,20 +304,22 @@ destroy(Msg, State) ->
 %%--------------------------------------------------------------------
 idle(connect, From, State = #state { sock_info = SockInfo,
                                      pkt_buf   = PktBuf}) ->
+
     TRef = gen_fsm:start_timer(?SYN_TIMEOUT, syn_timeout),
     Conn_id_recv = utp_proto:mk_connection_id(),
     gen_utp:register_process(self(), Conn_id_recv),
 
     ConnIdSend = Conn_id_recv + 1,
+    N_SockInfo = utp_socket:set_conn_id(ConnIdSend, SockInfo),
+
     SynPacket = #packet { ty = st_syn,
 			  seq_no = 1,
 			  ack_no = 0,
-			  conn_id = Conn_id_recv,
 			  extension = ?SYN_EXTS
 			}, % Rest are defaults
-    ok = utp_socket:send_pkt(SockInfo, SynPacket),
+    ok = utp_socket:send_pkt(N_SockInfo, SynPacket, Conn_id_recv),
     {next_state, syn_sent, State#state {
-                             sock_info = utp_socket:set_conn_id(ConnIdSend, SockInfo),
+                             sock_info = N_SockInfo,
                              syn_timeout = TRef,
                              pkt_buf     = utp_pkt:init_seqno(PktBuf, 2),
                              connector = From }};
@@ -328,17 +330,18 @@ idle({accept, SYN}, _From, #state { sock_info = SockInfo,
     gen_utp:register_process(self(), Conn_id_recv),
 
     Conn_id_send = SYN#packet.conn_id,
+    N_SockInfo = utp_socket:set_conn_id(Conn_id_send, SockInfo),
+
     SeqNo = utp_pkt:mk_random_seq_no(),
     AckNo = SYN#packet.seq_no,
     1 = AckNo,
     AckPacket = #packet { ty = st_state,
 			  seq_no = SeqNo,
 			  ack_no = AckNo,
-			  conn_id = Conn_id_send,
 			  extension = ?SYN_EXTS
 			},
-    ok = utp_socket:send_pkt(SockInfo, AckPacket),
-    {reply, ok, connected, State#state { sock_info = utp_socket:set_conn_id(Conn_id_send, SockInfo),
+    ok = utp_socket:send_pkt(N_SockInfo, AckPacket),
+    {reply, ok, connected, State#state { sock_info = N_SockInfo,
                                          pkt_buf = utp_pkt:init_ackno(
                                                      utp_pkt:init_seqno(PktBuf, SeqNo + 1),
                                                      AckNo)}};
