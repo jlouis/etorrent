@@ -411,7 +411,10 @@ consider_nagle_transmit(#pkt_buf { send_nagle = none } = Buf,
     Buf;
 consider_nagle_transmit(#pkt_buf { retransmission_queue = [], send_nagle = {nagle, Bin} } = Buf,
                         SockInfo, WindowSize) ->
-    transmit_packet(Bin, WindowSize, Buf, SockInfo).
+    transmit_packet(Bin, WindowSize, Buf, SockInfo);
+consider_nagle_transmit(#pkt_buf { retransmission_queue = _, send_nagle = {nagle, _} } = Buf,
+                        _SockInfo, _WindowSize) ->
+    Buf.
 
 
 
