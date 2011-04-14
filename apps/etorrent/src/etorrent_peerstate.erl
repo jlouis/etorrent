@@ -118,7 +118,7 @@ interesting(Piece, Peerstate) ->
     NewStatus = case Status of
         %% If we are already interested this won't change that
         true  -> true;
-        false -> etorrent_pieceset:is_member(Piece, Pieces)
+        false -> not etorrent_pieceset:is_member(Piece, Pieces)
     end,
     if  NewStatus == Status -> unchanged;
         true -> NewStatus
@@ -219,6 +219,15 @@ consistent_interested_test_() ->
     [?_assertError(badarg, ?state:interested(false, S0)),
      ?_assertError(badarg, ?state:interested(true, S1)),
      ?_assert(?state:interested(S1))].
+
+interesting_not_test_() ->
+    S0 = ?state:new(testsize()),
+    S1 = ?state:hasone(7, S0),
+    S2 = ?state:interested(true, S1),
+    [?_assertEqual(unchanged, ?state:interesting(7, S1)),
+     ?_assertEqual(true, ?state:interesting(6, S1)),
+     ?_assertEqual(unchanged, ?state:interesting(7, S2)),
+     ?_assertEqual(unchanged, ?state:interesting(6, S2))].
 
 -endif.
 
