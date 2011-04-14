@@ -45,10 +45,18 @@ conn_id(#sock_info { conn_id = C }) ->
 send_pkt(#sock_info { socket = Socket,
                       addr = Addr,
                       port = Port,
+                      conn_id = ConnId,
                       timestamp_difference = TSDiff}, Packet) ->
     %% @todo Handle timestamping here!!
-    gen_udp:send(Socket, Addr, Port, utp_proto:encode(Packet, TSDiff)).
+    gen_udp:send(Socket, Addr, Port,
+                 utp_proto:encode(
+                   Packet#packet { conn_id = ConnId },
+                   TSDiff)).
 
 set_conn_id(Cid, SockInfo) ->
     SockInfo#sock_info { conn_id = Cid }.
+
+
+
+
 

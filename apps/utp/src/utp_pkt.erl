@@ -13,6 +13,7 @@
 	 packet_size/1,
 	 mk_random_seq_no/0,
 	 send_fin/1,
+         send_ack/2,
 	 handle_packet/5,
 	 buffer_dequeue/1,
 	 buffer_putback/2,
@@ -154,9 +155,18 @@ send_fin(_SockInfo) ->
     %% caller, probably.
     todo.
 
-send_ack(_SockInfo, Buf) ->
+send_ack(SockInfo,
+         #pkt_buf { seq_no = SeqNo,
+                    ack_no = AckNo
+                  }  ) ->
     %% @todo Send out an ack message here
-    todo.
+    AckPacket = #packet { ty = st_data,
+                          seq_no = SeqNo-1, % @todo Is this right?
+                          ack_no = AckNo,
+                          extension = []
+                        },
+    ok = utp_socket:send_pkt(SockInfo, AckPacket).
+
 
 bit16(N) ->
     N band 16#FFFF.
