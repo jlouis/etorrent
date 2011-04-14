@@ -406,15 +406,12 @@ transmit_queue(Q, WindowSize, #pkt_buf { pkt_size = Sz,
             transmit_queue(NQ, WindowSize, NewBuf, SockInfo)
     end.
 
-consider_nagle_transmit(#pkt_buf { send_nagle = none } = Buf,
-                        _SockInfo, _WindowSize) ->
-    Buf;
-consider_nagle_transmit(#pkt_buf { retransmission_queue = [], send_nagle = {nagle, Bin} } = Buf,
-                        SockInfo, WindowSize) ->
-    transmit_packet(Bin, WindowSize, Buf, SockInfo);
-consider_nagle_transmit(#pkt_buf { retransmission_queue = _, send_nagle = {nagle, _} } = Buf,
-                        _SockInfo, _WindowSize) ->
-    Buf.
+view_nagle_transmit(#pkt_buf { send_nagle = none }) ->
+    no;
+view_nagle_transmit(#pkt_buf { retransmission_queue = [], send_nagle = {nagle, Bin} } = Buf) ->
+    {yes, Bin, Buf#pkt_buf { send_nagle = none }};
+view_nagle_transmit(#pkt_buf { retransmission_queue = _, send_nagle = {nagle, _} }) ->
+    no.
 
 
 
@@ -429,8 +426,13 @@ fill_window(SockInfo, ProcQueue, PktWindow, PktBuf) ->
     %% Send out the queue of packets to transmit
     NBuf1 = transmit_queue(TxQueue, WindowSize, NBuf, SockInfo),
     %% Eventually shove the Nagled packet in the tail
-    NBuf2 = consider_nagle_transmit(NBuf1, SockInfo, WindowSize),
-    {ok, NBuf2, NProcQueue}.
+    case view_nagle_transmit(NBuf1) of
+        no ->
+            {ok, NBuf1, NProcQueue};
+        {yes, Bin, NBuf2} ->
+            Buf = transmit_packet(Bin, WindowSize, NBuf2, SockInfo),
+            {ok, Buf, NProcQueue}
+    end.
 
 last_recv_window(#pkt_buf { opt_recv_buf_sz = RSz },
                  ProcQueue) ->
