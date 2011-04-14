@@ -222,9 +222,10 @@ connected({pkt, Pkt, {_TS, _TSDiff, RecvTime}},
                            pkt_buf = N_PB,
                            proc_info = N_PRI }}
     end;
-connected(close, #state { sock_info = SockInfo } = State) ->
+connected(close, #state { sock_info = SockInfo,
+                          pkt_buf = PktBuf } = State) ->
     %% Close down connection!
-    ok = utp_pkt:send_fin(SockInfo),
+    ok = utp_pkt:send_fin(SockInfo, PktBuf),
     {next_state, fin_sent, State};
 connected(Msg, State) ->
     %% Ignore messages
@@ -232,9 +233,10 @@ connected(Msg, State) ->
     {next_state, connected, State}.
 
 %% @private
-connected_full(close, #state { sock_info = SockInfo } = State) ->
+connected_full(close, #state { sock_info = SockInfo,
+                               pkt_buf   = PktBuf } = State) ->
     %% Close down connection!
-    ok = utp_pkt:send_fin(SockInfo),
+    ok = utp_pkt:send_fin(SockInfo, PktBuf),
     {next_state, fin_sent, State};
 connected_full(Msg, State) ->
     %% Ignore messages

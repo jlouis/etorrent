@@ -12,7 +12,7 @@
 
 	 packet_size/1,
 	 mk_random_seq_no/0,
-	 send_fin/1,
+	 send_fin/2,
          send_ack/2,
 	 handle_packet/5,
 	 buffer_dequeue/1,
@@ -150,10 +150,17 @@ mk_random_seq_no() ->
     <<N:16/integer>> = crypto:rand_bytes(2),
     N.
 
-send_fin(_SockInfo) ->
+send_fin(SockInfo,
+         #pkt_buf { seq_no = SeqNo,
+                    ack_no = AckNo }) ->
     %% @todo There is something with timers in the original code. Shouldn't be here, but in the
     %% caller, probably.
-    todo.
+    FinPacket = #packet { ty = st_fin,
+                          seq_no = SeqNo-1, % @todo Is this right?
+                          ack_no = AckNo,
+                          extension = []
+                        },
+    ok = utp_socket:send_pkt(SockInfo, FinPacket).
 
 send_ack(SockInfo,
          #pkt_buf { seq_no = SeqNo,
@@ -260,6 +267,8 @@ retransmit_q_find(SeqNo, [PW|R]) ->
 
 %% @todo I don't like this code that much. It is keyed on a lot of crap which I am
 %% not sure I am going to maintain in the long run.
+%% @todo This is wrong because it doesn't correctly tell us if we should send out an ACK or
+%% not. We need to redefine the rules at which we send out stuff here!
 consider_nagle(#pkt_buf { send_window_packets = 1,
 			  seq_no = SeqNo,
 			  retransmission_queue = RQ,
