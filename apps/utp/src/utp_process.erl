@@ -71,7 +71,8 @@ dequeue(N, Q, Acc) ->
     case R of
         empty ->
             {partial, Acc, NQ};
-        {value, {sender, _From, Data}} when byte_size(Data) =< N ->
+        {value, {sender, From, Data}} when byte_size(Data) =< N ->
+            gen_utp_worker:reply(From, ok),
             dequeue(N - byte_size(Data), NQ, <<Acc/binary, Data/binary>>);
         {value, {sender, From, Data}} when byte_size(Data) > N ->
             <<Take:N/binary, Rest/binary>> = Data,
