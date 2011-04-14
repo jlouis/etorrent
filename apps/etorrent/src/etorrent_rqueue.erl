@@ -19,6 +19,7 @@
          new/2,
          flush/1,
          to_list/1,
+         pieces/1,
          push/2,
          push/4,
          pop/1,
@@ -77,6 +78,16 @@ flush(Requestqueue) ->
 to_list(Requestqueue) ->
     #requestqueue{queue=Queue} = Requestqueue,
     queue:to_list(Queue).
+
+
+%% @doc Return a list of all unique pieces that occur in the queue
+%% @end
+-spec pieces(rqueue()) -> [pieceindex()].
+pieces(Requestqueue) ->
+    #requestqueue{queue=Queue} = Requestqueue,
+    Requests = queue:to_list(Queue),
+    lists:usort([Index || {Index, _, _} <- Requests]).
+
 
 
 %% @doc Push a request onto the end of the request queue
