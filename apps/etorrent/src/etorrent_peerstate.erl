@@ -8,6 +8,7 @@
          interesting/3,
          seeder/1,
          seeder/2,
+         seeding/1,
          pieces/1,
          requests/1,
          requests/2,
@@ -110,7 +111,11 @@ interested(Status, Peerstate) ->
     Status /= Current orelse erlang:error(badarg),
     Peerstate#peerstate{interested=Status}.
 
-
+%% @doc Check if a piece is interesting
+%% This function is intended to be called when a have-message is
+%% received from a peer. If we are already interested or we are
+%% a seeding the torrent this check is not necessary.
+%% @end
 -spec interesting(pieceindex(), peerstate()) -> unchanged | true.
 interesting(Piece, Peerstate) ->
     #peerstate{interested=Status} = Peerstate,
@@ -125,38 +130,50 @@ interesting(Piece, Peerstate) ->
     end.
 
 
--spec interesting(pieceindex(), peerstate(), peerstate()) -> unchanged | boolean().
+%% @doc Check if a set of pieces is still interesting
+%% This function is intended to be called when a have-message is sent
+%% to a peer. If we are not interested or if the peer did not provide
+%% the piece our interest remains unchanged. If there is no longer a
+%% difference between the peer's piece set and our piece set, return
+%% false.
+%% @end
+-spec interesting(pieceindex(), peerstate(), peerstate()) -> unchanged | false.
 interesting(Piece, RemoteState, LocalState) ->
     Status = etorrent_peerstate:interested(LocalState),
-    NewStatus = case Status of
-        false -> false;
+    case Status of
+        false -> unchanged;
         true  ->
             Remote = etorrent_peerstate:pieces(RemoteState),
             case etorrent_pieceset:is_member(Piece, Remote) of
-                false -> false;
+                false -> unchanged;
                 true  ->
                     Local = etorrent_peerstate:pieces(LocalState),
-                    Difference = etorrent_pieceset:difference(Local, Remote),
-                    not etorrent_pieceset:is_empty(Difference)
+                    Difference = etorrent_pieceset:difference(Remote, Local),
+                    case etorrent_pieceset:is_empty(Difference) of
+                        false -> unchanged;
+                        true  -> false
+                    end
             end
-    end,
-    if  NewStatus == Status -> unchanged;
-        true -> NewStatus
     end.
     
 
 
 -spec seeder(peerstate()) -> boolean().
 seeder(Peerstate) ->
-    #peerstate{pieces=Pieceset, seeder=Seeder} = Peerstate,
-    Seeder orelse etorrent_pieceset:is_full(Pieceset).
+    #peerstate{seeder=Seeder} = Peerstate,
+    Seeder.
 
 -spec seeder(boolean(), peerstate()) -> peerstate().
 seeder(Status, Peerstate) ->
     #peerstate{seeder=Current} = Peerstate,
-    Current == Status orelse erlang:error(badarg),
-    not Status orelse erlang:error(badarg),
+    Status orelse erlang:error(badarg),
     Peerstate#peerstate{seeder=Status}.
+
+-spec seeding(peerstate()) -> boolean().
+seeding(Peerstate) ->
+    Pieces = pieces(Peerstate),
+    etorrent_pieceset:is_full(Pieces).
+
 
 -spec requests(peerstate()) -> rqueue().
 requests(Peerstate) ->
@@ -184,6 +201,7 @@ defaults_test_() ->
     State = ?state:new(testsize()),
     [?_assert(?state:choked(State)),
      ?_assertNot(?state:interested(State)),
+     ?_assertNot(?state:seeder(State)),
      ?_assertError(badarg, ?state:pieces(State)),
      ?_assertError(badarg, ?state:interesting(0, State))].
 
@@ -206,6 +224,12 @@ immutable_set_test_() ->
      ?_assertError(badarg, ?state:hasnone(S1)),
      ?_assertEqual(?state:hasone(0, S0), ?state:hasone(0, S1))].
 
+seeder_revert_test_() ->
+    S0 = ?state:new(testsize()),
+    S1 = ?state:seeder(true, S0),
+    [?_assert(?state:seeder(S1)),
+     ?_assertError(badarg, ?state:seeder(false, S1))].
+
 consistent_choked_test_() ->
     S0 = ?state:new(testsize()),
     S1 = ?state:choked(false, S0),
@@ -220,7 +244,7 @@ consistent_interested_test_() ->
      ?_assertError(badarg, ?state:interested(true, S1)),
      ?_assert(?state:interested(S1))].
 
-interesting_not_test_() ->
+interesting_received_test_() ->
     S0 = ?state:new(testsize()),
     S1 = ?state:hasone(7, S0),
     S2 = ?state:interested(true, S1),
@@ -228,6 +252,22 @@ interesting_not_test_() ->
      ?_assertEqual(true, ?state:interesting(6, S1)),
      ?_assertEqual(unchanged, ?state:interesting(7, S2)),
      ?_assertEqual(unchanged, ?state:interesting(6, S2))].
+
+interesting_sent_test_() ->
+    L0 = ?state:interested(true, ?state:hasnone(?state:new(testsize()))),
+    L1 = ?state:hasone(0, L0),
+    L2 = ?state:hasone(1, L1),
+    L3 = ?state:interested(false, L1),
+
+    R0 = ?state:hasnone(?state:new(testsize())),
+    R1 = ?state:hasone(0, R0),
+    R2 = ?state:hasone(1, R1),
+
+    [?_assertEqual(unchanged, ?state:interesting(0, R0, L1)),
+     ?_assertEqual(false,     ?state:interesting(0, R1, L1)),
+     ?_assertEqual(unchanged, ?state:interesting(0, R2, L1)),
+     ?_assertEqual(false,     ?state:interesting(0, R2, L2)),
+     ?_assertEqual(unchanged, ?state:interesting(0, R1, L3))].
 
 -endif.
 
