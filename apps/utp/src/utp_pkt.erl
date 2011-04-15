@@ -139,8 +139,10 @@ init_seqno(#pkt_buf {} = PBuf, SeqNo) ->
 init_ackno(#pkt_buf{} = PBuf, AckNo) ->
     PBuf#pkt_buf { ack_no = AckNo }.
 
+-ifdef(NOTUSED).
 seqno(#pkt_wrap { packet = #packet { seq_no = S} }) ->
     S.
+-endif().
 
 packet_size(_Socket) ->
     %% @todo FIX get_packet_size/1 to actually work!
@@ -178,6 +180,29 @@ send_ack(SockInfo,
 bit16(N) ->
     N band 16#FFFF.
 
+handle_seq_no(SeqNo, PB) ->
+    case bit16(SeqNo - PB#pkt_buf.ack_no) of
+        SeqAhead when SeqAhead >= ?REORDER_BUFFER_SIZE ->
+            {error, is_far_in_future};
+        SeqAhead ->
+            {ok, SeqAhead}
+    end.
+
+assert_valid_state(State) ->
+    case State of
+	connected -> ok;
+	connected_full -> ok;
+	fin_sent -> ok;
+	_ -> throw({no_data, State})
+    end.
+
+-spec handle_receive_buffer(integer(), binary(), #pkt_buf{}) -> #pkt_buf{}.
+handle_receive_buffer(SeqAhead, Payload, PacketBuffer) ->
+    case update_recv_buffer(SeqAhead, Payload, PacketBuffer) of
+	       duplicate -> PacketBuffer; % Perhaps do something else here
+	       #pkt_buf{} = PB -> PB
+    end.
+
 handle_packet(_CurrentTimeMs,
 	      State,
 	      #packet { seq_no = SeqNo,
@@ -187,55 +212,38 @@ handle_packet(_CurrentTimeMs,
 			ty = Type } = _Packet,
 	      PktWindow,
 	      PacketBuffer) when PktWindow =/= undefined ->
-    %% Assertions
-    %% ------------------------------
-    SeqAhead = bit16(SeqNo - PacketBuffer#pkt_buf.ack_no),
-    if
-	SeqAhead >= ?REORDER_BUFFER_SIZE ->
-	    %% Packet looong into the future, ignore
-	    throw({invalid, is_far_in_future});
-	true ->
-	    %% Packet ok, feed to rest of system
-	    ok
+    SeqAhead =
+        case handle_seq_no(SeqNo, PacketBuffer) of
+            {ok, No} ->
+                No;
+            {error, Reason} ->
+                throw({error, Reason})
+        end,
+    assert_valid_state(State),
+    PB1 = handle_receive_buffer(SeqAhead, Payload, PacketBuffer),
+    {ok, AcksAhead, N_PB1} = update_send_buffer(AckNo, PacketBuffer),
+
+    {PKI, Messages} =
+        case Type of
+            st_fin ->
+                {FinState, PKW} = handle_fin(Type, SeqNo, PktWindow),
+                {PKW, FinState ++ [handle_destroy_state_change(AcksAhead, PB1)]};
+            st_data ->
+                {PktWindow, []};
+            st_state ->
+                {PktWindow, [state_only]}
     end,
-    case State of
-	connected -> ok;
-	connected_full -> ok;
-	fin_sent -> ok;
-	_ -> throw({no_data, State})
-    end,
-    %% State update
-    %% ------------------------------
-    {FinState, N_PKI} = handle_fin(Type, SeqNo, PktWindow),
-    N_PB = case update_recv_buffer(SeqAhead, Payload, PacketBuffer) of
-	       duplicate -> PacketBuffer; % Perhaps do something else here
-	       #pkt_buf{} = PB -> PB
-	   end,
-    WindowStart = bit16(PacketBuffer#pkt_buf.seq_no
-			- PacketBuffer#pkt_buf.send_window_packets),
-    AckAhead = bit16(AckNo - WindowStart),
-    Acks = if
-	       AckAhead > PacketBuffer#pkt_buf.send_window_packets ->
-		   0; % The ack number is old, so do essentially nothing in the next part
-	       true ->
-		   %% -1 here is needed because #pkt_buf.seq_no is one
-		   %% ahead It is the next packet to send out, so it
-		   %% is one beyond the top end of the window
-		   AckAhead -1
-	   end,
-    N_PB1 = update_send_buffer(Acks, WindowStart, N_PB),
-    N_PKI1 = handle_window_size(WindowSize, N_PKI),
-    DestroyState = if
-		       %% @todo send_window_packets right?
-		       AckAhead == N_PB1#pkt_buf.send_window_packets
-		         andalso State == fin_sent ->
-			   [destroy];
-		       true ->
-			   []
-		   end,
     NagleState = consider_nagle(N_PB1),
+    N_PKI1 = handle_window_size(WindowSize, PKI),
     {ok, N_PB1#pkt_buf { last_ack = AckNo },
-         N_PKI1, FinState ++ DestroyState ++ NagleState}.
+         N_PKI1, Messages ++ NagleState}.
+
+
+
+handle_destroy_state_change(AckAhead,
+                            #pkt_buf { send_window_packets = SendWindowSz })
+  when AckAhead == SendWindowSz -> [destroy];
+handle_destroy_state_change(_, _) -> [].
 
 handle_fin(st_fin, SeqNo, #pkt_window { got_fin = false } = PKI) ->
     {[fin], PKI#pkt_window { got_fin = true,
@@ -249,11 +257,32 @@ handle_window_size(0, #pkt_window{} = PKI) ->
 handle_window_size(WindowSize, #pkt_window {} = PKI) ->
     PKI#pkt_window { peer_advertised_window = WindowSize }.
 
-update_send_buffer(AcksAhead, WindowStart, PB) ->
-    {Acked, PB} = update_send_buffer1(AcksAhead, WindowStart, PB),
-    %% @todo SACK!
-    PB#pkt_buf { send_window_packets = PB#pkt_buf.send_window_packets - Acked }.
+handle_ack_no(AckNo, WindowStart, PacketBuffer) ->
+    AckAhead = bit16(AckNo - WindowStart),
+    %% @todo DANGER, send_window_packets may be old and not used
+    case AckAhead > PacketBuffer#pkt_buf.send_window_packets of
+        true ->
+            %% The ack number is old, so do essentially nothing in the next part
+            {ok, AckAhead, 0};
+        false ->
+            %% -1 here is needed because #pkt_buf.seq_no is one
+            %% ahead It is the next packet to send out, so it
+            %% is one beyond the top end of the window
+            {ok, AckAhead, AckAhead - 1}
+    end.
 
+%% @todo the window packet size is probably wrong wrong wrong here
+update_send_buffer(AckNo,
+                   #pkt_buf { seq_no = BufSeqNo,
+                              send_window_packets = WindowPacketSize } = PB) ->
+    WindowStart = bit16(BufSeqNo - WindowPacketSize),
+    {ok, AcksAhead, Acks} = handle_ack_no(AckNo, WindowStart, PB),
+    {Acked, PB1} = update_send_buffer1(Acks, WindowStart, PB),
+    %% @todo SACK!
+    {ok, AcksAhead,
+         PB1#pkt_buf { send_window_packets = PB#pkt_buf.send_window_packets - Acked }}.
+
+-ifdef(NOTUSED).
 retransmit_q_find(_SeqNo, []) ->
     not_found;
 retransmit_q_find(SeqNo, [PW|R]) ->
@@ -263,31 +292,14 @@ retransmit_q_find(SeqNo, [PW|R]) ->
 	false ->
 	    retransmit_q_find(SeqNo, R)
     end.
-
+-endif().
 
 %% @todo I don't like this code that much. It is keyed on a lot of crap which I am
 %% not sure I am going to maintain in the long run.
 %% @todo This is wrong because it doesn't correctly tell us if we should send out an ACK or
 %% not. We need to redefine the rules at which we send out stuff here!
-consider_nagle(#pkt_buf { send_window_packets = 1,
-			  seq_no = SeqNo,
-			  retransmission_queue = RQ,
-			  reorder_count = ReorderCount
-			  }) ->
-    {value, PktW} = retransmit_q_find(SeqNo-1, RQ),
-    case PktW#pkt_wrap.transmissions of
-	0 ->
-	    case ReorderCount of
-		0 ->
-		    [send_ack, sent_ack];
-		_ ->
-		    [send_ack]
-	    end;
-	_ ->
-	    []
-    end;
-consider_nagle(#pkt_buf {}) -> [].
-
+consider_nagle(#pkt_buf { }) ->
+    [send_ack].
 
 update_send_buffer1(0, _WindowStart, PB) ->
     {0, PB}; %% Essentially a duplicate ACK, but we don't do anything about it
