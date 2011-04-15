@@ -269,5 +269,11 @@ interesting_sent_test_() ->
      ?_assertEqual(false,     ?state:interesting(0, R2, L2)),
      ?_assertEqual(unchanged, ?state:interesting(0, R1, L3))].
 
+seeding_test_() ->
+    S0 = ?state:new(testsize()),
+    [?_assert(?state:seeding(?state:hasall(S0))),
+     ?_assertNot(?state:seeding(?state:hasnone(S0))),
+     ?_assertNot(?state:seeding(?state:hasone(0, S0)))].
+
 -endif.
 
