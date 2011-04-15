@@ -27,6 +27,11 @@
 	 ]).
 -endif.
 
+%% @todo Eliminate send_window_packets.
+%% @todo Cleanup the receive path code, which is kinda crap at the moment.
+%% @todo Figure out when to stop ACK'ing packets.
+%% @todo Implement when to stop ACK'ing packets.
+
 %% DEFINES
 %% ----------------------------------------------------------------------
 
