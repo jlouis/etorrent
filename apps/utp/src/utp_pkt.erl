@@ -27,8 +27,6 @@
 	 ]).
 -endif.
 
-%% @todo Eliminate send_window_packets.
-%% @todo Cleanup the receive path code, which is kinda crap at the moment.
 %% @todo Figure out when to stop ACK'ing packets.
 %% @todo Implement when to stop ACK'ing packets.
 
@@ -88,11 +86,6 @@
           last_ack = 0                  :: 0..16#FFFF, % Last ack the other end sent us
           %% Nagle
           send_nagle = none             :: none | {nagle, binary()},
-
-          %% Windows
-          %% --------------------
-          %% Number of packets currently in the send window
-          send_window_packets = 0       :: integer(),
 
           %% Packet buffer settings
           %% --------------------
@@ -219,8 +212,8 @@ handle_packet(_CurrentTimeMs,
 	      PacketBuffer) when PktWindow =/= undefined ->
     SeqAhead =
         case handle_seq_no(SeqNo, PacketBuffer) of
-            {ok, No} ->
-                No;
+            {ok, Num} ->
+                Num;
             {error, Reason} ->
                 throw({error, Reason})
         end,
@@ -245,10 +238,11 @@ handle_packet(_CurrentTimeMs,
 
 
 
-handle_destroy_state_change(AckAhead,
-                            #pkt_buf { send_window_packets = SendWindowSz })
-  when AckAhead == SendWindowSz -> [destroy];
-handle_destroy_state_change(_, _) -> [].
+handle_destroy_state_change(AckAhead, Buf) ->
+    case send_window_count(Buf) == AckAhead of
+        true -> [destroy];
+        false -> []
+    end.
 
 handle_fin(st_fin, SeqNo, #pkt_window { got_fin = false } = PKI) ->
     {[fin], PKI#pkt_window { got_fin = true,
@@ -265,7 +259,7 @@ handle_window_size(WindowSize, #pkt_window {} = PKI) ->
 handle_ack_no(AckNo, WindowStart, PacketBuffer) ->
     AckAhead = bit16(AckNo - WindowStart),
     %% @todo DANGER, send_window_packets may be old and not used
-    case AckAhead > PacketBuffer#pkt_buf.send_window_packets of
+    case AckAhead > send_window_count(PacketBuffer) of
         true ->
             %% The ack number is old, so do essentially nothing in the next part
             {ok, AckAhead, 0};
@@ -278,14 +272,13 @@ handle_ack_no(AckNo, WindowStart, PacketBuffer) ->
 
 %% @todo the window packet size is probably wrong wrong wrong here
 update_send_buffer(AckNo,
-                   #pkt_buf { seq_no = BufSeqNo,
-                              send_window_packets = WindowPacketSize } = PB) ->
-    WindowStart = bit16(BufSeqNo - WindowPacketSize),
+                   #pkt_buf { seq_no = BufSeqNo } = PB) ->
+    WindowStart = bit16(BufSeqNo - send_window_count(PB)),
     {ok, AcksAhead, Acks} = handle_ack_no(AckNo, WindowStart, PB),
-    {Acked, PB1} = update_send_buffer1(Acks, WindowStart, PB),
+    {_Acked, PB1} = update_send_buffer1(Acks, WindowStart, PB),
     %% @todo SACK!
-    {ok, AcksAhead,
-         PB1#pkt_buf { send_window_packets = PB#pkt_buf.send_window_packets - Acked }}.
+    {ok, AcksAhead, PB1}.
+
 
 -ifdef(NOTUSED).
 retransmit_q_find(_SeqNo, []) ->
@@ -525,47 +518,6 @@ inflight_bytes(#pkt_buf{ retransmission_queue = Q,
             {ok, Sum}
     end.
 
--ifdef(NOT_BOUND).
-
-%% We don't need this function at all. There is so much wrong about it...
-can_write(CurrentTime, Size, PacketSize, CurrentWindow,
-	  #pkt_buf { send_max_window = SendMaxWindow,
-		     send_window_packets = SendWindowPackets,
-		     opt_snd_buf_sz  = OptSndBuf,
-		     max_window      = MaxWindow },
-	  PKI) ->
-    %% We can't send more than what one of the windows will bound us by.
-    %% So the max send value is the minimum over these:
-    MaxSend = lists:min([MaxWindow, OptSndBuf, SendMaxWindow]),
-    Res = if
-	      SendWindowPackets >= ?OUTGOING_BUFFER_MAX_SIZE-1 ->
-		  false;
-	      SendWindowPackets + PacketSize =< MaxSend ->
-		  true;
-	      MaxWindow < Size
-	        andalso CurrentWindow < MaxWindow
-	        andalso SendWindowPackets == 0 ->
-		  true;
-	      true ->
-		  false
-	  end,
-    %% @todo quota
-    %% @todo Why the heck do we have this side-effect here? The last_maxed_out_window
-    %% should be set in other ways I think. It has nothing to do with the question of
-    %% we can write on the socket or not!
-    PacketExceed = CurrentWindow + PacketSize >= MaxWindow,
-    {Res, PKI#pkt_window {
-	    last_maxed_out_window =
-		case PacketExceed of
-		    true ->
-			CurrentTime;
-		    false ->
-			PKI#pkt_window.last_maxed_out_window
-	       end
-	  }}.
--endif.
-
-
-
-
+send_window_count(#pkt_buf { retransmission_queue = RQ }) ->
+    length(RQ).
 
