@@ -165,7 +165,6 @@ seeder(Peerstate) ->
 
 -spec seeder(boolean(), peerstate()) -> peerstate().
 seeder(Status, Peerstate) ->
-    #peerstate{seeder=Current} = Peerstate,
     Status orelse erlang:error(badarg),
     Peerstate#peerstate{seeder=Status}.
 
@@ -186,14 +185,15 @@ requests(Requests, Peerstate) ->
 
 -spec needreqs(peerstate()) -> boolean().
 needreqs(Peerstate) ->
-    #peerstate{choked=Choked, requests=Requests} = Peerstate,
-    not Choked andalso etorrent_rqueue:is_low(Requests).
+    #peerstate{choked=Choked, interested=Interested, requests=Requests} = Peerstate,
+    Interested andalso not Choked andalso etorrent_rqueue:is_low(Requests).
 
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
 -define(state, ?MODULE).
 -define(pset, etorrent_pieceset).
+-define(rqueue, etorrent_rqueue).
 
 testsize() -> 8.
 
@@ -202,6 +202,8 @@ defaults_test_() ->
     [?_assert(?state:choked(State)),
      ?_assertNot(?state:interested(State)),
      ?_assertNot(?state:seeder(State)),
+     ?_assertEqual(0, ?rqueue:size(?state:requests(State))),
+     ?_assertNot(?state:needreqs(State)),
      ?_assertError(badarg, ?state:pieces(State)),
      ?_assertError(badarg, ?state:interesting(0, State))].
 
@@ -274,6 +276,23 @@ seeding_test_() ->
     [?_assert(?state:seeding(?state:hasall(S0))),
      ?_assertNot(?state:seeding(?state:hasnone(S0))),
      ?_assertNot(?state:seeding(?state:hasone(0, S0)))].
+
+needreq_test_() ->
+    S0 = ?state:hasnone(?state:new(testsize())),
+    S1 = ?state:interested(true, S0),
+    S2 = ?state:choked(false, S0),
+    S3 = ?state:interested(true, ?state:choked(false, S0)),
+    [?_assertNot(?state:needreqs(S0)),
+     ?_assertNot(?state:needreqs(S1)),
+     ?_assertNot(?state:needreqs(S2)),
+     ?_assert(?state:needreqs(S3))].
+
+request_update_test() ->
+    S0 = ?state:hasnone(?state:new(testsize())),
+    Reqs = ?state:requests(S0),
+    NewReqs = ?rqueue:push(0, 0, 1, Reqs),
+    S1 = ?state:requests(NewReqs, S0),
+    ?assertEqual(NewReqs, ?state:requests(S1)).
 
 -endif.
 
