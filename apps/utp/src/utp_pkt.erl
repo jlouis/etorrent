@@ -81,7 +81,7 @@
           %% Optimization candidate 1 :)
           retransmission_queue = []     :: [#pkt_wrap{}],
           reorder_count = 0             :: integer(), % When and what to reorder
-          ack_no = 0                    :: 0..16#FFFF, % Next expected packet
+          next_expected_seq_no = 0      :: 0..16#FFFF, % Next expected packet
           seq_no = 1                    :: 0..16#FFFF, % Next Sequence number to use when sending
           last_ack = 0                  :: 0..16#FFFF, % Last ack the other end sent us
 
@@ -133,7 +133,7 @@ init_seqno(#pkt_buf {} = PBuf, SeqNo) ->
     PBuf#pkt_buf { seq_no = SeqNo }.
 
 init_ackno(#pkt_buf{} = PBuf, AckNo) ->
-    PBuf#pkt_buf { ack_no = AckNo }.
+    PBuf#pkt_buf { next_expected_seq_no = AckNo }.
 
 -ifdef(NOTUSED).
 seqno(#pkt_wrap { packet = #packet { seq_no = S} }) ->
@@ -150,7 +150,7 @@ mk_random_seq_no() ->
 
 send_fin(SockInfo,
          #pkt_buf { seq_no = SeqNo,
-                    ack_no = AckNo }) ->
+                    next_expected_seq_no = AckNo }) ->
     %% @todo There is something with timers in the original code. Shouldn't be here, but in the
     %% caller, probably.
     FinPacket = #packet { ty = st_fin,
@@ -162,7 +162,7 @@ send_fin(SockInfo,
 
 send_ack(SockInfo,
          #pkt_buf { seq_no = SeqNo,
-                    ack_no = AckNo
+                    next_expected_seq_no = AckNo
                   }  ) ->
     %% @todo Send out an ack message here
     AckPacket = #packet { ty = st_data,
@@ -178,7 +178,7 @@ bit16(N) ->
 
 %% Given a Sequence Number in a packet, validate it
 validate_seq_no(SeqNo, PB) ->
-    case bit16(SeqNo - PB#pkt_buf.ack_no) of
+    case bit16(SeqNo - PB#pkt_buf.next_expected_seq_no) of
         SeqAhead when SeqAhead >= ?REORDER_BUFFER_SIZE ->
             {error, is_far_in_future};
         SeqAhead ->
@@ -197,8 +197,8 @@ valid_state(State) ->
 -spec handle_receive_buffer(integer(), binary(), #pkt_buf{}) -> #pkt_buf{}.
 handle_receive_buffer(SeqAhead, Payload, PacketBuffer) ->
     case update_recv_buffer(SeqAhead, Payload, PacketBuffer) of
-	       duplicate -> PacketBuffer; % Perhaps do something else here
-	       #pkt_buf{} = PB -> PB
+        duplicate -> PacketBuffer; % Perhaps do something else here
+        #pkt_buf{} = PB -> PB
     end.
 
 handle_incoming_datagram_payload(SeqNo, Payload, PacketBuffer) ->
@@ -229,7 +229,6 @@ handle_packet(_CurrentTimeMs,
     %% of this type. This assertion ought not to be triggered by our code.
     ok = valid_state(State),
 
-    %% @todo Use Messages1 here but think about data flow first!
     {N_PacketBuffer1, Messages1} =
         handle_incoming_datagram_payload(SeqNo, Payload, PacketBuffer),
 
@@ -328,22 +327,25 @@ sum_packets(List) ->
     lists:sum(Ps).
 
 update_recv_buffer(_SeqNo, <<>>, PB) -> PB;
-update_recv_buffer(1, Payload, #pkt_buf { ack_no = AckNo } = PB) ->
+update_recv_buffer(1, Payload, #pkt_buf { next_expected_seq_no = AckNo } = PB) ->
     %% This is the next expected packet, yay!
     N_PB = enqueue_payload(Payload, PB),
-    satisfy_from_reorder_buffer(N_PB#pkt_buf { ack_no = bit16(AckNo+1) });
+    satisfy_from_reorder_buffer(
+      N_PB#pkt_buf { next_expected_seq_no = bit16(AckNo+1) });
 update_recv_buffer(SeqNoAhead, Payload, PB) when is_integer(SeqNoAhead) ->
     reorder_buffer_in(SeqNoAhead , Payload, PB).
 
 satisfy_from_reorder_buffer(#pkt_buf { reorder_buf = [] } = PB) ->
     PB;
-satisfy_from_reorder_buffer(#pkt_buf { ack_no = AckNo,
+satisfy_from_reorder_buffer(#pkt_buf { next_expected_seq_no = AckNo,
 				       reorder_buf = [{SeqNo, PL} | R]} = PB) ->
     NextExpected = bit16(AckNo+1),
     case SeqNo == NextExpected of
 	true ->
 	    N_PB = enqueue_payload(PL, PB),
-	    satisfy_from_reorder_buffer(N_PB#pkt_buf { ack_no = SeqNo, reorder_buf = R});
+	    satisfy_from_reorder_buffer(
+              N_PB#pkt_buf { next_expected_seq_no = SeqNo,
+                             reorder_buf = R});
 	false ->
 	    PB
     end.
@@ -390,7 +392,7 @@ fill_from_proc_queue(N, Sz, Q, Proc) when Sz =< N ->
 transmit_packet(Bin,
                 WindowSize,
                 #pkt_buf { seq_no = SeqNo,
-                           ack_no = AckNo,
+                           next_expected_seq_no = AckNo,
                            retransmission_queue = RetransQueue } = Buf,
                 SockInfo) ->
     P = #packet { ty = st_data,
