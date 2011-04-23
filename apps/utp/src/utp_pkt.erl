@@ -67,6 +67,9 @@
 
 -type t() :: #pkt_window{}.
 
+-type message() :: send_ack.
+-type messages() :: [message()].
+
 -record(pkt_wrap, {
 	  packet            :: utp_proto:packet(),
 	  transmissions = 0 :: integer(),
@@ -108,6 +111,7 @@
 -export_type([t/0,
 	      pkt/0,
 	      buf/0,
+              messages/0,
 	      quota/0]).
 
 %% API
@@ -185,7 +189,7 @@ validate_seq_no(SeqNo, PB) ->
             {ok, SeqAhead}
     end.
 
--spec valid_state(atom) -> ok.
+-spec valid_state(atom()) -> ok.
 valid_state(State) ->
     case State of
 	connected -> ok;
@@ -194,11 +198,26 @@ valid_state(State) ->
 	_ -> throw({no_data, State})
     end.
 
--spec handle_receive_buffer(integer(), binary(), #pkt_buf{}) -> #pkt_buf{}.
+%% @doc Consider if we should send out an ACK
+%%   The Rule for ACK'ing is that the packet has altered the reorder buffer in any
+%%   way for us. If the incoming packet has, we should let the other end know this.
+%%   If the packet does not alter the reorder buffer however, we know it was either
+%%   payload-less or duplicate (the latter is handled elsewhere). Payload-less packets
+%%   are informational only, and if they generate ACK's it is not from this part of
+%%   the code.
+%% @end
+consider_send_ack(#pkt_buf { reorder_buf = RB1 },
+                  #pkt_buf { reorder_buf = RB2 }) when RB1 == RB2 ->
+    [send_ack];
+consider_send_ack(_, _) -> [].
+                             
+-spec handle_receive_buffer(integer(), binary(), #pkt_buf{}) ->
+                                   {#pkt_buf{}, messages()}.
 handle_receive_buffer(SeqAhead, Payload, PacketBuffer) ->
     case update_recv_buffer(SeqAhead, Payload, PacketBuffer) of
-        duplicate -> PacketBuffer; % Perhaps do something else here
-        #pkt_buf{} = PB -> PB
+        %% Force an ACK out in this case
+        duplicate -> {PacketBuffer, [send_ack]};
+        #pkt_buf{} = PB -> {PB, consider_send_ack(PacketBuffer, PB)}
     end.
 
 handle_incoming_datagram_payload(SeqNo, Payload, PacketBuffer) ->
@@ -248,7 +267,7 @@ handle_packet(_CurrentTimeMs,
     end,
     N_PKI1 = handle_window_size(WindowSize, PKI),
     {ok, N_PB1#pkt_buf { last_ack = AckNo },
-         N_PKI1, Messages }.
+         N_PKI1, Messages ++ Messages1}.
 
 
 
