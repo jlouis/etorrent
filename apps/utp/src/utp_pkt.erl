@@ -84,8 +84,6 @@
           ack_no = 0                    :: 0..16#FFFF, % Next expected packet
           seq_no = 1                    :: 0..16#FFFF, % Next Sequence number to use when sending
           last_ack = 0                  :: 0..16#FFFF, % Last ack the other end sent us
-          %% Nagle
-          send_nagle = none             :: none | {nagle, binary()},
 
           %% Packet buffer settings
           %% --------------------
@@ -361,32 +359,13 @@ buffer_dequeue(#pkt_buf { recv_buf = Q } = Buf) ->
     end.
 
 
-fill_nagle(0, Q, Buf, Proc) ->
-    {0, Q, Buf, Proc};
-fill_nagle(N, Q, #pkt_buf { send_nagle = none } = Buf, Proc) ->
-    {N, Q, Buf, Proc}; % No nagle, skip
-fill_nagle(N, Q, #pkt_buf { send_nagle = {nagle, NagleBin},
-                            pkt_size = Sz} = Buf, Proc) ->
-    K = byte_size(NagleBin),
-    true = K < Sz,
-    Space = Sz - K,
-    ToFill = lists:min([Space, N]),
-    case utp_process:fill_via_send_queue(ToFill, Proc) of
-        {filled, Bin, Proc1} ->
-            {N - ToFill, queue:in(<<NagleBin/binary, Bin/binary>>, Q),
-             Buf #pkt_buf { send_nagle = none }, Proc1};
-        {partial, Bin, Proc1} ->
-            {0, Q, Buf#pkt_buf { send_nagle = {nagle, <<NagleBin/binary, Bin/binary>>}}, Proc1}
-    end.
-
 fill_packets(Bytes, Buf, ProcQ) ->
-    Q = queue:new(),
-    {BytesAfterNagle, TxQ, NBuf, NProcQ} = fill_nagle(Bytes, Q, Buf, ProcQ),
-    {TxQueue, ProcQ2} =  fill_from_proc_queue(BytesAfterNagle,
-                                              NBuf#pkt_buf.pkt_size,
+    TxQ = queue:new(),
+    {TxQueue, ProcQ2} =  fill_from_proc_queue(Bytes,
+                                              Buf#pkt_buf.pkt_size,
                                               TxQ,
-                                              NProcQ),
-    {TxQueue, ProcQ2, NBuf}.
+                                              ProcQ),
+    {TxQueue, ProcQ2}.
 
 fill_from_proc_queue(0, _Sz, Q, Proc) ->
     {Q, Proc};
@@ -418,53 +397,29 @@ transmit_packet(Bin,
                   retransmission_queue = [Wrap | RetransQueue]
                 }.
 
-transmit_queue(Q, WindowSize, #pkt_buf { pkt_size = Sz,
-                                         retransmission_queue = RQ } = Buf, SockInfo) ->
+transmit_queue(Q, WindowSize,
+               #pkt_buf { pkt_size = Sz } = Buf, SockInfo) ->
     {R, NQ} = queue:out(Q),
     case R of
         empty ->
             Buf;
-        {value, Data} when byte_size(Data) < Sz ->
-            case RQ of
-                [] ->
-                    NewBuf = transmit_packet(Data, WindowSize, Buf, SockInfo),
-                    transmit_queue(NQ, WindowSize, NewBuf, SockInfo);
-                L when is_list(L) ->
-                    true = queue:is_empty(NQ),
-                    Buf#pkt_buf { send_nagle = {nagle, Data}}
-            end;
         {value, Data} when byte_size(Data) == Sz ->
             NewBuf = transmit_packet(Data, WindowSize, Buf, SockInfo),
             transmit_queue(NQ, WindowSize, NewBuf, SockInfo)
     end.
 
-view_nagle_transmit(#pkt_buf { send_nagle = none }) ->
-    no;
-view_nagle_transmit(#pkt_buf { retransmission_queue = [], send_nagle = {nagle, Bin} } = Buf) ->
-    {yes, Bin, Buf#pkt_buf { send_nagle = none }};
-view_nagle_transmit(#pkt_buf { retransmission_queue = _, send_nagle = {nagle, _} }) ->
-    no.
-
-
-
 fill_window(SockInfo, ProcQueue, PktWindow, PktBuf) ->
     FreeInWindow = bytes_free(PktBuf, PktWindow),
     %% Fill a queue of stuff to transmit
-    {TxQueue, NProcQueue, NBuf} = fill_packets(FreeInWindow,
+    {TxQueue, NProcQueue} = fill_packets(FreeInWindow,
                                          PktBuf,
                                          ProcQueue),
 
-    WindowSize = last_recv_window(NBuf, NProcQueue),
+    WindowSize = last_recv_window(PktBuf, NProcQueue),
     %% Send out the queue of packets to transmit
-    NBuf1 = transmit_queue(TxQueue, WindowSize, NBuf, SockInfo),
+    NBuf1 = transmit_queue(TxQueue, WindowSize, PktBuf, SockInfo),
     %% Eventually shove the Nagled packet in the tail
-    case view_nagle_transmit(NBuf1) of
-        no ->
-            {ok, NBuf1, NProcQueue};
-        {yes, Bin, NBuf2} ->
-            Buf = transmit_packet(Bin, WindowSize, NBuf2, SockInfo),
-            {ok, Buf, NProcQueue}
-    end.
+    {ok, NBuf1, NProcQueue}.
 
 last_recv_window(#pkt_buf { opt_recv_buf_sz = RSz },
                  ProcQueue) ->
@@ -499,19 +454,10 @@ bytes_free(PktBuf, PktWindow) ->
 payload_size(#pkt_wrap { packet = Packet }) ->
     byte_size(Packet#packet.payload).
 
-inflight_bytes(#pkt_buf{ retransmission_queue = [],
-                           send_nagle = none }) ->
+inflight_bytes(#pkt_buf{ retransmission_queue = [] }) ->
     buffer_empty;
-inflight_bytes(#pkt_buf{ retransmission_queue = [],
-                           send_nagle = {nagle, Bin}}) ->
-    {ok, byte_size(Bin)};
-inflight_bytes(#pkt_buf{ retransmission_queue = Q,
-                           send_nagle = N }) ->
-    Nagle = case N of
-                none -> 0;
-                {nagle, Bin} -> byte_size(Bin)
-            end,
-    case lists:sum([payload_size(Pkt) || Pkt <- Q]) + Nagle of
+inflight_bytes(#pkt_buf{ retransmission_queue = Q }) ->
+    case lists:sum([payload_size(Pkt) || Pkt <- Q]) of
         Sum when Sum >= ?OUTGOING_BUFFER_MAX_SIZE - 1 ->
             buffer_full;
         Sum ->
