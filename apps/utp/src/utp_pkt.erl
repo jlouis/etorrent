@@ -176,7 +176,8 @@ send_ack(SockInfo,
 bit16(N) ->
     N band 16#FFFF.
 
-handle_seq_no(SeqNo, PB) ->
+%% Given a Sequence Number in a packet, validate it
+validate_seq_no(SeqNo, PB) ->
     case bit16(SeqNo - PB#pkt_buf.ack_no) of
         SeqAhead when SeqAhead >= ?REORDER_BUFFER_SIZE ->
             {error, is_far_in_future};
@@ -184,7 +185,8 @@ handle_seq_no(SeqNo, PB) ->
             {ok, SeqAhead}
     end.
 
-assert_valid_state(State) ->
+-spec valid_state(atom) -> ok.
+valid_state(State) ->
     case State of
 	connected -> ok;
 	connected_full -> ok;
@@ -199,6 +201,21 @@ handle_receive_buffer(SeqAhead, Payload, PacketBuffer) ->
 	       #pkt_buf{} = PB -> PB
     end.
 
+handle_incoming_datagram_payload(SeqNo, Payload, PacketBuffer) ->
+    %% We got a packet in with a seq_no and some things to ack.
+    %% Validate the sequence number.
+    SeqAhead =
+        case validate_seq_no(SeqNo, PacketBuffer) of
+            {ok, Num} ->
+                Num;
+            {error, Violation} ->
+                throw({error, Violation})
+        end,
+
+    %% Handle the Payload by Dumping it into the packet buffer at the right point
+    %% Returns a new PacketBuffer, and a list of Messages for the upper layer
+    {_, _} = handle_receive_buffer(SeqAhead, Payload, PacketBuffer).
+    
 handle_packet(_CurrentTimeMs,
 	      State,
 	      #packet { seq_no = SeqNo,
@@ -208,31 +225,31 @@ handle_packet(_CurrentTimeMs,
 			ty = Type } = _Packet,
 	      PktWindow,
 	      PacketBuffer) when PktWindow =/= undefined ->
-    SeqAhead =
-        case handle_seq_no(SeqNo, PacketBuffer) of
-            {ok, Num} ->
-                Num;
-            {error, Reason} ->
-                throw({error, Reason})
-        end,
-    assert_valid_state(State),
-    PB1 = handle_receive_buffer(SeqAhead, Payload, PacketBuffer),
+    %% Assert that we are currently in a state eligible for receiving datagrams
+    %% of this type. This assertion ought not to be triggered by our code.
+    ok = valid_state(State),
+
+    %% @todo Use Messages1 here but think about data flow first!
+    {N_PacketBuffer1, Messages1} =
+        handle_incoming_datagram_payload(SeqNo, Payload, PacketBuffer),
+
     {ok, AcksAhead, N_PB1} = update_send_buffer(AckNo, PacketBuffer),
 
     {PKI, Messages} =
         case Type of
             st_fin ->
                 {FinState, PKW} = handle_fin(Type, SeqNo, PktWindow),
-                {PKW, FinState ++ [handle_destroy_state_change(AcksAhead, PB1)]};
+                {PKW, FinState ++
+                     [handle_destroy_state_change(AcksAhead,
+                                                 N_PacketBuffer1)]};
             st_data ->
                 {PktWindow, []};
             st_state ->
                 {PktWindow, [state_only]}
     end,
-    NagleState = consider_nagle(N_PB1),
     N_PKI1 = handle_window_size(WindowSize, PKI),
     {ok, N_PB1#pkt_buf { last_ack = AckNo },
-         N_PKI1, Messages ++ NagleState}.
+         N_PKI1, Messages }.
 
 
 
@@ -256,7 +273,7 @@ handle_window_size(WindowSize, #pkt_window {} = PKI) ->
 
 handle_ack_no(AckNo, WindowStart, PacketBuffer) ->
     AckAhead = bit16(AckNo - WindowStart),
-    %% @todo DANGER, send_window_packets may be old and not used
+    %% @todo DANGER, send_window_count may be old and not used
     case AckAhead > send_window_count(PacketBuffer) of
         true ->
             %% The ack number is old, so do essentially nothing in the next part
@@ -289,13 +306,6 @@ retransmit_q_find(SeqNo, [PW|R]) ->
 	    retransmit_q_find(SeqNo, R)
     end.
 -endif().
-
-%% @todo I don't like this code that much. It is keyed on a lot of crap which I am
-%% not sure I am going to maintain in the long run.
-%% @todo This is wrong because it doesn't correctly tell us if we should send out an ACK or
-%% not. We need to redefine the rules at which we send out stuff here!
-consider_nagle(#pkt_buf { }) ->
-    [send_ack].
 
 update_send_buffer1(0, _WindowStart, PB) ->
     {0, PB}; %% Essentially a duplicate ACK, but we don't do anything about it
