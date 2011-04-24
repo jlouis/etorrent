@@ -42,8 +42,8 @@
 %% TYPES
 %% ----------------------------------------------------------------------
 -record(pkt_window, {
-	  got_fin :: boolean(),
-	  eof_pkt :: 0..16#FFFF, % The packet with the EOF flag
+          %% This is set when the other end has fin'ed us
+          fin_state = none :: none | {got_fin, 0..16#FFFF},
 
 	  %% @todo: Consider renaming this to peer_advertised_window
 	  peer_advertised_window :: integer(), % Called max_window_user in the libutp code
@@ -86,7 +86,6 @@
           reorder_count = 0             :: integer(), % When and what to reorder
           next_expected_seq_no = 0      :: 0..16#FFFF, % Next expected packet
           seq_no = 1                    :: 0..16#FFFF, % Next Sequence number to use when sending
-          last_ack = 0                  :: 0..16#FFFF, % Last ack the other end sent us
 
           %% Packet buffer settings
           %% --------------------
@@ -248,26 +247,30 @@ handle_packet(_CurrentTimeMs,
     %% of this type. This assertion ought not to be triggered by our code.
     ok = valid_state(State),
 
+    %% Update the state by the receiving payload stuff.
     {N_PacketBuffer1, Messages1} =
         handle_incoming_datagram_payload(SeqNo, Payload, PacketBuffer),
 
-    {ok, AcksAhead, N_PB1} = update_send_buffer(AckNo, PacketBuffer),
+    %% The Packet may have ACK'ed stuff from our send buffer. Update the send buffer accordingly
+    {ok, AcksAhead, N_PB1} = update_send_buffer(AckNo, N_PacketBuffer1),
 
+    %% Some packets set a specific state we should handle in our end
     {PKI, Messages} =
         case Type of
             st_fin ->
-                {FinState, PKW} = handle_fin(Type, SeqNo, PktWindow),
-                {PKW, FinState ++
-                     [handle_destroy_state_change(AcksAhead,
-                                                 N_PacketBuffer1)]};
+                PKW = PktWindow#pkt_window {
+                        fin_state = {got_fin, SeqNo}
+                       },
+                ShouldDestroy =
+                    handle_destroy_state_change(AcksAhead, N_PacketBuffer1),
+                {PKW, [fin] ++ ShouldDestroy};
             st_data ->
                 {PktWindow, []};
             st_state ->
                 {PktWindow, [state_only]}
     end,
     N_PKI1 = handle_window_size(WindowSize, PKI),
-    {ok, N_PB1#pkt_buf { last_ack = AckNo },
-         N_PKI1, Messages ++ Messages1}.
+    {ok, N_PB1, N_PKI1, Messages ++ Messages1}.
 
 
 
@@ -276,11 +279,6 @@ handle_destroy_state_change(AckAhead, Buf) ->
         true -> [destroy];
         false -> []
     end.
-
-handle_fin(st_fin, SeqNo, #pkt_window { got_fin = false } = PKI) ->
-    {[fin], PKI#pkt_window { got_fin = true,
-			   eof_pkt = SeqNo }};
-handle_fin(_, _, PKI) -> {[], PKI}.
 
 handle_window_size(0, #pkt_window{} = PKI) ->
     TRef = erlang:send_after(?ZERO_WINDOW_DELAY, self(), zero_window_timeout),
