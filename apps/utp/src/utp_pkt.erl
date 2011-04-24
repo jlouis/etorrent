@@ -269,8 +269,9 @@ handle_packet(_CurrentTimeMs,
             st_state ->
                 {PktWindow, [state_only]}
     end,
-    N_PKI1 = handle_window_size(WindowSize, PKI),
-    {ok, N_PB1, N_PKI1, Messages ++ Messages1}.
+    {ok, N_PB1,
+         handle_window_size(WindowSize, PKI),
+         Messages ++ Messages1}.
 
 
 
