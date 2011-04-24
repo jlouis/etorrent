@@ -72,13 +72,19 @@ decode(Packet) ->
           AckNo:16/integer,
           ExtPayload/binary>> ->
 	    {Extensions, Payload} = decode_extensions(Extension, ExtPayload, []),
-	    Ty = decode_type(Type),
-	    if
-		Ty == st_state ->
-		    <<>> = Payload;
-		true ->
-		    ok
-	    end,
+            %% Validate packet contents
+	    case decode_type(Type) of
+                st_state when Payload == <<>> ->
+                    ok;
+                st_data when Payload =/= <<>> ->
+                    ok;
+                st_fin ->
+                    ok;
+                st_syn ->
+                    ok;
+                st_reset ->
+                    ok
+            end,
 	    {#packet { ty = decode_type(Type),
 		       conn_id = ConnectionId,
 		       win_sz = WindowSize,
