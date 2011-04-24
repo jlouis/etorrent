@@ -427,13 +427,12 @@ transmit_packet(Bin,
                   retransmission_queue = [Wrap | RetransQueue]
                 }.
 
-transmit_queue(Q, WindowSize,
-               #pkt_buf { pkt_size = Sz } = Buf, SockInfo) ->
+transmit_queue(Q, WindowSize, Buf, SockInfo) ->
     {R, NQ} = queue:out(Q),
     case R of
         empty ->
             Buf;
-        {value, Data} when byte_size(Data) == Sz ->
+        {value, Data} ->
             NewBuf = transmit_packet(Data, WindowSize, Buf, SockInfo),
             transmit_queue(NQ, WindowSize, NewBuf, SockInfo)
     end.
