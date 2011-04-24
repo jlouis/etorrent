@@ -205,8 +205,11 @@ valid_state(State) ->
 %%   are informational only, and if they generate ACK's it is not from this part of
 %%   the code.
 %% @end
-consider_send_ack(#pkt_buf { reorder_buf = RB1 },
-                  #pkt_buf { reorder_buf = RB2 }) when RB1 =/= RB2 ->
+consider_send_ack(#pkt_buf { reorder_buf = RB1,
+                             next_expected_seq_no = Seq1 },
+                  #pkt_buf { reorder_buf = RB2,
+                             next_expected_seq_no = Seq2})
+  when RB1 =/= RB2 orelse Seq1 =/= Seq2 ->
     [send_ack];
 consider_send_ack(_, _) -> [].
                              
