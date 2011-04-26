@@ -1,0 +1,13 @@
+Haphazard TODO list of things that needs attention:
+
+* Warn if we get old ACKs, there seem to be no control of this.
+   We better have a check for this, otherwise we can simply add a
+   large number of dumb errors to the code base later on.
+
+* We are currently sending the wrong ACK number back.
+   This ought to be fixed.
+
+* We don't update the advertized window at all.
+   This ought to be fixed.
+
+
