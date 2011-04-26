@@ -6,7 +6,9 @@
 
 -export([
          connector1/0,
-         connectee1/0
+         connectee1/0,
+         test_send_large_file/1,
+         test_recv_large_file/1
          ]).
 
 %% @doc Manual startup of the uTP application
@@ -37,4 +39,16 @@ connectee1() ->
     {ok, R1} = gen_utp:recv(Port, 5),
     {ok, R2} = gen_utp:recv(Port, 5),
     {R1, R2}.
+
+test_send_large_file(_File) ->
+    todo.
+
+test_recv_large_file(_File) ->
+    todo.
+
+
+
+
+
+
 

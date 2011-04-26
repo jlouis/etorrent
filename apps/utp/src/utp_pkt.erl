@@ -45,7 +45,6 @@
           %% This is set when the other end has fin'ed us
           fin_state = none :: none | {got_fin, 0..16#FFFF},
 
-	  %% @todo: Consider renaming this to peer_advertised_window
 	  peer_advertised_window :: integer(), % Called max_window_user in the libutp code
 
 	  %% The current window size in the send direction, in bytes.
@@ -287,7 +286,7 @@ handle_destroy_state_change(AckAhead, Buf) ->
 handle_window_size(0, #pkt_window{} = PKI) ->
     TRef = erlang:send_after(?ZERO_WINDOW_DELAY, self(), zero_window_timeout),
     PKI#pkt_window { zero_window_timeout = {set, TRef},
-		   peer_advertised_window = 0};
+                     peer_advertised_window = 0};
 handle_window_size(WindowSize, #pkt_window {} = PKI) ->
     PKI#pkt_window { peer_advertised_window = WindowSize }.
 

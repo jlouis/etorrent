@@ -54,12 +54,13 @@ connect_n_communicate() ->
 connect_n_communicate(Config) ->
     C1 = ?config(connector, Config),
     C2 = ?config(connectee, Config),
+    {Pid, Ref} = {self(), make_ref()},
     spawn(fun() ->
+                  %% @todo, should fix this timer invocation
                   timer:sleep(3000),
                   rpc:call(C1, utp, connector1, [])
           end),
     {<<"HELLO">>, <<"WORLD">>} = rpc:call(C2, utp, connectee1, []),
-
     ok.
 
 %% Helpers
