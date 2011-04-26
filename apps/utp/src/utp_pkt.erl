@@ -214,8 +214,8 @@ consider_send_ack(_, _) -> [].
                              
 -spec handle_receive_buffer(integer(), binary(), #pkt_buf{}) ->
                                    {#pkt_buf{}, messages()}.
-handle_receive_buffer(SeqAhead, Payload, PacketBuffer) ->
-    case update_recv_buffer(SeqAhead, Payload, PacketBuffer) of
+handle_receive_buffer(SeqNo, Payload, PacketBuffer) ->
+    case update_recv_buffer(SeqNo, Payload, PacketBuffer) of
         %% Force an ACK out in this case
         duplicate -> {PacketBuffer, [send_ack]};
         #pkt_buf{} = PB -> {PB, consider_send_ack(PacketBuffer, PB)}
@@ -224,17 +224,16 @@ handle_receive_buffer(SeqAhead, Payload, PacketBuffer) ->
 handle_incoming_datagram_payload(SeqNo, Payload, PacketBuffer) ->
     %% We got a packet in with a seq_no and some things to ack.
     %% Validate the sequence number.
-    SeqAhead =
-        case validate_seq_no(SeqNo, PacketBuffer) of
-            {ok, Num} ->
-                Num;
-            {error, Violation} ->
-                throw({error, Violation})
-        end,
+    case validate_seq_no(SeqNo, PacketBuffer) of
+        {ok, _Num} ->
+            ok;
+        {error, Violation} ->
+            throw({error, Violation})
+    end,
 
     %% Handle the Payload by Dumping it into the packet buffer at the right point
     %% Returns a new PacketBuffer, and a list of Messages for the upper layer
-    {_, _} = handle_receive_buffer(SeqAhead, Payload, PacketBuffer).
+    {_, _} = handle_receive_buffer(SeqNo, Payload, PacketBuffer).
     
 handle_packet(_CurrentTimeMs,
 	      State,
@@ -347,13 +346,14 @@ sum_packets(List) ->
     lists:sum(Ps).
 
 update_recv_buffer(_SeqNo, <<>>, PB) -> PB;
-update_recv_buffer(1, Payload, #pkt_buf { next_expected_seq_no = AckNo } = PB) ->
+update_recv_buffer(SeqNo, Payload, #pkt_buf { next_expected_seq_no = SeqNo } = PB) ->
     %% This is the next expected packet, yay!
+    error_logger:info_report([got_expected, SeqNo, bit16(SeqNo+1)]),
     N_PB = enqueue_payload(Payload, PB),
     satisfy_from_reorder_buffer(
-      N_PB#pkt_buf { next_expected_seq_no = bit16(AckNo+1) });
-update_recv_buffer(SeqNoAhead, Payload, PB) when is_integer(SeqNoAhead) ->
-    reorder_buffer_in(SeqNoAhead , Payload, PB).
+      N_PB#pkt_buf { next_expected_seq_no = bit16(SeqNo+1) });
+update_recv_buffer(SeqNo, Payload, PB) when is_integer(SeqNo) ->
+    reorder_buffer_in(SeqNo, Payload, PB).
 
 satisfy_from_reorder_buffer(#pkt_buf { reorder_buf = [] } = PB) ->
     PB;
