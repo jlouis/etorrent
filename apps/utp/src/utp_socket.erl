@@ -8,7 +8,8 @@
         ]).
 
 -export([
-         send_pkt/2, send_pkt/3
+         send_pkt/2, send_pkt/3,
+         format_pkt/1
         ]).
 
 -type ip_address() :: {byte(), byte(), byte(), byte()}.
