@@ -83,7 +83,7 @@
           %% Optimization candidate 1 :)
           retransmission_queue = []     :: [#pkt_wrap{}],
           reorder_count = 0             :: integer(), % When and what to reorder
-          next_expected_seq_no = 0      :: 0..16#FFFF, % Next expected packet
+          next_expected_seq_no = 1      :: 0..16#FFFF, % Next expected packet
           seq_no = 1                    :: 0..16#FFFF, % Next Sequence number to use when sending
 
           %% Packet buffer settings
@@ -157,7 +157,7 @@ send_fin(SockInfo,
     %% caller, probably.
     FinPacket = #packet { ty = st_fin,
                           seq_no = SeqNo-1, % @todo Is this right?
-                          ack_no = AckNo,
+                          ack_no = AckNo-1,
                           extension = []
                         },
     ok = utp_socket:send_pkt(SockInfo, FinPacket).
@@ -169,7 +169,7 @@ send_ack(SockInfo,
     %% @todo Send out an ack message here
     AckPacket = #packet { ty = st_state,
                           seq_no = SeqNo-1, % @todo Is this right?
-                          ack_no = AckNo,
+                          ack_no = AckNo-1,
                           extension = []
                         },
     ok = utp_socket:send_pkt(SockInfo, AckPacket).
@@ -414,7 +414,7 @@ transmit_packet(Bin,
     P = #packet { ty = st_data,
                   win_sz  = WindowSize,
                   seq_no  = SeqNo,
-                  ack_no  = AckNo,
+                  ack_no  = AckNo-1,
                   extension = [],
                   payload = Bin },
     ok = utp_socket:send_pkt(SockInfo, P),
