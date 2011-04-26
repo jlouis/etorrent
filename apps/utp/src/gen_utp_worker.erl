@@ -347,7 +347,7 @@ idle({accept, SYN}, _From, #state { sock_info = SockInfo,
     {reply, ok, connected, State#state { sock_info = N_SockInfo,
                                          pkt_buf = utp_pkt:init_ackno(
                                                      utp_pkt:init_seqno(PktBuf, SeqNo + 1),
-                                                     AckNo)}};
+                                                     AckNo+1)}}; % Next expected
 
 idle(_Msg, _From, State) ->
     {reply, idle, {error, enotconn}, State}.
