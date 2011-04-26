@@ -358,17 +358,13 @@ update_recv_buffer(SeqNoAhead, Payload, PB) when is_integer(SeqNoAhead) ->
 satisfy_from_reorder_buffer(#pkt_buf { reorder_buf = [] } = PB) ->
     PB;
 satisfy_from_reorder_buffer(#pkt_buf { next_expected_seq_no = AckNo,
-				       reorder_buf = [{SeqNo, PL} | R]} = PB) ->
-    NextExpected = bit16(AckNo+1),
-    case SeqNo == NextExpected of
-	true ->
-	    N_PB = enqueue_payload(PL, PB),
-	    satisfy_from_reorder_buffer(
-              N_PB#pkt_buf { next_expected_seq_no = SeqNo,
-                             reorder_buf = R});
-	false ->
-	    PB
-    end.
+				       reorder_buf = [{AckNo, PL} | R]} = PB) ->
+    N_PB = enqueue_payload(PL, PB),
+    satisfy_from_reorder_buffer(
+      N_PB#pkt_buf { next_expected_seq_no = bit16(AckNo+1),
+                     reorder_buf = R});
+satisfy_from_reorder_buffer(#pkt_buf { } = PB) ->
+    PB.
 
 reorder_buffer_in(SeqNo, Payload, #pkt_buf { reorder_buf = OD } = PB) ->
     case orddict:is_key(SeqNo, OD) of
