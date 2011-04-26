@@ -28,6 +28,15 @@
 
 %% ----------------------------------------------------------------------
 
+format_pkt(#packet { ty = Ty, conn_id = ConnID, win_sz = WinSz,
+                     seq_no = SeqNo,
+                     ack_no = AckNo,
+                     extension = Exts,
+                     payload = PL }) ->
+    [{ty, Ty}, {conn_id, ConnID}, {win_sz, WinSz},
+     {seq_no, SeqNo}, {ack_no, AckNo}, {extension, Exts},
+     {payload, byte_size(PL), PL}].
+
 mk(Addr, Opts, PacketSize, Port, Socket) ->
     #sock_info { addr = Addr,
                  opts = Opts,
@@ -47,7 +56,7 @@ send_pkt(#sock_info { socket = Socket,
                       timestamp_difference = TSDiff}, Packet, ConnId) ->
     %% @todo Handle timestamping here!!
     Pkt = Packet#packet { conn_id = ConnId },
-    error_logger:info_report([pkt, Pkt]),
+    error_logger:info_report([pkt, format_pkt(Pkt)]),
     gen_udp:send(Socket, Addr, Port,
                  utp_proto:encode(
                    Pkt,
