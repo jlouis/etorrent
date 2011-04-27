@@ -22,7 +22,9 @@ end_per_group(_Group, _Config) ->
 
 init_per_suite(Config) ->
     {ok, ConnectNode} = test_server:start_node('connector', slave, []),
+    ok = rpc:call(ConnectNode, utp, start_app, [3334]),    
     {ok, ConnecteeNode} = test_server:start_node('connectee', slave, []),
+    ok = rpc:call(ConnecteeNode, utp, start_app, [3333]),
     [{connector, ConnectNode},
      {connectee, ConnecteeNode} | Config].
 
@@ -58,13 +60,10 @@ connect_n_communicate(Config) ->
     spawn(fun() ->
                   %% @todo, should fix this timer invocation
                   timer:sleep(3000),
-                  rpc:call(C1, utp, start_app, [3334]),
                   rpc:call(C1, utp, test_connector_1, [])
           end),
-    rpc:call(C2, utp, start_app, [3333]),
     {<<"HELLO">>, <<"WORLD">>} = rpc:call(C2, utp, test_connectee_1, []),
     ok.
 
 %% Helpers
 %% ----------------------------------------------------------------------
-
