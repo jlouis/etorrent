@@ -15,7 +15,11 @@
 
 %% @private
 start(_StartType, _StartArgs) ->
-    case utp_sup:start_link(3333) of
+    Port = case application:get_env(utp, udp_port) of
+               {ok, P} -> P;
+               undefined  -> 3333
+           end,
+    case utp_sup:start_link(Port) of
         {ok, Pid} ->
             {ok, Pid};
         {error, Reason} ->

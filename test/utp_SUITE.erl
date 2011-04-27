@@ -58,9 +58,11 @@ connect_n_communicate(Config) ->
     spawn(fun() ->
                   %% @todo, should fix this timer invocation
                   timer:sleep(3000),
-                  rpc:call(C1, utp, connector1, [])
+                  rpc:call(C1, utp, start_app, [3334]),
+                  rpc:call(C1, utp, test_connector_1, [])
           end),
-    {<<"HELLO">>, <<"WORLD">>} = rpc:call(C2, utp, connectee1, []),
+    rpc:call(C2, utp, start_app, [3333]),
+    {<<"HELLO">>, <<"WORLD">>} = rpc:call(C2, utp, test_connectee_1, []),
     ok.
 
 %% Helpers

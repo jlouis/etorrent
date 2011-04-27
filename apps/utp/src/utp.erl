@@ -1,12 +1,13 @@
 -module(utp).
 
 -export([
-         start/1
+         start/1,
+         start_app/1
          ]).
 
 -export([
-         connector1/0,
-         connectee1/0,
+         test_connector_1/0,
+         test_connectee_1/0,
          test_send_large_file/1,
          test_recv_large_file/1
          ]).
@@ -15,6 +16,11 @@
 start(Port) ->
     ok = ensure_started([sasl, gproc, crypto]),
     utp_sup:start_link(Port).
+
+start_app(Port) ->
+    application:set_env(utp, udp_port, Port),
+    ok = ensure_started([sasl, gproc, crypto]),
+    application:start(utp).
 
 ensure_started([]) ->
     ok;
@@ -26,14 +32,12 @@ ensure_started([App | R]) ->
 	    ensure_started(R)
     end.
 
-connector1() ->
-    start(3334),
+test_connector_1() ->
     Sock = gen_utp:connect("localhost", 3333),
     gen_utp:send(Sock, "HELLO"),
     gen_utp:send(Sock, "WORLD").
 
-connectee1() ->
-    start(3333),
+test_connectee_1() ->
     gen_utp:listen(),
     {ok, Port} = gen_utp:accept(),
     {ok, R1} = gen_utp:recv(Port, 5),
