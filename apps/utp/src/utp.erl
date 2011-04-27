@@ -44,15 +44,13 @@ test_connectee_1() ->
     {ok, R2} = gen_utp:recv(Port, 5),
     {R1, R2}.
 
-test_send_large_file(_File) ->
-    todo.
+test_send_large_file(Data) ->
+    Sock = gen_utp:connect("localhost", 3333),
+    gen_utp:send(Sock, Data).
 
-test_recv_large_file(_File) ->
-    todo.
-
-
-
-
-
-
+test_recv_large_file(Sz) ->
+    gen_utp:listen(),
+    {ok, Port} = gen_utp:accept(),
+    {ok, R} = gen_utp:recv(Port, Sz),
+    R.
 
