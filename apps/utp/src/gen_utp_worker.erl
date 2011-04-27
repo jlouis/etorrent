@@ -201,7 +201,6 @@ connected({pkt, Pkt, {_TS, _TSDiff, RecvTime}},
     error_logger:info_report([incoming_pkt, utp_socket:format_pkt(Pkt)]),
     case utp_pkt:handle_packet(RecvTime, connected, Pkt, PKI, PB) of
 	{ok, N_PB1, N_PKI, Messages} ->
-            error_logger:info_report([contents, PRI]),
             case proplists:get_value(send_ack, Messages) of
                 true ->
                     utp_pkt:send_ack(SockInfo, N_PB1);
