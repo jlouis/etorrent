@@ -18,14 +18,10 @@
 	 buffer_dequeue/1,
 	 buffer_putback/2,
 	 fill_window/4,
-	 zerowindow_timeout/2
-	 ]).
+	 zerowindow_timeout/2,
 
--ifdef(NOT_BOUND).
--export([
-	 can_write/6
+         advertised_window/1
 	 ]).
--endif.
 
 %% @todo Figure out when to stop ACK'ing packets.
 %% @todo Implement when to stop ACK'ing packets.
@@ -221,6 +217,22 @@ handle_receive_buffer(SeqNo, Payload, PacketBuffer) ->
         #pkt_buf{} = PB -> {PB, consider_send_ack(PacketBuffer, PB)}
     end.
 
+%% @doc Return the size of the receive buffer
+%% @end
+recv_buf_size(Q) ->
+    L = queue:to_list(Q),
+    lists:sum([byte_size(Payload) || Payload <- L]).
+
+%% @doc Calculate the advertised window to use
+%% @end
+advertised_window(#pkt_buf { recv_buf = Q,
+                             opt_recv_buf_sz = Sz }) ->
+    FillValue = recv_buf_size(Q),
+    case Sz - FillValue of
+        N when N >= 0 ->
+            N
+    end.
+
 handle_incoming_datagram_payload(SeqNo, Payload, PacketBuffer) ->
     %% We got a packet in with a seq_no and some things to ack.
     %% Validate the sequence number.
@@ -303,7 +315,7 @@ handle_ack_no(AckNo, WindowStart, PacketBuffer) ->
             {ok, AckAhead, AckAhead - 1}
     end.
 
-%% @todo the window packet size is probably wrong wrong wrong here
+%% @todo There is no mention of the advertised window here. That is a bug.
 update_send_buffer(AckNo,
                    #pkt_buf { seq_no = BufSeqNo } = PB) ->
     WindowStart = bit16(BufSeqNo - send_window_count(PB)),

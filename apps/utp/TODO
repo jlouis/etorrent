@@ -4,10 +4,16 @@ Haphazard TODO list of things that needs attention:
    We better have a check for this, otherwise we can simply add a
    large number of dumb errors to the code base later on.
 
-* We are currently sending the wrong ACK number back.
-   This ought to be fixed.
-
 * We don't update the advertized window at all.
-   This ought to be fixed.
+   We should begin planning how to handle the advertised window. We
+   are currently killing the receiver because we are sending too fast
+   and he has begun dropping packets.
+
+   To make the window going:
+   DONE ; Whenever we send out a packet, calculate the current window and
+     stamp it into the packet
+   ; Figure out how to set the advertised window on outgoing packets.
+
+   ; Only send packets up to the window size.
 
 
