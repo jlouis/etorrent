@@ -175,6 +175,27 @@ send_fin(SockInfo,
     Win = advertised_window(Buf),
     ok = utp_socket:send_pkt(Win, SockInfo, FinPacket).
 
+send_packet(Bin,
+            WindowSize,
+            #pkt_buf { seq_no = SeqNo,
+                       next_expected_seq_no = AckNo,
+                       retransmission_queue = RetransQueue } = Buf,
+            SockInfo) ->
+    P = #packet { ty = st_data,
+                  win_sz  = WindowSize,
+                  seq_no  = SeqNo,
+                  ack_no  = AckNo-1,
+                  extension = [],
+                  payload = Bin },
+    Win = advertised_window(Buf),
+    ok = utp_socket:send_pkt(Win, SockInfo, P),
+    Wrap = #pkt_wrap { packet = P,
+                       transmissions = 0,
+                       need_resend = false },
+    Buf#pkt_buf { seq_no = SeqNo+1,
+                  retransmission_queue = [Wrap | RetransQueue]
+                }.
+
 %% @doc Consider if we should send out an ACK and do it if so
 %% @end
 handle_send_ack(SockInfo, PktBuf, Messages) ->
@@ -453,7 +474,7 @@ fill_from_proc_queue(N, Sz, Q, Proc) when Sz =< N ->
 transmit_queue(Q, WindowSize, Buf, SockInfo) ->
     L = queue:to_list(Q),
     lists:foldl(fun(Data, B) ->
-                        transmit_packet(Data, WindowSize, B, SockInfo)
+                        send_packet(Data, WindowSize, B, SockInfo)
                 end,
                 Buf,
                 L).
@@ -544,27 +565,6 @@ buffer_dequeue(#pkt_buf { recv_buf = Q } = Buf) ->
 	    empty
     end.
 
-
-transmit_packet(Bin,
-                WindowSize,
-                #pkt_buf { seq_no = SeqNo,
-                           next_expected_seq_no = AckNo,
-                           retransmission_queue = RetransQueue } = Buf,
-                SockInfo) ->
-    P = #packet { ty = st_data,
-                  win_sz  = WindowSize,
-                  seq_no  = SeqNo,
-                  ack_no  = AckNo-1,
-                  extension = [],
-                  payload = Bin },
-    Win = advertised_window(Buf),
-    ok = utp_socket:send_pkt(Win, SockInfo, P),
-    Wrap = #pkt_wrap { packet = P,
-                       transmissions = 0,
-                       need_resend = false },
-    Buf#pkt_buf { seq_no = SeqNo+1,
-                  retransmission_queue = [Wrap | RetransQueue]
-                }.
 
 zerowindow_timeout(TRef, #pkt_window { peer_advertised_window = 0,
                                      zero_window_timeout = {set, TRef}} = PKI) ->
