@@ -8,7 +8,7 @@
         ]).
 
 -export([
-         send_pkt/2, send_pkt/3,
+         send_pkt/3, send_pkt/4,
          format_pkt/1
         ]).
 
@@ -48,15 +48,16 @@ mk(Addr, Opts, PacketSize, Port, Socket) ->
                  timestamp_difference = 0
                }.
 
-send_pkt(#sock_info { conn_id_send = ConnId } = SockInfo, Packet) ->
-    send_pkt(SockInfo, Packet, ConnId).
+send_pkt(AdvWin, #sock_info { conn_id_send = ConnId } = SockInfo, Packet) ->
+    send_pkt(AdvWin, SockInfo, Packet, ConnId).
 
-send_pkt(#sock_info { socket = Socket,
-                      addr = Addr,
-                      port = Port,
-                      timestamp_difference = TSDiff}, Packet, ConnId) ->
+send_pkt(AdvWin, #sock_info { socket = Socket,
+                              addr = Addr,
+                              port = Port,
+                              timestamp_difference = TSDiff}, Packet, ConnId) ->
     %% @todo Handle timestamping here!!
-    Pkt = Packet#packet { conn_id = ConnId },
+    Pkt = Packet#packet { conn_id = ConnId,
+                          win_sz = AdvWin },
     error_logger:info_report([pkt, format_pkt(Pkt)]),
     gen_udp:send(Socket, Addr, Port,
                  utp_proto:encode(

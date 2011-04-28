@@ -12,8 +12,21 @@ Haphazard TODO list of things that needs attention:
    To make the window going:
    DONE ; Whenever we send out a packet, calculate the current window and
      stamp it into the packet
-   ; Figure out how to set the advertised window on outgoing packets.
+   DONE ; Figure out how to set the advertised window on outgoing packets.
+   DONE ; Set window on outgoing advertised packets.
 
    ; Only send packets up to the window size.
+   ; Figure out how to do this.
+     It requires us to make a calculation based on the advertised
+     window from the other end. When this is properly updated, we must
+     calculate how many packets there are currently fitting into the
+     window, and only send this amount to the other end.
+
+   ; Handle the special case of a zero packet window. It is a quite
+     important special-case because you should only open up the window
+     again, if a full packet can be injected in-flight. Otherwise, you
+     must let the other end keep processing stuff.
+
+
 
 

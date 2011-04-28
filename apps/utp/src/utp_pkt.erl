@@ -29,8 +29,8 @@
 %% DEFINES
 %% ----------------------------------------------------------------------
 
-%% The default RecvBuf size: 200K
--define(OPT_RECV_BUF, 200 * 1024).
+%% The default RecvBuf size: 8K
+-define(OPT_RECV_BUF, 8192).
 -define(PACKET_SIZE, 350).
 -define(OPT_SEND_BUF, ?OUTGOING_BUFFER_MAX_SIZE * ?PACKET_SIZE).
 -define(ZERO_WINDOW_DELAY, 15*1000).
@@ -148,7 +148,7 @@ mk_random_seq_no() ->
 
 send_fin(SockInfo,
          #pkt_buf { seq_no = SeqNo,
-                    next_expected_seq_no = AckNo }) ->
+                    next_expected_seq_no = AckNo } = Buf) ->
     %% @todo There is something with timers in the original code. Shouldn't be here, but in the
     %% caller, probably.
     FinPacket = #packet { ty = st_fin,
@@ -156,19 +156,21 @@ send_fin(SockInfo,
                           ack_no = AckNo-1,
                           extension = []
                         },
-    ok = utp_socket:send_pkt(SockInfo, FinPacket).
+    Win = advertised_window(Buf),
+    ok = utp_socket:send_pkt(Win, SockInfo, FinPacket).
 
 send_ack(SockInfo,
          #pkt_buf { seq_no = SeqNo,
                     next_expected_seq_no = AckNo
-                  }  ) ->
+                  } = Buf) ->
     %% @todo Send out an ack message here
     AckPacket = #packet { ty = st_state,
                           seq_no = SeqNo-1, % @todo Is this right?
                           ack_no = AckNo-1,
                           extension = []
                         },
-    ok = utp_socket:send_pkt(SockInfo, AckPacket).
+    Win = advertised_window(Buf),
+    ok = utp_socket:send_pkt(Win, SockInfo, AckPacket).
 
 
 bit16(N) ->
@@ -429,7 +431,8 @@ transmit_packet(Bin,
                   ack_no  = AckNo-1,
                   extension = [],
                   payload = Bin },
-    ok = utp_socket:send_pkt(SockInfo, P),
+    Win = advertised_window(Buf),
+    ok = utp_socket:send_pkt(Win, SockInfo, P),
     Wrap = #pkt_wrap { packet = P,
                        transmissions = 0,
                        need_resend = false },

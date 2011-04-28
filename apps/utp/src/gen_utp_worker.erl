@@ -319,7 +319,8 @@ idle(connect, From, State = #state { sock_info = SockInfo,
 			  ack_no = 0,
 			  extension = ?SYN_EXTS
 			}, % Rest are defaults
-    ok = utp_socket:send_pkt(N_SockInfo, SynPacket, Conn_id_recv),
+    Win = utp_pkt:advertised_window(PktBuf),
+    ok = utp_socket:send_pkt(Win, N_SockInfo, SynPacket, Conn_id_recv),
     {next_state, syn_sent, State#state {
                              sock_info = N_SockInfo,
                              syn_timeout = TRef,
@@ -342,7 +343,8 @@ idle({accept, SYN}, _From, #state { sock_info = SockInfo,
 			  ack_no = AckNo,
 			  extension = ?SYN_EXTS
 			},
-    ok = utp_socket:send_pkt(N_SockInfo, AckPacket),
+    Win = utp_pkt:advertised_window(PktBuf),
+    ok = utp_socket:send_pkt(Win, N_SockInfo, AckPacket),
     {reply, ok, connected, State#state { sock_info = N_SockInfo,
                                          pkt_buf = utp_pkt:init_ackno(
                                                      utp_pkt:init_seqno(PktBuf, SeqNo + 1),
