@@ -14,6 +14,7 @@
 	 mk_random_seq_no/0,
 	 send_fin/2,
          send_ack/2,
+         handle_send_ack/3,
 	 handle_packet/5,
 	 buffer_dequeue/1,
 	 buffer_putback/2,
@@ -141,6 +142,8 @@ mk_random_seq_no() ->
 %% SEND SPECIFIC PACKET TYPES
 %% ----------------------------------------------------------------------
 
+%% @doc Toss out an ACK packet on the Socket.
+%% @end
 send_ack(SockInfo,
          #pkt_buf { seq_no = SeqNo,
                     next_expected_seq_no = AckNo
@@ -154,6 +157,11 @@ send_ack(SockInfo,
     Win = advertised_window(Buf),
     ok = utp_socket:send_pkt(Win, SockInfo, AckPacket).
 
+%% @doc Toss out a FIN packet on the Socket.
+%% @todo Reconsider this. It may be it should be a normally streamed pkt
+%%       rather than this variant where we send a special packet with
+%%       FIN set.
+%% @end
 send_fin(SockInfo,
          #pkt_buf { seq_no = SeqNo,
                     next_expected_seq_no = AckNo } = Buf) ->
@@ -166,6 +174,16 @@ send_fin(SockInfo,
                         },
     Win = advertised_window(Buf),
     ok = utp_socket:send_pkt(Win, SockInfo, FinPacket).
+
+%% @doc Consider if we should send out an ACK and do it if so
+%% @end
+handle_send_ack(SockInfo, PktBuf, Messages) ->
+    case proplists:get_value(send_ack, Messages) of
+        undefined ->
+            ok;
+        true ->
+            send_ack(SockInfo, PktBuf)
+    end.
 
 %% RECEIVE PATH
 %% ----------------------------------------------------------------------
@@ -404,6 +422,57 @@ handle_window_size(0, #pkt_window{} = PKI) ->
 handle_window_size(WindowSize, #pkt_window {} = PKI) ->
     PKI#pkt_window { peer_advertised_window = WindowSize }.
 
+%% PACKET TRANSMISSION
+%% ----------------------------------------------------------------------
+last_recv_window(#pkt_buf { opt_recv_buf_sz = RSz },
+                 ProcQueue) ->
+    BufSize = utp_process:bytes_in_recv_buffer(ProcQueue),
+    case RSz - BufSize of
+        K when K > 0 -> K;
+        _Otherwise   -> 0
+    end.
+
+fill_packets(Bytes, Buf, ProcQ) ->
+    TxQ = queue:new(),
+    {TxQueue, ProcQ2} =  fill_from_proc_queue(Bytes,
+                                              Buf#pkt_buf.pkt_size,
+                                              TxQ,
+                                              ProcQ),
+    {TxQueue, ProcQ2}.
+
+fill_from_proc_queue(0, _Sz, Q, Proc) ->
+    {Q, Proc};
+fill_from_proc_queue(N, Sz, Q, Proc) when Sz =< N ->
+    case utp_process:fill_via_send_queue(Sz, Proc) of
+        {filled, Bin, Proc1} ->
+            fill_from_proc_queue(N - Sz, Sz, queue:in(Bin, Q), Proc1);
+        {partial, Bin, Proc1} ->
+            {queue:in(Bin, Q), Proc1}
+    end.
+
+transmit_queue(Q, WindowSize, Buf, SockInfo) ->
+    {R, NQ} = queue:out(Q),
+    case R of
+        empty ->
+            Buf;
+        {value, Data} ->
+            NewBuf = transmit_packet(Data, WindowSize, Buf, SockInfo),
+            transmit_queue(NQ, WindowSize, NewBuf, SockInfo)
+    end.
+
+fill_window(SockInfo, ProcQueue, PktWindow, PktBuf) ->
+    FreeInWindow = bytes_free(PktBuf, PktWindow),
+    %% Fill a queue of stuff to transmit
+    {TxQueue, NProcQueue} = fill_packets(FreeInWindow,
+                                         PktBuf,
+                                         ProcQueue),
+
+    WindowSize = last_recv_window(PktBuf, NProcQueue),
+    %% Send out the queue of packets to transmit
+    NBuf1 = transmit_queue(TxQueue, WindowSize, PktBuf, SockInfo),
+    %% Eventually shove the Nagled packet in the tail
+    {ok, NBuf1, NProcQueue}.
+
 
 %% INTERNAL FUNCTIONS
 %% ----------------------------------------------------------------------
@@ -431,6 +500,7 @@ advertised_window(#pkt_buf { recv_buf = Q,
 
 payload_size(#pkt_wrap { packet = Packet }) ->
     byte_size(Packet#packet.payload).
+
 
 inflight_bytes(#pkt_buf{ retransmission_queue = [] }) ->
     buffer_empty;
@@ -476,24 +546,6 @@ buffer_dequeue(#pkt_buf { recv_buf = Q } = Buf) ->
     end.
 
 
-fill_packets(Bytes, Buf, ProcQ) ->
-    TxQ = queue:new(),
-    {TxQueue, ProcQ2} =  fill_from_proc_queue(Bytes,
-                                              Buf#pkt_buf.pkt_size,
-                                              TxQ,
-                                              ProcQ),
-    {TxQueue, ProcQ2}.
-
-fill_from_proc_queue(0, _Sz, Q, Proc) ->
-    {Q, Proc};
-fill_from_proc_queue(N, Sz, Q, Proc) when Sz =< N ->
-    case utp_process:fill_via_send_queue(Sz, Proc) of
-        {filled, Bin, Proc1} ->
-            fill_from_proc_queue(N - Sz, Sz, queue:in(Bin, Q), Proc1);
-        {partial, Bin, Proc1} ->
-            {queue:in(Bin, Q), Proc1}
-    end.
-
 transmit_packet(Bin,
                 WindowSize,
                 #pkt_buf { seq_no = SeqNo,
@@ -515,37 +567,6 @@ transmit_packet(Bin,
                   retransmission_queue = [Wrap | RetransQueue]
                 }.
 
-transmit_queue(Q, WindowSize, Buf, SockInfo) ->
-    {R, NQ} = queue:out(Q),
-    case R of
-        empty ->
-            Buf;
-        {value, Data} ->
-            NewBuf = transmit_packet(Data, WindowSize, Buf, SockInfo),
-            transmit_queue(NQ, WindowSize, NewBuf, SockInfo)
-    end.
-
-fill_window(SockInfo, ProcQueue, PktWindow, PktBuf) ->
-    FreeInWindow = bytes_free(PktBuf, PktWindow),
-    %% Fill a queue of stuff to transmit
-    {TxQueue, NProcQueue} = fill_packets(FreeInWindow,
-                                         PktBuf,
-                                         ProcQueue),
-
-    WindowSize = last_recv_window(PktBuf, NProcQueue),
-    %% Send out the queue of packets to transmit
-    NBuf1 = transmit_queue(TxQueue, WindowSize, PktBuf, SockInfo),
-    %% Eventually shove the Nagled packet in the tail
-    {ok, NBuf1, NProcQueue}.
-
-last_recv_window(#pkt_buf { opt_recv_buf_sz = RSz },
-                 ProcQueue) ->
-    BufSize = utp_process:bytes_in_recv_buffer(ProcQueue),
-    case RSz - BufSize of
-        K when K > 0 -> K;
-        _Otherwise   -> 0
-    end.
-
 zerowindow_timeout(TRef, #pkt_window { peer_advertised_window = 0,
                                      zero_window_timeout = {set, TRef}} = PKI) ->
                    PKI#pkt_window { peer_advertised_window = packet_size(PKI),
@@ -554,5 +575,3 @@ zerowindow_timeout(TRef,  #pkt_window { zero_window_timeout = {set, TRef}} = PKI
     PKI#pkt_window { zero_window_timeout = none };
 zerowindow_timeout(_TRef,  #pkt_window { zero_window_timeout = {set, _TRef1}} = PKI) ->
     PKI.
-
-
