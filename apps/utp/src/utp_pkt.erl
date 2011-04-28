@@ -111,12 +111,8 @@
 %% API
 %% ----------------------------------------------------------------------
 
-max_window_send(#pkt_buf { opt_snd_buf_sz = SendBufSz },
-                #pkt_window { peer_advertised_window = AdvertisedWindow,
-                            max_send_window = MaxSendWindow }) ->
-    lists:min([SendBufSz, AdvertisedWindow, MaxSendWindow]).
-
-
+%% PKT BUF INITIALIZATION
+%% ----------------------------------------------------------------------
 -spec mk() -> t().
 mk() ->
     #pkt_window { }.
@@ -133,31 +129,17 @@ init_seqno(#pkt_buf {} = PBuf, SeqNo) ->
 init_ackno(#pkt_buf{} = PBuf, AckNo) ->
     PBuf#pkt_buf { next_expected_seq_no = AckNo }.
 
--ifdef(NOTUSED).
-seqno(#pkt_wrap { packet = #packet { seq_no = S} }) ->
-    S.
--endif().
-
 packet_size(_Socket) ->
     %% @todo FIX get_packet_size/1 to actually work!
-    1500.
+    1000.
 
 mk_random_seq_no() ->
     <<N:16/integer>> = crypto:rand_bytes(2),
     N.
 
-send_fin(SockInfo,
-         #pkt_buf { seq_no = SeqNo,
-                    next_expected_seq_no = AckNo } = Buf) ->
-    %% @todo There is something with timers in the original code. Shouldn't be here, but in the
-    %% caller, probably.
-    FinPacket = #packet { ty = st_fin,
-                          seq_no = SeqNo-1, % @todo Is this right?
-                          ack_no = AckNo-1,
-                          extension = []
-                        },
-    Win = advertised_window(Buf),
-    ok = utp_socket:send_pkt(Win, SockInfo, FinPacket).
+
+%% SEND SPECIFIC PACKET TYPES
+%% ----------------------------------------------------------------------
 
 send_ack(SockInfo,
          #pkt_buf { seq_no = SeqNo,
@@ -172,11 +154,26 @@ send_ack(SockInfo,
     Win = advertised_window(Buf),
     ok = utp_socket:send_pkt(Win, SockInfo, AckPacket).
 
+send_fin(SockInfo,
+         #pkt_buf { seq_no = SeqNo,
+                    next_expected_seq_no = AckNo } = Buf) ->
+    %% @todo There is something with timers in the original
+    %% code. Shouldn't be here, but in the caller, probably.
+    FinPacket = #packet { ty = st_fin,
+                          seq_no = SeqNo-1, % @todo Is this right?
+                          ack_no = AckNo-1,
+                          extension = []
+                        },
+    Win = advertised_window(Buf),
+    ok = utp_socket:send_pkt(Win, SockInfo, FinPacket).
 
-bit16(N) ->
-    N band 16#FFFF.
+%% RECEIVE PATH
+%% ----------------------------------------------------------------------
 
-%% Given a Sequence Number in a packet, validate it
+%% @doc Given a Sequence Number in a packet, validate it
+%% The `SeqNo' given is validated with respect to the current state of
+%% the connection.
+%% @end
 validate_seq_no(SeqNo, PB) ->
     case bit16(SeqNo - PB#pkt_buf.next_expected_seq_no) of
         SeqAhead when SeqAhead >= ?REORDER_BUFFER_SIZE ->
@@ -185,6 +182,8 @@ validate_seq_no(SeqNo, PB) ->
             {ok, SeqAhead}
     end.
 
+%% @doc Assert that the current state is valid for Data packets
+%% @end
 -spec valid_state(atom()) -> ok.
 valid_state(State) ->
     case State of
@@ -209,7 +208,13 @@ consider_send_ack(#pkt_buf { reorder_buf = RB1,
   when RB1 =/= RB2 orelse Seq1 =/= Seq2 ->
     [send_ack];
 consider_send_ack(_, _) -> [].
-                             
+       
+%% @doc Update the receive buffer with Payload
+%% This function will update the receive buffer with some incoming payload.
+%% It will also return back to us a message if we should ack the incoming
+%% packet. As such, this function wraps some lower-level operations,
+%% with respect to incoming payload.
+%% @end                      
 -spec handle_receive_buffer(integer(), binary(), #pkt_buf{}) ->
                                    {#pkt_buf{}, messages()}.
 handle_receive_buffer(SeqNo, Payload, PacketBuffer) ->
@@ -219,22 +224,12 @@ handle_receive_buffer(SeqNo, Payload, PacketBuffer) ->
         #pkt_buf{} = PB -> {PB, consider_send_ack(PacketBuffer, PB)}
     end.
 
-%% @doc Return the size of the receive buffer
-%% @end
-recv_buf_size(Q) ->
-    L = queue:to_list(Q),
-    lists:sum([byte_size(Payload) || Payload <- L]).
 
-%% @doc Calculate the advertised window to use
+%% @doc Handle incoming Payload in datagrams
+%% A Datagram came in with SeqNo and Payload. This Payload and SeqNo
+%% updates the PacketBuffer if the SeqNo is valid for the current
+%% state of the connection.
 %% @end
-advertised_window(#pkt_buf { recv_buf = Q,
-                             opt_recv_buf_sz = Sz }) ->
-    FillValue = recv_buf_size(Q),
-    case Sz - FillValue of
-        N when N >= 0 ->
-            N
-    end.
-
 handle_incoming_datagram_payload(SeqNo, Payload, PacketBuffer) ->
     %% We got a packet in with a seq_no and some things to ack.
     %% Validate the sequence number.
@@ -248,7 +243,104 @@ handle_incoming_datagram_payload(SeqNo, Payload, PacketBuffer) ->
     %% Handle the Payload by Dumping it into the packet buffer at the right point
     %% Returns a new PacketBuffer, and a list of Messages for the upper layer
     {_, _} = handle_receive_buffer(SeqNo, Payload, PacketBuffer).
-    
+
+
+%% @doc Update the Receive Buffer with Payload
+%% There are essentially two cases: Either the packet is the next
+%% packet in sequence, so we can simply push it directly to the
+%% receive buffer right away. Then we can check the reorder buffer to
+%% see if we can satisfy more packets from it. If it is not in
+%% sequence, it should go into the reorder buffer in the right spot.
+%% @end
+update_recv_buffer(_SeqNo, <<>>, PB) -> PB;
+update_recv_buffer(SeqNo, Payload, #pkt_buf { next_expected_seq_no = SeqNo } = PB) ->
+    %% This is the next expected packet, yay!
+    error_logger:info_report([got_expected, SeqNo, bit16(SeqNo+1)]),
+    N_PB = enqueue_payload(Payload, PB),
+    satisfy_from_reorder_buffer(
+      N_PB#pkt_buf { next_expected_seq_no = bit16(SeqNo+1) });
+update_recv_buffer(SeqNo, Payload, PB) when is_integer(SeqNo) ->
+    reorder_buffer_in(SeqNo, Payload, PB).
+
+%% @doc Try to satisfy the next_expected_seq_no directly from the reorder buffer.
+%% @end
+satisfy_from_reorder_buffer(#pkt_buf { reorder_buf = [] } = PB) ->
+    PB;
+satisfy_from_reorder_buffer(#pkt_buf { next_expected_seq_no = AckNo,
+				       reorder_buf = [{AckNo, PL} | R]} = PB) ->
+    N_PB = enqueue_payload(PL, PB),
+    satisfy_from_reorder_buffer(
+      N_PB#pkt_buf { next_expected_seq_no = bit16(AckNo+1),
+                     reorder_buf = R});
+satisfy_from_reorder_buffer(#pkt_buf { } = PB) ->
+    PB.
+
+%% @doc Enter the packet into the reorder buffer, watching out for duplicates
+%% @end
+reorder_buffer_in(SeqNo, Payload, #pkt_buf { reorder_buf = OD } = PB) ->
+    case orddict:is_key(SeqNo, OD) of
+	true -> duplicate;
+	false -> PB#pkt_buf { reorder_buf = orddict:store(SeqNo, Payload, OD) }
+    end.
+
+%% SEND PATH
+%% ----------------------------------------------------------------------
+%% @todo There is no mention of the advertised window here. That is a bug.
+update_send_buffer(AckNo,
+                   #pkt_buf { seq_no = BufSeqNo } = PB) ->
+    WindowStart = bit16(BufSeqNo - send_window_count(PB)),
+    {ok, AcksAhead, Acks} = handle_ack_no(AckNo, WindowStart, PB),
+    {_Acked, PB1} = update_send_buffer1(Acks, WindowStart, PB),
+    %% @todo SACK!
+    {ok, AcksAhead, PB1}.
+
+update_send_buffer1(0, _WindowStart, PB) ->
+    {0, PB}; %% Essentially a duplicate ACK, but we don't do anything about it
+update_send_buffer1(AckAhead, WindowStart,
+		   #pkt_buf { retransmission_queue = RQ } = PB) ->
+    {AckedPackets, N_RQ} = lists:partition(
+			     fun(#pkt_wrap {
+				    packet = Pkt }) ->
+				     SeqNo = Pkt#packet.seq_no,
+				     Dist = bit16(SeqNo - WindowStart),
+				     Dist =< AckAhead
+			     end,
+			     RQ),
+    %% @todo This is a placeholder for later when we need LEDBAT congestion control
+    _AckedBytes = sum_packets(AckedPackets),
+    {length(AckedPackets), PB#pkt_buf { retransmission_queue = N_RQ }}.
+
+%% @doc Calculate the sum of payload bytes for a list of `#pkt_wrap{}' records.
+%% @end
+sum_packets(List) ->
+    Ps = [byte_size(Pkt#packet.payload) || #pkt_wrap { packet = Pkt } <- List],
+    lists:sum(Ps).
+
+handle_ack_no(AckNo, WindowStart, PacketBuffer) ->
+    AckAhead = bit16(AckNo - WindowStart),
+    %% @todo DANGER, send_window_count may be old and not used
+    case AckAhead > send_window_count(PacketBuffer) of
+        true ->
+            %% The ack number is old, so do essentially nothing in the next part
+            {ok, AckAhead, 0};
+        false ->
+            %% -1 here is needed because #pkt_buf.seq_no is one
+            %% ahead It is the next packet to send out, so it
+            %% is one beyond the top end of the window
+            {ok, AckAhead, AckAhead - 1}
+    end.
+
+
+%% INCOMING PACKETS
+%% ----------------------------------------------------------------------
+
+%% @doc Handle an incoming Packet
+%% We proceed to handle an incoming packet by first seeing if it has
+%% payload we are interested in, and if that payload advances our
+%% buffers in any way. Then, afterwards, we handle the AckNo and
+%% Advertised window of the packet to eventually send out more on the
+%% socket towards the other end.
+%% @end    
 handle_packet(_CurrentTimeMs,
 	      State,
 	      #packet { seq_no = SeqNo,
@@ -258,15 +350,17 @@ handle_packet(_CurrentTimeMs,
 			ty = Type } = _Packet,
 	      PktWindow,
 	      PacketBuffer) when PktWindow =/= undefined ->
-    %% Assert that we are currently in a state eligible for receiving datagrams
-    %% of this type. This assertion ought not to be triggered by our code.
+    %% Assert that we are currently in a state eligible for receiving
+    %% datagrams of this type. This assertion ought not to be
+    %% triggered by our code.
     ok = valid_state(State),
 
     %% Update the state by the receiving payload stuff.
     {N_PacketBuffer1, Messages1} =
         handle_incoming_datagram_payload(SeqNo, Payload, PacketBuffer),
 
-    %% The Packet may have ACK'ed stuff from our send buffer. Update the send buffer accordingly
+    %% The Packet may have ACK'ed stuff from our send buffer. Update
+    %% the send buffer accordingly
     {ok, AcksAhead, N_PB1} = update_send_buffer(AckNo, N_PacketBuffer1),
 
     %% Some packets set a specific state we should handle in our end
@@ -302,89 +396,6 @@ handle_window_size(0, #pkt_window{} = PKI) ->
                      peer_advertised_window = 0};
 handle_window_size(WindowSize, #pkt_window {} = PKI) ->
     PKI#pkt_window { peer_advertised_window = WindowSize }.
-
-handle_ack_no(AckNo, WindowStart, PacketBuffer) ->
-    AckAhead = bit16(AckNo - WindowStart),
-    %% @todo DANGER, send_window_count may be old and not used
-    case AckAhead > send_window_count(PacketBuffer) of
-        true ->
-            %% The ack number is old, so do essentially nothing in the next part
-            {ok, AckAhead, 0};
-        false ->
-            %% -1 here is needed because #pkt_buf.seq_no is one
-            %% ahead It is the next packet to send out, so it
-            %% is one beyond the top end of the window
-            {ok, AckAhead, AckAhead - 1}
-    end.
-
-%% @todo There is no mention of the advertised window here. That is a bug.
-update_send_buffer(AckNo,
-                   #pkt_buf { seq_no = BufSeqNo } = PB) ->
-    WindowStart = bit16(BufSeqNo - send_window_count(PB)),
-    {ok, AcksAhead, Acks} = handle_ack_no(AckNo, WindowStart, PB),
-    {_Acked, PB1} = update_send_buffer1(Acks, WindowStart, PB),
-    %% @todo SACK!
-    {ok, AcksAhead, PB1}.
-
-
--ifdef(NOTUSED).
-retransmit_q_find(_SeqNo, []) ->
-    not_found;
-retransmit_q_find(SeqNo, [PW|R]) ->
-    case seqno(PW) == SeqNo of
-	true ->
-	    {value, PW};
-	false ->
-	    retransmit_q_find(SeqNo, R)
-    end.
--endif().
-
-update_send_buffer1(0, _WindowStart, PB) ->
-    {0, PB}; %% Essentially a duplicate ACK, but we don't do anything about it
-update_send_buffer1(AckAhead, WindowStart,
-		   #pkt_buf { retransmission_queue = RQ } = PB) ->
-    {AckedPackets, N_RQ} = lists:partition(
-			     fun(#pkt_wrap {
-				    packet = Pkt }) ->
-				     SeqNo = Pkt#packet.seq_no,
-				     Dist = bit16(SeqNo - WindowStart),
-				     Dist =< AckAhead
-			     end,
-			     RQ),
-    %% @todo This is a placeholder for later when we need LEDBAT congestion control
-    _AckedBytes = sum_packets(AckedPackets),
-    {length(AckedPackets), PB#pkt_buf { retransmission_queue = N_RQ }}.
-
-sum_packets(List) ->
-    Ps = [byte_size(Pkt#packet.payload) || #pkt_wrap { packet = Pkt } <- List],
-    lists:sum(Ps).
-
-update_recv_buffer(_SeqNo, <<>>, PB) -> PB;
-update_recv_buffer(SeqNo, Payload, #pkt_buf { next_expected_seq_no = SeqNo } = PB) ->
-    %% This is the next expected packet, yay!
-    error_logger:info_report([got_expected, SeqNo, bit16(SeqNo+1)]),
-    N_PB = enqueue_payload(Payload, PB),
-    satisfy_from_reorder_buffer(
-      N_PB#pkt_buf { next_expected_seq_no = bit16(SeqNo+1) });
-update_recv_buffer(SeqNo, Payload, PB) when is_integer(SeqNo) ->
-    reorder_buffer_in(SeqNo, Payload, PB).
-
-satisfy_from_reorder_buffer(#pkt_buf { reorder_buf = [] } = PB) ->
-    PB;
-satisfy_from_reorder_buffer(#pkt_buf { next_expected_seq_no = AckNo,
-				       reorder_buf = [{AckNo, PL} | R]} = PB) ->
-    N_PB = enqueue_payload(PL, PB),
-    satisfy_from_reorder_buffer(
-      N_PB#pkt_buf { next_expected_seq_no = bit16(AckNo+1),
-                     reorder_buf = R});
-satisfy_from_reorder_buffer(#pkt_buf { } = PB) ->
-    PB.
-
-reorder_buffer_in(SeqNo, Payload, #pkt_buf { reorder_buf = OD } = PB) ->
-    case orddict:is_key(SeqNo, OD) of
-	true -> duplicate;
-	false -> PB#pkt_buf { reorder_buf = orddict:store(SeqNo, Payload, OD) }
-    end.
 
 enqueue_payload(Payload, #pkt_buf { recv_buf = Q } = PB) ->
     PB#pkt_buf { recv_buf = queue:in(Payload, Q) }.
@@ -480,17 +491,32 @@ zerowindow_timeout(TRef,  #pkt_window { zero_window_timeout = {set, TRef}} = PKI
 zerowindow_timeout(_TRef,  #pkt_window { zero_window_timeout = {set, _TRef1}} = PKI) ->
     PKI.
 
-bytes_free(PktBuf, PktWindow) ->
-    MaxSend = max_window_send(PktBuf, PktWindow),
-    case inflight_bytes(PktBuf) of
-        buffer_full ->
-            0;
-        buffer_empty ->
-            MaxSend;
-        {ok, Inflight} when Inflight =< MaxSend ->
-            MaxSend - Inflight;
-        {ok, _Inflight} ->
-            0
+
+%% INTERNAL FUNCTIONS
+%% ----------------------------------------------------------------------
+
+%% @doc `bit16(Expr)' performs `Expr' modulo 65536
+%% @end
+bit16(N) ->
+    N band 16#FFFF.
+
+send_window_count(#pkt_buf { retransmission_queue = RQ }) ->
+    length(RQ).
+
+%% @doc Return the size of the receive buffer
+%% @end
+recv_buf_size(Q) ->
+    L = queue:to_list(Q),
+    lists:sum([byte_size(Payload) || Payload <- L]).
+
+%% @doc Calculate the advertised window to use
+%% @end
+advertised_window(#pkt_buf { recv_buf = Q,
+                             opt_recv_buf_sz = Sz }) ->
+    FillValue = recv_buf_size(Q),
+    case Sz - FillValue of
+        N when N >= 0 ->
+            N
     end.
 
 payload_size(#pkt_wrap { packet = Packet }) ->
@@ -506,6 +532,33 @@ inflight_bytes(#pkt_buf{ retransmission_queue = Q }) ->
             {ok, Sum}
     end.
 
-send_window_count(#pkt_buf { retransmission_queue = RQ }) ->
-    length(RQ).
+bytes_free(PktBuf, PktWindow) ->
+    MaxSend = max_window_send(PktBuf, PktWindow),
+    case inflight_bytes(PktBuf) of
+        buffer_full ->
+            0;
+        buffer_empty ->
+            MaxSend;
+        {ok, Inflight} when Inflight =< MaxSend ->
+            MaxSend - Inflight;
+        {ok, _Inflight} ->
+            0
+    end.
+
+max_window_send(#pkt_buf { opt_snd_buf_sz = SendBufSz },
+                #pkt_window { peer_advertised_window = AdvertisedWindow,
+                            max_send_window = MaxSendWindow }) ->
+    lists:min([SendBufSz, AdvertisedWindow, MaxSendWindow]).
+
+
+
+
+
+
+
+
+
+
+
+
 
