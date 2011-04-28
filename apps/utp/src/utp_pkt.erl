@@ -424,7 +424,12 @@ handle_window_size(WindowSize, #pkt_window {} = PKI) ->
 
 %% PACKET TRANSMISSION
 %% ----------------------------------------------------------------------
-last_recv_window(#pkt_buf { opt_recv_buf_sz = RSz },
+
+%% @doc Return the Window Size of bytes we are allowed to send.
+%% @todo This function does not take the advertised peer window into account,
+%%       but it should.
+%% @end
+window_size(#pkt_buf { opt_recv_buf_sz = RSz },
                  ProcQueue) ->
     BufSize = utp_process:bytes_in_recv_buffer(ProcQueue),
     case RSz - BufSize of
@@ -432,14 +437,19 @@ last_recv_window(#pkt_buf { opt_recv_buf_sz = RSz },
         _Otherwise   -> 0
     end.
 
-fill_packets(Bytes, Buf, ProcQ) ->
+%% @doc Build up a queue of payload to send
+%% This function builds up to `N' packets to send out -- each packet up
+%% to the packet size. The functions satisfies data from the
+%% process_queue of processes waiting to get data sent. It returns an
+%% updates ProcessQueue record and a `queue' of the packets that are
+%% going out.
+%% @end
+fill_from_proc_queue(N, Buf, ProcQ) ->
     TxQ = queue:new(),
-    {TxQueue, ProcQ2} =  fill_from_proc_queue(Bytes,
-                                              Buf#pkt_buf.pkt_size,
-                                              TxQ,
-                                              ProcQ),
-    {TxQueue, ProcQ2}.
+    fill_from_proc_queue(N, Buf#pkt_buf.pkt_size, TxQ, ProcQ).
 
+%% @doc Worker for fill_from_proc_queue/3
+%% @end
 fill_from_proc_queue(0, _Sz, Q, Proc) ->
     {Q, Proc};
 fill_from_proc_queue(N, Sz, Q, Proc) when Sz =< N ->
@@ -450,24 +460,25 @@ fill_from_proc_queue(N, Sz, Q, Proc) when Sz =< N ->
             {queue:in(Bin, Q), Proc1}
     end.
 
+%% @doc Given a queue of things to send, transmit packets from it
+%% @end
 transmit_queue(Q, WindowSize, Buf, SockInfo) ->
-    {R, NQ} = queue:out(Q),
-    case R of
-        empty ->
-            Buf;
-        {value, Data} ->
-            NewBuf = transmit_packet(Data, WindowSize, Buf, SockInfo),
-            transmit_queue(NQ, WindowSize, NewBuf, SockInfo)
-    end.
+    L = queue:to_list(Q),
+    lists:foldl(fun(Data, B) ->
+                        transmit_packet(Data, WindowSize, B, SockInfo)
+                end,
+                Buf,
+                L).
 
+%% @doc Fill up the Window with packets in the outgoing direction
+%% @end
 fill_window(SockInfo, ProcQueue, PktWindow, PktBuf) ->
     FreeInWindow = bytes_free(PktBuf, PktWindow),
     %% Fill a queue of stuff to transmit
-    {TxQueue, NProcQueue} = fill_packets(FreeInWindow,
-                                         PktBuf,
-                                         ProcQueue),
+    {TxQueue, NProcQueue} =
+        fill_from_proc_queue(FreeInWindow, PktBuf, ProcQueue),
 
-    WindowSize = last_recv_window(PktBuf, NProcQueue),
+    WindowSize = window_size(PktBuf, NProcQueue),
     %% Send out the queue of packets to transmit
     NBuf1 = transmit_queue(TxQueue, WindowSize, PktBuf, SockInfo),
     %% Eventually shove the Nagled packet in the tail
