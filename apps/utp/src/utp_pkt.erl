@@ -285,50 +285,57 @@ reorder_buffer_in(SeqNo, Payload, #pkt_buf { reorder_buf = OD } = PB) ->
 
 %% SEND PATH
 %% ----------------------------------------------------------------------
+
 %% @todo There is no mention of the advertised window here. That is a bug.
 update_send_buffer(AckNo,
                    #pkt_buf { seq_no = BufSeqNo } = PB) ->
     WindowStart = bit16(BufSeqNo - send_window_count(PB)),
-    {ok, AcksAhead, Acks} = handle_ack_no(AckNo, WindowStart, PB),
-    {_Acked, PB1} = update_send_buffer1(Acks, WindowStart, PB),
-    %% @todo SACK!
-    {ok, AcksAhead, PB1}.
+    case view_ack_no(AckNo, WindowStart, PB) of
+        {ok, AcksAhead} ->
+            {_Acked, PB1} = prune_acked(AcksAhead, WindowStart, PB),
+            %% @todo SACK!
+            {ok, AcksAhead, PB1}
+    end.
 
-update_send_buffer1(0, _WindowStart, PB) ->
-    {0, PB}; %% Essentially a duplicate ACK, but we don't do anything about it
-update_send_buffer1(AckAhead, WindowStart,
-		   #pkt_buf { retransmission_queue = RQ } = PB) ->
-    {AckedPackets, N_RQ} = lists:partition(
-			     fun(#pkt_wrap {
-				    packet = Pkt }) ->
-				     SeqNo = Pkt#packet.seq_no,
-				     Dist = bit16(SeqNo - WindowStart),
-				     Dist =< AckAhead
-			     end,
-			     RQ),
-    %% @todo This is a placeholder for later when we need LEDBAT congestion control
-    _AckedBytes = sum_packets(AckedPackets),
-    {length(AckedPackets), PB#pkt_buf { retransmission_queue = N_RQ }}.
-
-%% @doc Calculate the sum of payload bytes for a list of `#pkt_wrap{}' records.
+%% @doc Prune the retransmission queue for ACK'ed packets.
+%% Prune out all packets from `WindowStart' and `AcksAhead' in. Return a new packet
+%% buffer where the retransmission queue has been updated.
+%% @todo All this AcksAhead business, why? We could as well just work directly on
+%%       the ack_no I think.
 %% @end
-sum_packets(List) ->
-    Ps = [byte_size(Pkt#packet.payload) || #pkt_wrap { packet = Pkt } <- List],
-    lists:sum(Ps).
+prune_acked(0, _, PB) -> {ok, 0, PB};
+prune_acked(AckAhead, WindowStart,
+            #pkt_buf { retransmission_queue = RQ } = PB) ->
+    {AckedPs, N_RQ} = lists:partition(
+                        fun(#pkt_wrap {
+                               packet = #packet { seq_no = SeqNo } }) ->
+                                Distance = bit16(SeqNo - WindowStart),
+                                Distance < AckAhead
+                        end,
+                        RQ),
+    {ok, length(AckedPs), PB#pkt_buf { retransmission_queue = N_RQ }}.
 
-handle_ack_no(AckNo, WindowStart, PacketBuffer) ->
+%% @doc View the state of the Ack
+%% Given the `AckNo' and when the `WindowStart' started, we scrutinize the Ack
+%% for correctness according to age. If the ACK is old, tell the caller.
+%% @end
+view_ack_no(AckNo, WindowStart, PacketBuffer) ->
     AckAhead = bit16(AckNo - WindowStart),
     %% @todo DANGER, send_window_count may be old and not used
     case AckAhead > send_window_count(PacketBuffer) of
         true ->
             %% The ack number is old, so do essentially nothing in the next part
-            {ok, AckAhead, 0};
+            {ack_is_old, AckAhead};
         false ->
             %% -1 here is needed because #pkt_buf.seq_no is one
             %% ahead It is the next packet to send out, so it
             %% is one beyond the top end of the window
-            {ok, AckAhead, AckAhead - 1}
+            {ok, AckAhead}
     end.
+
+send_window_count(#pkt_buf { retransmission_queue = RQ }) ->
+    length(RQ).
+
 
 
 %% INCOMING PACKETS
@@ -499,9 +506,6 @@ zerowindow_timeout(_TRef,  #pkt_window { zero_window_timeout = {set, _TRef1}} = 
 %% @end
 bit16(N) ->
     N band 16#FFFF.
-
-send_window_count(#pkt_buf { retransmission_queue = RQ }) ->
-    length(RQ).
 
 %% @doc Return the size of the receive buffer
 %% @end
