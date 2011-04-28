@@ -425,18 +425,6 @@ handle_window_size(WindowSize, #pkt_window {} = PKI) ->
 %% PACKET TRANSMISSION
 %% ----------------------------------------------------------------------
 
-%% @doc Return the Window Size of bytes we are allowed to send.
-%% @todo This function does not take the advertised peer window into account,
-%%       but it should.
-%% @end
-window_size(#pkt_buf { opt_recv_buf_sz = RSz },
-                 ProcQueue) ->
-    BufSize = utp_process:bytes_in_recv_buffer(ProcQueue),
-    case RSz - BufSize of
-        K when K > 0 -> K;
-        _Otherwise   -> 0
-    end.
-
 %% @doc Build up a queue of payload to send
 %% This function builds up to `N' packets to send out -- each packet up
 %% to the packet size. The functions satisfies data from the
@@ -473,14 +461,14 @@ transmit_queue(Q, WindowSize, Buf, SockInfo) ->
 %% @doc Fill up the Window with packets in the outgoing direction
 %% @end
 fill_window(SockInfo, ProcQueue, PktWindow, PktBuf) ->
-    FreeInWindow = bytes_free(PktBuf, PktWindow),
+    FreeInWindow = bytes_free_in_window(PktBuf, PktWindow),
     %% Fill a queue of stuff to transmit
     {TxQueue, NProcQueue} =
         fill_from_proc_queue(FreeInWindow, PktBuf, ProcQueue),
 
-    WindowSize = window_size(PktBuf, NProcQueue),
+    AdvWin = advertised_window(PktBuf),
     %% Send out the queue of packets to transmit
-    NBuf1 = transmit_queue(TxQueue, WindowSize, PktBuf, SockInfo),
+    NBuf1 = transmit_queue(TxQueue, AdvWin, PktBuf, SockInfo),
     %% Eventually shove the Nagled packet in the tail
     {ok, NBuf1, NProcQueue}.
 
@@ -523,7 +511,7 @@ inflight_bytes(#pkt_buf{ retransmission_queue = Q }) ->
             {ok, Sum}
     end.
 
-bytes_free(PktBuf, PktWindow) ->
+bytes_free_in_window(PktBuf, PktWindow) ->
     MaxSend = max_window_send(PktBuf, PktWindow),
     case inflight_bytes(PktBuf) of
         buffer_full ->
