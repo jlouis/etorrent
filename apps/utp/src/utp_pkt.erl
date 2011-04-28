@@ -292,7 +292,7 @@ update_send_buffer(AckNo,
     WindowStart = bit16(BufSeqNo - send_window_count(PB)),
     case view_ack_no(AckNo, WindowStart, PB) of
         {ok, AcksAhead} ->
-            {_Acked, PB1} = prune_acked(AcksAhead, WindowStart, PB),
+            {ok, Acked, PB1} = prune_acked(AcksAhead, WindowStart, PB),
             %% @todo SACK!
             {ok, AcksAhead, PB1}
     end.
@@ -404,6 +404,63 @@ handle_window_size(0, #pkt_window{} = PKI) ->
 handle_window_size(WindowSize, #pkt_window {} = PKI) ->
     PKI#pkt_window { peer_advertised_window = WindowSize }.
 
+
+%% INTERNAL FUNCTIONS
+%% ----------------------------------------------------------------------
+
+%% @doc `bit16(Expr)' performs `Expr' modulo 65536
+%% @end
+bit16(N) ->
+    N band 16#FFFF.
+
+%% @doc Return the size of the receive buffer
+%% @end
+recv_buf_size(Q) ->
+    L = queue:to_list(Q),
+    lists:sum([byte_size(Payload) || Payload <- L]).
+
+%% @doc Calculate the advertised window to use
+%% @end
+advertised_window(#pkt_buf { recv_buf = Q,
+                             opt_recv_buf_sz = Sz }) ->
+    FillValue = recv_buf_size(Q),
+    case Sz - FillValue of
+        N when N >= 0 ->
+            N
+    end.
+
+payload_size(#pkt_wrap { packet = Packet }) ->
+    byte_size(Packet#packet.payload).
+
+inflight_bytes(#pkt_buf{ retransmission_queue = [] }) ->
+    buffer_empty;
+inflight_bytes(#pkt_buf{ retransmission_queue = Q }) ->
+    case lists:sum([payload_size(Pkt) || Pkt <- Q]) of
+        Sum when Sum >= ?OUTGOING_BUFFER_MAX_SIZE - 1 ->
+            buffer_full;
+        Sum ->
+            {ok, Sum}
+    end.
+
+bytes_free(PktBuf, PktWindow) ->
+    MaxSend = max_window_send(PktBuf, PktWindow),
+    case inflight_bytes(PktBuf) of
+        buffer_full ->
+            0;
+        buffer_empty ->
+            MaxSend;
+        {ok, Inflight} when Inflight =< MaxSend ->
+            MaxSend - Inflight;
+        {ok, _Inflight} ->
+            0
+    end.
+
+max_window_send(#pkt_buf { opt_snd_buf_sz = SendBufSz },
+                #pkt_window { peer_advertised_window = AdvertisedWindow,
+                            max_send_window = MaxSendWindow }) ->
+    lists:min([SendBufSz, AdvertisedWindow, MaxSendWindow]).
+
+
 enqueue_payload(Payload, #pkt_buf { recv_buf = Q } = PB) ->
     PB#pkt_buf { recv_buf = queue:in(Payload, Q) }.
 
@@ -497,72 +554,5 @@ zerowindow_timeout(TRef,  #pkt_window { zero_window_timeout = {set, TRef}} = PKI
     PKI#pkt_window { zero_window_timeout = none };
 zerowindow_timeout(_TRef,  #pkt_window { zero_window_timeout = {set, _TRef1}} = PKI) ->
     PKI.
-
-
-%% INTERNAL FUNCTIONS
-%% ----------------------------------------------------------------------
-
-%% @doc `bit16(Expr)' performs `Expr' modulo 65536
-%% @end
-bit16(N) ->
-    N band 16#FFFF.
-
-%% @doc Return the size of the receive buffer
-%% @end
-recv_buf_size(Q) ->
-    L = queue:to_list(Q),
-    lists:sum([byte_size(Payload) || Payload <- L]).
-
-%% @doc Calculate the advertised window to use
-%% @end
-advertised_window(#pkt_buf { recv_buf = Q,
-                             opt_recv_buf_sz = Sz }) ->
-    FillValue = recv_buf_size(Q),
-    case Sz - FillValue of
-        N when N >= 0 ->
-            N
-    end.
-
-payload_size(#pkt_wrap { packet = Packet }) ->
-    byte_size(Packet#packet.payload).
-
-inflight_bytes(#pkt_buf{ retransmission_queue = [] }) ->
-    buffer_empty;
-inflight_bytes(#pkt_buf{ retransmission_queue = Q }) ->
-    case lists:sum([payload_size(Pkt) || Pkt <- Q]) of
-        Sum when Sum >= ?OUTGOING_BUFFER_MAX_SIZE - 1 ->
-            buffer_full;
-        Sum ->
-            {ok, Sum}
-    end.
-
-bytes_free(PktBuf, PktWindow) ->
-    MaxSend = max_window_send(PktBuf, PktWindow),
-    case inflight_bytes(PktBuf) of
-        buffer_full ->
-            0;
-        buffer_empty ->
-            MaxSend;
-        {ok, Inflight} when Inflight =< MaxSend ->
-            MaxSend - Inflight;
-        {ok, _Inflight} ->
-            0
-    end.
-
-max_window_send(#pkt_buf { opt_snd_buf_sz = SendBufSz },
-                #pkt_window { peer_advertised_window = AdvertisedWindow,
-                            max_send_window = MaxSendWindow }) ->
-    lists:min([SendBufSz, AdvertisedWindow, MaxSendWindow]).
-
-
-
-
-
-
-
-
-
-
-
 
 
