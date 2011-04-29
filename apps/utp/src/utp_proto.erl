@@ -63,38 +63,45 @@ encode(#packet { ty = Type,
 -spec decode(binary()) -> {packet(), timestamp(), timestamp(), timestamp()}.
 decode(Packet) ->
     TS = current_time_us(),
-    case Packet of
-	<<1:4/integer, Type:4/integer, Extension:8/integer, ConnectionId:16/integer,
-	  TimeStamp:32/integer,
-	  TimeStampdiff:32/integer,
-	  WindowSize:32/integer,
-	  SeqNo:16/integer,
-          AckNo:16/integer,
-          ExtPayload/binary>> ->
-	    {Extensions, Payload} = decode_extensions(Extension, ExtPayload, []),
-            %% Validate packet contents
-	    case decode_type(Type) of
-                st_state when Payload == <<>> ->
-                    ok;
-                st_data when Payload =/= <<>> ->
-                    ok;
-                st_fin ->
-                    ok;
-                st_syn ->
-                    ok;
-                st_reset ->
-                    ok
-            end,
-	    {#packet { ty = decode_type(Type),
-		       conn_id = ConnectionId,
-		       win_sz = WindowSize,
-		       seq_no = SeqNo,
-		       ack_no = AckNo,
-		       extension = Extensions,
-		       payload = Payload},
-	     TimeStamp,
-	     TimeStampdiff,
-	     TS}
+
+    %% Decode packet
+    <<1:4/integer, Type:4/integer, Extension:8/integer, ConnectionId:16/integer,
+      TimeStamp:32/integer,
+      TimeStampdiff:32/integer,
+      WindowSize:32/integer,
+      SeqNo:16/integer,
+      AckNo:16/integer,
+      ExtPayload/binary>> = Packet,
+    {Extensions, Payload} = decode_extensions(Extension, ExtPayload, []),
+
+    %% Validate packet contents
+    Ty = decode_type(Type),
+    ok = validate_packet_type(Ty, Payload),
+
+    {#packet { ty = Ty,
+               conn_id = ConnectionId,
+               win_sz = WindowSize,
+               seq_no = SeqNo,
+               ack_no = AckNo,
+               extension = Extensions,
+               payload = Payload},
+     TimeStamp,
+     TimeStampdiff,
+     TS}.
+
+
+validate_packet_type(Ty, Payload) ->
+    case Ty of
+        st_state when Payload == <<>> ->
+            ok;
+        st_data when Payload =/= <<>> ->
+            ok;
+        st_fin ->
+            ok;
+        st_syn ->
+            ok;
+        st_reset ->
+            ok
     end.
 
 decode_extensions(0, Payload, Exts) ->
