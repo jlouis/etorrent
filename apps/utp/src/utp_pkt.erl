@@ -339,7 +339,9 @@ update_send_buffer(AckNo,
         {ok, AcksAhead} ->
             {ok, Acked, PB1} = prune_acked(AcksAhead, WindowStart, PB),
             %% @todo SACK!
-            {ok, AcksAhead, PB1}
+            {ok, AcksAhead, PB1};
+        {ack_is_old, _} ->
+            {ok, 0, PB}
     end.
 
 %% @doc Prune the retransmission queue for ACK'ed packets.
