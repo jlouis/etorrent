@@ -21,7 +21,8 @@
 	 fill_window/4,
 	 zerowindow_timeout/2,
 
-         advertised_window/1
+         advertised_window/1,
+         handle_advertised_window/2
 	 ]).
 
 %% @todo Figure out when to stop ACK'ing packets.
@@ -42,7 +43,8 @@
           %% This is set when the other end has fin'ed us
           fin_state = none :: none | {got_fin, 0..16#FFFF},
 
-	  peer_advertised_window :: integer(), % Called max_window_user in the libutp code
+          %% Size of the window the Peer advertises to us.
+	  peer_advertised_window = 4096 :: integer(),
 
 	  %% The current window size in the send direction, in bytes.
 	  cur_window :: integer(),
@@ -138,6 +140,10 @@ mk_random_seq_no() ->
     <<N:16/integer>> = crypto:rand_bytes(2),
     N.
 
+%% Windows
+%% ----------------------------------------------------------------------
+handle_advertised_window(NewWin, #pkt_window {} = PKWin) ->
+    PKWin#pkt_window { peer_advertised_window = NewWin }.
 
 %% SEND SPECIFIC PACKET TYPES
 %% ----------------------------------------------------------------------
