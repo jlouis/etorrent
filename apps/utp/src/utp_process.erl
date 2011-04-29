@@ -50,8 +50,6 @@ enqueue_sender(From, Data, #proc_info { sender_q = SQ } = PI) ->
     NQ = queue:in({sender, From, Data}, SQ),
     PI#proc_info { sender_q = NQ }.
 
-fill_via_send_queue(0, _Q) ->
-    zero;
 fill_via_send_queue(N, #proc_info { sender_q = SQ } = PI) ->
     case dequeue(N, SQ, <<>>) of
         {done, Bin, SQ1} ->
@@ -69,7 +67,9 @@ dequeue(0, Q, Bin) ->
 dequeue(N, Q, Acc) ->
     {R, NQ} = queue:out(Q),
     case R of
-        empty ->
+        empty when Acc == <<>> ->
+            zero;
+        empty when Acc =/= <<>> ->
             {partial, Acc, NQ};
         {value, {sender, From, Data}} when byte_size(Data) =< N ->
             gen_utp_worker:reply(From, ok),

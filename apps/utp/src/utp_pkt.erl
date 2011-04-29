@@ -480,7 +480,9 @@ fill_from_proc_queue(N, MaxPktSz, Q, Proc) ->
         {filled, Bin, Proc1} ->
             fill_from_proc_queue(N - ToFill, MaxPktSz, queue:in(Bin, Q), Proc1);
         {partial, Bin, Proc1} ->
-            {queue:in(Bin, Q), Proc1}
+            {queue:in(Bin, Q), Proc1};
+        zero ->
+            {Q, Proc}
     end.
 
 %% @doc Given a queue of things to send, transmit packets from it

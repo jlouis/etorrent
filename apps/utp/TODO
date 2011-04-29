@@ -25,6 +25,9 @@ Haphazard TODO list of things that needs attention:
      window from the other end which we must obey. We don't currently.
    DONE ; When we receive a packet, be sure to make the correct window
      updates
+   ; When the packet fill code runs, we are currently shoving empty
+     packets into the stream. This ought to be fixed - quickly.
+
    ; Check that the window gets advertised correctly towards the other
      end.
    ; Only send packets up to the window size.
@@ -34,6 +37,6 @@ Haphazard TODO list of things that needs attention:
      again, if a full packet can be injected in-flight. Otherwise, you
      must let the other end keep processing stuff.
 
-
+   ; Should ST_STATE packets bump the seq_no?
 
 
