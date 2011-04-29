@@ -366,24 +366,23 @@ prune_acked(AckAhead, WindowStart,
                                 Distance < AckAhead
                         end,
                         RQ),
+    error_logger:info_report([pruned, length(AckedPs)]),
     {ok, length(AckedPs), PB#pkt_buf { retransmission_queue = N_RQ }}.
 
 %% @doc View the state of the Ack
 %% Given the `AckNo' and when the `WindowStart' started, we scrutinize the Ack
 %% for correctness according to age. If the ACK is old, tell the caller.
 %% @end
-view_ack_no(AckNo, WindowStart, PacketBuffer) ->
-    AckAhead = bit16(AckNo - WindowStart),
-    %% @todo DANGER, send_window_count may be old and not used
-    case AckAhead > send_window_count(PacketBuffer) of
-        true ->
+view_ack_no(AckNo, WindowStart, WindowSize) ->
+    case bit16(AckNo - WindowStart) of
+        N when N > WindowSize ->
             %% The ack number is old, so do essentially nothing in the next part
-            {ack_is_old, AckAhead};
-        false ->
+            {ack_is_old, N};
+        N when is_integer(N) ->
             %% -1 here is needed because #pkt_buf.seq_no is one
             %% ahead It is the next packet to send out, so it
             %% is one beyond the top end of the window
-            {ok, AckAhead}
+            {ok, N}
     end.
 
 send_window_count(#pkt_buf { retransmission_queue = RQ }) ->
@@ -543,11 +542,11 @@ payload_size(#pkt_wrap { packet = Packet }) ->
     byte_size(Packet#packet.payload).
 
 
-inflight_bytes(#pkt_buf{ retransmission_queue = [] }) ->
+view_inflight_bytes(#pkt_buf{ retransmission_queue = [] }) ->
     buffer_empty;
-inflight_bytes(#pkt_buf{ retransmission_queue = Q }) ->
+view_inflight_bytes(#pkt_buf{ retransmission_queue = Q }) ->
     case lists:sum([payload_size(Pkt) || Pkt <- Q]) of
-        Sum when Sum >= ?OUTGOING_BUFFER_MAX_SIZE - 1 ->
+        Sum when Sum >= ?OPT_SEND_BUF ->
             buffer_full;
         Sum ->
             {ok, Sum}
