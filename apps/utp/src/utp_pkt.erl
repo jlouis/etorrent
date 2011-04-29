@@ -335,16 +335,18 @@ reorder_buffer_in(SeqNo, Payload, #pkt_buf { reorder_buf = OD } = PB) ->
 %% SEND PATH
 %% ----------------------------------------------------------------------
 
-%% @todo There is no mention of the advertised window here. That is a bug.
-update_send_buffer(AckNo,
-                   #pkt_buf { seq_no = BufSeqNo } = PB) ->
-    WindowStart = bit16(BufSeqNo - send_window_count(PB)),
-    case view_ack_no(AckNo, WindowStart, PB) of
+update_send_buffer(AckNo, #pkt_buf { seq_no = BufSeqNo } = PB) ->
+    WindowSize = send_window_count(PB),
+    WindowStart = bit16(BufSeqNo - WindowSize),
+    error_logger:info_report([window_is_at, WindowStart]),
+    case view_ack_no(AckNo, WindowStart, WindowSize) of
         {ok, AcksAhead} ->
-            {ok, Acked, PB1} = prune_acked(AcksAhead, WindowStart, PB),
+            error_logger:info_report([acks_ahead, AcksAhead]),
+            {ok, _Acked, PB1} = prune_acked(AcksAhead, WindowStart, PB),
             %% @todo SACK!
             {ok, AcksAhead, PB1};
-        {ack_is_old, _} ->
+        {ack_is_old, AcksAhead} ->
+            error_logger:info_report([ack_is_old, AcksAhead]),
             {ok, 0, PB}
     end.
 
@@ -501,6 +503,7 @@ transmit_queue(Q, WindowSize, Buf, SockInfo) ->
 %% @end
 fill_window(SockInfo, ProcQueue, PktWindow, PktBuf) ->
     FreeInWindow = bytes_free_in_window(PktBuf, PktWindow),
+    error_logger:info_report([free_in_window, FreeInWindow]),
     %% Fill a queue of stuff to transmit
     {TxQueue, NProcQueue} =
         fill_from_proc_queue(FreeInWindow, PktBuf, ProcQueue),
@@ -552,7 +555,9 @@ inflight_bytes(#pkt_buf{ retransmission_queue = Q }) ->
 
 bytes_free_in_window(PktBuf, PktWindow) ->
     MaxSend = max_window_send(PktBuf, PktWindow),
-    case inflight_bytes(PktBuf) of
+    K = view_inflight_bytes(PktBuf),
+    error_logger:info_report([retransmission_buffer_view, K]),
+    case view_inflight_bytes(PktBuf) of
         buffer_full ->
             0;
         buffer_empty ->
