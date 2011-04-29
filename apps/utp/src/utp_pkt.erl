@@ -553,7 +553,7 @@ bytes_free_in_window(PktBuf, PktWindow) ->
 
 max_window_send(#pkt_buf { opt_snd_buf_sz = SendBufSz },
                 #pkt_window { peer_advertised_window = AdvertisedWindow,
-                            max_send_window = MaxSendWindow }) ->
+                              max_send_window = MaxSendWindow }) ->
     lists:min([SendBufSz, AdvertisedWindow, MaxSendWindow]).
 
 
