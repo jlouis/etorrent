@@ -21,9 +21,9 @@ Haphazard TODO list of things that needs attention:
      calculate how many packets there are currently fitting into the
      window, and only send this amount to the other end.
 
-   ; When the connection is establishes, we will get an advertized
+   DONE ; When the connection is establishes, we will get an advertized
      window from the other end which we must obey. We don't currently.
-   ; When we receive a packet, be sure to make the correct window
+   DONE ; When we receive a packet, be sure to make the correct window
      updates
    ; Check that the window gets advertised correctly towards the other
      end.

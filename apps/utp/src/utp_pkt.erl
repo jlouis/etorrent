@@ -142,7 +142,9 @@ mk_random_seq_no() ->
 
 %% Windows
 %% ----------------------------------------------------------------------
-handle_advertised_window(NewWin, #pkt_window {} = PKWin) ->
+handle_advertised_window(#packet { win_sz = Win }, PKW) ->
+    handle_advertised_window(Win, PKW);
+handle_advertised_window(NewWin, #pkt_window {} = PKWin) when is_integer(NewWin) ->
     PKWin#pkt_window { peer_advertised_window = NewWin }.
 
 %% SEND SPECIFIC PACKET TYPES
@@ -469,10 +471,14 @@ fill_from_proc_queue(N, Buf, ProcQ) ->
 %% @end
 fill_from_proc_queue(0, _Sz, Q, Proc) ->
     {Q, Proc};
-fill_from_proc_queue(N, Sz, Q, Proc) when Sz =< N ->
-    case utp_process:fill_via_send_queue(Sz, Proc) of
+fill_from_proc_queue(N, MaxPktSz, Q, Proc) ->
+    ToFill = case N =< MaxPktSz of
+                 true -> N;
+                 false -> MaxPktSz
+             end,
+    case utp_process:fill_via_send_queue(ToFill, Proc) of
         {filled, Bin, Proc1} ->
-            fill_from_proc_queue(N - Sz, Sz, queue:in(Bin, Q), Proc1);
+            fill_from_proc_queue(N - ToFill, MaxPktSz, queue:in(Bin, Q), Proc1);
         {partial, Bin, Proc1} ->
             {queue:in(Bin, Q), Proc1}
     end.

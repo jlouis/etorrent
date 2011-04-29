@@ -171,18 +171,23 @@ idle(Msg, S) ->
 
 %% @private
 syn_sent({pkt, #packet { ty = st_state,
+                         win_sz = WindowSize,
 			 seq_no = PktSeqNo },
 	       _Timing},
 	 #state { sock_info = SockInfo,
                   pkt_buf = PktBuf,
+                  pkt_window = PktWin,
                   connector = From,
                   syn_timeout = TRef
                 } = State) ->
     gen_fsm:cancel_timer(TRef),
     reply(From, ok),
-    {next_state, connected, State#state { sock_info = SockInfo,
-                                          syn_timeout = undefined,
-                                          pkt_buf = utp_pkt:init_ackno(PktBuf, PktSeqNo)}};
+    {next_state, connected,
+     State#state { sock_info = SockInfo,
+                   pkt_window = utp_pkt:handle_advertised_window(WindowSize,
+                                                                 PktWin),
+                   syn_timeout = undefined,
+                   pkt_buf = utp_pkt:init_ackno(PktBuf, PktSeqNo)}};
 syn_sent(close, _S) ->
     todo_alter_rto;
 syn_sent(Msg, S) ->
@@ -203,6 +208,7 @@ connected({pkt, Pkt, {_TS, _TSDiff, RecvTime}},
     case utp_pkt:handle_packet(RecvTime, connected, Pkt, PKI, PB) of
 	{ok, N_PB1, N_PKI, Messages} ->
             utp_pkt:handle_send_ack(SockInfo, N_PB1, Messages),
+            N_PKI1 = utp_pkt:handle_advertised_window(Pkt, N_PKI),
 	    {N_PRI, N_PB} =
 		case satisfy_recvs(PRI, N_PB1) of
 		    {ok, PR1, PB1} ->
@@ -216,7 +222,7 @@ connected({pkt, Pkt, {_TS, _TSDiff, RecvTime}},
                         {PR1, PB1}
 		end,
 	    {next_state, connected,
-	     State#state { pkt_window = N_PKI,
+	     State#state { pkt_window = N_PKI1,
                            pkt_buf = N_PB,
                            proc_info = N_PRI }}
     end;
@@ -325,6 +331,7 @@ idle(connect, From, State = #state { sock_info = SockInfo,
                              pkt_buf     = utp_pkt:init_seqno(PktBuf, 2),
                              connector = From }};
 idle({accept, SYN}, _From, #state { sock_info = SockInfo,
+                                    pkt_window = PktWin,
                                     pkt_buf   = PktBuf } = State) ->
     %% @todo timeout handling from the syn packet!
     Conn_id_recv = SYN#packet.conn_id + 1,
@@ -336,6 +343,7 @@ idle({accept, SYN}, _From, #state { sock_info = SockInfo,
     SeqNo = utp_pkt:mk_random_seq_no(),
     AckNo = SYN#packet.seq_no,
     1 = AckNo,
+
     AckPacket = #packet { ty = st_state,
 			  seq_no = SeqNo,
 			  ack_no = AckNo,
@@ -343,10 +351,11 @@ idle({accept, SYN}, _From, #state { sock_info = SockInfo,
 			},
     Win = utp_pkt:advertised_window(PktBuf),
     ok = utp_socket:send_pkt(Win, N_SockInfo, AckPacket),
-    {reply, ok, connected, State#state { sock_info = N_SockInfo,
-                                         pkt_buf = utp_pkt:init_ackno(
-                                                     utp_pkt:init_seqno(PktBuf, SeqNo + 1),
-                                                     AckNo+1)}}; % Next expected
+    {reply, ok, connected,
+            State#state { sock_info = N_SockInfo,
+                          pkt_window = utp_pkt:handle_advertised_window(SYN, PktWin),
+                          pkt_buf = utp_pkt:init_ackno(
+                                      utp_pkt:init_seqno(PktBuf, SeqNo + 1), AckNo+1)}};
 
 idle(_Msg, _From, State) ->
     {reply, idle, {error, enotconn}, State}.
