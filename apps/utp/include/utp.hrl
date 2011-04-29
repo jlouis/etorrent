@@ -17,8 +17,6 @@
 -define(SEQ_NO_MASK, 16#FFFF).
 -define(ACK_NO_MASK, 16#FFFF).
 -define(REORDER_BUFFER_SIZE, 32).
--define(REORDER_BUFFER_MAX_SIZE, 511).
--define(OUTGOING_BUFFER_MAX_SIZE, 511).
 
 
 

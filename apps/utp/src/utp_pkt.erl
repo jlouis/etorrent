@@ -34,6 +34,8 @@
 %% The default RecvBuf size: 8K
 -define(OPT_RECV_BUF, 8192).
 -define(PACKET_SIZE, 350).
+-define(REORDER_BUFFER_MAX_SIZE, 511).
+-define(OUTGOING_BUFFER_MAX_SIZE, 511).
 -define(OPT_SEND_BUF, ?OUTGOING_BUFFER_MAX_SIZE * ?PACKET_SIZE).
 -define(ZERO_WINDOW_DELAY, 15*1000).
 
