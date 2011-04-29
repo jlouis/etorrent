@@ -33,10 +33,11 @@ format_pkt(#packet { ty = Ty, conn_id = ConnID, win_sz = WinSz,
                      seq_no = SeqNo,
                      ack_no = AckNo,
                      extension = Exts,
-                     payload = PL }) ->
+                     payload = Payload }) ->
     [{ty, Ty}, {conn_id, ConnID}, {win_sz, WinSz},
      {seq_no, SeqNo}, {ack_no, AckNo}, {extension, Exts},
-     {payload, byte_size(PL), PL}].
+     {payload,
+      byte_size(Payload)}].
 
 mk(Addr, Opts, PacketSize, Port, Socket) ->
     #sock_info { addr = Addr,
