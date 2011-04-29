@@ -1,10 +1,9 @@
 Haphazard TODO list of things that needs attention:
 
-* Warn if we get old ACKs, there seem to be no control of this.
+* DONE Warn if we get old ACKs, there seem to be no control of this.
    We better have a check for this, otherwise we can simply add a
    large number of dumb errors to the code base later on.
-
-* We don't update the advertized window at all.
+* DONE We don't update the advertized window at all.
    We should begin planning how to handle the advertised window. We
    are currently killing the receiver because we are sending too fast
    and he has begun dropping packets.
@@ -25,18 +24,21 @@ Haphazard TODO list of things that needs attention:
      window from the other end which we must obey. We don't currently.
    DONE ; When we receive a packet, be sure to make the correct window
      updates
-   ; When the packet fill code runs, we are currently shoving empty
+   DONE ; When the packet fill code runs, we are currently shoving empty
      packets into the stream. This ought to be fixed - quickly.
 
-   ; Check that the window gets advertised correctly towards the other
+   DONE ; Check that the window gets advertised correctly towards the other
      end.
-   ; Only send packets up to the window size.
+   DONE ; Only send packets up to the window size.
   
-   ; Handle the special case of a zero packet window. It is a quite
+   DONE ; Handle the special case of a zero packet window. It is a quite
      important special-case because you should only open up the window
      again, if a full packet can be injected in-flight. Otherwise, you
      must let the other end keep processing stuff.
 
-   ; Should ST_STATE packets bump the seq_no?
+   DONE ; Should ST_STATE packets bump the seq_no?
 
+* Retransmissions
+  How should we handle retransmission of missing packets? This is
+  needed before we can go to a check over the internet.
 
