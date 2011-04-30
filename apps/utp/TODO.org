@@ -41,4 +41,13 @@ Haphazard TODO list of things that needs attention:
 * Retransmissions
   How should we handle retransmission of missing packets? This is
   needed before we can go to a check over the internet.
-
+** TODO Set up a retransmission timer with a fairly large window of 3 seconds.
+** TODO Write code for retransmitting the oldest frame
+   With this, we gamble we only lost a single frame in the stream,
+   though this is probably not going to be true in the general case
+** Increase the timeout by two every time the retransmission timer ticks
+* ZeroWindow Timeouts
+** TODO Write down here what should be done to fix this
+* RTT Measurement
+  This is probably different in uTP from the standard protocol
+* TODO Re-read the uTP BEP 29 spec again
