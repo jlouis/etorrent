@@ -41,13 +41,24 @@ Haphazard TODO list of things that needs attention:
 * Retransmissions
   How should we handle retransmission of missing packets? This is
   needed before we can go to a check over the internet.
-** TODO Set up a retransmission timer with a fairly large window of 3 seconds.
+** DONE Propagate information if the ACK is moving ahead!
+** Set up a retransmission timer with a fairly large window of 3 seconds.
+*** TODO Detect the need for retransmissions
+*** TODO Set up a retransmission timer and build a correct cancellation of it as well
 ** TODO Write code for retransmitting the oldest frame
    With this, we gamble we only lost a single frame in the stream,
    though this is probably not going to be true in the general case
 ** Increase the timeout by two every time the retransmission timer ticks
 * ZeroWindow Timeouts
-** TODO Write down here what should be done to fix this
+** Install and remove the zerowindow timeout
+   When the window closes to 0, we should start the zerowindow
+   timer. If nothing has happened for some time, we will then send out
+   a window probe to coax the other end into sending back an ACK with
+   an updated window.
+
+   If there is already a timer installed, remove it when the window
+   opens above 0.
+** Figure out the exact construction of the window probe packet
 * RTT Measurement
   This is probably different in uTP from the standard protocol
 * TODO Re-read the uTP BEP 29 spec again
