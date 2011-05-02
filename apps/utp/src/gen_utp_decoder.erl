@@ -45,20 +45,12 @@ handle_call(_Request, _From, State) ->
 
 %% @private
 handle_cast({packet, P, Addr, Port}, S) ->
-    R = begin
-            Decoded = utp_proto:decode(P),
-            {ok, Decoded}
-        end,
-    case R of
-	{ok, {#packet { conn_id = CID } = Packet, TS, TSDiff, RecvTime}} ->
-	    case gen_utp:lookup_registrar(CID) of
-		{ok, Pid} ->
-		    gen_utp_worker:incoming(Pid, Packet, {TS, TSDiff, RecvTime});
-		not_found ->
-		    gen_utp:incoming_new(Packet, Addr, Port)
-	    end;
-	ignore ->
-	    ok
+    {#packet { conn_id = CID } = Packet, TS, TSDiff, RecvTime} = utp_proto:decode(P),
+    case gen_utp:lookup_registrar(CID) of
+        {ok, Pid} ->
+            gen_utp_worker:incoming(Pid, Packet, {TS, TSDiff, RecvTime});
+        not_found ->
+            gen_utp:incoming_new(Packet, Addr, Port)
     end,
     {noreply, S};
 handle_cast(_Msg, State) ->
