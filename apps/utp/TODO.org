@@ -44,7 +44,8 @@ Haphazard TODO list of things that needs attention:
 ** DONE Propagate information if the ACK is moving ahead!
 ** Set up a retransmission timer with a fairly large window of 3 seconds.
 *** TODO Detect the need for retransmissions
-*** TODO Set up a retransmission timer and build a correct cancellation of it as well
+    What are exactly the need for retransmissions?
+*** DONE Set up a retransmission timer and build a correct cancellation of it as well
 ** TODO Write code for retransmitting the oldest frame
    With this, we gamble we only lost a single frame in the stream,
    though this is probably not going to be true in the general case

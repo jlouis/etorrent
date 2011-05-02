@@ -89,7 +89,8 @@
                  pkt_buf      :: utp_pkt:buf(),
                  proc_info    :: utp_process:t(),
                  connector    :: {reference(), pid()},
-                 syn_timeout  :: reference()
+                 syn_timeout  :: reference(),
+                 retransmit_timeout :: undefined | {set, reference()}
                }).
 
 %%%===================================================================
@@ -201,7 +202,8 @@ connected({pkt, Pkt, {_TS, _TSDiff, RecvTime}},
 	  #state { pkt_window = PKI,
                    pkt_buf  = PB,
                    proc_info = PRI,
-                   sock_info = SockInfo
+                   sock_info = SockInfo,
+                   retransmit_timeout = RetransTimer
                  } = State) ->
     error_logger:info_report([incoming_pkt, utp_socket:format_pkt(Pkt)]),
 
@@ -210,7 +212,13 @@ connected({pkt, Pkt, {_TS, _TSDiff, RecvTime}},
 
     %% The packet may bump the advertised window from the peer, update
     N_PKI1 = utp_pkt:handle_advertised_window(Pkt, N_PKI),
-
+    N_RetransTimer =
+        case lists:member(recv_acked, Messages) of
+            true ->
+                reset_retransmit_timer(RetransTimer);
+            false ->
+                RetransTimer
+        end,
     %% The incoming datagram may have payload we can deliver to an application
     {N_PRI, N_PB} =
         case satisfy_recvs(PRI, N_PB1) of
@@ -240,6 +248,7 @@ connected({pkt, Pkt, {_TS, _TSDiff, RecvTime}},
     {next_state, connected,
      State#state { pkt_window = N_PKI1,
                    pkt_buf = N_PB2,
+                   retransmit_timeout = N_RetransTimer,
                    proc_info = N_PRI2 }};
 connected(close, #state { sock_info = SockInfo,
                           pkt_buf = PktBuf } = State) ->
@@ -491,6 +500,14 @@ satisfy_recvs(Processes, Buffer) ->
 	empty ->
 	    {ok, Processes, Buffer}
     end.
+
+reset_retransmit_timer(undefined) ->
+    Ref = gen_fsm:start_timer(3000, {retransmit_timeout, 3000}),
+    {set, Ref};
+reset_retransmit_timer({set, Ref}) ->
+    gen_fsm:cancel_timer(Ref),
+    N_Ref = gen_fsm:start_timer(3000, {retransmit_timeout, 3000}),
+    {set, N_Ref}.
 
 
 
