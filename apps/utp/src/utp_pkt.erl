@@ -342,12 +342,16 @@ update_send_buffer(AckNo, #pkt_buf { seq_no = BufSeqNo } = PB) ->
     case view_ack_no(AckNo, WindowStart, WindowSize) of
         {ok, AcksAhead} ->
             error_logger:info_report([acks_ahead, AcksAhead]),
-            {ok, _Acked, PB1} = prune_acked(AcksAhead, WindowStart, PB),
-            %% @todo SACK!
-            {ok, AcksAhead, PB1};
+            case prune_acked(AcksAhead, WindowStart, PB) of
+                {ok, Acked, PB1} when Acked > 0 -> 
+                    %% @todo SACK!
+                    {ok, [recv_acked], AcksAhead, PB1};
+                {ok, 0, PB1} ->
+                    {ok, [], AcksAhead, PB1}
+            end;
         {ack_is_old, AcksAhead} ->
             error_logger:info_report([ack_is_old, AcksAhead]),
-            {ok, 0, PB}
+            {ok, [old_ack], 0, PB}
     end.
 
 %% @doc Prune the retransmission queue for ACK'ed packets.
@@ -415,12 +419,13 @@ handle_packet(_CurrentTimeMs,
     ok = valid_state(State),
 
     %% Update the state by the receiving payload stuff.
-    {N_PacketBuffer1, Messages1} =
+    {N_PacketBuffer1, SendMessages} =
         handle_incoming_datagram_payload(SeqNo, Payload, PacketBuffer),
 
     %% The Packet may have ACK'ed stuff from our send buffer. Update
     %% the send buffer accordingly
-    {ok, AcksAhead, N_PB1} = update_send_buffer(AckNo, N_PacketBuffer1),
+    {ok, RecvMessages, AcksAhead, N_PB1} =
+        update_send_buffer(AckNo, N_PacketBuffer1),
 
     %% Some packets set a specific state we should handle in our end
     {PKI, Messages} =
@@ -439,7 +444,7 @@ handle_packet(_CurrentTimeMs,
     end,
     {ok, N_PB1,
          handle_window_size(WindowSize, PKI),
-         Messages ++ Messages1}.
+         Messages ++ SendMessages ++ RecvMessages}.
 
 
 
