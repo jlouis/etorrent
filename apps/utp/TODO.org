@@ -38,6 +38,9 @@ Haphazard TODO list of things that needs attention:
 
    DONE ; Should ST_STATE packets bump the seq_no?
 
+* TODO Figure out why our test fails
+  The 2nd of our tests fail for some reason, but we need to know why
+  exactly.
 * Retransmissions
   How should we handle retransmission of missing packets? This is
   needed before we can go to a check over the internet.

@@ -73,17 +73,16 @@ test: eunit common_test
 CT_RUN=rel/etorrent/erts-*/bin/ct_run
 ct_src_dir := rel/etorrent/lib/etorrent-${version}/src
 
-ct_setup: rel
+common_test: rel
 	echo ${ct_src_dir}
 	mkdir -p logs
 # Unpack stuff.
 	rm -fr rel/etorrent/lib/etorrent-*/ebin
-	cd rel/etorrent/lib && unzip -o etorrent-*.ez
-	mkdir -p ${ct_src_dir} && \
-		cp -r apps/etorrent/src/* ${ct_src_dir}
-
-common_test: ct_setup rel
-	${CT_RUN} -spec etorrent_test.spec
+	cd rel/etorrent/lib && unzip -o etorrent-*.ez && unzip -o utp-*.ez
+	mkdir -p rel/etorrent/lib/etorrent-*/src && \
+		cp -r apps/etorrent/src/* rel/etorrent/lib/etorrent-*/src
+# Run cover test
+	${CT_RUN} -spec etorrent_test.spec | tee test.log
 
 console:
 	dev/etorrent-dev/bin/etorrent console \
