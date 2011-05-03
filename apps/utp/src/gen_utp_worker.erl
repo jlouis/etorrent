@@ -485,24 +485,27 @@ satisfy_recvs(Processes, Buffer) ->
 	    {ok, Processes, Buffer}
     end.
 
-reset_retransmit_timer(undefined) ->
+set_retransmit_timer(undefined) ->
     Ref = gen_fsm:start_timer(3000, {retransmit_timeout, 3000}),
+    error_logger:info_report([setting_retransmit_timer]),
     {set, Ref};
-reset_retransmit_timer({set, Ref}) ->
+set_retransmit_timer({set, Ref}) ->
     gen_fsm:cancel_timer(Ref),
     N_Ref = gen_fsm:start_timer(3000, {retransmit_timeout, 3000}),
+    error_logger:info_report([setting_retransmit_timer]),
     {set, N_Ref}.
 
 clear_retransmit_timer(undefined) ->
     undefined;
 clear_retransmit_timer({set, Ref}) ->
     gen_fsm:cancel_timer(Ref),
+    error_logger:info_report([clearing_retransmit_timer]),
     undefined.
 
 handle_retransmit_timer(Messages, RetransTimer) ->
-    case proplists:get_value(recv_acked, Messages) of
+    case proplists:get_value(recv_ack, Messages) of
         true ->
-            reset_retransmit_timer(RetransTimer);
+            set_retransmit_timer(RetransTimer);
         undefined ->
             case proplists:get_value(all_acked, Messages) of
                 true ->
