@@ -358,14 +358,13 @@ update_send_buffer(AckNo, #pkt_buf { seq_no = BufSeqNo } = PB) ->
 %% @todo All this AcksAhead business, why? We could as well just work directly on
 %%       the ack_no I think.
 %% @end
-prune_acked(0, _, PB) -> {ok, 0, PB};
 prune_acked(AckAhead, WindowStart,
             #pkt_buf { retransmission_queue = RQ } = PB) ->
     {AckedPs, N_RQ} = lists:partition(
                         fun(#pkt_wrap {
                                packet = #packet { seq_no = SeqNo } }) ->
                                 Distance = bit16(SeqNo - WindowStart),
-                                Distance < AckAhead
+                                Distance =< AckAhead
                         end,
                         RQ),
     error_logger:info_report([pruned, length(AckedPs)]),
