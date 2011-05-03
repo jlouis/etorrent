@@ -13,7 +13,8 @@
          ]).
 
 -export([s0/0, r0/0,
-         s/0, r/0]).
+         s1/0, r1/0,
+         s2/0, r2/0]).
 
 %% @doc Manual startup of the uTP application
 start(Port) ->
@@ -63,15 +64,25 @@ s0() ->
 
 r0() ->
     start_app(3333),
-    test_connectee_1().
+    {<<"HELLO">>, <<"WORLD">>} = test_connectee_1().
 
-s() ->
+s1() ->
     start_app(3334),
     {ok, Data} = file:read_file("test/utp_SUITE_data/test_large_send.dat"),
     test_send_large_file(Data).
 
-r() ->
+r1() ->
     start_app(3333),
     {ok, Data} = file:read_file("test/utp_SUITE_data/test_large_send.dat"),
     Data = test_recv_large_file(byte_size(Data)).
+
+s2() ->
+    start_app(3334),
+    test_connector_1(),
+    test_connector_1().
+
+r2() ->
+    start_app(3333),
+    {<<"HELLO">>, <<"WORLD">>} = test_connectee_1(),
+    {<<"HELLO">>, <<"WORLD">>} = test_connectee_1().
 

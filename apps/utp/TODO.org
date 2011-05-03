@@ -64,6 +64,17 @@ Haphazard TODO list of things that needs attention:
    though this is probably not going to be true in the general case
 ** Increase the timeout by two every time the retransmission timer ticks
 * TODO There is a bug when creating multiple connections, fix
+  The second created connection seem to stall, and I wonder why. This
+  should be investigated as the fix is needed to make the code work
+  anyway!
+
+  This error is interesting:
+
+  ** exception error: no match of right hand side value 
+                    {error,{already_started,<0.60.0>}}
+     in function  gen_utp:connect/3
+     in call from utp:test_connector_1/0
+
 * TODO The ACK in the connectee@ is seen as old, investigate
   There is something along the lines of the numbering that doesn't
   work here. It ought to be fixed. But we place it down here to
