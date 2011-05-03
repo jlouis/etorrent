@@ -255,7 +255,7 @@ consider_send_ack(#pkt_buf { reorder_buf = RB1,
                   #pkt_buf { reorder_buf = RB2,
                              next_expected_seq_no = Seq2})
   when RB1 =/= RB2 orelse Seq1 =/= Seq2 ->
-    [send_ack];
+    [{send_ack, true}];
 consider_send_ack(_, _) -> [].
        
 %% @doc Update the receive buffer with Payload
@@ -269,7 +269,7 @@ consider_send_ack(_, _) -> [].
 handle_receive_buffer(SeqNo, Payload, PacketBuffer) ->
     case update_recv_buffer(SeqNo, Payload, PacketBuffer) of
         %% Force an ACK out in this case
-        duplicate -> {PacketBuffer, [send_ack]};
+        duplicate -> {PacketBuffer, [{send_ack, true}]};
         #pkt_buf{} = PB -> {PB, consider_send_ack(PacketBuffer, PB)}
     end.
 
@@ -342,16 +342,13 @@ update_send_buffer(AckNo, #pkt_buf { seq_no = BufSeqNo } = PB) ->
     case view_ack_no(AckNo, WindowStart, WindowSize) of
         {ok, AcksAhead} ->
             error_logger:info_report([acks_ahead, AcksAhead]),
-            case prune_acked(AcksAhead, WindowStart, PB) of
-                {ok, Acked, PB1} when Acked > 0 -> 
-                    %% @todo SACK!
-                    {ok, [recv_acked], AcksAhead, PB1};
-                {ok, 0, PB1} ->
-                    {ok, [], AcksAhead, PB1}
-            end;
+            {ok, Acked, PB1} = prune_acked(AcksAhead, WindowStart, PB),
+            {ok, view_ack_state(Acked, PB1),
+                 AcksAhead,
+                 PB1};
         {ack_is_old, AcksAhead} ->
             error_logger:info_report([ack_is_old, AcksAhead]),
-            {ok, [old_ack], 0, PB}
+            {ok, [{old_ack, true}], 0, PB}
     end.
 
 %% @doc Prune the retransmission queue for ACK'ed packets.
@@ -372,6 +369,20 @@ prune_acked(AckAhead, WindowStart,
                         RQ),
     error_logger:info_report([pruned, length(AckedPs)]),
     {ok, length(AckedPs), PB#pkt_buf { retransmission_queue = N_RQ }}.
+
+view_ack_state(0, _PB) ->
+    [];
+view_ack_state(N, PB) when is_integer(N) ->
+    case has_inflight_data(PB) of
+        true ->
+            [{recv_ack, true}];
+        false ->
+            [{all_acked, true}]
+    end.
+
+-spec has_inflight_data(#pkt_buf{}) -> boolean().
+has_inflight_data(#pkt_buf { retransmission_queue = [] }) -> false;
+has_inflight_data(#pkt_buf { retransmission_queue = [_|_] }) -> true.
 
 %% @doc View the state of the Ack
 %% Given the `AckNo' and when the `WindowStart' started, we scrutinize the Ack
