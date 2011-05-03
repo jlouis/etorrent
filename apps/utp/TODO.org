@@ -38,17 +38,27 @@ Haphazard TODO list of things that needs attention:
 
    DONE ; Should ST_STATE packets bump the seq_no?
 
-* TODO Figure out why our test fails
+* DONE Figure out why our test fails
   The 2nd of our tests fail for some reason, but we need to know why
   exactly.
+
+  Out test fails due to retransmissions it seems. We can thus try to
+  implement retransmissions and see if this solves the problem!
 * Retransmissions
   How should we handle retransmission of missing packets? This is
   needed before we can go to a check over the internet.
 ** DONE Propagate information if the ACK is moving ahead!
 ** Set up a retransmission timer with a fairly large window of 3 seconds.
-*** TODO Detect the need for retransmissions
+*** DONE Detect the need for retransmissions
     What are exactly the need for retransmissions?
+
+    You should detect the case where there are no more bytes in-flight
+    to send out. In that case, you should mark a message down with
+    this information.
+*** DONE Mark in the ACK-code when the in-flight buffer is empty
 *** DONE Set up a retransmission timer and build a correct cancellation of it as well
+*** TODO Handle the all_acked case in the retransmission timer as well.
+    We are currently not handling this case correctly and we should.
 ** TODO Write code for retransmitting the oldest frame
    With this, we gamble we only lost a single frame in the stream,
    though this is probably not going to be true in the general case
