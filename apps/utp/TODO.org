@@ -57,12 +57,17 @@ Haphazard TODO list of things that needs attention:
     this information.
 *** DONE Mark in the ACK-code when the in-flight buffer is empty
 *** DONE Set up a retransmission timer and build a correct cancellation of it as well
-*** TODO Handle the all_acked case in the retransmission timer as well.
+*** DONE Handle the all_acked case in the retransmission timer as well.
     We are currently not handling this case correctly and we should.
 ** TODO Write code for retransmitting the oldest frame
    With this, we gamble we only lost a single frame in the stream,
    though this is probably not going to be true in the general case
 ** Increase the timeout by two every time the retransmission timer ticks
+* TODO There is a bug when creating multiple connections, fix
+* TODO The ACK in the connectee@ is seen as old, investigate
+  There is something along the lines of the numbering that doesn't
+  work here. It ought to be fixed. But we place it down here to
+  concentrate on other stuff first.
 * ZeroWindow Timeouts
 ** Install and remove the zerowindow timeout
    When the window closes to 0, we should start the zerowindow
