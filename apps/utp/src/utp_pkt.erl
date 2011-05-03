@@ -161,7 +161,7 @@ send_ack(SockInfo,
     %% @todo Send out an ack message here
     AckPacket = #packet { ty = st_state,
                           seq_no = SeqNo-1, % @todo Is this right?
-                          ack_no = AckNo-1,
+                          ack_no = AckNo-1, % We are recording the next expected ack number
                           extension = []
                         },
     Win = advertised_window(Buf),
@@ -341,8 +341,9 @@ update_send_buffer(AckNo, #pkt_buf { seq_no = BufSeqNo } = PB) ->
     error_logger:info_report([window_is_at, WindowStart]),
     case view_ack_no(AckNo, WindowStart, WindowSize) of
         {ok, AcksAhead} ->
-            error_logger:info_report([acks_ahead, AcksAhead]),
             {ok, Acked, PB1} = prune_acked(AcksAhead, WindowStart, PB),
+            error_logger:info_report([{acks_ahead, AcksAhead},
+                                      {acked, Acked}]),
             {ok, view_ack_state(Acked, PB1),
                  AcksAhead,
                  PB1};
@@ -571,7 +572,8 @@ view_inflight_bytes(#pkt_buf{ retransmission_queue = Q }) ->
 bytes_free_in_window(PktBuf, PktWindow) ->
     MaxSend = max_window_send(PktBuf, PktWindow),
     K = view_inflight_bytes(PktBuf),
-    error_logger:info_report([retransmission_buffer_view, K]),
+    error_logger:info_report([retransmission_buffer_view, K,
+                              PktBuf#pkt_buf.retransmission_queue] ),
     case view_inflight_bytes(PktBuf) of
         buffer_full ->
             0;

@@ -193,11 +193,12 @@ connected({pkt, Pkt, {_TS, _TSDiff, RecvTime}},
                    sock_info = SockInfo,
                    retransmit_timeout = RetransTimer
                  } = State) ->
-    error_logger:info_report([incoming_pkt, utp_socket:format_pkt(Pkt)]),
+    error_logger:info_report([node(), incoming_pkt, utp_socket:format_pkt(Pkt)]),
 
     %% Handle the incoming packet
     {ok, N_PB1, N_PKI, Messages} = utp_pkt:handle_packet(RecvTime, connected, Pkt, PKI, PB),
 
+    error_logger:info_report([messages, Messages]),
     %% The packet may bump the advertised window from the peer, update
     N_PKI1 = utp_pkt:handle_advertised_window(Pkt, N_PKI),
     N_RetransTimer = handle_retransmit_timer(Messages, RetransTimer),
