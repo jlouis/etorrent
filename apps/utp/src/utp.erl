@@ -12,8 +12,8 @@
          test_recv_large_file/1
          ]).
 
--export([s/0,
-         r/0]).
+-export([s0/0, r0/0,
+         s/0, r/0]).
 
 %% @doc Manual startup of the uTP application
 start(Port) ->
@@ -56,6 +56,14 @@ test_recv_large_file(Sz) ->
     {ok, Port} = gen_utp:accept(),
     {ok, R} = gen_utp:recv(Port, Sz),
     R.
+
+s0() ->
+    start_app(3334),
+    test_connector_1().
+
+r0() ->
+    start_app(3333),
+    test_connectee_1().
 
 s() ->
     start_app(3334),
