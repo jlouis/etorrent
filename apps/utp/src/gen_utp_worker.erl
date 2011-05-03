@@ -139,19 +139,7 @@ reply(To, Msg) ->
 %%% gen_fsm callbacks
 %%%===================================================================
 
-%%--------------------------------------------------------------------
 %% @private
-%% @doc
-%% Whenever a gen_fsm is started using gen_fsm:start/[3,4] or
-%% gen_fsm:start_link/[3,4], this function is called by the new
-%% process to initialize.
-%%
-%% @spec init(Args) -> {ok, StateName, State} |
-%%                     {ok, StateName, State, Timeout} |
-%%                     ignore |
-%%                     {stop, StopReason}
-%% @end
-%%--------------------------------------------------------------------
 init([Socket, Addr, Port, Options]) ->
     PktWindow  = utp_pkt:mk(),
     PktBuf   = utp_pkt:mk_buf(?DEFAULT_OPT_RECV_SZ),
@@ -212,13 +200,8 @@ connected({pkt, Pkt, {_TS, _TSDiff, RecvTime}},
 
     %% The packet may bump the advertised window from the peer, update
     N_PKI1 = utp_pkt:handle_advertised_window(Pkt, N_PKI),
-    N_RetransTimer =
-        case lists:member(recv_acked, Messages) of
-            true ->
-                reset_retransmit_timer(RetransTimer);
-            false ->
-                RetransTimer
-        end,
+    N_RetransTimer = handle_retransmit_timer(Messages, RetransTimer),
+
     %% The incoming datagram may have payload we can deliver to an application
     {N_PRI, N_PB} =
         case satisfy_recvs(PRI, N_PB1) of
@@ -509,5 +492,23 @@ reset_retransmit_timer({set, Ref}) ->
     N_Ref = gen_fsm:start_timer(3000, {retransmit_timeout, 3000}),
     {set, N_Ref}.
 
+clear_retransmit_timer(undefined) ->
+    undefined;
+clear_retransmit_timer({set, Ref}) ->
+    gen_fsm:cancel_timer(Ref),
+    undefined.
+
+handle_retransmit_timer(Messages, RetransTimer) ->
+    case proplists:get_value(recv_acked, Messages) of
+        true ->
+            reset_retransmit_timer(RetransTimer);
+        undefined ->
+            case proplists:get_value(all_acked, Messages) of
+                true ->
+                    clear_retransmit_timer(RetransTimer);
+                undefined ->
+                    RetransTimer % Just pass it along with no update
+            end
+    end.
 
 
