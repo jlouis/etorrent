@@ -98,7 +98,7 @@
 %% @doc Create a worker for a peer endpoint
 %% @end
 start_link(Socket, Addr, Port, Options) ->
-    gen_fsm:start_link({local, ?SERVER}, ?MODULE, [Socket, Addr, Port, Options], []).
+    gen_fsm:start_link(?MODULE, [Socket, Addr, Port, Options], []).
 
 %% @doc Send a connect event
 %% @end
