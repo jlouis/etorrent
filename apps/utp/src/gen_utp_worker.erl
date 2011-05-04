@@ -255,6 +255,9 @@ connected({timeout, Ref, {retransmission_timeout, N}},
     N_PB = utp_pkt:retransmit_packet(PacketBuf, SockInfo),
     {next_state, connected, State#state { retransmit_timeout = N_Timer,
                                           pkt_buf = N_PB }};
+connected({timeout, _Ref, _TimerVal}, State) ->
+    error_logger:error_report([stray_retransmit_timer]),
+    {next_state, connected, State};
 connected(Msg, State) ->
     %% Ignore messages
     error_logger:warning_report([async_message, connected, Msg]),
