@@ -239,6 +239,22 @@ connected(close, #state { sock_info = SockInfo,
     %% Close down connection!
     ok = utp_pkt:send_fin(SockInfo, PktBuf),
     {next_state, fin_sent, State};
+connected({timeout, Ref, {retransmission_timeout, N}},
+         #state { 
+            pkt_buf = PacketBuf,
+            sock_info = SockInfo,
+            retransmit_timeout = {set, Ref} = Timer} = State) ->
+    N_Timer = case N > 64*1000 of
+                  true when N > 64*1000*10 ->
+                      error(not_implemented);
+                  true ->
+                      set_retransmit_timer(64*1000, N*2, Timer);
+                  false ->
+                      set_retransmit_timer(N*2, Timer)
+              end,
+    N_PB = utp_pkt:retransmit_packet(PacketBuf, SockInfo),
+    {next_state, connected, State#state { retransmit_timeout = N_Timer,
+                                          pkt_buf = N_PB }};
 connected(Msg, State) ->
     %% Ignore messages
     error_logger:warning_report([async_message, connected, Msg]),
@@ -485,13 +501,19 @@ satisfy_recvs(Processes, Buffer) ->
 	    {ok, Processes, Buffer}
     end.
 
-set_retransmit_timer(undefined) ->
-    Ref = gen_fsm:start_timer(3000, {retransmit_timeout, 3000}),
+set_retransmit_timer(Timer) ->
+    set_retransmit_timer(3000, Timer).
+
+set_retransmit_timer(N, Timer) ->
+    set_retransmit_timer(N, N, Timer).
+
+set_retransmit_timer(N, K, undefined) ->
+    Ref = gen_fsm:start_timer(N, {retransmit_timeout, K}),
     error_logger:info_report([setting_retransmit_timer]),
     {set, Ref};
-set_retransmit_timer({set, Ref}) ->
+set_retransmit_timer(N, K, {set, Ref}) ->
     gen_fsm:cancel_timer(Ref),
-    N_Ref = gen_fsm:start_timer(3000, {retransmit_timeout, 3000}),
+    N_Ref = gen_fsm:start_timer(N, {retransmit_timeout, K}),
     error_logger:info_report([setting_retransmit_timer]),
     {set, N_Ref}.
 

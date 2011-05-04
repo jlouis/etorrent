@@ -4,7 +4,9 @@
 
 -export([
          mk/5,
-         set_conn_id/2
+         set_conn_id/2,
+
+         order_packets/2
         ]).
 
 -export([
@@ -68,6 +70,13 @@ send_pkt(AdvWin, #sock_info { socket = Socket,
 set_conn_id(Cid, SockInfo) ->
     SockInfo#sock_info { conn_id_send = Cid }.
 
+order_packets(#packet { seq_no = S1 } = P1, #packet { seq_no = S2 } = P2) ->
+    case S1 < S2 of
+        true ->
+            [P1, P2];
+        false ->
+            [P2, P1]
+    end.
 
 
 

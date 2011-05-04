@@ -22,7 +22,9 @@
 	 zerowindow_timeout/2,
 
          advertised_window/1,
-         handle_advertised_window/2
+         handle_advertised_window/2,
+
+         retransmit_packet/2
 	 ]).
 
 %% @todo Figure out when to stop ACK'ing packets.
@@ -529,6 +531,30 @@ fill_window(SockInfo, ProcQueue, PktWindow, PktBuf) ->
     %% Eventually shove the Nagled packet in the tail
     {ok, NBuf1, NProcQueue}.
 
+%% PACKET RETRANSMISSION
+%% ----------------------------------------------------------------------
+
+retransmit_packet(PktBuf, SockInfo) ->
+    {Oldest, Rest} = pick_oldest_packet(PktBuf),
+    #pkt_wrap { packet = Pkt,
+                transmissions = N } = Oldest,
+    Win = advertised_window(PktBuf),
+    ok = utp_socket:send_pkt(Win, SockInfo, Pkt),
+    Wrap = Oldest#pkt_wrap { transmissions = N+1 },
+    PktBuf#pkt_buf { retransmission_queue = [Wrap | Rest] }.
+
+pick_oldest_packet(#pkt_buf { retransmission_queue = [Candidate | R] }) ->
+    pick_oldest_packet(Candidate, R, []).
+
+pick_oldest_packet(Candidate, [], Accum) ->
+    {Candidate, lists:reverse(Accum)};
+pick_oldest_packet(#pkt_wrap { packet = P1 } = C, [#pkt_wrap { packet = P2 } = W | R], Accum) ->
+    case utp_socket:order_packets(P1, P2) of
+        [P1, P2] ->
+            pick_oldest_packet(C, R, [W | Accum]);
+        [P2, P1] ->
+            pick_oldest_packet(W, R, [C | Accum])
+    end.
 
 %% INTERNAL FUNCTIONS
 %% ----------------------------------------------------------------------
