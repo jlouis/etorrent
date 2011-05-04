@@ -188,13 +188,11 @@ send_fin(SockInfo,
     ok = utp_socket:send_pkt(Win, SockInfo, FinPacket).
 
 send_packet(Bin,
-            WindowSize,
             #pkt_buf { seq_no = SeqNo,
                        next_expected_seq_no = AckNo,
                        retransmission_queue = RetransQueue } = Buf,
             SockInfo) ->
     P = #packet { ty = st_data,
-                  win_sz  = WindowSize,
                   seq_no  = SeqNo,
                   ack_no  = AckNo-1,
                   extension = [],
@@ -508,10 +506,10 @@ fill_from_proc_queue(N, MaxPktSz, Q, Proc) ->
 
 %% @doc Given a queue of things to send, transmit packets from it
 %% @end
-transmit_queue(Q, WindowSize, Buf, SockInfo) ->
+transmit_queue(Q, Buf, SockInfo) ->
     L = queue:to_list(Q),
     lists:foldl(fun(Data, B) ->
-                        send_packet(Data, WindowSize, B, SockInfo)
+                        send_packet(Data, B, SockInfo)
                 end,
                 Buf,
                 L).
@@ -525,9 +523,8 @@ fill_window(SockInfo, ProcQueue, PktWindow, PktBuf) ->
     {TxQueue, NProcQueue} =
         fill_from_proc_queue(FreeInWindow, PktBuf, ProcQueue),
 
-    AdvWin = advertised_window(PktBuf),
     %% Send out the queue of packets to transmit
-    NBuf1 = transmit_queue(TxQueue, AdvWin, PktBuf, SockInfo),
+    NBuf1 = transmit_queue(TxQueue, PktBuf, SockInfo),
     %% Eventually shove the Nagled packet in the tail
     {ok, NBuf1, NProcQueue}.
 
