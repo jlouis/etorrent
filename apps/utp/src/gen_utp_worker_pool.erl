@@ -21,13 +21,14 @@
 %% @doc
 %% Starts the supervisor
 %%
-%% @spec start_link() -> {ok, Pid} | ignore | {error, Error}
 %% @end
 %%--------------------------------------------------------------------
+-spec start_link() -> {ok, pid()} | ignore | {error, term()}.
 start_link() ->
     supervisor:start_link({local, ?SERVER}, ?MODULE, []).
 
 %% @doc Start a worker child
+%% @end
 start_child(Socket, Addr, Port, Options) ->
     Pool = gproc:lookup_local_name(gen_utp_worker_pool),
     supervisor:start_child(Pool, [Socket, Addr, Port, Options]).
