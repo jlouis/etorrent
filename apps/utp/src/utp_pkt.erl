@@ -536,6 +536,7 @@ retransmit_packet(PktBuf, SockInfo) ->
     #pkt_wrap { packet = Pkt,
                 transmissions = N } = Oldest,
     Win = advertised_window(PktBuf),
+    error_logger:info_report([resending, utp_socket:format_pkt(Pkt)]),
     ok = utp_socket:send_pkt(Win, SockInfo, Pkt),
     Wrap = Oldest#pkt_wrap { transmissions = N+1 },
     PktBuf#pkt_buf { retransmission_queue = [Wrap | Rest] }.
