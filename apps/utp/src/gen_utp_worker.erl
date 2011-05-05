@@ -239,7 +239,7 @@ connected(close, #state { sock_info = SockInfo,
     %% Close down connection!
     ok = utp_pkt:send_fin(SockInfo, PktBuf),
     {next_state, fin_sent, State};
-connected({timeout, Ref, {retransmission_timeout, N}},
+connected({timeout, Ref, {retransmit_timeout, N}},
          #state { 
             pkt_buf = PacketBuf,
             sock_info = SockInfo,
