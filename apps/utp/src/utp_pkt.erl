@@ -167,7 +167,13 @@ send_ack(SockInfo,
                           extension = []
                         },
     Win = advertised_window(Buf),
-    ok = utp_socket:send_pkt(Win, SockInfo, AckPacket).
+    case utp_socket:send_pkt(Win, SockInfo, AckPacket) of
+        ok ->
+            ok;
+        {error, Reason} ->
+            error_logger:warning_report([dropping_packet, {error, Reason}]),
+            ok
+    end.
 
 %% @doc Toss out a FIN packet on the Socket.
 %% @todo Reconsider this. It may be it should be a normally streamed pkt
