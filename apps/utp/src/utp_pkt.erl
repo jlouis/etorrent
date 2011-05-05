@@ -593,9 +593,6 @@ view_inflight_bytes(#pkt_buf{ retransmission_queue = Q }) ->
 
 bytes_free_in_window(PktBuf, PktWindow) ->
     MaxSend = max_window_send(PktBuf, PktWindow),
-    K = view_inflight_bytes(PktBuf),
-    error_logger:info_report([retransmission_buffer_view, K,
-                              PktBuf#pkt_buf.retransmission_queue] ),
     case view_inflight_bytes(PktBuf) of
         buffer_full ->
             0;
