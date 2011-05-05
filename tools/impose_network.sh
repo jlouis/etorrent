@@ -1,7 +1,13 @@
 #!/bin/sh
 
-from="$1"
-to="$2"
+from=${1-127.0.0.1}
+to=${2-127.0.0.1}
+
+ipfw delete 100
+ipfw delete 200
+ipfw delete 300
+ipfw delete 400
+ipfw delete 500
 
 ipfw add 1000 allow all from any to any
 
