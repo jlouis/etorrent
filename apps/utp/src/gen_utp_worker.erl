@@ -221,7 +221,8 @@ connected({pkt, Pkt, {_TS, _TSDiff, RecvTime}},
         end,
 
     %% Fill up the send window again with the new information
-    {ZWinView, N_PB2, N_PRI2} = fill_window(SockInfo, N_PRI, N_PKI1, N_PB),
+    {ZWinTimeout, N_PB2, N_PRI2} = fill_window(SockInfo, N_PRI, N_PKI1, N_PB,
+                                               State#state.zerowindow_timeout),
     %% @todo This ACK may be cancelled if we manage to push something out
     %%       the window, etc., but the code is currently ready for it!
     %% The trick is to clear the message.
@@ -229,17 +230,11 @@ connected({pkt, Pkt, {_TS, _TSDiff, RecvTime}},
     %% Send out an ACK if needed
     utp_pkt:handle_send_ack(SockInfo, N_PB2, Messages),
 
-    %% Handle the zero window
-    ZTimeOut = case ZWinView of
-                   ok -> State#state.zerowindow_timeout;
-                   {set, Ref} -> {set, Ref}
-               end,
-            
     {next_state, connected,
      State#state { pkt_window = N_PKI1,
                    pkt_buf = N_PB2,
                    retransmit_timeout = N_RetransTimer,
-                   zerowindow_timeout = ZTimeOut,
+                   zerowindow_timeout = ZWinTimeout,
                    proc_info = N_PRI2 }};
 connected(close, #state { sock_info = SockInfo,
                           pkt_buf = PktBuf } = State) ->
@@ -529,7 +524,7 @@ handle_retransmit_timer(Messages, RetransTimer) ->
             end
     end.
 
-fill_window(SockInfo, ProcessInfo, WindowInfo, PktBuffer) ->
+fill_window(SockInfo, ProcessInfo, WindowInfo, PktBuffer, ZWinTimer) ->
     {ok, N_PktBuffer, N_ProcessInfo} =
         utp_pkt:fill_window(SockInfo,
                             ProcessInfo,
@@ -537,10 +532,21 @@ fill_window(SockInfo, ProcessInfo, WindowInfo, PktBuffer) ->
                             PktBuffer),
     case utp_pkt:view_zero_window(WindowInfo) of
         ok ->
-            {ok, N_PktBuffer, N_ProcessInfo};
+            {cancel_zerowin_timer(ZWinTimer), N_PktBuffer, N_ProcessInfo};
         zero ->
-            Ref = gen_fsm:start_timer(?ZERO_WINDOW_DELAY,
-                                      {zerowindow_timeout, ?ZERO_WINDOW_DELAY}),
-            {{set, Ref}, N_PktBuffer, N_ProcessInfo}
+            {set_zerowin_timer(ZWinTimer), N_PktBuffer, N_ProcessInfo}
     end.
+
+cancel_zerowin_timer(undefined) ->
+    undefined;
+cancel_zerowin_timer({set, Ref}) ->
+    gen_fsm:cancel_timer(Ref),
+    undefined.
+
+set_zerowin_timer(undefined) ->
+    Ref = gen_fsm:start_timer(?ZERO_WINDOW_DELAY,
+                              {zerowindow_timeout, ?ZERO_WINDOW_DELAY}),
+    {set, Ref};
+set_zerowin_timer({set, Ref}) -> {set, Ref}. % Already set, do nothing
+
 

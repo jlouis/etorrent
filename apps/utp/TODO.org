@@ -95,7 +95,7 @@ Haphazard TODO list of things that needs attention:
    an updated window.
 *** DONE Installation
    When the window closes to 0, we should install the timer.
-*** TODO UnInstallation
+*** DONE UnInstallation
    If there is already a timer installed, remove it when the window
    opens above 0.
 ** TODO Figure out the exact construction of the window probe packet
