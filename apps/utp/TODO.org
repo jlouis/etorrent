@@ -75,24 +75,43 @@ Haphazard TODO list of things that needs attention:
                     {error,{already_started,<0.60.0>}}
      in function  gen_utp:connect/3
      in call from utp:test_connector_1/0
-* TODO Test the retransmission code
 * TODO The ACK in the connectee@ is seen as old, investigate
   There is something along the lines of the numbering that doesn't
   work here. It ought to be fixed. But we place it down here to
   concentrate on other stuff first.
-* ZeroWindow Timeouts
-** Install and remove the zerowindow timeout
+
+  The problem is that we find an ACK and that ACK is older than what
+  we expect it to be. This is wrong, and we should fix it. We should
+  get an ACK which is equivalent to the last acked packet. I.e., it
+  should be equivalent to a window probe request. It is off-by-one and
+  sometimes it is off by two (??).
+* TODO ZeroWindow Timeouts
+** TODO Move the Zerowindow check out of handle-packet. It has no place in there
+** Consider moving the window-specific code to its own module.
+** TODO Install and remove the zerowindow timeout
    When the window closes to 0, we should start the zerowindow
    timer. If nothing has happened for some time, we will then send out
    a window probe to coax the other end into sending back an ACK with
    an updated window.
 
+*** TODO Installation
+   When the window closes to 0, we should install the timer.
+*** TODO UnInstallation
    If there is already a timer installed, remove it when the window
    opens above 0.
-** Figure out the exact construction of the window probe packet
+** TODO Figure out the exact construction of the window probe packet
+   We don't know exactly what the probe packet looks like. We better
+   read the source code of libutp to see what it looks like.
+*** Timer triggering
+   If this timer triggers, it means we should send forth a
+   window-probe packet. This is a packet which will trigger an ACK the
+   other way.
+* TODO Re-read the uTP BEP 29 spec again
+* TODO Test the retransmission code
+** DONE Make DUMMYNET work on FreeBSD
+** TODO Fix the zerowindow bug
+* Socket Close
+* SYN Timeouts should just be part of retransmit timeouts?
+
 * RTT Measurement
   This is probably different in uTP from the standard protocol
-* TODO Re-read the uTP BEP 29 spec again
-
-
-
