@@ -71,6 +71,8 @@
 -define(MAX_CWND_INCREASE_BYTES_PER_RTT, 3000).
 -define(CUR_DELAY_SIZE, 3).
 
+-define(ZERO_WINDOW_DELAY, 15*1000).
+
 %% Experiments suggest that a clock skew of 10 ms per 325 seconds
 %% is not impossible. Reset delay_base every 13 minutes. The clock
 %% skew is dealt with by observing the delay base in the other
@@ -89,7 +91,8 @@
                  pkt_buf      :: utp_pkt:buf(),
                  proc_info    :: utp_process:t(),
                  connector    :: {reference(), pid()},
-                 syn_timeout  :: reference(),
+                 syn_timeout  :: reference(), % May kill this
+                 zerowindow_timeout :: undefined | {set, reference()},
                  retransmit_timeout :: undefined | {set, reference()}
                }).
 
@@ -218,21 +221,25 @@ connected({pkt, Pkt, {_TS, _TSDiff, RecvTime}},
         end,
 
     %% Fill up the send window again with the new information
-    {ok, N_PB2, N_PRI2} = utp_pkt:fill_window(SockInfo,
-                                              N_PRI,
-                                              N_PKI1,
-                                              N_PB),
+    {ZWinView, N_PB2, N_PRI2} = fill_window(SockInfo, N_PRI, N_PKI1, N_PB),
+    %% @todo This ACK may be cancelled if we manage to push something out
+    %%       the window, etc., but the code is currently ready for it!
+    %% The trick is to clear the message.
 
-    %% @todo This ACK may be cancelled if we manage to push something out the window, etc
-    %%       but the code is currently ready for it!
     %% Send out an ACK if needed
-    utp_pkt:handle_send_ack(SockInfo, N_PB1, Messages),
+    utp_pkt:handle_send_ack(SockInfo, N_PB2, Messages),
 
-
+    %% Handle the zero window
+    ZTimeOut = case ZWinView of
+                   ok -> State#state.zerowindow_timeout;
+                   {set, Ref} -> {set, Ref}
+               end,
+            
     {next_state, connected,
      State#state { pkt_window = N_PKI1,
                    pkt_buf = N_PB2,
                    retransmit_timeout = N_RetransTimer,
+                   zerowindow_timeout = ZTimeOut,
                    proc_info = N_PRI2 }};
 connected(close, #state { sock_info = SockInfo,
                           pkt_buf = PktBuf } = State) ->
@@ -419,30 +426,9 @@ connected(Msg, From, State) ->
     {next_state, connected, State}.
 
 
-
-%%--------------------------------------------------------------------
 %% @private
-%% @doc
-%% Whenever a gen_fsm receives an event sent using
-%% gen_fsm:send_all_state_event/2, this function is called to handle
-%% the event.
-%%
-%% @spec handle_event(Event, StateName, State) ->
-%%                   {next_state, NextStateName, NextState} |
-%%                   {next_state, NextStateName, NextState, Timeout} |
-%%                   {stop, Reason, NewState}
-%% @end
-%%--------------------------------------------------------------------
-handle_event({timeout, TRef, zerowindow_timeout},
-	     SN, #state {
-	      pkt_window = PKI
-	      } = State)
-  when SN == syn_sent; SN == connected; SN == connected_full; SN == fin_sent ->
-    PKI1 = utp_pkt:zerowindow_timeout(TRef, PKI),
-    {next_state, SN, State#state { pkt_window = PKI1 }};
-handle_event({timeout, _TRef, zerowindow_timeout}, SN, State) ->
-    {next_state, SN, State}; % Ignore, stray zerowindow timeout
-handle_event(_Event, StateName, State) ->
+handle_event(Event, StateName, State) ->
+    error_logger:error_report([unknown_handle_event, Event, StateName, State]),
     {next_state, StateName, State}.
 
 %%--------------------------------------------------------------------
@@ -543,4 +529,18 @@ handle_retransmit_timer(Messages, RetransTimer) ->
             end
     end.
 
+fill_window(SockInfo, ProcessInfo, WindowInfo, PktBuffer) ->
+    {ok, N_PktBuffer, N_ProcessInfo} =
+        utp_pkt:fill_window(SockInfo,
+                            ProcessInfo,
+                            WindowInfo,
+                            PktBuffer),
+    case utp_pkt:view_zero_window(WindowInfo) of
+        ok ->
+            {ok, N_PktBuffer, N_ProcessInfo};
+        zero ->
+            Ref = gen_fsm:start_timer(?ZERO_WINDOW_DELAY,
+                                      {zerowindow_timeout, ?ZERO_WINDOW_DELAY}),
+            {{set, Ref}, N_PktBuffer, N_ProcessInfo}
+    end.
 

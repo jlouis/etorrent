@@ -19,12 +19,12 @@
 	 buffer_dequeue/1,
 	 buffer_putback/2,
 	 fill_window/4,
-	 zerowindow_timeout/2,
 
          advertised_window/1,
          handle_advertised_window/2,
 
-         retransmit_packet/2
+         retransmit_packet/2,
+         view_zero_window/1
 	 ]).
 
 %% @todo Figure out when to stop ACK'ing packets.
@@ -39,7 +39,6 @@
 -define(REORDER_BUFFER_MAX_SIZE, 511).
 -define(OUTGOING_BUFFER_MAX_SIZE, 511).
 -define(OPT_SEND_BUF, ?OUTGOING_BUFFER_MAX_SIZE * ?PACKET_SIZE).
--define(ZERO_WINDOW_DELAY, 15*1000).
 
 %% TYPES
 %% ----------------------------------------------------------------------
@@ -471,10 +470,6 @@ handle_destroy_state_change(AckAhead, Buf) ->
         false -> []
     end.
 
-handle_window_size(0, #pkt_window{} = PKI) ->
-    TRef = erlang:send_after(?ZERO_WINDOW_DELAY, self(), zero_window_timeout),
-    PKI#pkt_window { zero_window_timeout = {set, TRef},
-                     peer_advertised_window = 0};
 handle_window_size(WindowSize, #pkt_window {} = PKI) ->
     PKI#pkt_window { peer_advertised_window = WindowSize }.
 
@@ -631,12 +626,7 @@ buffer_dequeue(#pkt_buf { recv_buf = Q } = Buf) ->
 	    empty
     end.
 
-
-zerowindow_timeout(TRef, #pkt_window { peer_advertised_window = 0,
-                                     zero_window_timeout = {set, TRef}} = PKI) ->
-                   PKI#pkt_window { peer_advertised_window = packet_size(PKI),
-                                  zero_window_timeout = none };
-zerowindow_timeout(TRef,  #pkt_window { zero_window_timeout = {set, TRef}} = PKI) ->
-    PKI#pkt_window { zero_window_timeout = none };
-zerowindow_timeout(_TRef,  #pkt_window { zero_window_timeout = {set, _TRef1}} = PKI) ->
-    PKI.
+view_zero_window(#pkt_window { peer_advertised_window = N }) when N > 0 ->
+    ok; % There is no reason to update the window
+view_zero_window(#pkt_window { peer_advertised_window = 0 }) ->
+    zero.

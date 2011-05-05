@@ -93,8 +93,7 @@ Haphazard TODO list of things that needs attention:
    timer. If nothing has happened for some time, we will then send out
    a window probe to coax the other end into sending back an ACK with
    an updated window.
-
-*** TODO Installation
+*** DONE Installation
    When the window closes to 0, we should install the timer.
 *** TODO UnInstallation
    If there is already a timer installed, remove it when the window
