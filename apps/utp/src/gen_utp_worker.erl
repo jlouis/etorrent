@@ -72,6 +72,8 @@
 -define(MAX_CWND_INCREASE_BYTES_PER_RTT, 3000).
 -define(CUR_DELAY_SIZE, 3).
 
+%% The delay to set on Zero Windows. It is awfully high, but that is what it has
+%% to be it seems.
 -define(ZERO_WINDOW_DELAY, 15*1000).
 
 %% Experiments suggest that a clock skew of 10 ms per 325 seconds
@@ -262,6 +264,22 @@ connected(close, #state { sock_info = SockInfo,
     %% Close down connection!
     ok = utp_pkt:send_fin(SockInfo, PktBuf),
     {next_state, fin_sent, State};
+connected({timeout, Ref, {zerowindow_timeout, _N}},
+          #state {
+            pkt_buf = PktBuf,
+            proc_info = ProcessInfo,
+            sock_info = SockInfo,
+            pkt_window = WindowInfo,
+            zerowindow_timeout = {set, Ref}} = State) ->
+    N_Win = utp_pkt:bump_window(WindowInfo),
+    {ZWinTimer, N_PktBuf, N_ProcessInfo} =
+        fill_window(SockInfo, ProcessInfo, N_Win, PktBuf, undefined),
+    {next_state, connected,
+     State#state {
+       zerowindow_timeout = ZWinTimer,
+       pkt_buf = N_PktBuf,
+       pkt_window = N_Win,
+       proc_info = N_ProcessInfo}};
 connected({timeout, Ref, {retransmit_timeout, N}},
          #state { 
             pkt_buf = PacketBuf,
@@ -423,13 +441,16 @@ connected({send, Data}, From, #state {
                           sock_info = SockInfo,
 			  proc_info = PI,
 			  pkt_window  = PKI,
+                          zerowindow_timeout = ZWinTimer,
 			  pkt_buf   = PKB } = State) ->
     ProcInfo = utp_process:enqueue_sender(From, Data, PI),
-    {ok, PKB1, ProcInfo1} = utp_pkt:fill_window(SockInfo,
-						ProcInfo,
-						PKI,
-						PKB),
+    {N_ZWinTimer, PKB1, ProcInfo1} = fill_window(SockInfo,
+                                                 ProcInfo,
+                                                 PKI,
+                                                 PKB,
+                                                 ZWinTimer),
     {next_state, connected, State#state {
+                              zerowindow_timeout = N_ZWinTimer,
 			      proc_info = ProcInfo1,
 			      pkt_buf   = PKB1 }};
 connected(Msg, From, State) ->

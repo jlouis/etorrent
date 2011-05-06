@@ -24,7 +24,8 @@
          handle_advertised_window/2,
 
          retransmit_packet/2,
-         view_zero_window/1
+         view_zero_window/1,
+         bump_window/1
 	 ]).
 
 %% @todo Figure out when to stop ACK'ing packets.
@@ -630,3 +631,11 @@ view_zero_window(#pkt_window { peer_advertised_window = N }) when N > 0 ->
     ok; % There is no reason to update the window
 view_zero_window(#pkt_window { peer_advertised_window = 0 }) ->
     zero.
+
+bump_window(#pkt_window {} = Win) ->
+    PacketSize = packet_size(todo),
+    Win#pkt_window {
+      peer_advertised_window = PacketSize
+     }.
+
+   
