@@ -85,10 +85,9 @@ Haphazard TODO list of things that needs attention:
   get an ACK which is equivalent to the last acked packet. I.e., it
   should be equivalent to a window probe request. It is off-by-one and
   sometimes it is off by two (??).
-* TODO ZeroWindow Timeouts
-** TODO Move the Zerowindow check out of handle-packet. It has no place in there
-** Consider moving the window-specific code to its own module.
-** TODO Install and remove the zerowindow timeout
+* DONE ZeroWindow Timeouts
+** DONE Move the Zerowindow check out of handle-packet. It has no place in there
+** DONE Install and remove the zerowindow timeout
    When the window closes to 0, we should start the zerowindow
    timer. If nothing has happened for some time, we will then send out
    a window probe to coax the other end into sending back an ACK with
@@ -98,19 +97,44 @@ Haphazard TODO list of things that needs attention:
 *** DONE UnInstallation
    If there is already a timer installed, remove it when the window
    opens above 0.
-** TODO Figure out the exact construction of the window probe packet
+** DONE Figure out the exact construction of the window probe packet
    We don't know exactly what the probe packet looks like. We better
    read the source code of libutp to see what it looks like.
-*** Timer triggering
+
+   There is no window probe packet. One simply bumps the window size
+   >.< ... that is a majorly bad idea, but what the protocol does.
+*** DONE Timer triggering
    If this timer triggers, it means we should send forth a
    window-probe packet. This is a packet which will trigger an ACK the
    other way.
+
+   No, it means: Increase the window by one and then try to fill up
+   the buffer if possible again!
+* TODO Force an st_state packet through when the window *reopens*
+  If we have a window that is down to 0, and we then suddenly get a
+  receiver on the socket reading data out of it such that we detect
+  the window open up again, we should always send a window update
+  packet in this case.
+* TODO Consider moving the window-specific code to its own module.
 * TODO Re-read the uTP BEP 29 spec again
+* DONE SYN Timeouts should just be part of retransmit timeouts?
+  Yep, they should.
+** DONE Read the libutp source and figure out the normal retransmit time for SYNs
+   The normal retransmit time is two tries: one at 3 secs, one at 6
+   secs and then at 12, we give up. OK. That should be easy to implement.
+** DONE Set up the retransmit timer in uTP to match this.
+** DONE Keep trying and fail if it takes too long upon timer triggers.
+** DONE Ignore the special cases a bit for now.
+* TODO Socket Close
+  How to implement socket closedown?
+** TODO Make a plan and understand what is going on!
+   It is based on the idea of FIN packets. Does it allow half-open connections?
 * TODO Test the retransmission code
 ** DONE Make DUMMYNET work on FreeBSD
 ** TODO Fix the zerowindow bug
-* Socket Close
-* SYN Timeouts should just be part of retransmit timeouts?
-
 * RTT Measurement
   This is probably different in uTP from the standard protocol
+* TODO Only install the zerowin timer if there are more data to send out
+  We are currently always setting the ZeroWindow timer when the
+  peer_advertised_window is 0, but we could postpone that decision
+  until we know we need to send data to the other end.

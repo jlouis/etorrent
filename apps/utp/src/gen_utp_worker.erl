@@ -56,6 +56,7 @@
 
 %% Default SYN packet timeout
 -define(SYN_TIMEOUT, 3000).
+-define(SYN_TIMEOUT_THRESHOLD, ?SYN_TIMEOUT*2).
 -define(RTT_VAR, 800). % Round trip time variance
 -define(PACKET_SIZE, 350). % @todo Probably dead!
 -define(MAX_WINDOW_USER, 255 * ?PACKET_SIZE). % Likewise!
@@ -91,7 +92,6 @@
                  pkt_buf      :: utp_pkt:buf(),
                  proc_info    :: utp_process:t(),
                  connector    :: {reference(), pid()},
-                 syn_timeout  :: reference(), % May kill this
                  zerowindow_timeout :: undefined | {set, reference()},
                  retransmit_timeout :: undefined | {set, reference()}
                }).
@@ -170,18 +170,39 @@ syn_sent({pkt, #packet { ty = st_state,
                   pkt_buf = PktBuf,
                   pkt_window = PktWin,
                   connector = From,
-                  syn_timeout = TRef
+                  retransmit_timeout = RTimeout
                 } = State) ->
-    gen_fsm:cancel_timer(TRef),
     reply(From, ok),
     {next_state, connected,
      State#state { sock_info = SockInfo,
                    pkt_window = utp_pkt:handle_advertised_window(WindowSize,
                                                                  PktWin),
-                   syn_timeout = undefined,
+                   retransmit_timeout = clear_retransmit_timer(RTimeout),
                    pkt_buf = utp_pkt:init_ackno(PktBuf, PktSeqNo)}};
 syn_sent(close, _S) ->
     todo_alter_rto;
+syn_sent({timeout, TRef, {retransmit_timeout, N}},
+         #state { retransmit_timeout = {set, TRef},
+                  sock_info = SockInfo,
+                  connector = From,
+                  pkt_buf = PktBuf
+                } = State) ->
+    error_logger:info_report([syn_timeout_triggered]),
+    case N > ?SYN_TIMEOUT_THRESHOLD of
+        true ->
+            reply(From, etimedout),
+            {next_state, reset, State#state {retransmit_timeout = undefined}};
+        false ->
+            % Resend packet
+            SynPacket = mk_syn(),
+            Win = utp_pkt:advertised_window(PktBuf),
+            ok = utp_socket:send_pkt(Win, SockInfo, SynPacket,
+                                     utp_socket:conn_id_recv(SockInfo)),
+            {next_state, syn_sent,
+             State#state {
+               retransmit_timeout = set_retransmit_timer(N*2, undefined)
+              }}
+    end;
 syn_sent(Msg, S) ->
     %% Ignore messages
     error_logger:warning_report([async_message, syn_sent, Msg]),
@@ -342,26 +363,21 @@ destroy(Msg, State) ->
 %%--------------------------------------------------------------------
 idle(connect, From, State = #state { sock_info = SockInfo,
                                      pkt_buf   = PktBuf}) ->
-
-    TRef = gen_fsm:start_timer(?SYN_TIMEOUT, syn_timeout),
     Conn_id_recv = utp_proto:mk_connection_id(),
     gen_utp:register_process(self(), Conn_id_recv),
 
     ConnIdSend = Conn_id_recv + 1,
     N_SockInfo = utp_socket:set_conn_id(ConnIdSend, SockInfo),
 
-    SynPacket = #packet { ty = st_syn,
-			  seq_no = 1,
-			  ack_no = 0,
-			  extension = ?SYN_EXTS
-			}, % Rest are defaults
+    SynPacket = mk_syn(),
     Win = utp_pkt:advertised_window(PktBuf),
     ok = utp_socket:send_pkt(Win, N_SockInfo, SynPacket, Conn_id_recv),
-    {next_state, syn_sent, State#state {
-                             sock_info = N_SockInfo,
-                             syn_timeout = TRef,
-                             pkt_buf     = utp_pkt:init_seqno(PktBuf, 2),
-                             connector = From }};
+    {next_state, syn_sent,
+     State#state {
+       sock_info = N_SockInfo,
+       retransmit_timeout = set_retransmit_timer(?SYN_TIMEOUT, undefined),
+       pkt_buf     = utp_pkt:init_seqno(PktBuf, 2),
+       connector = From }};
 idle({accept, SYN}, _From, #state { sock_info = SockInfo,
                                     pkt_window = PktWin,
                                     pkt_buf   = PktBuf } = State) ->
@@ -548,5 +564,13 @@ set_zerowin_timer(undefined) ->
                               {zerowindow_timeout, ?ZERO_WINDOW_DELAY}),
     {set, Ref};
 set_zerowin_timer({set, Ref}) -> {set, Ref}. % Already set, do nothing
+
+mk_syn() ->
+     #packet { ty = st_syn,
+               seq_no = 1,
+               ack_no = 0,
+               extension = ?SYN_EXTS
+             }. % Rest are defaults
+
 
 

@@ -6,7 +6,8 @@
          mk/5,
          set_conn_id/2,
 
-         order_packets/2
+         order_packets/2,
+         conn_id_recv/1
         ]).
 
 -export([
@@ -50,6 +51,9 @@ mk(Addr, Opts, PacketSize, Port, Socket) ->
                  conn_id_send = not_set,
                  timestamp_difference = 0
                }.
+
+conn_id_recv(#sock_info { conn_id_send = ConnId }) ->
+    ConnId - 1. % This is the receiver conn_id we use at the SYN point.
 
 send_pkt(AdvWin, #sock_info { conn_id_send = ConnId } = SockInfo, Packet) ->
     send_pkt(AdvWin, SockInfo, Packet, ConnId).
