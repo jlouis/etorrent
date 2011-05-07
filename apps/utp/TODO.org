@@ -127,8 +127,28 @@ Haphazard TODO list of things that needs attention:
 ** DONE Ignore the special cases a bit for now.
 * TODO Socket Close
   How to implement socket closedown?
-** TODO Make a plan and understand what is going on!
-   It is based on the idea of FIN packets. Does it allow half-open connections?
+** DONE Make a plan and understand what is going on!
+   It is based on the idea of FIN packets. Does it allow half-open
+   connections?
+
+   The plan is to figure out some general things, and then attack each
+   possible state transition one by one. It begs some general
+   questions, which we can probably answer by digging into the code.
+** TODO Does uTP allow for half-open connections?
+** TODO How is the two-army problem handled?
+** TODO Individual states:
+   For each of these state transitions, understand specifically what
+   happens in the transition and make a plan for it.
+*** TODO 1: CONNECTED -> FIN_SENT
+*** TODO 2: CONNECTED -> GOT_FIN
+*** TODO 3: FIN_SENT -> GOT_FIN
+*** TODO 4: GOT_FIN -> RESET
+*** TODO 5: RESET -> DESTROY
+*** TODO 6: RESET -> GOT_FIN (why does this happen?)
+*** TODO 7: GOT_FIN -> DESTROY_DELAY
+*** TODO 8: FIN_SENT -> DESTROY (timeout)
+*** TODO 9: DESTROY_DELAY -> DESTROY (timeout)
+
 * TODO Test the retransmission code
 ** DONE Make DUMMYNET work on FreeBSD
 ** TODO Fix the zerowindow bug
