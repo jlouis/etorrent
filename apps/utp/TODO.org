@@ -166,10 +166,10 @@ Haphazard TODO list of things that needs attention:
      line in the send direction, we are also closing the line in the
      receive direction. In other words, we don't use the concept of
      half-open connections.
-**** TODO When receiving a FIN packet, install a knowledge of this in the pkt_buffer
+**** DONE When receiving a FIN packet, install a knowledge of this in the pkt_buffer
      We should record that we got a fin packet, and what seq_no is
      stamped with the fin.
-**** TODO Set a Message which says we got the fin packet.
+**** DONE Set a Message which says we got the fin packet.
 **** TODO Make sure we don't send data to the upper layer when a fin has been sent!
 **** TODO When we confirm the eof_pkt from the reorder buffer, we should post a message this is the case
 **** TODO When we confirm the FIN packet, our new state is GOT_FIN *unless* FIN_SENT is our current one
@@ -207,6 +207,9 @@ Haphazard TODO list of things that needs attention:
   We are currently always setting the ZeroWindow timer when the
   peer_advertised_window is 0, but we could postpone that decision
   until we know we need to send data to the other end.
+
+
+
 
 
 

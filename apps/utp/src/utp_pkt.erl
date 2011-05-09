@@ -42,9 +42,6 @@
 %% TYPES
 %% ----------------------------------------------------------------------
 -record(pkt_window, {
-          %% This is set when the other end has fin'ed us
-          fin_state = none :: none | {got_fin, 0..16#FFFF},
-
           %% Size of the window the Peer advertises to us.
 	  peer_advertised_window = 4096 :: integer(),
 
@@ -87,6 +84,9 @@
           reorder_count = 0             :: integer(), % When and what to reorder
           next_expected_seq_no = 1      :: 0..16#FFFF, % Next expected packet
           seq_no = 1                    :: 0..16#FFFF, % Next Sequence number to use when sending
+
+          %% Did we receive a fin packet?
+          fin_state = none :: none | {got_fin, 0..16#FFFF},
 
           %% Packet buffer settings
           %% --------------------
@@ -444,22 +444,22 @@ handle_packet(_CurrentTimeMs,
         update_send_buffer(AckNo, N_PacketBuffer1),
 
     %% Some packets set a specific state we should handle in our end
-    {PKI, Messages} =
+    {N_PB2, Messages} =
         case Type of
             st_fin ->
-                PKW = PktWindow#pkt_window {
-                        fin_state = {got_fin, SeqNo}
-                       },
                 ShouldDestroy =
                     handle_destroy_state_change(AcksAhead, N_PacketBuffer1),
-                {PKW, [fin] ++ ShouldDestroy};
+                {N_PB1#pkt_buf {
+                   fin_state = {got_fin, SeqNo}
+                  },
+                 [got_fin] ++ ShouldDestroy};
             st_data ->
-                {PktWindow, []};
+                {N_PB1, []};
             st_state ->
-                {PktWindow, [state_only]}
+                {N_PB1, [state_only]}
     end,
-    {ok, N_PB1,
-         handle_window_size(WindowSize, PKI),
+    {ok, N_PB2,
+         handle_window_size(WindowSize, PktWindow),
          Messages ++ SendMessages ++ RecvMessages}.
 
 
