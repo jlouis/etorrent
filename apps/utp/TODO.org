@@ -155,15 +155,26 @@ Haphazard TODO list of things that needs attention:
 *** TODO 2: CONNECTED + pkt(st_fin)
     Mark where the end of the stream is
     We should transition to got_fin in state
-**** TODO What does libutp do?
+**** DONE What does libutp do?
      What happens when the incoming packet is of type st_fin?
-     What do we record when this is the case?
-     Do we alter the way we process packets afterwards?
-       if so, how?
-     What happens when we confirm the last packet and the reorder
-       buffer is empty?
+
      What happens to all who are awaiting transfer of data when the
-     buffer closes?
+     buffer closes.
+**** TODO When the buffer closes, we should stop satisfying data to the upper layer
+     According to spec, this is what should happen. So if we close the
+     line in the send direction, we are also closing the line in the
+     receive direction. In other words, we don't use the concept of
+     half-open connections.
+**** TODO When receiving a FIN packet, install a knowledge of this in the pkt_buffer
+     We should record that we got a fin packet, and what seq_no is
+     stamped with the fin.
+**** TODO Set a Message which says we got the fin packet.
+**** TODO Make sure we don't send data to the upper layer when a fin has been sent!
+**** TODO When we confirm the eof_pkt from the reorder buffer, we should post a message this is the case
+**** TODO When we confirm the FIN packet, our new state is GOT_FIN *unless* FIN_SENT is our current one
+**** TODO Make sure we immediately ack the FIN packet. Don't delay him!
+**** TODO If we know the eof_pkt and receive packets past it, throw them out!
+
 *** DONE 3: SYN_SENT + close()
     Set timeout to the minimum of 60 and the conn rto * 2
 *** DONE 4: GOT_FIN + close()
@@ -176,6 +187,7 @@ Haphazard TODO list of things that needs attention:
 
     We should report back to clients waiting on the socket for data
     that this won't happen.
+
 *** TODO CONNECTED -> GOT_FIN
 *** TODO FIN_SENT -> GOT_FIN
 *** TODO GOT_FIN -> RESET
