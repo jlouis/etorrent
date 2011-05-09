@@ -136,6 +136,7 @@ Haphazard TODO list of things that needs attention:
    questions, which we can probably answer by digging into the code.
 ** TODO Does uTP allow for half-open connections?
    Investigate the source code of libutp to figure this out!
+
 ** DONE How is the two-army problem handled?
    By timeouts, we know that.
 ** TODO Individual states:
@@ -154,13 +155,27 @@ Haphazard TODO list of things that needs attention:
 *** TODO 2: CONNECTED + pkt(st_fin)
     Mark where the end of the stream is
     We should transition to got_fin in state
-**** What does libutp do?
+**** TODO What does libutp do?
+     What happens when the incoming packet is of type st_fin?
+     What do we record when this is the case?
+     Do we alter the way we process packets afterwards?
+       if so, how?
+     What happens when we confirm the last packet and the reorder
+       buffer is empty?
+     What happens to all who are awaiting transfer of data when the
+     buffer closes?
 *** DONE 3: SYN_SENT + close()
     Set timeout to the minimum of 60 and the conn rto * 2
 *** DONE 4: GOT_FIN + close()
     Move to DESTROY_DELAY
 *** DONE 5: ALL_OTHER_STATES + close()
     Move to DESTROY!
+*** TODO DESTROY
+    Destroy should clean up stuff. What stuff should it clean up, and
+    how?
+
+    We should report back to clients waiting on the socket for data
+    that this won't happen.
 *** TODO CONNECTED -> GOT_FIN
 *** TODO FIN_SENT -> GOT_FIN
 *** TODO GOT_FIN -> RESET
@@ -179,5 +194,9 @@ Haphazard TODO list of things that needs attention:
   We are currently always setting the ZeroWindow timer when the
   peer_advertised_window is 0, but we could postpone that decision
   until we know we need to send data to the other end.
+
+
+
+
 
 
