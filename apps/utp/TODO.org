@@ -161,7 +161,7 @@ Haphazard TODO list of things that needs attention:
 
      What happens to all who are awaiting transfer of data when the
      buffer closes.
-**** TODO When the buffer closes, we should stop satisfying data to the upper layer
+**** DONE When the buffer closes, we should stop satisfying data to the upper layer
      According to spec, this is what should happen. So if we close the
      line in the send direction, we are also closing the line in the
      receive direction. In other words, we don't use the concept of
@@ -174,8 +174,8 @@ Haphazard TODO list of things that needs attention:
 **** TODO When we confirm the eof_pkt from the reorder buffer, we should post a message this is the case
 **** TODO When we confirm the FIN packet, our new state is GOT_FIN *unless* FIN_SENT is our current one
 **** TODO Make sure we immediately ack the FIN packet. Don't delay him!
-**** TODO If we know the eof_pkt and receive packets past it, throw them out!
-
+**** DONE If we know the eof_pkt and receive packets past it, throw them out!
+     We can simply enter them in the reorder buffer and soundly ignore them.
 *** DONE 3: SYN_SENT + close()
     Set timeout to the minimum of 60 and the conn rto * 2
 *** DONE 4: GOT_FIN + close()
@@ -188,16 +188,6 @@ Haphazard TODO list of things that needs attention:
 
     We should report back to clients waiting on the socket for data
     that this won't happen.
-
-*** TODO CONNECTED -> GOT_FIN
-*** TODO FIN_SENT -> GOT_FIN
-*** TODO GOT_FIN -> RESET
-*** TODO RESET -> DESTROY
-*** TODO RESET -> GOT_FIN (why does this happen?)
-*** TODO GOT_FIN -> DESTROY_DELAY
-*** TODO FIN_SENT -> DESTROY (timeout)
-*** TODO DESTROY_DELAY -> DESTROY (timeout)
-
 * TODO Test the retransmission code
 ** DONE Make DUMMYNET work on FreeBSD
 ** TODO Fix the zerowindow bug
