@@ -135,10 +135,27 @@ Haphazard TODO list of things that needs attention:
    possible state transition one by one. It begs some general
    questions, which we can probably answer by digging into the code.
 ** TODO Does uTP allow for half-open connections?
-** TODO How is the two-army problem handled?
+   Investigate the source code of libutp to figure this out!
+** DONE How is the two-army problem handled?
+   By timeouts, we know that.
 ** TODO Individual states:
+   A transition happens on a given state with a given input.
+
    For each of these state transitions, understand specifically what
    happens in the transition and make a plan for it.
+
+   Handle them by implementing what we think is the bare minimum and
+   then build on from there!
+
+*** TODO 1: CONNECTED + close()
+**** TODO Check the source of libutp
+**** TODO We should send off a st_fin packet
+    We should transition to fin_sent in state.
+*** TODO 2: CONNECTED + pkt(st_fin)
+    Mark where the end of the stream is
+    We should transition to got_fin in state
+**** What does libutp do?
+
 *** TODO 1: CONNECTED -> FIN_SENT
 *** TODO 2: CONNECTED -> GOT_FIN
 *** TODO 3: FIN_SENT -> GOT_FIN
