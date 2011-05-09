@@ -134,9 +134,10 @@ Haphazard TODO list of things that needs attention:
    The plan is to figure out some general things, and then attack each
    possible state transition one by one. It begs some general
    questions, which we can probably answer by digging into the code.
-** TODO Does uTP allow for half-open connections?
+** DONE Does uTP allow for half-open connections?
    Investigate the source code of libutp to figure this out!
 
+   No! uTP has no concept of half-open connections!
 ** DONE How is the two-army problem handled?
    By timeouts, we know that.
 ** TODO Individual states:
