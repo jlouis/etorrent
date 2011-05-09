@@ -147,24 +147,28 @@ Haphazard TODO list of things that needs attention:
    Handle them by implementing what we think is the bare minimum and
    then build on from there!
 
-*** TODO 1: CONNECTED + close()
-**** TODO Check the source of libutp
-**** TODO We should send off a st_fin packet
-    We should transition to fin_sent in state.
+*** DONE 1: CONNECTED + close()
+**** DONE Check the source of libutp
+**** DONE We should send off a st_fin packet
+**** DONE We should transition to fin_sent in state.
 *** TODO 2: CONNECTED + pkt(st_fin)
     Mark where the end of the stream is
     We should transition to got_fin in state
 **** What does libutp do?
-
-*** TODO 1: CONNECTED -> FIN_SENT
-*** TODO 2: CONNECTED -> GOT_FIN
-*** TODO 3: FIN_SENT -> GOT_FIN
-*** TODO 4: GOT_FIN -> RESET
-*** TODO 5: RESET -> DESTROY
-*** TODO 6: RESET -> GOT_FIN (why does this happen?)
-*** TODO 7: GOT_FIN -> DESTROY_DELAY
-*** TODO 8: FIN_SENT -> DESTROY (timeout)
-*** TODO 9: DESTROY_DELAY -> DESTROY (timeout)
+*** DONE 3: SYN_SENT + close()
+    Set timeout to the minimum of 60 and the conn rto * 2
+*** DONE 4: GOT_FIN + close()
+    Move to DESTROY_DELAY
+*** DONE 5: ALL_OTHER_STATES + close()
+    Move to DESTROY!
+*** TODO CONNECTED -> GOT_FIN
+*** TODO FIN_SENT -> GOT_FIN
+*** TODO GOT_FIN -> RESET
+*** TODO RESET -> DESTROY
+*** TODO RESET -> GOT_FIN (why does this happen?)
+*** TODO GOT_FIN -> DESTROY_DELAY
+*** TODO FIN_SENT -> DESTROY (timeout)
+*** TODO DESTROY_DELAY -> DESTROY (timeout)
 
 * TODO Test the retransmission code
 ** DONE Make DUMMYNET work on FreeBSD
@@ -175,3 +179,5 @@ Haphazard TODO list of things that needs attention:
   We are currently always setting the ZeroWindow timer when the
   peer_advertised_window is 0, but we could postpone that decision
   until we know we need to send data to the other end.
+
+

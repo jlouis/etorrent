@@ -181,8 +181,15 @@ syn_sent({pkt, #packet { ty = st_state,
                                                                  PktWin),
                    retransmit_timeout = clear_retransmit_timer(RTimeout),
                    pkt_buf = utp_pkt:init_ackno(PktBuf, PktSeqNo)}};
-syn_sent(close, _S) ->
-    todo_alter_rto;
+syn_sent(close, #state {
+           pkt_window = Window,
+           retransmit_timeout = RTimeout
+          } = State) ->
+    clear_retransmit_timer(RTimeout),
+    Gracetime = lists:min([60, utp_pkt:rto(Window) * 2]),
+    Timer = set_retransmit_timer(Gracetime, undefined),
+    {next_state, syn_sent, State#state {
+                             retransmit_timeout = Timer }};
 syn_sent({timeout, TRef, {retransmit_timeout, N}},
          #state { retransmit_timeout = {set, TRef},
                   sock_info = SockInfo,
@@ -261,7 +268,6 @@ connected({pkt, Pkt, {_TS, _TSDiff, RecvTime}},
                    proc_info = N_PRI2 }};
 connected(close, #state { sock_info = SockInfo,
                           pkt_buf = PktBuf } = State) ->
-    %% Close down connection!
     ok = utp_pkt:send_fin(SockInfo, PktBuf),
     {next_state, fin_sent, State};
 connected({timeout, Ref, {zerowindow_timeout, _N}},
@@ -329,7 +335,6 @@ got_fin(Msg, State) ->
 %% @private
 %% Die deliberately on close for now
 destroy_delay(close, State) ->
-    gen_fsm:start_timer(400, destroy),
     {next_state, destroy, State};
 destroy_delay(Msg, State) ->
     %% Ignore messages

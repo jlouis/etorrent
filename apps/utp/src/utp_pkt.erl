@@ -25,11 +25,9 @@
 
          retransmit_packet/2,
          view_zero_window/1,
-         bump_window/1
+         bump_window/1,
+         rto/1
 	 ]).
-
-%% @todo Figure out when to stop ACK'ing packets.
-%% @todo Implement when to stop ACK'ing packets.
 
 %% DEFINES
 %% ----------------------------------------------------------------------
@@ -59,6 +57,7 @@
 	  %% --------------------
 	  %% Set when we update the zero window to 0 so we can reset it to 1.
 	  zero_window_timeout :: none | {set, reference()},
+          rto = 3000 :: integer(), % Retransmit timeout default
 
 	  %% Timestamps
 	  %% --------------------
@@ -638,4 +637,5 @@ bump_window(#pkt_window {} = Win) ->
       peer_advertised_window = PacketSize
      }.
 
-   
+rto(#pkt_window { rto = RTO }) ->
+    RTO.
