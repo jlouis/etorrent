@@ -269,10 +269,10 @@ consider_send_ack(_, _) -> [].
 %% packet. As such, this function wraps some lower-level operations,
 %% with respect to incoming payload.
 %% @end                      
--spec handle_receive_buffer(integer(), binary(), #pkt_buf{}) ->
+-spec handle_receive_buffer(integer(), binary(), #pkt_buf{}, utp_gen_worker:state()) ->
                                    {#pkt_buf{}, messages()}.
-handle_receive_buffer(SeqNo, Payload, PacketBuffer) ->
-    case update_recv_buffer(SeqNo, Payload, PacketBuffer) of
+handle_receive_buffer(SeqNo, Payload, PacketBuffer, State) ->
+    case update_recv_buffer(SeqNo, Payload, PacketBuffer, State) of
         %% Force an ACK out in this case
         duplicate -> {PacketBuffer, [{send_ack, true}]};
         #pkt_buf{} = PB -> {PB, consider_send_ack(PacketBuffer, PB)}
@@ -284,7 +284,7 @@ handle_receive_buffer(SeqNo, Payload, PacketBuffer) ->
 %% updates the PacketBuffer if the SeqNo is valid for the current
 %% state of the connection.
 %% @end
-handle_incoming_datagram_payload(SeqNo, Payload, PacketBuffer) ->
+handle_incoming_datagram_payload(SeqNo, Payload, PacketBuffer, State) ->
     %% We got a packet in with a seq_no and some things to ack.
     %% Validate the sequence number.
     case validate_seq_no(SeqNo, PacketBuffer) of
@@ -296,7 +296,7 @@ handle_incoming_datagram_payload(SeqNo, Payload, PacketBuffer) ->
 
     %% Handle the Payload by Dumping it into the packet buffer at the right point
     %% Returns a new PacketBuffer, and a list of Messages for the upper layer
-    {_, _} = handle_receive_buffer(SeqNo, Payload, PacketBuffer).
+    {_, _} = handle_receive_buffer(SeqNo, Payload, PacketBuffer, State).
 
 
 %% @doc Update the Receive Buffer with Payload
@@ -306,27 +306,40 @@ handle_incoming_datagram_payload(SeqNo, Payload, PacketBuffer) ->
 %% see if we can satisfy more packets from it. If it is not in
 %% sequence, it should go into the reorder buffer in the right spot.
 %% @end
-update_recv_buffer(_SeqNo, <<>>, PB) -> PB;
-update_recv_buffer(SeqNo, Payload, #pkt_buf { next_expected_seq_no = SeqNo } = PB) ->
+update_recv_buffer(_SeqNo, <<>>, PB, _State) -> PB;
+update_recv_buffer(SeqNo, Payload, #pkt_buf { next_expected_seq_no = SeqNo } = PB, State) ->
     %% This is the next expected packet, yay!
     error_logger:info_report([got_expected, SeqNo, bit16(SeqNo+1)]),
-    N_PB = enqueue_payload(Payload, PB),
+    N_PB =
+        case State of
+            fin_sent ->
+                PB;
+            connected ->
+                enqueue_payload(Payload, PB)
+        end,
     satisfy_from_reorder_buffer(
-      N_PB#pkt_buf { next_expected_seq_no = bit16(SeqNo+1) });
-update_recv_buffer(SeqNo, Payload, PB) when is_integer(SeqNo) ->
+      N_PB#pkt_buf { next_expected_seq_no = bit16(SeqNo+1) }, State);
+update_recv_buffer(SeqNo, Payload, PB, _State) when is_integer(SeqNo) ->
     reorder_buffer_in(SeqNo, Payload, PB).
 
 %% @doc Try to satisfy the next_expected_seq_no directly from the reorder buffer.
 %% @end
-satisfy_from_reorder_buffer(#pkt_buf { reorder_buf = [] } = PB) ->
+satisfy_from_reorder_buffer(#pkt_buf { reorder_buf = [] } = PB, _State) ->
     PB;
 satisfy_from_reorder_buffer(#pkt_buf { next_expected_seq_no = AckNo,
-				       reorder_buf = [{AckNo, PL} | R]} = PB) ->
-    N_PB = enqueue_payload(PL, PB),
+				       reorder_buf = [{AckNo, PL} | R]} = PB,
+                            State) ->
+    N_PB =
+        case State of
+            st_fin ->
+                PB;
+            connected ->
+                enqueue_payload(PL, PB)
+        end,
     satisfy_from_reorder_buffer(
       N_PB#pkt_buf { next_expected_seq_no = bit16(AckNo+1),
-                     reorder_buf = R});
-satisfy_from_reorder_buffer(#pkt_buf { } = PB) ->
+                     reorder_buf = R}, State);
+satisfy_from_reorder_buffer(#pkt_buf { } = PB, _State) ->
     PB.
 
 %% @doc Enter the packet into the reorder buffer, watching out for duplicates
@@ -436,7 +449,7 @@ handle_packet(_CurrentTimeMs,
 
     %% Update the state by the receiving payload stuff.
     {N_PacketBuffer1, SendMessages} =
-        handle_incoming_datagram_payload(SeqNo, Payload, PacketBuffer),
+        handle_incoming_datagram_payload(SeqNo, Payload, PacketBuffer, State),
 
     %% The Packet may have ACK'ed stuff from our send buffer. Update
     %% the send buffer accordingly

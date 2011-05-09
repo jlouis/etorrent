@@ -170,7 +170,7 @@ Haphazard TODO list of things that needs attention:
      We should record that we got a fin packet, and what seq_no is
      stamped with the fin.
 **** DONE Set a Message which says we got the fin packet.
-**** TODO Make sure we don't send data to the upper layer when a fin has been sent!
+**** DONE Make sure we don't send data to the upper layer when a fin has been sent!
 **** TODO When we confirm the eof_pkt from the reorder buffer, we should post a message this is the case
 **** TODO When we confirm the FIN packet, our new state is GOT_FIN *unless* FIN_SENT is our current one
 **** TODO Make sure we immediately ack the FIN packet. Don't delay him!
