@@ -269,7 +269,7 @@ consider_send_ack(_, _) -> [].
 %% packet. As such, this function wraps some lower-level operations,
 %% with respect to incoming payload.
 %% @end                      
--spec handle_receive_buffer(integer(), binary(), #pkt_buf{}, utp_gen_worker:state()) ->
+-spec handle_receive_buffer(integer(), binary(), #pkt_buf{}, utp_gen_worker:conn_state()) ->
                                    {#pkt_buf{}, messages()}.
 handle_receive_buffer(SeqNo, Payload, PacketBuffer, State) ->
     case update_recv_buffer(SeqNo, Payload, PacketBuffer, State) of
@@ -331,7 +331,7 @@ satisfy_from_reorder_buffer(#pkt_buf { next_expected_seq_no = AckNo,
                             State) ->
     N_PB =
         case State of
-            st_fin ->
+            fin_sent ->
                 PB;
             connected ->
                 enqueue_payload(PL, PB)

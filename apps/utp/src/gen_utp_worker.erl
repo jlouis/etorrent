@@ -45,10 +45,10 @@
 	 reset/2,
 	 destroy/2]).
 
--type conn_st() :: idle | syn_sent | connected | connected_full | got_fin
-		   | destroy_delay | fin_sent | reset | destroy.
+-type conn_state() :: idle | syn_sent | connected | connected_full | got_fin
+                    | destroy_delay | fin_sent | reset | destroy.
 
--export_type([conn_st/0]).
+-export_type([conn_state/0]).
 
 -define(SERVER, ?MODULE).
 %% Default extensions to use when SYN/SYNACK'ing
