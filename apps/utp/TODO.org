@@ -153,6 +153,20 @@ Haphazard TODO list of things that needs attention:
 **** DONE Check the source of libutp
 **** DONE We should send off a st_fin packet
 **** DONE We should transition to fin_sent in state.
+*** TODO 3: GOT_FIN how do we react on a GOT_FIN?
+**** TODO GOT_FIN || DESTROY_DELAY + timeout() ?
+     The rule here is that we should go to DESTROY (for DESTROY_DELAY)
+     And we should go to RESET (for GOT_FIN).
+     We must tell callers that we have an ECONNRESET as well.
+**** TODO GOT_FIN + recv() --> error, can't
+**** TODO GOT_FIN + send() --> error, can't
+*** TODO 4: DESTROY how do we react on a DESTROY?
+    Set a timeout
+    When the timeout trigger, we remove everything on this socket by
+    closing down. We do however tell back to parents waiting that the
+    socket is going to be destroyed.
+
+    That is essentially all!
 *** TODO 2: CONNECTED + pkt(st_fin)
     Mark where the end of the stream is
     We should transition to got_fin in state
@@ -171,9 +185,37 @@ Haphazard TODO list of things that needs attention:
      stamped with the fin.
 **** DONE Set a Message which says we got the fin packet.
 **** DONE Make sure we don't send data to the upper layer when a fin has been sent!
+**** TODO Should the ST_FIN packet go to the retransmit buffer?
+     Yes, make it so!
+
+     It is written like any other packet, eventually of size 0 but is
+     present in the reorder buffer so it will be transmitted safely
+     eventually. It is not simply an ACK for state updates.
+**** TODO Has do we leave FIN_SENT?
+     We leave FIN_SENT as soon as we either timeout, or if we get acks
+     back up to the FIN_PACKET. In this case, we move to the DESTROY
+     state.
+**** TODO Figure out exactly what happens when an ST_FIN packet is received
+     There are two points in time. When we get the packet in, and when
+     we ACK it because we reach it in the reorder buffer. Which should
+     force the state change to the GOT_FIN state? Look in the libutp
+     code.
+
+     When we *CONFIRM* the eof_pkt by ACK'ing in our end, we move the
+     the GOT_FIN state.
+
+     When we *SEE* the packet, we track that we have seen a finalizer
+     packet, but we don't do any state updates and stay in the
+     CONNECTED state in this case.
+     
 **** TODO When we confirm the eof_pkt from the reorder buffer, we should post a message this is the case
+     The reason we should post this to the worker process is such that
+     it can alter the state to a new one. Otherwise we will entangle
+     different parts to each other.
 **** TODO When we confirm the FIN packet, our new state is GOT_FIN *unless* FIN_SENT is our current one
-**** TODO Make sure we immediately ack the FIN packet. Don't delay him!
+     This is because in the FIN_SENT state we are just about to close
+     down anyway, so there is no reason to move to GOT_FIN.
+**** TODO In States which are not CONNECTED, nor FIN_SENT we can't accept new data.
 **** DONE If we know the eof_pkt and receive packets past it, throw them out!
      We can simply enter them in the reorder buffer and soundly ignore them.
 *** DONE 3: SYN_SENT + close()
@@ -197,6 +239,24 @@ Haphazard TODO list of things that needs attention:
   We are currently always setting the ZeroWindow timer when the
   peer_advertised_window is 0, but we could postpone that decision
   until we know we need to send data to the other end.
+
+
+
+
+
+
+
+
+
+* Delayed ACKS
+** TODO Make sure we immediately ack the FIN packet. Don't delay him!
+     Easy right now, but keep this as it is important when you
+     introduce delayed ACKs
+
+
+
+
+
 
 
 
