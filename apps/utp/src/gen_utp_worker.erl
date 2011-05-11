@@ -38,8 +38,7 @@
 -export([idle/2, idle/3,
 	 syn_sent/2,
 	 connected/2, connected/3,
-	 connected_full/2,
-	 got_fin/2,
+	 got_fin/2, got_fin/3,
 	 destroy_delay/2,
 	 fin_sent/2,
 	 reset/2,
@@ -314,17 +313,6 @@ connected(Msg, State) ->
     {next_state, connected, State}.
 
 %% @private
-connected_full(close, #state { sock_info = SockInfo,
-                               pkt_buf   = PktBuf } = State) ->
-    %% Close down connection!
-    ok = utp_pkt:send_fin(SockInfo, PktBuf),
-    {next_state, fin_sent, State};
-connected_full(Msg, State) ->
-    %% Ignore messages
-    error_logger:warning_report([async_message, connected_full, Msg]),
-    {next_state, connected_full, State}.
-
-%% @private
 got_fin(close, State) ->
     {next_state, destroy_delay, State};
 got_fin(Msg, State) ->
@@ -462,6 +450,11 @@ connected(Msg, From, State) ->
     error_logger:warning_report([sync_message, connected, Msg, From]),
     {next_state, connected, State}.
 
+% @private
+got_fin({recv, _L}, _From, State) ->
+    {reply, {error, econnreset}, got_fin, State};
+got_fin({send, _Data}, _From, State) ->
+    {reply, {error, econnreset}, got_fin, State}.
 
 %% @private
 handle_event(Event, StateName, State) ->

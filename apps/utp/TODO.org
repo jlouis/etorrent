@@ -152,14 +152,15 @@ Haphazard TODO list of things that needs attention:
 *** DONE 1: CONNECTED + close()
 **** DONE Check the source of libutp
 **** DONE We should send off a st_fin packet
+**** DONE The st_fin packet should be entered in the retransmission buffer!
 **** DONE We should transition to fin_sent in state.
 *** TODO 3: GOT_FIN how do we react on a GOT_FIN?
 **** TODO GOT_FIN || DESTROY_DELAY + timeout() ?
      The rule here is that we should go to DESTROY (for DESTROY_DELAY)
      And we should go to RESET (for GOT_FIN).
      We must tell callers that we have an ECONNRESET as well.
-**** TODO GOT_FIN + recv() --> error, can't
-**** TODO GOT_FIN + send() --> error, can't
+**** DONE GOT_FIN + recv() --> error, can't*
+**** DONE GOT_FIN + send() --> error, can't
 *** TODO 4: DESTROY how do we react on a DESTROY?
     Set a timeout
     When the timeout trigger, we remove everything on this socket by
