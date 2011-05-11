@@ -358,10 +358,14 @@ update_send_buffer(AckNo, #pkt_buf { seq_no = BufSeqNo } = PB) ->
     error_logger:info_report([window_is_at, WindowStart]),
     case view_ack_no(AckNo, WindowStart, WindowSize) of
         {ok, AcksAhead} ->
-            {ok, Acked, PB1} = prune_acked(AcksAhead, WindowStart, PB),
+            {Ret, Acked, PB1} = prune_acked(AcksAhead, WindowStart, PB),
             error_logger:info_report([{acks_ahead, AcksAhead},
                                       {acked, Acked}]),
-            {ok, view_ack_state(Acked, PB1),
+            FinState = case Ret of
+                           ok -> [];
+                           fin_sent_acked -> [fin_sent_acked]
+                       end,
+            {ok, FinState ++ view_ack_state(Acked, PB1),
                  AcksAhead,
                  PB1};
         {ack_is_old, AcksAhead} ->
@@ -385,7 +389,20 @@ prune_acked(AckAhead, WindowStart,
                         end,
                         RQ),
     error_logger:info_report([pruned, length(AckedPs)]),
-    {ok, length(AckedPs), PB#pkt_buf { retransmission_queue = N_RQ }}.
+    RetState = case contains_st_fin(AckedPs) of
+                   true ->
+                       fin_sent_acked;
+                   false ->
+                       ok
+               end,
+    {RetState, length(AckedPs), PB#pkt_buf { retransmission_queue = N_RQ }}.
+
+contains_st_fin([]) -> false;
+contains_st_fin([#pkt_wrap {
+                    packet = #packet { ty = st_fin }} | _]) ->
+    true;
+contains_st_fin([_ | R]) ->
+    contains_st_fin(R).
 
 view_ack_state(0, _PB) ->
     [];

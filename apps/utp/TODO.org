@@ -191,10 +191,11 @@ Haphazard TODO list of things that needs attention:
      It is written like any other packet, eventually of size 0 but is
      present in the reorder buffer so it will be transmitted safely
      eventually. It is not simply an ACK for state updates.
-*** TODO Haw do we leave FIN_SENT?
+*** TODO How do we leave FIN_SENT?
      We leave FIN_SENT as soon as we either timeout, or if we get acks
      back up to the FIN_PACKET. In this case, we move to the DESTROY
      state.
+**** DONE Detect that the ST_FIN packet was acked by the last ACK
 *** DONE Figure out exactly what happens when an ST_FIN packet is received
      There are two points in time. When we get the packet in, and when
      we ACK it because we reach it in the reorder buffer. Which should
