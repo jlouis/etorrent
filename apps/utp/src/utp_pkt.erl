@@ -447,34 +447,27 @@ handle_packet(_CurrentTimeMs,
 
     %% The Packet may have ACK'ed stuff from our send buffer. Update
     %% the send buffer accordingly
-    {ok, RecvMessages, AcksAhead, N_PB1} =
+    {ok, RecvMessages, _AcksAhead, N_PB1} =
         update_send_buffer(AckNo, N_PacketBuffer1),
 
     %% Some packets set a specific state we should handle in our end
-    {N_PB2, Messages} =
-        case Type of
-            st_fin ->
-                ShouldDestroy =
-                    handle_destroy_state_change(AcksAhead, N_PacketBuffer1),
-                {N_PB1#pkt_buf {
-                   fin_state = {got_fin, SeqNo}
-                  },
-                 [got_fin] ++ ShouldDestroy};
-            st_data ->
-                {N_PB1, []};
-            st_state ->
-                {N_PB1, [state_only]}
-    end,
+    %% @todo This should probably happen earlier in the sequence.
+    %% Can we right away ack the FIN? If yes, it should probably be done earlier
+    N_PB2 = handle_packet_type(Type, SeqNo, N_PB1),
+
     {ok, N_PB2,
          handle_window_size(WindowSize, PktWindow),
-         Messages ++ SendMessages ++ RecvMessages}.
+         SendMessages ++ RecvMessages}.
 
 
-
-handle_destroy_state_change(AckAhead, Buf) ->
-    case send_window_count(Buf) == AckAhead of
-        true -> [destroy];
-        false -> []
+handle_packet_type(Type, SeqNo, Buf) ->
+    case Type of
+        st_fin ->
+            {Buf#pkt_buf { fin_state = {got_fin, SeqNo} }};
+        st_data ->
+            Buf;
+        st_state ->
+            Buf
     end.
 
 handle_window_size(WindowSize, #pkt_window {} = PKI) ->
