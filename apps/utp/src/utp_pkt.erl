@@ -179,25 +179,19 @@ send_ack(SockInfo,
 %%       rather than this variant where we send a special packet with
 %%       FIN set.
 %% @end
-send_fin(SockInfo,
-         #pkt_buf { seq_no = SeqNo,
-                    next_expected_seq_no = AckNo } = Buf) ->
-    %% @todo There is something with timers in the original
-    %% code. Shouldn't be here, but in the caller, probably.
-    FinPacket = #packet { ty = st_fin,
-                          seq_no = SeqNo-1, % @todo Is this right?
-                          ack_no = AckNo-1,
-                          extension = []
-                        },
-    Win = advertised_window(Buf),
-    ok = utp_socket:send_pkt(Win, SockInfo, FinPacket).
+send_fin(SockInfo, Buf) ->
+    send_packet(st_fin, <<>>, % Empty packet for now
+                Buf, SockInfo).
 
-send_packet(Bin,
+send_packet(Bin, Buf, SockInfo) ->
+    send_packet(st_data, Bin, Buf, SockInfo).
+
+send_packet(Ty, Bin,
             #pkt_buf { seq_no = SeqNo,
                        next_expected_seq_no = AckNo,
                        retransmission_queue = RetransQueue } = Buf,
             SockInfo) ->
-    P = #packet { ty = st_data,
+    P = #packet { ty = Ty,
                   seq_no  = SeqNo,
                   ack_no  = AckNo-1,
                   extension = [],
