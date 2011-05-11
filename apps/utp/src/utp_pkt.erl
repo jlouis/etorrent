@@ -269,7 +269,9 @@ handle_receive_buffer(SeqNo, Payload, PacketBuffer, State) ->
     case update_recv_buffer(SeqNo, Payload, PacketBuffer, State) of
         %% Force an ACK out in this case
         duplicate -> {PacketBuffer, [{send_ack, true}]};
-        #pkt_buf{} = PB -> {PB, consider_send_ack(PacketBuffer, PB)}
+        {ok, #pkt_buf{} = PB} -> {PB, consider_send_ack(PacketBuffer, PB)};
+        {got_fin, #pkt_buf{} = PB} -> {PB, [{got_fin, true},
+                                            {send_ack, true}]} % *Always* ACK the FIN packet!
     end.
 
 
@@ -300,48 +302,51 @@ handle_incoming_datagram_payload(SeqNo, Payload, PacketBuffer, State) ->
 %% see if we can satisfy more packets from it. If it is not in
 %% sequence, it should go into the reorder buffer in the right spot.
 %% @end
-update_recv_buffer(_SeqNo, <<>>, PB, _State) -> PB;
+update_recv_buffer(_SeqNo, <<>>, PB, _State) -> {ok, PB};
+update_recv_buffer(SeqNo, Payload, #pkt_buf { fin_state = {got_fin, SeqNo},
+                                              next_expected_seq_no = SeqNo } = PB, State) ->
+    error_logger:info_report([got_fin_confirm, SeqNo]),
+    N_PB = recv_buffer_enqueue(State, Payload, PB),
+    {got_fin, N_PB#pkt_buf { next_expected_seq_no = bit16(SeqNo+1)}};
 update_recv_buffer(SeqNo, Payload, #pkt_buf { next_expected_seq_no = SeqNo } = PB, State) ->
     %% This is the next expected packet, yay!
     error_logger:info_report([got_expected, SeqNo, bit16(SeqNo+1)]),
-    N_PB =
-        case State of
-            fin_sent ->
-                PB;
-            connected ->
-                enqueue_payload(Payload, PB)
-        end,
+    N_PB = recv_buffer_enqueue(State, Payload, PB),
     satisfy_from_reorder_buffer(
       N_PB#pkt_buf { next_expected_seq_no = bit16(SeqNo+1) }, State);
 update_recv_buffer(SeqNo, Payload, PB, _State) when is_integer(SeqNo) ->
     reorder_buffer_in(SeqNo, Payload, PB).
 
+recv_buffer_enqueue(fin_sent, _, PB) -> PB;
+recv_buffer_enqueue(connected, Payload, PB) -> enqueue_payload(Payload, PB).
+
 %% @doc Try to satisfy the next_expected_seq_no directly from the reorder buffer.
 %% @end
 satisfy_from_reorder_buffer(#pkt_buf { reorder_buf = [] } = PB, _State) ->
-    PB;
+    {ok, PB};
+satisfy_from_reorder_buffer(#pkt_buf { next_expected_seq_no = AckNo,
+                                       fin_state = {got_fin, AckNo},
+                                       reorder_buf = [{AckNo, PL} | R]} = PB, State) ->
+    error_logger:info_report([got_fin_confirm_from_ro_buffer]),
+    N_PB = recv_buffer_enqueue(State, PL, PB),
+    {got_fin, N_PB#pkt_buf { next_expected_seq_no = bit16(AckNo+1),
+                             reorder_buf = R}};
 satisfy_from_reorder_buffer(#pkt_buf { next_expected_seq_no = AckNo,
 				       reorder_buf = [{AckNo, PL} | R]} = PB,
                             State) ->
-    N_PB =
-        case State of
-            fin_sent ->
-                PB;
-            connected ->
-                enqueue_payload(PL, PB)
-        end,
+    N_PB = recv_buffer_enqueue(State, PL, PB),
     satisfy_from_reorder_buffer(
       N_PB#pkt_buf { next_expected_seq_no = bit16(AckNo+1),
                      reorder_buf = R}, State);
 satisfy_from_reorder_buffer(#pkt_buf { } = PB, _State) ->
-    PB.
+    {ok, PB}.
 
 %% @doc Enter the packet into the reorder buffer, watching out for duplicates
 %% @end
 reorder_buffer_in(SeqNo, Payload, #pkt_buf { reorder_buf = OD } = PB) ->
     case orddict:is_key(SeqNo, OD) of
 	true -> duplicate;
-	false -> PB#pkt_buf { reorder_buf = orddict:store(SeqNo, Payload, OD) }
+	false -> {ok, PB#pkt_buf { reorder_buf = orddict:store(SeqNo, Payload, OD) }}
     end.
 
 %% SEND PATH
