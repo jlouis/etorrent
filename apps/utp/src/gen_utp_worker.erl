@@ -44,7 +44,7 @@
 	 reset/2,
 	 destroy/2]).
 
--type conn_state() :: idle | syn_sent | connected | connected_full | got_fin
+-type conn_state() :: idle | syn_sent | connected | got_fin
                     | destroy_delay | fin_sent | reset | destroy.
 
 -export_type([conn_state/0]).
@@ -267,8 +267,9 @@ connected({pkt, Pkt, {_TS, _TSDiff, RecvTime}},
                    proc_info = N_PRI2 }};
 connected(close, #state { sock_info = SockInfo,
                           pkt_buf = PktBuf } = State) ->
-    ok = utp_pkt:send_fin(SockInfo, PktBuf),
-    {next_state, fin_sent, State};
+    NPBuf = utp_pkt:send_fin(SockInfo, PktBuf),
+    {next_state, fin_sent, State#state {
+                            pkt_buf = NPBuf } };
 connected({timeout, Ref, {zerowindow_timeout, _N}},
           #state {
             pkt_buf = PktBuf,
