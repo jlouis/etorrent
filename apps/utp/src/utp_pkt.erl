@@ -231,12 +231,12 @@ validate_seq_no(SeqNo, PB) ->
     end.
 
 %% @doc Assert that the current state is valid for Data packets
+%% @todo This may need to accept other packet types!
 %% @end
 -spec valid_state(atom()) -> ok.
 valid_state(State) ->
     case State of
 	connected -> ok;
-	connected_full -> ok;
 	fin_sent -> ok;
 	_ -> throw({no_data, State})
     end.
