@@ -259,7 +259,14 @@ connected({pkt, Pkt, {_TS, _TSDiff, RecvTime}},
     %% Send out an ACK if needed
     utp_pkt:handle_send_ack(SockInfo, N_PB2, Messages),
 
-    {next_state, connected,
+    %% Calculate the next state
+    NextState = case proplists:get_value(got_fin, Messages) of
+                    true ->
+                        got_fin;
+                    undefined ->
+                        connected
+                end,
+    {next_state, NextState,
      State#state { pkt_window = N_PKI1,
                    pkt_buf = N_PB2,
                    retransmit_timeout = N_RetransTimer,
