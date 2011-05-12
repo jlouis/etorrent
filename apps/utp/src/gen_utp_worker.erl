@@ -47,7 +47,12 @@
 -type conn_state() :: idle | syn_sent | connected | got_fin
                     | destroy_delay | fin_sent | reset | destroy.
 
--export_type([conn_state/0]).
+-type error_type() :: econnreset | econnrefused | etiemedout | emsgsize.
+-type ret_value()  :: ok | {ok, binary()} | {error, error_type()}.
+
+-export_type([conn_state/0,
+              error_type/0,
+              ret_value/0]).
 
 -define(SERVER, ?MODULE).
 %% Default extensions to use when SYN/SYNACK'ing
