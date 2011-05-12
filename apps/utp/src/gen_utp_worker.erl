@@ -306,6 +306,27 @@ destroy_delay(Msg, State) ->
 
 %% @private
 %% Die deliberately on close for now
+fin_sent({pkt, Pkt, {_TS, _TSDiff, RecvTime}},
+	  #state { retransmit_timeout = RetransTimer } = State) ->
+    error_logger:info_report([node(), connected_incoming_pkt, utp_socket:format_pkt(Pkt)]),
+
+    {ok, Messages, N_PKI, N_PB, N_PRI, ZWinTimeout} =
+        handle_packet_incoming(Pkt, RecvTime, State),
+    N_RetransTimer = handle_retransmit_timer(Messages, RetransTimer),
+
+    %% Calculate the next state
+    N_State = State#state {
+                pkt_window = N_PKI,
+                pkt_buf = N_PB,
+                retransmit_timeout = N_RetransTimer,
+                zerowindow_timeout = ZWinTimeout,
+                proc_info = N_PRI },
+    case proplists:get_value(fin_sent_acked, Messages) of
+        true ->
+            {next_state, destroy, N_State, 0};
+        undefined ->
+            {next_state, fin_sent, N_State}
+    end;
 fin_sent(Msg, State) ->
     %% Ignore messages
     error_logger:warning_report([async_message, fin_sent, Msg]),

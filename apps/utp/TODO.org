@@ -153,20 +153,6 @@ Haphazard TODO list of things that needs attention:
 *** DONE We should send off a st_fin packet
 *** DONE The st_fin packet should be entered in the retransmission buffer!
 *** DONE We should transition to fin_sent in state.
-** TODO 3: GOT_FIN how do we react on a GOT_FIN?
-*** TODO GOT_FIN || DESTROY_DELAY + timeout() ?
-     The rule here is that we should go to DESTROY (for DESTROY_DELAY)
-     And we should go to RESET (for GOT_FIN).
-     We must tell callers that we have an ECONNRESET as well.
-*** DONE GOT_FIN + recv() --> error, can't*
-*** DONE GOT_FIN + send() --> error, can't
-** TODO 4: DESTROY how do we react on a DESTROY?
-    Set a timeout
-    When the timeout trigger, we remove everything on this socket by
-    closing down. We do however tell back to parents waiting that the
-    socket is going to be destroyed.
-
-    That is essentially all!
 ** DONE 2: CONNECTED + pkt(st_fin)
     Mark where the end of the stream is
 **** DONE What does libutp do?
@@ -190,12 +176,12 @@ Haphazard TODO list of things that needs attention:
      It is written like any other packet, eventually of size 0 but is
      present in the reorder buffer so it will be transmitted safely
      eventually. It is not simply an ACK for state updates.
-** TODO Implement the FIN_SENT state properly
+** DONE Implement the FIN_SENT state properly
 *** DONE Refactor out pkt receives from the other end from connected
     We need this code present in the fin_sent state as well, so factor
     it out such that we can use it here as well.
-*** TODO Implement the altered state on how to handle the next state in this.
-** TODO How do we leave FIN_SENT?
+*** DONE Implement the altered state on how to handle the next state in this.
+** DONE How do we leave FIN_SENT?
      We leave FIN_SENT as soon as we either timeout, or if we get acks
      back up to the FIN_PACKET. In this case, we move to the DESTROY
      state.
@@ -237,6 +223,25 @@ Haphazard TODO list of things that needs attention:
 
     We should report back to clients waiting on the socket for data
     that this won't happen.
+* FIN_SENT and timeout
+* TODO FIN_SENT and send()
+* TODO FIN_SENT and recv()
+* TODO 3: GOT_FIN how do we react on a GOT_FIN?
+*** TODO GOT_FIN || DESTROY_DELAY + timeout() ?
+     The rule here is that we should go to DESTROY (for DESTROY_DELAY)
+     And we should go to RESET (for GOT_FIN).
+     We must tell callers that we have an ECONNRESET as well.
+*** TODO GOT_FIN + recv() --> error, can't*
+    ECONNRESET?
+*** DONE GOT_FIN + send() --> error, can't
+* TODO 4: DESTROY how do we react on a DESTROY?
+    Set a timeout
+    When the timeout trigger, we remove everything on this socket by
+    closing down. We do however tell back to parents waiting that the
+    socket is going to be destroyed.
+
+    That is essentially all!
+
 * TODO Test the retransmission code
 ** DONE Make DUMMYNET work on FreeBSD
 ** TODO Fix the zerowindow bug
