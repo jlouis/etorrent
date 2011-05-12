@@ -255,22 +255,46 @@ Haphazard TODO list of things that needs attention:
   This is another question-mark. What should we do in the CS_RESET
   state? We Better read the source of libutp.
 
-* RESET packets
+  Hmm, there is nothing to do in this state. Essentially, we should
+  just move to the DESTROY state right away. It is rather odd that
+  this state exists. It may have been an old fluke from the early days
+  of the protocol. I am willing to just destroy the line instead.
+** TODO Use the RESET state to confirm a close.
+   In this state, we just deny everyone everything until we get a
+   close() on the socket at which point we move to the DESTROY state.
+* TODO RESET packets
   We currently have no handling of RESET packets at all. It ought to
   be pretty simple though and can be added easily I think.
-* DESTROY how do we react on a DESTROY?
+
+** TODO ST_RESET Packet in the receive direction
+   We receive an ST_RESET packet for a connection. This means we
+   should stop processing and die. The rule is that in a FIN_SENT
+   state we should move to DESTROY. In other states we should move to
+   RESET. The error message to return up is based on whether or not we
+   are in SYN_SENT. In SYN_SENT, it is ECONNREFUSED. Otherwise it is
+   ECONNRESET!
+** TODO ST_RESET Packet in the send direction
+   This happens on a failed lookup. There is no such socket present,
+   so when we try to look up the socket, we fail. This means we send
+   off an RST packet, but store a "Do not send off another RST Packet
+   for this unless a grace time has happened" entry in the lookup
+   table.
+* TODO DESTROY how do we react on a DESTROY?
     Set a timeout
     When the timeout trigger, we remove everything on this socket by
     closing down. We do however tell back to parents waiting that the
     socket is going to be destroyed.
 
     That is essentially all!
-
+** TODO Write code which can walk through the senders and receivers and send them messages
+   This means we can send out messages to all clients who are waiting
+   on us to do something. We can call this either from the DESTROY
+   state as a safeguard, or we can call it earlier if some states
+   requires us to exit out earlier with other kinds of information. It
+   also allows us to handle the ETIMEDOUT error correctly, I guess.
 * TODO Test the retransmission code
 ** DONE Make DUMMYNET work on FreeBSD
 ** TODO Fix the zerowindow bug
-* RTT Measurement
-  This is probably different in uTP from the standard protocol
 * TODO Only install the zerowin timer if there are more data to send out
   We are currently always setting the ZeroWindow timer when the
   peer_advertised_window is 0, but we could postpone that decision
@@ -282,7 +306,18 @@ Haphazard TODO list of things that needs attention:
 
 
 
+* The ConnId lookup table should guard against generating an already existing random number.
+* Grace period on used ConnIDs?
+  When we have used a ConnID for a while, should we accept another one
+  straight after? It sounds like a bad idea because it may time out
+  for some reason. 
 
+  On the other hand the conn_id/ip pair makes sure we are not
+  expecting data from this guy in any other way. Someone with another
+  ID would not be able to send to the socket unless he had the same IP
+  address then. It makes the collisions much less likely to occur in
+  the implementation to use this. In fact, it is 1/2**32. Rather good,
+  and not at all realistic for a match.
 * Delayed ACKS
 ** TODO Make sure we immediately ack the FIN packet. Don't delay him!
      Easy right now, but keep this as it is important when you
@@ -301,8 +336,9 @@ Haphazard TODO list of things that needs attention:
 
 
 
-
-* TODO SACK support
+* RTT Measurement
+  This is probably different in uTP from the standard protocol
+* SACK support
 * Nagle code
 
 
