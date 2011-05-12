@@ -125,8 +125,11 @@ Haphazard TODO list of things that needs attention:
 ** DONE Set up the retransmit timer in uTP to match this.
 ** DONE Keep trying and fail if it takes too long upon timer triggers.
 ** DONE Ignore the special cases a bit for now.
-* TODO Socket Close
+* DONE Socket Close
   How to implement socket closedown?
+
+  Basic socket closedown is done. We have pushed the problem to other
+  states now!
 ** DONE Make a plan and understand what is going on!
    It is based on the idea of FIN packets. Does it allow half-open
    connections?
@@ -223,15 +226,22 @@ Haphazard TODO list of things that needs attention:
 
     We should report back to clients waiting on the socket for data
     that this won't happen.
-* FIN_SENT and timeout
-* TODO FIN_SENT and send()
-* TODO FIN_SENT and recv()
-* TODO 3: GOT_FIN how do we react on a GOT_FIN?
-*** TODO GOT_FIN || DESTROY_DELAY + timeout() ?
+* TODO FIN_SENT and timeout
+** TODO What should be done here?
+   I am pretty sure we should be moving to another state, but I am not
+   which state we should move to. Investigate the libutp C++ code.
+* TODO GOT_FIN and timeout
+** TODO What should be done here?
+   This is yet another of those questions we want to answer. How do we
+   get *away* from the GOT_FIN state?
+* DONE FIN_SENT and send()
+* DONE FIN_SENT and recv()
+* DONE 3: GOT_FIN how do we react on a GOT_FIN?
+*** DONE GOT_FIN || DESTROY_DELAY + timeout() ?
      The rule here is that we should go to DESTROY (for DESTROY_DELAY)
      And we should go to RESET (for GOT_FIN).
      We must tell callers that we have an ECONNRESET as well.
-*** TODO GOT_FIN + recv() --> error, can't*
+*** DONE GOT_FIN + recv() --> error, can't*
     ECONNRESET?
 *** DONE GOT_FIN + send() --> error, can't
 * TODO 4: DESTROY how do we react on a DESTROY?

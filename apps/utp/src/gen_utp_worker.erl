@@ -40,7 +40,7 @@
 	 connected/2, connected/3,
 	 got_fin/2, got_fin/3,
 	 destroy_delay/2,
-	 fin_sent/2,
+	 fin_sent/2, fin_sent/3,
 	 reset/2,
 	 destroy/2]).
 
@@ -456,6 +456,11 @@ got_fin({recv, _L}, _From, State) ->
     {reply, {error, econnreset}, got_fin, State};
 got_fin({send, _Data}, _From, State) ->
     {reply, {error, econnreset}, got_fin, State}.
+
+fin_sent({recv, _L}, _From, State) ->
+    {reply, {error, econnreset}, fin_sent, State};
+fin_sent({send, _Data}, _From, State) ->
+    {reply, {error, econnreset}, fin_sent, State}.
 
 %% @private
 handle_event(Event, StateName, State) ->
