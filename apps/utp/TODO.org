@@ -233,13 +233,13 @@ Haphazard TODO list of things that needs attention:
 
    Easy: Increase RTO. If new RTO is above threshold (30 secs) then
    move to DESTROY as a state.
-* TODO GOT_FIN and timeout
-** TODO What should be done here?
+* DONE GOT_FIN and timeout
+** DONE What should be done here?
    This is yet another of those questions we want to answer. How do we
    get *away* from the GOT_FIN state?
 
    We should move to the state CS_RESET
-* TODO DESTROY_DELAY and timeout()
+* DONE DESTROY_DELAY and timeout()
   Move to CS_DESTROY!
 * DONE FIN_SENT and send()
 * DONE FIN_SENT and recv()
@@ -251,7 +251,14 @@ Haphazard TODO list of things that needs attention:
 *** DONE GOT_FIN + recv() --> error, can't*
     ECONNRESET?
 *** DONE GOT_FIN + send() --> error, can't
-* TODO 4: DESTROY how do we react on a DESTROY?
+* TODO CS_RESET state
+  This is another question-mark. What should we do in the CS_RESET
+  state? We Better read the source of libutp.
+
+* RESET packets
+  We currently have no handling of RESET packets at all. It ought to
+  be pretty simple though and can be added easily I think.
+* DESTROY how do we react on a DESTROY?
     Set a timeout
     When the timeout trigger, we remove everything on this socket by
     closing down. We do however tell back to parents waiting that the
@@ -262,12 +269,6 @@ Haphazard TODO list of things that needs attention:
 * TODO Test the retransmission code
 ** DONE Make DUMMYNET work on FreeBSD
 ** TODO Fix the zerowindow bug
-* RESET packets
-  We currently have no handling of RESET packets at all. It ought to
-  be pretty simple though and can be added easily I think.
-* CS_RESET state
-  This is another question-mark. What should we do in the CS_RESET
-  state? We Better read the source of libutp.
 * RTT Measurement
   This is probably different in uTP from the standard protocol
 * TODO Only install the zerowin timer if there are more data to send out

@@ -312,6 +312,21 @@ got_fin(Msg, State) ->
 
 %% @private
 %% Die deliberately on close for now
+destroy_delay({timeout, Ref, {retransmit_timeout, N}},
+         #state { 
+            pkt_buf = PacketBuf,
+            sock_info = SockInfo,
+            retransmit_timeout = Timer} = State) ->
+    case handle_timeout(Ref, N, PacketBuf, SockInfo, Timer) of
+        stray ->
+            {next_state, destroy_delay, State};
+        gave_up ->
+            {next_state, destroy, State, 0};
+        {reinstalled, N_Timer, N_PB} ->
+            {next_state, destroy, State#state {
+                                    retransmit_timeout = N_Timer,
+                                    pkt_buf = N_PB}, 0}
+    end;
 destroy_delay(close, State) ->
     {next_state, destroy, State, 0};
 destroy_delay(Msg, State) ->
