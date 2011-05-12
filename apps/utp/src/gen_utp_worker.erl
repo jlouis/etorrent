@@ -219,45 +219,12 @@ syn_sent(Msg, S) ->
 
 %% @private
 connected({pkt, Pkt, {_TS, _TSDiff, RecvTime}},
-	  #state { pkt_window = PKI,
-                   pkt_buf  = PB,
-                   proc_info = PRI,
-                   sock_info = SockInfo,
-                   retransmit_timeout = RetransTimer
-                 } = State) ->
-    error_logger:info_report([node(), incoming_pkt, utp_socket:format_pkt(Pkt)]),
+	  #state { retransmit_timeout = RetransTimer } = State) ->
+    error_logger:info_report([node(), connected_incoming_pkt, utp_socket:format_pkt(Pkt)]),
 
-    %% Handle the incoming packet
-    {ok, N_PB1, N_PKI, Messages} = utp_pkt:handle_packet(RecvTime, connected, Pkt, PKI, PB),
-
-    error_logger:info_report([messages, Messages]),
-    %% The packet may bump the advertised window from the peer, update
-    N_PKI1 = utp_pkt:handle_advertised_window(Pkt, N_PKI),
+    {ok, Messages, N_PKI, N_PB, N_PRI, ZWinTimeout} =
+        handle_packet_incoming(Pkt, RecvTime, State),
     N_RetransTimer = handle_retransmit_timer(Messages, RetransTimer),
-
-    %% The incoming datagram may have payload we can deliver to an application
-    {N_PRI, N_PB} =
-        case satisfy_recvs(PRI, N_PB1) of
-            {ok, PR1, PB1} ->
-                {PR1, PB1};
-            {rb_drained, PR1, PB1} ->
-                %% @todo Here is the point where we should
-                %% make a check on the receive window If the
-                %% window has grown, and the last window was
-                %% 0, then immediately send out an
-                %% ACK. Otherwise install a timer.
-                {PR1, PB1}
-        end,
-
-    %% Fill up the send window again with the new information
-    {ZWinTimeout, N_PB2, N_PRI2} = fill_window(SockInfo, N_PRI, N_PKI1, N_PB,
-                                               State#state.zerowindow_timeout),
-    %% @todo This ACK may be cancelled if we manage to push something out
-    %%       the window, etc., but the code is currently ready for it!
-    %% The trick is to clear the message.
-
-    %% Send out an ACK if needed
-    utp_pkt:handle_send_ack(SockInfo, N_PB2, Messages),
 
     %% Calculate the next state
     NextState = case proplists:get_value(got_fin, Messages) of
@@ -267,11 +234,11 @@ connected({pkt, Pkt, {_TS, _TSDiff, RecvTime}},
                         connected
                 end,
     {next_state, NextState,
-     State#state { pkt_window = N_PKI1,
-                   pkt_buf = N_PB2,
+     State#state { pkt_window = N_PKI,
+                   pkt_buf = N_PB,
                    retransmit_timeout = N_RetransTimer,
                    zerowindow_timeout = ZWinTimeout,
-                   proc_info = N_PRI2 }};
+                   proc_info = N_PRI }};
 connected(close, #state { sock_info = SockInfo,
                           pkt_buf = PktBuf } = State) ->
     NPBuf = utp_pkt:send_fin(SockInfo, PktBuf),
@@ -600,4 +567,45 @@ mk_syn() ->
              }. % Rest are defaults
 
 
+
+handle_packet_incoming(Pkt, RecvTime,
+                       #state {
+                              pkt_buf = PB,
+                              proc_info = PRI,
+                              pkt_window = PKI,
+                              sock_info = SockInfo,
+                              zerowindow_timeout = ZWin
+                             }) ->
+    %% Handle the incoming packet
+    {ok, N_PB1, N_PKI, Messages} = utp_pkt:handle_packet(RecvTime, connected, Pkt, PKI, PB),
+
+    error_logger:info_report([messages, Messages]),
+    %% The packet may bump the advertised window from the peer, update
+    N_PKI1 = utp_pkt:handle_advertised_window(Pkt, N_PKI),
+
+    %% The incoming datagram may have payload we can deliver to an application
+    {N_PRI, N_PB} =
+        case satisfy_recvs(PRI, N_PB1) of
+            {ok, PR1, PB1} ->
+                {PR1, PB1};
+            {rb_drained, PR1, PB1} ->
+                %% @todo Here is the point where we should
+                %% make a check on the receive window If the
+                %% window has grown, and the last window was
+                %% 0, then immediately send out an
+                %% ACK. Otherwise install a timer.
+                {PR1, PB1}
+        end,
+
+    %% Fill up the send window again with the new information
+    {ZWinTimeout, N_PB2, N_PRI2} = fill_window(SockInfo, N_PRI, N_PKI1, N_PB,
+                                               ZWin),
+    %% @todo This ACK may be cancelled if we manage to push something out
+    %%       the window, etc., but the code is currently ready for it!
+    %% The trick is to clear the message.
+
+    %% Send out an ACK if needed
+    utp_pkt:handle_send_ack(SockInfo, N_PB2, Messages),
+
+    {ok, N_PKI1, N_PB2, N_PRI2, ZWinTimeout}.
 

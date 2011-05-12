@@ -191,7 +191,7 @@ Haphazard TODO list of things that needs attention:
      present in the reorder buffer so it will be transmitted safely
      eventually. It is not simply an ACK for state updates.
 ** TODO Implement the FIN_SENT state properly
-*** TODO Refactor out pkt receives from the other end from connected
+*** DONE Refactor out pkt receives from the other end from connected
     We need this code present in the fin_sent state as well, so factor
     it out such that we can use it here as well.
 *** TODO Implement the altered state on how to handle the next state in this.
