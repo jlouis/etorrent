@@ -607,5 +607,5 @@ handle_packet_incoming(Pkt, RecvTime,
     %% Send out an ACK if needed
     utp_pkt:handle_send_ack(SockInfo, N_PB2, Messages),
 
-    {ok, N_PKI1, N_PB2, N_PRI2, ZWinTimeout}.
+    {ok, Messages, N_PKI1, N_PB2, N_PRI2, ZWinTimeout}.
 
