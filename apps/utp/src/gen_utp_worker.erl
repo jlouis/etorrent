@@ -165,7 +165,7 @@ init([Socket, Addr, Port, Options]) ->
 
 %% @private
 idle(close, S) ->
-    {next_state, destroy, S};
+    {next_state, destroy, S, 0};
 idle(Msg, S) ->
     %% Ignore messages
     error_logger:warning_report([async_message, idle, Msg]),
@@ -274,21 +274,15 @@ connected({timeout, Ref, {retransmit_timeout, N}},
             pkt_buf = PacketBuf,
             sock_info = SockInfo,
             retransmit_timeout = {set, Ref} = Timer} = State) ->
-    case N > ?RTO_DESTROY_VALUE of
-        true ->
+    case handle_timeout(Ref, N, PacketBuf, SockInfo, Timer) of
+        stray ->
+            {next_state, connected, State};
+        gave_up ->
             {next_state, reset, State};
-        false ->
-            N_Timer = set_retransmit_timer(N*2, Timer),
-            N_PB = utp_pkt:retransmit_packet(PacketBuf, SockInfo),
+        {reinstalled, N_Timer, N_PB} ->
             {next_state, connected, State#state { retransmit_timeout = N_Timer,
                                                   pkt_buf = N_PB }}
     end;
-connected({timeout, Ref, TimerVal}, State) ->
-    error_logger:error_report([stray_retransmit_timer,
-                               Ref,
-                               TimerVal,
-                               State#state.retransmit_timeout]),
-    {next_state, connected, State};
 connected(Msg, State) ->
     %% Ignore messages
     error_logger:warning_report([async_message, connected, Msg]),
@@ -319,7 +313,7 @@ got_fin(Msg, State) ->
 %% @private
 %% Die deliberately on close for now
 destroy_delay(close, State) ->
-    {next_state, destroy, State};
+    {next_state, destroy, State, 0};
 destroy_delay(Msg, State) ->
     %% Ignore messages
     error_logger:warning_report([async_message, destroy_delay, Msg]),
@@ -352,22 +346,16 @@ fin_sent({timeout, Ref, {retransmit_timeout, N}},
          #state { 
             pkt_buf = PacketBuf,
             sock_info = SockInfo,
-            retransmit_timeout = {set, Ref} = Timer} = State) ->
-    case N > ?RTO_DESTROY_VALUE of
-        true ->
+            retransmit_timeout = Timer} = State) ->
+    case handle_timeout(Ref, N, PacketBuf, SockInfo, Timer) of
+        stray ->
+            {next_state, fin_sent, State};
+        gave_up ->
             {next_state, destroy, State, 0};
-        false ->
-            N_Timer = set_retransmit_timer(N*2, Timer),
-            N_PB = utp_pkt:retransmit_packet(PacketBuf, SockInfo),
+        {reinstalled, N_Timer, N_PB} ->
             {next_state, fin_sent, State#state { retransmit_timeout = N_Timer,
                                                  pkt_buf = N_PB }}
     end;
-fin_sent({timeout, Ref, TimerVal}, State) ->
-    error_logger:error_report([stray_retransmit_timer,
-                               Ref,
-                               TimerVal,
-                               State#state.retransmit_timeout]),
-    {next_state, fin_sent, State};
 fin_sent(Msg, State) ->
     %% Ignore messages
     error_logger:warning_report([async_message, fin_sent, Msg]),
@@ -375,7 +363,7 @@ fin_sent(Msg, State) ->
 
 %% @private
 reset(close, State) ->
-    {next_state, destroy, State};
+    {next_state, destroy, State, 0};
 reset(Msg, State) ->
     %% Ignore messages
     error_logger:warning_report([async_message, reset, Msg]),
