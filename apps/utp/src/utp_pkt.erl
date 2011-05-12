@@ -463,21 +463,19 @@ handle_packet(_CurrentTimeMs,
     %% triggered by our code.
     ok = valid_state(State),
 
+    %% Some packets set a specific state we should handle in our end
+    N_PacketBuffer = handle_packet_type(Type, SeqNo, PacketBuffer),
+
     %% Update the state by the receiving payload stuff.
     {N_PacketBuffer1, SendMessages} =
-        handle_incoming_datagram_payload(SeqNo, Payload, PacketBuffer, State),
+        handle_incoming_datagram_payload(SeqNo, Payload, N_PacketBuffer, State),
 
     %% The Packet may have ACK'ed stuff from our send buffer. Update
     %% the send buffer accordingly
-    {ok, RecvMessages, _AcksAhead, N_PB1} =
+    {ok, RecvMessages, _AcksAhead, N_PacketBuffer2} =
         update_send_buffer(AckNo, N_PacketBuffer1),
 
-    %% Some packets set a specific state we should handle in our end
-    %% @todo This should probably happen earlier in the sequence.
-    %% Can we right away ack the FIN? If yes, it should probably be done earlier
-    N_PB2 = handle_packet_type(Type, SeqNo, N_PB1),
-
-    {ok, N_PB2,
+    {ok, N_PacketBuffer2,
          handle_window_size(WindowSize, PktWindow),
          SendMessages ++ RecvMessages}.
 
