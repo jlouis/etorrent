@@ -297,6 +297,20 @@ connected(Msg, State) ->
 %% @private
 got_fin(close, State) ->
     {next_state, destroy_delay, State};
+got_fin({timeout, Ref, {retransmit_timeout, N}},
+        #state { 
+          pkt_buf = PacketBuf,
+          sock_info = SockInfo,
+          retransmit_timeout = Timer} = State) ->
+    case handle_timeout(Ref, N, PacketBuf, SockInfo, Timer) of
+        stray ->
+            {next_state, got_fin, State};
+        gave_up ->
+            {next_state, reset, State};
+        {reinstalled, N_Timer, N_PB} ->
+            {next_state, got_fin, State#state { retransmit_timeout = N_Timer,
+                                                pkt_buf = N_PB }}
+    end;
 got_fin(Msg, State) ->
     %% Ignore messages
     error_logger:warning_report([async_message, got_fin, Msg]),
@@ -661,4 +675,18 @@ handle_packet_incoming(Pkt, RecvTime,
     utp_pkt:handle_send_ack(SockInfo, N_PB2, Messages),
 
     {ok, Messages, N_PKI1, N_PB2, N_PRI2, ZWinTimeout}.
+
+handle_timeout(Ref, N, PacketBuf, SockInfo, {set, Ref} = Timer) ->
+    case N > ?RTO_DESTROY_VALUE of
+        true ->
+            gave_up;
+        false ->
+            N_Timer = set_retransmit_timer(N*2, Timer),
+            N_PB = utp_pkt:retransmit_packet(PacketBuf, SockInfo),
+            {reinstalled, N_Timer, N_PB}
+    end;
+handle_timeout(Ref, N, _PacketBuf, _Sockinfo, Timer) ->
+    error_logger:error_report([stray_retransmit_timer, Ref, N, Timer]),
+    stray.
+
 
