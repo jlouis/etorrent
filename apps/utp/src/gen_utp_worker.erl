@@ -60,6 +60,7 @@
 
 %% Default SYN packet timeout
 -define(SYN_TIMEOUT, 3000).
+-define(DEFAULT_RETRANSMIT_TIMEOUT, 3000).
 -define(SYN_TIMEOUT_THRESHOLD, ?SYN_TIMEOUT*2).
 -define(RTT_VAR, 800). % Round trip time variance
 -define(PACKET_SIZE, 350). % @todo Probably dead!
@@ -75,6 +76,9 @@
 %% Typically it's less. TCP increases one MSS per RTT, which is 1500
 -define(MAX_CWND_INCREASE_BYTES_PER_RTT, 3000).
 -define(CUR_DELAY_SIZE, 3).
+
+%% Default timeout value for sockets where we will destroy them!
+-define(RTO_DESTROY_VALUE, 30*1000).
 
 %% The delay to set on Zero Windows. It is awfully high, but that is what it has
 %% to be it seems.
@@ -270,17 +274,15 @@ connected({timeout, Ref, {retransmit_timeout, N}},
             pkt_buf = PacketBuf,
             sock_info = SockInfo,
             retransmit_timeout = {set, Ref} = Timer} = State) ->
-    N_Timer = case N > 64*1000 of
-                  true when N > 64*1000*10 ->
-                      error(not_implemented);
-                  true ->
-                      set_retransmit_timer(64*1000, N*2, Timer);
-                  false ->
-                      set_retransmit_timer(N*2, Timer)
-              end,
-    N_PB = utp_pkt:retransmit_packet(PacketBuf, SockInfo),
-    {next_state, connected, State#state { retransmit_timeout = N_Timer,
-                                          pkt_buf = N_PB }};
+    case N > ?RTO_DESTROY_VALUE of
+        true ->
+            {next_state, reset, State};
+        false ->
+            N_Timer = set_retransmit_timer(N*2, Timer),
+            N_PB = utp_pkt:retransmit_packet(PacketBuf, SockInfo),
+            {next_state, connected, State#state { retransmit_timeout = N_Timer,
+                                                  pkt_buf = N_PB }}
+    end;
 connected({timeout, Ref, TimerVal}, State) ->
     error_logger:error_report([stray_retransmit_timer,
                                Ref,
@@ -332,6 +334,26 @@ fin_sent({pkt, Pkt, {_TS, _TSDiff, RecvTime}},
         undefined ->
             {next_state, fin_sent, N_State}
     end;
+fin_sent({timeout, Ref, {retransmit_timeout, N}},
+         #state { 
+            pkt_buf = PacketBuf,
+            sock_info = SockInfo,
+            retransmit_timeout = {set, Ref} = Timer} = State) ->
+    case N > ?RTO_DESTROY_VALUE of
+        true ->
+            {next_state, destroy, State, 0};
+        false ->
+            N_Timer = set_retransmit_timer(N*2, Timer),
+            N_PB = utp_pkt:retransmit_packet(PacketBuf, SockInfo),
+            {next_state, fin_sent, State#state { retransmit_timeout = N_Timer,
+                                                 pkt_buf = N_PB }}
+    end;
+fin_sent({timeout, Ref, TimerVal}, State) ->
+    error_logger:error_report([stray_retransmit_timer,
+                               Ref,
+                               TimerVal,
+                               State#state.retransmit_timeout]),
+    {next_state, fin_sent, State};
 fin_sent(Msg, State) ->
     %% Ignore messages
     error_logger:warning_report([async_message, fin_sent, Msg]),
@@ -530,7 +552,7 @@ satisfy_recvs(Processes, Buffer) ->
     end.
 
 set_retransmit_timer(Timer) ->
-    set_retransmit_timer(3000, Timer).
+    set_retransmit_timer(?DEFAULT_RETRANSMIT_TIMEOUT, Timer).
 
 set_retransmit_timer(N, Timer) ->
     set_retransmit_timer(N, N, Timer).
