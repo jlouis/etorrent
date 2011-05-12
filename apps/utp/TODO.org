@@ -275,6 +275,12 @@ Haphazard TODO list of things that needs attention:
    state as a safeguard, or we can call it earlier if some states
    requires us to exit out earlier with other kinds of information. It
    also allows us to handle the ETIMEDOUT error correctly, I guess.
+* TODO Test the retransmission code
+** DONE Make DUMMYNET work on FreeBSD
+** Test the code on FreeBSD again!
+** TODO Fix the zerowindow bug
+   There are probably a couple of bugs. One is that we should remember
+   to reopen the zero window.
 * TODO RESET packets
   We currently have no handling of RESET packets at all. It ought to
   be pretty simple though and can be added easily I think.
@@ -292,11 +298,6 @@ Haphazard TODO list of things that needs attention:
    off an RST packet, but store a "Do not send off another RST Packet
    for this unless a grace time has happened" entry in the lookup
    table.
-* TODO Test the retransmission code
-** DONE Make DUMMYNET work on FreeBSD
-** TODO Fix the zerowindow bug
-   There are probably a couple of bugs. One is that we should remember
-   to reopen the zero window.
 * TODO Only install the zerowin timer if there are more data to send out
   We are currently always setting the ZeroWindow timer when the
   peer_advertised_window is 0, but we could postpone that decision
