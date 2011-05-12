@@ -17,7 +17,9 @@
 	 dequeue_packet/2,
 
          fill_via_send_queue/2,
-	 bytes_in_recv_buffer/1
+	 bytes_in_recv_buffer/1,
+
+         apply_all/2
 	]).
 -record(proc_info, {
 	  receiver_q :: queue(),
@@ -30,6 +32,15 @@ mk() ->
     #proc_info { receiver_q = queue:new(),
                  sender_q   = queue:new() }.
 
+apply_all(PI, F) ->
+    [F(From) || From <- all_processes(PI)].
+
+all_processes(#proc_info { receiver_q = RQ,
+                           sender_q   = SQ }) ->
+    RL = [From || {receiver, From, _, _} <- queue:to_list(RQ)],
+    SL = [From || {sender, From, _Data} <- queue:to_list(SQ)],
+    RL ++ SL.
+    
 enqueue_receiver(From, Length, #proc_info { receiver_q = RQ } = PI) ->
     NQ = queue:in({receiver, From, Length, <<>>}, RQ),
     PI#proc_info { receiver_q = NQ }.
@@ -117,3 +128,5 @@ dequeue_packet(Payload, Q, N) when is_integer(N) ->
 bytes_in_recv_buffer(#proc_info { receiver_q = RQ }) ->
     L = queue:to_list(RQ),
     lists:sum([byte_size(Payload) || {receiver, _From, _Sz, Payload} <- L]).
+
+

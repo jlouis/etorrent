@@ -41,7 +41,7 @@
 	 got_fin/2, got_fin/3,
 	 destroy_delay/2,
 	 fin_sent/2, fin_sent/3,
-	 reset/2,
+	 reset/2, reset/3,
 	 destroy/2]).
 
 -type conn_state() :: idle | syn_sent | connected | got_fin
@@ -386,7 +386,11 @@ reset(Msg, State) ->
 
 %% @private
 %% Die deliberately on close for now
-destroy(destroy, State) ->
+destroy(timeout, #state { proc_info = ProcessInfo } = State) ->
+    F = fun(From) ->
+                gen_fsm:reply(From, {error, econnreset})
+        end,
+    utp_process:apply_all(ProcessInfo, F),
     {stop, normal, State};
 destroy(Msg, State) ->
     %% Ignore messages
@@ -500,6 +504,11 @@ fin_sent({recv, _L}, _From, State) ->
     {reply, {error, econnreset}, fin_sent, State};
 fin_sent({send, _Data}, _From, State) ->
     {reply, {error, econnreset}, fin_sent, State}.
+
+reset({recv, _L}, _From, State) ->
+    {reply, {error, econnreset}, reset, State};
+reset({send, _Data}, _From, State) ->
+    {reply, {error, econnreset}, reset, State}.
 
 %% @private
 handle_event(Event, StateName, State) ->

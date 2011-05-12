@@ -251,7 +251,7 @@ Haphazard TODO list of things that needs attention:
 *** DONE GOT_FIN + recv() --> error, can't*
     ECONNRESET?
 *** DONE GOT_FIN + send() --> error, can't
-* TODO CS_RESET state
+* DONE CS_RESET state
   This is another question-mark. What should we do in the CS_RESET
   state? We Better read the source of libutp.
 
@@ -259,9 +259,22 @@ Haphazard TODO list of things that needs attention:
   just move to the DESTROY state right away. It is rather odd that
   this state exists. It may have been an old fluke from the early days
   of the protocol. I am willing to just destroy the line instead.
-** TODO Use the RESET state to confirm a close.
+** DONE Use the RESET state to confirm a close.
    In this state, we just deny everyone everything until we get a
    close() on the socket at which point we move to the DESTROY state.
+* DONE DESTROY how do we react on a DESTROY?
+    Set a timeout
+    When the timeout trigger, we remove everything on this socket by
+    closing down. We do however tell back to parents waiting that the
+    socket is going to be destroyed.
+
+    That is essentially all!
+** DONE Write code which can walk through the senders and receivers and send them messages
+   This means we can send out messages to all clients who are waiting
+   on us to do something. We can call this either from the DESTROY
+   state as a safeguard, or we can call it earlier if some states
+   requires us to exit out earlier with other kinds of information. It
+   also allows us to handle the ETIMEDOUT error correctly, I guess.
 * TODO RESET packets
   We currently have no handling of RESET packets at all. It ought to
   be pretty simple though and can be added easily I think.
@@ -279,33 +292,15 @@ Haphazard TODO list of things that needs attention:
    off an RST packet, but store a "Do not send off another RST Packet
    for this unless a grace time has happened" entry in the lookup
    table.
-* TODO DESTROY how do we react on a DESTROY?
-    Set a timeout
-    When the timeout trigger, we remove everything on this socket by
-    closing down. We do however tell back to parents waiting that the
-    socket is going to be destroyed.
-
-    That is essentially all!
-** TODO Write code which can walk through the senders and receivers and send them messages
-   This means we can send out messages to all clients who are waiting
-   on us to do something. We can call this either from the DESTROY
-   state as a safeguard, or we can call it earlier if some states
-   requires us to exit out earlier with other kinds of information. It
-   also allows us to handle the ETIMEDOUT error correctly, I guess.
 * TODO Test the retransmission code
 ** DONE Make DUMMYNET work on FreeBSD
 ** TODO Fix the zerowindow bug
+   There are probably a couple of bugs. One is that we should remember
+   to reopen the zero window.
 * TODO Only install the zerowin timer if there are more data to send out
   We are currently always setting the ZeroWindow timer when the
   peer_advertised_window is 0, but we could postpone that decision
   until we know we need to send data to the other end.
-
-
-
-
-
-
-
 * The ConnId lookup table should guard against generating an already existing random number.
 * Grace period on used ConnIDs?
   When we have used a ConnID for a while, should we accept another one
@@ -318,12 +313,11 @@ Haphazard TODO list of things that needs attention:
   address then. It makes the collisions much less likely to occur in
   the implementation to use this. In fact, it is 1/2**32. Rather good,
   and not at all realistic for a match.
+* ACK piggybacking
 * Delayed ACKS
 ** TODO Make sure we immediately ack the FIN packet. Don't delay him!
      Easy right now, but keep this as it is important when you
      introduce delayed ACKs
-
-
 
 
 
