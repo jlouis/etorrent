@@ -172,6 +172,16 @@ idle(Msg, S) ->
     {next_state, idle, S}.
 
 %% @private
+syn_sent({pkt, #packet { ty = st_reset }, _},
+         #state { proc_info = PRI,
+                  connector = From } = State) ->
+    %% We received a reset packet in the connected state. This means an abrupt
+    %% disconnect, so move to the RESET state right away after telling people
+    %% we can't fulfill their requests.
+    N_PRI = error_all(PRI, econnrefused),
+    %% Also handle the guy making the connection
+    reply(From, econnrefused),
+    {next_state, destroy, State#state { proc_info = N_PRI }, 0};
 syn_sent({pkt, #packet { ty = st_state,
                          win_sz = WindowSize,
 			 seq_no = PktSeqNo },
@@ -227,6 +237,13 @@ syn_sent(Msg, S) ->
 
 
 %% @private
+connected({pkt, #packet { ty = st_reset }, _},
+          #state { proc_info = PRI } = State) ->
+    %% We received a reset packet in the connected state. This means an abrupt
+    %% disconnect, so move to the RESET state right away after telling people
+    %% we can't fulfill their requests.
+    N_PRI = error_all(PRI, econnreset),
+    {next_state, reset, State#state { proc_info = N_PRI }};
 connected({pkt, Pkt, {_TS, _TSDiff, RecvTime}},
 	  #state { retransmit_timeout = RetransTimer } = State) ->
     error_logger:info_report([node(), connected_incoming_pkt, utp_socket:format_pkt(Pkt)]),
@@ -336,6 +353,13 @@ destroy_delay(Msg, State) ->
 
 %% @private
 %% Die deliberately on close for now
+fin_sent({pkt, #packet { ty = st_reset }, _},
+         #state { proc_info = PRI } = State) ->
+    %% We received a reset packet in the connected state. This means an abrupt
+    %% disconnect, so move to the RESET state right away after telling people
+    %% we can't fulfill their requests.
+    N_PRI = error_all(PRI, econnreset),
+    {next_state, destroy, State#state { proc_info = N_PRI }};
 fin_sent({pkt, Pkt, {_TS, _TSDiff, RecvTime}},
 	  #state { retransmit_timeout = RetransTimer } = State) ->
     error_logger:info_report([node(), connected_incoming_pkt, utp_socket:format_pkt(Pkt)]),
@@ -387,16 +411,19 @@ reset(Msg, State) ->
 %% @private
 %% Die deliberately on close for now
 destroy(timeout, #state { proc_info = ProcessInfo } = State) ->
-    F = fun(From) ->
-                gen_fsm:reply(From, {error, econnreset})
-        end,
-    utp_process:apply_all(ProcessInfo, F),
-    {stop, normal, State};
+    N_ProcessInfo = error_all(ProcessInfo, econnreset),
+    {stop, normal, State#state { proc_info = N_ProcessInfo }};
 destroy(Msg, State) ->
     %% Ignore messages
     error_logger:warning_report([async_message, destroy, Msg]),
     {next_state, destroy, State}.
 
+error_all(ProcessInfo, ErrorReason) ->
+    F = fun(From) ->
+                gen_fsm:reply(From, {error, ErrorReason})
+        end,
+    utp_process:apply_all(ProcessInfo, F),
+    utp_process:mk().
 
 %%--------------------------------------------------------------------
 %% @private
