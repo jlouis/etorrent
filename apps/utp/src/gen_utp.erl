@@ -119,6 +119,9 @@ listen() ->
 incoming_unknown(#packet { ty = st_syn } = Packet, Addr, Port) ->
     %% SYN packet, so pass it in
     gen_server:cast(?MODULE, {incoming_syn, Packet, Addr, Port});
+incoming_unknown(#packet{ ty = st_reset }, _Addr, _Port) ->
+    %% Stray RST packet received, ignore since there is no connection for it
+    ok;
 incoming_unknown(#packet{} = Packet, Addr, Port) ->
     %% Stray, RST it
     gen_server:cast(?MODULE, {generate_reset, Packet, Addr, Port}).
