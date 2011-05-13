@@ -23,7 +23,7 @@
 -export([register_process/2,
 	 reply/2,
 	 lookup_registrar/1,
-	 incoming_new/3]).
+	 incoming_unknown/3]).
 
 -type utp_socket() :: {utp_sock, pid()}.
 -export_type([utp_socket/0]).
@@ -114,14 +114,14 @@ listen(QLen) ->
 listen() ->
     listen(5).
 
+    
 %% @doc New unknown incoming packet
-incoming_new(#packet { ty = st_syn } = Packet, Addr, Port) ->
+incoming_unknown(#packet { ty = st_syn } = Packet, Addr, Port) ->
     %% SYN packet, so pass it in
     gen_server:cast(?MODULE, {incoming_syn, Packet, Addr, Port});
-incoming_new(#packet{}, _Addr, _Port) ->
-    %% Stray, ignore
-    ok.
-
+incoming_unknown(#packet{} = Packet, Addr, Port) ->
+    %% Stray, RST it
+    gen_server:cast(?MODULE, {generate_reset, Packet, Addr, Port}).
 
 %% @doc Register a process as the recipient of a given incoming message
 %% @end
@@ -138,6 +138,8 @@ lookup_registrar(CID) ->
 	    {ok, Pid}
     end.
 
+
+    
 %% @doc Reply back to a socket user
 %% @end
 reply(To, Msg) ->
@@ -216,6 +218,12 @@ handle_cast({incoming_syn, Packet, Addr, Port}, #state { listen_queue = Q,
 	    [accept_incoming_conn(Socket, Acc, SYN) || {Acc, SYN} <- Pairings],
 	    {noreply, S#state { listen_queue = NewQ }}
     end;
+handle_cast({generate_reset, #packet { conn_id = ConnID,
+                                       seq_no  = SeqNo }, Addr, Port},
+            #state { socket = Socket } = State) ->
+    utp_socket:send_reset(Socket, Addr, Port, ConnID, SeqNo,
+                          utp_pkt:mk_random_seq_no()),
+    {noreply, State};
 handle_cast(_Msg, State) ->
     {noreply, State}.
 

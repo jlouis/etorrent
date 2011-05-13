@@ -7,7 +7,8 @@
          set_conn_id/2,
 
          order_packets/2,
-         conn_id_recv/1
+         conn_id_recv/1,
+         send_rst/6
         ]).
 
 -export([
@@ -71,6 +72,18 @@ send_pkt(AdvWin, #sock_info { socket = Socket,
                    Pkt,
                    TSDiff)).
 
+send_rst(Socket, Addr, Port, ConnIDSend, AckNo, SeqNo) ->
+    Packet =
+        #packet { ty = st_reset,
+                  ack_no = AckNo,
+                  seq_no = SeqNo,
+                  win_sz = 0,
+                  extension = [],
+                  conn_id = ConnIDSend },
+    TSDiff = 0,
+    gen_udp:send(Socket, Addr, Port,
+                 utp_proto:encode(Packet, TSDiff)).
+      
 set_conn_id(Cid, SockInfo) ->
     SockInfo#sock_info { conn_id_send = Cid }.
 

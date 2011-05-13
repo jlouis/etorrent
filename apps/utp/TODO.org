@@ -292,12 +292,19 @@ Haphazard TODO list of things that needs attention:
    RESET. The error message to return up is based on whether or not we
    are in SYN_SENT. In SYN_SENT, it is ECONNREFUSED. Otherwise it is
    ECONNRESET!
-** TODO ST_RESET Packet in the send direction
+*** TODO Detect the reset early on in the packet decoder.
+    This is easier than going down to the connection itself.
+*** TODO Add the ability to handle a reset() call for a given socket.
+    In this state, we should carry out the things we have written down
+    above.
+** DONE ST_RESET Packet in the send direction
    This happens on a failed lookup. There is no such socket present,
    so when we try to look up the socket, we fail. This means we send
    off an RST packet, but store a "Do not send off another RST Packet
    for this unless a grace time has happened" entry in the lookup
    table.
+*** DONE Write code for the transmission of a RESET packet
+*** DONE Install on a failed lookup
 * TODO Only install the zerowin timer if there are more data to send out
   We are currently always setting the ZeroWindow timer when the
   peer_advertised_window is 0, but we could postpone that decision
@@ -330,11 +337,8 @@ Haphazard TODO list of things that needs attention:
 
 
 
-
 * RTT Measurement
   This is probably different in uTP from the standard protocol
 * SACK support
 * Nagle code
-
-
-
+* TODO Add a safety timer on RESET Packets

@@ -50,7 +50,7 @@ handle_cast({packet, P, Addr, Port}, S) ->
         {ok, Pid} ->
             gen_utp_worker:incoming(Pid, Packet, {TS, TSDiff, RecvTime});
         not_found ->
-            gen_utp:incoming_new(Packet, Addr, Port)
+            gen_utp:incoming_unknown(Packet, Addr, Port)
     end,
     {noreply, S};
 handle_cast(_Msg, State) ->
