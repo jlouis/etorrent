@@ -8,7 +8,7 @@
 
          order_packets/2,
          conn_id_recv/1,
-         send_rst/6
+         send_reset/6
         ]).
 
 -export([
@@ -72,7 +72,7 @@ send_pkt(AdvWin, #sock_info { socket = Socket,
                    Pkt,
                    TSDiff)).
 
-send_rst(Socket, Addr, Port, ConnIDSend, AckNo, SeqNo) ->
+send_reset(Socket, Addr, Port, ConnIDSend, AckNo, SeqNo) ->
     Packet =
         #packet { ty = st_reset,
                   ack_no = AckNo,
