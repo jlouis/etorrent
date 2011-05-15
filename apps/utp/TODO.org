@@ -316,6 +316,16 @@ Haphazard TODO list of things that needs attention:
   When we get in packets, the ACK is classified as an old ACK. This is
   an error somewhere in the code and should be fixed.
 
+  The ACK is old because we send back an ACK which is too low in value
+  compared to what the receiver expects.
+
+  1: Is the receiver the connector or the connected?
+  2: What code is the code that sends off the ACK?
+  3: Where does the ACK stem from? From the initial connect setup
+     code?
+  4: Why is it off-by-two or off-by-one?
+  5: Is this an error w.r.t. that the ACK is the next expected ACK?
+
 * TODO We sometimes hit {error, enobufs}
   On the FreeBSD machine. Investigate and handle this kind of error
   message.
