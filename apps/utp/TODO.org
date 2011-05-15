@@ -323,13 +323,16 @@ Haphazard TODO list of things that needs attention:
      * It is the connectee, so the connector is the one sending old
        acks, or the connectee has the wrong ACK number.
   2: What code is the code that sends off the ACK?
+     * The ACK sent is OK. It just ACKs for the last acked packet.
   3: Where does the ACK stem from? From the initial connect setup
      code?
+     * Fixed
   4: Why is it off-by-two or off-by-one?
      * The initialization was wrong and than was a count of 1
-
-  5: Is this an error w.r.t. that the ACK is the next expected ACK?
-
+  5: Is this an error w.r.t. that the ACK is the next expected ACK
+     * Doesn't look like it
+  6: I think the culprit is the code that updates the send buffer. It
+     calculates the window incorrectly and thus it fails.
 * TODO We sometimes hit {error, enobufs}
   On the FreeBSD machine. Investigate and handle this kind of error
   message.
