@@ -11,7 +11,7 @@
          connect_n_send_big/0, connect_n_send_big/1 ]).
 
 suite() ->
-    [{timetrap, {seconds, 20}}].
+    [{timetrap, {seconds, 45}}].
 
 %% Setup/Teardown
 %% ----------------------------------------------------------------------
