@@ -296,9 +296,18 @@ Haphazard TODO list of things that needs attention:
    table.
 *** DONE Write code for the transmission of a RESET packet
 *** DONE Install on a failed lookup
+* TODO Assert all messaging goes through OK
+  This is really a bit hacky, but I'd rather assert that all the UDP
+  packets are released correctly to the underlying operating system
+  for now. If not, we ought to handle it explicitly anyway.
 * TODO Test the retransmission code
 ** DONE Make DUMMYNET work on FreeBSD
-** Test the code on FreeBSD again!
+** DONE Test the code on FreeBSD again!
+** TODO Create a script with a low-level error rate.
+** Create a script with a medium level error rate.
+** Create a script that totally fucks up the connection ordering.
+** Create a script which does everything in a nasty way.
+** Create a script which is close to realistic.
 ** TODO Fix the zerowindow bug
    There are probably a couple of bugs. One is that we should remember
    to reopen the zero window.
