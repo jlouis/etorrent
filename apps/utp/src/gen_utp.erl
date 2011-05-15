@@ -224,8 +224,8 @@ handle_cast({incoming_syn, Packet, Addr, Port}, #state { listen_queue = Q,
 handle_cast({generate_reset, #packet { conn_id = ConnID,
                                        seq_no  = SeqNo }, Addr, Port},
             #state { socket = Socket } = State) ->
-    utp_socket:send_reset(Socket, Addr, Port, ConnID, SeqNo,
-                          utp_pkt:mk_random_seq_no()),
+    ok = utp_socket:send_reset(Socket, Addr, Port, ConnID, SeqNo,
+                               utp_pkt:mk_random_seq_no()),
     {noreply, State};
 handle_cast(_Msg, State) ->
     {noreply, State}.
