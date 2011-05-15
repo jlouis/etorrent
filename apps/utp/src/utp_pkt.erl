@@ -222,8 +222,10 @@ handle_send_ack(SockInfo, PktBuf, Messages) ->
 %% The `SeqNo' given is validated with respect to the current state of
 %% the connection.
 %% @end
-validate_seq_no(SeqNo, PB) ->
-    case bit16(SeqNo - PB#pkt_buf.next_expected_seq_no) of
+validate_seq_no(SeqNo, #pkt_buf { next_expected_seq_no = NextExpected }) ->
+    case bit16(SeqNo - NextExpected) of
+        _SeqAhead when SeqNo == (NextExpected - 1) ->
+            {ok, no_data};
         SeqAhead when SeqAhead >= ?REORDER_BUFFER_SIZE ->
             {error, is_far_in_future};
         SeqAhead ->
@@ -284,15 +286,18 @@ handle_incoming_datagram_payload(SeqNo, Payload, PacketBuffer, State) ->
     %% We got a packet in with a seq_no and some things to ack.
     %% Validate the sequence number.
     case validate_seq_no(SeqNo, PacketBuffer) of
+        {ok, no_data} ->
+            no_data;
         {ok, _Num} ->
-            ok;
+            %% Handle the Payload by Dumping it into the packet buffer
+            %% at the right point Returns a new PacketBuffer, and a
+            %% list of Messages for the upper layer
+            {ok, handle_receive_buffer(SeqNo, Payload, PacketBuffer, State)};
         {error, Violation} ->
             throw({error, Violation})
-    end,
+    end.
 
-    %% Handle the Payload by Dumping it into the packet buffer at the right point
-    %% Returns a new PacketBuffer, and a list of Messages for the upper layer
-    {_, _} = handle_receive_buffer(SeqNo, Payload, PacketBuffer, State).
+
 
 
 %% @doc Update the Receive Buffer with Payload
@@ -355,7 +360,6 @@ reorder_buffer_in(SeqNo, Payload, #pkt_buf { reorder_buf = OD } = PB) ->
 update_send_buffer(AckNo, #pkt_buf { seq_no = BufSeqNo } = PB) ->
     WindowSize = send_window_count(PB),
     WindowStart = bit16(BufSeqNo - WindowSize),
-    error_logger:info_report([window_is_at, WindowStart]),
     case view_ack_no(AckNo, WindowStart, WindowSize) of
         {ok, AcksAhead} ->
             {Ret, Acked, PB1} = prune_acked(AcksAhead, WindowStart, PB),
@@ -369,7 +373,10 @@ update_send_buffer(AckNo, #pkt_buf { seq_no = BufSeqNo } = PB) ->
                  AcksAhead,
                  PB1};
         {ack_is_old, AcksAhead} ->
-            error_logger:info_report([ack_is_old, AcksAhead]),
+            error_logger:info_report([node(), ack_is_old,
+                                      {acks_ahead, AcksAhead},
+                                      {window_size, WindowSize},
+                                      {window_start, WindowStart}]),
             {ok, [{old_ack, true}], 0, PB}
     end.
 
@@ -467,17 +474,25 @@ handle_packet(_CurrentTimeMs,
     N_PacketBuffer = handle_packet_type(Type, SeqNo, PacketBuffer),
 
     %% Update the state by the receiving payload stuff.
-    {N_PacketBuffer1, SendMessages} =
-        handle_incoming_datagram_payload(SeqNo, Payload, N_PacketBuffer, State),
+    case handle_incoming_datagram_payload(SeqNo, Payload, N_PacketBuffer, State) of
+        {ok, {N_PacketBuffer1, RecvMessages}} ->
+            %% The Packet may have ACK'ed stuff from our send buffer. Update
+            %% the send buffer accordingly
+            {ok, SendMessages, _AcksAhead, N_PacketBuffer2} =
+                update_send_buffer(AckNo, N_PacketBuffer1),
 
-    %% The Packet may have ACK'ed stuff from our send buffer. Update
-    %% the send buffer accordingly
-    {ok, RecvMessages, _AcksAhead, N_PacketBuffer2} =
-        update_send_buffer(AckNo, N_PacketBuffer1),
-
-    {ok, N_PacketBuffer2,
-         handle_window_size(WindowSize, PktWindow),
-         SendMessages ++ RecvMessages}.
+            {ok, N_PacketBuffer2,
+             handle_window_size(WindowSize, PktWindow),
+             SendMessages ++ RecvMessages};
+        no_data when Type == st_state ->
+            %% The packet has no data
+            {ok, SendMessages, _AcksAhead, N_PacketBuffer2} =
+                update_send_buffer(AckNo, N_PacketBuffer),
+            
+            {ok, N_PacketBuffer2,
+             handle_window_size(WindowSize, PktWindow),
+             SendMessages}
+    end.
 
 
 handle_packet_type(Type, SeqNo, Buf) ->

@@ -198,7 +198,7 @@ syn_sent({pkt, #packet { ty = st_state,
                    pkt_window = utp_pkt:handle_advertised_window(WindowSize,
                                                                  PktWin),
                    retransmit_timeout = clear_retransmit_timer(RTimeout),
-                   pkt_buf = utp_pkt:init_ackno(PktBuf, PktSeqNo)}};
+                   pkt_buf = utp_pkt:init_ackno(PktBuf, PktSeqNo+1)}};
 syn_sent(close, #state {
            pkt_window = Window,
            retransmit_timeout = RTimeout
