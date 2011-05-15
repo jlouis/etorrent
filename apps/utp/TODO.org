@@ -300,18 +300,31 @@ Haphazard TODO list of things that needs attention:
   This is really a bit hacky, but I'd rather assert that all the UDP
   packets are released correctly to the underlying operating system
   for now. If not, we ought to handle it explicitly anyway.
-* TODO Test the retransmission code
+* ONGOING Test the retransmission code
 ** DONE Make DUMMYNET work on FreeBSD
 ** DONE Test the code on FreeBSD again!
 ** DONE Create a script with a low-level error rate.
 ** DONE TEST with a low-level error rate.
-** Create a script with a medium level error rate.
+** DONE Create a script with a medium level error rate.
 ** Create a script that totally fucks up the connection ordering.
 ** Create a script which does everything in a nasty way.
 ** Create a script which is close to realistic.
 ** TODO Fix the zerowindow bug
    There are probably a couple of bugs. One is that we should remember
    to reopen the zero window.
+* TODO Fix the "ACK-is-old" bug.
+  When we get in packets, the ACK is classified as an old ACK. This is
+  an error somewhere in the code and should be fixed.
+
+* TODO We sometimes hit {error, enobufs}
+  On the FreeBSD machine. Investigate and handle this kind of error
+  message.
+* TODO Robustness falters under heavy packet loss.
+  When the packet loss is very heavy, the robustness of the system is
+  worse than it normally is. We ought to investigate why this is the
+  case and fix it.
+* TODO Retransmission of the syn packet seems to fail for some reason.
+  Investigate why this is the case and fix it.
 * TODO Only install the zerowin timer if there are more data to send out
   We are currently always setting the ZeroWindow timer when the
   peer_advertised_window is 0, but we could postpone that decision
