@@ -357,9 +357,10 @@ reorder_buffer_in(SeqNo, Payload, #pkt_buf { reorder_buf = OD } = PB) ->
 %% SEND PATH
 %% ----------------------------------------------------------------------
 
-update_send_buffer(AckNo, #pkt_buf { seq_no = BufSeqNo } = PB) ->
+update_send_buffer(AckNo, #pkt_buf { seq_no = NextSeqNo } = PB) ->
+    SeqNo = bit16(NextSeqNo - 1),
     WindowSize = send_window_count(PB),
-    WindowStart = bit16(BufSeqNo - WindowSize),
+    WindowStart = bit16(SeqNo - WindowSize),
     case view_ack_no(AckNo, WindowStart, WindowSize) of
         {ok, AcksAhead} ->
             {Ret, Acked, PB1} = prune_acked(AcksAhead, WindowStart, PB),

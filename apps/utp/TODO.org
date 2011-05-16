@@ -312,7 +312,7 @@ Haphazard TODO list of things that needs attention:
 ** TODO Fix the zerowindow bug
    There are probably a couple of bugs. One is that we should remember
    to reopen the zero window.
-* TODO Fix the "ACK-is-old" bug.
+* DONE Fix the "ACK-is-old" bug.
   When we get in packets, the ACK is classified as an old ACK. This is
   an error somewhere in the code and should be fixed.
 
@@ -333,6 +333,12 @@ Haphazard TODO list of things that needs attention:
      * Doesn't look like it
   6: I think the culprit is the code that updates the send buffer. It
      calculates the window incorrectly and thus it fails.
+
+
+  The problem is actually quite simple. The ACK was determined as old
+  because the sequence number is the next expected sequence number
+  there is. We use a number one too high. This is the second
+  off-by-one bug, so we are now down to 0 off-by-x bugs in the code.
 * TODO We sometimes hit {error, enobufs}
   On the FreeBSD machine. Investigate and handle this kind of error
   message.
