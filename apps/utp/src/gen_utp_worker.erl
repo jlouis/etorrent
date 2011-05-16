@@ -225,6 +225,7 @@ syn_sent({timeout, TRef, {retransmit_timeout, N}},
             Win = utp_pkt:advertised_window(PktBuf),
             ok = utp_socket:send_pkt(Win, SockInfo, SynPacket,
                                      utp_socket:conn_id_recv(SockInfo)),
+            error_logger:info_report([syn_packet_resent]),
             {next_state, syn_sent,
              State#state {
                retransmit_timeout = set_retransmit_timer(N*2, undefined)

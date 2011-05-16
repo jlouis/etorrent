@@ -339,20 +339,107 @@ Haphazard TODO list of things that needs attention:
   because the sequence number is the next expected sequence number
   there is. We use a number one too high. This is the second
   off-by-one bug, so we are now down to 0 off-by-x bugs in the code.
-* TODO We sometimes hit {error, enobufs}
-  On the FreeBSD machine. Investigate and handle this kind of error
-  message.
 * TODO Robustness falters under heavy packet loss.
   When the packet loss is very heavy, the robustness of the system is
   worse than it normally is. We ought to investigate why this is the
   case and fix it.
+
+  My guess is we lost a packet we can't afford to loose at the moment. To
+  fix this, we must know where the "I-give-up" occurs so we can
+  attempt to diagnose what packet created the problem and fix it.
 * TODO Retransmission of the syn packet seems to fail for some reason.
   Investigate why this is the case and fix it.
+
+  We detect we should retransmit the SYN packet. Do we actually
+  retransmit the packet proper? Yes we do!
+
+  Is the problem in the receiving end then? Perhaps! We may be in a
+  state where we have sent the SYN packet, and the first ACK-packet is
+  not transferred back. It should be retransmitted and the system
+  should detect this is the case! But I am fairly sure there is no
+  code in place which ensures this is the case.
+* TODO Store a triple, {ConnID, Address, Port}, for a connection.
+  This is far more robust in the long run as we can then reuse
+  connection IDs for other {Addr, Port} pairs.
+* ACK piggybacking
+  ACK piggybacking is the concept where we under a send check if we
+  sent a packet. If this is the case, we effectively have a piggy-back
+  and can drop sending out a separate ACK. It is easily detected in
+  the code base and then handled explicitly.
+* Delayed ACKS - Make sure we immediately ack the FIN packet. Don't delay him!
+  Easy right now, but keep this as it is important when you
+  introduce delayed ACKs.
+
+  In a delayed ACK world, we ought to do something about the FIN
+  packet and ACK it right away. Otherwise it will wait until the delay
+  trigger is tripped and that will take some time.
+* RTT Measurement
+  This is probably different in uTP from the standard protocol
+
+  It is, because we have an explicit RTT-timer inside the packet. This
+  is fairly important to get right, but it requires us to investigate
+  a lot on the reference code to understand what is going on. It is
+  the major important part of this weeks work.
+* SACK support
+  SACK support has two directions
+** SACK in the send direction
+*** When should we send out an SACK?
+    My guess is this hinges on the size of the reorder buffer. If it
+    is too big, we can SACK it.
+*** How do we generate an SACK
+    The important part is padding up to the last bytes. How is padding
+    handled. How do we actually do this?
+** SACK in the receive direction
+   When we receive an SACK, we should go through our send-buffer and
+   weed out stuff the other end already have. Then we should decide
+   what to retransmit and how. We probably shouldn't just "retransmit
+   the oldest packet" as we do now though.
+* Nagle code
+  Nagling is fairly easy to do. When there is less than a packet to
+  send out, we simply say: "No, won't send" and set a nagle timer. If
+  the timer is tripped, we force sending of everything. Otherwise we
+  wait for more data until we have a full packet to send. It means we
+  need to be able to taste/peek on the send buffer to see if there is
+  enough data on it to be able to send out a full packet.
+* Implement Delayed ACKs
+  Fairly easily done. You simply count how many bytes we have ACKed
+  since last and set a timer. Whenever the timer triggers, or we go
+  above the ACKED_BYTES threshold, we send out an ACK. Piggybacking
+  will reset this if it happens.
+* TODO Add a safety timer on RESET Packets
+  We currently just RESET on anything, but we should probably include
+  some kind of protection and blackhole the other end for a while if
+  we reset packets toward him above a certain level. This is fairly
+  easily implemented later on though.
+* TODO There are some states that can't cope with a RESET yet
+  But it doesn't matter at the moment. I'd rather look into other
+  errors first and get those away first. Then we can look into this
+  which should be fairly automated to add later on.
+* TODO We sometimes hit {error, enobufs}
+  On the FreeBSD machine. Investigate and handle this kind of error
+  message.
+
+  We can only handle this while on the FreeBSD machine and when we
+  know where it occurs. We should probably regard such a packet as
+  lost rather than try again later on. It only happens when we have
+  enabled active queue management of some kind, notably RED or a
+  DUMMYNET pipe.
+
+  We assume the fix is to regard the packet as lost forever.
+
 * TODO Only install the zerowin timer if there are more data to send out
   We are currently always setting the ZeroWindow timer when the
   peer_advertised_window is 0, but we could postpone that decision
   until we know we need to send data to the other end.
+
+  Actually it may clear itself up, or so we hope.
+
+  This is most clever to postpone as it has no direct effect on the
+  code base currently. It is a "Nice-to-have" thing rather than a
+  "DO-NEED!" thing.
 * The ConnId lookup table should guard against generating an already existing random number.
+  This is fairly simple. When generating a new ConnID, look up if we
+  already have one.
 * Grace period on used ConnIDs?
   When we have used a ConnID for a while, should we accept another one
   straight after? It sounds like a bad idea because it may time out
@@ -364,32 +451,6 @@ Haphazard TODO list of things that needs attention:
   address then. It makes the collisions much less likely to occur in
   the implementation to use this. In fact, it is 1/2**32. Rather good,
   and not at all realistic for a match.
-* ACK piggybacking
-* Delayed ACKS
-** TODO Make sure we immediately ack the FIN packet. Don't delay him!
-     Easy right now, but keep this as it is important when you
-     introduce delayed ACKs
 
-
-
-
-
-
-
-
-
-
-
-* RTT Measurement
-  This is probably different in uTP from the standard protocol
-* SACK support
-* Nagle code
-* TODO Add a safety timer on RESET Packets
-* TODO There are some states that can't cope with a RESET yet
-  But it doesn't matter at the moment. I'd rather look into other
-  errors first and get those away first. Then we can look into this
-  which should be fairly automated to add later on.
-
-
-
-
+  This is probably not needed if we triple the ConnID over the IP/Port
+  pairs.
