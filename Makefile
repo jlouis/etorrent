@@ -1,10 +1,8 @@
 ## Etorrent Makefile
 ## Try to keep it so simple it can be run with BSD-make as well as
 ## GNU-make
-
-# Version here is used by the test suite. It should be possible to figure
-# it out automatically, but for now, hardcode.
-version=1.2.1
+ETORRENT_VERSION=1.2.1
+UTP_VERSION=0.1
 
 all: compile
 
@@ -79,8 +77,11 @@ common_test: rel
 # Unpack stuff.
 	rm -fr rel/etorrent/lib/etorrent-*/ebin
 	cd rel/etorrent/lib && unzip -o etorrent-*.ez && unzip -o utp-*.ez
-	mkdir -p rel/etorrent/lib/etorrent-*/src && \
-		cp -r apps/etorrent/src/* rel/etorrent/lib/etorrent-*/src
+	mkdir -p rel/etorrent/lib/etorrent-${ETORRENT_VERSION}/src && \
+		cp -r apps/etorrent/src/* rel/etorrent/lib/etorrent-${ETORRENT_VERSION}/src
+	mkdir -p rel/etorrent/lib/utp-${UTP_VERSION}/src && \
+		cp -r apps/utp/src/* rel/etorrent/lib/utp-${UTP_VERSION}/src
+
 # Run cover test
 	${CT_RUN} -spec etorrent_test.spec | tee test.log
 
