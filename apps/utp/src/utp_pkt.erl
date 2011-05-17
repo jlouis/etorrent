@@ -436,9 +436,6 @@ view_ack_no(AckNo, WindowStart, WindowSize) ->
             %% The ack number is old, so do essentially nothing in the next part
             {ack_is_old, N};
         N when is_integer(N) ->
-            %% -1 here is needed because #pkt_buf.seq_no is one
-            %% ahead It is the next packet to send out, so it
-            %% is one beyond the top end of the window
             {ok, N}
     end.
 
