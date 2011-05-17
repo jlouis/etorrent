@@ -339,6 +339,21 @@ Haphazard TODO list of things that needs attention:
   because the sequence number is the next expected sequence number
   there is. We use a number one too high. This is the second
   off-by-one bug, so we are now down to 0 off-by-x bugs in the code.
+* DONE Store a triple, {ConnID, Address, Port}, for a connection.
+  This is far more robust in the long run as we can then reuse
+  connection IDs for other {Addr, Port} pairs.
+
+* TODO Backwards data test
+  Open a connection and move data "backwards"
+* TODO Full-duplex test
+  Test data transfer in full duplex over the line
+* TODO Test close() of sockets
+  Test that a socket can be closed down again. Currently the code is
+  there but it has no coverage.
+** Test close() for the connector
+** Test close() for the connectee
+** Test close() after data has moved over the line
+** Test close() after data has moved in the other direction
 * TODO Robustness falters under heavy packet loss.
   When the packet loss is very heavy, the robustness of the system is
   worse than it normally is. We ought to investigate why this is the
@@ -358,9 +373,6 @@ Haphazard TODO list of things that needs attention:
   not transferred back. It should be retransmitted and the system
   should detect this is the case! But I am fairly sure there is no
   code in place which ensures this is the case.
-* TODO Store a triple, {ConnID, Address, Port}, for a connection.
-  This is far more robust in the long run as we can then reuse
-  connection IDs for other {Addr, Port} pairs.
 * ACK piggybacking
   ACK piggybacking is the concept where we under a send check if we
   sent a packet. If this is the case, we effectively have a piggy-back
@@ -373,6 +385,9 @@ Haphazard TODO list of things that needs attention:
   In a delayed ACK world, we ought to do something about the FIN
   packet and ACK it right away. Otherwise it will wait until the delay
   trigger is tripped and that will take some time.
+
+* Look at the coverage output:
+  What things are we not testing currently?
 * RTT Measurement
   This is probably different in uTP from the standard protocol
 

@@ -157,11 +157,19 @@ init([Socket, Addr, Port, Options]) ->
     PktWindow  = utp_pkt:mk(),
     PktBuf   = utp_pkt:mk_buf(?DEFAULT_OPT_RECV_SZ),
     ProcInfo = utp_process:mk(),
-    SockInfo = utp_socket:mk(Addr, Options, ?DEFAULT_PACKET_SIZE, Port, Socket),
+    CanonAddr = canonicalize_address(Addr),
+    SockInfo = utp_socket:mk(CanonAddr, Options, ?DEFAULT_PACKET_SIZE, Port, Socket),
     {ok, idle, #state{ sock_info = SockInfo,
                        pkt_buf   = PktBuf,
                        proc_info = ProcInfo,
                        pkt_window  = PktWindow }}.
+
+
+canonicalize_address(S) when is_list(S) ->
+    {ok, CAddr} = inet:getaddr(S, inet),
+    CAddr;
+canonicalize_address({_, _, _, _} = Addr) ->
+    Addr.
 
 %% @private
 idle(close, S) ->
@@ -446,8 +454,9 @@ error_all(ProcessInfo, ErrorReason) ->
 %%--------------------------------------------------------------------
 idle(connect, From, State = #state { sock_info = SockInfo,
                                      pkt_buf   = PktBuf}) ->
+    {Address, Port} = utp_socket:hostname_port(SockInfo),
     Conn_id_recv = utp_proto:mk_connection_id(),
-    gen_utp:register_process(self(), Conn_id_recv),
+    gen_utp:register_process(self(), {Conn_id_recv, Address, Port}),
 
     ConnIdSend = Conn_id_recv + 1,
     N_SockInfo = utp_socket:set_conn_id(ConnIdSend, SockInfo),
@@ -466,7 +475,8 @@ idle({accept, SYN}, _From, #state { sock_info = SockInfo,
                                     pkt_buf   = PktBuf } = State) ->
     %% @todo timeout handling from the syn packet!
     Conn_id_recv = SYN#packet.conn_id + 1,
-    gen_utp:register_process(self(), Conn_id_recv),
+    {Addr, Port} = utp_socket:hostname_port(SockInfo),
+    gen_utp:register_process(self(), {Conn_id_recv, Addr, Port}),
 
     Conn_id_send = SYN#packet.conn_id,
     N_SockInfo = utp_socket:set_conn_id(Conn_id_send, SockInfo),

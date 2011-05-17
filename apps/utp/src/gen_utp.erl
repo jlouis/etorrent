@@ -22,7 +22,7 @@
 %% Internally used API
 -export([register_process/2,
 	 reply/2,
-	 lookup_registrar/1,
+	 lookup_registrar/3,
 	 incoming_unknown/3]).
 
 -type utp_socket() :: {utp_sock, pid()}.
@@ -128,13 +128,13 @@ incoming_unknown(#packet{} = Packet, Addr, Port) ->
 
 %% @doc Register a process as the recipient of a given incoming message
 %% @end
-register_process(Pid, ConnID) ->
-    call({reg_proc, Pid, ConnID}).
+register_process(Pid, Conn) ->
+    call({reg_proc, Pid, Conn}).
 
 %% @doc Look up the registrar underneath a given connection ID
 %% @end
-lookup_registrar(CID) ->
-    case ets:lookup(?TAB, CID) of
+lookup_registrar(CID, Addr, Port) ->
+    case ets:lookup(?TAB, {CID, Addr, Port}) of
 	[] ->
 	    not_found;
 	[{_, Pid}] ->

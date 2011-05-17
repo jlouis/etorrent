@@ -8,7 +8,8 @@
 
          order_packets/2,
          conn_id_recv/1,
-         send_reset/6
+         send_reset/6,
+         hostname_port/1
         ]).
 
 -export([
@@ -52,6 +53,10 @@ mk(Addr, Opts, PacketSize, Port, Socket) ->
                  conn_id_send = not_set,
                  timestamp_difference = 0
                }.
+
+hostname_port(#sock_info { addr = Addr, port = Port }) ->
+    error_logger:info_report([{Addr, Port}]),
+    {Addr, Port}.
 
 conn_id_recv(#sock_info { conn_id_send = ConnId }) ->
     ConnId - 1. % This is the receiver conn_id we use at the SYN point.
