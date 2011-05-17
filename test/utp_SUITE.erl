@@ -11,6 +11,7 @@
          backwards_communication/0, backwards_communication/1,
          full_duplex_communication/0, full_duplex_communication/1,
          close_1/0, close_1/1,
+         close_2/0, close_2/1,
          connect_n_send_big/0, connect_n_send_big/1 ]).
 
 suite() ->
@@ -53,6 +54,7 @@ groups() ->
                               backwards_communication,
                               full_duplex_communication,
                               close_1,
+                              close_2,
                               connect_n_send_big]}].
 
 all() ->
@@ -70,7 +72,20 @@ close_1(Config) ->
           end),
     ok = rpc:call(C2, utp, test_close_in_1, []),
     ok.
-    
+
+close_2() ->    
+    [].
+
+close_2(Config) ->
+    C1 = ?config(connector, Config),
+    C2 = ?config(connectee, Config),
+    spawn(fun() ->
+                  timer:sleep(3000),
+                  ok = rpc:call(C1, utp, test_close_out_2, [])
+          end),
+    ok = rpc:call(C2, utp, test_close_in_2, []),
+    ok.
+
 backwards_communication() ->
     [].
 
