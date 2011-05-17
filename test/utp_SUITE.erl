@@ -8,6 +8,7 @@
 	 init_per_testcase/2, end_per_testcase/2]).
 
 -export([connect_n_communicate/0, connect_n_communicate/1,
+         backwards_communication/0, backwards_communication/1,
          connect_n_send_big/0, connect_n_send_big/1 ]).
 
 suite() ->
@@ -47,10 +48,24 @@ end_per_testcase(_Case, _Config) ->
 %% ----------------------------------------------------------------------
 groups() ->
     [{main_group, [shuffle], [connect_n_communicate,
+                              backwards_communication,
                               connect_n_send_big]}].
 
 all() ->
     [{group, main_group}].
+
+backwards_communication() ->
+    [].
+
+backwards_communication(Config) ->
+    C1 = ?config(connector, Config),
+    C2 = ?config(connectee, Config),
+    spawn(fun() ->
+                  timer:sleep(3000),
+                  ok = rpc:call(C1, utp, test_connector_2, [])
+          end),
+    ok = rpc:call(C2, utp, test_connectee_2, []),
+    ok.
 
 connect_n_communicate() ->
     [].

@@ -343,7 +343,7 @@ Haphazard TODO list of things that needs attention:
   This is far more robust in the long run as we can then reuse
   connection IDs for other {Addr, Port} pairs.
 
-* TODO Backwards data test
+* DONE Backwards data test
   Open a connection and move data "backwards"
 * TODO Full-duplex test
   Test data transfer in full duplex over the line

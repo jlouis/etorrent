@@ -8,6 +8,8 @@
 -export([
          test_connector_1/0,
          test_connectee_1/0,
+         test_connector_2/0,
+         test_connectee_2/0,
          test_send_large_file/1,
          test_recv_large_file/1
          ]).
@@ -36,10 +38,16 @@ ensure_started([App | R]) ->
 	    ensure_started(R)
     end.
 
+
 test_connector_1() ->
     Sock = gen_utp:connect("localhost", 3333),
-    gen_utp:send(Sock, "HELLO"),
-    gen_utp:send(Sock, "WORLD").
+    ok = gen_utp:send(Sock, "HELLO"),
+    ok = gen_utp:send(Sock, "WORLD").
+
+test_connector_2() ->
+    Sock = gen_utp:connect("localhost", 3333),
+    {ok, <<"HELLOWORLD">>} = gen_utp:recv(Sock, 10),
+    ok.
 
 test_connectee_1() ->
     gen_utp:listen(),
@@ -47,6 +55,13 @@ test_connectee_1() ->
     {ok, R1} = gen_utp:recv(Port, 5),
     {ok, R2} = gen_utp:recv(Port, 5),
     {R1, R2}.
+
+test_connectee_2() ->
+    gen_utp:listen(),
+    {ok, Sock} = gen_utp:accept(),
+    ok = gen_utp:send(Sock, <<"HELLO">>),
+    ok = gen_utp:send(Sock, <<"WORLD">>),
+    ok.
 
 test_send_large_file(Data) ->
     Sock = gen_utp:connect("localhost", 3333),
