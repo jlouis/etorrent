@@ -10,6 +10,8 @@
          test_connectee_1/0,
          test_connector_2/0,
          test_connectee_2/0,
+         test_connector_3/0,
+         test_connectee_3/0,
          test_send_large_file/1,
          test_recv_large_file/1
          ]).
@@ -49,6 +51,13 @@ test_connector_2() ->
     {ok, <<"HELLOWORLD">>} = gen_utp:recv(Sock, 10),
     ok.
 
+test_connector_3() ->
+    Sock = gen_utp:connect("localhost", 3333),
+    ok = gen_utp:send(Sock, "12345"),
+    ok = gen_utp:send(Sock, "67890"),
+    {ok, <<"HELLOWORLD">>} = gen_utp:recv(Sock, 10),
+    ok.
+
 test_connectee_1() ->
     gen_utp:listen(),
     {ok, Port} = gen_utp:accept(),
@@ -61,6 +70,15 @@ test_connectee_2() ->
     {ok, Sock} = gen_utp:accept(),
     ok = gen_utp:send(Sock, <<"HELLO">>),
     ok = gen_utp:send(Sock, <<"WORLD">>),
+    ok.
+
+test_connectee_3() ->
+    gen_utp:listen(),
+    {ok, Sock} = gen_utp:accept(),
+    ok = gen_utp:send(Sock, <<"HELLO">>),
+    ok = gen_utp:send(Sock, <<"WORLD">>),
+    {ok, <<"12345">>} = gen_utp:recv(Sock, 5),
+    {ok, <<"67890">>} = gen_utp:recv(Sock, 5),
     ok.
 
 test_send_large_file(Data) ->

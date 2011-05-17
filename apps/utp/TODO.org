@@ -345,7 +345,7 @@ Haphazard TODO list of things that needs attention:
 
 * DONE Backwards data test
   Open a connection and move data "backwards"
-* TODO Full-duplex test
+* DONE Full-duplex test
   Test data transfer in full duplex over the line
 * TODO Test close() of sockets
   Test that a socket can be closed down again. Currently the code is
