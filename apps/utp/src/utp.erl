@@ -19,7 +19,9 @@
          test_close_in_3/0,
          test_close_out_3/0,
          test_send_large_file/1,
-         test_recv_large_file/1
+         test_recv_large_file/1,
+
+         get/1
          ]).
 
 -export([s0/0, r0/0,
@@ -145,6 +147,17 @@ test_recv_large_file(Sz) ->
     {ok, R} = gen_utp:recv(Port, Sz),
     ok = gen_utp:close(Port),
     R.
+
+get(N) when is_integer(N) ->
+    {ok, Sock} = gen_utp:connect("port1394.ds1-vby.adsl.cybercity.dk", 3333),
+    ok = gen_utp:send(Sock, <<N:32/integer>>),
+    {ok, <<FnLen:32/integer>>} = gen_utp:recv(Sock, 4),
+    {ok, FName}        = gen_utp:recv(Sock, FnLen),
+    {ok, <<Len:32/integer>>} = gen_utp:recv(Sock, 4),
+    {ok, Data} = gen_utp:recv(Sock, Len),
+    file:write_file(FName, Data),
+    ok = gen_utp:close(Sock),
+    ok.
 
 s0() ->
     start_app(3334),

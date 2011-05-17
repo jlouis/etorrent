@@ -388,6 +388,7 @@ Haphazard TODO list of things that needs attention:
 
 * Look at the coverage output:
   What things are we not testing currently?
+* Consider proper for testing.
 * RTT Measurement
   This is probably different in uTP from the standard protocol
 
