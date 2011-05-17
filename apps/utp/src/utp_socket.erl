@@ -55,7 +55,6 @@ mk(Addr, Opts, PacketSize, Port, Socket) ->
                }.
 
 hostname_port(#sock_info { addr = Addr, port = Port }) ->
-    error_logger:info_report([{Addr, Port}]),
     {Addr, Port}.
 
 conn_id_recv(#sock_info { conn_id_send = ConnId }) ->

@@ -46,7 +46,6 @@ handle_call(_Request, _From, State) ->
 %% @private
 handle_cast({packet, P, Addr, Port}, S) ->
     {#packet { conn_id = CID } = Packet, TS, TSDiff, RecvTime} = utp_proto:decode(P),
-    error_logger:info_report([{looking_up, CID, Addr, Port}]),
     case gen_utp:lookup_registrar(CID, Addr, Port) of
         {ok, Pid} ->
             gen_utp_worker:incoming(Pid, Packet, {TS, TSDiff, RecvTime});
