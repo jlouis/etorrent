@@ -496,7 +496,7 @@ handle_packet(_CurrentTimeMs,
 handle_packet_type(Type, SeqNo, Buf) ->
     case Type of
         st_fin ->
-            {Buf#pkt_buf { fin_state = {got_fin, SeqNo} }};
+            Buf#pkt_buf { fin_state = {got_fin, SeqNo} };
         st_data ->
             Buf;
         st_state ->
