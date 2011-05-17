@@ -347,13 +347,13 @@ Haphazard TODO list of things that needs attention:
   Open a connection and move data "backwards"
 * DONE Full-duplex test
   Test data transfer in full duplex over the line
-* TODO Test close() of sockets
+* DONE Test close() of sockets
   Test that a socket can be closed down again. Currently the code is
   there but it has no coverage.
 ** DONE Test close() for the connector
 ** DONE Test close() for the connectee
-** Test close() after data has moved over the line
-** Test close() after data has moved in full-duplex manner
+** DONE Test close() after data has moved over the line
+** DONE Test close() after data has moved in full-duplex manner
 * TODO Robustness falters under heavy packet loss.
   When the packet loss is very heavy, the robustness of the system is
   worse than it normally is. We ought to investigate why this is the

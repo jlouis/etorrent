@@ -16,6 +16,8 @@
          test_close_out_1/0,
          test_close_in_2/0,
          test_close_out_2/0,
+         test_close_in_3/0,
+         test_close_out_3/0,
          test_send_large_file/1,
          test_recv_large_file/1
          ]).
@@ -88,6 +90,21 @@ test_close_in_2() ->
     {ok, Sock} = gen_utp:accept(),
     ok = gen_utp:close(Sock),
     {error, econnreset} = gen_utp:recv(Sock, 5),
+    ok.
+
+test_close_out_3() ->
+    Sock = gen_utp:connect("localhost", 3333),
+    ok = gen_utp:send(Sock, <<"HELLO">>),
+    {ok, <<"WORLD">>} = gen_utp:recv(Sock, 5),
+    ok = gen_utp:close(Sock),
+    ok.
+
+test_close_in_3() ->
+    gen_utp:listen(),
+    {ok, Sock} = gen_utp:accept(),
+    ok = gen_utp:send(Sock, "WORLD"),
+    {ok, <<"HELLO">>} = gen_utp:recv(Sock, 5),
+    ok = gen_utp:close(Sock),
     ok.
 
 test_connectee_1() ->
