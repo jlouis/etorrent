@@ -307,6 +307,9 @@ handle_incoming_datagram_payload(SeqNo, Payload, PacketBuffer, State) ->
 %% see if we can satisfy more packets from it. If it is not in
 %% sequence, it should go into the reorder buffer in the right spot.
 %% @end
+update_recv_buffer(SeqNo, <<>>,
+                   #pkt_buf { fin_state = {got_fin, SeqNo}} = PacketBuffer, _State) ->
+    {got_fin, PacketBuffer};
 update_recv_buffer(_SeqNo, <<>>, PB, _State) -> {ok, PB};
 update_recv_buffer(SeqNo, Payload, #pkt_buf { fin_state = {got_fin, SeqNo},
                                               next_expected_seq_no = SeqNo } = PB, State) ->
