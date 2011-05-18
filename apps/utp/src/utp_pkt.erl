@@ -489,7 +489,9 @@ handle_packet(_CurrentTimeMs,
             
             {ok, N_PacketBuffer2,
              handle_window_size(WindowSize, PktWindow),
-             SendMessages}
+             SendMessages};
+        no_data ->
+            exit({error, no_data_wrong_pkt_state, utp_socket:format_pkt(Packet)})
     end.
 
 
