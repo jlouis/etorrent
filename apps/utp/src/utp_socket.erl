@@ -71,7 +71,7 @@ send_pkt(AdvWin, #sock_info { socket = Socket,
     Pkt = Packet#packet { conn_id = ConnId,
                           win_sz = AdvWin },
     error_logger:info_report([node(), outgoing_pkt, format_pkt(Pkt)]),
-    gen_udp:send(Socket, Addr, Port,
+    send(Socket, Addr, Port,
                  utp_proto:encode(
                    Pkt,
                    TSDiff)).
@@ -85,9 +85,26 @@ send_reset(Socket, Addr, Port, ConnIDSend, AckNo, SeqNo) ->
                   extension = [],
                   conn_id = ConnIDSend },
     TSDiff = 0,
-    gen_udp:send(Socket, Addr, Port,
-                 utp_proto:encode(Packet, TSDiff)).
-      
+    send(Socket, Addr, Port,
+         utp_proto:encode(Packet, TSDiff)).
+
+send(Socket, Addr, Port, Payload) ->      
+    send(1, Socket, Addr, Port, Payload).
+
+send(0, Socket, Addr, Port, Payload) ->
+    gen_udp:send(Socket, Addr, Port, Payload);
+send(N, Socket, Addr, Port, Payload) ->
+    case gen_udp:send(Socket, Addr, Port, Payload) of
+        ok ->
+            ok;
+        {error, enobufs} ->
+            %% Special case this
+            send(N-1, Socket, Addr, Port, Payload);
+        {error, Reason} ->
+            {error, Reason}
+    end.
+           
+
 set_conn_id(Cid, SockInfo) ->
     SockInfo#sock_info { conn_id_send = Cid }.
 
