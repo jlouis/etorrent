@@ -694,37 +694,45 @@ handle_packet_incoming(Pkt, RecvTime,
                               zerowindow_timeout = ZWin
                              }) ->
     %% Handle the incoming packet
-    {ok, N_PB1, N_PKI, Messages} = utp_pkt:handle_packet(RecvTime, connected, Pkt, PKI, PB),
+    try
+        utp_pkt:handle_packet(RecvTime, connected, Pkt, PKI, PB)
+    of
+        {ok, N_PB1, N_PKI, Messages} ->
 
-    error_logger:info_report([messages, Messages]),
-    %% The packet may bump the advertised window from the peer, update
-    N_PKI1 = utp_pkt:handle_advertised_window(Pkt, N_PKI),
+            error_logger:info_report([messages, Messages]),
+            %% The packet may bump the advertised window from the peer, update
+            N_PKI1 = utp_pkt:handle_advertised_window(Pkt, N_PKI),
+            
+            %% The incoming datagram may have payload we can deliver to an application
+            {N_PRI, N_PB} =
+                case satisfy_recvs(PRI, N_PB1) of
+                    {ok, PR1, PB1} ->
+                        {PR1, PB1};
+                    {rb_drained, PR1, PB1} ->
+                        %% @todo Here is the point where we should
+                        %% make a check on the receive window If the
+                        %% window has grown, and the last window was
+                        %% 0, then immediately send out an
+                        %% ACK. Otherwise install a timer.
+                        {PR1, PB1}
+                end,
+            
+            %% Fill up the send window again with the new information
+            {ZWinTimeout, N_PB2, N_PRI2} = fill_window(SockInfo, N_PRI, N_PKI1, N_PB,
+                                                       ZWin),
+            %% @todo This ACK may be cancelled if we manage to push something out
+            %%       the window, etc., but the code is currently ready for it!
+            %% The trick is to clear the message.
 
-    %% The incoming datagram may have payload we can deliver to an application
-    {N_PRI, N_PB} =
-        case satisfy_recvs(PRI, N_PB1) of
-            {ok, PR1, PB1} ->
-                {PR1, PB1};
-            {rb_drained, PR1, PB1} ->
-                %% @todo Here is the point where we should
-                %% make a check on the receive window If the
-                %% window has grown, and the last window was
-                %% 0, then immediately send out an
-                %% ACK. Otherwise install a timer.
-                {PR1, PB1}
-        end,
+            %% Send out an ACK if needed
+            utp_pkt:handle_send_ack(SockInfo, N_PB2, Messages),
 
-    %% Fill up the send window again with the new information
-    {ZWinTimeout, N_PB2, N_PRI2} = fill_window(SockInfo, N_PRI, N_PKI1, N_PB,
-                                               ZWin),
-    %% @todo This ACK may be cancelled if we manage to push something out
-    %%       the window, etc., but the code is currently ready for it!
-    %% The trick is to clear the message.
-
-    %% Send out an ACK if needed
-    utp_pkt:handle_send_ack(SockInfo, N_PB2, Messages),
-
-    {ok, Messages, N_PKI1, N_PB2, N_PRI2, ZWinTimeout}.
+            {ok, Messages, N_PKI1, N_PB2, N_PRI2, ZWinTimeout}
+    catch
+        throw:{error, is_far_in_future} ->
+            error_logger:info_report([old_packet_received]),
+            {ok, [], PKI, PB, PRI, ZWin}
+    end.
 
 handle_timeout(Ref, N, PacketBuf, SockInfo, {set, Ref} = Timer) ->
     case N > ?RTO_DESTROY_VALUE of
