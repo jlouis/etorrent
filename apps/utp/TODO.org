@@ -379,6 +379,9 @@ Haphazard TODO list of things that needs attention:
   We need to understand what the rules are here, before we can
   implement it correctly.
 
+* TODO Why do we get "got_fin" very early on and then sit with that for a looong time?
+  This looks like something that is currently wrong, but we survive in
+  some way or the other. We ought to investigate that case!
 * TODO Use the Linux NetEM packet mangler to test the system
   This is fairly important. It found some problems in the code base
   and we better have a look at what it is it found.
@@ -403,6 +406,7 @@ Haphazard TODO list of things that needs attention:
      {gen_fsm,handle_msg,7},
      {proc_lib,init_p_do_apply,3}]}
 
+   The error is currently benign though as Erlang makes us survive.
 * If we already have a connection worker, forward new SYN packets to it
   This way, the worker process is responsible for doing the right
   thing in the case a duplicate SYN comes in, and handle it
