@@ -255,7 +255,7 @@ connected({pkt, #packet { ty = st_reset }, _},
     {next_state, reset, State#state { proc_info = N_PRI }};
 connected({pkt, Pkt, {_TS, _TSDiff, RecvTime}},
 	  #state { retransmit_timeout = RetransTimer } = State) ->
-    error_logger:info_report([node(), connected_incoming_pkt, utp_socket:format_pkt(Pkt)]),
+    error_logger:info_report([node(), incoming_pkt, connected, utp_socket:format_pkt(Pkt)]),
 
     {ok, Messages, N_PKI, N_PB, N_PRI, ZWinTimeout} =
         handle_packet_incoming(Pkt, RecvTime, State),
@@ -371,7 +371,7 @@ fin_sent({pkt, #packet { ty = st_reset }, _},
     {next_state, destroy, State#state { proc_info = N_PRI }};
 fin_sent({pkt, Pkt, {_TS, _TSDiff, RecvTime}},
 	  #state { retransmit_timeout = RetransTimer } = State) ->
-    error_logger:info_report([node(), connected_incoming_pkt, utp_socket:format_pkt(Pkt)]),
+    error_logger:info_report([node(), incoming_pkt, fin_sent, utp_socket:format_pkt(Pkt)]),
 
     {ok, Messages, N_PKI, N_PB, N_PRI, ZWinTimeout} =
         handle_packet_incoming(Pkt, RecvTime, State),

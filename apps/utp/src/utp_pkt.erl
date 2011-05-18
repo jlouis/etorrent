@@ -367,8 +367,6 @@ update_send_buffer(AckNo, #pkt_buf { seq_no = NextSeqNo } = PB) ->
     case view_ack_no(AckNo, WindowStart, WindowSize) of
         {ok, AcksAhead} ->
             {Ret, Acked, PB1} = prune_acked(AcksAhead, WindowStart, PB),
-            error_logger:info_report([{acks_ahead, AcksAhead},
-                                      {acked, Acked}]),
             FinState = case Ret of
                            ok -> [];
                            fin_sent_acked -> [fin_sent_acked]
@@ -399,7 +397,6 @@ prune_acked(AckAhead, WindowStart,
                                 Distance =< AckAhead
                         end,
                         RQ),
-    error_logger:info_report([pruned, length(AckedPs)]),
     RetState = case contains_st_fin(AckedPs) of
                    true ->
                        fin_sent_acked;
@@ -463,7 +460,7 @@ handle_packet(_CurrentTimeMs,
 			ack_no = AckNo,
 			payload = Payload,
 			win_sz  = WindowSize,
-			ty = Type } = _Packet,
+			ty = Type } = Packet,
 	      PktWindow,
 	      PacketBuffer) when PktWindow =/= undefined ->
     %% Assert that we are currently in a state eligible for receiving
@@ -555,7 +552,6 @@ transmit_queue(Q, Buf, SockInfo) ->
 %% @end
 fill_window(SockInfo, ProcQueue, PktWindow, PktBuf) ->
     FreeInWindow = bytes_free_in_window(PktBuf, PktWindow),
-    error_logger:info_report([free_in_window, FreeInWindow]),
     %% Fill a queue of stuff to transmit
     {TxQueue, NProcQueue} =
         fill_from_proc_queue(FreeInWindow, PktBuf, ProcQueue),
