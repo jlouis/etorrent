@@ -354,7 +354,7 @@ Haphazard TODO list of things that needs attention:
 ** DONE Test close() for the connectee
 ** DONE Test close() after data has moved over the line
 ** DONE Test close() after data has moved in full-duplex manner
-* TODO Robustness falters under heavy packet loss.
+* DONE Robustness falters under heavy packet loss.
   When the packet loss is very heavy, the robustness of the system is
   worse than it normally is. We ought to investigate why this is the
   case and fix it.
@@ -363,9 +363,25 @@ Haphazard TODO list of things that needs attention:
   fix this, we must know where the "I-give-up" occurs so we can
   attempt to diagnose what packet created the problem and fix it.
 
-** TODO Some of these bugs are due to ENOBUFS being sent by the kernel
+** DONE Some of these bugs are due to ENOBUFS being sent by the kernel
    This can be fixed by actually handling it correctly in the layers
    of the worker process. We better look into fixing it.
+* DONE Try the NetEm stuff in Linux as well. It may behave differently compared to FreeBSD
+  NetEM is far more general in what it can do to a line, but I'll keep
+  both around for completeness.
+
+* DONE Handle ENOBUFS
+  The best way to handle is either to just drop the packet in
+  question, or wait a little bit of time and then try to resend. In
+  any case, we can assume the packet is lost in a first try.
+* DONE Try the code on FreeBSD as well
+* DONE Read through the SYN/ACK phase of the libutp source
+  We need to understand what the rules are here, before we can
+  implement it correctly.
+
+* TODO Use the Linux NetEM packet mangler to test the system
+  This is fairly important. It found some problems in the code base
+  and we better have a look at what it is it found.
 * TODO Retransmission of the syn packet seems to fail for some reason.
   Investigate why this is the case and fix it.
 
@@ -377,17 +393,16 @@ Haphazard TODO list of things that needs attention:
   not transferred back. It should be retransmitted and the system
   should detect this is the case! But I am fairly sure there is no
   code in place which ensures this is the case.
-* Handle ENOBUFS
-  The best way to handle is either to just drop the packet in
-  question, or wait a little bit of time and then try to resend. In
-  any case, we can assume the packet is lost in a first try.
-* DONE Try the NetEm stuff in Linux as well. It may behave differently compared to FreeBSD
-  NetEM is far more general in what it can do to a line, but I'll keep
-  both around for completeness.
-* TODO Try the code on FreeBSD as well
-* Read through the SYN/ACK phase of the libutp source
-  We need to understand what the rules are here, before we can
-  implement it correctly.
+* TODO Handle ENOBUFS in packet initialization:
+   {{badmatch,{error,enobufs}},
+    [{utp_pkt,send_packet,4},
+     {lists,foldl,3},
+     {utp_pkt,fill_window,4},
+     {gen_utp_worker,fill_window,5},
+     {gen_utp_worker,connected,3},
+     {gen_fsm,handle_msg,7},
+     {proc_lib,init_p_do_apply,3}]}
+
 * If we already have a connection worker, forward new SYN packets to it
   This way, the worker process is responsible for doing the right
   thing in the case a duplicate SYN comes in, and handle it
@@ -398,6 +413,9 @@ Haphazard TODO list of things that needs attention:
   queue and be handled as resends. We currently fake-retransmit it,
   but it looks easier to simpler use the same queueing facility of the
   other end.
+** Also, here we want to handle the case of bad packet transmission
+   If we *know* a buffer is full, we ought to handle it right away by
+   doing the right thing(tm).
 * ACK piggybacking
   ACK piggybacking is the concept where we under a send check if we
   sent a packet. If this is the case, we effectively have a piggy-back
@@ -495,3 +513,8 @@ Haphazard TODO list of things that needs attention:
 
   This is probably not needed if we triple the ConnID over the IP/Port
   pairs.
+
+
+
+
+
