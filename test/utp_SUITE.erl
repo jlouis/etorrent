@@ -131,7 +131,7 @@ connect_n_communicate(Config) ->
     ok.
 
 connect_n_send_big() ->
-    [].
+    [{timetrap, {seconds, 120}}].
 
 connect_n_send_big(Config) ->
     DataDir = ?config(data_dir, Config),

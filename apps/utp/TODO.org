@@ -362,6 +362,10 @@ Haphazard TODO list of things that needs attention:
   My guess is we lost a packet we can't afford to loose at the moment. To
   fix this, we must know where the "I-give-up" occurs so we can
   attempt to diagnose what packet created the problem and fix it.
+
+** TODO Some of these bugs are due to ENOBUFS being sent by the kernel
+   This can be fixed by actually handling it correctly in the layers
+   of the worker process. We better look into fixing it.
 * TODO Retransmission of the syn packet seems to fail for some reason.
   Investigate why this is the case and fix it.
 
@@ -373,6 +377,27 @@ Haphazard TODO list of things that needs attention:
   not transferred back. It should be retransmitted and the system
   should detect this is the case! But I am fairly sure there is no
   code in place which ensures this is the case.
+* Handle ENOBUFS
+  The best way to handle is either to just drop the packet in
+  question, or wait a little bit of time and then try to resend. In
+  any case, we can assume the packet is lost in a first try.
+* DONE Try the NetEm stuff in Linux as well. It may behave differently compared to FreeBSD
+  NetEM is far more general in what it can do to a line, but I'll keep
+  both around for completeness.
+* TODO Try the code on FreeBSD as well
+* Read through the SYN/ACK phase of the libutp source
+  We need to understand what the rules are here, before we can
+  implement it correctly.
+* If we already have a connection worker, forward new SYN packets to it
+  This way, the worker process is responsible for doing the right
+  thing in the case a duplicate SYN comes in, and handle it
+  accordingly. I think this is a better design choice than the one we
+  have now.
+* Let the SYN-packet use the normal retransmission queue
+  First mistake on our part: SYN packets should go to the outgoing
+  queue and be handled as resends. We currently fake-retransmit it,
+  but it looks easier to simpler use the same queueing facility of the
+  other end.
 * ACK piggybacking
   ACK piggybacking is the concept where we under a send check if we
   sent a packet. If this is the case, we effectively have a piggy-back
