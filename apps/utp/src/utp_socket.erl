@@ -99,6 +99,7 @@ send(N, Socket, Addr, Port, Payload) ->
             ok;
         {error, enobufs} ->
             %% Special case this
+            timer:sleep(150), % Wait a bit for the queue to clear
             send(N-1, Socket, Addr, Port, Payload);
         {error, Reason} ->
             {error, Reason}
