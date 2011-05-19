@@ -57,6 +57,7 @@ test_connector_1() ->
 test_connector_2() ->
     Sock = gen_utp:connect("localhost", 3333),
     {ok, <<"HELLOWORLD">>} = gen_utp:recv(Sock, 10),
+    ok = gen_utp:close(Sock),
     ok.
 
 test_connector_3() ->

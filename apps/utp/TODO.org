@@ -374,6 +374,13 @@ Haphazard TODO list of things that needs attention:
 
 * DONE Re-read the uTP BEP 29 spec again
 
+* TODO Fix the early got fin problem
+  Ok, if packets get reordered and we get a FIN packet, then the
+  problem is our FIN packet is somehow forcing us to move to a GOT_FIN
+  state too quick. Hence, when the real packet comes in later, the
+  state is wrong and we throw away the packet we are missing due to
+  being in the GOT_FIN state. This is a problem that creates a large
+  number of small problems.
 * TODO Why do we get "got_fin" very early on and then sit with that for a looong time?
   This looks like something that is currently wrong, but we survive in
   some way or the other. We ought to investigate that case!
