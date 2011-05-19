@@ -33,3 +33,4 @@ webui/*.log
 /documentation/utp.pdf
 /apps/utp/src/TAGS
 /apps/utp/src/tags
+/p.spec
