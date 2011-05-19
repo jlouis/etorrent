@@ -308,7 +308,8 @@ handle_incoming_datagram_payload(SeqNo, Payload, PacketBuffer, State) ->
 %% sequence, it should go into the reorder buffer in the right spot.
 %% @end
 update_recv_buffer(SeqNo, <<>>,
-                   #pkt_buf { fin_state = {got_fin, SeqNo}} = PacketBuffer, _State) ->
+                   #pkt_buf { fin_state = {got_fin, SeqNo},
+                              next_expected_seq_no = SeqNo } = PacketBuffer, _State) ->
     {got_fin, PacketBuffer};
 update_recv_buffer(_SeqNo, <<>>, PB, _State) -> {ok, PB};
 update_recv_buffer(SeqNo, Payload, #pkt_buf { fin_state = {got_fin, SeqNo},
