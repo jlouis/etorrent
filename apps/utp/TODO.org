@@ -391,6 +391,26 @@ Haphazard TODO list of things that needs attention:
     not check that it was the expected packet right away. Hence when
     the st_fin tagged packet arrived, we simply moved to the got_fin
     state much too early.
+
+  Another problem is that we may get the packet moving us from the
+  syn_sent state into connected out of order. In other words, we begin
+  seeing data packets before we see the progressing packet. This is
+  rather fun and not really cool. How to fix?
+
+  A Third problem is that the ACK packet signifying the opening of the
+  connection may be lost. What should we do in that case?
+
+  Fourth problem: Retransmits! When going to the fin_sent state, we
+  must still be able to carry out retransmissions as normal. Otherwise
+  the retransmit timer will never be set on the connection and thus
+  our code will fail to retransmit and hence fail to actually work.
+** TODO Read libutp source code on this one! It is not obvious what to do
+   There are so many loose holes in this so we better fix them. How do
+   we want to handle initial ACK's and stuff?
+* TODO When in syn_sent and getting packets out of order, reorder them!
+  This is a problem we can ignore in principle until we have other
+  parts of the system up and running. Retransmission will ensure we
+  eventually get them in.
 * TODO Why do we get "got_fin" very early on and then sit with that for a looong time?
   This looks like something that is currently wrong, but we survive in
   some way or the other. We ought to investigate that case!

@@ -623,19 +623,19 @@ set_retransmit_timer(N, Timer) ->
 
 set_retransmit_timer(N, K, undefined) ->
     Ref = gen_fsm:start_timer(N, {retransmit_timeout, K}),
-    error_logger:info_report([setting_retransmit_timer]),
+    error_logger:info_report([node(), setting_retransmit_timer]),
     {set, Ref};
 set_retransmit_timer(N, K, {set, Ref}) ->
     gen_fsm:cancel_timer(Ref),
     N_Ref = gen_fsm:start_timer(N, {retransmit_timeout, K}),
-    error_logger:info_report([setting_retransmit_timer]),
+    error_logger:info_report([node(), setting_retransmit_timer]),
     {set, N_Ref}.
 
 clear_retransmit_timer(undefined) ->
     undefined;
 clear_retransmit_timer({set, Ref}) ->
     gen_fsm:cancel_timer(Ref),
-    error_logger:info_report([clearing_retransmit_timer]),
+    error_logger:info_report([node(), clearing_retransmit_timer]),
     undefined.
 
 handle_retransmit_timer(Messages, RetransTimer) ->
