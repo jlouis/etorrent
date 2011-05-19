@@ -44,7 +44,7 @@ Haphazard TODO list of things that needs attention:
 
   Out test fails due to retransmissions it seems. We can thus try to
   implement retransmissions and see if this solves the problem!
-* Retransmissions
+* DONE Retransmissions
   How should we handle retransmission of missing packets? This is
   needed before we can go to a check over the internet.
 ** DONE Propagate information if the ACK is moving ahead!
@@ -299,9 +299,9 @@ Haphazard TODO list of things that needs attention:
 ** DONE Create a script with a low-level error rate.
 ** DONE TEST with a low-level error rate.
 ** DONE Create a script with a medium level error rate.
-** Create a script that totally fucks up the connection ordering.
-** Create a script which does everything in a nasty way.
-** Create a script which is close to realistic.
+** DONE Create a script that totally fucks up the connection ordering.
+** DONE Create a script which does everything in a nasty way.
+** DONE Create a script which is close to realistic.
 ** TODO Fix the zerowindow bug
    There are probably a couple of bugs. One is that we should remember
    to reopen the zero window.
@@ -374,7 +374,7 @@ Haphazard TODO list of things that needs attention:
 
 * DONE Re-read the uTP BEP 29 spec again
 
-* TODO Fix the early got fin problem
+* DONE Fix the early got fin problem
   Ok, if packets get reordered and we get a FIN packet, then the
   problem is our FIN packet is somehow forcing us to move to a GOT_FIN
   state too quick. Hence, when the real packet comes in later, the
@@ -397,16 +397,33 @@ Haphazard TODO list of things that needs attention:
   seeing data packets before we see the progressing packet. This is
   rather fun and not really cool. How to fix?
 
+  ; We don't need to fix this right away. The retransmit code will
+    ensure we eventually get the data again even if it fails early
+    on. As such, this is an optimization of the system.
+
   A Third problem is that the ACK packet signifying the opening of the
   connection may be lost. What should we do in that case?
+
+  ; Nothing! Then the connection will time out and be
+    gone. Unfortunate, but what must be done in a two-way handshake.
 
   Fourth problem: Retransmits! When going to the fin_sent state, we
   must still be able to carry out retransmissions as normal. Otherwise
   the retransmit timer will never be set on the connection and thus
   our code will fail to retransmit and hence fail to actually work.
-** TODO Read libutp source code on this one! It is not obvious what to do
-   There are so many loose holes in this so we better fix them. How do
-   we want to handle initial ACK's and stuff?
+
+  ; I have installed a retransmit handler when we close the session
+    from the connected state. This should ensure that retransmits
+    happen according to the plan and eliminate some bugs pertaining to
+    this problem.
+* TODO Read libutp source code on out-of-order packets in syn_sent
+  It is not obvious what to do:
+
+  There are so many loose holes in this so we better fix them. How do
+  we want to handle initial ACK's and stuff?
+
+  The best thing is to read through the code of libutp and figure out
+  what they have decided to do.
 * TODO When in syn_sent and getting packets out of order, reorder them!
   This is a problem we can ignore in principle until we have other
   parts of the system up and running. Retransmission will ensure we

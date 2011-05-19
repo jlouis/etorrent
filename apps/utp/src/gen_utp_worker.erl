@@ -275,10 +275,13 @@ connected({pkt, Pkt, {_TS, _TSDiff, RecvTime}},
                    zerowindow_timeout = ZWinTimeout,
                    proc_info = N_PRI }};
 connected(close, #state { sock_info = SockInfo,
+                          retransmit_timeout = RTimer,
                           pkt_buf = PktBuf } = State) ->
     NPBuf = utp_pkt:send_fin(SockInfo, PktBuf),
+    NRTimer = handle_retransmit_timer([fin_sent], RTimer),
     {next_state, fin_sent, State#state {
-                            pkt_buf = NPBuf } };
+                             retransmit_timeout = NRTimer,
+                             pkt_buf = NPBuf } };
 connected({timeout, Ref, {zerowindow_timeout, _N}},
           #state {
             pkt_buf = PktBuf,
@@ -639,14 +642,23 @@ clear_retransmit_timer({set, Ref}) ->
     undefined.
 
 handle_retransmit_timer(Messages, RetransTimer) ->
-    case proplists:get_value(recv_ack, Messages) of
+    F = fun(E, Acc) ->
+                case proplists:get_value(E, Messages) of
+                    true ->
+                        true;
+                    undefined ->
+                        Acc
+                end
+        end,
+    Analyzer = fun(L) -> lists:foldl(F, false, L) end,
+    case Analyzer([recv_ack, fin_sent]) of
         true ->
             set_retransmit_timer(RetransTimer);
-        undefined ->
-            case proplists:get_value(all_acked, Messages) of
+        false ->
+            case Analyzer([all_acked]) of
                 true ->
                     clear_retransmit_timer(RetransTimer);
-                undefined ->
+                false ->
                     RetransTimer % Just pass it along with no update
             end
     end.
