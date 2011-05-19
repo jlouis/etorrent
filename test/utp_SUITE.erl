@@ -62,59 +62,51 @@ groups() ->
 all() ->
     [{group, main_group}].
 
-closer(Config, In, Out) ->
+two_way(Config, In, Out) ->
     C1 = ?config(connector, Config),
     C2 = ?config(connectee, Config),
+    N = self(),
+    R = make_ref(),
     spawn(fun() ->
                   timer:sleep(3000),
-                  ok = rpc:call(C1, utp, Out, [])
+                  ok = rpc:call(C1, utp, Out, []),
+                  N ! {done, R}
           end),
     ok = rpc:call(C2, utp, In, []),
+    receive
+        {done, R} -> ignore
+    end,
     ok.
 
 close_1() ->
     [].
 
 close_1(Config) ->
-    closer(Config, test_close_in_1, test_close_out_1).
+    two_way(Config, test_close_in_1, test_close_out_1).
 
 close_2() ->    
     [].
 
 close_2(Config) ->
-    closer(Config, test_close_in_2, test_close_out_2).
+    two_way(Config, test_close_in_2, test_close_out_2).
 
 close_3() ->
     [].
 
 close_3(Config) ->
-    closer(Config, test_close_in_3, test_close_out_3).
+    two_way(Config, test_close_in_3, test_close_out_3).
 
 backwards_communication() ->
     [].
 
 backwards_communication(Config) ->
-    C1 = ?config(connector, Config),
-    C2 = ?config(connectee, Config),
-    spawn(fun() ->
-                  timer:sleep(3000),
-                  ok = rpc:call(C1, utp, test_connector_2, [])
-          end),
-    ok = rpc:call(C2, utp, test_connectee_2, []),
-    ok.
+    two_way(Config, test_connectee_2, test_connector_2).
 
 full_duplex_communication() ->
     [].
 
 full_duplex_communication(Config) ->
-    C1 = ?config(connector, Config),
-    C2 = ?config(connectee, Config),
-    spawn(fun() ->
-                  timer:sleep(3000),
-                  ok = rpc:call(C1, utp, test_connector_3, [])
-          end),
-    ok = rpc:call(C2, utp, test_connectee_3, []),
-    ok.
+    two_way(Config, test_connectee_3, test_connector_3).
     
 connect_n_communicate() ->
     [].
