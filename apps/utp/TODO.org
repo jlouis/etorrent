@@ -75,7 +75,7 @@ Haphazard TODO list of things that needs attention:
                     {error,{already_started,<0.60.0>}}
      in function  gen_utp:connect/3
      in call from utp:test_connector_1/0
-* TODO The ACK in the connectee@ is seen as old, investigate
+* DONE The ACK in the connectee@ is seen as old, investigate
   There is something along the lines of the numbering that doesn't
   work here. It ought to be fixed. But we place it down here to
   concentrate on other stuff first.
@@ -110,13 +110,6 @@ Haphazard TODO list of things that needs attention:
 
    No, it means: Increase the window by one and then try to fill up
    the buffer if possible again!
-* TODO Force an st_state packet through when the window *reopens*
-  If we have a window that is down to 0, and we then suddenly get a
-  receiver on the socket reading data out of it such that we detect
-  the window open up again, we should always send a window update
-  packet in this case.
-* TODO Consider moving the window-specific code to its own module.
-* TODO Re-read the uTP BEP 29 spec again
 * DONE SYN Timeouts should just be part of retransmit timeouts?
   Yep, they should.
 ** DONE Read the libutp source and figure out the normal retransmit time for SYNs
@@ -379,9 +372,37 @@ Haphazard TODO list of things that needs attention:
   We need to understand what the rules are here, before we can
   implement it correctly.
 
+* DONE Re-read the uTP BEP 29 spec again
+
 * TODO Why do we get "got_fin" very early on and then sit with that for a looong time?
   This looks like something that is currently wrong, but we survive in
   some way or the other. We ought to investigate that case!
+* TODO closer_3 can timetrap_timeout
+  45.000s	FAILED	{timetrap_timeout,{utp_SUITE,closer,72}}
+  why can it timetrap_timeout? Does this have anything to do with the
+  packet state as well?
+* TODO Force an st_state packet through when the window *reopens*
+  If we have a window that is down to 0, and we then suddenly get a
+  receiver on the socket reading data out of it such that we detect
+  the window open up again, we should always send a window update
+  packet in this case.
+* TODO Consider moving the window-specific code to its own module.
+
+* TODO Fix this bug no_data_wrong_pkt_state:
+=== location {utp_SUITE,connect_n_send_big,146}
+=== reason = no match of right hand side value 
+                 {badrpc,
+                     {'EXIT',
+                         {{error,no_data_wrong_pkt_state,
+                              [{ty,st_data},
+                               {conn_id,29189},
+                               {win_sz,8192},
+                               {seq_no,101},
+                               {ack_no,825},
+                               {extension,[]},
+                               {payload,192}]},
+                          {gen_fsm,sync_send_event,
+                              [<12912.79.0>,{recv,112928},infinity]}}}}
 * TODO Use the Linux NetEM packet mangler to test the system
   This is fairly important. It found some problems in the code base
   and we better have a look at what it is it found.
