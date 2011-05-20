@@ -416,33 +416,22 @@ Haphazard TODO list of things that needs attention:
     from the connected state. This should ensure that retransmits
     happen according to the plan and eliminate some bugs pertaining to
     this problem.
-* TODO Read libutp source code on out-of-order packets in syn_sent
-  It is not obvious what to do:
-
-  There are so many loose holes in this so we better fix them. How do
-  we want to handle initial ACK's and stuff?
-
-  The best thing is to read through the code of libutp and figure out
-  what they have decided to do.
-* TODO When in syn_sent and getting packets out of order, reorder them!
-  This is a problem we can ignore in principle until we have other
-  parts of the system up and running. Retransmission will ensure we
-  eventually get them in.
-* TODO Why do we get "got_fin" very early on and then sit with that for a looong time?
+* DONE Why do we get "got_fin" very early on and then sit with that for a looong time?
   This looks like something that is currently wrong, but we survive in
   some way or the other. We ought to investigate that case!
-* TODO closer_3 can timetrap_timeout
+
+  This was fixed. There was a bug where we got a fin packet in but
+  forgot to check if it matched the next expected sequence
+  number. Hence a fin packet would always complete and never enter the
+  reorder buffer. This of course means errors all over the place.
+* DONE closer_3 can timetrap_timeout
   45.000s	FAILED	{timetrap_timeout,{utp_SUITE,closer,72}}
   why can it timetrap_timeout? Does this have anything to do with the
   packet state as well?
-* TODO Force an st_state packet through when the window *reopens*
-  If we have a window that is down to 0, and we then suddenly get a
-  receiver on the socket reading data out of it such that we detect
-  the window open up again, we should always send a window update
-  packet in this case.
-* TODO Consider moving the window-specific code to its own module.
 
-* TODO Fix this bug no_data_wrong_pkt_state:
+  This was due to the got_fin bug: Entering it too early when we got a
+  st_fin packet.
+* DONE Fix this bug no_data_wrong_pkt_state:
 === location {utp_SUITE,connect_n_send_big,146}
 === reason = no match of right hand side value 
                  {badrpc,
@@ -457,9 +446,40 @@ Haphazard TODO list of things that needs attention:
                                {payload,192}]},
                           {gen_fsm,sync_send_event,
                               [<12912.79.0>,{recv,112928},infinity]}}}}
-* TODO Use the Linux NetEM packet mangler to test the system
+
+  Actually, it is us who have been too protective. It is ok. What
+  happens is we get a duplicate packet in and then it triggers this
+  when the sequence number is placed right on top of the other, or is
+  a duplicate packet.
+* DONE Use the Linux NetEM packet mangler to test the system
   This is fairly important. It found some problems in the code base
   and we better have a look at what it is it found.
+* TODO Read libutp source code on out-of-order packets in syn_sent
+  It is not obvious what to do:
+
+  There are so many loose holes in this so we better fix them. How do
+  we want to handle initial ACK's and stuff?
+
+  The best thing is to read through the code of libutp and figure out
+  what they have decided to do.
+* TODO Force an st_state packet through when the window *reopens*
+  If we have a window that is down to 0, and we then suddenly get a
+  receiver on the socket reading data out of it such that we detect
+  the window open up again, we should always send a window update
+  packet in this case.
+
+  It will make the other end trip the zerowin-timer rarely and I don't
+  like the way the zero win timer is resolved.
+* TODO Consider moving the window-specific code to its own module.
+  The window-code will grow rather big so refactor it to its own module
+* TODO Dialyzer fixes:
+==> utp (dialyze)
+gen_utp_worker.erl:593: Function satisfy_buffer/4 will never be called
+gen_utp_worker.erl:610: The pattern {'ok', {'receiver', From, Length, Res}, N_Processes} can never match the type 'empty'
+gen_utp_worker.erl:723: The pattern {'rb_drained', PR1, PB1} can never match the type {'ok',utp_process:t(),'undefined' | {'pkt_buf',queue(),[any()],[any()],integer(),char(),char(),'none' | {_,_},integer(),integer(),integer()}}
+utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | queue(),sender_q::{maybe_improper_list(),_}} violates the declared type of field sender_q::'undefined' | queue()
+* TODO TEST RUNS
+  1. 
 * TODO Retransmission of the syn packet seems to fail for some reason.
   Investigate why this is the case and fix it.
 
@@ -471,17 +491,6 @@ Haphazard TODO list of things that needs attention:
   not transferred back. It should be retransmitted and the system
   should detect this is the case! But I am fairly sure there is no
   code in place which ensures this is the case.
-* TODO Handle ENOBUFS in packet initialization:
-   {{badmatch,{error,enobufs}},
-    [{utp_pkt,send_packet,4},
-     {lists,foldl,3},
-     {utp_pkt,fill_window,4},
-     {gen_utp_worker,fill_window,5},
-     {gen_utp_worker,connected,3},
-     {gen_fsm,handle_msg,7},
-     {proc_lib,init_p_do_apply,3}]}
-
-   The error is currently benign though as Erlang makes us survive.
 * If we already have a connection worker, forward new SYN packets to it
   This way, the worker process is responsible for doing the right
   thing in the case a duplicate SYN comes in, and handle it
@@ -575,6 +584,21 @@ Haphazard TODO list of things that needs attention:
   This is most clever to postpone as it has no direct effect on the
   code base currently. It is a "Nice-to-have" thing rather than a
   "DO-NEED!" thing.
+* TODO When in syn_sent and getting packets out of order, reorder them!
+  This is a problem we can ignore in principle until we have other
+  parts of the system up and running. Retransmission will ensure we
+  eventually get them in.
+* TODO Handle ENOBUFS in packet initialization:
+   {{badmatch,{error,enobufs}},
+    [{utp_pkt,send_packet,4},
+     {lists,foldl,3},
+     {utp_pkt,fill_window,4},
+     {gen_utp_worker,fill_window,5},
+     {gen_utp_worker,connected,3},
+     {gen_fsm,handle_msg,7},
+     {proc_lib,init_p_do_apply,3}]}
+
+   The error is currently benign though as Erlang makes us survive.
 * The ConnId lookup table should guard against generating an already existing random number.
   This is fairly simple. When generating a new ConnID, look up if we
   already have one.
