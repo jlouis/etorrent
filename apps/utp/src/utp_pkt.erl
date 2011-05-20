@@ -461,7 +461,7 @@ handle_packet(_CurrentTimeMs,
 			ack_no = AckNo,
 			payload = Payload,
 			win_sz  = WindowSize,
-			ty = Type } = Packet,
+			ty = Type },
 	      PktWindow,
 	      PacketBuffer) when PktWindow =/= undefined ->
     %% Assert that we are currently in a state eligible for receiving
@@ -491,8 +491,14 @@ handle_packet(_CurrentTimeMs,
             {ok, N_PacketBuffer2,
              handle_window_size(WindowSize, PktWindow),
              SendMessages};
-        no_data ->
-            exit({error, no_data_wrong_pkt_state, utp_socket:format_pkt(Packet)})
+        no_data when Type == st_data ->
+            error_logger:info_report([duplicate_packet]),
+            {ok, SendMessages, _AcksAhead, N_PacketBuffer2} =
+                update_send_buffer(AckNo, N_PacketBuffer),
+
+            {ok, N_PacketBuffer2,
+                 handle_window_size(WindowSize, PktWindow),
+                 SendMessages}
     end.
 
 
