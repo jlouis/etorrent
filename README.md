@@ -177,13 +177,16 @@ I (jlouis@) use the following commands to install Erlang:
 dependencies we need.
 * Execute `git clone git://github.com/erlang/otp.git`
 * Get into the directory and fire away `git checkout dev && ./otp_build autoconf`
-* `./configure --prefix=/usr/local/stow/otp-dev-$(date +%Y%m%d)`
+* Get a useful tag for the otp version you have built `otp_version=$(git describe)`
+* `./configure --prefix=/usr/local/stow/${otp_version}`
 * `make; make docs`
 * `make install install-docs`
 
 And then I enable it in stow:
 
-    cd /usr/local/stow && stow otp-dev-$(date +%Y%m%d)
+    cd /usr/local/stow && stow ${otp_version}
+    
+You may have to use `stow -D` on an old 
 
 ## QUESTIONS??
 
