@@ -74,7 +74,12 @@ test_close_out_1() ->
     ok.
 
 test_close_in_1() ->
-    ok = gen_utp:listen(),
+    case gen_utp:listen() of
+        ok ->
+            ignore;
+        {error, ealreadylistening} ->
+            ignore
+    end,
     {ok, Sock} = gen_utp:accept(),
     timer:sleep(3000),
     case gen_utp:send(Sock, <<"HELLO">>) of
@@ -97,7 +102,12 @@ test_close_out_2() ->
     ok = gen_utp:close(Sock).
 
 test_close_in_2() ->
-    ok = gen_utp:listen(),
+    case gen_utp:listen() of
+        ok ->
+            ignore;
+        {error, ealreadylistening} ->
+            ignore
+    end,
     {ok, Sock} = gen_utp:accept(),
     ok = gen_utp:close(Sock),
     {error, econnreset} = gen_utp:recv(Sock, 5),
@@ -112,7 +122,12 @@ test_close_out_3() ->
     ok.
 
 test_close_in_3() ->
-    ok = gen_utp:listen(),
+        case gen_utp:listen() of
+        ok ->
+            ignore;
+        {error, ealreadylistening} ->
+            ignore
+    end,
     {ok, Sock} = gen_utp:accept(),
     ok = gen_utp:send(Sock, "WORLD"),
     {ok, <<"HELLO">>} = gen_utp:recv(Sock, 5),
@@ -121,7 +136,12 @@ test_close_in_3() ->
     ok.
 
 test_connectee_1() ->
-    ok = gen_utp:listen(),
+    case gen_utp:listen() of
+        ok ->
+            ignore;
+        {error, ealreadylistening} ->
+            ignore
+    end,
     {ok, Port} = gen_utp:accept(),
     {ok, R1} = gen_utp:recv(Port, 5),
     {ok, R2} = gen_utp:recv(Port, 5),
@@ -129,7 +149,12 @@ test_connectee_1() ->
     {R1, R2}.
 
 test_connectee_2() ->
-    ok = gen_utp:listen(),
+    case gen_utp:listen() of
+        ok ->
+            ignore;
+        {error, ealreadylistening} ->
+            ignore
+    end,
     {ok, Sock} = gen_utp:accept(),
     ok = gen_utp:send(Sock, <<"HELLO">>),
     ok = gen_utp:send(Sock, <<"WORLD">>),
@@ -137,7 +162,12 @@ test_connectee_2() ->
     ok.
 
 test_connectee_3() ->
-    ok = gen_utp:listen(),
+    case gen_utp:listen() of
+        ok ->
+            ignore;
+        {error, ealreadylistening} ->
+            ignore
+    end,
     {ok, Sock} = gen_utp:accept(),
     ok = gen_utp:send(Sock, <<"HELLO">>),
     ok = gen_utp:send(Sock, <<"WORLD">>),
@@ -153,7 +183,12 @@ test_send_large_file(Data) ->
     ok.
 
 test_recv_large_file(Sz) ->
-    ok = gen_utp:listen(),
+    case gen_utp:listen() of
+        ok ->
+            ignore;
+        {error, ealreadylistening} ->
+            ignore
+    end,
     {ok, Port} = gen_utp:accept(),
     {ok, R} = gen_utp:recv(Port, Sz),
     ok = gen_utp:close(Port),
