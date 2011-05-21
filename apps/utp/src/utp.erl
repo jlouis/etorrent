@@ -77,16 +77,24 @@ test_close_in_1() ->
     gen_utp:listen(),
     {ok, Sock} = gen_utp:accept(),
     timer:sleep(3000),
-    {error, econnreset} = gen_utp:recv(Sock, 5),
-    ok = gen_utp:close(Sock),
-    ok.
+    case gen_utp:send(Sock, <<"HELLO">>) of
+        ok ->
+            ignore;
+        {error, econnreset} ->
+            ignore
+    end,
+    ok = gen_utp:close(Sock).
 
 test_close_out_2() ->
     Sock = gen_utp:connect("localhost", 3333),
     timer:sleep(3000),
-    {error, econnreset} = gen_utp:send(Sock, <<"HELLO">>),
-    ok = gen_utp:close(Sock),
-    ok.
+    case gen_utp:send(Sock, <<"HELLO">>) of
+        ok ->
+            ignore;
+        {error, econnreset} ->
+            ignore
+    end,
+    ok = gen_utp:close(Sock).
 
 test_close_in_2() ->
     gen_utp:listen(),
