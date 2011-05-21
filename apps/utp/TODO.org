@@ -472,7 +472,7 @@ Haphazard TODO list of things that needs attention:
   like the way the zero win timer is resolved.
 * TODO Consider moving the window-specific code to its own module.
   The window-code will grow rather big so refactor it to its own module
-* TODO Dialyzer fixes:
+* DONE Dialyzer fixes:
 ==> utp (dialyze)
 gen_utp_worker.erl:593: Function satisfy_buffer/4 will never be called
 gen_utp_worker.erl:610: The pattern {'ok', {'receiver', From, Length, Res}, N_Processes} can never match the type 'empty'
@@ -485,9 +485,9 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
      4. OK
      5. OK o.O
      6. FAIL 6/1
-* TODO Why don't we return {ok, Sock} | {error, Reason} on connect?
+* DONE Why don't we return {ok, Sock} | {error, Reason} on connect?
   This seem to overlook something important on our end.
-* TODO close_2 2-way handshake "bug" in the test case
+* DONE close_2 2-way handshake "bug" in the test case
   Ok, there is a funny bug with the two way handshake:
 
   First, we send off a SYN
