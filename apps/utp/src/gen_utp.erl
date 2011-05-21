@@ -25,7 +25,7 @@
 	 lookup_registrar/3,
 	 incoming_unknown/3]).
 
--type utp_socket() :: {utp_sock, pid()}.
+-opaque utp_socket() :: {utp_sock, pid()}.
 -export_type([utp_socket/0]).
 
 %% gen_server callbacks
@@ -62,19 +62,26 @@ start_link(Port) ->
     start_link(Port, []).
 
 %% @equiv connect(Addr, Port, [])
+-spec connect(inet:ip_address() | inet:hostname(), inet:port_number()) ->
+                     {ok, utp_socket()} | {error, term()}.
 connect(Addr, Port) ->
     connect(Addr, Port, []).
 
 %% @doc Connect to a foreign uTP peer
 %% @end
+-spec connect(inet:ip_address() | inet:hostname(), inet:port_number(), [term()]) ->
+                     {ok, utp_socket()} | {error, term()}.
 connect(Addr, Port, Options) ->
     {ok, Socket} = get_socket(),
     {ok, Pid} = gen_utp_worker_pool:start_child(Socket, Addr, Port, Options),
     case gen_utp_worker:connect(Pid) of
         ok ->
-            {utp_sock, Pid}
+            {ok, {utp_sock, Pid}};
+        {error, Reason} ->
+            {error, Reason}
     end.
 
+-spec accept() -> {ok, utp_socket()} | {error, term()}.
 accept() ->
     %% Accept an incoming connection.
     %% @todo timeouts!
@@ -84,20 +91,25 @@ accept() ->
     {ok, Pid, SynPacket} = call(accept),
     case gen_utp_worker:accept(Pid, SynPacket) of
         ok ->
-            {ok, {utp_sock, Pid}}
+            {ok, {utp_sock, Pid}};
+        {error, Reason} ->
+            {error, Reason}
     end.
 
 %% @doc Send a message on a uTP Socket
 %% @end
--spec send(utp_socket(), iolist()) -> ok | {error, term()}.
+-spec send(utp_socket(), iolist() | binary() | string()) -> ok | {error, term()}.
 send({utp_sock, Pid}, Msg) ->
     gen_utp_worker:send(Pid, iolist_to_binary(Msg)).
 
-%% @doc Receive a message with a timeout
+%% @doc Receive a message
+%%   The `Length' parameter specifies the size of the data to wait for. Providing a value of
+%%   `0' means to fetch all available data. There is currently no provision for timeouts on sockets,
+%%   but that will be provided later on.
 %% @end
 -spec recv(utp_socket(), integer()) ->
 		  {ok, binary()} | {error, term()}.
-recv({utp_sock, Pid}, Length) ->
+recv({utp_sock, Pid}, Length) when Length >= 0 ->
     gen_utp_worker:recv(Pid, Length).
 
 %% @doc Close down a socket (nonblocking)
@@ -107,10 +119,12 @@ close({utp_sock, Pid}) ->
 
 %% @doc Listen on socket, with queue length Q
 %% @end
-listen(QLen) ->
+-spec listen(integer()) -> ok | {error, term()}.
+listen(QLen) when QLen >= 0 ->
     call({listen, QLen}).
 
 %% @equiv listen(5)
+-spec listen() -> ok | {error, term()}.
 listen() ->
     listen(5).
 

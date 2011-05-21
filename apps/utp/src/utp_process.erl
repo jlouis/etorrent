@@ -40,11 +40,13 @@ all_processes(#proc_info { receiver_q = RQ,
     RL = [From || {receiver, From, _, _} <- queue:to_list(RQ)],
     SL = [From || {sender, From, _Data} <- queue:to_list(SQ)],
     RL ++ SL.
-    
+
+-spec enqueue_receiver(term(), integer(), t()) -> t().
 enqueue_receiver(From, Length, #proc_info { receiver_q = RQ } = PI) ->
     NQ = queue:in({receiver, From, Length, <<>>}, RQ),
     PI#proc_info { receiver_q = NQ }.
 
+-spec dequeue_receiver(t()) -> {ok, term(), t()} | empty.
 dequeue_receiver(#proc_info { receiver_q = RQ } = PI) ->
     case queue:out(RQ) of
         {{value, Item}, NQ} ->
@@ -81,7 +83,8 @@ dequeue(N, Q, Acc) ->
         empty when Acc == <<>> ->
             zero;
         empty when Acc =/= <<>> ->
-            {partial, Acc, NQ};
+            {partial, Acc, Q}; % Should really use NQ here, but the dialyzer dislikes it
+                               % probably due to an internal dialyzer mistake
         {value, {sender, From, Data}} when byte_size(Data) =< N ->
             gen_utp_worker:reply(From, ok),
             dequeue(N - byte_size(Data), NQ, <<Acc/binary, Data/binary>>);

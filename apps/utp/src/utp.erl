@@ -50,31 +50,31 @@ ensure_started([App | R]) ->
 
 
 test_connector_1() ->
-    Sock = gen_utp:connect("localhost", 3333),
+    {ok, Sock} = gen_utp:connect("localhost", 3333),
     ok = gen_utp:send(Sock, "HELLO"),
     ok = gen_utp:send(Sock, "WORLD").
 
 test_connector_2() ->
-    Sock = gen_utp:connect("localhost", 3333),
+    {ok, Sock} = gen_utp:connect("localhost", 3333),
     {ok, <<"HELLOWORLD">>} = gen_utp:recv(Sock, 10),
     ok = gen_utp:close(Sock),
     ok.
 
 test_connector_3() ->
-    Sock = gen_utp:connect("localhost", 3333),
+    {ok, Sock} = gen_utp:connect("localhost", 3333),
     ok = gen_utp:send(Sock, "12345"),
     ok = gen_utp:send(Sock, "67890"),
     {ok, <<"HELLOWORLD">>} = gen_utp:recv(Sock, 10),
     ok.
 
 test_close_out_1() ->
-    Sock = gen_utp:connect("localhost", 3333),
+    {ok, Sock} = gen_utp:connect("localhost", 3333),
     ok = gen_utp:close(Sock),
     {error, econnreset} = gen_utp:send(Sock, <<"HELLO">>),
     ok.
 
 test_close_in_1() ->
-    gen_utp:listen(),
+    ok = gen_utp:listen(),
     {ok, Sock} = gen_utp:accept(),
     timer:sleep(3000),
     case gen_utp:send(Sock, <<"HELLO">>) of
@@ -86,7 +86,7 @@ test_close_in_1() ->
     ok = gen_utp:close(Sock).
 
 test_close_out_2() ->
-    Sock = gen_utp:connect("localhost", 3333),
+    {ok, Sock} = gen_utp:connect("localhost", 3333),
     timer:sleep(3000),
     case gen_utp:send(Sock, <<"HELLO">>) of
         ok ->
@@ -97,14 +97,14 @@ test_close_out_2() ->
     ok = gen_utp:close(Sock).
 
 test_close_in_2() ->
-    gen_utp:listen(),
+    ok = gen_utp:listen(),
     {ok, Sock} = gen_utp:accept(),
     ok = gen_utp:close(Sock),
     {error, econnreset} = gen_utp:recv(Sock, 5),
     ok.
 
 test_close_out_3() ->
-    Sock = gen_utp:connect("localhost", 3333),
+    {ok, Sock} = gen_utp:connect("localhost", 3333),
     ok = gen_utp:send(Sock, <<"HELLO">>),
     {ok, <<"WORLD">>} = gen_utp:recv(Sock, 5),
     ok = gen_utp:close(Sock),
@@ -112,7 +112,7 @@ test_close_out_3() ->
     ok.
 
 test_close_in_3() ->
-    gen_utp:listen(),
+    ok = gen_utp:listen(),
     {ok, Sock} = gen_utp:accept(),
     ok = gen_utp:send(Sock, "WORLD"),
     {ok, <<"HELLO">>} = gen_utp:recv(Sock, 5),
@@ -121,7 +121,7 @@ test_close_in_3() ->
     ok.
 
 test_connectee_1() ->
-    gen_utp:listen(),
+    ok = gen_utp:listen(),
     {ok, Port} = gen_utp:accept(),
     {ok, R1} = gen_utp:recv(Port, 5),
     {ok, R2} = gen_utp:recv(Port, 5),
@@ -129,7 +129,7 @@ test_connectee_1() ->
     {R1, R2}.
 
 test_connectee_2() ->
-    gen_utp:listen(),
+    ok = gen_utp:listen(),
     {ok, Sock} = gen_utp:accept(),
     ok = gen_utp:send(Sock, <<"HELLO">>),
     ok = gen_utp:send(Sock, <<"WORLD">>),
@@ -137,7 +137,7 @@ test_connectee_2() ->
     ok.
 
 test_connectee_3() ->
-    gen_utp:listen(),
+    ok = gen_utp:listen(),
     {ok, Sock} = gen_utp:accept(),
     ok = gen_utp:send(Sock, <<"HELLO">>),
     ok = gen_utp:send(Sock, <<"WORLD">>),
@@ -147,13 +147,13 @@ test_connectee_3() ->
     ok.
 
 test_send_large_file(Data) ->
-    Sock = gen_utp:connect("localhost", 3333),
+    {ok, Sock} = gen_utp:connect("localhost", 3333),
     ok = gen_utp:send(Sock, Data),
     ok = gen_utp:close(Sock),
     ok.
 
 test_recv_large_file(Sz) ->
-    gen_utp:listen(),
+    ok = gen_utp:listen(),
     {ok, Port} = gen_utp:accept(),
     {ok, R} = gen_utp:recv(Port, Sz),
     ok = gen_utp:close(Port),

@@ -719,14 +719,14 @@ handle_packet_incoming(Pkt, RecvTime,
             {N_PRI, N_PB} =
                 case satisfy_recvs(PRI, N_PB1) of
                     {ok, PR1, PB1} ->
-                        {PR1, PB1};
-                    {rb_drained, PR1, PB1} ->
-                        %% @todo Here is the point where we should
-                        %% make a check on the receive window If the
-                        %% window has grown, and the last window was
-                        %% 0, then immediately send out an
-                        %% ACK. Otherwise install a timer.
                         {PR1, PB1}
+                    %% {rb_drained, PR1, PB1} ->
+                    %%     %% @todo Here is the point where we should
+                    %%     %% make a check on the receive window If the
+                    %%     %% window has grown, and the last window was
+                    %%     %% 0, then immediately send out an
+                    %%     %% ACK. Otherwise install a timer.
+                    %%     {PR1, PB1}
                 end,
             
             %% Fill up the send window again with the new information
