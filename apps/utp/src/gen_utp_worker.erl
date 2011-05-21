@@ -176,7 +176,7 @@ idle(close, S) ->
     {next_state, destroy, S, 0};
 idle(Msg, S) ->
     %% Ignore messages
-    error_logger:warning_report([async_message, idle, Msg]),
+    error_logger:warning_report([node(), async_message, idle, Msg]),
     {next_state, idle, S}.
 
 %% @private
@@ -241,7 +241,7 @@ syn_sent({timeout, TRef, {retransmit_timeout, N}},
     end;
 syn_sent(Msg, S) ->
     %% Ignore messages
-    error_logger:warning_report([async_message, syn_sent, Msg]),
+    error_logger:warning_report([node(), async_message, syn_sent, Msg]),
     {next_state, syn_sent, S}.
 
 
@@ -314,7 +314,7 @@ connected({timeout, Ref, {retransmit_timeout, N}},
     end;
 connected(Msg, State) ->
     %% Ignore messages
-    error_logger:warning_report([async_message, connected, Msg]),
+    error_logger:warning_report([node(), async_message, connected, Msg]),
     {next_state, connected, State}.
 
 %% @private
@@ -336,7 +336,7 @@ got_fin({timeout, Ref, {retransmit_timeout, N}},
     end;
 got_fin(Msg, State) ->
     %% Ignore messages
-    error_logger:warning_report([async_message, got_fin, Msg]),
+    error_logger:warning_report([node(), async_message, got_fin, Msg]),
     {next_state, got_fin, State}.
 
 %% @private
@@ -360,7 +360,7 @@ destroy_delay(close, State) ->
     {next_state, destroy, State, 0};
 destroy_delay(Msg, State) ->
     %% Ignore messages
-    error_logger:warning_report([async_message, destroy_delay, Msg]),
+    error_logger:warning_report([node(), async_message, destroy_delay, Msg]),
     {next_state, destroy_delay, State}.
 
 %% @private
@@ -409,7 +409,7 @@ fin_sent({timeout, Ref, {retransmit_timeout, N}},
     end;
 fin_sent(Msg, State) ->
     %% Ignore messages
-    error_logger:warning_report([async_message, fin_sent, Msg]),
+    error_logger:warning_report([node(), async_message, fin_sent, Msg]),
     {next_state, fin_sent, State}.
 
 %% @private
@@ -417,7 +417,7 @@ reset(close, State) ->
     {next_state, destroy, State, 0};
 reset(Msg, State) ->
     %% Ignore messages
-    error_logger:warning_report([async_message, reset, Msg]),
+    error_logger:warning_report([node(), async_message, reset, Msg]),
     {next_state, reset, State}.
 
 %% @private
@@ -427,7 +427,7 @@ destroy(timeout, #state { proc_info = ProcessInfo } = State) ->
     {stop, normal, State#state { proc_info = N_ProcessInfo }};
 destroy(Msg, State) ->
     %% Ignore messages
-    error_logger:warning_report([async_message, destroy, Msg]),
+    error_logger:warning_report([node(), async_message, destroy, Msg]),
     {next_state, destroy, State}.
 
 error_all(ProcessInfo, ErrorReason) ->
@@ -711,7 +711,7 @@ handle_packet_incoming(Pkt, RecvTime,
     of
         {ok, N_PB1, N_PKI, Messages} ->
 
-            error_logger:info_report([messages, Messages]),
+            error_logger:info_report([node(), messages, Messages]),
             %% The packet may bump the advertised window from the peer, update
             N_PKI1 = utp_pkt:handle_advertised_window(Pkt, N_PKI),
             
