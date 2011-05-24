@@ -230,7 +230,7 @@ syn_sent({timeout, TRef, {retransmit_timeout, N}},
     error_logger:info_report([syn_timeout_triggered]),
     case N > ?SYN_TIMEOUT_THRESHOLD of
         true ->
-            reply(From, etimedout),
+            reply(From, {error, etimedout}),
             {next_state, reset, State#state {retransmit_timeout = undefined}};
         false ->
             % Resend packet
