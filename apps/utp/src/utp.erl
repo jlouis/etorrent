@@ -88,8 +88,7 @@ test_close_in_1() ->
         {error, econnreset} ->
             ignore
     end,
-    ok = gen_utp:close(Sock),
-    ok = gen_utp:assert_state().
+    ok = gen_utp:close(Sock).
 
 test_close_out_2() ->
     {ok, Sock} = repeating_connect("localhost", 3333),
@@ -100,8 +99,7 @@ test_close_out_2() ->
         {error, econnreset} ->
             ignore
     end,
-    ok = gen_utp:close(Sock),
-    ok = gen_utp:assert_state().
+    ok = gen_utp:close(Sock).
 
 test_close_in_2() ->
     case gen_utp:listen() of
@@ -113,7 +111,7 @@ test_close_in_2() ->
     {ok, Sock} = gen_utp:accept(),
     ok = gen_utp:close(Sock),
     {error, econnreset} = gen_utp:recv(Sock, 5),
-    gen_utp:assert_state().
+    ok.
 
 test_close_out_3() ->
     {ok, Sock} = repeating_connect("localhost", 3333),
@@ -121,7 +119,7 @@ test_close_out_3() ->
     {ok, <<"WORLD">>} = gen_utp:recv(Sock, 5),
     ok = gen_utp:close(Sock),
     error_logger:info_report([node(), out, closed]),
-    gen_utp:assert_state().
+    ok.
 
 test_close_in_3() ->
         case gen_utp:listen() of
@@ -135,7 +133,7 @@ test_close_in_3() ->
     {ok, <<"HELLO">>} = gen_utp:recv(Sock, 5),
     ok = gen_utp:close(Sock),
     error_logger:info_report([node(), in, closed]),
-    gen_utp:assert_state().
+    ok.
 
 test_connectee_1() ->
     case gen_utp:listen() of
@@ -148,7 +146,6 @@ test_connectee_1() ->
     {ok, R1} = gen_utp:recv(Port, 5),
     {ok, R2} = gen_utp:recv(Port, 5),
     ok = gen_utp:close(Port),
-    gen_utp:assert_state(),
     {R1, R2}.
 
 test_connectee_2() ->
@@ -162,7 +159,7 @@ test_connectee_2() ->
     ok = gen_utp:send(Sock, <<"HELLO">>),
     ok = gen_utp:send(Sock, <<"WORLD">>),
     ok = gen_utp:close(Sock),
-    gen_utp:assert_state().
+    ok.
 
 test_connectee_3() ->
     case gen_utp:listen() of
@@ -177,13 +174,13 @@ test_connectee_3() ->
     {ok, <<"12345">>} = gen_utp:recv(Sock, 5),
     {ok, <<"67890">>} = gen_utp:recv(Sock, 5),
     ok = gen_utp:close(Sock),
-    gen_utp:assert_state().
+    ok.
 
 test_send_large_file(Data) ->
     {ok, Sock} = repeating_connect("localhost", 3333),
     ok = gen_utp:send(Sock, Data),
     ok = gen_utp:close(Sock),
-    gen_utp:assert_state().
+    ok.
 
 %% Infinitely repeat connecting. A timetrap will capture the problem
 -spec repeating_connect(term(), integer()) -> no_return() | {ok, any()}.
@@ -205,7 +202,6 @@ test_recv_large_file(Sz) ->
     {ok, Port} = gen_utp:accept(),
     {ok, R} = gen_utp:recv(Port, Sz),
     ok = gen_utp:close(Port),
-    gen_utp:assert_state(),
     R.
 
 get(N) when is_integer(N) ->

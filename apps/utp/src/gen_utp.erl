@@ -322,11 +322,32 @@ new_accept_queue(QLen) ->
 		    q_len = 0,
 		    max_q_len = QLen }.
 
-assert_listen_queue(Q) ->
-    queue:is_empty(Q).
+assert_listen_queue(closed) -> true;
+assert_listen_queue(#accept_queue { acceptors = Acceptors,
+                                    incoming_conns = Incoming,
+                                    q_len = QLen }) ->
+    case queue:is_empty(Acceptors) andalso
+        queue:is_empty(Incoming) andalso
+        QLen == 0 of
+        true ->
+            true;
+        false ->
+            error_logger:error_report([wrong_queue_state,
+                                       [{acceptors, Acceptors},
+                                        {incoming, Incoming},
+                                        {qlen, QLen}]]),
+            false
+    end.
 
 assert_monitor_list(Monitored) ->
-    gb_trees:is_empty(Monitored).
+    case gb_trees:is_empty(Monitored) of
+        true ->
+            true;
+        false ->
+            error_logger:error_report([monitor_content,
+                                       gb_trees:to_list(Monitored)]),
+            false
+    end.
 
 assert_ets_table() ->
     case ets:info(?TAB, size) of

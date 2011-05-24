@@ -473,6 +473,19 @@ Haphazard TODO list of things that needs attention:
 
   ; There should be no entries in the registry table
   ; All processes should have been closed down correctly
+* TODO Fix the problem of sockets closing down
+  When we close down a connection, we must remove it upon a close()
+  call and not afterwards. Otherwise, we can't rely on the order in
+  which things happens. The rule is that after a close(), the socket
+  should not be available and packets should not be forwarded to it.
+
+  Or we should rethink the design and the rules for when you get
+  removed from the ETS/Monitor lists. Really, it hinges on the fact of
+  what happens as soon as you get a close() and what operations there
+  should be done.
+
+  This requires some deep thinking. Otherwise we may actually do the
+  wrong thing here.
 * TODO Connect-N-Communicate can fail, figure out why
   Sometimes, the Connect-N-Communicate test fails with a timeout. We
   need to figure out why that happens and fix it. We get a timeout, so
