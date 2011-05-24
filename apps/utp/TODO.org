@@ -454,6 +454,30 @@ Haphazard TODO list of things that needs attention:
 * DONE Use the Linux NetEM packet mangler to test the system
   This is fairly important. It found some problems in the code base
   and we better have a look at what it is it found.
+* DONE Add support for repeating the test cases
+  A successful test requires more than a single run. To capture
+  eventual nasty bugs, we better rerun tests a lot.
+* DONE There is a bug where we have timeouts
+  The gen_fsm times out when we try to connect and hence we get
+  timetrap timeouts. The fix is to make the timeout occur much rarer
+  and increase it by an insane amount, possibly infinity.
+
+  Turns out there was a @todo in the code... :P
+* TODO Write code for a sanity checker
+  When we have completed a connection, the gen_server which is the
+  main entry point must be in a sane state:
+
+  ; There should be no entries in the registry table
+  ; All processes should have been closed down correctly
+* TODO Connect-N-Communicate can fail, figure out why
+  Sometimes, the Connect-N-Communicate test fails with a timeout. We
+  need to figure out why that happens and fix it. We get a timeout, so
+  it is either
+
+  ; Some case that is not handled
+  ; A deadlock between the two endpoints
+
+  This may be due to the timeout problem we saw before.
 * TODO Read libutp source code on out-of-order packets in syn_sent
   It is not obvious what to do:
 

@@ -95,6 +95,7 @@
 -define(DEFAULT_OPT_RECV_SZ, 8192). %% @todo Fix this
 -define(DEFAULT_PACKET_SIZE, 350). %% @todo Fix, arbitrary at the moment
 
+-define(DEFAULT_FSM_TIMEOUT, 10*60*1000).
 %% STATE RECORDS
 %% ----------------------------------------------------------------------
 -record(state, { sock_info    :: utp_sock_info:t(),
@@ -116,12 +117,12 @@ start_link(Socket, Addr, Port, Options) ->
 %% @doc Send a connect event
 %% @end
 connect(Pid) ->
-    gen_fsm:sync_send_event(Pid, connect). % @todo Timeouting!
+    sync_send_event(Pid, connect).
 
 %% @doc Send an accept event
 %% @end
 accept(Pid, SynPacket) ->
-    gen_fsm:sync_send_event(Pid, {accept, SynPacket}). % @todo Timeouting!
+    sync_send_event(Pid, {accept, SynPacket}).
 
 %% @doc Receive some bytes from the socket. Blocks until the said amount of
 %% bytes have been read.
@@ -133,7 +134,7 @@ recv(Pid, Amount) ->
 %% bytes have been sent and has been accepted by the underlying layer.
 %% @end
 send(Pid, Data) ->
-    gen_fsm:sync_send_event(Pid, {send, Data}).
+    gen_fsm:sync_send_event(Pid, {send, Data}, infinity).
 
 %% @doc Send a close event
 %% @end
@@ -147,6 +148,10 @@ incoming(Pid, Packet, Timing) ->
 
 reply(To, Msg) ->
     gen_fsm:reply(To, Msg).
+
+sync_send_event(Pid, Event) ->
+    gen_fsm:sync_send_event(Pid, Event, ?DEFAULT_FSM_TIMEOUT).
+
 
 %%%===================================================================
 %%% gen_fsm callbacks
