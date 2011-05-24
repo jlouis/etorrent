@@ -20,7 +20,8 @@
          accept/0]).
 
 %% Internally used API
--export([register_process/2,
+-export([assert_state/0,
+         register_process/2,
 	 reply/2,
 	 lookup_registrar/3,
 	 incoming_unknown/3]).
@@ -155,7 +156,8 @@ lookup_registrar(CID, Addr, Port) ->
 	    {ok, Pid}
     end.
 
-
+assert_state() ->
+    ok = call(assert_state).
     
 %% @doc Reply back to a socket user
 %% @end
@@ -198,6 +200,19 @@ init([Port, Opts]) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+handle_call(assert_state, _From, #state { listen_queue = Q,
+                                          monitored = Monitored } = State) ->
+    ETS = assert_ets_table(),
+    Mon = assert_monitor_list(Monitored),
+    Queue = assert_listen_queue(Q),
+    case ETS andalso Mon andalso Queue of
+        true ->
+            {reply, ok, State};
+        false ->
+            {reply, {error, [{ets, ETS},
+                             {mon, Mon},
+                             {queue, Queue}]}, State}
+    end;
 handle_call(accept, _From, #state { listen_queue = closed } = S) ->
     {reply, {error, no_listen}, S};
 handle_call(accept, From, #state { listen_queue = Q,
@@ -306,6 +321,20 @@ new_accept_queue(QLen) ->
 		    incoming_conns = queue:new(),
 		    q_len = 0,
 		    max_q_len = QLen }.
+
+assert_listen_queue(Q) ->
+    queue:is_empty(Q).
+
+assert_monitor_list(Monitored) ->
+    gb_trees:is_empty(Monitored).
+
+assert_ets_table() ->
+    case ets:info(?TAB, size) of
+        0 ->
+            true;
+        N when is_integer(N) ->
+            false
+    end.
 
 get_socket() ->
     call(get_socket).

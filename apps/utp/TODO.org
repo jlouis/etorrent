@@ -463,7 +463,11 @@ Haphazard TODO list of things that needs attention:
   and increase it by an insane amount, possibly infinity.
 
   Turns out there was a @todo in the code... :P
-* TODO Write code for a sanity checker
+* DONE Keep trying to reconnect in the tests
+  The default timeout is only 6 seconds and I deliberately run with
+  extremely large buffers to mess up the system. Keep trying to
+  reconnect until the timetrap hits.
+* DONE Write code for a sanity checker
   When we have completed a connection, the gen_server which is the
   main entry point must be in a sane state:
 
