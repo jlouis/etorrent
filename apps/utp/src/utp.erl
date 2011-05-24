@@ -50,25 +50,25 @@ ensure_started([App | R]) ->
 
 
 test_connector_1() ->
-    {ok, Sock} = gen_utp:connect("localhost", 3333),
+    {ok, Sock} = repeating_connect("localhost", 3333),
     ok = gen_utp:send(Sock, "HELLO"),
     ok = gen_utp:send(Sock, "WORLD").
 
 test_connector_2() ->
-    {ok, Sock} = gen_utp:connect("localhost", 3333),
+    {ok, Sock} = repeating_connect("localhost", 3333),
     {ok, <<"HELLOWORLD">>} = gen_utp:recv(Sock, 10),
     ok = gen_utp:close(Sock),
     ok.
 
 test_connector_3() ->
-    {ok, Sock} = gen_utp:connect("localhost", 3333),
+    {ok, Sock} = repeating_connect("localhost", 3333),
     ok = gen_utp:send(Sock, "12345"),
     ok = gen_utp:send(Sock, "67890"),
     {ok, <<"HELLOWORLD">>} = gen_utp:recv(Sock, 10),
     ok.
 
 test_close_out_1() ->
-    {ok, Sock} = gen_utp:connect("localhost", 3333),
+    {ok, Sock} = repeating_connect("localhost", 3333),
     ok = gen_utp:close(Sock),
     {error, econnreset} = gen_utp:send(Sock, <<"HELLO">>),
     ok.
@@ -91,7 +91,7 @@ test_close_in_1() ->
     ok = gen_utp:close(Sock).
 
 test_close_out_2() ->
-    {ok, Sock} = gen_utp:connect("localhost", 3333),
+    {ok, Sock} = repeating_connect("localhost", 3333),
     timer:sleep(3000),
     case gen_utp:send(Sock, <<"HELLO">>) of
         ok ->
@@ -114,7 +114,7 @@ test_close_in_2() ->
     ok.
 
 test_close_out_3() ->
-    {ok, Sock} = gen_utp:connect("localhost", 3333),
+    {ok, Sock} = repeating_connect("localhost", 3333),
     ok = gen_utp:send(Sock, <<"HELLO">>),
     {ok, <<"WORLD">>} = gen_utp:recv(Sock, 5),
     ok = gen_utp:close(Sock),
@@ -177,10 +177,20 @@ test_connectee_3() ->
     ok.
 
 test_send_large_file(Data) ->
-    {ok, Sock} = gen_utp:connect("localhost", 3333),
+    {ok, Sock} = repeating_connect("localhost", 3333),
     ok = gen_utp:send(Sock, Data),
     ok = gen_utp:close(Sock),
     ok.
+
+%% Infinitely repeat connecting. A timetrap will capture the problem
+-spec repeating_connect(term(), integer()) -> no_return() | {ok, any()}.
+repeating_connect(Host, Port) ->
+    case gen_utp:connect(Host, Port) of
+        {ok, Sock} ->
+            {ok, Sock};
+        {error, etimedout} ->
+            repeating_connect(Host, Port)
+    end.
 
 test_recv_large_file(Sz) ->
     case gen_utp:listen() of
