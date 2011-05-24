@@ -23,6 +23,14 @@ suite() ->
 init_per_group(_Group, Config) ->
     Config.
 
+end_per_group(main_group, Config) ->
+    Status = ?config(tc_group_result, Config),
+    case proplists:get_value(failed, Status) of
+        [] ->                                   % no failed cases 
+            {return_group_result,ok};
+        _Failed ->                              % one or more failed
+            {return_group_result,failed}
+    end;
 end_per_group(_Group, _Config) ->
     ok.
 
@@ -51,13 +59,14 @@ end_per_testcase(_Case, _Config) ->
 %% Tests
 %% ----------------------------------------------------------------------
 groups() ->
-    [{main_group, [shuffle], [connect_n_communicate,
-                              backwards_communication,
-                              full_duplex_communication,
-                              close_1,
-                              close_2,
-                              close_3,
-                              connect_n_send_big]}].
+    [{main_group, [shuffle, {repeat_until_any_fail, 30}],
+      [connect_n_communicate,
+       backwards_communication,
+       full_duplex_communication,
+       close_1,
+       close_2,
+       close_3,
+       connect_n_send_big]}].
 
 all() ->
     [{group, main_group}].
