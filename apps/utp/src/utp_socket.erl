@@ -70,7 +70,7 @@ send_pkt(AdvWin, #sock_info { socket = Socket,
     %% @todo Handle timestamping here!!
     Pkt = Packet#packet { conn_id = ConnId,
                           win_sz = AdvWin },
-    error_logger:info_report([node(), outgoing_pkt, format_pkt(Pkt)]),
+    %% error_logger:info_report([node(), outgoing_pkt, format_pkt(Pkt)]),
     send(Socket, Addr, Port,
                  utp_proto:encode(
                    Pkt,

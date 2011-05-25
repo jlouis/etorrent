@@ -169,19 +169,12 @@ init([Socket, Addr, Port, Options]) ->
                        proc_info = ProcInfo,
                        pkt_window  = PktWindow }}.
 
-
-canonicalize_address(S) when is_list(S) ->
-    {ok, CAddr} = inet:getaddr(S, inet),
-    CAddr;
-canonicalize_address({_, _, _, _} = Addr) ->
-    Addr.
-
 %% @private
 idle(close, S) ->
     {next_state, destroy, S, 0};
 idle(Msg, S) ->
     %% Ignore messages
-    error_logger:warning_report([node(), async_message, idle, Msg]),
+    error_logger:error_report([node(), async_message, idle, Msg]),
     {next_state, idle, S}.
 
 %% @private
@@ -246,7 +239,7 @@ syn_sent({timeout, TRef, {retransmit_timeout, N}},
     end;
 syn_sent(Msg, S) ->
     %% Ignore messages
-    error_logger:warning_report([node(), async_message, syn_sent, Msg]),
+    error_logger:error_report([node(), async_message, syn_sent, Msg]),
     {next_state, syn_sent, S}.
 
 
@@ -258,9 +251,12 @@ connected({pkt, #packet { ty = st_reset }, _},
     %% we can't fulfill their requests.
     N_PRI = error_all(PRI, econnreset),
     {next_state, reset, State#state { proc_info = N_PRI }};
+connected({pkt, #packet { ty = st_syn }, _}, State) ->
+    error_logger:info_report([duplicate_syn_packet, ignoring]),
+    {next_state, connected, State};
 connected({pkt, Pkt, {_TS, _TSDiff, RecvTime}},
 	  #state { retransmit_timeout = RetransTimer } = State) ->
-    error_logger:info_report([node(), incoming_pkt, connected, utp_socket:format_pkt(Pkt)]),
+    %%error_logger:info_report([node(), incoming_pkt, connected, utp_socket:format_pkt(Pkt)]),
 
     {ok, Messages, N_PKI, N_PB, N_PRI, ZWinTimeout} =
         handle_packet_incoming(Pkt, RecvTime, State),
@@ -319,7 +315,7 @@ connected({timeout, Ref, {retransmit_timeout, N}},
     end;
 connected(Msg, State) ->
     %% Ignore messages
-    error_logger:warning_report([node(), async_message, connected, Msg]),
+    error_logger:error_report([node(), async_message, connected, Msg]),
     {next_state, connected, State}.
 
 %% @private
@@ -341,11 +337,10 @@ got_fin({timeout, Ref, {retransmit_timeout, N}},
     end;
 got_fin(Msg, State) ->
     %% Ignore messages
-    error_logger:warning_report([node(), async_message, got_fin, Msg]),
+    error_logger:error_report([node(), async_message, got_fin, Msg]),
     {next_state, got_fin, State}.
 
 %% @private
-%% Die deliberately on close for now
 destroy_delay({timeout, Ref, {retransmit_timeout, N}},
          #state { 
             pkt_buf = PacketBuf,
@@ -365,7 +360,7 @@ destroy_delay(close, State) ->
     {next_state, destroy, State, 0};
 destroy_delay(Msg, State) ->
     %% Ignore messages
-    error_logger:warning_report([node(), async_message, destroy_delay, Msg]),
+    error_logger:error_report([node(), async_message, destroy_delay, Msg]),
     {next_state, destroy_delay, State}.
 
 %% @private
@@ -379,7 +374,7 @@ fin_sent({pkt, #packet { ty = st_reset }, _},
     {next_state, destroy, State#state { proc_info = N_PRI }};
 fin_sent({pkt, Pkt, {_TS, _TSDiff, RecvTime}},
 	  #state { retransmit_timeout = RetransTimer } = State) ->
-    error_logger:info_report([node(), incoming_pkt, fin_sent, utp_socket:format_pkt(Pkt)]),
+    %%error_logger:info_report([node(), incoming_pkt, fin_sent, utp_socket:format_pkt(Pkt)]),
 
     {ok, Messages, N_PKI, N_PB, N_PRI, ZWinTimeout} =
         handle_packet_incoming(Pkt, RecvTime, State),
@@ -396,7 +391,12 @@ fin_sent({pkt, Pkt, {_TS, _TSDiff, RecvTime}},
         true ->
             {next_state, destroy, N_State, 0};
         undefined ->
-            {next_state, fin_sent, N_State}
+            case proplists:get_value(got_fin, Messages) of
+                true ->
+                    {next_state, destroy, N_State, 0};
+                undefined ->
+                    {next_state, fin_sent, N_State}
+            end
     end;
 fin_sent({timeout, Ref, {retransmit_timeout, N}},
          #state { 
@@ -414,7 +414,7 @@ fin_sent({timeout, Ref, {retransmit_timeout, N}},
     end;
 fin_sent(Msg, State) ->
     %% Ignore messages
-    error_logger:warning_report([node(), async_message, fin_sent, Msg]),
+    error_logger:error_report([node(), async_message, fin_sent, Msg]),
     {next_state, fin_sent, State}.
 
 %% @private
@@ -422,7 +422,7 @@ reset(close, State) ->
     {next_state, destroy, State, 0};
 reset(Msg, State) ->
     %% Ignore messages
-    error_logger:warning_report([node(), async_message, reset, Msg]),
+    error_logger:error_report([node(), async_message, reset, Msg]),
     {next_state, reset, State}.
 
 %% @private
@@ -432,34 +432,10 @@ destroy(timeout, #state { proc_info = ProcessInfo } = State) ->
     {stop, normal, State#state { proc_info = N_ProcessInfo }};
 destroy(Msg, State) ->
     %% Ignore messages
-    error_logger:warning_report([node(), async_message, destroy, Msg]),
+    error_logger:error_report([node(), async_message, destroy, Msg]),
     {next_state, destroy, State}.
 
-error_all(ProcessInfo, ErrorReason) ->
-    F = fun(From) ->
-                gen_fsm:reply(From, {error, ErrorReason})
-        end,
-    utp_process:apply_all(ProcessInfo, F),
-    utp_process:mk().
-
-%%--------------------------------------------------------------------
 %% @private
-%% @doc
-%% There should be one instance of this function for each possible
-%% state name. Whenever a gen_fsm receives an event sent using
-%% gen_fsm:sync_send_event/[2,3], the instance of this function with
-%% the same name as the current state name StateName is called to
-%% handle the event.
-%%
-%% @spec state_name(Event, From, State) ->
-%%                   {next_state, NextStateName, NextState} |
-%%                   {next_state, NextStateName, NextState, Timeout} |
-%%                   {reply, Reply, NextStateName, NextState} |
-%%                   {reply, Reply, NextStateName, NextState, Timeout} |
-%%                   {stop, Reason, NewState} |
-%%                   {stop, Reason, Reply, NewState}
-%% @end
-%%--------------------------------------------------------------------
 idle(connect, From, State = #state { sock_info = SockInfo,
                                      pkt_buf   = PktBuf}) ->
     {Address, Port} = utp_socket:hostname_port(SockInfo),
@@ -509,6 +485,7 @@ idle({accept, SYN}, _From, #state { sock_info = SockInfo,
 idle(_Msg, _From, State) ->
     {reply, idle, {error, enotconn}, State}.
 
+%% @private
 connected({recv, Length}, From, #state { proc_info = PI,
                                          pkt_buf   = PKB } = State) ->
     %% @todo Try to satisfy receivers
@@ -540,17 +517,19 @@ connected(Msg, From, State) ->
     error_logger:warning_report([sync_message, connected, Msg, From]),
     {next_state, connected, State}.
 
-% @private
+%% @private
 got_fin({recv, _L}, _From, State) ->
     {reply, {error, econnreset}, got_fin, State};
 got_fin({send, _Data}, _From, State) ->
     {reply, {error, econnreset}, got_fin, State}.
 
+%% @private
 fin_sent({recv, _L}, _From, State) ->
     {reply, {error, econnreset}, fin_sent, State};
 fin_sent({send, _Data}, _From, State) ->
     {reply, {error, econnreset}, fin_sent, State}.
 
+%% @private
 reset({recv, _L}, _From, State) ->
     {reply, {error, econnreset}, reset, State};
 reset({send, _Data}, _From, State) ->
@@ -561,22 +540,7 @@ handle_event(Event, StateName, State) ->
     error_logger:error_report([unknown_handle_event, Event, StateName, State]),
     {next_state, StateName, State}.
 
-%%--------------------------------------------------------------------
 %% @private
-%% @doc
-%% Whenever a gen_fsm receives an event sent using
-%% gen_fsm:sync_send_all_state_event/[2,3], this function is called
-%% to handle the event.
-%%
-%% @spec handle_sync_event(Event, From, StateName, State) ->
-%%                   {next_state, NextStateName, NextState} |
-%%                   {next_state, NextStateName, NextState, Timeout} |
-%%                   {reply, Reply, NextStateName, NextState} |
-%%                   {reply, Reply, NextStateName, NextState, Timeout} |
-%%                   {stop, Reason, NewState} |
-%%                   {stop, Reason, Reply, NewState}
-%% @end
-%%--------------------------------------------------------------------
 handle_sync_event(_Event, _From, StateName, State) ->
     Reply = ok,
     {reply, Reply, StateName, State}.
@@ -716,7 +680,7 @@ handle_packet_incoming(Pkt, RecvTime,
     of
         {ok, N_PB1, N_PKI, Messages} ->
 
-            error_logger:info_report([node(), messages, Messages]),
+            %% error_logger:info_report([node(), messages, Messages]),
             %% The packet may bump the advertised window from the peer, update
             N_PKI1 = utp_pkt:handle_advertised_window(Pkt, N_PKI),
             
@@ -763,5 +727,18 @@ handle_timeout(Ref, N, PacketBuf, SockInfo, {set, Ref} = Timer) ->
 handle_timeout(Ref, N, _PacketBuf, _Sockinfo, Timer) ->
     error_logger:error_report([stray_retransmit_timer, Ref, N, Timer]),
     stray.
+
+canonicalize_address(S) when is_list(S) ->
+    {ok, CAddr} = inet:getaddr(S, inet),
+    CAddr;
+canonicalize_address({_, _, _, _} = Addr) ->
+    Addr.
+
+error_all(ProcessInfo, ErrorReason) ->
+    F = fun(From) ->
+                gen_fsm:reply(From, {error, ErrorReason})
+        end,
+    utp_process:apply_all(ProcessInfo, F),
+    utp_process:mk().
 
 

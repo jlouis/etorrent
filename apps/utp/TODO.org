@@ -293,7 +293,7 @@ Haphazard TODO list of things that needs attention:
   This is really a bit hacky, but I'd rather assert that all the UDP
   packets are released correctly to the underlying operating system
   for now. If not, we ought to handle it explicitly anyway.
-* ONGOING Test the retransmission code
+* TODO Test the retransmission code
 ** DONE Make DUMMYNET work on FreeBSD
 ** DONE Test the code on FreeBSD again!
 ** DONE Create a script with a low-level error rate.
@@ -473,7 +473,33 @@ Haphazard TODO list of things that needs attention:
 
   ; There should be no entries in the registry table
   ; All processes should have been closed down correctly
-* TODO Fix the problem of sockets closing down
+* DONE Fix the race around [{got_fin, true}, ...]
+  There is a race in the code around the "got fin"
+  state. Specifically, the system disallows a close of that socket
+  correctly in a case we have and thus the system enters an infinite
+  ACK-loop state in which we can't do anything. This ought to be
+  fixed.
+
+  The race was present in the fin_sent state upon a cross-close of the
+  line.
+* DONE What should we do when we are in fin_sent and get in an st_fin packet?
+  We need to get this packet in, as we can be in need of ACK'ing it
+  up. Right now throw them away, but that is probably a bad idea to
+  do.
+
+  The fix here is to handle the packet as we normally do with packets,
+  so we may move from fin_sent, get a FIN packet and then move
+  straight to the state of DESTROY if the ST_FIN packet can complete
+  the connection.
+
+  This is now handled. It is not the question of the incoming packet,
+  which simply sets the fact that we have an st_fin packet in the
+  reorder buffer. It is the {got_fin} message that afterwards comes
+  which has to be handled. We do that now.
+* TODO Consider timeouts in all states.
+  We need to make sure there is a timeout exit for all connection
+  types. This is not currently guaranteed.
+* DONE Fix the problem of sockets closing down
   When we close down a connection, we must remove it upon a close()
   call and not afterwards. Otherwise, we can't rely on the order in
   which things happens. The rule is that after a close(), the socket
@@ -486,15 +512,40 @@ Haphazard TODO list of things that needs attention:
 
   This requires some deep thinking. Otherwise we may actually do the
   wrong thing here.
-* TODO Connect-N-Communicate can fail, figure out why
-  Sometimes, the Connect-N-Communicate test fails with a timeout. We
-  need to figure out why that happens and fix it. We get a timeout, so
-  it is either
 
-  ; Some case that is not handled
-  ; A deadlock between the two endpoints
+  This is really not a problem, I realized.
+* DONE The syn_queue can grow full
+  There is a bug in the acceptor code so we end up with the wrong
+  session being accepted by the syn queue. Hence this connection is
+  never established and so we get a skew:
 
-  This may be due to the timeout problem we saw before.
+  A wants to SYN
+    to            B
+  ---- B fails ----
+  A wants to SYN
+     goes to q on B
+  A wants to SYN
+     goes to q on B
+  ...
+  --- New test ----
+  A wants to SYN
+                  B picks up old SYN in q
+  A wants to SYN
+  --- Nothing happens ---
+
+  The problem is that I think we are tracking the registry entries
+  incorrectly. What ensures that we get a duplicate syn packet to an already
+  created connection? Is it the conn_id_recv or conn_id_send we
+  register in the registry and what is the right thing to push in
+  there?
+
+  Fixed. Duplicate SYN packets must be forwarded correctly and they
+  are now.
+* TODO Stop stray async_messages on packet types we know how to handle
+  There are some async messages that comes out of the system. We know
+  how they should be handled, so we can handle them in the code and
+  ignore them.
+
 * TODO Read libutp source code on out-of-order packets in syn_sent
   It is not obvious what to do:
 

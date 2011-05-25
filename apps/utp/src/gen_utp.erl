@@ -133,12 +133,15 @@ listen() ->
 %% @doc New unknown incoming packet
 incoming_unknown(#packet { ty = st_syn } = Packet, Addr, Port) ->
     %% SYN packet, so pass it in
+    error_logger:info_report([syn_packet_incoming]),
     gen_server:cast(?MODULE, {incoming_syn, Packet, Addr, Port});
-incoming_unknown(#packet{ ty = st_reset }, _Addr, _Port) ->
+incoming_unknown(#packet{ ty = st_reset } = Packet, _Addr, _Port) ->
     %% Stray RST packet received, ignore since there is no connection for it
+    error_logger:info_report([stray_reset_incoming, Packet]),
     ok;
 incoming_unknown(#packet{} = Packet, Addr, Port) ->
     %% Stray, RST it
+    error_logger:info_report([stray_packet_incoming, Packet]),
     gen_server:cast(?MODULE, {generate_reset, Packet, Addr, Port}).
 
 %% @doc Register a process as the recipient of a given incoming message
@@ -239,20 +242,25 @@ handle_call(_Request, _From, State) ->
 handle_cast({incoming_syn, _P, _Addr, _Port}, #state { listen_queue = closed } = S) ->
     %% Not listening on queue
     %% @todo RESET sent back here?
+    error_logger:info_report([incoming_syn_but_listen_closed]),
     {noreply, S};
 handle_cast({incoming_syn, Packet, Addr, Port}, #state { listen_queue = Q,
 						         socket = Socket } = S) ->
     Elem = {Packet, Addr, Port},
     case push_syn(Elem, Q) of
 	synq_full ->
+            error_logger:info_report([syn_queue_full]),
 	    {noreply, S}; % @todo RESET sent back?
 	{ok, Pairings, NewQ} ->
+            error_logger:info_report([{paired, Pairings},
+                                      {syn_q, NewQ}]),
 	    [accept_incoming_conn(Socket, Acc, SYN) || {Acc, SYN} <- Pairings],
 	    {noreply, S#state { listen_queue = NewQ }}
     end;
 handle_cast({generate_reset, #packet { conn_id = ConnID,
                                        seq_no  = SeqNo }, Addr, Port},
             #state { socket = Socket } = State) ->
+    error_logger:info_report([pushback_reset]),
     ok = utp_socket:send_reset(Socket, Addr, Port, ConnID, SeqNo,
                                utp_pkt:mk_random_seq_no()),
     {noreply, State};
@@ -314,6 +322,7 @@ handle_queue(#accept_queue { acceptors = AQ,
 
 accept_incoming_conn(Socket, From, {SynPacket, Addr, Port}) ->
     {ok, Pid} = gen_utp_worker_pool:start_child(Socket, Addr, Port, []),
+    error_logger:info_report([accepting, From, SynPacket]),
     gen_server:reply(From, {ok, Pid, SynPacket}).
 
 new_accept_queue(QLen) ->

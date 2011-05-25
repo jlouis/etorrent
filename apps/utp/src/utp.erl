@@ -118,7 +118,6 @@ test_close_out_3() ->
     ok = gen_utp:send(Sock, <<"HELLO">>),
     {ok, <<"WORLD">>} = gen_utp:recv(Sock, 5),
     ok = gen_utp:close(Sock),
-    error_logger:info_report([node(), out, closed]),
     ok.
 
 test_close_in_3() ->
@@ -132,7 +131,6 @@ test_close_in_3() ->
     ok = gen_utp:send(Sock, "WORLD"),
     {ok, <<"HELLO">>} = gen_utp:recv(Sock, 5),
     ok = gen_utp:close(Sock),
-    error_logger:info_report([node(), in, closed]),
     ok.
 
 test_connectee_1() ->
