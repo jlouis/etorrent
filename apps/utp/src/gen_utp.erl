@@ -229,9 +229,14 @@ handle_call({listen, QLen}, _From, #state { listen_queue = closed } = S) ->
 handle_call({listen, _QLen}, _From, #state { listen_queue = #accept_queue{} } = S) ->
     {reply, {error, ealreadylistening}, S};
 handle_call({reg_proc, Proc, CID}, _From, #state { monitored = Monitored } = State) ->
-    true = ets:insert(?TAB, {CID, Proc}),
-    Ref = erlang:monitor(process, Proc),
-    {reply, ok, State#state { monitored = gb_trees:enter(Ref, CID, Monitored) }};
+    case ets:member(?TAB, {CID, Proc}) of
+        true ->
+            {reply, {error, conn_id_in_use}, State};
+        false ->
+            true = ets:insert(?TAB, {CID, Proc}),
+            Ref = erlang:monitor(process, Proc),
+            {reply, ok, State#state { monitored = gb_trees:enter(Ref, CID, Monitored) }}
+    end;
 handle_call(get_socket, _From, S) ->
     {reply, {ok, S#state.socket}, S};
 handle_call(_Request, _From, State) ->
