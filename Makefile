@@ -71,8 +71,7 @@ test: eunit common_test
 CT_RUN=rel/etorrent/erts-*/bin/ct_run
 ct_src_dir := rel/etorrent/lib/etorrent-${version}/src
 
-common_test: rel
-	echo ${ct_src_dir}
+ct_prep: rel
 	mkdir -p logs
 # Unpack stuff.
 	rm -fr rel/etorrent/lib/etorrent-*/ebin
@@ -82,8 +81,13 @@ common_test: rel
 	mkdir -p rel/etorrent/lib/utp-${UTP_VERSION}/src && \
 		cp -r apps/utp/src/* rel/etorrent/lib/utp-${UTP_VERSION}/src
 
-# Run cover test
-	${CT_RUN} -spec etorrent_test.spec | tee test.log
+ct_utp: ct_prep
+	${CT_RUN} -spec utp_test.spec | tee test.utp.log
+
+ct_etorrent: ct_prep
+	${CT_RUN} -spec etorrent_test.spec | tee test.etorrent.log
+
+common_test: ct_utp ct_etorrent
 
 console:
 	dev/etorrent-dev/bin/etorrent console \
@@ -122,7 +126,11 @@ tabs:
 
 .PHONY: all compile tags dialyze run tracer clean \
 	 deps eunit rel xref dev console console-perf graph \
+<<<<<<< HEAD
 	 test testclean common_test ct_setup
+=======
+	 test testclean common_test ct_prep ct_utp ct_etorrent
+>>>>>>> Split test cases into two halves. One for etorrent, one for utp.
 
 %.png: %.dot
 	dot -Tpng $< > $@

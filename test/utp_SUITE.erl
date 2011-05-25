@@ -66,7 +66,9 @@ groups() ->
        close_1,
        close_2,
        close_3,
-       connect_n_send_big]}].
+       connect_n_send_big]},
+     {stress_group, [{repeat_until_any_fail, 200}],
+     [backwards_communication]}].
 
 all() ->
     [{group, main_group}].
