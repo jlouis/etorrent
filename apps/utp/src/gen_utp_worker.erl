@@ -365,6 +365,11 @@ destroy_delay(Msg, State) ->
 
 %% @private
 %% Die deliberately on close for now
+fin_sent({pkt, #packet { ty = st_syn }, _},
+         State) ->
+    %% Quaff SYN packets if they arrive in this state. They are stray.
+    %% I have seen it happen in tests, however unlikely that it happens in real life.
+    {next_state, fin_sent, State};
 fin_sent({pkt, #packet { ty = st_reset }, _},
          #state { proc_info = PRI } = State) ->
     %% We received a reset packet in the connected state. This means an abrupt
