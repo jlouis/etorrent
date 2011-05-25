@@ -4,21 +4,21 @@
 -include("utp.hrl").
 
 -export([
-	 mk/0,
-	 mk_buf/1,
+         mk/0,
+         mk_buf/1,
 
          init_seqno/2,
          init_ackno/2,
 
-	 packet_size/1,
-	 mk_random_seq_no/0,
-	 send_fin/2,
+         packet_size/1,
+         mk_random_seq_no/0,
+         send_fin/2,
          send_ack/2,
          handle_send_ack/3,
-	 handle_packet/5,
-	 buffer_dequeue/1,
-	 buffer_putback/2,
-	 fill_window/4,
+         handle_packet/5,
+         buffer_dequeue/1,
+         buffer_putback/2,
+         fill_window/4,
 
          advertised_window/1,
          handle_advertised_window/2,
@@ -27,7 +27,7 @@
          view_zero_window/1,
          bump_window/1,
          rto/1
-	 ]).
+         ]).
 
 %% DEFINES
 %% ----------------------------------------------------------------------
@@ -43,24 +43,24 @@
 %% ----------------------------------------------------------------------
 -record(pkt_window, {
           %% Size of the window the Peer advertises to us.
-	  peer_advertised_window = 4096 :: integer(),
+          peer_advertised_window = 4096 :: integer(),
 
-	  %% The current window size in the send direction, in bytes.
-	  cur_window :: integer(),
-	  %% Maximal window size int the send direction, in bytes.
-	  max_send_window :: integer(),
+          %% The current window size in the send direction, in bytes.
+          cur_window :: integer(),
+          %% Maximal window size int the send direction, in bytes.
+          max_send_window :: integer(),
 
-	  %% Timeouts,
-	  %% --------------------
-	  %% Set when we update the zero window to 0 so we can reset it to 1.
-	  zero_window_timeout :: none | {set, reference()},
+          %% Timeouts,
+          %% --------------------
+          %% Set when we update the zero window to 0 so we can reset it to 1.
+          zero_window_timeout :: none | {set, reference()},
           rto = 3000 :: integer(), % Retransmit timeout default
 
-	  %% Timestamps
-	  %% --------------------
-	  %% When was the window last totally full (in send direction)
-	  last_maxed_out_window :: integer()
-	 }).
+          %% Timestamps
+          %% --------------------
+          %% When was the window last totally full (in send direction)
+          last_maxed_out_window :: integer()
+         }).
 
 
 -type t() :: #pkt_window{}.
@@ -69,10 +69,10 @@
 -type messages() :: [message()].
 
 -record(pkt_wrap, {
-	  packet            :: utp_proto:packet(),
-	  transmissions = 0 :: integer(),
-	  need_resend = false :: boolean()
-	 }).
+          packet            :: utp_proto:packet(),
+          transmissions = 0 :: integer(),
+          need_resend = false :: boolean()
+         }).
 -type pkt() :: #pkt_wrap{}.
 
 -record(pkt_buf, {
@@ -95,24 +95,24 @@
           %% Same, for the recv buffer
           opt_recv_buf_sz = ?OPT_RECV_BUF :: integer(),
 
-	  %% The maximal size of packets.
+          %% The maximal size of packets.
           %% @todo Discover this one
-	  pkt_size = 1000 :: integer()
+          pkt_size = 1000 :: integer()
          }).
 -type buf() :: #pkt_buf{}.
 
 %% Track send quota available
 -record(send_quota, {
-	  send_quota :: integer(),
-	  last_send_quota :: integer()
-	 }).
+          send_quota :: integer(),
+          last_send_quota :: integer()
+         }).
 -type quota() :: #send_quota{}.
 
 -export_type([t/0,
-	      pkt/0,
-	      buf/0,
+              pkt/0,
+              buf/0,
               messages/0,
-	      quota/0]).
+              quota/0]).
 
 %% API
 %% ----------------------------------------------------------------------
@@ -126,7 +126,7 @@ mk() ->
 mk_buf(none)    -> #pkt_buf{};
 mk_buf(OptRecv) ->
     #pkt_buf {
-	opt_recv_buf_sz = OptRecv
+        opt_recv_buf_sz = OptRecv
        }.
 
 init_seqno(#pkt_buf {} = PBuf, SeqNo) ->
@@ -238,9 +238,9 @@ validate_seq_no(SeqNo, #pkt_buf { next_expected_seq_no = NextExpected }) ->
 -spec valid_state(atom()) -> ok.
 valid_state(State) ->
     case State of
-	connected -> ok;
-	fin_sent -> ok;
-	_ -> throw({no_data, State})
+        connected -> ok;
+        fin_sent -> ok;
+        _ -> throw({no_data, State})
     end.
 
 %% @doc Consider if we should send out an ACK
@@ -341,7 +341,7 @@ satisfy_from_reorder_buffer(#pkt_buf { next_expected_seq_no = AckNo,
     {got_fin, N_PB#pkt_buf { next_expected_seq_no = bit16(AckNo+1),
                              reorder_buf = R}};
 satisfy_from_reorder_buffer(#pkt_buf { next_expected_seq_no = AckNo,
-				       reorder_buf = [{AckNo, PL} | R]} = PB,
+                                       reorder_buf = [{AckNo, PL} | R]} = PB,
                             State) ->
     N_PB = recv_buffer_enqueue(State, PL, PB),
     satisfy_from_reorder_buffer(
@@ -354,8 +354,8 @@ satisfy_from_reorder_buffer(#pkt_buf { } = PB, _State) ->
 %% @end
 reorder_buffer_in(SeqNo, Payload, #pkt_buf { reorder_buf = OD } = PB) ->
     case orddict:is_key(SeqNo, OD) of
-	true -> duplicate;
-	false -> {ok, PB#pkt_buf { reorder_buf = orddict:store(SeqNo, Payload, OD) }}
+        true -> duplicate;
+        false -> {ok, PB#pkt_buf { reorder_buf = orddict:store(SeqNo, Payload, OD) }}
     end.
 
 %% SEND PATH
@@ -456,14 +456,14 @@ send_window_count(#pkt_buf { retransmission_queue = RQ }) ->
 %% socket towards the other end.
 %% @end    
 handle_packet(_CurrentTimeMs,
-	      State,
-	      #packet { seq_no = SeqNo,
-			ack_no = AckNo,
-			payload = Payload,
-			win_sz  = WindowSize,
-			ty = Type },
-	      PktWindow,
-	      PacketBuffer) when PktWindow =/= undefined ->
+              State,
+              #packet { seq_no = SeqNo,
+                        ack_no = AckNo,
+                        payload = Payload,
+                        win_sz  = WindowSize,
+                        ty = Type },
+              PktWindow,
+              PacketBuffer) when PktWindow =/= undefined ->
     %% Assert that we are currently in a state eligible for receiving
     %% datagrams of this type. This assertion ought not to be
     %% triggered by our code.
@@ -661,10 +661,10 @@ buffer_putback(B, #pkt_buf { recv_buf = Q } = Buf) ->
 
 buffer_dequeue(#pkt_buf { recv_buf = Q } = Buf) ->
     case queue:out(Q) of
-	{{value, E}, Q1} ->
-	    {ok, E, Buf#pkt_buf { recv_buf = Q1 }};
-	{empty, _} ->
-	    empty
+        {{value, E}, Q1} ->
+            {ok, E, Buf#pkt_buf { recv_buf = Q1 }};
+        {empty, _} ->
+            empty
     end.
 
 view_zero_window(#pkt_window { peer_advertised_window = N }) when N > 0 ->
