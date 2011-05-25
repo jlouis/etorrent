@@ -14,37 +14,37 @@
 %% API (Use)
 -export([connect/2, connect/3,
          close/1,
-	 send/2,
-	 recv/2,
-	 listen/0, listen/1,
+         send/2,
+         recv/2,
+         listen/0, listen/1,
          accept/0]).
 
 %% Internally used API
 -export([assert_state/0,
          register_process/2,
-	 reply/2,
-	 lookup_registrar/3,
-	 incoming_unknown/3]).
+         reply/2,
+         lookup_registrar/3,
+         incoming_unknown/3]).
 
 -opaque utp_socket() :: {utp_sock, pid()}.
 -export_type([utp_socket/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
-	 terminate/2, code_change/3]).
+         terminate/2, code_change/3]).
 
 -define(SERVER, ?MODULE).
 -define(TAB, ?MODULE).
 
 -record(accept_queue,
-	{ acceptors      :: queue(),
-	  incoming_conns :: queue(),
-	  q_len          :: integer(),
-	  max_q_len      :: integer() }).
+        { acceptors      :: queue(),
+          incoming_conns :: queue(),
+          q_len          :: integer(),
+          max_q_len      :: integer() }).
 
 -record(state, { monitored :: gb_tree(),
-	         socket    :: gen_udp:socket(),
-	         listen_queue :: closed | #accept_queue{} }).
+                 socket    :: gen_udp:socket(),
+                 listen_queue :: closed | #accept_queue{} }).
 
 
 %%%===================================================================
@@ -109,7 +109,7 @@ send({utp_sock, Pid}, Msg) ->
 %%   but that will be provided later on.
 %% @end
 -spec recv(utp_socket(), integer()) ->
-		  {ok, binary()} | {error, term()}.
+                  {ok, binary()} | {error, term()}.
 recv({utp_sock, Pid}, Length) when Length >= 0 ->
     gen_utp_worker:recv(Pid, Length).
 
@@ -129,7 +129,7 @@ listen(QLen) when QLen >= 0 ->
 listen() ->
     listen(5).
 
-    
+
 %% @doc New unknown incoming packet
 incoming_unknown(#packet { ty = st_syn } = Packet, Addr, Port) ->
     %% SYN packet, so pass it in
@@ -153,15 +153,15 @@ register_process(Pid, Conn) ->
 %% @end
 lookup_registrar(CID, Addr, Port) ->
     case ets:lookup(?TAB, {CID, Addr, Port}) of
-	[] ->
-	    not_found;
-	[{_, Pid}] ->
-	    {ok, Pid}
+        [] ->
+            not_found;
+        [{_, Pid}] ->
+            {ok, Pid}
     end.
 
 assert_state() ->
     ok = call(assert_state).
-    
+
 %% @doc Reply back to a socket user
 %% @end
 reply(To, Msg) ->
@@ -186,8 +186,8 @@ init([Port, Opts]) ->
     {ok, Socket} = gen_udp:open(Port, [binary, {active, once}] ++ Opts),
     ets:new(?TAB, [named_table, protected, set]),
     {ok, #state{ monitored = gb_trees:empty(),
-		 listen_queue = closed,
-		 socket = Socket }}.
+                 listen_queue = closed,
+                 socket = Socket }}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -219,7 +219,7 @@ handle_call(assert_state, _From, #state { listen_queue = Q,
 handle_call(accept, _From, #state { listen_queue = closed } = S) ->
     {reply, {error, no_listen}, S};
 handle_call(accept, From, #state { listen_queue = Q,
-				   socket = Socket } = S) ->
+                                   socket = Socket } = S) ->
     false = Q =:= closed,
     {ok, Pairings, NewQ} = push_acceptor(From, Q),
     [accept_incoming_conn(Socket, Acc, SYN) || {Acc, SYN} <- Pairings],
@@ -250,17 +250,17 @@ handle_cast({incoming_syn, _P, _Addr, _Port}, #state { listen_queue = closed } =
     error_logger:info_report([incoming_syn_but_listen_closed]),
     {noreply, S};
 handle_cast({incoming_syn, Packet, Addr, Port}, #state { listen_queue = Q,
-						         socket = Socket } = S) ->
+                                                         socket = Socket } = S) ->
     Elem = {Packet, Addr, Port},
     case push_syn(Elem, Q) of
-	synq_full ->
+        synq_full ->
             error_logger:info_report([syn_queue_full]),
-	    {noreply, S}; % @todo RESET sent back?
-	{ok, Pairings, NewQ} ->
+            {noreply, S}; % @todo RESET sent back?
+        {ok, Pairings, NewQ} ->
             error_logger:info_report([{paired, Pairings},
                                       {syn_q, NewQ}]),
-	    [accept_incoming_conn(Socket, Acc, SYN) || {Acc, SYN} <- Pairings],
-	    {noreply, S#state { listen_queue = NewQ }}
+            [accept_incoming_conn(Socket, Acc, SYN) || {Acc, SYN} <- Pairings],
+            {noreply, S#state { listen_queue = NewQ }}
     end;
 handle_cast({generate_reset, #packet { conn_id = ConnID,
                                        seq_no  = SeqNo }, Addr, Port},
@@ -274,7 +274,7 @@ handle_cast(_Msg, State) ->
 
 %% @private
 handle_info({udp, _Socket, IP, Port, Datagram},
-	    #state { socket = Socket } = S) ->
+            #state { socket = Socket } = S) ->
     %% @todo FLOW CONTROL here, because otherwise we may swamp the decoder.
     gen_utp_decoder:decode_and_dispatch(Datagram, IP, Port),
     %% Quirk out the next packet :)
@@ -304,25 +304,25 @@ push_acceptor(From, #accept_queue { acceptors = AQ } = Q) ->
     handle_queue(Q#accept_queue { acceptors = queue:in(From, AQ) }, []).
 
 push_syn(_SYNPacket, #accept_queue { q_len          = QLen,
-				     max_q_len      = MaxQ}) when QLen >= MaxQ ->
+                                     max_q_len      = MaxQ}) when QLen >= MaxQ ->
     synq_full;
 push_syn(SYNPacket, #accept_queue { incoming_conns = IC,
-				    q_len          = QLen } = Q) ->
+                                    q_len          = QLen } = Q) ->
     handle_queue(Q#accept_queue { incoming_conns = queue:in(SYNPacket, IC),
-				  q_len          = QLen + 1 }, []).
+                                  q_len          = QLen + 1 }, []).
 
 
 handle_queue(#accept_queue { acceptors = AQ,
-			     incoming_conns = IC,
-			     q_len = QLen } = Q, Pairings) ->
+                             incoming_conns = IC,
+                             q_len = QLen } = Q, Pairings) ->
     case {queue:out(AQ), queue:out(IC)} of
-	{{{value, Acceptor}, AQ1}, {{value, SYN}, IC1}} ->
-	    handle_queue(Q#accept_queue { acceptors = AQ1,
-					  incoming_conns = IC1,
-					  q_len = QLen - 1 },
-			 [{Acceptor, SYN} | Pairings]);
-	_ ->
-	    {ok, Pairings, Q} % Can't do anymore work for now
+        {{{value, Acceptor}, AQ1}, {{value, SYN}, IC1}} ->
+            handle_queue(Q#accept_queue { acceptors = AQ1,
+                                          incoming_conns = IC1,
+                                          q_len = QLen - 1 },
+                         [{Acceptor, SYN} | Pairings]);
+        _ ->
+            {ok, Pairings, Q} % Can't do anymore work for now
     end.
 
 accept_incoming_conn(Socket, From, {SynPacket, Addr, Port}) ->
@@ -332,9 +332,9 @@ accept_incoming_conn(Socket, From, {SynPacket, Addr, Port}) ->
 
 new_accept_queue(QLen) ->
     #accept_queue { acceptors = queue:new(),
-		    incoming_conns = queue:new(),
-		    q_len = 0,
-		    max_q_len = QLen }.
+                    incoming_conns = queue:new(),
+                    q_len = 0,
+                    max_q_len = QLen }.
 
 assert_listen_queue(closed) -> true;
 assert_listen_queue(#accept_queue { acceptors = Acceptors,
