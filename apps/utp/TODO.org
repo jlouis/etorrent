@@ -574,6 +574,17 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
 ** DONE Create a script that totally fucks up the connection ordering.
 ** DONE Create a script which does everything in a nasty way.
 ** DONE Create a script which is close to realistic.
+* DONE Fix the "fin_sent" gets SYN packet bug
+  This bug is new due to us fixing another bug. It is pretty easy,
+  just throw it away.
+* DONE Make the test spec specific to uTP
+  Currently, I override the etorrent_test spec, but we ought to run a
+  separate test for etorrent.
+* TODO Looks like resets are sent to the wrong place
+  If we get in a wrong packet, to where should the RESET be sent in
+  order to hit right in the other end?
+
+  What is utp.cpp doing here?
 * TODO Fix the zerowindow bug
    There are probably a couple of bugs. One is that we should remember
    to reopen the zero window.
