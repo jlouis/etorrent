@@ -98,7 +98,7 @@
 -define(DEFAULT_FSM_TIMEOUT, 10*60*1000).
 %% STATE RECORDS
 %% ----------------------------------------------------------------------
--record(state, { sock_info    :: utp_sock_info:t(),
+-record(state, { sock_info    :: utp_socket:t(),
                  pkt_window   :: utp_pkt:t(),
                  pkt_buf      :: utp_pkt:buf(),
                  proc_info    :: utp_process:t(),

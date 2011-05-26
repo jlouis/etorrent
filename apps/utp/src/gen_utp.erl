@@ -26,6 +26,7 @@
          lookup_registrar/3,
          incoming_unknown/3]).
 
+-type port_number() :: 0..16#FFFF.
 -opaque utp_socket() :: {utp_sock, pid()}.
 -export_type([utp_socket/0]).
 
@@ -43,7 +44,7 @@
           max_q_len      :: integer() }).
 
 -record(state, { monitored :: gb_tree(),
-                 socket    :: gen_udp:socket(),
+                 socket    :: inet:socket(),
                  listen_queue :: closed | #accept_queue{} }).
 
 
@@ -53,7 +54,7 @@
 %% Options is a proplist of options, given in the spec.
 %% @end
 %% @todo Strengthen spec
--spec start_link(integer(), proplists:proplist()) -> any().
+-spec start_link(integer(), [{atom(), term()}]) -> any().
 start_link(Port, Opts) ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [Port, Opts], []).
 
@@ -63,14 +64,14 @@ start_link(Port) ->
     start_link(Port, []).
 
 %% @equiv connect(Addr, Port, [])
--spec connect(inet:ip_address() | inet:hostname(), inet:port_number()) ->
+-spec connect(inet:ip_address() | inet:hostname(), port_number()) ->
                      {ok, utp_socket()} | {error, term()}.
 connect(Addr, Port) ->
     connect(Addr, Port, []).
 
 %% @doc Connect to a foreign uTP peer
 %% @end
--spec connect(inet:ip_address() | inet:hostname(), inet:port_number(), [term()]) ->
+-spec connect(inet:ip_address() | inet:hostname(), port_number(), [term()]) ->
                      {ok, utp_socket()} | {error, term()}.
 connect(Addr, Port, Options) ->
     {ok, Socket} = get_socket(),

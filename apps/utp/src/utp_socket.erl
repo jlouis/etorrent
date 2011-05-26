@@ -17,15 +17,16 @@
          format_pkt/1
         ]).
 
--type ip_address() :: {byte(), byte(), byte(), byte()}.
+-type ip_address() :: inet:ip4_address().
+-type port_number() :: 0..16#FFFF.
 
 -record(sock_info, {
 	  %% Stuff pertaining to the socket:
 	  addr        :: string() | ip_address(),
-	  opts        :: proplists:proplist(), %% Options on the socket
+	  opts        :: [{atom(), term()}], %% Options on the socket
 	  packet_size :: integer(),
-	  port        :: 0..16#FFFF,
-	  socket      :: gen_udp:socket(),
+	  port        :: port_number(),
+	  socket      :: inet:socket(),
           conn_id_send :: 'not_set' | integer(),
           timestamp_difference :: integer()
 	 }).

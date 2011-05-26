@@ -14,6 +14,10 @@
 	 encode/2,
 	 decode/1]).
 
+-type conn_id() :: 0..16#FFFF.
+-export_type([packet/0,
+              conn_id/0]).
+
 -define(EXT_SACK, 1).
 -define(EXT_BITS, 2).
 
@@ -23,7 +27,7 @@
 -define(ST_RESET, 3).
 -define(ST_SYN,   4).
 
--spec mk_connection_id() -> 0..65535.
+-spec mk_connection_id() -> conn_id().
 mk_connection_id() ->
     <<N:16/integer>> = crypto:rand_bytes(2),
     N.

@@ -265,7 +265,7 @@ consider_send_ack(_, _) -> [].
 %% packet. As such, this function wraps some lower-level operations,
 %% with respect to incoming payload.
 %% @end                      
--spec handle_receive_buffer(integer(), binary(), #pkt_buf{}, utp_gen_worker:conn_state()) ->
+-spec handle_receive_buffer(integer(), binary(), #pkt_buf{}, gen_utp_worker:conn_state()) ->
                                    {#pkt_buf{}, messages()}.
 handle_receive_buffer(SeqNo, Payload, PacketBuffer, State) ->
     case update_recv_buffer(SeqNo, Payload, PacketBuffer, State) of
