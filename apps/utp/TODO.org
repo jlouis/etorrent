@@ -580,45 +580,9 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
 * DONE Make the test spec specific to uTP
   Currently, I override the etorrent_test spec, but we ought to run a
   separate test for etorrent.
-* TODO Looks like resets are sent to the wrong place
-  If we get in a wrong packet, to where should the RESET be sent in
-  order to hit right in the other end?
-
-  What is utp.cpp doing here?
-* TODO Fix the zerowindow bug
-   There are probably a couple of bugs. One is that we should remember
-   to reopen the zero window.
-* TODO Consider timeouts in all states.
-  We need to make sure there is a timeout exit for all connection
-  types. This is not currently guaranteed.
-
-* TODO Stop stray async_messages on packet types we know how to handle
-  There are some async messages that comes out of the system. We know
-  how they should be handled, so we can handle them in the code and
-  ignore them.
-
-* TODO Read libutp source code on out-of-order packets in syn_sent
-  It is not obvious what to do:
-
-  There are so many loose holes in this so we better fix them. How do
-  we want to handle initial ACK's and stuff?
-
-  The best thing is to read through the code of libutp and figure out
-  what they have decided to do.
-* TODO Force an st_state packet through when the window *reopens*
-  If we have a window that is down to 0, and we then suddenly get a
-  receiver on the socket reading data out of it such that we detect
-  the window open up again, we should always send a window update
-  packet in this case.
-
-  It will make the other end trip the zerowin-timer rarely and I don't
-  like the way the zero win timer is resolved.
-* TODO Consider moving the window-specific code to its own module.
-  The window-code will grow rather big so refactor it to its own
-  module
-* TODO Test the wrap-around
-  The 16bit wrap-around counter has to be tested somehow.
-* TODO Retransmission of the syn packet seems to fail for some reason.
+* DONE Find and remove dialyzer missing types
+  The dialyzer reports some missing types. Fix this.
+* DONE Retransmission of the syn packet seems to fail for some reason.
   Investigate why this is the case and fix it.
 
   We detect we should retransmit the SYN packet. Do we actually
@@ -629,35 +593,47 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   not transferred back. It should be retransmitted and the system
   should detect this is the case! But I am fairly sure there is no
   code in place which ensures this is the case.
-* If we already have a connection worker, forward new SYN packets to it
+
+  This has been solved. The problem is that a SYN evades the registry
+  by having another ConnID number in it. So the SYN packets that got
+  resent was not sent to the right process and he then never does
+  anything with them. If the ACK packet is lost then, we get another
+  SYN which will force another ACK that will set up the
+  connection. But this didn't work initially.
+* DONE If we already have a connection worker, forward new SYN packets to it
   This way, the worker process is responsible for doing the right
   thing in the case a duplicate SYN comes in, and handle it
   accordingly. I think this is a better design choice than the one we
   have now.
-* Let the SYN-packet use the normal retransmission queue
-  First mistake on our part: SYN packets should go to the outgoing
-  queue and be handled as resends. We currently fake-retransmit it,
-  but it looks easier to simpler use the same queueing facility of the
-  other end.
-** Also, here we want to handle the case of bad packet transmission
-   If we *know* a buffer is full, we ought to handle it right away by
-   doing the right thing(tm).
+* TODO Consider moving the window-specific code to its own module.
+  The window-code will grow rather big so refactor it to its own
+  module
+* TODO Looks like resets are sent to the wrong place
+  If we get in a wrong packet, to where should the RESET be sent in
+  order to hit right in the other end?
+
+** TODO What is utp.cpp doing here?
+** TODO Do the same thing as utp.cpp :)
+* TODO Consider timeouts in all states.
+  We need to make sure there is a timeout exit for all connection
+  states. This is not currently guaranteed.
+* TODO TEST CASE: Receive window test
+* TODO Force an st_state packet through when the window *reopens*
+  If we have a window that is down to 0, and we then suddenly get a
+  receiver on the socket reading data out of it such that we detect
+  the window open up again, we should always send a window update
+  packet in this case.
+
+  It will make the other end trip the zerowin-timer rarely and I don't
+  like the way the zero win timer is resolved.
+* TODO TEST CASE: Test the wrap-around
+  The 16bit wrap-around counter has to be tested somehow.
+* TEST CASE: Piggyback test
 * ACK piggybacking
   ACK piggybacking is the concept where we under a send check if we
   sent a packet. If this is the case, we effectively have a piggy-back
   and can drop sending out a separate ACK. It is easily detected in
   the code base and then handled explicitly.
-* Delayed ACKS - Make sure we immediately ack the FIN packet. Don't delay him!
-  Easy right now, but keep this as it is important when you
-  introduce delayed ACKs.
-
-  In a delayed ACK world, we ought to do something about the FIN
-  packet and ACK it right away. Otherwise it will wait until the delay
-  trigger is tripped and that will take some time.
-
-* Look at the coverage output:
-  What things are we not testing currently?
-* Consider proper for testing.
 * RTT Measurement
   This is probably different in uTP from the standard protocol
 
@@ -665,6 +641,21 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   is fairly important to get right, but it requires us to investigate
   a lot on the reference code to understand what is going on. It is
   the major important part of this weeks work.
+* Congestion window code
+  Hinges on RTT Measurement
+* Implement Delayed ACKs
+  Fairly easily done. You simply count how many bytes we have ACKed
+  since last and set a timer. Whenever the timer triggers, or we go
+  above the ACKED_BYTES threshold, we send out an ACK. Piggybacking
+  will reset this if it happens.
+** Delayed ACKS - Make sure we immediately ack the FIN packet. Don't delay him!
+  Easy right now, but keep this as it is important when you
+  introduce delayed ACKs.
+
+  In a delayed ACK world, we ought to do something about the FIN
+  packet and ACK it right away. Otherwise it will wait until the delay
+  trigger is tripped and that will take some time.
+
 * SACK support
   SACK support has two directions
 ** SACK in the send direction
@@ -686,11 +677,15 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   wait for more data until we have a full packet to send. It means we
   need to be able to taste/peek on the send buffer to see if there is
   enough data on it to be able to send out a full packet.
-* Implement Delayed ACKs
-  Fairly easily done. You simply count how many bytes we have ACKed
-  since last and set a timer. Whenever the timer triggers, or we go
-  above the ACKED_BYTES threshold, we send out an ACK. Piggybacking
-  will reset this if it happens.
+
+  NAGLING MUST BE IMPLEMENTED AFTER THE CONGESTION WINDOW CODE
+* Look at the coverage output:
+  What things are we not testing currently?
+* Let the SYN-packet use the normal retransmission queue
+  First mistake on our part: SYN packets should go to the outgoing
+  queue and be handled as resends. We currently fake-retransmit it,
+  but it looks easier to simpler use the same queueing facility of the
+  other end.
 * TODO Add a safety timer on RESET Packets
   We currently just RESET on anything, but we should probably include
   some kind of protection and blackhole the other end for a while if
@@ -700,7 +695,7 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   But it doesn't matter at the moment. I'd rather look into other
   errors first and get those away first. Then we can look into this
   which should be fairly automated to add later on.
-* TODO We sometimes hit {error, enobufs}
+* DONE We sometimes hit {error, enobufs}
   On the FreeBSD machine. Investigate and handle this kind of error
   message.
 
@@ -726,6 +721,21 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   This is a problem we can ignore in principle until we have other
   parts of the system up and running. Retransmission will ensure we
   eventually get them in.
+** TODO Read libutp source code on out-of-order packets in syn_sent
+  It is not obvious what to do:
+
+  There are so many loose holes in this so we better fix them. How do
+  we want to handle initial ACK's and stuff?
+
+  The best thing is to read through the code of libutp and figure out
+  what they have decided to do.
+
+  Essentially, this is the question that says: Should we allow for
+  false starts or shouldn't we allow for false starts? Is libutp
+  accepting false starts? We could just buffer up incoming packets
+  temporarily and then feed them to ourselves when we go to the
+  connected state.
+
 * TODO Handle ENOBUFS in packet initialization:
    {{badmatch,{error,enobufs}},
     [{utp_pkt,send_packet,4},
@@ -737,6 +747,9 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
      {proc_lib,init_p_do_apply,3}]}
 
    The error is currently benign though as Erlang makes us survive.
+
+   If we *know* a buffer is full, we ought to handle it right away by
+   doing the right thing(tm).
 * The ConnId lookup table should guard against generating an already existing random number.
   This is fairly simple. When generating a new ConnID, look up if we
   already have one.
@@ -754,8 +767,8 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
 
   This is probably not needed if we triple the ConnID over the IP/Port
   pairs.
-
-
-
-
-
+* TODO Stop stray async_messages on packet types we know how to handle
+  There are some async messages that comes out of the system. We know
+  how they should be handled, so we can handle them in the code and
+  ignore them.
+* Consider proper for testing.
