@@ -87,6 +87,9 @@ ct_utp: ct_prep
 ct_etorrent: ct_prep
 	${CT_RUN} -spec etorrent_test.spec | tee test.etorrent.log
 
+ct_scrutinee: ct_prep
+	${CT_RUN} -spec p.spec | tee test.p.log
+
 common_test: ct_utp ct_etorrent
 
 console:
