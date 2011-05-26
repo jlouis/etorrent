@@ -5,13 +5,11 @@
 -include("utp.hrl").
 
 -export([
-         mk/0,
-         mk_buf/1,
+         mk/1,
 
          init_seqno/2,
          init_ackno/2,
 
-         packet_size/1,
          mk_random_seq_no/0,
          send_fin/2,
          send_ack/2,
@@ -22,12 +20,8 @@
          fill_window/4,
 
          advertised_window/1,
-         handle_advertised_window/2,
 
-         retransmit_packet/2,
-         view_zero_window/1,
-         bump_window/1,
-         rto/1
+         retransmit_packet/2
          ]).
 
 %% DEFINES
@@ -42,30 +36,6 @@
 
 %% TYPES
 %% ----------------------------------------------------------------------
--record(pkt_window, {
-          %% Size of the window the Peer advertises to us.
-          peer_advertised_window = 4096 :: integer(),
-
-          %% The current window size in the send direction, in bytes.
-          cur_window :: integer(),
-          %% Maximal window size int the send direction, in bytes.
-          max_send_window :: integer(),
-
-          %% Timeouts,
-          %% --------------------
-          %% Set when we update the zero window to 0 so we can reset it to 1.
-          zero_window_timeout :: none | {set, reference()},
-          rto = 3000 :: integer(), % Retransmit timeout default
-
-          %% Timestamps
-          %% --------------------
-          %% When was the window last totally full (in send direction)
-          last_maxed_out_window :: integer()
-         }).
-
-
--type t() :: #pkt_window{}.
-
 -type message() :: send_ack.
 -type messages() :: [message()].
 
@@ -100,7 +70,7 @@
           %% @todo Discover this one
           pkt_size = 1000 :: integer()
          }).
--type buf() :: #pkt_buf{}.
+-opaque t() :: #pkt_buf{}.
 
 %% Track send quota available
 -record(send_quota, {
@@ -109,9 +79,8 @@
          }).
 -type quota() :: #send_quota{}.
 
--export_type([t/0,
-              pkt/0,
-              buf/0,
+-export_type([pkt/0,
+              t/0,
               messages/0,
               quota/0]).
 
@@ -120,12 +89,8 @@
 
 %% PKT BUF INITIALIZATION
 %% ----------------------------------------------------------------------
--spec mk() -> t().
-mk() ->
-    #pkt_window { }.
-
-mk_buf(none)    -> #pkt_buf{};
-mk_buf(OptRecv) ->
+mk(none)    -> #pkt_buf{};
+mk(OptRecv) ->
     #pkt_buf {
         opt_recv_buf_sz = OptRecv
        }.
@@ -136,20 +101,10 @@ init_seqno(#pkt_buf {} = PBuf, SeqNo) ->
 init_ackno(#pkt_buf{} = PBuf, AckNo) ->
     PBuf#pkt_buf { next_expected_seq_no = AckNo }.
 
-packet_size(_Socket) ->
-    %% @todo FIX get_packet_size/1 to actually work!
-    1000.
-
 mk_random_seq_no() ->
     <<N:16/integer>> = crypto:rand_bytes(2),
     N.
 
-%% Windows
-%% ----------------------------------------------------------------------
-handle_advertised_window(#packet { win_sz = Win }, PKW) ->
-    handle_advertised_window(Win, PKW);
-handle_advertised_window(NewWin, #pkt_window {} = PKWin) when is_integer(NewWin) ->
-    PKWin#pkt_window { peer_advertised_window = NewWin }.
 
 %% SEND SPECIFIC PACKET TYPES
 %% ----------------------------------------------------------------------
@@ -266,8 +221,6 @@ consider_send_ack(_, _) -> [].
 %% packet. As such, this function wraps some lower-level operations,
 %% with respect to incoming payload.
 %% @end                      
--spec handle_receive_buffer(integer(), binary(), #pkt_buf{}, gen_utp_worker:conn_state()) ->
-                                   {#pkt_buf{}, messages()}.
 handle_receive_buffer(SeqNo, Payload, PacketBuffer, State) ->
     case update_recv_buffer(SeqNo, Payload, PacketBuffer, State) of
         %% Force an ACK out in this case
@@ -424,7 +377,6 @@ view_ack_state(N, PB) when is_integer(N) ->
             [{all_acked, true}]
     end.
 
--spec has_inflight_data(#pkt_buf{}) -> boolean().
 has_inflight_data(#pkt_buf { retransmission_queue = [] }) -> false;
 has_inflight_data(#pkt_buf { retransmission_queue = [_|_] }) -> true.
 
@@ -482,7 +434,7 @@ handle_packet(_CurrentTimeMs,
                 update_send_buffer(AckNo, N_PacketBuffer1),
 
             {ok, N_PacketBuffer2,
-             handle_window_size(WindowSize, PktWindow),
+             utp_window:handle_window_size(PktWindow, WindowSize),
              SendMessages ++ RecvMessages};
         no_data when Type == st_state ->
             %% The packet has no data
@@ -490,7 +442,7 @@ handle_packet(_CurrentTimeMs,
                 update_send_buffer(AckNo, N_PacketBuffer),
             
             {ok, N_PacketBuffer2,
-             handle_window_size(WindowSize, PktWindow),
+             utp_window:handle_window_size(PktWindow, WindowSize),
              SendMessages};
         no_data when Type == st_data ->
             ?DEBUG([duplicate_packet]),
@@ -498,7 +450,7 @@ handle_packet(_CurrentTimeMs,
                 update_send_buffer(AckNo, N_PacketBuffer),
 
             {ok, N_PacketBuffer2,
-                 handle_window_size(WindowSize, PktWindow),
+                 utp_window:handle_window_size(PktWindow, WindowSize),
                  SendMessages}
     end.
 
@@ -512,9 +464,6 @@ handle_packet_type(Type, SeqNo, Buf) ->
         st_state ->
             Buf
     end.
-
-handle_window_size(WindowSize, #pkt_window {} = PKI) ->
-    PKI#pkt_window { peer_advertised_window = WindowSize }.
 
 %% PACKET TRANSMISSION
 %% ----------------------------------------------------------------------
@@ -649,9 +598,8 @@ bytes_free_in_window(PktBuf, PktWindow) ->
     end.
 
 max_window_send(#pkt_buf { opt_snd_buf_sz = SendBufSz },
-                #pkt_window { peer_advertised_window = AdvertisedWindow,
-                              max_send_window = MaxSendWindow }) ->
-    lists:min([SendBufSz, AdvertisedWindow, MaxSendWindow]).
+                PKT_Window) ->
+    utp_window:max_window_send(SendBufSz, PKT_Window).
 
 
 enqueue_payload(Payload, #pkt_buf { recv_buf = Q } = PB) ->
@@ -668,16 +616,3 @@ buffer_dequeue(#pkt_buf { recv_buf = Q } = Buf) ->
             empty
     end.
 
-view_zero_window(#pkt_window { peer_advertised_window = N }) when N > 0 ->
-    ok; % There is no reason to update the window
-view_zero_window(#pkt_window { peer_advertised_window = 0 }) ->
-    zero.
-
-bump_window(#pkt_window {} = Win) ->
-    PacketSize = packet_size(todo),
-    Win#pkt_window {
-      peer_advertised_window = PacketSize
-     }.
-
-rto(#pkt_window { rto = RTO }) ->
-    RTO.

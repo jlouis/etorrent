@@ -6,6 +6,7 @@
 -export([
          mk/5,
          set_conn_id/2,
+         packet_size/1,
 
          order_packets/2,
          conn_id_recv/1,
@@ -119,6 +120,6 @@ order_packets(#packet { seq_no = S1 } = P1, #packet { seq_no = S2 } = P2) ->
             [P2, P1]
     end.
 
-
-
-
+packet_size(_Socket) ->
+    %% @todo FIX get_packet_size/1 to actually work!
+    1000.

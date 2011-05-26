@@ -100,7 +100,7 @@
 %% STATE RECORDS
 %% ----------------------------------------------------------------------
 -record(state, { sock_info    :: utp_socket:t(),
-                 pkt_window   :: utp_pkt:t(),
+                 pkt_window   :: utp_window:t(),
                  pkt_buf      :: utp_pkt:buf(),
                  proc_info    :: utp_process:t(),
                  connector    :: {reference(), pid()},
@@ -160,8 +160,8 @@ sync_send_event(Pid, Event) ->
 
 %% @private
 init([Socket, Addr, Port, Options]) ->
-    PktWindow  = utp_pkt:mk(),
-    PktBuf   = utp_pkt:mk_buf(?DEFAULT_OPT_RECV_SZ),
+    PktWindow  = utp_window:mk(),
+    PktBuf   = utp_pkt:mk(?DEFAULT_OPT_RECV_SZ),
     ProcInfo = utp_process:mk(),
     CanonAddr = canonicalize_address(Addr),
     SockInfo = utp_socket:mk(CanonAddr, Options, ?DEFAULT_PACKET_SIZE, Port, Socket),
@@ -202,8 +202,8 @@ syn_sent({pkt, #packet { ty = st_state,
     reply(From, ok),
     {next_state, connected,
      State#state { sock_info = SockInfo,
-                   pkt_window = utp_pkt:handle_advertised_window(WindowSize,
-                                                                 PktWin),
+                   pkt_window = utp_window:handle_advertised_window(WindowSize,
+                                                                    PktWin),
                    retransmit_timeout = clear_retransmit_timer(RTimeout),
                    pkt_buf = utp_pkt:init_ackno(PktBuf, PktSeqNo+1)}};
 syn_sent(close, #state {
@@ -211,7 +211,7 @@ syn_sent(close, #state {
            retransmit_timeout = RTimeout
           } = State) ->
     clear_retransmit_timer(RTimeout),
-    Gracetime = lists:min([60, utp_pkt:rto(Window) * 2]),
+    Gracetime = lists:min([60, utp_window:rto(Window) * 2]),
     Timer = set_retransmit_timer(Gracetime, undefined),
     {next_state, syn_sent, State#state {
                              retransmit_timeout = Timer }};
@@ -291,7 +291,7 @@ connected({timeout, Ref, {zerowindow_timeout, _N}},
             sock_info = SockInfo,
             pkt_window = WindowInfo,
             zerowindow_timeout = {set, Ref}} = State) ->
-    N_Win = utp_pkt:bump_window(WindowInfo),
+    N_Win = utp_window:bump_window(WindowInfo),
     {ZWinTimer, N_PktBuf, N_ProcessInfo} =
         fill_window(SockInfo, ProcessInfo, N_Win, PktBuf, undefined),
     {next_state, connected,
@@ -484,7 +484,7 @@ idle({accept, SYN}, _From, #state { sock_info = SockInfo,
     ok = utp_socket:send_pkt(Win, N_SockInfo, AckPacket),
     {reply, ok, connected,
             State#state { sock_info = N_SockInfo,
-                          pkt_window = utp_pkt:handle_advertised_window(SYN, PktWin),
+                          pkt_window = utp_window:handle_advertised_window(SYN, PktWin),
                           pkt_buf = utp_pkt:init_ackno(
                                       utp_pkt:init_seqno(PktBuf, SeqNo + 1), AckNo+1)}};
 
@@ -644,7 +644,7 @@ fill_window(SockInfo, ProcessInfo, WindowInfo, PktBuffer, ZWinTimer) ->
                             ProcessInfo,
                             WindowInfo,
                             PktBuffer),
-    case utp_pkt:view_zero_window(WindowInfo) of
+    case utp_window:view_zero_window(WindowInfo) of
         ok ->
             {cancel_zerowin_timer(ZWinTimer), N_PktBuffer, N_ProcessInfo};
         zero ->
@@ -688,7 +688,7 @@ handle_packet_incoming(Pkt, RecvTime,
 
             ?DEBUG([node(), messages, Messages]),
             %% The packet may bump the advertised window from the peer, update
-            N_PKI1 = utp_pkt:handle_advertised_window(Pkt, N_PKI),
+            N_PKI1 = utp_window:handle_advertised_window(Pkt, N_PKI),
             
             %% The incoming datagram may have payload we can deliver to an application
             {N_PRI, N_PB} =

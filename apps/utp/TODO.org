@@ -615,14 +615,22 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   wait 5-10 seconds before we begin the receive. And we only receive a
   bit at a time to be even more nasty.
 * DONE Move tests to utp_test
-* TODO Investigate the piggyback test problem
-* TODO Consider moving the window-specific code to its own module.
+* DONE Move the window-specific code to its own module.
   The window-code will grow rather big so refactor it to its own
   module
 * TODO Stop stray async_messages on packet types we know how to handle
   There are some async messages that comes out of the system. We know
   how they should be handled, so we can handle them in the code and
   ignore them.
+* TODO Investigate the piggyback test problem
+  The receive does not complete in one direction for some odd
+  reason. We better investigate why it suddenly hangs and wont
+  complete. It must be due to reordering as the thing works nicely if
+  we don't install the netem messer.
+* TODO Stress test the rwin_test for the receive window
+  This test is specifically made such that it messes with the receive
+  window and will hit the zerowin timer quite a lot. It emulates a
+  slow receiver vs. a fast sender.
 * TODO TEST CASE: Test the wrap-around
   The 16bit wrap-around counter has to be tested somehow.
   One way is to do a backwards test. We send about 100 packets, so we
@@ -784,3 +792,8 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   This is probably not needed if we triple the ConnID over the IP/Port
   pairs.
 * Consider proper for testing.
+
+
+
+
+
