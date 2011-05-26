@@ -11,6 +11,7 @@
          backwards_communication/0, backwards_communication/1,
          full_duplex_communication/0, full_duplex_communication/1,
          piggyback/0, piggyback/1,
+         rwin_test/0, rwin_test/1,
          close_1/0, close_1/1,
          close_2/0, close_2/1,
          close_3/0, close_3/1,
@@ -64,6 +65,7 @@ groups() ->
       [connect_n_communicate,
        backwards_communication,
        full_duplex_communication,
+       rwin_test,
        piggyback,
        close_1,
        close_2,
@@ -135,8 +137,22 @@ connect_n_communicate(Config) ->
     {<<"HELLO">>, <<"WORLD">>} = rpc:call(C2, utp, test_connectee_1, []),
     ok.
 
+rwin_test() ->
+    [{timetrap, {seconds, 300}}].
+
+rwin_test(Config) ->
+    DataDir = ?config(data_dir, Config),
+    {ok, FileData} = file:read_file(filename:join([DataDir, "test_large_send.dat"])),
+    spawn_link(fun() ->
+                       timer:sleep(3000),
+                       ok = rpc:call(?config(connector, Config),
+                                     utp, test_rwin_out, [FileData])
+          end),
+    ok = rpc:call(?config(connectee, Config),
+                  utp, test_rwin_in, [FileData]).
+    
 piggyback() ->
-    [{timetrap, {seconds, 120}}].
+    [{timetrap, {seconds, 300}}].
 
 piggyback(Config) ->
     DataDir = ?config(data_dir, Config),

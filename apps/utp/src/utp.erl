@@ -24,6 +24,9 @@
          test_piggyback_in/1,
          test_piggyback_out/1,
 
+         test_rwin_in/1,
+         test_rwin_out/1,
+
          get/1
          ]).
 
@@ -194,6 +197,34 @@ repeating_connect(Host, Port) ->
             repeating_connect(Host, Port)
     end.
 
+test_rwin_in(Data) ->
+    Sz = byte_size(Data),
+    case gen_utp:listen() of
+        ok ->
+            ignore;
+        {error, ealreadylistening} ->
+            ignore
+    end,
+    {ok, Sock} = gen_utp:accept(),
+    Data = rwin_recv(Sock, Sz, <<>>),
+    ok = gen_utp:close(Sock).
+
+rwin_recv(_Sock, 0, Binary) ->
+    Binary;
+rwin_recv(Sock, Sz, Acc) when Sz =< 10000 ->
+    timer:sleep(3000),
+    {ok, B} = gen_utp:recv(Sock, Sz),
+    rwin_recv(Sock, 0, <<Acc/binary, B/binary>>);
+rwin_recv(Sock, Sz, Acc) when Sz > 10000 ->
+    timer:sleep(3000),
+    {ok, B} = gen_utp:recv(Sock, 10000),
+    rwin_recv(Sock, Sz - 10000, <<Acc/binary, B/binary>>).
+
+test_rwin_out(Data) ->
+    {ok, Sock} = repeating_connect("localhost", 3333),
+    ok = gen_utp:send(Sock, Data),
+    ok = gen_utp:close(Sock).
+
 test_piggyback_out(Data) ->
     Sz = byte_size(Data),
     {ok, Sock} = repeating_connect("localhost", 3333),
@@ -204,6 +235,7 @@ test_piggyback_out(Data) ->
                end),
     {ok, Data} = gen_utp:recv(Sock, Sz),
     ok = gen_utp:close(Sock).
+
 
 test_piggyback_in(Data) ->
     Sz = byte_size(Data),
