@@ -9,7 +9,7 @@
 %% -define(ERR(T), ignore).
 
 
--define(DEBUG(Args), ct:pal("D(~p:~p:~p) : ~p~n",
+-define(DEBUG(Args), ct:pal("D(~p:~p:~p):~n~p~n",
                                [self(),?MODULE,?LINE, Args])).
 %% -define(DEBUG(Args), ignore).
 
