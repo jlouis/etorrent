@@ -5,6 +5,7 @@
 -module(gen_utp).
 
 -include("utp.hrl").
+-include("log.hrl").
 
 -behaviour(gen_server).
 
@@ -20,8 +21,7 @@
          accept/0]).
 
 %% Internally used API
--export([assert_state/0,
-         register_process/2,
+-export([register_process/2,
          reply/2,
          lookup_registrar/3,
          incoming_unknown/3]).
@@ -134,15 +134,15 @@ listen() ->
 %% @doc New unknown incoming packet
 incoming_unknown(#packet { ty = st_syn } = Packet, Addr, Port) ->
     %% SYN packet, so pass it in
-    error_logger:info_report([syn_packet_incoming]),
+    ?DEBUG([syn_packet_incoming]),
     gen_server:cast(?MODULE, {incoming_syn, Packet, Addr, Port});
-incoming_unknown(#packet{ ty = st_reset } = Packet, _Addr, _Port) ->
+incoming_unknown(#packet{ ty = st_reset } = _Packet, _Addr, _Port) ->
     %% Stray RST packet received, ignore since there is no connection for it
-    error_logger:info_report([stray_reset_incoming, Packet]),
+    ?DEBUG([stray_reset_incoming, _Packet]),
     ok;
 incoming_unknown(#packet{} = Packet, Addr, Port) ->
     %% Stray, RST it
-    error_logger:info_report([stray_packet_incoming, Packet]),
+    ?DEBUG([stray_packet_incoming, Packet]),
     gen_server:cast(?MODULE, {generate_reset, Packet, Addr, Port}).
 
 %% @doc Register a process as the recipient of a given incoming message
@@ -159,9 +159,6 @@ lookup_registrar(CID, Addr, Port) ->
         [{_, Pid}] ->
             {ok, Pid}
     end.
-
-assert_state() ->
-    ok = call(assert_state).
 
 %% @doc Reply back to a socket user
 %% @end
@@ -190,33 +187,7 @@ init([Port, Opts]) ->
                  listen_queue = closed,
                  socket = Socket }}.
 
-%%--------------------------------------------------------------------
 %% @private
-%% @doc
-%% Handling call messages
-%%
-%% @spec handle_call(Request, From, State) ->
-%%                                   {reply, Reply, State} |
-%%                                   {reply, Reply, State, Timeout} |
-%%                                   {noreply, State} |
-%%                                   {noreply, State, Timeout} |
-%%                                   {stop, Reason, Reply, State} |
-%%                                   {stop, Reason, State}
-%% @end
-%%--------------------------------------------------------------------
-handle_call(assert_state, _From, #state { listen_queue = Q,
-                                          monitored = Monitored } = State) ->
-    ETS = assert_ets_table(),
-    Mon = assert_monitor_list(Monitored),
-    Queue = assert_listen_queue(Q),
-    case ETS andalso Mon andalso Queue of
-        true ->
-            {reply, ok, State};
-        false ->
-            {reply, {error, [{ets, ETS},
-                             {mon, Mon},
-                             {queue, Queue}]}, State}
-    end;
 handle_call(accept, _From, #state { listen_queue = closed } = S) ->
     {reply, {error, no_listen}, S};
 handle_call(accept, From, #state { listen_queue = Q,
@@ -248,25 +219,25 @@ handle_call(_Request, _From, State) ->
 handle_cast({incoming_syn, _P, _Addr, _Port}, #state { listen_queue = closed } = S) ->
     %% Not listening on queue
     %% @todo RESET sent back here?
-    error_logger:info_report([incoming_syn_but_listen_closed]),
+    ?WARN([incoming_syn_but_listen_closed]),
     {noreply, S};
 handle_cast({incoming_syn, Packet, Addr, Port}, #state { listen_queue = Q,
                                                          socket = Socket } = S) ->
     Elem = {Packet, Addr, Port},
     case push_syn(Elem, Q) of
         synq_full ->
-            error_logger:info_report([syn_queue_full]),
+            ?DEBUG([syn_queue_full]),
             {noreply, S}; % @todo RESET sent back?
         {ok, Pairings, NewQ} ->
-            error_logger:info_report([{paired, Pairings},
-                                      {syn_q, NewQ}]),
+            ?DEBUG([{paired, Pairings},
+                    {syn_q, NewQ}]),
             [accept_incoming_conn(Socket, Acc, SYN) || {Acc, SYN} <- Pairings],
             {noreply, S#state { listen_queue = NewQ }}
     end;
 handle_cast({generate_reset, #packet { conn_id = ConnID,
                                        seq_no  = SeqNo }, Addr, Port},
             #state { socket = Socket } = State) ->
-    error_logger:info_report([pushback_reset]),
+    ?DEBUG([pushback_reset]),
     ok = utp_socket:send_reset(Socket, Addr, Port, ConnID, SeqNo,
                                utp_pkt:mk_random_seq_no()),
     {noreply, State};
@@ -285,8 +256,8 @@ handle_info({'DOWN', Ref, process, _Pid, _Reason}, #state { monitored = MM } = S
     CID = gb_trees:get(Ref, MM),
     true = ets:delete(?TAB, CID),
     {noreply, S#state { monitored = gb_trees:delete(Ref, MM)}};
-handle_info(Info, State) ->
-    error_logger:error_report([unknown_handle_info, Info, State]),
+handle_info(_Info, State) ->
+    ?ERR([unknown_handle_info, _Info, State]),
     {noreply, State}.
 
 %% @private
@@ -328,7 +299,7 @@ handle_queue(#accept_queue { acceptors = AQ,
 
 accept_incoming_conn(Socket, From, {SynPacket, Addr, Port}) ->
     {ok, Pid} = gen_utp_worker_pool:start_child(Socket, Addr, Port, []),
-    error_logger:info_report([accepting, From, SynPacket]),
+    ?DEBUG([accepting, From, SynPacket]),
     gen_server:reply(From, {ok, Pid, SynPacket}).
 
 new_accept_queue(QLen) ->
@@ -336,41 +307,6 @@ new_accept_queue(QLen) ->
                     incoming_conns = queue:new(),
                     q_len = 0,
                     max_q_len = QLen }.
-
-assert_listen_queue(closed) -> true;
-assert_listen_queue(#accept_queue { acceptors = Acceptors,
-                                    incoming_conns = Incoming,
-                                    q_len = QLen }) ->
-    case queue:is_empty(Acceptors) andalso
-        queue:is_empty(Incoming) andalso
-        QLen == 0 of
-        true ->
-            true;
-        false ->
-            error_logger:error_report([wrong_queue_state,
-                                       [{acceptors, Acceptors},
-                                        {incoming, Incoming},
-                                        {qlen, QLen}]]),
-            false
-    end.
-
-assert_monitor_list(Monitored) ->
-    case gb_trees:is_empty(Monitored) of
-        true ->
-            true;
-        false ->
-            error_logger:error_report([monitor_content,
-                                       gb_trees:to_list(Monitored)]),
-            false
-    end.
-
-assert_ets_table() ->
-    case ets:info(?TAB, size) of
-        0 ->
-            true;
-        N when is_integer(N) ->
-            false
-    end.
 
 get_socket() ->
     call(get_socket).

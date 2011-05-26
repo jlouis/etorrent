@@ -605,6 +605,14 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   thing in the case a duplicate SYN comes in, and handle it
   accordingly. I think this is a better design choice than the one we
   have now.
+* DONE Code refactoring: Error logging should be tunable
+  Make it such that error logging is a tunable and not an always on
+  thing as now.
+* TODO TEST CASE: Test the wrap-around
+  The 16bit wrap-around counter has to be tested somehow.
+* TODO TEST CASE: Piggyback test
+
+* TODO TEST CASE: Receive window test
 * TODO Consider moving the window-specific code to its own module.
   The window-code will grow rather big so refactor it to its own
   module
@@ -617,7 +625,6 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
 * TODO Consider timeouts in all states.
   We need to make sure there is a timeout exit for all connection
   states. This is not currently guaranteed.
-* TODO TEST CASE: Receive window test
 * TODO Force an st_state packet through when the window *reopens*
   If we have a window that is down to 0, and we then suddenly get a
   receiver on the socket reading data out of it such that we detect
@@ -626,9 +633,6 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
 
   It will make the other end trip the zerowin-timer rarely and I don't
   like the way the zero win timer is resolved.
-* TODO TEST CASE: Test the wrap-around
-  The 16bit wrap-around counter has to be tested somehow.
-* TEST CASE: Piggyback test
 * ACK piggybacking
   ACK piggybacking is the concept where we under a send check if we
   sent a packet. If this is the case, we effectively have a piggy-back

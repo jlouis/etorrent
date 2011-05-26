@@ -1,6 +1,7 @@
 %% @doc Low level packet buffer management.
 -module(utp_pkt).
 
+-include("log.hrl").
 -include("utp.hrl").
 
 -export([
@@ -170,7 +171,7 @@ send_ack(SockInfo,
         ok ->
             ok;
         {error, Reason} ->
-            error_logger:warning_report([dropping_packet, {error, Reason}]),
+            ?WARN([dropping_packet, {error, Reason}]),
             ok
     end.
 
@@ -314,12 +315,12 @@ update_recv_buffer(SeqNo, <<>>,
 update_recv_buffer(_SeqNo, <<>>, PB, _State) -> {ok, PB};
 update_recv_buffer(SeqNo, Payload, #pkt_buf { fin_state = {got_fin, SeqNo},
                                               next_expected_seq_no = SeqNo } = PB, State) ->
-    error_logger:info_report([got_fin_confirm, SeqNo]),
+    ?DEBUG([got_fin_confirm, SeqNo]),
     N_PB = recv_buffer_enqueue(State, Payload, PB),
     {got_fin, N_PB#pkt_buf { next_expected_seq_no = bit16(SeqNo+1)}};
 update_recv_buffer(SeqNo, Payload, #pkt_buf { next_expected_seq_no = SeqNo } = PB, State) ->
     %% This is the next expected packet, yay!
-    error_logger:info_report([got_expected, SeqNo, bit16(SeqNo+1)]),
+    ?DEBUG([got_expected, SeqNo, bit16(SeqNo+1)]),
     N_PB = recv_buffer_enqueue(State, Payload, PB),
     satisfy_from_reorder_buffer(
       N_PB#pkt_buf { next_expected_seq_no = bit16(SeqNo+1) }, State);
@@ -336,7 +337,7 @@ satisfy_from_reorder_buffer(#pkt_buf { reorder_buf = [] } = PB, _State) ->
 satisfy_from_reorder_buffer(#pkt_buf { next_expected_seq_no = AckNo,
                                        fin_state = {got_fin, AckNo},
                                        reorder_buf = [{AckNo, PL} | R]} = PB, State) ->
-    error_logger:info_report([got_fin_confirm_from_ro_buffer]),
+    ?DEBUG([got_fin_confirm_from_ro_buffer]),
     N_PB = recv_buffer_enqueue(State, PL, PB),
     {got_fin, N_PB#pkt_buf { next_expected_seq_no = bit16(AckNo+1),
                              reorder_buf = R}};
@@ -375,9 +376,9 @@ update_send_buffer(AckNo, #pkt_buf { seq_no = NextSeqNo } = PB) ->
             {ok, FinState ++ view_ack_state(Acked, PB1),
                  AcksAhead,
                  PB1};
-        {ack_is_old, AcksAhead} ->
-            error_logger:info_report([node(), ack_is_old,
-                                      {acks_ahead, AcksAhead},
+        {ack_is_old, _AcksAhead} ->
+            ?DEBUG([node(), ack_is_old,
+                                      {acks_ahead, _AcksAhead},
                                       {window_size, WindowSize},
                                       {window_start, WindowStart}]),
             {ok, [{old_ack, true}], 0, PB}
@@ -492,7 +493,7 @@ handle_packet(_CurrentTimeMs,
              handle_window_size(WindowSize, PktWindow),
              SendMessages};
         no_data when Type == st_data ->
-            error_logger:info_report([duplicate_packet]),
+            ?DEBUG([duplicate_packet]),
             {ok, SendMessages, _AcksAhead, N_PacketBuffer2} =
                 update_send_buffer(AckNo, N_PacketBuffer),
 
@@ -578,7 +579,7 @@ retransmit_packet(PktBuf, SockInfo) ->
     #pkt_wrap { packet = Pkt,
                 transmissions = N } = Oldest,
     Win = advertised_window(PktBuf),
-    error_logger:info_report([resending, utp_socket:format_pkt(Pkt)]),
+    ?DEBUG([resending, utp_socket:format_pkt(Pkt)]),
     ok = utp_socket:send_pkt(Win, SockInfo, Pkt),
     Wrap = Oldest#pkt_wrap { transmissions = N+1 },
     PktBuf#pkt_buf { retransmission_queue = [Wrap | Rest] }.

@@ -34,3 +34,4 @@ webui/*.log
 /apps/utp/src/TAGS
 /apps/utp/src/tags
 /p.spec
+/test.utp.log

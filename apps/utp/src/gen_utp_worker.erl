@@ -8,6 +8,7 @@
 %%%-------------------------------------------------------------------
 -module(gen_utp_worker).
 
+-include("log.hrl").
 -include("utp.hrl").
 
 -behaviour(gen_fsm).
@@ -172,9 +173,9 @@ init([Socket, Addr, Port, Options]) ->
 %% @private
 idle(close, S) ->
     {next_state, destroy, S, 0};
-idle(Msg, S) ->
+idle(_Msg, S) ->
     %% Ignore messages
-    error_logger:error_report([node(), async_message, idle, Msg]),
+    ?ERR([node(), async_message, idle, _Msg]),
     {next_state, idle, S}.
 
 %% @private
@@ -220,7 +221,7 @@ syn_sent({timeout, TRef, {retransmit_timeout, N}},
                   connector = From,
                   pkt_buf = PktBuf
                 } = State) ->
-    error_logger:info_report([syn_timeout_triggered]),
+    ?DEBUG([syn_timeout_triggered]),
     case N > ?SYN_TIMEOUT_THRESHOLD of
         true ->
             reply(From, {error, etimedout}),
@@ -231,15 +232,15 @@ syn_sent({timeout, TRef, {retransmit_timeout, N}},
             Win = utp_pkt:advertised_window(PktBuf),
             ok = utp_socket:send_pkt(Win, SockInfo, SynPacket,
                                      utp_socket:conn_id_recv(SockInfo)),
-            error_logger:info_report([syn_packet_resent]),
+            ?DEBUG([syn_packet_resent]),
             {next_state, syn_sent,
              State#state {
                retransmit_timeout = set_retransmit_timer(N*2, undefined)
               }}
     end;
-syn_sent(Msg, S) ->
+syn_sent(_Msg, S) ->
     %% Ignore messages
-    error_logger:error_report([node(), async_message, syn_sent, Msg]),
+    ?ERR([node(), async_message, syn_sent, _Msg]),
     {next_state, syn_sent, S}.
 
 
@@ -252,11 +253,11 @@ connected({pkt, #packet { ty = st_reset }, _},
     N_PRI = error_all(PRI, econnreset),
     {next_state, reset, State#state { proc_info = N_PRI }};
 connected({pkt, #packet { ty = st_syn }, _}, State) ->
-    error_logger:info_report([duplicate_syn_packet, ignoring]),
+    ?INFO([duplicate_syn_packet, ignoring]),
     {next_state, connected, State};
 connected({pkt, Pkt, {_TS, _TSDiff, RecvTime}},
 	  #state { retransmit_timeout = RetransTimer } = State) ->
-    %%error_logger:info_report([node(), incoming_pkt, connected, utp_socket:format_pkt(Pkt)]),
+    ?DEBUG([node(), incoming_pkt, connected, utp_socket:format_pkt(Pkt)]),
 
     {ok, Messages, N_PKI, N_PB, N_PRI, ZWinTimeout} =
         handle_packet_incoming(Pkt, RecvTime, State),
@@ -313,9 +314,9 @@ connected({timeout, Ref, {retransmit_timeout, N}},
             {next_state, connected, State#state { retransmit_timeout = N_Timer,
                                                   pkt_buf = N_PB }}
     end;
-connected(Msg, State) ->
+connected(_Msg, State) ->
     %% Ignore messages
-    error_logger:error_report([node(), async_message, connected, Msg]),
+    ?ERR([node(), async_message, connected, _Msg]),
     {next_state, connected, State}.
 
 %% @private
@@ -335,9 +336,9 @@ got_fin({timeout, Ref, {retransmit_timeout, N}},
             {next_state, got_fin, State#state { retransmit_timeout = N_Timer,
                                                 pkt_buf = N_PB }}
     end;
-got_fin(Msg, State) ->
+got_fin(_Msg, State) ->
     %% Ignore messages
-    error_logger:error_report([node(), async_message, got_fin, Msg]),
+    ?ERR([node(), async_message, got_fin, _Msg]),
     {next_state, got_fin, State}.
 
 %% @private
@@ -358,9 +359,9 @@ destroy_delay({timeout, Ref, {retransmit_timeout, N}},
     end;
 destroy_delay(close, State) ->
     {next_state, destroy, State, 0};
-destroy_delay(Msg, State) ->
+destroy_delay(_Msg, State) ->
     %% Ignore messages
-    error_logger:error_report([node(), async_message, destroy_delay, Msg]),
+    ?ERR([node(), async_message, destroy_delay, _Msg]),
     {next_state, destroy_delay, State}.
 
 %% @private
@@ -379,7 +380,7 @@ fin_sent({pkt, #packet { ty = st_reset }, _},
     {next_state, destroy, State#state { proc_info = N_PRI }};
 fin_sent({pkt, Pkt, {_TS, _TSDiff, RecvTime}},
 	  #state { retransmit_timeout = RetransTimer } = State) ->
-    %%error_logger:info_report([node(), incoming_pkt, fin_sent, utp_socket:format_pkt(Pkt)]),
+    ?DEBUG([node(), incoming_pkt, fin_sent, utp_socket:format_pkt(Pkt)]),
 
     {ok, Messages, N_PKI, N_PB, N_PRI, ZWinTimeout} =
         handle_packet_incoming(Pkt, RecvTime, State),
@@ -417,17 +418,17 @@ fin_sent({timeout, Ref, {retransmit_timeout, N}},
             {next_state, fin_sent, State#state { retransmit_timeout = N_Timer,
                                                  pkt_buf = N_PB }}
     end;
-fin_sent(Msg, State) ->
+fin_sent(_Msg, State) ->
     %% Ignore messages
-    error_logger:error_report([node(), async_message, fin_sent, Msg]),
+    ?ERR([node(), async_message, fin_sent, _Msg]),
     {next_state, fin_sent, State}.
 
 %% @private
 reset(close, State) ->
     {next_state, destroy, State, 0};
-reset(Msg, State) ->
+reset(_Msg, State) ->
     %% Ignore messages
-    error_logger:error_report([node(), async_message, reset, Msg]),
+    ?ERR([node(), async_message, reset, _Msg]),
     {next_state, reset, State}.
 
 %% @private
@@ -435,9 +436,9 @@ reset(Msg, State) ->
 destroy(timeout, #state { proc_info = ProcessInfo } = State) ->
     N_ProcessInfo = error_all(ProcessInfo, econnreset),
     {stop, normal, State#state { proc_info = N_ProcessInfo }};
-destroy(Msg, State) ->
+destroy(_Msg, State) ->
     %% Ignore messages
-    error_logger:error_report([node(), async_message, destroy, Msg]),
+    ?ERR([node(), async_message, destroy, _Msg]),
     {next_state, destroy, State}.
 
 %% @private
@@ -518,8 +519,8 @@ connected({send, Data}, From, #state {
                               zerowindow_timeout = N_ZWinTimer,
 			      proc_info = ProcInfo1,
 			      pkt_buf   = PKB1 }};
-connected(Msg, From, State) ->
-    error_logger:warning_report([sync_message, connected, Msg, From]),
+connected(_Msg, _From, State) ->
+    ?ERR([sync_message, connected, _Msg, _From]),
     {next_state, connected, State}.
 
 %% @private
@@ -541,8 +542,8 @@ reset({send, _Data}, _From, State) ->
     {reply, {error, econnreset}, reset, State}.
 
 %% @private
-handle_event(Event, StateName, State) ->
-    error_logger:error_report([unknown_handle_event, Event, StateName, State]),
+handle_event(_Event, StateName, State) ->
+    ?ERR([unknown_handle_event, _Event, StateName, State]),
     {next_state, StateName, State}.
 
 %% @private
@@ -600,19 +601,19 @@ set_retransmit_timer(N, Timer) ->
 
 set_retransmit_timer(N, K, undefined) ->
     Ref = gen_fsm:start_timer(N, {retransmit_timeout, K}),
-    error_logger:info_report([node(), setting_retransmit_timer]),
+    ?DEBUG([node(), setting_retransmit_timer]),
     {set, Ref};
 set_retransmit_timer(N, K, {set, Ref}) ->
     gen_fsm:cancel_timer(Ref),
     N_Ref = gen_fsm:start_timer(N, {retransmit_timeout, K}),
-    error_logger:info_report([node(), setting_retransmit_timer]),
+    ?DEBUG([node(), setting_retransmit_timer]),
     {set, N_Ref}.
 
 clear_retransmit_timer(undefined) ->
     undefined;
 clear_retransmit_timer({set, Ref}) ->
     gen_fsm:cancel_timer(Ref),
-    error_logger:info_report([node(), clearing_retransmit_timer]),
+    ?DEBUG([node(), clearing_retransmit_timer]),
     undefined.
 
 handle_retransmit_timer(Messages, RetransTimer) ->
@@ -685,7 +686,7 @@ handle_packet_incoming(Pkt, RecvTime,
     of
         {ok, N_PB1, N_PKI, Messages} ->
 
-            %% error_logger:info_report([node(), messages, Messages]),
+            ?DEBUG([node(), messages, Messages]),
             %% The packet may bump the advertised window from the peer, update
             N_PKI1 = utp_pkt:handle_advertised_window(Pkt, N_PKI),
             
@@ -716,7 +717,7 @@ handle_packet_incoming(Pkt, RecvTime,
             {ok, Messages, N_PKI1, N_PB2, N_PRI2, ZWinTimeout}
     catch
         throw:{error, is_far_in_future} ->
-            error_logger:info_report([old_packet_received]),
+            ?DEBUG([old_packet_received]),
             {ok, [], PKI, PB, PRI, ZWin}
     end.
 
@@ -729,9 +730,11 @@ handle_timeout(Ref, N, PacketBuf, SockInfo, {set, Ref} = Timer) ->
             N_PB = utp_pkt:retransmit_packet(PacketBuf, SockInfo),
             {reinstalled, N_Timer, N_PB}
     end;
-handle_timeout(Ref, N, _PacketBuf, _Sockinfo, Timer) ->
-    error_logger:error_report([stray_retransmit_timer, Ref, N, Timer]),
+handle_timeout(_Ref, _N, _PacketBuf, _Sockinfo, _Timer) ->
+    ?ERR([stray_retransmit_timer, _Ref, _N, _Timer]),
     stray.
+
+%% ----------------------------------------------------------------------
 
 canonicalize_address(S) when is_list(S) ->
     {ok, CAddr} = inet:getaddr(S, inet),
