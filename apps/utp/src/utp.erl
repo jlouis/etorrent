@@ -234,12 +234,12 @@ test_piggyback_out(Data) ->
                        Recv ! {done, Ref}
                end),
     {ok, Data} = gen_utp:recv(Sock, Sz),
+    ct:pal("Received out, waiting for done"),
     receive
         {done, Ref} ->
             ok
     end,
-    ok = gen_utp:close(Sock).
-
+    Sock.
 
 test_piggyback_in(Data) ->
     Sz = byte_size(Data),
@@ -256,11 +256,12 @@ test_piggyback_in(Data) ->
                        Recv ! {done, Ref}
                end),
     {ok, Data} = gen_utp:recv(Sock, Sz),
+    ct:pal("Received in, waiting for done"),
     receive
         {done, Ref} ->
             ok
     end,
-    ok = gen_utp:close(Sock).
+    Sock.
 
 test_recv_large_file(Sz) ->
     case gen_utp:listen() of

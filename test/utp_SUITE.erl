@@ -157,13 +157,22 @@ piggyback() ->
 piggyback(Config) ->
     DataDir = ?config(data_dir, Config),
     {ok, FileData} = file:read_file(filename:join([DataDir, "test_large_send.dat"])),
+    {Controller, Ref} = {self(), make_ref()},
     spawn_link(fun() ->
                        timer:sleep(3000),
-                       ok = rpc:call(?config(connector, Config),
-                                     utp, test_piggyback_out, [FileData])
-          end),
-    ok = rpc:call(?config(connectee, Config),
-                  utp, test_piggyback_in, [FileData]).
+                       Socket1 = rpc:call(?config(connector, Config),
+                                         utp, test_piggyback_out, [FileData]),
+                       Controller ! {done, Ref, Socket1}
+               end),
+    Socket2 = rpc:call(?config(connectee, Config),
+                       utp, test_piggyback_in, [FileData]),
+    ct:pal("All done, collecting sockets for closing"),
+    receive
+        {done, Ref, Socket1} ->
+            ok = gen_utp:close(Socket1),
+            ok = gen_utp:close(Socket2),
+            ok
+    end.
 
 connect_n_send_big() ->
     [{timetrap, {seconds, 300}}].
