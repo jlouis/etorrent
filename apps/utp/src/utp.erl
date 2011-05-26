@@ -21,6 +21,9 @@
          test_send_large_file/1,
          test_recv_large_file/1,
 
+         test_piggyback_in/1,
+         test_piggyback_out/1,
+
          get/1
          ]).
 
@@ -49,6 +52,7 @@ ensure_started([App | R]) ->
     end.
 
 
+    
 test_connector_1() ->
     {ok, Sock} = repeating_connect("localhost", 3333),
     ok = gen_utp:send(Sock, "HELLO"),
@@ -189,6 +193,34 @@ repeating_connect(Host, Port) ->
         {error, etimedout} ->
             repeating_connect(Host, Port)
     end.
+
+test_piggyback_out(Data) ->
+    Sz = byte_size(Data),
+    {ok, Sock} = repeating_connect("localhost", 3333),
+    {Recv, Ref} = {self(), make_ref()},
+    spawn_link(fun() ->
+                       ok = gen_utp:send(Sock, Data),
+                       Recv ! {done, Ref}
+               end),
+    {ok, Data} = gen_utp:recv(Sock, Sz),
+    ok = gen_utp:close(Sock).
+
+test_piggyback_in(Data) ->
+    Sz = byte_size(Data),
+    case gen_utp:listen() of
+        ok ->
+            ignore;
+        {error, ealreadylistening} ->
+            ignore
+    end,
+    {ok, Sock} = gen_utp:accept(),
+    {Recv, Ref} = {self(), make_ref()},
+    spawn_link(fun() ->
+                       ok = gen_utp:send(Sock, Data),
+                       Recv ! {done, Ref}
+               end),
+    {ok, Data} = gen_utp:recv(Sock, Sz),
+    ok = gen_utp:close(Sock).
 
 test_recv_large_file(Sz) ->
     case gen_utp:listen() of

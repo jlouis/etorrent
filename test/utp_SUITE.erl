@@ -10,6 +10,7 @@
 -export([connect_n_communicate/0, connect_n_communicate/1,
          backwards_communication/0, backwards_communication/1,
          full_duplex_communication/0, full_duplex_communication/1,
+         piggyback/0, piggyback/1,
          close_1/0, close_1/1,
          close_2/0, close_2/1,
          close_3/0, close_3/1,
@@ -63,12 +64,13 @@ groups() ->
       [connect_n_communicate,
        backwards_communication,
        full_duplex_communication,
+       piggyback,
        close_1,
        close_2,
        close_3,
        connect_n_send_big]},
      {stress_group, [{repeat_until_any_fail, 200}],
-     [backwards_communication]}].
+     [piggyback]}].
 
 all() ->
     [{group, main_group}].
@@ -132,6 +134,20 @@ connect_n_communicate(Config) ->
           end),
     {<<"HELLO">>, <<"WORLD">>} = rpc:call(C2, utp, test_connectee_1, []),
     ok.
+
+piggyback() ->
+    [{timetrap, {seconds, 120}}].
+
+piggyback(Config) ->
+    DataDir = ?config(data_dir, Config),
+    {ok, FileData} = file:read_file(filename:join([DataDir, "test_large_send.dat"])),
+    spawn_link(fun() ->
+                       timer:sleep(3000),
+                       ok = rpc:call(?config(connector, Config),
+                                     utp, test_piggyback_in, [FileData])
+          end),
+    ok = rpc:call(?config(connectee, Config),
+                  utp, test_piggyback_out, [FileData]).
 
 connect_n_send_big() ->
     [{timetrap, {seconds, 300}}].
