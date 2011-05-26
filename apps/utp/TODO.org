@@ -614,7 +614,7 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   happens when the receive window is full in one end. We basically
   wait 5-10 seconds before we begin the receive. And we only receive a
   bit at a time to be even more nasty.
-* TODO Move tests to utp_test
+* DONE Move tests to utp_test
 * TODO Investigate the piggyback test problem
 * TODO Consider moving the window-specific code to its own module.
   The window-code will grow rather big so refactor it to its own

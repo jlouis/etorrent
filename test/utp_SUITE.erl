@@ -65,8 +65,8 @@ groups() ->
       [connect_n_communicate,
        backwards_communication,
        full_duplex_communication,
-       rwin_test,
-       piggyback,
+%%       rwin_test,
+%%       piggyback,
        close_1,
        close_2,
        close_3,
@@ -84,10 +84,10 @@ two_way(Config, In, Out) ->
     R = make_ref(),
     spawn(fun() ->
                   timer:sleep(3000),
-                  ok = rpc:call(C1, utp, Out, []),
+                  ok = rpc:call(C1, utp_test, Out, []),
                   N ! {done, R}
           end),
-    ok = rpc:call(C2, utp, In, []),
+    ok = rpc:call(C2, utp_test, In, []),
     receive
         {done, R} -> ignore
     end,
@@ -132,9 +132,9 @@ connect_n_communicate(Config) ->
     spawn(fun() ->
                   %% @todo, should fix this timer invocation
                   timer:sleep(3000),
-                  rpc:call(C1, utp, test_connector_1, [])
+                  rpc:call(C1, utp_test, test_connector_1, [])
           end),
-    {<<"HELLO">>, <<"WORLD">>} = rpc:call(C2, utp, test_connectee_1, []),
+    {<<"HELLO">>, <<"WORLD">>} = rpc:call(C2, utp_test, test_connectee_1, []),
     ok.
 
 rwin_test() ->
@@ -146,10 +146,10 @@ rwin_test(Config) ->
     spawn_link(fun() ->
                        timer:sleep(3000),
                        ok = rpc:call(?config(connector, Config),
-                                     utp, test_rwin_out, [FileData])
+                                     utp_test, test_rwin_out, [FileData])
           end),
     ok = rpc:call(?config(connectee, Config),
-                  utp, test_rwin_in, [FileData]).
+                  utp_test, test_rwin_in, [FileData]).
     
 piggyback() ->
     [{timetrap, {seconds, 300}}].
@@ -161,11 +161,11 @@ piggyback(Config) ->
     spawn_link(fun() ->
                        timer:sleep(3000),
                        Socket1 = rpc:call(?config(connector, Config),
-                                         utp, test_piggyback_out, [FileData]),
+                                         utp_test, test_piggyback_out, [FileData]),
                        Controller ! {done, Ref, Socket1}
                end),
     Socket2 = rpc:call(?config(connectee, Config),
-                       utp, test_piggyback_in, [FileData]),
+                       utp_test, test_piggyback_in, [FileData]),
     ct:pal("All done, collecting sockets for closing"),
     receive
         {done, Ref, Socket1} ->
@@ -183,10 +183,10 @@ connect_n_send_big(Config) ->
     spawn(fun() ->
                   timer:sleep(3000),
                   rpc:call(?config(connector, Config),
-                           utp, test_send_large_file, [FileData])
+                           utp_test, test_send_large_file, [FileData])
           end),
     ReadData = rpc:call(?config(connectee, Config),
-                        utp, test_recv_large_file, [byte_size(FileData)]),
+                        utp_test, test_recv_large_file, [byte_size(FileData)]),
     FileData = ReadData.
 
 %% Helpers
