@@ -71,8 +71,8 @@ groups() ->
        close_2,
        close_3,
        connect_n_send_big]},
-     {stress_group, [{repeat_until_any_fail, 200}],
-     [piggyback]}].
+     {stress_group, [{repeat_until_any_fail, 50}],
+      [piggyback]}].
 
 all() ->
     [{group, main_group}].

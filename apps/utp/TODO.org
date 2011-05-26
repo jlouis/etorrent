@@ -614,19 +614,22 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   happens when the receive window is full in one end. We basically
   wait 5-10 seconds before we begin the receive. And we only receive a
   bit at a time to be even more nasty.
+* TODO Consider moving the window-specific code to its own module.
+  The window-code will grow rather big so refactor it to its own
+  module
+* TODO Stop stray async_messages on packet types we know how to handle
+  There are some async messages that comes out of the system. We know
+  how they should be handled, so we can handle them in the code and
+  ignore them.
 * TODO TEST CASE: Test the wrap-around
   The 16bit wrap-around counter has to be tested somehow.
   One way is to do a backwards test. We send about 100 packets, so we
   have a 65536/100 = 665.35 to one chance of hitting it. That is, we
   will hit it in one out of 3 test runs, approximately...
 
-* TODO Consider moving the window-specific code to its own module.
-  The window-code will grow rather big so refactor it to its own
-  module
 * TODO Looks like resets are sent to the wrong place
   If we get in a wrong packet, to where should the RESET be sent in
   order to hit right in the other end?
-
 ** TODO What is utp.cpp doing here?
 ** TODO Do the same thing as utp.cpp :)
 * TODO Consider timeouts in all states.
@@ -778,8 +781,4 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
 
   This is probably not needed if we triple the ConnID over the IP/Port
   pairs.
-* TODO Stop stray async_messages on packet types we know how to handle
-  There are some async messages that comes out of the system. We know
-  how they should be handled, so we can handle them in the code and
-  ignore them.
 * Consider proper for testing.
