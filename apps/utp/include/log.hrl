@@ -8,8 +8,9 @@
         [process_info(self(), current_function), {line, ?LINE} | T])).
 %% -define(ERR(T), ignore).
 
-%% -define(DEBUG(Args), io:format("D(~p:~p:~p) : ~p~n",
-%%                                       [self(),?MODULE,?LINE, Args])).
--define(DEBUG(Args), ignore).
+
+-define(DEBUG(Args), ct:pal("D(~p:~p:~p) : ~p~n",
+                               [self(),?MODULE,?LINE, Args])).
+%% -define(DEBUG(Args), ignore).
 
 
