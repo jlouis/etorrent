@@ -35,4 +35,4 @@ webui/*.log
 /apps/utp/src/tags
 /p.spec
 /test.utp.log
-/test.p.log
+/test.stress_test.log
