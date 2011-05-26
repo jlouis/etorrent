@@ -144,10 +144,10 @@ piggyback(Config) ->
     spawn_link(fun() ->
                        timer:sleep(3000),
                        ok = rpc:call(?config(connector, Config),
-                                     utp, test_piggyback_in, [FileData])
+                                     utp, test_piggyback_out, [FileData])
           end),
     ok = rpc:call(?config(connectee, Config),
-                  utp, test_piggyback_out, [FileData]).
+                  utp, test_piggyback_in, [FileData]).
 
 connect_n_send_big() ->
     [{timetrap, {seconds, 300}}].
