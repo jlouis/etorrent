@@ -609,16 +609,17 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   Make it such that error logging is a tunable and not an always on
   thing as now.
 * DONE TEST CASE: Piggyback test
-* TODO TEST CASE: Test the wrap-around
-  The 16bit wrap-around counter has to be tested somehow.
-  One way is to do a backwards test. We send about 100 packets, so we
-  have a 65536/100 = 665.35 to one chance of hitting it. That is, we
-  will hit it in one out of 3 test runs, approximately...
 * DONE TEST CASE: Receive window test
   In this test, we must wait until we actually fetch data to test what
   happens when the receive window is full in one end. We basically
   wait 5-10 seconds before we begin the receive. And we only receive a
   bit at a time to be even more nasty.
+* TODO TEST CASE: Test the wrap-around
+  The 16bit wrap-around counter has to be tested somehow.
+  One way is to do a backwards test. We send about 100 packets, so we
+  have a 65536/100 = 665.35 to one chance of hitting it. That is, we
+  will hit it in one out of 3 test runs, approximately...
+
 * TODO Consider moving the window-specific code to its own module.
   The window-code will grow rather big so refactor it to its own
   module
