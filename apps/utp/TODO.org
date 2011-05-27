@@ -618,25 +618,32 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
 * DONE Move the window-specific code to its own module.
   The window-code will grow rather big so refactor it to its own
   module
-* TODO Remove the SYN-duplicate bug
+* DONE Capture logs with our own tracing layer
+  Build a tracing layer into the uTP stack. It will come in handy for
+  a lot of things over the coming days.
+* DONE Stop stray async_messages on packet types we know how to handle
+  There are some async messages that comes out of the system. We know
+  how they should be handled, so we can handle them in the code and
+  ignore them.
+* DONE Remove the SYN-duplicate bug
   When entering SYNs in the accept queue, check there isn't already
   one from the same connection there
 * TODO Make the registry atomic upon incoming SYNs
   gen_utp is the guy that should register atomically before handling
   the next packet. Otherwise we hit some rather peculiar bugs upon
   races.
-* DONE Capture logs with our own tracing layer
-  Build a tracing layer into the uTP stack. It will come in handy for
-  a lot of things over the coming days.
-* TODO Stop stray async_messages on packet types we know how to handle
-  There are some async messages that comes out of the system. We know
-  how they should be handled, so we can handle them in the code and
-  ignore them.
+
+* TODO How should st_state packets in the got_fin state be handled
+  Either we should process them or throw them away. I am not sure what
+  is the right thing to do, actually.
 * TODO Investigate the piggyback test problem
   The receive does not complete in one direction for some odd
   reason. We better investigate why it suddenly hangs and wont
   complete. It must be due to reordering as the thing works nicely if
   we don't install the netem messer.
+
+  We should investigate this case deeply since it is quite important
+  to get right before we attack the later problems.
 * TODO Stress test the rwin_test for the receive window
   This test is specifically made such that it messes with the receive
   window and will hit the zerowin timer quite a lot. It emulates a
