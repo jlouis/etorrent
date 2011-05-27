@@ -86,13 +86,18 @@ two_way(Config, In, Out) ->
                   timer:sleep(3000),
                   {Reply, TR} = rpc:call(C1, utp_test, Out, []),
                   ct:log("OUT PATH TRACE:~n~p~n", [TR]),
-                  ok = Reply,
-                  N ! {done, R}
+                  N ! {done, Reply, R}
           end),
-    {ok, TR} = rpc:call(C2, utp_test, In, []),
+    {Reply, TR} = rpc:call(C2, utp_test, In, []),
     ct:log("IN_PATH_TRACE:~n~p~n", [TR]),
+    case Reply of
+        ok -> ignore;
+        {error, Reason} -> ct:fail({in, Reason})
+    end,
     receive
-        {done, R} -> ignore
+        {done, ok, R} -> ignore;
+        {done, {error, Reason}, R} ->
+            ct:fail({out, Reason})
     end,
     ok.
 
