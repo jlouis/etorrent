@@ -82,13 +82,13 @@ ct_prep: rel
 		cp -r apps/utp/src/* rel/etorrent/lib/utp-${UTP_VERSION}/src
 
 ct_utp: ct_prep
-	${CT_RUN} -spec utp_test.spec | tee test.utp.log
+	${CT_RUN} -spec utp_test.spec
 
 ct_etorrent: ct_prep
-	${CT_RUN} -spec etorrent_test.spec | tee test.etorrent.log
+	${CT_RUN} -spec etorrent_test.spec
 
 ct_stress: ct_prep
-	${CT_RUN} -spec stress_test.spec | tee test.stress_test.log
+	${CT_RUN} -spec stress_test.spec
 
 common_test: ct_utp ct_etorrent
 
