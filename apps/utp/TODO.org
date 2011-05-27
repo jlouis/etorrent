@@ -618,6 +618,16 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
 * DONE Move the window-specific code to its own module.
   The window-code will grow rather big so refactor it to its own
   module
+* TODO Remove the SYN-duplicate bug
+  When entering SYNs in the accept queue, check there isn't already
+  one from the same connection there
+* TODO Make the registry atomic upon incoming SYNs
+  gen_utp is the guy that should register atomically before handling
+  the next packet. Otherwise we hit some rather peculiar bugs upon
+  races.
+* DONE Capture logs with our own tracing layer
+  Build a tracing layer into the uTP stack. It will come in handy for
+  a lot of things over the coming days.
 * TODO Stop stray async_messages on packet types we know how to handle
   There are some async messages that comes out of the system. We know
   how they should be handled, so we can handle them in the code and

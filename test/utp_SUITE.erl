@@ -84,10 +84,12 @@ two_way(Config, In, Out) ->
     R = make_ref(),
     spawn(fun() ->
                   timer:sleep(3000),
-                  ok = rpc:call(C1, utp_test, Out, []),
+                  {ok, TR} = rpc:call(C1, utp_test, Out, []),
+                  ct:log("OUT PATH TRACE:~n~p~n", [TR]),
                   N ! {done, R}
           end),
-    ok = rpc:call(C2, utp_test, In, []),
+    {ok, TR} = rpc:call(C2, utp_test, In, []),
+    ct:log("IN_PATH_TRACE:~n~p~n", [TR]),
     receive
         {done, R} -> ignore
     end,
@@ -134,7 +136,7 @@ connect_n_communicate(Config) ->
                   timer:sleep(3000),
                   rpc:call(C1, utp_test, test_connector_1, [])
           end),
-    {<<"HELLO">>, <<"WORLD">>} = rpc:call(C2, utp_test, test_connectee_1, []),
+    {ok, _TR} = rpc:call(C2, utp_test, test_connectee_1, []),
     ok.
 
 rwin_test() ->
@@ -185,9 +187,9 @@ connect_n_send_big(Config) ->
                   rpc:call(?config(connector, Config),
                            utp_test, test_send_large_file, [FileData])
           end),
-    ReadData = rpc:call(?config(connectee, Config),
-                        utp_test, test_recv_large_file, [byte_size(FileData)]),
-    FileData = ReadData.
+    {ok, _TR} = rpc:call(?config(connectee, Config),
+                         utp_test, test_recv_large_file, [FileData]),
+    ok.
 
 %% Helpers
 %% ----------------------------------------------------------------------

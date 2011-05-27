@@ -30,26 +30,27 @@
 test_connector_1() ->
     {ok, Sock} = repeating_connect("localhost", 3333),
     ok = gen_utp:send(Sock, "HELLO"),
-    ok = gen_utp:send(Sock, "WORLD").
+    ok = gen_utp:send(Sock, "WORLD"),
+    {ok, gen_utp_trace:grab()}.
 
 test_connector_2() ->
     {ok, Sock} = repeating_connect("localhost", 3333),
     {ok, <<"HELLOWORLD">>} = gen_utp:recv(Sock, 10),
     ok = gen_utp:close(Sock),
-    ok.
+    {ok, gen_utp_trace:grab()}.
 
 test_connector_3() ->
     {ok, Sock} = repeating_connect("localhost", 3333),
     ok = gen_utp:send(Sock, "12345"),
     ok = gen_utp:send(Sock, "67890"),
     {ok, <<"HELLOWORLD">>} = gen_utp:recv(Sock, 10),
-    ok.
+    {ok, gen_utp_trace:grab()}.
 
 test_close_out_1() ->
     {ok, Sock} = repeating_connect("localhost", 3333),
     ok = gen_utp:close(Sock),
     {error, econnreset} = gen_utp:send(Sock, <<"HELLO">>),
-    ok.
+    {ok, gen_utp_trace:grab()}.
 
 test_close_in_1() ->
     case gen_utp:listen() of
@@ -66,7 +67,8 @@ test_close_in_1() ->
         {error, econnreset} ->
             ignore
     end,
-    ok = gen_utp:close(Sock).
+    ok = gen_utp:close(Sock),
+    {ok, gen_utp_trace:grab()}.
 
 test_close_out_2() ->
     {ok, Sock} = repeating_connect("localhost", 3333),
@@ -77,7 +79,8 @@ test_close_out_2() ->
         {error, econnreset} ->
             ignore
     end,
-    ok = gen_utp:close(Sock).
+    ok = gen_utp:close(Sock),
+    {ok, gen_utp_trace:grab()}.
 
 test_close_in_2() ->
     case gen_utp:listen() of
@@ -89,14 +92,14 @@ test_close_in_2() ->
     {ok, Sock} = gen_utp:accept(),
     ok = gen_utp:close(Sock),
     {error, econnreset} = gen_utp:recv(Sock, 5),
-    ok.
+    {ok, gen_utp_trace:grab()}.
 
 test_close_out_3() ->
     {ok, Sock} = repeating_connect("localhost", 3333),
     ok = gen_utp:send(Sock, <<"HELLO">>),
     {ok, <<"WORLD">>} = gen_utp:recv(Sock, 5),
     ok = gen_utp:close(Sock),
-    ok.
+    {ok, gen_utp_trace:grab()}.
 
 test_close_in_3() ->
         case gen_utp:listen() of
@@ -109,7 +112,7 @@ test_close_in_3() ->
     ok = gen_utp:send(Sock, "WORLD"),
     {ok, <<"HELLO">>} = gen_utp:recv(Sock, 5),
     ok = gen_utp:close(Sock),
-    ok.
+    {ok, gen_utp_trace:grab()}.
 
 test_connectee_1() ->
     case gen_utp:listen() of
@@ -122,7 +125,8 @@ test_connectee_1() ->
     {ok, R1} = gen_utp:recv(Port, 5),
     {ok, R2} = gen_utp:recv(Port, 5),
     ok = gen_utp:close(Port),
-    {R1, R2}.
+    {<<"HELLO">>, <<"WORLD">>} = {R1, R2},
+    {ok, gen_utp_trace:grab()}.
 
 test_connectee_2() ->
     case gen_utp:listen() of
@@ -135,7 +139,7 @@ test_connectee_2() ->
     ok = gen_utp:send(Sock, <<"HELLO">>),
     ok = gen_utp:send(Sock, <<"WORLD">>),
     ok = gen_utp:close(Sock),
-    ok.
+    {ok, gen_utp_trace:grab()}.
 
 test_connectee_3() ->
     case gen_utp:listen() of
@@ -150,13 +154,13 @@ test_connectee_3() ->
     {ok, <<"12345">>} = gen_utp:recv(Sock, 5),
     {ok, <<"67890">>} = gen_utp:recv(Sock, 5),
     ok = gen_utp:close(Sock),
-    ok.
+    {ok, gen_utp_trace:grab()}.
 
 test_send_large_file(Data) ->
     {ok, Sock} = repeating_connect("localhost", 3333),
     ok = gen_utp:send(Sock, Data),
     ok = gen_utp:close(Sock),
-    ok.
+    {ok, gen_utp_trace:grab()}.
 
 %% Infinitely repeat connecting. A timetrap will capture the problem
 -spec repeating_connect(term(), integer()) -> no_return() | {ok, any()}.
@@ -178,7 +182,8 @@ test_rwin_in(Data) ->
     end,
     {ok, Sock} = gen_utp:accept(),
     Data = rwin_recv(Sock, Sz, <<>>),
-    ok = gen_utp:close(Sock).
+    ok = gen_utp:close(Sock),
+    {ok, gen_utp_trace:grab()}.
 
 rwin_recv(_Sock, 0, Binary) ->
     Binary;
@@ -194,7 +199,8 @@ rwin_recv(Sock, Sz, Acc) when Sz > 10000 ->
 test_rwin_out(Data) ->
     {ok, Sock} = repeating_connect("localhost", 3333),
     ok = gen_utp:send(Sock, Data),
-    ok = gen_utp:close(Sock).
+    ok = gen_utp:close(Sock),
+    {ok, gen_utp_trace:grab()}.
 
 test_piggyback_out(Data) ->
     Sz = byte_size(Data),
@@ -205,12 +211,13 @@ test_piggyback_out(Data) ->
                        Recv ! {done, Ref}
                end),
     {ok, Data} = gen_utp:recv(Sock, Sz),
-    ct:pal("Received out, waiting for done"),
+    gen_utp_trace:tr("Received out, waiting for done"),
     receive
         {done, Ref} ->
             ok
     end,
-    Sock.
+    {ok, gen_utp_trace:grab()}.
+    
 
 test_piggyback_in(Data) ->
     Sz = byte_size(Data),
@@ -227,14 +234,15 @@ test_piggyback_in(Data) ->
                        Recv ! {done, Ref}
                end),
     {ok, Data} = gen_utp:recv(Sock, Sz),
-    ct:pal("Received in, waiting for done"),
+    gen_utp_trace:tr("Received in, waiting for done"),
     receive
         {done, Ref} ->
             ok
     end,
-    Sock.
+    {ok, gen_utp_trace:grab()}.
 
-test_recv_large_file(Sz) ->
+test_recv_large_file(Data) ->
+    Sz = byte_size(Data),
     case gen_utp:listen() of
         ok ->
             ignore;
@@ -242,9 +250,9 @@ test_recv_large_file(Sz) ->
             ignore
     end,
     {ok, Port} = gen_utp:accept(),
-    {ok, R} = gen_utp:recv(Port, Sz),
+    {ok, Data} = gen_utp:recv(Port, Sz),
     ok = gen_utp:close(Port),
-    R.
+    {ok, gen_utp_trace:grab()}.
 
 get(N) when is_integer(N) ->
     {ok, Sock} = gen_utp:connect("port1394.ds1-vby.adsl.cybercity.dk", 3333),
@@ -255,13 +263,7 @@ get(N) when is_integer(N) ->
     {ok, Data} = gen_utp:recv(Sock, Len),
     file:write_file(FName, Data),
     ok = gen_utp:close(Sock),
-    ok.
-
-
-
-
-
-
+    {ok, gen_utp_trace:grab()}.
 
 
 

@@ -43,6 +43,8 @@ init([Port, Opts]) ->
 
     SupFlags = {RestartStrategy, MaxRestarts, MaxSecondsBetweenRestarts},
 
+    Tracer = {gen_utp_trace, {gen_utp_trace, start_link, []},
+              permanent, 2000, worker, [gen_utp_trace]},
     GenUTP = {gen_utp, {gen_utp, start_link, [Port, Opts]},
 	      permanent, 15000, worker, [gen_utp]},
     GenUTPDecoder = {gen_utp_decoder, {gen_utp_decoder, start_link, []},
@@ -50,7 +52,7 @@ init([Port, Opts]) ->
     WorkerPool = {gen_utp_worker_pool, {gen_utp_worker_pool, start_link, []},
 		  transient, infinity, supervisor, [gen_utp_worker_pool]},
     io:format("Starting up~n"),
-    {ok, {SupFlags, [WorkerPool, GenUTPDecoder, GenUTP]}}.
+    {ok, {SupFlags, [Tracer, WorkerPool, GenUTPDecoder, GenUTP]}}.
 
 
 
