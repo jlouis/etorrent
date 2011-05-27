@@ -66,7 +66,7 @@ groups() ->
        backwards_communication,
        full_duplex_communication,
 %%       rwin_test,
-%%       piggyback,
+       %% piggyback,
        close_1,
        close_2,
        close_3,
@@ -162,13 +162,17 @@ piggyback(Config) ->
     {Controller, Ref} = {self(), make_ref()},
     spawn_link(fun() ->
                        timer:sleep(3000),
-                       Socket1 = rpc:call(?config(connector, Config),
-                                         utp_test, test_piggyback_out, [FileData]),
+                       {ok, Socket1, TR} =
+                           rpc:call(?config(connector, Config),
+                                    utp_test, test_piggyback_out, [FileData]),
+                       ct:log("Piggyback out:~n~p~n", [TR]),
                        Controller ! {done, Ref, Socket1}
                end),
-    Socket2 = rpc:call(?config(connectee, Config),
-                       utp_test, test_piggyback_in, [FileData]),
-    ct:pal("All done, collecting sockets for closing"),
+    {ok, Socket2, TR2} =
+        rpc:call(?config(connectee, Config),
+                 utp_test, test_piggyback_in, [FileData]),
+    ct:log("Piggyback out:~n~p~n", [TR2]),
+    ct:log("All done, collecting sockets for closing"),
     receive
         {done, Ref, Socket1} ->
             ok = gen_utp:close(Socket1),
