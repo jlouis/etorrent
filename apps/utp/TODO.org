@@ -741,7 +741,7 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   This is most clever to postpone as it has no direct effect on the
   code base currently. It is a "Nice-to-have" thing rather than a
   "DO-NEED!" thing.
-* TODO When in syn_sent and getting packets out of order, reorder them!
+* DONE False Start: When in syn_sent and getting packets out of order, reorder them!
   This is a problem we can ignore in principle until we have other
   parts of the system up and running. Retransmission will ensure we
   eventually get them in.

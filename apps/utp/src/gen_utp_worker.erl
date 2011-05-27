@@ -103,7 +103,7 @@
                  pkt_window   :: utp_window:t(),
                  pkt_buf      :: utp_pkt:buf(),
                  proc_info    :: utp_process:t(),
-                 connector    :: {reference(), pid()},
+                 connector    :: {{reference(), pid()}, [{pkt, #packet{}, term()}]},
                  zerowindow_timeout :: undefined | {set, reference()},
                  retransmit_timeout :: undefined | {set, reference()}
                }).
@@ -181,7 +181,7 @@ idle(_Msg, S) ->
 %% @private
 syn_sent({pkt, #packet { ty = st_reset }, _},
          #state { proc_info = PRI,
-                  connector = From } = State) ->
+                  connector = {From, _} } = State) ->
     %% We received a reset packet in the connected state. This means an abrupt
     %% disconnect, so move to the RESET state right away after telling people
     %% we can't fulfill their requests.
@@ -196,16 +196,24 @@ syn_sent({pkt, #packet { ty = st_state,
 	 #state { sock_info = SockInfo,
                   pkt_buf = PktBuf,
                   pkt_window = PktWin,
-                  connector = From,
+                  connector = {From, Packets},
                   retransmit_timeout = RTimeout
                 } = State) ->
     reply(From, ok),
+    %% Empty the queue of packets for the new state
+    %% We reverse the list so they are in the order we got them originally
+    [incoming(self(), P, T) || {pkt, P, T} <- lists:reverse(Packets)],
     {next_state, connected,
      State#state { sock_info = SockInfo,
                    pkt_window = utp_window:handle_advertised_window(WindowSize,
                                                                     PktWin),
                    retransmit_timeout = clear_retransmit_timer(RTimeout),
                    pkt_buf = utp_pkt:init_ackno(PktBuf, PktSeqNo+1)}};
+syn_sent({pkt, _Packet, _Timing} = Pkt,
+         #state { connector = {From, Packets}} = State) ->
+    {next_state, syn_sent,
+     State#state {
+       connector = {From, [Pkt | Packets]}}};
 syn_sent(close, #state {
            pkt_window = Window,
            retransmit_timeout = RTimeout
@@ -218,7 +226,7 @@ syn_sent(close, #state {
 syn_sent({timeout, TRef, {retransmit_timeout, N}},
          #state { retransmit_timeout = {set, TRef},
                   sock_info = SockInfo,
-                  connector = From,
+                  connector = {From, _},
                   pkt_buf = PktBuf
                 } = State) ->
     ?DEBUG([syn_timeout_triggered]),
@@ -463,7 +471,7 @@ idle(connect, From, State = #state { sock_info = SockInfo,
        sock_info = N_SockInfo,
        retransmit_timeout = set_retransmit_timer(?SYN_TIMEOUT, undefined),
        pkt_buf     = utp_pkt:init_seqno(PktBuf, 2),
-       connector = From }};
+       connector = {From, []} }};
 idle({accept, SYN}, _From, #state { sock_info = SockInfo,
                                     pkt_window = PktWin,
                                     pkt_buf   = PktBuf } = State) ->
