@@ -201,13 +201,13 @@ handle_call({listen, QLen}, _From, #state { listen_queue = closed } = S) ->
 handle_call({listen, _QLen}, _From, #state { listen_queue = #accept_queue{} } = S) ->
     {reply, {error, ealreadylistening}, S};
 handle_call({reg_proc, Proc, CID}, _From, #state { monitored = Monitored } = State) ->
-    case ets:member(?TAB, {CID, Proc}) of
-        true ->
-            {reply, {error, conn_id_in_use}, State};
-        false ->
-            true = ets:insert(?TAB, {CID, Proc}),
-            Ref = erlang:monitor(process, Proc),
-            {reply, ok, State#state { monitored = gb_trees:enter(Ref, CID, Monitored) }}
+    Reply = reg_proc(Proc, CID),
+    case Reply of
+        ok ->
+            Ref = erlang:monitor(process, Proc),            
+            {reply, ok, State#state { monitored = gb_trees:enter(Ref, CID, Monitored) }};
+        {error, Reason} ->
+            {reply, {error, Reason}}
     end;
 handle_call(get_socket, _From, S) ->
     {reply, {ok, S#state.socket}, S};
@@ -322,6 +322,12 @@ get_socket() ->
 call(Msg) ->
     gen_server:call(?MODULE, Msg, infinity).
 
-
-
+reg_proc(Proc, CID) ->
+    case ets:member(?TAB, {CID, Proc}) of
+        true ->
+            {error, conn_id_in_use};
+        false ->
+            true = ets:insert(?TAB, {CID, Proc}),
+            ok
+    end.
 
