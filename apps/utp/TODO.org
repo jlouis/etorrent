@@ -628,11 +628,10 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
 * DONE Remove the SYN-duplicate bug
   When entering SYNs in the accept queue, check there isn't already
   one from the same connection there
-* TODO Make the registry atomic upon incoming SYNs
+* DONE Make the registry atomic upon incoming SYNs
   gen_utp is the guy that should register atomically before handling
   the next packet. Otherwise we hit some rather peculiar bugs upon
   races.
-
 * TODO How should st_state packets in the got_fin state be handled
   Either we should process them or throw them away. I am not sure what
   is the right thing to do, actually.
@@ -644,6 +643,7 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
 
   We should investigate this case deeply since it is quite important
   to get right before we attack the later problems.
+** TODO Reenable the test case!
 * TODO Stress test the rwin_test for the receive window
   This test is specifically made such that it messes with the receive
   window and will hit the zerowin timer quite a lot. It emulates a
@@ -810,7 +810,22 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   pairs.
 * Consider proper for testing.
 
+* What happens if an acceptor dies?
+  There are really two things here:
 
+  ; Handle timeouts for accept() calls. What should happen upon a
+    timeout? (Monitors in the proxy on the acceptors?) It is probably
+    the easiest way.
+  ; In direct consequence: An acceptor() dies. How can we clean up? Monitors!
+
+* Monitors from workers to their initiators.
+
+  What happens when we have a socket which is established but
+    essentially dead since nobody knows about it?
+
+  Well a worker is like a port, so it must try to set a monitor on the
+  thing that creates the socket. It doesn't currently. This means if
+  its owner dies, so will the socket.
 
 
 

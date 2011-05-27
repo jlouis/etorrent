@@ -475,11 +475,6 @@ idle(connect, From, State = #state { sock_info = SockInfo,
 idle({accept, SYN}, _From, #state { sock_info = SockInfo,
                                     pkt_window = PktWin,
                                     pkt_buf   = PktBuf } = State) ->
-    %% @todo timeout handling from the syn packet!
-    Conn_id_recv = SYN#packet.conn_id + 1,
-    {Addr, Port} = utp_socket:hostname_port(SockInfo),
-    gen_utp:register_process(self(), {Conn_id_recv, Addr, Port}),
-
     Conn_id_send = SYN#packet.conn_id,
     N_SockInfo = utp_socket:set_conn_id(Conn_id_send, SockInfo),
 

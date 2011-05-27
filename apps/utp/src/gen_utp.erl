@@ -83,20 +83,14 @@ connect(Addr, Port, Options) ->
             {error, Reason}
     end.
 
--spec accept() -> {ok, utp_socket()} | {error, term()}.
+%% @doc Accept an incoming connection.
+%% We let the gen_utp proxy make the accept. When we have a SYN packet an accept
+%% cannot fail from there on out, so we can just simply let the proxy to the work for now.
+%% There may be some things that changes when you add timeouts to connections.
+%% @end
+-spec accept() -> {ok, utp_socket()}.
 accept() ->
-    %% Accept an incoming connection.
-    %% @todo timeouts!
-    %% We handle the SynPacket here because because it is then the caller that gets to work
-    %% with the result of the worker process directly, rather than the gen_utp proxy having
-    %% to do it.
-    {ok, Pid, SynPacket} = call(accept),
-    case gen_utp_worker:accept(Pid, SynPacket) of
-        ok ->
-            {ok, {utp_sock, Pid}};
-        {error, Reason} ->
-            {error, Reason}
-    end.
+    {ok, _Socket} = call(accept).
 
 %% @doc Send a message on a uTP Socket
 %% @end
@@ -307,8 +301,14 @@ handle_queue(#accept_queue { acceptors = AQ,
 
 accept_incoming_conn(Socket, From, {SynPacket, Addr, Port}) ->
     {ok, Pid} = gen_utp_worker_pool:start_child(Socket, Addr, Port, []),
-    ?DEBUG([accepting, From, SynPacket]),
-    gen_server:reply(From, {ok, Pid, SynPacket}).
+    %% We should register because we are the ones that can avoid the deadlock here
+    %% @todo This call can in principle fail due to a conn_id being in use, but we will
+    %% know if that happens.
+    case reg_proc(Pid, {SynPacket#packet.conn_id + 1, Addr, Port}) of
+        ok ->
+            ok = gen_utp_worker:accept(Pid, SynPacket),
+            gen_server:reply(From, {ok, {utp_sock, Pid}})
+    end.
 
 new_accept_queue(QLen) ->
     #accept_queue { acceptors = queue:new(),
@@ -330,4 +330,7 @@ reg_proc(Proc, CID) ->
             true = ets:insert(?TAB, {CID, Proc}),
             ok
     end.
+
+
+
 

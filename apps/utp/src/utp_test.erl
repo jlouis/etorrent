@@ -216,7 +216,7 @@ test_piggyback_out(Data) ->
         {done, Ref} ->
             ok
     end,
-    {ok, gen_utp_trace:grab()}.
+    {ok, Sock, gen_utp_trace:grab()}.
     
 
 test_piggyback_in(Data) ->
@@ -239,7 +239,7 @@ test_piggyback_in(Data) ->
         {done, Ref} ->
             ok
     end,
-    {ok, gen_utp_trace:grab()}.
+    {ok, Sock, gen_utp_trace:grab()}.
 
 test_recv_large_file(Data) ->
     Sz = byte_size(Data),
