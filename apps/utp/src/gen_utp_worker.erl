@@ -336,6 +336,8 @@ got_fin({timeout, Ref, {retransmit_timeout, N}},
             {next_state, got_fin, State#state { retransmit_timeout = N_Timer,
                                                 pkt_buf = N_PB }}
     end;
+got_fin({pkt, #packet { ty = st_fin }, _}, State) ->
+    {next_state, got_fin, State};
 got_fin(_Msg, State) ->
     %% Ignore messages
     ?ERR([node(), async_message, got_fin, _Msg]),
@@ -357,6 +359,8 @@ destroy_delay({timeout, Ref, {retransmit_timeout, N}},
                                     retransmit_timeout = N_Timer,
                                     pkt_buf = N_PB}, 0}
     end;
+destroy_delay({pkt, #packet { ty = st_fin }, _}, State) ->
+    {next_state, destroy_delay, State};
 destroy_delay(close, State) ->
     {next_state, destroy, State, 0};
 destroy_delay(_Msg, State) ->
