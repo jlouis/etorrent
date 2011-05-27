@@ -278,7 +278,7 @@ connected({pkt, Pkt, {_TS, _TSDiff, RecvTime}},
                     undefined ->
                         connected
                 end,
-    {next_state, NextState,
+    {next_state, ?TRACE(NextState),
      State#state { pkt_window = N_PKI,
                    pkt_buf = N_PB,
                    retransmit_timeout = N_RetransTimer,
@@ -344,7 +344,15 @@ got_fin({timeout, Ref, {retransmit_timeout, N}},
             {next_state, got_fin, State#state { retransmit_timeout = N_Timer,
                                                 pkt_buf = N_PB }}
     end;
+got_fin({pkt, #packet { ty = st_state }, _}, State) ->
+    %% State packets incoming can be ignored. Why? Because state packets from the other
+    %% end doesn't matter at this point: We got the FIN completed, so we can't send or receive
+    %% anymore. And all who were waiting are expunged from the receive buffer. No new can enter.
+    %% Our Timeout will move us on (or a close). The other end is in the FIN_SENT state, so
+    %% he will only send state packets when he needs to ack some of our stuff, which he wont.
+    {next_state, got_fin, State};
 got_fin({pkt, #packet { ty = st_fin }, _}, State) ->
+    %% @todo We should probably send out an ACK for the FIN here since it is a retransmit
     {next_state, got_fin, State};
 got_fin(_Msg, State) ->
     %% Ignore messages
@@ -532,12 +540,14 @@ connected(_Msg, _From, State) ->
 
 %% @private
 got_fin({recv, _L}, _From, State) ->
+    ?DEBUG([got_fin, recv]),
     {reply, {error, econnreset}, got_fin, State};
 got_fin({send, _Data}, _From, State) ->
     {reply, {error, econnreset}, got_fin, State}.
 
 %% @private
 fin_sent({recv, _L}, _From, State) ->
+    ?DEBUG([recv]),
     {reply, {error, econnreset}, fin_sent, State};
 fin_sent({send, _Data}, _From, State) ->
     {reply, {error, econnreset}, fin_sent, State}.
@@ -573,6 +583,7 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 %%%===================================================================
 
 satisfy_buffer(From, 0, Res, Buffer) ->
+    ?DEBUG([recv, From, byte_size(Res)]),
     reply(From, {ok, Res}),
     {ok, Buffer};
 satisfy_buffer(From, Length, Res, Buffer) ->
@@ -594,6 +605,7 @@ satisfy_recvs(Processes, Buffer) ->
 		{ok, N_Buffer} ->
 		    satisfy_recvs(N_Processes, N_Buffer);
 		{rb_drained, F, L, R, N_Buffer} ->
+                    ?DEBUG([receive_buffer_drained, F, L, byte_size(R)]),
 		    {rb_drained, utp_process:putback_receiver(F, L, R, N_Processes), N_Buffer}
 	    end;
 	empty ->

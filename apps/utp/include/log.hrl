@@ -12,4 +12,8 @@
 -define(DEBUG(Args), gen_utp_trace:tr([self(), ?MODULE, ?LINE, Args])).
 %% -define(DEBUG(Args), ignore).
 
+-define(TRACE(Val), begin gen_utp_trace:tr([self(), ?MODULE, ?LINE, Val]),
+                          Val
+                    end).
+%% -define(TRACE(Val), Val).
 

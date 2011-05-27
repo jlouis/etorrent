@@ -638,9 +638,66 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
 
   It probably has to do with the done order receives are happening in
   here.
-* TODO How should st_state packets in the got_fin state be handled
+
+  One problem is we get to push DATA, DATA, FIN *before* the Out end
+  even has a chance to call recv(Sock, 10). In that case it will get
+  an error because there are no data on socket anymore.
+
+  Yes, this is the problem we are seeing. Relief because that is
+  probably an easy fix.
+
+20:35:06 <+jlouis> Omg, they have never seen this design problem due to the way 
+                   they handle the code
+20:37:17 < MononcQc> jlouis, what
+20:37:47 <+jlouis> MononcQc: they have a callback function which gets called 
+                   whenever there are data to deliver. So they always have a 
+                   receiver
+20:37:52 < MononcQc> you mean the buffer can be closed and lost
+20:37:58 <+jlouis> yeah
+20:38:03 < MononcQc> that's pretty bad
+20:38:11 < MononcQc> so you can probably write your first RFC now
+20:38:53 <+jlouis> A: connects. B: Accepts. A: Sends Data. A: Closes. B: gets 
+                   all data and acknowledges the close. B: receives. Receive 
+                   fail since the socket is closed
+20:39:07 < MononcQc> lol
+20:39:15 < MononcQc> concurrency is hard
+20:39:25 <+jlouis> the 'get-all-data-and-acknowledge' part is where they 
+                   callback a function so they know there is something to 
+                   deliver
+20:39:55 < MononcQc> the idea is that the buffer should stay alive even if the 
+                     socket is not or something
+20:40:01 <+jlouis> so they never see they are not like the BSD socket interface 
+                   here
+20:40:20 <+jlouis> I think you should allow processes to drain the buffer
+20:40:37 <+jlouis> I can do that
+20:40:54 <+jlouis> TCP doesn't have the problem since the connection can be 
+                   half-open
+20:41:04 <+jlouis> so the receiving end has to close
+20:41:16 <+jlouis> and if it receives first, it will get its data
+20:42:22 <+jlouis> But the BEP29 describing uTP says: "This document assumes 
+                   some knowledge of how TCP and window based congestion 
+                   control works."
+20:42:30 <+jlouis> yet, they don't do what TCP does here, quite funneh
+20:42:50 < MononcQc> The author assumes he knows TCP
+20:43:05 <+jlouis> MononcQc: the cool thing though is I had never found it 
+                   without ct
+20:43:09 <+jlouis> and stress tests
+
+    The easy fix is to allow receivers to drain the buffer in the
+    got_fin state, up until the timeout. But it is a quite funny
+    bug :P
+
+* DONE How should st_state packets in the got_fin state be handled
   Either we should process them or throw them away. I am not sure what
   is the right thing to do, actually.
+* TODO in the GOT_FIN state, we should still process the ACK numbers
+  It is only the parts about reading in data we should skip.
+  We can update the internal buffers, but since we are in GOT_FIN, we
+  can't fill up the queue.
+* TODO Push out an ACK upon {got_fin, st_fin}
+  This ACK will tell the other end that we have succeeded in closing
+  down. He will then upon receipt also move to the got_fin state and
+  we are both at the point where we close down.
 * TODO Investigate the piggyback test problem
   The receive does not complete in one direction for some odd
   reason. We better investigate why it suddenly hangs and wont
@@ -703,6 +760,8 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   packet and ACK it right away. Otherwise it will wait until the delay
   trigger is tripped and that will take some time.
 
+** List of states that should periodically send out ACKs
+   CONNECTED, DESTROY_DELAY, GOT_FIN, FIN_SENT
 * SACK support
   SACK support has two directions
 ** SACK in the send direction

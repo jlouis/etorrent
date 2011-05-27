@@ -63,10 +63,10 @@ end_per_testcase(_Case, _Config) ->
 groups() ->
     [{main_group, [shuffle, {repeat_until_any_fail, 30}],
       [connect_n_communicate,
-       backwards_communication,
+%%       backwards_communication,
        full_duplex_communication,
 %%       rwin_test,
-       %% piggyback,
+       piggyback,
        close_1,
        close_2,
        close_3,
@@ -96,8 +96,8 @@ two_way(Config, In, Out) ->
     end,
     receive
         {done, ok, R} -> ignore;
-        {done, {error, Reason}, R} ->
-            ct:fail({out, Reason})
+        {done, {error, Reason2}, R} ->
+            ct:fail({out, Reason2})
     end,
     ok.
 
