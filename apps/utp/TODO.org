@@ -632,6 +632,12 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   gen_utp is the guy that should register atomically before handling
   the next packet. Otherwise we hit some rather peculiar bugs upon
   races.
+* TODO Backwards communication has some bug
+  The problem is that one path, the OUT_PATH_TRACE gets {error,
+  econnreset}. We must investigate why this is the case and fix it.
+
+  It probably has to do with the done order receives are happening in
+  here.
 * TODO How should st_state packets in the got_fin state be handled
   Either we should process them or throw them away. I am not sure what
   is the right thing to do, actually.

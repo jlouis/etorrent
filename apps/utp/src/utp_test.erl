@@ -35,9 +35,13 @@ test_connector_1() ->
 
 test_connector_2() ->
     {ok, Sock} = repeating_connect("localhost", 3333),
-    {ok, <<"HELLOWORLD">>} = gen_utp:recv(Sock, 10),
-    ok = gen_utp:close(Sock),
-    {ok, gen_utp_trace:grab()}.
+    case gen_utp:recv(Sock, 10) of
+        {ok, <<"HELLOWORLD">>} ->
+            ok = gen_utp:close(Sock),
+            {ok, gen_utp_trace:grab()};
+        {error, econnreset} ->
+            {{error, econnreset}, gen_utp_trace:grab()}
+    end.
 
 test_connector_3() ->
     {ok, Sock} = repeating_connect("localhost", 3333),

@@ -84,8 +84,9 @@ two_way(Config, In, Out) ->
     R = make_ref(),
     spawn(fun() ->
                   timer:sleep(3000),
-                  {ok, TR} = rpc:call(C1, utp_test, Out, []),
+                  {Reply, TR} = rpc:call(C1, utp_test, Out, []),
                   ct:log("OUT PATH TRACE:~n~p~n", [TR]),
+                  ok = Reply,
                   N ! {done, R}
           end),
     {ok, TR} = rpc:call(C2, utp_test, In, []),
