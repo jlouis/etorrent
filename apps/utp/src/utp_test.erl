@@ -1,5 +1,8 @@
 -module(utp_test).
 
+-include("log.hrl").
+-include_lib("common_test/include/ct.hrl").
+
 -export([
          test_connector_1/0,
          test_connectee_1/1,
@@ -229,8 +232,17 @@ get(N) when is_integer(N) ->
     ok = gen_utp:close(Sock),
     {ok, gen_utp_trace:grab()}.
 
-listen(_Options) ->
-    case gen_utp:listen() of
+listen(Config) ->
+    Opts = case ?config(force_seq_no, Config) of
+               K when is_integer(K),
+                      K >= 0,
+                      K =<  16#FFFF ->
+                   [{force_seq_no, K}];
+               _Otherwise ->
+                   ?ERR([no_forced_seq_no, Config]),
+                   []
+           end,
+    case gen_utp:listen(Opts) of
         ok ->
             ok;
         {error, ealreadylistening} ->

@@ -792,7 +792,7 @@ validate_options([{backlog, N} | R]) ->
 validate_options([{force_seq_no, N} | R]) ->
     case is_integer(N) of
         true when N >= 0,
-                  N < 16#FFFF ->
+                  N =< 16#FFFF ->
             validate_options(R);
         true ->
             badarg;

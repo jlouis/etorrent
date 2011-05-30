@@ -22,6 +22,11 @@ suite() ->
 
 %% Setup/Teardown
 %% ----------------------------------------------------------------------
+init_per_group(Group, Config) when Group == main_group;
+                                   Group == stress_group ->
+    TCProps = ?config(tc_group_properties, Config),
+    {A,B,C} = ?config(shuffle, TCProps),
+    [{force_seq_no, (65536 - (C rem 5)) rem 65536} | Config];
 init_per_group(_Group, Config) ->
     Config.
 
@@ -65,7 +70,7 @@ groups() ->
       [connect_n_communicate,
 %%       backwards_communication,
        full_duplex_communication,
-       rwin_test,
+%%       rwin_test,
        piggyback,
        close_1,
        close_2,
