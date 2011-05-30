@@ -57,12 +57,7 @@ test_close_out_1() ->
     {ok, gen_utp_trace:grab()}.
 
 test_close_in_1() ->
-    case gen_utp:listen() of
-        ok ->
-            ignore;
-        {error, ealreadylistening} ->
-            ignore
-    end,
+    ok = listen(),
     {ok, Sock} = gen_utp:accept(),
     timer:sleep(3000),
     case gen_utp:send(Sock, <<"HELLO">>) of
@@ -87,12 +82,7 @@ test_close_out_2() ->
     {ok, gen_utp_trace:grab()}.
 
 test_close_in_2() ->
-    case gen_utp:listen() of
-        ok ->
-            ignore;
-        {error, ealreadylistening} ->
-            ignore
-    end,
+    ok =  listen(),
     {ok, Sock} = gen_utp:accept(),
     ok = gen_utp:close(Sock),
     {error, econnreset} = gen_utp:recv(Sock, 5),
@@ -106,12 +96,7 @@ test_close_out_3() ->
     {ok, gen_utp_trace:grab()}.
 
 test_close_in_3() ->
-        case gen_utp:listen() of
-        ok ->
-            ignore;
-        {error, ealreadylistening} ->
-            ignore
-    end,
+    ok = listen(),
     {ok, Sock} = gen_utp:accept(),
     ok = gen_utp:send(Sock, "WORLD"),
     {ok, <<"HELLO">>} = gen_utp:recv(Sock, 5),
@@ -119,12 +104,7 @@ test_close_in_3() ->
     {ok, gen_utp_trace:grab()}.
 
 test_connectee_1() ->
-    case gen_utp:listen() of
-        ok ->
-            ignore;
-        {error, ealreadylistening} ->
-            ignore
-    end,
+    ok =  listen(),
     {ok, Port} = gen_utp:accept(),
     {ok, R1} = gen_utp:recv(Port, 5),
     {ok, R2} = gen_utp:recv(Port, 5),
@@ -133,12 +113,7 @@ test_connectee_1() ->
     {ok, gen_utp_trace:grab()}.
 
 test_connectee_2() ->
-    case gen_utp:listen() of
-        ok ->
-            ignore;
-        {error, ealreadylistening} ->
-            ignore
-    end,
+    ok = listen(),
     {ok, Sock} = gen_utp:accept(),
     ok = gen_utp:send(Sock, <<"HELLO">>),
     ok = gen_utp:send(Sock, <<"WORLD">>),
@@ -146,12 +121,7 @@ test_connectee_2() ->
     {ok, gen_utp_trace:grab()}.
 
 test_connectee_3() ->
-    case gen_utp:listen() of
-        ok ->
-            ignore;
-        {error, ealreadylistening} ->
-            ignore
-    end,
+    ok = listen(),
     {ok, Sock} = gen_utp:accept(),
     ok = gen_utp:send(Sock, <<"HELLO">>),
     ok = gen_utp:send(Sock, <<"WORLD">>),
@@ -178,12 +148,7 @@ repeating_connect(Host, Port) ->
 
 test_rwin_in(Data) ->
     Sz = byte_size(Data),
-    case gen_utp:listen() of
-        ok ->
-            ignore;
-        {error, ealreadylistening} ->
-            ignore
-    end,
+    ok = listen(),
     {ok, Sock} = gen_utp:accept(),
     Data = rwin_recv(Sock, Sz, <<>>),
     ok = gen_utp:close(Sock),
@@ -225,12 +190,7 @@ test_piggyback_out(Data) ->
 
 test_piggyback_in(Data) ->
     Sz = byte_size(Data),
-    case gen_utp:listen() of
-        ok ->
-            ignore;
-        {error, ealreadylistening} ->
-            ignore
-    end,
+    ok = listen(),
     {ok, Sock} = gen_utp:accept(),
     {Recv, Ref} = {self(), make_ref()},
     spawn_link(fun() ->
@@ -247,7 +207,7 @@ test_piggyback_in(Data) ->
 
 test_recv_large_file(Data) ->
     Sz = byte_size(Data),
-    case gen_utp:listen() of
+    case listen() of
         ok ->
             ignore;
         {error, ealreadylistening} ->
@@ -269,5 +229,10 @@ get(N) when is_integer(N) ->
     ok = gen_utp:close(Sock),
     {ok, gen_utp_trace:grab()}.
 
-
-
+listen() ->
+    case gen_utp:listen() of
+        ok ->
+            ok;
+        {error, ealreadylistening} ->
+            ok
+    end.
