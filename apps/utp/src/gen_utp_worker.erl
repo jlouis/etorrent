@@ -491,11 +491,15 @@ idle(connect,
        connector = {From, []} }};
 idle({accept, SYN}, _From, #state { sock_info = SockInfo,
                                     pkt_window = PktWin,
+                                    options = Options,
                                     pkt_buf   = PktBuf } = State) ->
     Conn_id_send = SYN#packet.conn_id,
     N_SockInfo = utp_socket:set_conn_id(Conn_id_send, SockInfo),
 
-    SeqNo = utp_pkt:mk_random_seq_no(),
+    SeqNo = case proplists:get_value(force_seq_no, Options) of
+                undefined -> utp_pkt:mk_random_seq_no();
+                K -> K
+            end,
     AckNo = SYN#packet.seq_no,
     1 = AckNo,
 
@@ -782,6 +786,16 @@ validate_options([{backlog, N} | R]) ->
     case is_integer(N) of
         true ->
             validate_options(R);
+        false ->
+            badarg
+    end;
+validate_options([{force_seq_no, N} | R]) ->
+    case is_integer(N) of
+        true when N >= 0,
+                  N < 16#FFFF ->
+            validate_options(R);
+        true ->
+            badarg;
         false ->
             badarg
     end;

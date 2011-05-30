@@ -354,6 +354,16 @@ validate_listen_opts([{backlog, N} | R]) ->
         false ->
             badarg
     end;
+validate_listen_opts([{force_seq_no, N} | R]) ->
+    case is_integer(N) of
+        true when N >= 0,
+                  N < 16#FFFF ->
+            validate_listen_opts(R);
+        true ->
+            badarg;
+        false ->
+            badarg
+    end;
 validate_listen_opts(_) ->
     badarg.
 
