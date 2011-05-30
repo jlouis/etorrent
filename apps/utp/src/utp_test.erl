@@ -2,24 +2,24 @@
 
 -export([
          test_connector_1/0,
-         test_connectee_1/0,
+         test_connectee_1/1,
          test_connector_2/0,
-         test_connectee_2/0,
+         test_connectee_2/1,
          test_connector_3/0,
-         test_connectee_3/0,
-         test_close_in_1/0,
+         test_connectee_3/1,
+         test_close_in_1/1,
          test_close_out_1/0,
-         test_close_in_2/0,
+         test_close_in_2/1,
          test_close_out_2/0,
-         test_close_in_3/0,
+         test_close_in_3/1,
          test_close_out_3/0,
          test_send_large_file/1,
-         test_recv_large_file/1,
+         test_recv_large_file/2,
 
-         test_piggyback_in/1,
+         test_piggyback_in/2,
          test_piggyback_out/1,
 
-         test_rwin_in/1,
+         test_rwin_in/2,
          test_rwin_out/1,
 
          get/1
@@ -56,8 +56,8 @@ test_close_out_1() ->
     {error, econnreset} = gen_utp:send(Sock, <<"HELLO">>),
     {ok, gen_utp_trace:grab()}.
 
-test_close_in_1() ->
-    ok = listen(),
+test_close_in_1(Options) ->
+    ok = listen(Options),
     {ok, Sock} = gen_utp:accept(),
     timer:sleep(3000),
     case gen_utp:send(Sock, <<"HELLO">>) of
@@ -81,8 +81,8 @@ test_close_out_2() ->
     ok = gen_utp:close(Sock),
     {ok, gen_utp_trace:grab()}.
 
-test_close_in_2() ->
-    ok =  listen(),
+test_close_in_2(Options) ->
+    ok =  listen(Options),
     {ok, Sock} = gen_utp:accept(),
     ok = gen_utp:close(Sock),
     {error, econnreset} = gen_utp:recv(Sock, 5),
@@ -95,16 +95,16 @@ test_close_out_3() ->
     ok = gen_utp:close(Sock),
     {ok, gen_utp_trace:grab()}.
 
-test_close_in_3() ->
-    ok = listen(),
+test_close_in_3(Options) ->
+    ok = listen(Options),
     {ok, Sock} = gen_utp:accept(),
     ok = gen_utp:send(Sock, "WORLD"),
     {ok, <<"HELLO">>} = gen_utp:recv(Sock, 5),
     ok = gen_utp:close(Sock),
     {ok, gen_utp_trace:grab()}.
 
-test_connectee_1() ->
-    ok =  listen(),
+test_connectee_1(Options) ->
+    ok =  listen(Options),
     {ok, Port} = gen_utp:accept(),
     {ok, R1} = gen_utp:recv(Port, 5),
     {ok, R2} = gen_utp:recv(Port, 5),
@@ -112,16 +112,16 @@ test_connectee_1() ->
     {<<"HELLO">>, <<"WORLD">>} = {R1, R2},
     {ok, gen_utp_trace:grab()}.
 
-test_connectee_2() ->
-    ok = listen(),
+test_connectee_2(Options) ->
+    ok = listen(Options),
     {ok, Sock} = gen_utp:accept(),
     ok = gen_utp:send(Sock, <<"HELLO">>),
     ok = gen_utp:send(Sock, <<"WORLD">>),
     ok = gen_utp:close(Sock),
     {ok, gen_utp_trace:grab()}.
 
-test_connectee_3() ->
-    ok = listen(),
+test_connectee_3(Options) ->
+    ok = listen(Options),
     {ok, Sock} = gen_utp:accept(),
     ok = gen_utp:send(Sock, <<"HELLO">>),
     ok = gen_utp:send(Sock, <<"WORLD">>),
@@ -146,9 +146,9 @@ repeating_connect(Host, Port) ->
             repeating_connect(Host, Port)
     end.
 
-test_rwin_in(Data) ->
+test_rwin_in(Data, Options) ->
     Sz = byte_size(Data),
-    ok = listen(),
+    ok = listen(Options),
     {ok, Sock} = gen_utp:accept(),
     Data = rwin_recv(Sock, Sz, <<>>),
     ok = gen_utp:close(Sock),
@@ -188,9 +188,9 @@ test_piggyback_out(Data) ->
     {ok, Sock, gen_utp_trace:grab()}.
     
 
-test_piggyback_in(Data) ->
+test_piggyback_in(Data, Options) ->
     Sz = byte_size(Data),
-    ok = listen(),
+    ok = listen(Options),
     {ok, Sock} = gen_utp:accept(),
     {Recv, Ref} = {self(), make_ref()},
     spawn_link(fun() ->
@@ -205,9 +205,9 @@ test_piggyback_in(Data) ->
     end,
     {ok, Sock, gen_utp_trace:grab()}.
 
-test_recv_large_file(Data) ->
+test_recv_large_file(Data, Options) ->
     Sz = byte_size(Data),
-    case listen() of
+    case listen(Options) of
         ok ->
             ignore;
         {error, ealreadylistening} ->
@@ -229,7 +229,7 @@ get(N) when is_integer(N) ->
     ok = gen_utp:close(Sock),
     {ok, gen_utp_trace:grab()}.
 
-listen() ->
+listen(_Options) ->
     case gen_utp:listen() of
         ok ->
             ok;

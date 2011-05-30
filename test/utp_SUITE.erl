@@ -88,7 +88,7 @@ two_way(Config, In, Out) ->
                   ct:log("OUT PATH TRACE:~n~p~n", [TR]),
                   N ! {done, Reply, R}
           end),
-    {Reply, TR} = rpc:call(C2, utp_test, In, []),
+    {Reply, TR} = rpc:call(C2, utp_test, In, [Config]),
     ct:log("IN_PATH_TRACE:~n~p~n", [TR]),
     case Reply of
         ok -> ignore;
@@ -142,7 +142,7 @@ connect_n_communicate(Config) ->
                   timer:sleep(3000),
                   rpc:call(C1, utp_test, test_connector_1, [])
           end),
-    {ok, _TR} = rpc:call(C2, utp_test, test_connectee_1, []),
+    {ok, _TR} = rpc:call(C2, utp_test, test_connectee_1, [Config]),
     ok.
 
 rwin_test() ->
@@ -158,7 +158,7 @@ rwin_test(Config) ->
                        ct:log("RWIN OUT:~n~p~n", [TR])
                end),
     {ok, TR} = rpc:call(?config(connectee, Config),
-                        utp_test, test_rwin_in, [FileData]),
+                        utp_test, test_rwin_in, [FileData, Config]),
     ct:log("RWIN IN:~n~p~n", [TR]),
     ok.
     
@@ -179,7 +179,7 @@ piggyback(Config) ->
                end),
     {ok, Socket2, TR2} =
         rpc:call(?config(connectee, Config),
-                 utp_test, test_piggyback_in, [FileData]),
+                 utp_test, test_piggyback_in, [FileData, Config]),
     ct:log("Piggyback out:~n~p~n", [TR2]),
     ct:log("All done, collecting sockets for closing"),
     receive
@@ -201,7 +201,7 @@ connect_n_send_big(Config) ->
                            utp_test, test_send_large_file, [FileData])
           end),
     {ok, _TR} = rpc:call(?config(connectee, Config),
-                         utp_test, test_recv_large_file, [FileData]),
+                         utp_test, test_recv_large_file, [FileData, Config]),
     ok.
 
 %% Helpers
