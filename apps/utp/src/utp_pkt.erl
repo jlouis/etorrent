@@ -117,8 +117,8 @@ send_ack(SockInfo,
                   } = Buf) ->
     %% @todo Send out an ack message here
     AckPacket = #packet { ty = st_state,
-                          seq_no = SeqNo-1, % @todo Is this right?
-                          ack_no = AckNo-1, % We are recording the next expected ack number
+                          seq_no = bit16(SeqNo-1), % @todo Is this right?
+                          ack_no = bit16(AckNo-1), % We are recording the next expected ack number
                           extension = []
                         },
     Win = advertised_window(Buf),
@@ -149,7 +149,7 @@ send_packet(Ty, Bin,
             SockInfo) ->
     P = #packet { ty = Ty,
                   seq_no  = SeqNo,
-                  ack_no  = AckNo-1,
+                  ack_no  = bit16(AckNo-1),
                   extension = [],
                   payload = Bin },
     Win = advertised_window(Buf),
@@ -157,7 +157,7 @@ send_packet(Ty, Bin,
     Wrap = #pkt_wrap { packet = P,
                        transmissions = 0,
                        need_resend = false },
-    Buf#pkt_buf { seq_no = SeqNo+1,
+    Buf#pkt_buf { seq_no = bit16(SeqNo+1),
                   retransmission_queue = [Wrap | RetransQueue]
                 }.
 
