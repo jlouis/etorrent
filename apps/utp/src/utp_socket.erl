@@ -74,10 +74,7 @@ send_pkt(AdvWin, #sock_info { socket = Socket,
     Pkt = Packet#packet { conn_id = ConnId,
                           win_sz = AdvWin },
     ?DEBUG([node(), outgoing_pkt, format_pkt(Pkt)]),
-    send(Socket, Addr, Port,
-                 utp_proto:encode(
-                   Pkt,
-                   TSDiff)).
+    send(Socket, Addr, Port, Pkt, TSDiff).
 
 send_reset(Socket, Addr, Port, ConnIDSend, AckNo, SeqNo) ->
     Packet =
@@ -88,22 +85,22 @@ send_reset(Socket, Addr, Port, ConnIDSend, AckNo, SeqNo) ->
                   extension = [],
                   conn_id = ConnIDSend },
     TSDiff = 0,
-    send(Socket, Addr, Port,
-         utp_proto:encode(Packet, TSDiff)).
+    send(Socket, Addr, Port, Packet, TSDiff).
 
-send(Socket, Addr, Port, Payload) ->      
-    send(1, Socket, Addr, Port, Payload).
+send(Socket, Addr, Port, Packet, TSDiff) ->
+    utp_proto:validate(Packet),
+    send_aux(1, Socket, Addr, Port, utp_proto:encode(Packet, TSDiff)).
 
-send(0, Socket, Addr, Port, Payload) ->
+send_aux(0, Socket, Addr, Port, Payload) ->
     gen_udp:send(Socket, Addr, Port, Payload);
-send(N, Socket, Addr, Port, Payload) ->
+send_aux(N, Socket, Addr, Port, Payload) ->
     case gen_udp:send(Socket, Addr, Port, Payload) of
         ok ->
             ok;
         {error, enobufs} ->
             %% Special case this
             timer:sleep(150), % Wait a bit for the queue to clear
-            send(N-1, Socket, Addr, Port, Payload);
+            send_aux(N-1, Socket, Addr, Port, Payload);
         {error, Reason} ->
             {error, Reason}
     end.

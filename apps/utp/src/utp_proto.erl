@@ -12,7 +12,10 @@
          current_time_ms/0,
 	 payload_size/1,
 	 encode/2,
-	 decode/1]).
+	 decode/1,
+         
+         validate/1
+        ]).
 
 -type conn_id() :: 0..16#FFFF.
 -export_type([packet/0,
@@ -92,6 +95,11 @@ decode(Packet) ->
      TimeStamp,
      TimeStampdiff,
      TS}.
+
+validate(#packet { seq_no = SeqNo,
+                   ack_no = AckNo }) ->
+    true = 0 =< SeqNo andalso SeqNo =< 65535,
+    true = 0 =< AckNo andalso AckNo =< 65535.
 
 
 validate_packet_type(Ty, Payload) ->
