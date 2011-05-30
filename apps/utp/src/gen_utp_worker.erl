@@ -105,7 +105,9 @@
                  proc_info    :: utp_process:t(),
                  connector    :: {{reference(), pid()}, [{pkt, #packet{}, term()}]},
                  zerowindow_timeout :: undefined | {set, reference()},
-                 retransmit_timeout :: undefined | {set, reference()}
+                 retransmit_timeout :: undefined | {set, reference()},
+
+                 options = [] :: [{atom(), term()}]
                }).
 
 %%%===================================================================
@@ -160,15 +162,21 @@ sync_send_event(Pid, Event) ->
 
 %% @private
 init([Socket, Addr, Port, Options]) ->
-    PktWindow  = utp_window:mk(),
-    PktBuf   = utp_pkt:mk(?DEFAULT_OPT_RECV_SZ),
-    ProcInfo = utp_process:mk(),
-    CanonAddr = canonicalize_address(Addr),
-    SockInfo = utp_socket:mk(CanonAddr, Options, ?DEFAULT_PACKET_SIZE, Port, Socket),
-    {ok, idle, #state{ sock_info = SockInfo,
-                       pkt_buf   = PktBuf,
-                       proc_info = ProcInfo,
-                       pkt_window  = PktWindow }}.
+    case validate_options(Options) of
+        ok ->
+            PktWindow  = utp_window:mk(),
+            PktBuf   = utp_pkt:mk(?DEFAULT_OPT_RECV_SZ),
+            ProcInfo = utp_process:mk(),
+            CanonAddr = canonicalize_address(Addr),
+            SockInfo = utp_socket:mk(CanonAddr, Options, ?DEFAULT_PACKET_SIZE, Port, Socket),
+            {ok, idle, #state{ sock_info = SockInfo,
+                               pkt_buf   = PktBuf,
+                               proc_info = ProcInfo,
+                               options=  Options,
+                               pkt_window  = PktWindow }};
+        badarg ->
+            {stop, badarg}
+    end.
 
 %% @private
 idle(close, S) ->
@@ -462,12 +470,13 @@ destroy(_Msg, State) ->
     {next_state, destroy, State}.
 
 %% @private
-idle(connect, From, State = #state { sock_info = SockInfo,
-                                     pkt_buf   = PktBuf}) ->
+idle(connect,
+     From, State = #state { sock_info = SockInfo,
+                            pkt_buf   = PktBuf}) ->
     {Address, Port} = utp_socket:hostname_port(SockInfo),
     Conn_id_recv = utp_proto:mk_connection_id(),
     gen_utp:register_process(self(), {Conn_id_recv, Address, Port}),
-
+    
     ConnIdSend = Conn_id_recv + 1,
     N_SockInfo = utp_socket:set_conn_id(ConnIdSend, SockInfo),
 
@@ -767,5 +776,18 @@ error_all(ProcessInfo, ErrorReason) ->
         end,
     utp_process:apply_all(ProcessInfo, F),
     utp_process:mk().
+
+-spec validate_options([term()]) -> ok | badarg.
+validate_options([{backlog, N} | R]) ->
+    case is_integer(N) of
+        true ->
+            validate_options(R);
+        false ->
+            badarg
+    end;
+validate_options([]) ->
+    ok;
+validate_options(_) ->
+    badarg.
 
 

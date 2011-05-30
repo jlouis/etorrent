@@ -687,6 +687,15 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
     got_fin state, up until the timeout. But it is a quite funny
     bug :P
 
+* TODO Stress test the rwin_test for the receive window
+  This test is specifically made such that it messes with the receive
+  window and will hit the zerowin timer quite a lot. It emulates a
+  slow receiver vs. a fast sender.
+
+  It fails. It fails due to the same problem as the backwards
+  communication test sometimes do. The solution is to allow buffer
+  drains in the got_fin state and such.
+** TODO Implement buffer drains in the got_fin state and so on.
 * DONE How should st_state packets in the got_fin state be handled
   Either we should process them or throw them away. I am not sure what
   is the right thing to do, actually.
@@ -698,7 +707,7 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   This ACK will tell the other end that we have succeeded in closing
   down. He will then upon receipt also move to the got_fin state and
   we are both at the point where we close down.
-* TODO Investigate the piggyback test problem
+* DONE Investigate the piggyback test problem
   The receive does not complete in one direction for some odd
   reason. We better investigate why it suddenly hangs and wont
   complete. It must be due to reordering as the thing works nicely if
@@ -706,17 +715,19 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
 
   We should investigate this case deeply since it is quite important
   to get right before we attack the later problems.
-** TODO Reenable the test case!
-* TODO Stress test the rwin_test for the receive window
-  This test is specifically made such that it messes with the receive
-  window and will hit the zerowin timer quite a lot. It emulates a
-  slow receiver vs. a fast sender.
+** DONE Reenable the test case!
+   Interestingly, there is no real bugs due to this anymore I have
+   seen, so we assume there is no problem for now until we find some
+   more specific test case with an error in it.
 * TODO TEST CASE: Test the wrap-around
   The 16bit wrap-around counter has to be tested somehow.
   One way is to do a backwards test. We send about 100 packets, so we
   have a 65536/100 = 665.35 to one chance of hitting it. That is, we
   will hit it in one out of 3 test runs, approximately...
 
+** DONE Add support for options on sockets
+** TODO Add an option what can cheat and force a sequence number
+   in the connectee direction.
 * TODO Looks like resets are sent to the wrong place
   If we get in a wrong packet, to where should the RESET be sent in
   order to hit right in the other end?

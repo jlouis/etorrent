@@ -30,6 +30,8 @@
 -opaque utp_socket() :: {utp_sock, pid()}.
 -export_type([utp_socket/0]).
 
+-type listen_opts() :: {backlog, integer()}.
+
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
@@ -45,7 +47,9 @@
 
 -record(state, { monitored :: gb_tree(),
                  socket    :: inet:socket(),
-                 listen_queue :: closed | #accept_queue{} }).
+                 listen_queue :: closed | #accept_queue{},
+                 listen_options = [] :: [listen_opts()]}).
+
 
 
 %%%===================================================================
@@ -115,14 +119,19 @@ close({utp_sock, Pid}) ->
 
 %% @doc Listen on socket, with queue length Q
 %% @end
--spec listen(integer()) -> ok | {error, term()}.
-listen(QLen) when QLen >= 0 ->
-    call({listen, QLen}).
+-spec listen([listen_opts()]) -> ok | {error, term()}.
+listen(Options) ->
+    case validate_listen_opts(Options) of
+        ok ->
+            call({listen, Options});
+        badarg ->
+            {error, badarg}
+    end.
 
 %% @equiv listen(5)
 -spec listen() -> ok | {error, term()}.
 listen() ->
-    listen(5).
+    listen([{backlog, 5}]).
 
 
 %% @doc New unknown incoming packet
@@ -185,13 +194,16 @@ init([Port, Opts]) ->
 handle_call(accept, _From, #state { listen_queue = closed } = S) ->
     {reply, {error, no_listen}, S};
 handle_call(accept, From, #state { listen_queue = Q,
+                                   listen_options = ListenOpts,
                                    socket = Socket } = S) ->
     false = Q =:= closed,
     {ok, Pairings, NewQ} = push_acceptor(From, Q),
-    [accept_incoming_conn(Socket, Acc, SYN) || {Acc, SYN} <- Pairings],
+    [accept_incoming_conn(Socket, Acc, SYN, ListenOpts) || {Acc, SYN} <- Pairings],
     {noreply, S#state { listen_queue = NewQ }};
-handle_call({listen, QLen}, _From, #state { listen_queue = closed } = S) ->
-    {reply, ok, S#state { listen_queue = new_accept_queue(QLen) }};
+handle_call({listen, Options}, _From, #state { listen_queue = closed } = S) ->
+    QLen = proplists:get_value(backlog, Options),
+    {reply, ok, S#state { listen_queue = new_accept_queue(QLen),
+                          listen_options = Options }};
 handle_call({listen, _QLen}, _From, #state { listen_queue = #accept_queue{} } = S) ->
     {reply, {error, ealreadylistening}, S};
 handle_call({reg_proc, Proc, CID}, _From, #state { monitored = Monitored } = State) ->
@@ -216,6 +228,7 @@ handle_cast({incoming_syn, _P, _Addr, _Port}, #state { listen_queue = closed } =
     ?WARN([incoming_syn_but_listen_closed]),
     {noreply, S};
 handle_cast({incoming_syn, Packet, Addr, Port}, #state { listen_queue = Q,
+                                                         listen_options = ListenOpts,
                                                          socket = Socket } = S) ->
     Elem = {Packet, Addr, Port},
     case push_syn(Elem, Q) of
@@ -228,7 +241,7 @@ handle_cast({incoming_syn, Packet, Addr, Port}, #state { listen_queue = Q,
         {ok, Pairings, NewQ} ->
             ?DEBUG([{paired, Pairings},
                     {syn_q, NewQ}]),
-            [accept_incoming_conn(Socket, Acc, SYN) || {Acc, SYN} <- Pairings],
+            [accept_incoming_conn(Socket, Acc, SYN, ListenOpts) || {Acc, SYN} <- Pairings],
             {noreply, S#state { listen_queue = NewQ }}
     end;
 handle_cast({generate_reset, #packet { conn_id = ConnID,
@@ -299,8 +312,8 @@ handle_queue(#accept_queue { acceptors = AQ,
             {ok, Pairings, Q} % Can't do anymore work for now
     end.
 
-accept_incoming_conn(Socket, From, {SynPacket, Addr, Port}) ->
-    {ok, Pid} = gen_utp_worker_pool:start_child(Socket, Addr, Port, []),
+accept_incoming_conn(Socket, From, {SynPacket, Addr, Port}, ListenOpts) ->
+    {ok, Pid} = gen_utp_worker_pool:start_child(Socket, Addr, Port, ListenOpts),
     %% We should register because we are the ones that can avoid the deadlock here
     %% @todo This call can in principle fail due to a conn_id being in use, but we will
     %% know if that happens.
@@ -330,6 +343,21 @@ reg_proc(Proc, CID) ->
             true = ets:insert(?TAB, {CID, Proc}),
             ok
     end.
+
+-spec validate_listen_opts([listen_opts()]) -> ok | badarg.
+validate_listen_opts([]) ->
+    ok;
+validate_listen_opts([{backlog, N} | R]) ->
+    case is_integer(N) of
+        true ->
+            validate_listen_opts(R);
+        false ->
+            badarg
+    end;
+validate_listen_opts(_) ->
+    badarg.
+
+    
 
 
 
