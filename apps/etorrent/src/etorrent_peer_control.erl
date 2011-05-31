@@ -497,7 +497,6 @@ handle_message({piece, Index, Offset, Data}, State) ->
         false ->
             %% Stray piece, we could try to get hold of it but for now we just
             %% throw it on the floor. TODO - crash if the fast extension is enabled?
-            exit(stray_piece),
             Local
     end,
     NewState = State#state{local=NewLocal},
