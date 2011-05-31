@@ -121,7 +121,7 @@ recv({utp_sock, Pid}, Length) when Length >= 0 ->
 
 recv_msg(Socket) ->
     case recv(Socket, 4) of
-        {ok, Sz} ->
+        {ok, <<Sz:32/integer>>} ->
             case recv(Socket, Sz) of
                 {ok, <<Digest:20/binary, EMsg/binary>>} ->
                     Digest = crypto:sha(EMsg),
