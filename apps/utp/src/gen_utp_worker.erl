@@ -833,11 +833,15 @@ draining_receive(L, PktBuf) ->
             case draining_receive(L - byte_size(Bin), N_Buffer) of
                 empty ->
                     {partial_read, Bin, N_Buffer};
-                {ok, Bin2, N_Buffer} ->
-                    {ok, <<Bin/binary, Bin2/binary>>, N_Buffer};
+                {ok, Bin2, N_Buffer2} ->
+                    {ok, <<Bin/binary, Bin2/binary>>, N_Buffer2};
                 {partial_read, Bin2, N_Buffer} ->
                     {partial_read, <<Bin/binary, Bin2/binary>>, N_Buffer}
             end
     end.
+
+
+
+
 
 
