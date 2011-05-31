@@ -796,6 +796,12 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
 ** TODO Step three is to make sure we propagate the information in packets correctly
 ** TODO Step four is to record the information and provide view functions
 ** TODO Step five is to understand how the views affect the congestion window
+* TODO Enable parallel tests
+  The parallel tests should be to run the *same* test many times next
+  to each other. Otherwise, we may end up with something wrong since
+  the belief is that when you accept a connection, you know what is
+  going to happen in the other end. This is only doable if we run the
+  same test in parallel.
 * Congestion window code
   Hinges on RTT Measurement
 * Implement Delayed ACKs
