@@ -14,7 +14,8 @@
 	 encode/2,
 	 decode/1,
          
-         validate/1
+         validate/1,
+         format_pkt/1
         ]).
 
 -type conn_id() :: 0..16#FFFF.
@@ -29,6 +30,16 @@
 -define(ST_STATE, 2).
 -define(ST_RESET, 3).
 -define(ST_SYN,   4).
+
+format_pkt(#packet { ty = Ty, conn_id = ConnID, win_sz = WinSz,
+                     seq_no = SeqNo,
+                     ack_no = AckNo,
+                     extension = Exts,
+                     payload = Payload }) ->
+    [{ty, Ty}, {conn_id, ConnID}, {win_sz, WinSz},
+     {seq_no, SeqNo}, {ack_no, AckNo}, {extension, Exts},
+     {payload,
+      byte_size(Payload)}].
 
 -spec mk_connection_id() -> conn_id().
 mk_connection_id() ->
@@ -97,9 +108,16 @@ decode(Packet) ->
      TS}.
 
 validate(#packet { seq_no = SeqNo,
-                   ack_no = AckNo }) ->
-    true = 0 =< SeqNo andalso SeqNo =< 65535,
-    true = 0 =< AckNo andalso AckNo =< 65535.
+                   ack_no = AckNo } = Pkt) ->
+    case (0 =< SeqNo andalso SeqNo =< 65535)
+         andalso
+         (0 =< AckNo andalso AckNo =< 65535) of
+        true ->
+            true;
+        false ->
+            format_pkt(Pkt),
+            false
+    end.
 
 
 validate_packet_type(Ty, Payload) ->

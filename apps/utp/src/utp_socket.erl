@@ -15,8 +15,7 @@
         ]).
 
 -export([
-         send_pkt/3, send_pkt/4,
-         format_pkt/1
+         send_pkt/3, send_pkt/4
         ]).
 
 -type ip_address() :: inet:ip4_address().
@@ -36,16 +35,6 @@
 -export_type([t/0]).
 
 %% ----------------------------------------------------------------------
-
-format_pkt(#packet { ty = Ty, conn_id = ConnID, win_sz = WinSz,
-                     seq_no = SeqNo,
-                     ack_no = AckNo,
-                     extension = Exts,
-                     payload = Payload }) ->
-    [{ty, Ty}, {conn_id, ConnID}, {win_sz, WinSz},
-     {seq_no, SeqNo}, {ack_no, AckNo}, {extension, Exts},
-     {payload,
-      byte_size(Payload)}].
 
 mk(Addr, Opts, PacketSize, Port, Socket) ->
     #sock_info { addr = Addr,
@@ -73,7 +62,7 @@ send_pkt(AdvWin, #sock_info { socket = Socket,
     %% @todo Handle timestamping here!!
     Pkt = Packet#packet { conn_id = ConnId,
                           win_sz = AdvWin },
-    ?DEBUG([node(), outgoing_pkt, format_pkt(Pkt)]),
+    ?DEBUG([node(), outgoing_pkt, utp_proto:format_pkt(Pkt)]),
     send(Socket, Addr, Port, Pkt, TSDiff).
 
 send_reset(Socket, Addr, Port, ConnIDSend, AckNo, SeqNo) ->

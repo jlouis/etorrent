@@ -88,7 +88,12 @@ test_close_in_2(Options) ->
     ok =  listen(Options),
     {ok, Sock} = gen_utp:accept(),
     ok = gen_utp:close(Sock),
-    {error, econnreset} = gen_utp:recv(Sock, 5),
+    case gen_utp:recv(Sock, 5) of
+        {error, eof} ->
+            ignore;
+        {error, econnreset} ->
+            ignore
+    end,
     {ok, gen_utp_trace:grab()}.
 
 test_close_out_3() ->

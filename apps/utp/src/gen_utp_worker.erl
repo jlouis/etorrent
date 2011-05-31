@@ -273,7 +273,7 @@ connected({pkt, #packet { ty = st_syn }, _}, State) ->
     {next_state, connected, State};
 connected({pkt, Pkt, {_TS, _TSDiff, RecvTime}},
 	  #state { retransmit_timeout = RetransTimer } = State) ->
-    ?DEBUG([node(), incoming_pkt, connected, utp_socket:format_pkt(Pkt)]),
+    ?DEBUG([node(), incoming_pkt, connected, utp_proto:format_pkt(Pkt)]),
 
     {ok, Messages, N_PKI, N_PB, N_PRI, ZWinTimeout} =
         handle_packet_incoming(Pkt, RecvTime, State),
@@ -408,7 +408,7 @@ fin_sent({pkt, #packet { ty = st_reset }, _},
     {next_state, destroy, State#state { proc_info = N_PRI }};
 fin_sent({pkt, Pkt, {_TS, _TSDiff, RecvTime}},
 	  #state { retransmit_timeout = RetransTimer } = State) ->
-    ?DEBUG([node(), incoming_pkt, fin_sent, utp_socket:format_pkt(Pkt)]),
+    ?DEBUG([node(), incoming_pkt, fin_sent, utp_proto:format_pkt(Pkt)]),
 
     {ok, Messages, N_PKI, N_PB, N_PRI, ZWinTimeout} =
         handle_packet_incoming(Pkt, RecvTime, State),
@@ -552,16 +552,32 @@ connected(_Msg, _From, State) ->
     {next_state, connected, State}.
 
 %% @private
-got_fin({recv, _L}, _From, State) ->
-    ?DEBUG([got_fin, recv]),
-    {reply, {error, econnreset}, got_fin, State};
+got_fin({recv, L}, _From, #state { pkt_buf = PktBuf,
+                                   proc_info = ProcInfo } = State) ->
+    true = utp_process:recv_buffer_empty(ProcInfo),
+    case draining_receive(L, PktBuf) of
+        {ok, Bin, N_PktBuf} ->
+            {reply, {ok, Bin}, got_fin, State#state { pkt_buf = N_PktBuf}};
+        empty ->
+            {reply, {error, eof}, got_fin, State};
+        {partial_read, Bin, N_PktBuf} ->
+            {reply, {error, {partial, Bin}}, got_fin, State#state { pkt_buf = N_PktBuf}}
+    end;
 got_fin({send, _Data}, _From, State) ->
     {reply, {error, econnreset}, got_fin, State}.
 
 %% @private
-fin_sent({recv, _L}, _From, State) ->
-    ?DEBUG([recv]),
-    {reply, {error, econnreset}, fin_sent, State};
+fin_sent({recv, L}, _From, #state { pkt_buf = PktBuf,
+                                    proc_info = ProcInfo } = State) ->
+    true = utp_process:recv_buffer_empty(ProcInfo),
+    case draining_receive(L, PktBuf) of
+        {ok, Bin, N_PktBuf} ->
+            {reply, {ok, Bin}, fin_sent, State#state { pkt_buf = N_PktBuf}};
+        empty ->
+            {reply, {error, eof}, fin_sent, State};
+        {partial_read, Bin, N_PktBuf} ->
+            {reply, {error, {partial, Bin}}, fin_sent, State#state { pkt_buf = N_PktBuf}}
+    end;
 fin_sent({send, _Data}, _From, State) ->
     {reply, {error, econnreset}, fin_sent, State}.
 
@@ -803,5 +819,25 @@ validate_options([]) ->
     ok;
 validate_options(_) ->
     badarg.
+
+draining_receive(L, PktBuf) ->
+    case utp_pkt:buffer_dequeue(PktBuf) of
+        empty ->
+            empty;
+        {ok, Bin, N_Buffer} when byte_size(Bin) > L ->
+            <<Cut:L/binary, Rest/binary>> = Bin,
+            {ok, Cut, utp_pkt:buffer_putback(Rest, N_Buffer)};
+        {ok, Bin, N_Buffer} when byte_size(Bin) == L ->
+            {ok, Bin, N_Buffer};
+        {ok, Bin, N_Buffer} when byte_size(Bin) < L ->
+            case draining_receive(L - byte_size(Bin), N_Buffer) of
+                empty ->
+                    {partial_read, Bin, N_Buffer};
+                {ok, Bin2, N_Buffer} ->
+                    {ok, <<Bin/binary, Bin2/binary>>, N_Buffer};
+                {partial_read, Bin2, N_Buffer} ->
+                    {partial_read, <<Bin/binary, Bin2/binary>>, N_Buffer}
+            end
+    end.
 
 

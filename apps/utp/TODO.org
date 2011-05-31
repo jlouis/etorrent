@@ -632,6 +632,8 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   gen_utp is the guy that should register atomically before handling
   the next packet. Otherwise we hit some rather peculiar bugs upon
   races.
+* TODO Test the buffer draining code
+  Fixed a bug around {error, eof} when closing down.
 * TODO Backwards communication has some bug
   The problem is that one path, the OUT_PATH_TRACE gets {error,
   econnreset}. We must investigate why this is the case and fix it.

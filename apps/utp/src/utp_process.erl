@@ -18,6 +18,7 @@
 
          fill_via_send_queue/2,
 	 bytes_in_recv_buffer/1,
+         recv_buffer_empty/1,
 
          apply_all/2
 	]).
@@ -128,6 +129,16 @@ dequeue_packet(Payload, Q, N) when is_integer(N) ->
 	    end
     end.
 
+%% @doc Predicate: is the receive buffer empty
+%% This function is a faster variant of `bytes_in_recv_buffer/1` for the 0 question case
+%% @end
+-spec recv_buffer_empty(t()) -> boolean().
+recv_buffer_empty(#proc_info { receiver_q = RQ }) ->
+    queue:is_empty(RQ).
+
+%% @doc Return how many bytes there are left in the receive buffer
+%% @end
+-spec bytes_in_recv_buffer(t()) -> integer().
 bytes_in_recv_buffer(#proc_info { receiver_q = RQ }) ->
     L = queue:to_list(RQ),
     lists:sum([byte_size(Payload) || {receiver, _From, _Sz, Payload} <- L]).
