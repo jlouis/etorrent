@@ -702,19 +702,6 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
 * DONE How should st_state packets in the got_fin state be handled
   Either we should process them or throw them away. I am not sure what
   is the right thing to do, actually.
-* TODO There seems to be yet another SYN bug
-  It looks as if we are facing yet another bug due to SYNs being
-  duplicate. We should probably track what we do with SYN
-  packets. There are not that many of them and knowing what does wrong
-  would be really good.
-* TODO in the GOT_FIN state, we should still process the ACK numbers
-  It is only the parts about reading in data we should skip.
-  We can update the internal buffers, but since we are in GOT_FIN, we
-  can't fill up the queue.
-* TODO Push out an ACK upon {got_fin, st_fin}
-  This ACK will tell the other end that we have succeeded in closing
-  down. He will then upon receipt also move to the got_fin state and
-  we are both at the point where we close down.
 * DONE Investigate the piggyback test problem
   The receive does not complete in one direction for some odd
   reason. We better investigate why it suddenly hangs and wont
@@ -727,23 +714,68 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
    Interestingly, there is no real bugs due to this anymore I have
    seen, so we assume there is no problem for now until we find some
    more specific test case with an error in it.
-* TODO TEST CASE: Test the wrap-around
+* DONE TEST CASE: Test the wrap-around
   The 16bit wrap-around counter has to be tested somehow.
   One way is to do a backwards test. We send about 100 packets, so we
   have a 65536/100 = 665.35 to one chance of hitting it. That is, we
   will hit it in one out of 3 test runs, approximately...
 
 ** DONE Add support for options on sockets
-** TODO Add an option what can cheat and force a sequence number
+** DONE Add an option what can cheat and force a sequence number
    in the connectee direction.
-* TODO Looks like resets are sent to the wrong place
-  If we get in a wrong packet, to where should the RESET be sent in
-  order to hit right in the other end?
-** TODO What is utp.cpp doing here?
-** TODO Do the same thing as utp.cpp :)
-* TODO Consider timeouts in all states.
-  We need to make sure there is a timeout exit for all connection
-  states. This is not currently guaranteed.
+* DONE We sometimes hit {error, enobufs}
+  On the FreeBSD machine. Investigate and handle this kind of error
+  message.
+
+  We can only handle this while on the FreeBSD machine and when we
+  know where it occurs. We should probably regard such a packet as
+  lost rather than try again later on. It only happens when we have
+  enabled active queue management of some kind, notably RED or a
+  DUMMYNET pipe.
+
+  We assume the fix is to regard the packet as lost forever.
+
+* DONE False Start: When in syn_sent and getting packets out of order, reorder them!
+  This is a problem we can ignore in principle until we have other
+  parts of the system up and running. Retransmission will ensure we
+  eventually get them in.
+** TODO Read libutp source code on out-of-order packets in syn_sent
+  It is not obvious what to do:
+
+  There are so many loose holes in this so we better fix them. How do
+  we want to handle initial ACK's and stuff?
+
+  The best thing is to read through the code of libutp and figure out
+  what they have decided to do.
+
+  Essentially, this is the question that says: Should we allow for
+  false starts or shouldn't we allow for false starts? Is libutp
+  accepting false starts? We could just buffer up incoming packets
+  temporarily and then feed them to ourselves when we go to the
+  connected state.
+
+* DONE ACK piggybacking
+  ACK piggybacking is the concept where we under a send check if we
+  sent a packet. If this is the case, we effectively have a piggy-back
+  and can drop sending out a separate ACK. It is easily detected in
+  the code base and then handled explicitly.
+
+  ; Detect if we transmitted a packet on the socket
+  ; If we did *not*, leave a message.
+  ; Check this message before sending the st_state based ack!
+
+  Piggybacking has been implemented. If there are any errors due to
+  this, it is errors due to other parts of the code being wrong and
+  probably not due to this.
+* TODO Make piggyback output information while running!
+  Currently, the piggyback test case says nothing if it fails. Hence,
+  we do not know anything about *why* it failed. This should be fixed
+  by adding test cases to the piggyback test.
+* TODO There seems to be yet another SYN bug
+  It looks as if we are facing yet another bug due to SYNs being
+  duplicate. We should probably track what we do with SYN
+  packets. There are not that many of them and knowing what does wrong
+  would be really good.
 * TODO Force an st_state packet through when the window *reopens*
   If we have a window that is down to 0, and we then suddenly get a
   receiver on the socket reading data out of it such that we detect
@@ -752,18 +784,18 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
 
   It will make the other end trip the zerowin-timer rarely and I don't
   like the way the zero win timer is resolved.
-* ACK piggybacking
-  ACK piggybacking is the concept where we under a send check if we
-  sent a packet. If this is the case, we effectively have a piggy-back
-  and can drop sending out a separate ACK. It is easily detected in
-  the code base and then handled explicitly.
-* RTT Measurement
-  This is probably different in uTP from the standard protocol
+* TODO RTT Measurement
+  This is probably different in uTP from the standard TCP protocol
 
   It is, because we have an explicit RTT-timer inside the packet. This
   is fairly important to get right, but it requires us to investigate
   a lot on the reference code to understand what is going on. It is
   the major important part of this weeks work.
+** TODO Step one is to read through the utp.cpp source and document here what it entails.
+** TODO Step two is to make a plan of what to do in our case, so we have a point of entry
+** TODO Step three is to make sure we propagate the information in packets correctly
+** TODO Step four is to record the information and provide view functions
+** TODO Step five is to understand how the views affect the congestion window
 * Congestion window code
   Hinges on RTT Measurement
 * Implement Delayed ACKs
@@ -820,18 +852,6 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   But it doesn't matter at the moment. I'd rather look into other
   errors first and get those away first. Then we can look into this
   which should be fairly automated to add later on.
-* DONE We sometimes hit {error, enobufs}
-  On the FreeBSD machine. Investigate and handle this kind of error
-  message.
-
-  We can only handle this while on the FreeBSD machine and when we
-  know where it occurs. We should probably regard such a packet as
-  lost rather than try again later on. It only happens when we have
-  enabled active queue management of some kind, notably RED or a
-  DUMMYNET pipe.
-
-  We assume the fix is to regard the packet as lost forever.
-
 * TODO Only install the zerowin timer if there are more data to send out
   We are currently always setting the ZeroWindow timer when the
   peer_advertised_window is 0, but we could postpone that decision
@@ -842,25 +862,6 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   This is most clever to postpone as it has no direct effect on the
   code base currently. It is a "Nice-to-have" thing rather than a
   "DO-NEED!" thing.
-* DONE False Start: When in syn_sent and getting packets out of order, reorder them!
-  This is a problem we can ignore in principle until we have other
-  parts of the system up and running. Retransmission will ensure we
-  eventually get them in.
-** TODO Read libutp source code on out-of-order packets in syn_sent
-  It is not obvious what to do:
-
-  There are so many loose holes in this so we better fix them. How do
-  we want to handle initial ACK's and stuff?
-
-  The best thing is to read through the code of libutp and figure out
-  what they have decided to do.
-
-  Essentially, this is the question that says: Should we allow for
-  false starts or shouldn't we allow for false starts? Is libutp
-  accepting false starts? We could just buffer up incoming packets
-  temporarily and then feed them to ourselves when we go to the
-  connected state.
-
 * TODO Handle ENOBUFS in packet initialization:
    {{badmatch,{error,enobufs}},
     [{utp_pkt,send_packet,4},
@@ -913,3 +914,34 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
 
 
 
+* TODO in the GOT_FIN state, we should still process the ACK numbers
+  It is only the parts about reading in data we should skip.
+  We can update the internal buffers, but since we are in GOT_FIN, we
+  can't fill up the queue.
+* TODO Push out an ACK upon {got_fin, st_fin}
+  This ACK will tell the other end that we have succeeded in closing
+  down. He will then upon receipt also move to the got_fin state and
+  we are both at the point where we close down.
+
+
+
+
+
+
+
+
+
+
+
+
+* TODO Looks like resets are sent to the wrong place
+  If we get in a wrong packet, to where should the RESET be sent in
+  order to hit right in the other end?
+** TODO What is utp.cpp doing here?
+** TODO Do the same thing as utp.cpp :)
+* TODO Consider timeouts in all states.
+  We need to make sure there is a timeout exit for all connection
+  states. This is not currently guaranteed.
+
+  Only do this if we suspect there is an error due to a missed
+  timeout. Currently there does not seem to be one.

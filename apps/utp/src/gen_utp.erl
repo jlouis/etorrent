@@ -120,12 +120,16 @@ recv({utp_sock, Pid}, Length) when Length >= 0 ->
     gen_utp_worker:recv(Pid, Length).
 
 recv_msg(Socket) ->
-    Sz = recv(Socket, 4),
-    case recv(Socket, Sz) of
-        {ok, <<Digest:20/binary, EMsg/binary>>} ->
-            Digest = crypto:sha(EMsg),
-            Term = binary_to_term(EMsg),
-            {ok, Term};
+    case recv(Socket, 4) of
+        {ok, Sz} ->
+            case recv(Socket, Sz) of
+                {ok, <<Digest:20/binary, EMsg/binary>>} ->
+                    Digest = crypto:sha(EMsg),
+                    Term = binary_to_term(EMsg),
+                    {ok, Term};
+                {error, Reason} ->
+                    {error, Reason}
+            end;
         {error, Reason} ->
             {error, Reason}
     end.

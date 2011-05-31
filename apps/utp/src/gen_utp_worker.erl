@@ -308,7 +308,7 @@ connected({timeout, Ref, {zerowindow_timeout, _N}},
             pkt_window = WindowInfo,
             zerowindow_timeout = {set, Ref}} = State) ->
     N_Win = utp_window:bump_window(WindowInfo),
-    {ZWinTimer, N_PktBuf, N_ProcessInfo} =
+    {_FillMessages, ZWinTimer, N_PktBuf, N_ProcessInfo} =
         fill_window(SockInfo, ProcessInfo, N_Win, PktBuf, undefined),
     {next_state, connected,
      State#state {
@@ -538,11 +538,12 @@ connected({send, Data}, From, #state {
                           zerowindow_timeout = ZWinTimer,
 			  pkt_buf   = PKB } = State) ->
     ProcInfo = utp_process:enqueue_sender(From, Data, PI),
-    {N_ZWinTimer, PKB1, ProcInfo1} = fill_window(SockInfo,
-                                                 ProcInfo,
-                                                 PKI,
-                                                 PKB,
-                                                 ZWinTimer),
+    {_FillMessages, N_ZWinTimer, PKB1, ProcInfo1} =
+        fill_window(SockInfo,
+                    ProcInfo,
+                    PKI,
+                    PKB,
+                    ZWinTimer),
     {next_state, connected, State#state {
                               zerowindow_timeout = N_ZWinTimer,
 			      proc_info = ProcInfo1,
@@ -687,16 +688,16 @@ handle_retransmit_timer(Messages, RetransTimer) ->
     end.
 
 fill_window(SockInfo, ProcessInfo, WindowInfo, PktBuffer, ZWinTimer) ->
-    {ok, N_PktBuffer, N_ProcessInfo} =
+    {Messages, N_PktBuffer, N_ProcessInfo} =
         utp_pkt:fill_window(SockInfo,
                             ProcessInfo,
                             WindowInfo,
                             PktBuffer),
     case utp_window:view_zero_window(WindowInfo) of
         ok ->
-            {cancel_zerowin_timer(ZWinTimer), N_PktBuffer, N_ProcessInfo};
+            {Messages, cancel_zerowin_timer(ZWinTimer), N_PktBuffer, N_ProcessInfo};
         zero ->
-            {set_zerowin_timer(ZWinTimer), N_PktBuffer, N_ProcessInfo}
+            {Messages, set_zerowin_timer(ZWinTimer), N_PktBuffer, N_ProcessInfo}
     end.
 
 cancel_zerowin_timer(undefined) ->
@@ -753,14 +754,14 @@ handle_packet_incoming(Pkt, RecvTime,
                 end,
             
             %% Fill up the send window again with the new information
-            {ZWinTimeout, N_PB2, N_PRI2} = fill_window(SockInfo, N_PRI, N_PKI1, N_PB,
-                                                       ZWin),
+            {FillMessages, ZWinTimeout, N_PB2, N_PRI2} =
+                fill_window(SockInfo, N_PRI, N_PKI1, N_PB, ZWin),
             %% @todo This ACK may be cancelled if we manage to push something out
             %%       the window, etc., but the code is currently ready for it!
             %% The trick is to clear the message.
 
             %% Send out an ACK if needed
-            utp_pkt:handle_send_ack(SockInfo, N_PB2, Messages),
+            utp_pkt:handle_send_ack(SockInfo, N_PB2, Messages ++ FillMessages),
 
             {ok, Messages, N_PKI1, N_PB2, N_PRI2, ZWinTimeout}
     catch

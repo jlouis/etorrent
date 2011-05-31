@@ -168,7 +168,14 @@ handle_send_ack(SockInfo, PktBuf, Messages) ->
         undefined ->
             ok;
         true ->
-            send_ack(SockInfo, PktBuf)
+            case proplists:get_value(no_piggyback, Messages) of
+                true ->
+                    send_ack(SockInfo, PktBuf);
+                undefined ->
+                    %% The requested ACK is already sent as a piggyback on
+                    %% top of a data message. There is no reason to resend it.
+                    ok
+            end
     end.
 
 %% RECEIVE PATH
@@ -518,7 +525,13 @@ fill_window(SockInfo, ProcQueue, PktWindow, PktBuf) ->
     %% Send out the queue of packets to transmit
     NBuf1 = transmit_queue(TxQueue, PktBuf, SockInfo),
     %% Eventually shove the Nagled packet in the tail
-    {ok, NBuf1, NProcQueue}.
+    Result = case queue:is_empty(TxQueue) of
+                 true ->
+                     [no_piggyback];
+                 false ->
+                     []
+             end,
+    {Result, NBuf1, NProcQueue}.
 
 %% PACKET RETRANSMISSION
 %% ----------------------------------------------------------------------
