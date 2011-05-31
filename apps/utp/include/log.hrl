@@ -9,7 +9,9 @@
 %% -define(ERR(T), ignore).
 
 
--define(DEBUG(Args), gen_utp_trace:tr([self(), ?MODULE, ?LINE, Args])).
+-define(DEBUG(Args), io:format("D(~p ~p:~p):~n~p~n", ([self(), ?MODULE, ?LINE, Args]))).
+
+%% -define(DEBUG(Args), gen_utp_trace:tr([self(), ?MODULE, ?LINE, Args])).
 %% -define(DEBUG(Args), ignore).
 
 -define(TRACE(Val), begin gen_utp_trace:tr([self(), ?MODULE, ?LINE, Val]),

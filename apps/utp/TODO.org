@@ -767,6 +767,7 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   Piggybacking has been implemented. If there are any errors due to
   this, it is errors due to other parts of the code being wrong and
   probably not due to this.
+* TODO timetrap timeouts should result in logging
 * TODO Make piggyback output information while running!
   Currently, the piggyback test case says nothing if it fails. Hence,
   we do not know anything about *why* it failed. This should be fixed
