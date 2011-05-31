@@ -7,6 +7,8 @@
 -export([
          mk/1,
 
+         bit16/1,
+
          init_seqno/2,
          init_ackno/2,
 
@@ -95,7 +97,7 @@ mk(OptRecv) ->
         opt_recv_buf_sz = OptRecv
        }.
 
-init_seqno(#pkt_buf {} = PBuf, SeqNo) ->
+init_seqno(#pkt_buf {} = PBuf, SeqNo) when SeqNo >= 0, SeqNo < 65536->
     PBuf#pkt_buf { seq_no = SeqNo }.
 
 init_ackno(#pkt_buf{} = PBuf, AckNo) ->
@@ -172,6 +174,7 @@ handle_send_ack(SockInfo, PktBuf, Messages) ->
                 true ->
                     send_ack(SockInfo, PktBuf);
                 undefined ->
+                    ?DEBUG([piggybacked]),
                     %% The requested ACK is already sent as a piggyback on
                     %% top of a data message. There is no reason to resend it.
                     ok

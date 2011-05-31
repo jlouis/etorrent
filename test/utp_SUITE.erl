@@ -57,9 +57,8 @@ end_per_suite(Config) ->
     test_server:stop_node(?config(connectee, Config)),
     ok.
 
-init_per_testcase(connect_n_communicate, Config) ->
-    Config;
-init_per_testcase(_Case, Config) ->
+init_per_testcase(Case, Config) ->
+    ct:pal("****** ~p ************", [Case]),
     Config.
 
 end_per_testcase(_Case, _Config) ->

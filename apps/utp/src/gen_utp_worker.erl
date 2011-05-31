@@ -216,7 +216,7 @@ syn_sent({pkt, #packet { ty = st_state,
                    pkt_window = utp_window:handle_advertised_window(WindowSize,
                                                                     PktWin),
                    retransmit_timeout = clear_retransmit_timer(RTimeout),
-                   pkt_buf = utp_pkt:init_ackno(PktBuf, PktSeqNo+1)}};
+                   pkt_buf = utp_pkt:init_ackno(PktBuf, utp_pkt:bit16(PktSeqNo+1))}};
 syn_sent({pkt, _Packet, _Timing} = Pkt,
          #state { connector = {From, Packets}} = State) ->
     {next_state, syn_sent,
@@ -514,7 +514,7 @@ idle({accept, SYN}, _From, #state { sock_info = SockInfo,
             State#state { sock_info = N_SockInfo,
                           pkt_window = utp_window:handle_advertised_window(SYN, PktWin),
                           pkt_buf = utp_pkt:init_ackno(
-                                      utp_pkt:init_seqno(PktBuf, SeqNo + 1), AckNo+1)}};
+                                      utp_pkt:init_seqno(PktBuf, utp_pkt:bit16(SeqNo + 1)), AckNo+1)}};
 
 idle(_Msg, _From, State) ->
     {reply, idle, {error, enotconn}, State}.
