@@ -183,7 +183,8 @@ init([]) ->
 handle_call({new, Id, {{uploaded, U}, {downloaded, D},
 		               {all_time_uploaded, AU},
 		               {all_time_downloaded, AD},
-                       {left, L}, {total, T}, {is_private, P}},
+                       {left, L}, {total, T}, {is_private, P},
+                       {pieces, Valid}},
                        NPieces}, {Pid, _Tag}, S) ->
     State = case L of
                 0 -> etorrent_event:seeding_torrent(Id),
@@ -201,7 +202,7 @@ handle_call({new, Id, {{uploaded, U}, {downloaded, D},
                            pieces = NPieces,
                            is_private = P,
                            state = State }),
-    Missing = etorrent_piece_mgr:num_not_fetched(Id),
+    Missing = NPieces - etorrent_pieceset:size(Valid),
     true = ets:insert_new(etorrent_c_pieces, #c_pieces{ id = Id, missing = Missing}),
     R = erlang:monitor(process, Pid),
     NS = S#state { monitoring = dict:store(R, Id, S#state.monitoring) },
@@ -331,7 +332,7 @@ state_change(Id, [What | Rest]) ->
                   Left = T#torrent.left - Amount,
                   case Left of
                       0 ->
-			  ControlPid = gproc:lookup_local_name({torrent, Id, control}),
+			  ControlPid = etorrent_torrent_ctl:lookup_server(Id),
 			  etorrent_torrent_ctl:completed(ControlPid),
                           T#torrent { left = 0, state = seeding,
 				      rate_sparkline = [0.0] };

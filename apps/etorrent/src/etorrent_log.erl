@@ -50,12 +50,14 @@ disable(Topic) when is_atom(Topic) ->
 %% @end
 -spec is_enabled(atom()) -> boolean().
 is_enabled(Topic) ->
-    case ets:lookup(log_tab(), Topic) of
+    case (catch ets:lookup(log_tab(), Topic)) of
+        {'EXIT', _} -> false;
         [{_, Setting}] ->
             Setting;
         [] ->
             case ets:lookup(log_tab(), default) of
-                [{default, Policy}] -> Policy
+                [{default, Policy}] -> Policy;
+                [] -> true
             end
     end.
 

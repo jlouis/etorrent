@@ -39,9 +39,10 @@
 await_servers(TorrentID) ->
     Pending   = etorrent_pending:await_server(TorrentID),
     Progress  = etorrent_progress:await_server(TorrentID),
-    Histogram = etorrent_histogram:await_server(TorrentID),
+    Histogram = etorrent_scarcity:await_server(TorrentID),
     Endgame   = etorrent_endgame:await_server(TorrentID),
     Inendgame = etorrent_endgame:is_active(Endgame),
+    ok = etorrent_pending:register(Pending),
     Handle = #tservices{
         torrent_id=TorrentID,
         in_endgame=Inendgame,
@@ -123,6 +124,6 @@ chunk_fetched(_, _, _, _) ->
 %% @end
 -spec chunk_stored(pieceindex(), chunkoffset(), chunklength(), tservices()) -> ok.
 chunk_stored(Piece, Offset, Length, Handle) ->
-   #tservices{pending=Pending, progress=Progress} = Handle,
+    #tservices{pending=Pending, progress=Progress} = Handle,
     ok = etorrent_chunkstate:stored(Piece, Offset, Length, self(), Progress),
     ok = etorrent_chunkstate:stored(Piece, Offset, Length, self(), Pending).

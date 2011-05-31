@@ -8,38 +8,36 @@
          valid/2]).
 
 -type pieceindex() :: etorrent_types:pieceindex().
+-type pieces() :: [pieceindex()] | pieceindex().
+-type pids() :: [pid()] | pid().
 
 
 %% @doc
 %% @end
--spec invalid(pieceindex(), pid()) -> ok.
-invalid(Piece, Srvpid) ->
-    Srvpid ! {piece, {invalid, Piece}},
-    ok.
+-spec invalid(pieces(), pids()) -> ok.
+invalid(Pieces, Pids) ->
+    notify(Pieces, invalid, Pids).
 
 
 %% @doc
 %% @end
--spec unassigned(pieceindex(), pid()) -> ok.
-unassigned(Piece, Srvpid) ->
-    Srvpid ! {piece, {unassigned, Piece}},
-    ok.
+-spec unassigned(pieces(), pids()) -> ok.
+unassigned(Pieces, Pids) ->
+    notify(Pieces, unassigned, Pids).
 
 
 %% @doc
 %% @end
--spec stored(pieceindex(), pid()) -> ok.
-stored(Piece, Srvpid) ->
-    Srvpid ! {piece, {stored, Piece}},
-    ok.
+-spec stored(pieces(), pids()) -> ok.
+stored(Pieces, Pids) ->
+    notify(Pieces, stored, Pids).
 
 
 %% @doc
 %% @end
--spec valid(pieceindex(), pid()) -> ok.
-valid(Piece, Srvpid) ->
-    Srvpid ! {piece, {valid, Piece}},
-    ok.
+-spec valid(pieces(), pids()) -> ok.
+valid(Pieces, Pids) ->
+    notify(Pieces, valid, Pids).
 
 notify(Pieces, Status, Pid) when is_list(Pieces) ->
     [notify(Piece, Status, Pid) || Piece <- Pieces],
@@ -54,6 +52,16 @@ notify(Piece, Status, Pid) ->
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
 -define(piecestate, ?MODULE).
+
+notify_pid_list_test() ->
+    ?assertEqual(ok, ?piecestate:invalid(0, [self(), self()])),
+    ?assertEqual({piece, {invalid, 0}}, etorrent_utils:first()),
+    ?assertEqual({piece, {invalid, 0}}, etorrent_utils:first()).
+
+notify_piece_list_test() ->
+    ?assertEqual(ok, ?piecestate:invalid([0,1], self())),
+    ?assertEqual({piece, {invalid, 0}}, etorrent_utils:first()),
+    ?assertEqual({piece, {invalid, 1}}, etorrent_utils:first()).
 
 invalid_test() ->
     ?assertEqual(ok, ?piecestate:invalid(0, self())),

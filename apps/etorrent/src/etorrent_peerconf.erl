@@ -1,14 +1,17 @@
 -module(etorrent_peerconf).
 -export([new/0,
-         peerid/1,
-         peerid/2,
+         localid/1,
+         localid/2,
+         remoteid/1,
+         remoteid/2,
          extended/1,
          extended/2,
          fast/1,
          fast/2]).
 
 -record(peerconf, {
-    peerid = exit(required) :: none | <<_:160>>,
+    localid  = exit(required) :: none | <<_:160>>,
+    remoteid = exit(required) :: none | <<_:160>>,
     extended = exit(required) :: boolean(),
     fast = exit(required) :: boolean()}).
 
@@ -17,27 +20,41 @@
 
 -spec new() -> peerconf().
 new() ->
-    new(none).
-
--spec new(<<_:160>>) -> peerconf().
-new(PeerID) ->
     Conf = #peerconf{
-        peerid=PeerID,
+        localid=none,
+        remoteid=none,
         extended=true,
         fast=false},
     Conf.
 
--spec peerid(peerconf()) -> <<_:160>>.
-peerid(Peerconf) ->
-    #peerconf{peerid=PeerID} = Peerconf,
-    PeerID /= none orelse erlang:error(badarg),
-    PeerID.
 
--spec peerid(<<_:160>> | none, peerconf()) -> peerconf().
-peerid(PeerID, Peerconf) ->
-    #peerconf{peerid=Prev} = Peerconf,
-    Prev == none orelse erlang:error(badarg),
-    Peerconf#peerconf{peerid=PeerID}.
+-spec localid(peerconf()) -> <<_:160>>.
+localid(Peerconf) ->
+    #peerconf{localid=LocalID} = Peerconf,
+    LocalID /= none orelse erlang:error(badarg),
+    LocalID.
+
+
+-spec localid(<<_:160>>, peerconf()) -> peerconf().
+localid(<<NewLocalID:160/bitstring>>, Peerconf) ->
+    #peerconf{localid=LocalID} = Peerconf,
+    LocalID == none orelse erlang:error(badarg),
+    Peerconf#peerconf{localid=NewLocalID}.
+
+
+-spec remoteid(peerconf()) -> <<_:160>>.
+remoteid(Peerconf) ->
+    #peerconf{remoteid=RemoteID} = Peerconf,
+    RemoteID /= none orelse erlang:error(badarg),
+    RemoteID.
+
+
+-spec remoteid(<<_:160>>, peerconf()) -> peerconf().
+remoteid(<<NewRemoteID:160/bitstring>>, Peerconf) ->
+    #peerconf{localid=RemoteID} = Peerconf,
+    RemoteID == none orelse erlang:error(badarg),
+    Peerconf#peerconf{remoteid=NewRemoteID}.
+
 
 -spec extended(peerconf()) -> boolean().
 extended(Peerconf) ->

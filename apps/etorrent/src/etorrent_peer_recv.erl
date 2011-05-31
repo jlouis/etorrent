@@ -19,6 +19,11 @@
 
 -export([start_link/2, cb_go_fast/1, cb_go_slow/1]).
 
+%% gproc registry entries
+-export([register_server/1,
+         lookup_server/1,
+         await_server/1]).
+
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
@@ -57,6 +62,24 @@
 start_link(TorrentId, Socket) ->
     gen_server:start_link(?MODULE, [TorrentId, Socket], []).
 
+%% @doc Register the local process as the decoder for a socket
+-spec register_server(gen_tcp:socket()) -> true.
+register_server(Socket) ->
+    etorrent_utils:register(server_name(Socket)).
+
+%% @doc Lookup the decoding process for a socket
+-spec lookup_server(gen_tcp:socket()) -> pid().
+lookup_server(Socket) ->
+    etorrent_utils:lookup(server_name(Socket)).
+
+%% @doc Wait for the decoding process for a socket to register
+-spec await_server(gen_tcp:socket()) -> pid().
+await_server(Socket) ->
+    etorrent_utils:await(server_name(Socket)).
+
+server_name(Socket) ->
+    {etorrent, Socket, decoder}.
+
 %% @doc Callback to go to fast mode.
 %% <em>Only intended caller is {@link etorrent_peer_send}</em>
 %% @end
@@ -74,14 +97,14 @@ cb_go_slow(P) ->
 %% =======================================================================
 
 go_fast(S) ->
-    P = gproc:lookup_local_name({peer, S#state.socket, sender}),
-    etorrent_peer_send:go_fast(P),
-    S#state { mode = transition }.
+    Pid = etorrent_peer_send:await_server(S#state.socket),
+    etorrent_peer_send:go_fast(Pid),
+    S#state{mode=transition}.
 
 go_slow(S) ->
-    P = gproc:lookup_local_name({peer, S#state.socket, sender}),
-    etorrent_peer_send:go_slow(P),
-    S#state { mode = transition }.
+    Pid = etorrent_peer_send:await_server(S#state.socket),
+    etorrent_peer_send:go_slow(Pid),
+    S#state{mode=transition}.
 
 handle_packet(Packet, #state { id = Id } = S) ->
     Msg = etorrent_proto_wire:decode_msg(Packet),
@@ -129,12 +152,10 @@ terminate(_Reason, _S) ->
     ok.
 
 %% @private
-handle_info(timeout,
-	    #state { controller = none,
-		     socket = Sock } = S) ->
+handle_info(timeout, #state{controller=none, socket=Sock}=S) ->
     %% Haven't started up yet
-    ControlPid = gproc:lookup_local_name({peer, Sock, control}),
-    {noreply, S#state { controller = ControlPid }};
+    ControlPid = etorrent_peer_control:await_server(Sock),
+    {noreply, S#state{controller=ControlPid}};
 handle_info(timeout, S) ->
     Length =
         case S#state.mode of
@@ -208,13 +229,14 @@ code_change(_OldVsn, State, _Extra) ->
 
 %% @private
 init([TorrentId, Socket]) ->
-    gproc:add_local_name({peer, Socket, receiver}),
-    {CPid, _} = gproc:await({n,l,{peer, Socket, control}}),
+    register_server(Socket),
+    CPid = etorrent_peer_control:await_server(Socket),
     erlang:send_after(?RATE_UPDATE, self(), rate_update),
-    {ok, #state { socket = Socket,
-                  rate = etorrent_rate:init(?RATE_FUDGE),
-                  id = TorrentId,
-                  mode = slow,
-		  control_pid = CPid
-                }, 0}.
+    State = #state{
+        socket = Socket,
+        rate = etorrent_rate:init(?RATE_FUDGE),
+        id = TorrentId,
+        mode = slow,
+        control_pid = CPid},
+    {ok, State, 0}.
 

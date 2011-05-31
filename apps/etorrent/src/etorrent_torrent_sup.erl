@@ -53,13 +53,19 @@ start_child_tracker(Pid, UrlTiers, InfoHash, Local_Peer_Id, TorrentId) ->
 %% @private
 init([{Torrent, TorrentPath, TorrentIH}, PeerID, TorrentID]) ->
     Children = [
+        pending_spec(TorrentID),
         scarcity_manager_spec(TorrentID, Torrent),
         torrent_control_spec(TorrentID, Torrent, TorrentPath, TorrentIH, PeerID),
+        endgame_spec(TorrentID),
         progress_spec(TorrentID, Torrent),
         io_sup_spec(TorrentID, Torrent),
         peer_pool_spec(TorrentID)],
     {ok, {{one_for_all, 1, 60}, Children}}.
 
+pending_spec(TorrentID) ->
+    {pending,
+        {etorrent_pending, start_link, [TorrentID]},
+        permanent, 5000, worker, [etorrent_pending]}.
 
 scarcity_manager_spec(TorrentID, Torrent) ->
     Numpieces = length(etorrent_io:piece_sizes(Torrent)),
@@ -75,6 +81,11 @@ progress_spec(TorrentID, Torrent) ->
     {chunk_mgr,
         {etorrent_progress, start_link, Args},
         permanent, 20000, worker, [etorrent_progress]}.
+
+endgame_spec(TorrentID) ->
+    {endgame,
+        {etorrent_endgame, start_link, [TorrentID]},
+        permanent, 5000, worker, [etorrent_endgame]}.
 
 torrent_control_spec(TorrentID, Torrent, TorrentFile, TorrentIH, PeerID) ->
     {control,

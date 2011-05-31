@@ -13,6 +13,7 @@
          to_binary/1,
          from_list/2,
          to_list/1,
+         to_string/1,
          is_member/2,
          is_empty/1,
          is_full/1,
@@ -120,6 +121,31 @@ to_list(<<0:1, Rest/bitstring>>, Index) ->
     to_list(Rest, Index + 1);
 to_list(<<>>, _) ->
     [].
+
+%% @doc Convert a piece set of a readable format
+%% @end
+-spec to_string(pieceset()) -> string().
+to_string(Pieceset) ->
+    #pieceset{size=Size} = Pieceset,
+    Header = io_lib:format("<pieceset(~.10B) ", [Size]),
+    Ranges = lists:reverse(foldl(fun to_string_/2, [], Pieceset)),
+    Pieces = ["[", [to_string_(Range) || Range <- Ranges], "]"],
+    Footer = ">",
+    lists:flatten([Header, Pieces, Footer]).
+
+to_string_(Index, []) ->
+    [Index];
+to_string_(Index, [H|Acc]) when H == (Index - 1) ->
+    [{H, Index}|Acc];
+to_string_(Index, [{Min, Max}|Acc]) when Max == (Index - 1) ->
+    [{Min, Index}|Acc];
+to_string_(Index, Acc) ->
+    [Index, separator|Acc].
+
+to_string_({Min, Max}) -> [to_string_(Min), "-", to_string_(Max)];
+to_string_(separator) -> ",";
+to_string_(Index) -> integer_to_list(Index).
+
 
 %% @doc
 %% Returns true if the piece is a member of the piece set,
@@ -508,6 +534,32 @@ pad_binary_test() ->
     Bitfield = <<1:1, 1:1, 1:1, 0:5>>,
     Set = ?set:from_binary(Bitfield, 4),
     ?assertEqual(Bitfield, ?set:to_binary(Set)).
+
+%% An empty pieceset should include the number of pieces
+empty_pieceset_string_test() ->
+    ?assertEqual("<pieceset(8) []>", ?set:to_string(?set:empty(8))).
+
+one_element_pieceset_string_test() ->
+    ?assertEqual("<pieceset(8) [0]>", ?set:to_string(?set:from_list([0], 8))).
+
+two_element_0_pieceset_string_test() ->
+    ?assertEqual("<pieceset(8) [0,2]>", ?set:to_string(?set:from_list([0,2], 8))).
+
+two_element_1_pieceset_string_test() ->
+    ?assertEqual("<pieceset(16) [0,15]>", ?set:to_string(?set:from_list([0,15], 16))).
+
+three_element_pieceset_string_test() ->
+    ?assertEqual("<pieceset(8) [0,2,7]>", ?set:to_string(?set:from_list([0,2,7], 8))).
+
+two_element_range_string_test() ->
+    ?assertEqual("<pieceset(8) [0-1]>", ?set:to_string(?set:from_list([0,1], 8))).
+
+three_element_range_string_test() ->
+    ?assertEqual("<pieceset(8) [0-2]>", ?set:to_string(?set:from_list([0,1,2], 8))).
+
+ranges_string_test() ->
+    ?assertEqual("<pieceset(8) [0,2-3,5-7]>", ?set:to_string(?set:from_list([0,2,3,5,6,7], 8))).
+
 
 
 -ifdef(PROPER).

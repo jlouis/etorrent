@@ -26,12 +26,12 @@
 -type chunkspec()   :: {pieceindex(), chunkoffset(), chunklength()}.
 
 -record(state, {
-    torrent_id :: torrent_id(),
-    active     :: boolean(),
-    pending    :: pid(),
-    assigned   :: gb_tree(),
-    fetched    :: gb_tree(),
-    stored     :: gb_set()}).
+    torrent_id = exit(required) :: torrent_id(),
+    active     = exit(required) :: boolean(),
+    pending    = exit(required) :: pid(),
+    assigned   = exit(required) :: gb_tree(),
+    fetched    = exit(required) :: gb_tree(),
+    stored     = exit(required) :: gb_set()}).
 
 
 server_name(TorrentID) ->
@@ -99,6 +99,7 @@ handle_call(is_active, _, State) ->
 
 handle_call(activate, _, State) ->
     #state{active=false, torrent_id=TorrentID} = State,
+    etorrent_log:info(endgame, "Endgame active ~w", [TorrentID]),
     NewState = State#state{active=true},
     Peers = etorrent_peer_control:lookup_peers(TorrentID),
     [etorrent_download:activate_endgame(Peer) || Peer <- Peers],
@@ -133,9 +134,7 @@ handle_cast(_, State) ->
 %% @private
 handle_info({chunk, {assigned, Index, Offset, Length, Pid}}, State) ->
     %% Load a request that was assigned by etorrent_progress
-    #state{
-        active=true,
-        assigned=Assigned} = State,
+    #state{assigned=Assigned} = State,
     Chunk = {Index, Offset, Length},
     NewAssigned = add_assigned(Chunk, Pid, Assigned),
     NewState = State#state{assigned=NewAssigned},
@@ -143,7 +142,6 @@ handle_info({chunk, {assigned, Index, Offset, Length, Pid}}, State) ->
 
 handle_info({chunk, {dropped, Index, Offset, Length, Pid}}, State) ->
     #state{
-        active=true,
         assigned=Assigned,
         fetched=Fetched,
         stored=Stored} = State,
@@ -456,8 +454,5 @@ test_active_one_stored() ->
     etorrent_utils:ping([pending(), testpid()]),
     ?assertEqual({ok, assigned}, ?chunkstate:request(1, testset(), testpid())),
     Orig ! die, etorrent_utils:wait(Orig).
-
-
-
 
 -endif.
