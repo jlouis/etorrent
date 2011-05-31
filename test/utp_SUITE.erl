@@ -23,6 +23,7 @@ suite() ->
 %% Setup/Teardown
 %% ----------------------------------------------------------------------
 init_per_group(Group, Config) when Group == main_group;
+                                   Group == parallel_main_group;
                                    Group == stress_group ->
     TCProps = ?config(tc_group_properties, Config),
     {A,B,C} = ?config(shuffle, TCProps),
@@ -30,7 +31,9 @@ init_per_group(Group, Config) when Group == main_group;
 init_per_group(_Group, Config) ->
     Config.
 
-end_per_group(main_group, Config) ->
+end_per_group(Grp, Config) when Grp == main_group;
+                                Grp == parallel_main_group;
+                                Grp == stress_group ->
     Status = ?config(tc_group_result, Config),
     case proplists:get_value(failed, Status) of
         [] ->                                   % no failed cases 
@@ -65,17 +68,23 @@ end_per_testcase(_Case, _Config) ->
 
 %% Tests
 %% ----------------------------------------------------------------------
-groups() ->
-    [{main_group, [shuffle, {repeat_until_any_fail, 30}],
-      [connect_n_communicate,
-%%       backwards_communication,
+
+base_test_cases() ->
+    [connect_n_communicate,
+       backwards_communication,
        full_duplex_communication,
 %%       rwin_test,
        piggyback,
        close_1,
        close_2,
        close_3,
-       connect_n_send_big]},
+       connect_n_send_big].
+
+groups() ->
+    [{main_group, [shuffle, {repeat_until_any_fail, 30}],
+      base_test_cases()},
+     {parallel_main_group, [shuffle, parallel, {repeat_until_any_fail, 30}],
+      base_test_cases()},
      {stress_group, [{repeat_until_any_fail, 50}],
       [piggyback]}].
 
