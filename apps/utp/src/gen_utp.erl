@@ -15,8 +15,8 @@
 %% API (Use)
 -export([connect/2, connect/3,
          close/1,
-         send/2,
-         recv/2,
+         send/2, send_msg/2,
+         recv/2, recv_msg/1,
          listen/0, listen/1,
          accept/0]).
 
@@ -102,6 +102,13 @@ accept() ->
 send({utp_sock, Pid}, Msg) ->
     gen_utp_worker:send(Pid, iolist_to_binary(Msg)).
 
+-spec send_msg(utp_socket(), term()) -> ok | {error, term()}.
+send_msg(Socket, Msg) ->
+    EMsg = term_to_binary(Msg, [compressed]),
+    Digest = crypto:sha(EMsg),
+    Sz = byte_size(EMsg) + byte_size(Digest),
+    send(Socket, <<Sz:32/integer, Digest/binary, EMsg/binary>>).
+
 %% @doc Receive a message
 %%   The `Length' parameter specifies the size of the data to wait for. Providing a value of
 %%   `0' means to fetch all available data. There is currently no provision for timeouts on sockets,
@@ -111,6 +118,17 @@ send({utp_sock, Pid}, Msg) ->
                   {ok, binary()} | {error, term()}.
 recv({utp_sock, Pid}, Length) when Length >= 0 ->
     gen_utp_worker:recv(Pid, Length).
+
+recv_msg(Socket) ->
+    Sz = recv(Socket, 4),
+    case recv(Socket, Sz) of
+        {ok, <<Digest:20/binary, EMsg/binary>>} ->
+            Digest = crypto:sha(EMsg),
+            Term = binary_to_term(EMsg),
+            {ok, Term};
+        {error, Reason} ->
+            {error, Reason}
+    end.
 
 %% @doc Close down a socket (nonblocking)
 %% @end
