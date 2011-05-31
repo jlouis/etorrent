@@ -8,8 +8,7 @@
          test_connectee_1/1,
          test_connector_2/0,
          test_connectee_2/1,
-         test_connector_3/0,
-         test_connectee_3/1,
+         test_full_duplex_out/0, test_full_duplex_in/1,
          test_close_in_1/1,
          test_close_out_1/0,
          test_close_in_2/1,
@@ -46,7 +45,22 @@ test_connector_2() ->
             {{error, econnreset}, gen_utp_trace:grab()}
     end.
 
-test_connector_3() ->
+test_full_duplex_in(Options) ->
+    ok = listen(Options),
+    {ok, Sock} = gen_utp:accept(),
+    ?INFO([duplex, accept]),
+    ok = gen_utp:send(Sock, <<"HELLO">>),
+    ok = gen_utp:send(Sock, <<"WORLD">>),
+    ?INFO([duplex, sent]),
+    {ok, <<"12345">>} = gen_utp:recv(Sock, 5),
+    ?INFO([duplex, recv_1]),
+    {ok, <<"67890">>} = gen_utp:recv(Sock, 5),
+    ?INFO([duplex, recv_2]),
+    ok = gen_utp:close(Sock),
+    ?INFO([duplex, close]),
+    {ok, gen_utp_trace:grab()}.
+
+test_full_duplex_out() ->
     {ok, Sock} = repeating_connect("localhost", 3333),
     ok = gen_utp:send(Sock, "12345"),
     ok = gen_utp:send(Sock, "67890"),
@@ -125,16 +139,6 @@ test_connectee_2(Options) ->
     {ok, Sock} = gen_utp:accept(),
     ok = gen_utp:send(Sock, <<"HELLO">>),
     ok = gen_utp:send(Sock, <<"WORLD">>),
-    ok = gen_utp:close(Sock),
-    {ok, gen_utp_trace:grab()}.
-
-test_connectee_3(Options) ->
-    ok = listen(Options),
-    {ok, Sock} = gen_utp:accept(),
-    ok = gen_utp:send(Sock, <<"HELLO">>),
-    ok = gen_utp:send(Sock, <<"WORLD">>),
-    {ok, <<"12345">>} = gen_utp:recv(Sock, 5),
-    {ok, <<"67890">>} = gen_utp:recv(Sock, 5),
     ok = gen_utp:close(Sock),
     {ok, gen_utp_trace:grab()}.
 

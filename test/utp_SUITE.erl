@@ -143,7 +143,7 @@ full_duplex_communication() ->
     [].
 
 full_duplex_communication(Config) ->
-    two_way(Config, test_connectee_3, test_connector_3).
+    two_way(Config, test_full_duplex_in, test_full_duplex_out).
     
 connect_n_communicate() ->
     [].
