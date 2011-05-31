@@ -799,15 +799,15 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   when you take something out of the buffer.
 
   our rb_drained signifies
-* TODO Even though the test case says OK! there might be add things
+* TODO Even though the test case says OK! there might be bad things
   So we should go through the test cases a bit and see what
   happens. Waiting a bit in the end of test case to see if something
   outputs extra stuff is probably worth it.
-* TODO There seems to be yet another SYN bug
-  It looks as if we are facing yet another bug due to SYNs being
-  duplicate. We should probably track what we do with SYN
-  packets. There are not that many of them and knowing what does wrong
-  would be really good.
+
+  There are some RESETs I don't really like to see we have to
+  investigate.
+
+  There are some st_fin's that gets resent. And I don't know why.
 * TODO RTT Measurement
   This is probably different in uTP from the standard TCP protocol
 
@@ -815,6 +815,7 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   is fairly important to get right, but it requires us to investigate
   a lot on the reference code to understand what is going on. It is
   the major important part of this weeks work.
+** TODO Step zero: As always, go to the LEDBAT paper and read that first!
 ** TODO Step one is to read through the utp.cpp source and document here what it entails.
 ** TODO Step two is to make a plan of what to do in our case, so we have a point of entry
 ** TODO Step three is to make sure we propagate the information in packets correctly
@@ -873,6 +874,12 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   queue and be handled as resends. We currently fake-retransmit it,
   but it looks easier to simpler use the same queueing facility of the
   other end.
+* TODO There seems to be yet another SYN bug
+  It looks as if we are facing yet another bug due to SYNs being
+  duplicate. We should probably track what we do with SYN
+  packets. There are not that many of them and knowing what does wrong
+  would be really good.
+
 * TODO Add a safety timer on RESET Packets
   We currently just RESET on anything, but we should probably include
   some kind of protection and blackhole the other end for a while if
