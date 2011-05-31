@@ -689,7 +689,7 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
     got_fin state, up until the timeout. But it is a quite funny
     bug :P
 
-* TODO Stress test the rwin_test for the receive window
+* DONE Stress test the rwin_test for the receive window
   This test is specifically made such that it messes with the receive
   window and will hit the zerowin timer quite a lot. It emulates a
   slow receiver vs. a fast sender.
@@ -698,11 +698,15 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   communication test sometimes do. The solution is to allow buffer
   drains in the got_fin state and such.
 ** DONE Implement buffer drains in the got_fin state and so on.
-** TODO There is a bug where a number is negative due to the rwin code
-
+** DONE There is a bug where a number is negative due to the rwin code
 * DONE How should st_state packets in the got_fin state be handled
   Either we should process them or throw them away. I am not sure what
   is the right thing to do, actually.
+* TODO There seems to be yet another SYN bug
+  It looks as if we are facing yet another bug due to SYNs being
+  duplicate. We should probably track what we do with SYN
+  packets. There are not that many of them and knowing what does wrong
+  would be really good.
 * TODO in the GOT_FIN state, we should still process the ACK numbers
   It is only the parts about reading in data we should skip.
   We can update the internal buffers, but since we are in GOT_FIN, we
