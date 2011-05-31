@@ -20,7 +20,8 @@
          hasone/2,
          hasnone/1,
          hasall/1,
-         pieces/2]).
+         pieces/2,
+         haspieces/1]).
 
 
 -type pieceset() :: etorrent_pieceset:pieceset().
@@ -95,6 +96,14 @@ pieces(Pieceset, Peerstate) ->
     #peerstate{pieces=Pieces} = Peerstate,
     is_integer(Pieces) orelse erlang:error(badarg),
     Peerstate#peerstate{pieces=Pieceset}.
+
+%% TODO - this doesn't work. We would be better off
+%% splitting the "peerstate" up into a few processes
+%% base on a better criteria than the current one.
+-spec haspieces(peerstate()) -> boolean().
+haspieces(Peerstate) ->
+    #peerstate{pieces=Pieces} = Peerstate,
+    not is_integer(Pieces).
 
 
 -spec choked(peerstate()) -> boolean().

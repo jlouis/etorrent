@@ -441,6 +441,9 @@ handle_message({have, Piece}, State) ->
     #state{torrent_id=TorrentID, send_pid=SendPid, download=Download, remote=Remote, local=Local} = State,
     TmpRemote = etorrent_peerstate:hasone(Piece, Remote),
     Pieceset  = etorrent_peerstate:pieces(TmpRemote),
+    %% TODO - see etorrent_peerstate:haspieces/1
+    HasPieces = etorrent_peerstate:haspieces(Remote),
+    HasPieces orelse etorrent_scarcity:add_peer(TorrentID, Pieceset),
     ok        = etorrent_scarcity:add_piece(TorrentID, Piece, Pieceset),
     TmpLocal  = check_local_interest(Piece, Local, SendPid),
     NewRemote = check_remote_seeder(TmpRemote, TmpLocal),
