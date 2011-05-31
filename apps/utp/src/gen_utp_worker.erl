@@ -747,18 +747,7 @@ handle_packet_incoming(Pkt, RecvTime,
             N_PKI1 = utp_window:handle_advertised_window(Pkt, N_PKI),
             
             %% The incoming datagram may have payload we can deliver to an application
-            {N_PRI, N_PB} =
-                case satisfy_recvs(PRI, N_PB1) of
-                    {ok, PR1, PB1} ->
-                        {PR1, PB1};
-                    {rb_drained, PR1, PB1} ->
-                        %% @todo Here is the point where we should
-                        %% make a check on the receive window If the
-                        %% window has grown, and the last window was
-                        %% 0, then immediately send out an
-                        %% ACK. Otherwise install a timer.
-                        {PR1, PB1}
-                end,
+            {_Drainage, N_PRI, N_PB} = satisfy_recvs(PRI, N_PB1),
             
             %% Fill up the send window again with the new information
             {FillMessages, ZWinTimeout, N_PB2, N_PRI2} =

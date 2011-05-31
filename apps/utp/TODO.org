@@ -792,10 +792,13 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
 
   1: A receiver comes by and wants data. And we satisfy the guy by the
      buffer. The window before is 0 and the window after is not!
-* TODO Consider what to do about the rb_drained return.
+* DONE Consider what to do about the rb_drained return.
   Does it require any special handling?
 
-  What does the libutp source do in this case?
+  What does the libutp source do in this case? RBDrained is called
+  when you take something out of the buffer.
+
+  our rb_drained signifies
 * TODO Even though the test case says OK! there might be add things
   So we should go through the test cases a bit and see what
   happens. Waiting a bit in the end of test case to see if something
