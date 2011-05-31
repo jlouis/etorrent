@@ -767,17 +767,7 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   Piggybacking has been implemented. If there are any errors due to
   this, it is errors due to other parts of the code being wrong and
   probably not due to this.
-* TODO timetrap timeouts should result in logging
-* TODO Make piggyback output information while running!
-  Currently, the piggyback test case says nothing if it fails. Hence,
-  we do not know anything about *why* it failed. This should be fixed
-  by adding test cases to the piggyback test.
-* TODO There seems to be yet another SYN bug
-  It looks as if we are facing yet another bug due to SYNs being
-  duplicate. We should probably track what we do with SYN
-  packets. There are not that many of them and knowing what does wrong
-  would be really good.
-* TODO Force an st_state packet through when the window *reopens*
+* DONE Force an st_state packet through when the window *reopens*
   If we have a window that is down to 0, and we then suddenly get a
   receiver on the socket reading data out of it such that we detect
   the window open up again, we should always send a window update
@@ -785,6 +775,36 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
 
   It will make the other end trip the zerowin-timer rarely and I don't
   like the way the zero win timer is resolved.
+
+  Also, it will make the rwin test go through faster. In fact, the
+  rwin test has been made to make this possible.
+
+  Ok, what is the condition for the window to reopen. The condition is
+  that before, the size of the receive buffer was full, i.e., the
+  window was 0. And now, since we have had a receiver doing something,
+  the window is not empty anymore. I.e., the window has reopened.
+
+  What is the condition? The condition is that we have advertised a
+  window of 0 lately. And now, we would not advertise a window
+  of 0. This should force out a st_state packet.
+
+  What event can open the window?
+
+  1: A receiver comes by and wants data. And we satisfy the guy by the
+     buffer. The window before is 0 and the window after is not!
+* TODO Consider what to do about the rb_drained return.
+  Does it require any special handling?
+
+  What does the libutp source do in this case?
+* TODO Even though the test case says OK! there might be add things
+  So we should go through the test cases a bit and see what
+  happens. Waiting a bit in the end of test case to see if something
+  outputs extra stuff is probably worth it.
+* TODO There seems to be yet another SYN bug
+  It looks as if we are facing yet another bug due to SYNs being
+  duplicate. We should probably track what we do with SYN
+  packets. There are not that many of them and knowing what does wrong
+  would be really good.
 * TODO RTT Measurement
   This is probably different in uTP from the standard TCP protocol
 
@@ -940,7 +960,7 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
 
 
 
-
+* TODO timetrap timeouts should result in logging
 * TODO Looks like resets are sent to the wrong place
   If we get in a wrong packet, to where should the RESET be sent in
   order to hit right in the other end?

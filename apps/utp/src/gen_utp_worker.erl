@@ -523,15 +523,20 @@ idle(_Msg, _From, State) ->
 
 %% @private
 connected({recv, Length}, From, #state { proc_info = PI,
+                                         sock_info = SockInfo,
                                          pkt_buf   = PKB } = State) ->
-    %% @todo Try to satisfy receivers
     PI1 = utp_process:enqueue_receiver(From, Length, PI),
     case satisfy_recvs(PI1, PKB) of
         {_, N_PRI, N_PKB} ->
-            {next_state, connected,
-             State#state {
-               proc_info = N_PRI,
-               pkt_buf   = N_PKB } }
+            case view_zerowindow_reopen(PKB, N_PKB) of
+                true ->
+                    utp_pkt:handle_send_ack(SockInfo, N_PKB, [send_ack, no_piggyback]),
+                    ignore;
+                false ->
+                    ignore
+            end,
+            {next_state, connected, State#state { proc_info = N_PRI,
+                                                  pkt_buf   = N_PKB } }
     end;
 connected({send, Data}, From, #state {
                           sock_info = SockInfo,
@@ -843,6 +848,10 @@ draining_receive(L, PktBuf) ->
             end
     end.
 
+view_zerowindow_reopen(Old, New) ->
+    N = utp_pkt:advertised_window(Old),
+    K = utp_pkt:advertised_window(New),
+    N == 0 andalso K > 1000. % Only open up the window when we have processed a considerable amount
 
 
 
