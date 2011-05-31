@@ -514,7 +514,9 @@ idle({accept, SYN}, _From, #state { sock_info = SockInfo,
             State#state { sock_info = N_SockInfo,
                           pkt_window = utp_window:handle_advertised_window(SYN, PktWin),
                           pkt_buf = utp_pkt:init_ackno(
-                                      utp_pkt:init_seqno(PktBuf, utp_pkt:bit16(SeqNo + 1)), AckNo+1)}};
+                                      utp_pkt:init_seqno(PktBuf,
+                                                         utp_pkt:bit16(SeqNo + 1)),
+                                                         utp_pkt:bit16(AckNo + 1))}};
 
 idle(_Msg, _From, State) ->
     {reply, idle, {error, enotconn}, State}.
