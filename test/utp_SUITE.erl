@@ -71,14 +71,14 @@ end_per_testcase(_Case, _Config) ->
 
 base_test_cases() ->
     [connect_n_communicate,
-       backwards_communication,
-       full_duplex_communication,
-%%       rwin_test,
-       piggyback,
-       close_1,
-       close_2,
-       close_3,
-       connect_n_send_big].
+     backwards_communication,
+     full_duplex_communication,
+     rwin_test,
+     piggyback,
+     close_1,
+     close_2,
+     close_3,
+     connect_n_send_big].
 
 groups() ->
     [{main_group, [shuffle, {repeat_until_any_fail, 30}],
