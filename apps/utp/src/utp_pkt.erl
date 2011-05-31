@@ -567,7 +567,9 @@ advertised_window(#pkt_buf { recv_buf = Q,
     FillValue = recv_buf_size(Q),
     case Sz - FillValue of
         N when N >= 0 ->
-            N
+            N;
+        N when N < 0 ->
+            0 % Case happens when the sender forces a packet through
     end.
 
 payload_size(#pkt_wrap { packet = Packet }) ->
