@@ -9,6 +9,7 @@
 %% module.
 
 -export([request/3,
+         requests/1,
          assigned/5,
          assigned/3,
          dropped/5,
@@ -24,6 +25,12 @@
 request(Numchunks, Peerset, Srvpid) ->
     Call = {chunk, {request, Numchunks, Peerset, self()}},
     gen_server:call(Srvpid, Call).
+
+%% @doc Return a list of requests held by a process.
+%% @end
+-spec requests(pid()) -> [{pid, {integer(), integer(), integer()}}].
+requests(SrvPid) ->
+    gen_server:call(SrvPid, {chunk, requests}).
 
 
 %% @doc
@@ -119,6 +126,13 @@ request_test() ->
         etorrent_utils:reply(fun({chunk, {request, Num, Set, Peer}}) -> ok end)
     end),
     ?assertEqual(ok, ?chunkstate:request(Num, Set, Srv)).
+
+requests_test() ->
+    Ref = make_ref(),
+    Srv = spawn_link(fun() ->
+        etorrent_utils:reply(fun({chunk, requests}) -> Ref end)
+    end),
+    ?assertEqual(Ref, ?chunkstate:requests(Srv)).
 
 assigned_test() ->
     Pid = make_pid(),
