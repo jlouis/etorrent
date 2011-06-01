@@ -799,6 +799,9 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   when you take something out of the buffer.
 
   our rb_drained signifies
+* DONE Poke hole in the firewall
+  Open port 3838
+* DONE Write a test client
 * TODO Even though the test case says OK! there might be bad things
   So we should go through the test cases a bit and see what
   happens. Waiting a bit in the end of test case to see if something
@@ -808,6 +811,32 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   investigate.
 
   There are some st_fin's that gets resent. And I don't know why.
+* TODO Write a test server on a local branch
+* TODO Use "Horus" to carry out a client test over the Internet.
+  We need to do some real-world testing and to do that we need some
+  real-world stuff to happen. Use Horus for that.
+
+  You need:
+  ; A recent OTP (R14B03 for instance)
+  ; Rebar
+  ; git
+
+  ; git clone git://github.com/jlouis/etorrent.git
+  ; cd etorrent
+  ; git checkout --track -b utp origin/utp
+  ; make deps
+  ; make rel
+  ; make dev
+  ; rel/etorrent/erts-5.8.4/bin/erl -- Get the beast up and running
+
+  Now inside this world where we have the utp application, we can
+  begin doing tests:
+
+  utp:start(7878). % Port number to start on
+  utp_client_test:start().
+  utp_client_test:ls().
+  utp_client_test:get(naked_leashed_japanese_radioactive_cat, "NLJRC.jpg").
+
 * TODO RTT Measurement
   This is probably different in uTP from the standard TCP protocol
 
