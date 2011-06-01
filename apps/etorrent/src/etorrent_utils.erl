@@ -15,7 +15,7 @@
 	 list_shuffle/1, date_str/1, any_to_list/1,
      merge_proplists/2, compare_proplists/2,
      find/2, wait/1, expect/1, shutdown/1, ping/1,
-     first/0]).
+     first/0, group/2]).
 
 %% "mock-like" functions
 -export([reply/1]).
@@ -111,6 +111,29 @@ group([E | L]) ->
 group(E, K, []) -> [{E, K}];
 group(E, K, [E | R]) -> group(E, K+1, R);
 group(E, K, [F | R]) -> [{E, K} | group(F, 1, R)].
+
+%% @doc Group a list of values using a key function.
+%% This function will return a list of key-value pairs where
+%% the key is returned by the key function and the value is
+%% a list of values having that key.
+%% @end
+-spec group(fun((term()) -> term()), []) -> [{term(), [term()]}].
+group(KeyFunction, List) ->
+    groupby(KeyFunction, List, gb_trees:empty()).
+
+groupby(_, [], Acc) ->
+    gb_trees:to_list(Acc);
+
+groupby(KeyFunction, [H|T], Acc) ->
+    Key = KeyFunction(H),
+    TmpAcc = case gb_trees:is_defined(Key, Acc) of
+        true  -> Acc;
+        false -> gb_trees:insert(Key, [], Acc)
+    end,
+    Values = gb_trees:get(Key, TmpAcc),
+    NewAcc = gb_trees:update(Key, [H|Values], TmpAcc),
+    groupby(KeyFunction, T, NewAcc).
+
 
 % @doc Subtract a time delta in millsecs from a now() triple
 % @end
@@ -324,6 +347,11 @@ test_register_group() ->
     ?utils:ping(whereis(gproc)),
     ?assertEqual([], ?utils:lookup_members(group)).
 
+groupby_duplicates_test() ->
+    Inp = [c, a, b, c, a, b],
+    Exp = [{a, [a,a]}, {b, [b,b]}, {c, [c,c]}],
+    Fun = fun(E) -> E end,
+    ?assertEqual(Exp, ?utils:group(Fun, Inp)).
 
 -ifdef(PROPER).
 
