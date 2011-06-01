@@ -92,7 +92,8 @@ init([]) ->
 %%--------------------------------------------------------------------
 handle_call({cmd, Cmd}, _From, #state { socket = Sock } = State) ->
     ok = gen_utp:send_msg(Sock, Cmd),
-    case gen_utp:recv_msg(Sock) of
+    case gen_utp:recv_msg(Sock
+) of
         {ok, Msg} ->
             {reply, {ok, Msg}, State};
         {error, Reason} ->
