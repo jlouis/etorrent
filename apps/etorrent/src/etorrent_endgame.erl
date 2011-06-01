@@ -475,7 +475,5 @@ test_request_list() ->
     Requests = ?chunkstate:requests(testpid()),
     Pid ! die, etorrent_utils:wait(Pid),
     ?assertEqual([{Pid,{0,0,1}}, {Pid,{0,1,1}}], lists:sort(Requests)).
-        
-   
 
 -endif.

@@ -482,25 +482,21 @@ handle_call({chunk, {request, Numchunks, Peerset, PeerPid}}, _, State) ->
             %% Update piece sets and keep track of which sets were updated
             case {Targetstate, Transitionstate} of
                 {unassigned, begun} ->
-                    log_piecestate(Index, {unassigned, begun}),
                     NewUnassigned = etorrent_pieceset:delete(Index, Unassigned),
                     NewBegun = etorrent_pieceset:insert(Index, Begun),
                     NewAssigned = Assigned,
                     UnassignedUpdated = true;
                 {unassigned, assigned} ->
-                    log_piecestate(Index, {unassigned, assigned}),
                     NewUnassigned = etorrent_pieceset:delete(Index, Unassigned),
                     NewBegun = Begun,
                     NewAssigned = etorrent_pieceset:insert(Index, Assigned),
                     UnassignedUpdated = true;
                 {begun, begun} ->
-                    log_piecestate(Index, {begun, begun}),
                     NewUnassigned = Unassigned,
                     NewBegun = Begun,
                     NewAssigned = Assigned,
                     UnassignedUpdated = false;
                 {begun, assigned} ->
-                    log_piecestate(Index, {begun, assigned}),
                     NewUnassigned = Unassigned,
                     NewBegun = etorrent_pieceset:delete(Index, Begun),
                     NewAssigned = etorrent_pieceset:insert(Index, Assigned),
@@ -555,7 +551,6 @@ handle_info({piece, {valid, Index}}, State) ->
         valid -> {noreply, State};
         not_stored -> {noreply, State};
         stored ->
-            log_piecestate(Index, valid),
             NewStored = etorrent_pieceset:delete(Index, Stored),
             NewValid = etorrent_pieceset:insert(Index, Valid),
             NewState = State#state{
@@ -602,7 +597,6 @@ handle_info({chunk, {stored, Index, Offset, Length, Pid}}, State) ->
             State#state{chunks_stored=NewChunksStored};
         %% Assigned -> Stored
         assigned when Wasstored ->
-            log_piecestate(Index, stored),
             ok = etorrent_piecestate:stored(Index, TorrentPid),
             NewAssigned = etorrent_pieceset:delete(Index, Assigned),
             NewStored = etorrent_pieceset:insert(Index, Stored),
@@ -676,9 +670,6 @@ update_priority(TorrentID, Pieceprio, Pieceset) ->
     ok = etorrent_scarcity:unwatch(TorrentID, Ref),
     {ok, NewRef, NewList} = etorrent_scarcity:watch(TorrentID, Tag, Pieceset),
     #pieceprio{ref=NewRef, tag=Tag, pieces=NewList}.
-
-log_piecestate(Piece, Statename) ->
-    etorrent_log:info(piecestate, "Piecestate (~w): ~w", [Piece, Statename]).
 
 
 -ifdef(TEST).
