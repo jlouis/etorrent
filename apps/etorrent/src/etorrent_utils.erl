@@ -15,7 +15,7 @@
 	 list_shuffle/1, date_str/1, any_to_list/1,
      merge_proplists/2, compare_proplists/2,
      find/2, wait/1, expect/1, shutdown/1, ping/1,
-     first/0, group/2, group/3]).
+     first/0, group/2]).
 
 %% "mock-like" functions
 -export([reply/1]).
