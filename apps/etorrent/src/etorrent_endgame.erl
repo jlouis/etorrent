@@ -123,7 +123,13 @@ handle_call({chunk, {request, _, Peerset, Pid}}, _, State) ->
             NewAssigned = add_assigned(Chunk, Pid, Assigned),
             NewState = State#state{assigned=NewAssigned},
             {reply, {ok, [Chunk]}, NewState}
-    end.
+    end;
+
+handle_call({chunk, requests}, _, State) ->
+    #state{assigned=Assigned, fetched=Fetched} = State,
+    AllReqs = gb_trees:to_list(Assigned) ++ gb_trees:to_list(Fetched),
+    Reply = [{Pid, Chunk} || {Chunk, Pids} <- AllReqs, Pid <- Pids],
+    {reply, Reply, State}.
 
 
 %% @private
@@ -198,7 +204,6 @@ handle_info({chunk, {fetched, Index, Offset, Length, Pid}}, State) ->
 handle_info({chunk, {stored, Index, Offset, Length, Pid}}, State) ->
     #state{
         active=true,
-        assigned=Assigned,
         fetched=Fetched,
         stored=Stored} = State,
     Chunk = {Index, Offset, Length},
@@ -355,7 +360,8 @@ endgame_test_() ->
     ?_test(test_active_one_assigned()),
     ?_test(test_active_one_dropped()),
     ?_test(test_active_one_fetched()),
-    ?_test(test_active_one_stored())
+    ?_test(test_active_one_stored()),
+    ?_test(test_request_list())
     ]}}.
 
 test_registers() ->
@@ -454,5 +460,22 @@ test_active_one_stored() ->
     etorrent_utils:ping([pending(), testpid()]),
     ?assertEqual({ok, assigned}, ?chunkstate:request(1, testset(), testpid())),
     Orig ! die, etorrent_utils:wait(Orig).
+
+test_request_list() ->
+    ok = ?endgame:activate(testpid()),
+    Pid = spawn_link(fun() ->
+        ?pending:register(pending()),
+        ?chunkstate:assigned(0, 0, 1, self(), testpid()),
+        ?chunkstate:assigned(0, 1, 1, self(), testpid()),
+        ?chunkstate:fetched(0, 1, 1, self(), testpid()),
+        mainpid() ! assigned,
+        etorrent_utils:expect(die)
+    end),
+    etorrent_utils:expect(assigned),
+    Requests = ?chunkstate:requests(testpid()),
+    Pid ! die, etorrent_utils:wait(Pid),
+    ?assertEqual([{Pid,{0,0,1}}, {Pid,{0,1,1}}], lists:sort(Requests)).
+        
+   
 
 -endif.

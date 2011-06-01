@@ -113,7 +113,13 @@ handle_call({receiver, Newrecvpid}, _, State) ->
     end,
     [Assigned(Request) || Request <- Requests],
     NewState = State#state{receiver=Newrecvpid},
-    {reply, ok, NewState}.
+    {reply, ok, NewState};
+
+handle_call({chunk, requests}, _, State) ->
+    #state{table=Table} = State,
+    Requests = list_requests(Table),
+    Reply = [{Pid, {Piece, Offset, Length}} || {Piece, Offset, Length, Pid} <- Requests],
+    {reply, Reply, State}.
 
 
 handle_cast(_, State) ->
@@ -241,7 +247,8 @@ pending_test_() ->
      ?_test(test_dropped_not_dropped()),
      ?_test(test_drop_all_for_pid()),
      ?_test(test_change_receiver()),
-     ?_test(test_drop_on_down())
+     ?_test(test_drop_on_down()),
+     ?_test(test_request_list())
     ]}}}.
 
 test_registers() ->
@@ -351,5 +358,19 @@ test_drop_on_down() ->
     ?wait(Peer),
     ?chunks:assigned(0, 0, 1, Peer, testpid()),
     ?expect({chunk, {dropped, 0, 0, 1, Peer}}).
+
+test_request_list() ->
+    Main = self(),
+    Pid = spawn_link(fun() ->
+        ?pending:register(testpid()),
+        ?chunks:assigned(0, 0, 1, self(), testpid()),
+        ?chunks:assigned(0, 1, 1, self(), testpid()),
+        Main ! assigned,
+        etorrent_utils:expect(die)
+    end),
+    etorrent_utils:expect(assigned),
+    Requests = ?chunks:requests(testpid()),
+    Pid ! die, etorrent_utils:wait(Pid),
+    ?assertEqual([{Pid,{0,0,1}}, {Pid,{0,1,1}}], lists:sort(Requests)).
 
 -endif.
