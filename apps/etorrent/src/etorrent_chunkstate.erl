@@ -8,6 +8,7 @@
 %% torrent local services. A wrapper is provided by the etorrent_download
 %% module.
 
+%% protocol functions
 -export([request/3,
          requests/1,
          assigned/5,
@@ -18,6 +19,10 @@
          fetched/5,
          stored/5,
          forward/1]).
+
+%% inspection functions
+-export([format_by_peer/1,
+         format_by_chunk/1]).
 
 
 %% @doc
@@ -110,6 +115,25 @@ forward_(Pid, Tailref) ->
             Pid ! Msg,
             forward_(Pid, Tailref)
     end.
+
+
+%% @doc
+%% @end
+-spec format_by_peer(pid()) -> ok.
+format_by_peer(SrvPid) ->
+    ByPeer = fun({_Pid, _Chunk}=E) -> E end,
+    Groups = etorrent_utils:group(ByPeer, requests(SrvPid)),
+    io:format("~w~n", [Groups]).
+
+
+%% @doc
+%% @end
+-spec format_by_chunk(pid()) -> ok.
+format_by_chunk(SrvPid) ->
+    ByChunk = fun({Pid, Chunk}) -> {Chunk, Pid} end,
+    Groups = etorrent_utils:group(ByChunk, requests(SrvPid)),
+    io:format("~w~n", [Groups]).
+
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
