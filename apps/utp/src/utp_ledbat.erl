@@ -2,6 +2,7 @@
 
 -define(BASE_DELAY_HISTORY_SIZE, 13).
 -define(CUR_DELAY_SIZE, 3).
+-define(INITIAL_RTT_VARIANCE, 800). % ms
 
 -export([
          mk/1,
@@ -11,7 +12,10 @@
          clock_tick/1
         ]).
 
--record(ledbat, { base_history_q :: queue(),
+-record(ledbat, {
+          round_trip_time :: integer(),
+          round_trip_time_variance :: integer(),
+          base_history_q :: queue(),
                   delay_base :: integer(),
                   last_sample :: integer(),
                   cur_delay_history_q   :: queue() }).
@@ -30,6 +34,7 @@ mk(Sample) ->
                              queue:new(),
                              lists:seq(1, ?CUR_DELAY_SIZE)),
     #ledbat { base_history_q = BaseQueue,
+              round_trip_time_variance = ?INITIAL_RTT_VARIANCE,
               delay_base     = Sample,
               last_sample    = Sample,
               cur_delay_history_q = DelayQueue}.
