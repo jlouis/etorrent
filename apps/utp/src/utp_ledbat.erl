@@ -62,10 +62,6 @@ add_sample(#ledbat { base_history_q = BQ,
                     last_sample = Sample,
                     cur_delay_history_q = N_DQ }.
 
-update_history(Sample, Queue) ->
-    {value, _ThrowAway, RestOfQueue} = queue:out(Queue),
-    queue:in(Sample, RestOfQueue).
-
 clock_tick(#ledbat{ base_history_q  = BaseQ,
                     last_sample = Sample,
                     delay_base = DelayBase } = LEDBAT) ->
@@ -79,6 +75,10 @@ get_value(#ledbat { cur_delay_history_q = DelayQ }) ->
     lists:min(queue:to_list(DelayQ)).
 
 %% ----------------------------------------------------------------------
+update_history(Sample, Queue) ->
+    {value, _ThrowAway, RestOfQueue} = queue:out(Queue),
+    queue:in(Sample, RestOfQueue).
+
 minimum_by(_F, []) ->
     error(badarg);
 minimum_by(F, [H | T]) ->
