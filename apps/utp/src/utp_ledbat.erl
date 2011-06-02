@@ -13,7 +13,8 @@
 
 -record(ledbat, { base_history_q :: queue(),
                   delay_base :: integer(),
-                  delay_history_q   :: queue() }).
+                  last_sample :: integer(),
+                  cur_delay_history_q   :: queue() }).
 
 -opaque t() :: #ledbat{}.
 
@@ -30,7 +31,8 @@ mk(Sample) ->
                              lists:seq(1, ?CUR_DELAY_SIZE)),
     #ledbat { base_history_q = BaseQueue,
               delay_base     = Sample,
-              delay_history_q = DelayQueue}.
+              last_sample    = Sample,
+              cur_delay_history_q = DelayQueue}.
 
 shift(#ledbat { base_history_q = BQ } = LEDBAT, Offset) ->
     New_Queue = queue_map(fun(E) ->
@@ -41,9 +43,8 @@ shift(#ledbat { base_history_q = BQ } = LEDBAT, Offset) ->
 
 add_sample(#ledbat { base_history_q = BQ,
                      delay_base     = DelayBase,
-                     delay_history_q   = DQ } = LEDBAT, Sample) ->
+                     cur_delay_history_q   = DQ } = LEDBAT, Sample) ->
     {value, BaseIncumbent, BQ2} = queue:out(BQ),
-    {value, _DelayIncumbent, DQ2} = queue:out(DQ),
     N_BQ = case compare_less(Sample, BaseIncumbent) of
                true ->
                    queue:in_r(Sample, BQ2);
@@ -55,20 +56,26 @@ add_sample(#ledbat { base_history_q = BQ,
                       false -> DelayBase
                   end,
     Delay = bit32(Sample - N_DelayBase),
-    N_DQ = queue:in(Delay, DQ2),
+    N_DQ = update_history(Delay, DQ),
     LEDBAT#ledbat { base_history_q = N_BQ,
                     delay_base = Delay,
-                    delay_history_q = N_DQ }.
+                    last_sample = Sample,
+                    cur_delay_history_q = N_DQ }.
+
+update_history(Sample, Queue) ->
+    {value, _ThrowAway, RestOfQueue} = queue:out(Queue),
+    queue:in(Sample, RestOfQueue).
+
+clock_tick(#ledbat{ base_history_q  = BaseQ,
+                    last_sample = Sample,
+                    delay_base = DelayBase } = LEDBAT) ->
+    N_BaseQ = queue:in_r(Sample, queue:drop(rotate(BaseQ))),
+    N_DelayBase = minimum_by(fun compare_less/2, queue:to_list(N_BaseQ)),
+    LEDBAT#ledbat { base_history_q = N_BaseQ,
+                    delay_base = min(N_DelayBase, DelayBase) }.
 
 
-clock_tick(#ledbat{ delay_history_q = DelayQ,
-                    base_history_q  = BaseQ } = LEDBAT) ->
-    N_DelayBase = minimum_by(fun compare_less/2, queue:to_list(BaseQ)),
-    LEDBAT#ledbat { delay_history_q = rotate(DelayQ),
-                    delay_base = N_DelayBase }.
-
-
-get_value(#ledbat { delay_history_q = DelayQ }) ->
+get_value(#ledbat { cur_delay_history_q = DelayQ }) ->
     lists:min(queue:to_list(DelayQ)).
 
 %% ----------------------------------------------------------------------
