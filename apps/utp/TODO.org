@@ -802,6 +802,16 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
 * DONE Poke hole in the firewall
   Open port 3838
 * DONE Write a test client
+* DONE Setup LEDBAT plan
+** DONE Step zero: As always, go to the LEDBAT paper and read that first!
+** DONE Step one is to read through the utp.cpp source and document here what it entails.
+** DONE Implement the Delay History tracking
+** DONE Record the information and provide view functions
+   We have functions for recording the delay history and function
+   which are supposed to give us access to the current delay. The view
+   functions are depending on where we want to use this, so they have
+   been postponed.
+
 * TODO Even though the test case says OK! there might be bad things
   So we should go through the test cases a bit and see what
   happens. Waiting a bit in the end of test case to see if something
@@ -844,12 +854,43 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   is fairly important to get right, but it requires us to investigate
   a lot on the reference code to understand what is going on. It is
   the major important part of this weeks work.
-** TODO Step zero: As always, go to the LEDBAT paper and read that first!
-** TODO Step one is to read through the utp.cpp source and document here what it entails.
-** TODO Step two is to make a plan of what to do in our case, so we have a point of entry
-** TODO Step three is to make sure we propagate the information in packets correctly
-** TODO Step four is to record the information and provide view functions
-** TODO Step five is to understand how the views affect the congestion window
+
+  There are two fields, rtt and rtt_var which we must figure out how
+  works and report here when we do know.
+* TODO Make sure we propagate the timestamp/delay information in packets correctly
+   We should look at what the utp code is doing when it updates the
+   Timestamps and timestamp differences in the code base. And we
+   should make sure we are also updating these timestamps correctly in
+   all parts of our code base when we send out data. It is a
+   preliminary for actually using the timestamp information for
+   something.
+* TODO Understand how the views affect the congestion window
+  This is all about understanding what to do when the delay history
+  affects the congestion window. We don't know exactly what is going
+  to happen yet here.
+* TODO Make a plan of what to do in our case, so we have a point of entry
+   Make this plan into steps:
+
+   ; Ok, we have the Delay History tracker now.
+   ; But we need to write down a plan of how to attack this code
+     problem from here on out. The main thing we should focus on is
+     how the estimates are updated, and when they are.
+   ; We must track the delays from incoming packets in the
+     Delay History. The goal is not to *use* the values for anything,
+     but rather just to track the delay on the line. Essentially we
+     must focus on getting the rtt and delay hist tracked correctly in
+     all places.
+   ; We need a congestion window in the pkt_window so we can determine
+     how much we are allowed to send to the other end.
+     
+     Is this window in bytes or packets?
+   ; We need a function which can update the congestion window based
+     on the current delay.
+   ; The congestion window probably needs handling beyond this as it
+     is a "normal" TCP-style window. So we must continue by looking
+     into what this entails: Slow start, fast recovery from detection,
+     etc.
+
 * TODO Enable parallel tests
   The parallel tests should be to run the *same* test many times next
   to each other. Otherwise, we may end up with something wrong since
@@ -857,7 +898,8 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   going to happen in the other end. This is only doable if we run the
   same test in parallel.
 * Congestion window code
-  Hinges on RTT Measurement
+  Hinges on RTT Measurement. I think this will solve itself more or
+  less when we focus on getting LEDBAT to work correctly.
 * Implement Delayed ACKs
   Fairly easily done. You simply count how many bytes we have ACKed
   since last and set a timer. Whenever the timer triggers, or we go
