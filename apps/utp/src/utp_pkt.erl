@@ -7,8 +7,6 @@
 -export([
          mk/1,
 
-         bit16/1,
-
          init_seqno/2,
          init_ackno/2,
 
@@ -16,7 +14,7 @@
          send_fin/2,
          send_ack/2,
          handle_send_ack/3,
-         handle_packet/5,
+         handle_packet/4,
          buffer_dequeue/1,
          buffer_putback/2,
          fill_window/4,
@@ -119,8 +117,8 @@ send_ack(SockInfo,
                   } = Buf) ->
     %% @todo Send out an ack message here
     AckPacket = #packet { ty = st_state,
-                          seq_no = bit16(SeqNo-1), % @todo Is this right?
-                          ack_no = bit16(AckNo-1), % We are recording the next expected ack number
+                          seq_no = utp_util:bit16(SeqNo-1), % @todo Is this right?
+                          ack_no = utp_util:bit16(AckNo-1), % We are recording the next expected ack number
                           extension = []
                         },
     Win = advertised_window(Buf),
@@ -151,7 +149,7 @@ send_packet(Ty, Bin,
             SockInfo) ->
     P = #packet { ty = Ty,
                   seq_no  = SeqNo,
-                  ack_no  = bit16(AckNo-1),
+                  ack_no  = utp_util:bit16(AckNo-1),
                   extension = [],
                   payload = Bin },
     Win = advertised_window(Buf),
@@ -159,7 +157,7 @@ send_packet(Ty, Bin,
     Wrap = #pkt_wrap { packet = P,
                        transmissions = 0,
                        need_resend = false },
-    Buf#pkt_buf { seq_no = bit16(SeqNo+1),
+    Buf#pkt_buf { seq_no = utp_util:bit16(SeqNo+1),
                   retransmission_queue = [Wrap | RetransQueue]
                 }.
 
@@ -189,7 +187,7 @@ handle_send_ack(SockInfo, PktBuf, Messages) ->
 %% the connection.
 %% @end
 validate_seq_no(SeqNo, #pkt_buf { next_expected_seq_no = NextExpected }) ->
-    case bit16(SeqNo - NextExpected) of
+    case utp_util:bit16(SeqNo - NextExpected) of
         _SeqAhead when SeqNo == (NextExpected - 1) ->
             {ok, no_data};
         SeqAhead when SeqAhead >= ?REORDER_BUFFER_SIZE ->
@@ -280,13 +278,13 @@ update_recv_buffer(SeqNo, Payload, #pkt_buf { fin_state = {got_fin, SeqNo},
                                               next_expected_seq_no = SeqNo } = PB, State) ->
     ?DEBUG([got_fin_confirm, SeqNo]),
     N_PB = recv_buffer_enqueue(State, Payload, PB),
-    {got_fin, N_PB#pkt_buf { next_expected_seq_no = bit16(SeqNo+1)}};
+    {got_fin, N_PB#pkt_buf { next_expected_seq_no = utp_util:bit16(SeqNo+1)}};
 update_recv_buffer(SeqNo, Payload, #pkt_buf { next_expected_seq_no = SeqNo } = PB, State) ->
     %% This is the next expected packet, yay!
-    ?DEBUG([got_expected, SeqNo, bit16(SeqNo+1)]),
+    ?DEBUG([got_expected, SeqNo, utp_util:bit16(SeqNo+1)]),
     N_PB = recv_buffer_enqueue(State, Payload, PB),
     satisfy_from_reorder_buffer(
-      N_PB#pkt_buf { next_expected_seq_no = bit16(SeqNo+1) }, State);
+      N_PB#pkt_buf { next_expected_seq_no = utp_util:bit16(SeqNo+1) }, State);
 update_recv_buffer(SeqNo, Payload, PB, _State) when is_integer(SeqNo) ->
     reorder_buffer_in(SeqNo, Payload, PB).
 
@@ -302,14 +300,14 @@ satisfy_from_reorder_buffer(#pkt_buf { next_expected_seq_no = AckNo,
                                        reorder_buf = [{AckNo, PL} | R]} = PB, State) ->
     ?DEBUG([got_fin_confirm_from_ro_buffer]),
     N_PB = recv_buffer_enqueue(State, PL, PB),
-    {got_fin, N_PB#pkt_buf { next_expected_seq_no = bit16(AckNo+1),
+    {got_fin, N_PB#pkt_buf { next_expected_seq_no = utp_util:bit16(AckNo+1),
                              reorder_buf = R}};
 satisfy_from_reorder_buffer(#pkt_buf { next_expected_seq_no = AckNo,
                                        reorder_buf = [{AckNo, PL} | R]} = PB,
                             State) ->
     N_PB = recv_buffer_enqueue(State, PL, PB),
     satisfy_from_reorder_buffer(
-      N_PB#pkt_buf { next_expected_seq_no = bit16(AckNo+1),
+      N_PB#pkt_buf { next_expected_seq_no = utp_util:bit16(AckNo+1),
                      reorder_buf = R}, State);
 satisfy_from_reorder_buffer(#pkt_buf { } = PB, _State) ->
     {ok, PB}.
@@ -326,9 +324,9 @@ reorder_buffer_in(SeqNo, Payload, #pkt_buf { reorder_buf = OD } = PB) ->
 %% ----------------------------------------------------------------------
 
 update_send_buffer(AckNo, #pkt_buf { seq_no = NextSeqNo } = PB) ->
-    SeqNo = bit16(NextSeqNo - 1),
+    SeqNo = utp_util:bit16(NextSeqNo - 1),
     WindowSize = send_window_count(PB),
-    WindowStart = bit16(SeqNo - WindowSize),
+    WindowStart = utp_util:bit16(SeqNo - WindowSize),
     case view_ack_no(AckNo, WindowStart, WindowSize) of
         {ok, AcksAhead} ->
             {Ret, Acked, PB1} = prune_acked(AcksAhead, WindowStart, PB),
@@ -358,7 +356,7 @@ prune_acked(AckAhead, WindowStart,
     {AckedPs, N_RQ} = lists:partition(
                         fun(#pkt_wrap {
                                packet = #packet { seq_no = SeqNo } }) ->
-                                Distance = bit16(SeqNo - WindowStart),
+                                Distance = utp_util:bit16(SeqNo - WindowStart),
                                 Distance =< AckAhead
                         end,
                         RQ),
@@ -395,7 +393,7 @@ has_inflight_data(#pkt_buf { retransmission_queue = [_|_] }) -> true.
 %% for correctness according to age. If the ACK is old, tell the caller.
 %% @end
 view_ack_no(AckNo, WindowStart, WindowSize) ->
-    case bit16(AckNo - WindowStart) of
+    case utp_util:bit16(AckNo - WindowStart) of
         N when N > WindowSize ->
             %% The ack number is old, so do essentially nothing in the next part
             {ack_is_old, N};
@@ -418,8 +416,7 @@ send_window_count(#pkt_buf { retransmission_queue = RQ }) ->
 %% Advertised window of the packet to eventually send out more on the
 %% socket towards the other end.
 %% @end    
-handle_packet(_CurrentTimeMs,
-              State,
+handle_packet(State,
               #packet { seq_no = SeqNo,
                         ack_no = AckNo,
                         payload = Payload,
@@ -564,11 +561,6 @@ pick_oldest_packet(#pkt_wrap { packet = P1 } = C, [#pkt_wrap { packet = P2 } = W
 
 %% INTERNAL FUNCTIONS
 %% ----------------------------------------------------------------------
-
-%% @doc `bit16(Expr)' performs `Expr' modulo 65536
-%% @end
-bit16(N) ->
-    N band 16#FFFF.
 
 %% @doc Return the size of the receive buffer
 %% @end

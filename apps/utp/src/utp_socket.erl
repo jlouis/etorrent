@@ -6,6 +6,7 @@
 -export([
          mk/5,
          set_conn_id/2,
+         update_reply_micro/2,
          packet_size/1,
 
          order_packets/2,
@@ -29,7 +30,7 @@
 	  port        :: port_number(),
 	  socket      :: inet:socket(),
           conn_id_send :: 'not_set' | integer(),
-          timestamp_difference :: integer()
+          reply_micro :: integer()
 	 }).
 -opaque t() :: #sock_info{}.
 -export_type([t/0]).
@@ -43,8 +44,11 @@ mk(Addr, Opts, PacketSize, Port, Socket) ->
                  port = Port,
                  socket = Socket,
                  conn_id_send = not_set,
-                 timestamp_difference = 0
+                 reply_micro = 0
                }.
+
+update_reply_micro(#sock_info {} = SockInfo, RU) ->
+    SockInfo#sock_info { reply_micro = RU }.
 
 hostname_port(#sock_info { addr = Addr, port = Port }) ->
     {Addr, Port}.
@@ -58,12 +62,12 @@ send_pkt(AdvWin, #sock_info { conn_id_send = ConnId } = SockInfo, Packet) ->
 send_pkt(AdvWin, #sock_info { socket = Socket,
                               addr = Addr,
                               port = Port,
-                              timestamp_difference = TSDiff}, Packet, ConnId) ->
-    %% @todo Handle timestamping here!!
+                              reply_micro = TSDiff}, Packet, ConnId) ->
     Pkt = Packet#packet { conn_id = ConnId,
                           win_sz = AdvWin },
     ?DEBUG([node(), outgoing_pkt, utp_proto:format_pkt(Pkt)]),
     send(Socket, Addr, Port, Pkt, TSDiff).
+
 
 send_reset(Socket, Addr, Port, ConnIDSend, AckNo, SeqNo) ->
     Packet =

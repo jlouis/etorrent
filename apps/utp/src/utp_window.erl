@@ -10,8 +10,10 @@
          view_zero_window/1,
          bump_window/1,
          rto/1,
-         max_window_send/2
+         max_window_send/2,
 
+         update_ledbat/2,
+         bump_ledbat/1
         ]).
 
 -record(pkt_window, {
@@ -32,7 +34,9 @@
           %% Timestamps
           %% --------------------
           %% When was the window last totally full (in send direction)
-          last_maxed_out_window :: integer()
+          last_maxed_out_window :: integer(),
+
+          ledbat = none :: none | utp_ledbat:t()
          }).
 
 
@@ -44,9 +48,9 @@
 mk() ->
     #pkt_window { }.
 
-handle_advertised_window(#packet { win_sz = Win }, PKW) ->
-    handle_advertised_window(Win, PKW);
-handle_advertised_window(NewWin, #pkt_window {} = PKWin) when is_integer(NewWin) ->
+handle_advertised_window(PKW, #packet { win_sz = Win }) ->
+    handle_advertised_window(PKW, Win);
+handle_advertised_window(#pkt_window {} = PKWin, NewWin) when is_integer(NewWin) ->
     PKWin#pkt_window { peer_advertised_window = NewWin }.
 
 handle_window_size(#pkt_window {} = PKI, WindowSize) ->
@@ -70,3 +74,12 @@ bump_window(#pkt_window {} = Win) ->
 
 rto(#pkt_window { rto = RTO }) ->
     RTO.
+
+update_ledbat(#pkt_window { ledbat = none } = Window, Sample) ->
+    Window#pkt_window { ledbat = utp_ledbat:mk(Sample) };
+update_ledbat(#pkt_window { ledbat = Ledbat } = Window, Sample) ->
+    Window#pkt_window { ledbat = utp_ledbat:add_sample(Ledbat, Sample) }.
+
+bump_ledbat(#pkt_window { ledbat = L } = Window) ->
+    Window#pkt_window { ledbat = utp_ledbat:clock_tick(L) }.
+    

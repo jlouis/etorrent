@@ -812,6 +812,32 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
    functions are depending on where we want to use this, so they have
    been postponed.
 
+* DONE Make sure we propagate the timestamp/delay information in packets correctly
+   We should look at what the utp code is doing when it updates the
+   Timestamps and timestamp differences in the code base. And we
+   should make sure we are also updating these timestamps correctly in
+   all parts of our code base when we send out data. It is a
+   preliminary for actually using the timestamp information for
+   something.
+** DONE Introduce a reply_micro value
+   Specifically, where should it be? It is related to the PktWindow
+   I'd say. But the SocketInfo structure is another possible placement.
+** DONE When transmitting packets, stamp out this value
+   Means we should have access to the ReplyMicro whenever we want to
+   send data. This is a consideration for where to place the reply
+   micro value. On possibility is in the socket in fact. It makes some
+   sense to have it there as it is something we on sockets.
+** DONE Make sure we also set the timestamp correctly on outgoing packets
+** DONE When a packet comes in, update reply micro
+   This is done by subtracting the timestamp of the incoming packet
+   from our internal timestamp counter. Try to make this happen as far
+   ahead as possible in the protocol.
+* DONE Enable the LEDBAT code by updating it with samples.
+** DONE Find a spot where the LEDBAT code should be initialized
+** DONE Shove the LEDBAT info into the #pkt_window{}
+** DONE Update the LEDBAT code whenever we grab an incoming packet
+** DONE Set up a LEDBAT timer
+** DONE Handle the LEDBAT timer when it triggers
 * TODO Even though the test case says OK! there might be bad things
   So we should go through the test cases a bit and see what
   happens. Waiting a bit in the end of test case to see if something
@@ -857,13 +883,16 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
 
   There are two fields, rtt and rtt_var which we must figure out how
   works and report here when we do know.
-* TODO Make sure we propagate the timestamp/delay information in packets correctly
-   We should look at what the utp code is doing when it updates the
-   Timestamps and timestamp differences in the code base. And we
-   should make sure we are also updating these timestamps correctly in
-   all parts of our code base when we send out data. It is a
-   preliminary for actually using the timestamp information for
-   something.
+
+  DON'T FOCUS ON THIS BEFORE WE HAVE OTHER PARTS FIXED!
+
+  It is quite important to split up the work in parts and attack each
+  part in a separate manner. Otherwise you can't really understand the
+  complexity of the protocol at hand. So This work should be postponed
+  till later when we understand stuff about the other parts.
+** There is something in BEP29 about these values.
+   The information is somewhat non-complete as always.
+** What does the code say
 * TODO Understand how the views affect the congestion window
   This is all about understanding what to do when the delay history
   affects the congestion window. We don't know exactly what is going
@@ -900,6 +929,11 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
 * Congestion window code
   Hinges on RTT Measurement. I think this will solve itself more or
   less when we focus on getting LEDBAT to work correctly.
+
+  DON'T START THIS BEFORE RTT MEASUREMENT IS THERE.
+
+  There is no reason to attempt starting this before the RTT
+  measurement parts are written down.
 * Implement Delayed ACKs
   Fairly easily done. You simply count how many bytes we have ACKed
   since last and set a timer. Whenever the timer triggers, or we go

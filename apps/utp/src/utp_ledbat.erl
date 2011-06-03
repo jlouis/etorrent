@@ -41,7 +41,7 @@ mk(Sample) ->
 
 shift(#ledbat { base_history_q = BQ } = LEDBAT, Offset) ->
     New_Queue = queue_map(fun(E) ->
-                                  bit32(E + Offset)
+                                  utp_util:bit32(E + Offset)
                           end,
                           BQ),
     LEDBAT#ledbat { base_history_q = New_Queue }.
@@ -49,7 +49,7 @@ shift(#ledbat { base_history_q = BQ } = LEDBAT, Offset) ->
 add_sample(#ledbat { base_history_q = BQ,
                      delay_base     = DelayBase,
                      cur_delay_history_q   = DQ } = LEDBAT, Sample) ->
-    {value, BaseIncumbent, BQ2} = queue:out(BQ),
+    {{value, BaseIncumbent}, BQ2} = queue:out(BQ),
     N_BQ = case compare_less(Sample, BaseIncumbent) of
                true ->
                    queue:in_r(Sample, BQ2);
@@ -60,7 +60,7 @@ add_sample(#ledbat { base_history_q = BQ,
                       true -> Sample;
                       false -> DelayBase
                   end,
-    Delay = bit32(Sample - N_DelayBase),
+    Delay = utp_util:bit32(Sample - N_DelayBase),
     N_DQ = update_history(Delay, DQ),
     LEDBAT#ledbat { base_history_q = N_BQ,
                     delay_base = Delay,
@@ -81,7 +81,7 @@ get_value(#ledbat { cur_delay_history_q = DelayQ }) ->
 
 %% ----------------------------------------------------------------------
 update_history(Sample, Queue) ->
-    {value, _ThrowAway, RestOfQueue} = queue:out(Queue),
+    {{value, _ThrowAway}, RestOfQueue} = queue:out(Queue),
     queue:in(Sample, RestOfQueue).
 
 minimum_by(_F, []) ->
@@ -100,11 +100,8 @@ minimum_by(Comparator, [H | T], M) ->
     end.
 
 rotate(Q) ->
-    {value, E, RQ} = queue:out(Q),
+    {{value, E}, RQ} = queue:out(Q),
     queue:in(E, RQ).
-
-bit32(X) ->
-    X band 16#FFFFFFFF.
 
 %% @doc Compare if L < R taking wrapping into account
 compare_less(L, R) ->
@@ -112,8 +109,8 @@ compare_less(L, R) ->
     %% One direction is walking downwards from the L clockwise until
     %%  we hit the R
     %% The other direction is walking upwards, counter-clockwise
-    Down = bit32(L - R),
-    Up   = bit32(R - L),
+    Down = utp_util:bit32(L - R),
+    Up   = utp_util:bit32(R - L),
 
     %% If the walk-up distance is the shortest, L < R, otherwise R < L
     Up < Down.
