@@ -838,6 +838,29 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
 ** DONE Update the LEDBAT code whenever we grab an incoming packet
 ** DONE Set up a LEDBAT timer
 ** DONE Handle the LEDBAT timer when it triggers
+* TODO RTT Measurement
+  This is probably different in uTP from the standard TCP protocol
+
+  It is, because we have an explicit RTT-timer inside the packet. This
+  is fairly important to get right, but it requires us to investigate
+  a lot on the reference code to understand what is going on. It is
+  the major important part of this weeks work.
+
+  There are two fields, rtt and rtt_var which we must figure out how
+  works and report here when we do know.
+
+  DON'T FOCUS ON THIS BEFORE WE HAVE OTHER PARTS FIXED!
+
+  It is quite important to split up the work in parts and attack each
+  part in a separate manner. Otherwise you can't really understand the
+  complexity of the protocol at hand. So This work should be postponed
+  till later when we understand stuff about the other parts.
+** TODO There is something in BEP29 about these values.
+   The information is somewhat non-complete as always.
+** TODO What does the code say in utp.cpp?
+   This will perhaps tell us something about the concept of RTT
+   measurements we need to carry out. There may be something important
+   to discern from the code base.
 * TODO Even though the test case says OK! there might be bad things
   So we should go through the test cases a bit and see what
   happens. Waiting a bit in the end of test case to see if something
@@ -873,26 +896,6 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   utp_client_test:ls().
   utp_client_test:get(naked_leashed_japanese_radioactive_cat, "NLJRC.jpg").
 
-* TODO RTT Measurement
-  This is probably different in uTP from the standard TCP protocol
-
-  It is, because we have an explicit RTT-timer inside the packet. This
-  is fairly important to get right, but it requires us to investigate
-  a lot on the reference code to understand what is going on. It is
-  the major important part of this weeks work.
-
-  There are two fields, rtt and rtt_var which we must figure out how
-  works and report here when we do know.
-
-  DON'T FOCUS ON THIS BEFORE WE HAVE OTHER PARTS FIXED!
-
-  It is quite important to split up the work in parts and attack each
-  part in a separate manner. Otherwise you can't really understand the
-  complexity of the protocol at hand. So This work should be postponed
-  till later when we understand stuff about the other parts.
-** There is something in BEP29 about these values.
-   The information is somewhat non-complete as always.
-** What does the code say
 * TODO Understand how the views affect the congestion window
   This is all about understanding what to do when the delay history
   affects the congestion window. We don't know exactly what is going
