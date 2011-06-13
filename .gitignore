@@ -27,3 +27,4 @@ webui/*.log
 /test/etorrent_SUITE_data/test_file_30M.random.torrent
 /logs/
 .eunit/
+/etorrent_dialyzer.plt
