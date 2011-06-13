@@ -35,6 +35,10 @@ dialyze-etorrent:
 	dialyzer --src -r apps/etorrent --plt etorrent_dialyzer.plt \
 	-Werror_handling -Wrace_conditions -Wbehaviours
 
+dialyze-utp:
+	dialyzer --src -r apps/utp --plt etorrent_dialyzer.plt \
+	-Werror_handling -Wrace_conditions -Wbehaviours
+
 typer:
 	typer --plt ~/.etorrent_dialyzer_plt -r apps -I apps/etorrent/include
 
@@ -129,11 +133,7 @@ tabs:
 
 .PHONY: all compile tags dialyze run tracer clean \
 	 deps eunit rel xref dev console console-perf graph \
-<<<<<<< HEAD
-	 test testclean common_test ct_setup
-=======
 	 test testclean common_test ct_prep ct_utp ct_etorrent
->>>>>>> Split test cases into two halves. One for etorrent, one for utp.
 
 %.png: %.dot
 	dot -Tpng $< > $@
