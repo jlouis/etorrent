@@ -855,12 +855,138 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   part in a separate manner. Otherwise you can't really understand the
   complexity of the protocol at hand. So This work should be postponed
   till later when we understand stuff about the other parts.
-** TODO There is something in BEP29 about these values.
+** DONE There is something in BEP29 about these values.
    The information is somewhat non-complete as always.
+
+   And the problem is that it may not be right!
 ** TODO What does the code say in utp.cpp?
    This will perhaps tell us something about the concept of RTT
    measurements we need to carry out. There may be something important
    to discern from the code base.
+
+   We know what the spec says, but we also know we can't trust the
+   spec at all. Hence, we should go to the code and read what the code
+   is doing here!
+
+   ; MAX_INCREASE is 3000 bytes
+   ; We keep track of the last_send_quota we added to the line,
+     When we last got a packet
+     When we last sent one
+     What the measured delay was
+     And when the window was maxed out
+
+   ; Two variables are kept:
+     The RTT
+     The RTT Variance
+
+   ; Updating the send_quota:
+     dt is the time that went past from the last send quota update
+     If we know the max_window currently allowed:
+       add := max_window * dt * 100 / delay_base (if no delay base, use 50)
+     If add > max_window * 100 andalso
+        add > MAX_INCREASE * 100
+     then
+       limit add to max_window
+
+     push this on top of the current send quota
+
+   ; When ACK'ing packets:
+     If the packet was never resent, we can simply use it for the
+       estimate.
+     Estimated rtt is: the time since we sent the packet till it was
+       acked.
+     If rtt = 0:
+       % Initializing
+       rtt := estimate
+       rtt_var := rtt / 2
+       true = rtt < 6000
+     else
+       % Update estimate
+       delta := rtt - estimate
+       variance = variance + (abs(delta) - rtt_var) / 4
+       rtt = rtt - rtt/8 + estimate/8
+       true = rtt < 6000
+       rtt_hist.add_sample(estimate)
+    
+     Now set the new RTO:
+       rto := max(rtt + rtt_var * 4, 500)
+
+   ; Applying LEDBAT congestion control:
+     sanity checks:
+       assert(min_rtt >= 0);
+       our_delay is the minimum of min_rtt and hist.get_value()
+       assert(our_delay >= 0 andalso our_delay != INT_MAX);
+
+     Call UTP_DelaySample(socket_address, our_delay / 1000)
+       % What does this thing do????
+
+     target = CCONTROL_TARGET (in uS)
+     if target is negative, force it to 100000;
+
+     off_target is target - our_delay.
+
+     assert(bytes_acked > 0);
+
+     Now, we set up a window factor:
+
+     double window_factor = (double)min(bytes_acked, max_window)
+                          / (double)max(max_window, bytes_acked);
+
+     The window factor is a clamping. We must protect against the case
+     where the window has just shrunk down. 
+
+     double delay_factor = off_target / target;
+
+     This factor tells us how much we are off the window
+
+     double scaled_gain = MAX_CWND_INCREASE_BYTES_PER_RTT
+                        * window_factor * delay_factor;
+
+     So the window factor will limit the amount of growth based on how
+     many bytes we have acked from the window. And the delay factor
+     will scale by the amount we are off. If we are above the target
+     in delay, this number will be negative.
+
+     assert(scaled_gain <= 1. + MAX_CWND_INCREASE_BYTES_PER_RTT *
+                           (int)min(bytes_acked, max_window) / (double)max(max_window, bytes_acked));
+
+     Protection against the maximal increase.
+                        
+     if (scaled_gain > 0 && g_current_ms - last_maxed_out_window > 300) {
+              // if it was more than 300 milliseconds since we tried to send a packet
+              // and stopped because we hit the max window, we're most likely rate
+              // limited (which prevents us from ever hitting the window size)
+              // if this is the case, we cannot let the max_window grow indefinitely
+              scaled_gain = 0;
+     }
+
+     Now update the MAX Window
+
+     if (scaled_gain + max_window < MIN_WINDOW_SIZE) {
+              max_window = MIN_WINDOW_SIZE;
+     } else {
+              max_window = (size_t)(max_window + scaled_gain);
+     }
+
+     // make sure that the congestion window is below max
+     // make sure that we don't shrink our window too small
+     max_window = clamp<size_t>(max_window, MIN_WINDOW_SIZE,
+     opt_sndbuf);
+
+     min_rtt is the minimum rtt we have seen on the socket evar!
+
+     If our estimate > min_rtt then take estimate - min_rtt and shift
+     by it. WHY DO WE DO THIS??? IS THIS RIGHT??
+
+     initial rtt_var = 800 ms
+     initial rto     = 3000 ms
+     CCONTROL_TARGET is 100 * 1000 us i.e., 100 ms.
+
+** Where should the RTT values be stored?
+   On the socket or in the window code?
+** When should the RTT values be updated
+   Whenever we receive an ACK for a sent packet which only got sent
+   once, we should use it for the RTT value updating.
 * TODO Even though the test case says OK! there might be bad things
   So we should go through the test cases a bit and see what
   happens. Waiting a bit in the end of test case to see if something
@@ -929,6 +1055,39 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   the belief is that when you accept a connection, you know what is
   going to happen in the other end. This is only doable if we run the
   same test in parallel.
+* Packet size control
+* Handle timeout bumping:
+  ``Every time a socket sends or receives a packet, it updates its
+  timeout counter. If no packet has arrived within timeout number of
+  milliseconds from the last timeout counter reset, the socket
+  triggers a timeout. It will set its packet_size and max_window to
+  the smallest packet size (150 bytes). This allows it to send one
+  more packet, and this is how the socket gets started again if the
+  window size goes down to zero.''
+
+  This is a *bumping* and not a setting of the timeout
+  counter. Whenever something happens on the line, we bump the
+  timeout. If nothing has happened and timeout trigger, we can decide
+  what to do in that event. If there is outstanding data, we should
+  resend it. If there is *no* outstanding data, we need to decide what
+  to do.
+
+  Don't trust the *BEP 29* doc here,
+  *THE SPEC IS LYING ITS ASS OFF*
+** TODO Check that we bump the counter on incoming packet activity
+** TODO Check that we bump the counter on outgoing packet activity
+** DONE Consider the zero-window.
+   We have a separate zerowin timer in our code base. We could decide
+   not to have this, but rather have everything on the timeout
+   counter. Also, check if the 150 packet size point is correct or
+   wrong compared to the source code.
+
+   *THIS PIECE IS WRONG IN THE BEP DOC!*
+*** DONE libutp, zerowindow motherfucker, do you speak it?
+    libutp *DOES* have zero windows!
+    libutp *DOES* use 350 byte packets, not 150 bytes packet
+* Loss Congestion control
+  Use packet loss as the congestion control mechanism
 * Congestion window code
   Hinges on RTT Measurement. I think this will solve itself more or
   less when we focus on getting LEDBAT to work correctly.
