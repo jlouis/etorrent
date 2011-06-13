@@ -35,6 +35,11 @@
 	 extended_msg/1,
          bitfield/2]).
 
+%% gproc registry entries
+-export([register_server/1,
+         lookup_server/1,
+         await_server/1]).
+
 %% gen_server callbacks
 -export([init/1, handle_info/2, terminate/2, code_change/3,
          handle_call/3, handle_cast/2]).
@@ -66,6 +71,25 @@
 start_link(Socket, TorrentId, FastExtension) ->
     gen_server:start_link(?MODULE,
                           [Socket, TorrentId, FastExtension], []).
+
+%% @doc Register the local process as the encoder for a socket
+-spec register_server(gen_tcp:socket()) -> true.
+register_server(Socket) ->
+    etorrent_utils:register(server_name(Socket)).
+
+%% @doc Lookup the encoding process for a socket
+-spec lookup_server(gen_tcp:socket()) -> pid().
+lookup_server(Socket) ->
+    etorrent_utils:lookup(server_name(Socket)).
+
+%% @doc Wait for the encoding process for a socket to register
+-spec await_server(gen_tcp:socket()) -> pid().
+await_server(Socket) ->
+    etorrent_utils:await(server_name(Socket)).
+
+server_name(Socket) ->
+    {etorrent, Socket, encoder}.
+
 
 %% @doc Queue up a remote request
 %% <p>A remote request is a request from the peer at the other
@@ -243,18 +267,14 @@ handle_call(_Request, _From, State) ->
 init([Socket, TorrentId, FastExtension]) ->
     erlang:send_after(?DEFAULT_KEEP_ALIVE_INTERVAL, self(), tick),
     erlang:send_after(?RATE_UPDATE, self(), rate_update),
-    gproc:add_local_name({peer, Socket, sender}),
-    FS = gproc:lookup_local_name({torrent, TorrentId, fs}),
-    {CPid, _} = gproc:await({n,l,{peer, Socket, control}}), % @todo: Change to a timeout later on, when gproc has been fixed
-    %% This may fail, but I want to check it
-    false = CPid == undefined,
+    register_server(Socket),
+    CPid = etorrent_peer_control:await_server(Socket),
     {ok, #state{socket = Socket,
 		requests = queue:new(),
 		rate = etorrent_rate:init(),
 		control_pid = CPid,
 		torrent_id = TorrentId,
-		fast_extension = FastExtension,
-		file_system_pid = FS}}. %% Quickly enter a timeout.
+		fast_extension = FastExtension}}.
 
 
 %% Whenever a tick is hit, we send out a keep alive message on the line.

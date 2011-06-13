@@ -36,6 +36,7 @@
 
 %% api functions
 -export([start_link/1,
+         native/0,
          send_after/4,
          start_timer/4,
          cancel/2,
@@ -51,9 +52,8 @@
          code_change/3]).
 
 
--type server() :: native | pid().
 -type mode() :: instant | queue.
--opaque timeserver() :: server().
+-opaque timeserver() :: native | pid().
 -export_type([timeserver/0]).
 -compile({no_auto_import, [error/1]}).
 -import(erlang, [error/1]).
@@ -61,7 +61,7 @@
 -record(timer, {
     type :: message | timeout,
     reference :: reference(),
-    interval  :: pos_integer(),
+    interval  :: non_neg_integer(),
     process   :: pid(),
     message   :: term()}).
 
@@ -75,7 +75,12 @@ start_link(Mode) ->
     gen_server:start_link(?MODULE, Mode, []).
 
 
--spec send_after(server(), pos_integer(), pid(), term()) -> reference().
+-spec native() -> timeserver().
+native() ->
+    native.
+
+
+-spec send_after(timeserver(), pos_integer(), pid(), term()) -> reference().
 send_after(Server, Time, Dest, Msg) ->
     case Server of
         native -> erlang:send_after(Time, Dest, Msg);
@@ -83,7 +88,7 @@ send_after(Server, Time, Dest, Msg) ->
     end.
 
 
--spec start_timer(server(), pos_integer(), pid(), term()) -> reference().
+-spec start_timer(timeserver(), pos_integer(), pid(), term()) -> reference().
 start_timer(Server, Time, Dest, Msg) ->
     case Server of
         native -> erlang:start_timer(Time, Dest, Msg);
@@ -91,7 +96,7 @@ start_timer(Server, Time, Dest, Msg) ->
     end.
 
 
--spec cancel(server(), reference()) -> pos_integer() | false.
+-spec cancel(timeserver(), reference()) -> pos_integer() | false.
 cancel(Server, Timer) ->
     case Server of
         native -> erlang:cancel_timer(Timer);
@@ -100,7 +105,7 @@ cancel(Server, Timer) ->
 
 
 %% Return the number of milliseconds that passed
--spec step(server()) -> pos_integer().
+-spec step(timeserver()) -> pos_integer().
 step(Server) ->
     case Server of
         native -> error(badarg);
@@ -109,7 +114,7 @@ step(Server) ->
 
 
 %% Return the number of timers that fired
--spec fire(server()) -> pos_integer().
+-spec fire(timeserver()) -> pos_integer().
 fire(Server) ->
     %% Always step before firing timers, bad things will
     %% not happen if fire is called immidiately after step.
@@ -195,22 +200,10 @@ handle_call(fire, _, State) ->
     {reply, NumFired, NewState}.
     
 
-handle_cast(_, _) ->
-    error(badarg).
-
-
-handle_info(_, _) ->
-    error(badarg).
-
-
-terminate(_, State) ->
-    {ok, State}.
-
-
-code_change(_, _, _) ->
-    error(badarg).
-
-
+handle_cast(_, State) -> {stop, not_implemented, State}.
+handle_info(_, State) -> {stop, not_implemented, State}.
+terminate(_, State) -> {ok, State}.
+code_change(_, State, _) -> {ok, State}.
     
 
 sort_timers(Timers) ->

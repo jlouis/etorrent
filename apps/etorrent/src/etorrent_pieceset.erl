@@ -7,12 +7,16 @@
 -endif.
 
 -export([new/1,
+         empty/1,
+         full/1,
          from_binary/2,
          to_binary/1,
          from_list/2,
          to_list/1,
+         to_string/1,
          is_member/2,
          is_empty/1,
+         is_full/1,
          insert/2,
          delete/2,
          intersection/2,
@@ -25,6 +29,7 @@
 
 -record(pieceset, {
     size :: non_neg_integer(),
+    csize :: non_neg_integer() | none,
     elements :: binary()}).
 
 -opaque pieceset() :: #pieceset{}.
@@ -38,6 +43,27 @@
 new(Size) ->
     Elements = <<0:Size>>,
     #pieceset{size=Size, elements=Elements}.
+
+%% @doc Alias for etorrent_pieceset:new/1
+%% @end
+-spec empty(non_neg_integer()) -> pieceset().
+empty(Size) ->
+    new(Size).
+
+%% @doc
+%% @end
+-spec full(non_neg_integer()) -> pieceset().
+full(Size) ->
+    Elements = full_(Size, <<>>),
+    #pieceset{size=Size, elements=Elements}.
+
+full_(0, Set) ->
+    Set;
+full_(N, Set) when N >= 16 ->
+    full_(N - 16, <<16#FFFF:16, Set/bitstring>>);
+full_(N, Set) ->
+    full_(N - 1, <<1:1, Set/bitstring>>).
+
 
 %% @doc
 %% Create a piece set based on a bitfield. The bitfield is
@@ -96,6 +122,31 @@ to_list(<<0:1, Rest/bitstring>>, Index) ->
 to_list(<<>>, _) ->
     [].
 
+%% @doc Convert a piece set of a readable format
+%% @end
+-spec to_string(pieceset()) -> string().
+to_string(Pieceset) ->
+    #pieceset{size=Size} = Pieceset,
+    Header = io_lib:format("<pieceset(~.10B) ", [Size]),
+    Ranges = lists:reverse(foldl(fun to_string_/2, [], Pieceset)),
+    Pieces = ["[", [to_string_(Range) || Range <- Ranges], "]"],
+    Footer = ">",
+    lists:flatten([Header, Pieces, Footer]).
+
+to_string_(Index, []) ->
+    [Index];
+to_string_(Index, [H|Acc]) when H == (Index - 1) ->
+    [{H, Index}|Acc];
+to_string_(Index, [{Min, Max}|Acc]) when Max == (Index - 1) ->
+    [{Min, Index}|Acc];
+to_string_(Index, Acc) ->
+    [Index, separator|Acc].
+
+to_string_({Min, Max}) -> [to_string_(Min), "-", to_string_(Max)];
+to_string_(separator) -> ",";
+to_string_(Index) -> integer_to_list(Index).
+
+
 %% @doc
 %% Returns true if the piece is a member of the piece set,
 %% false if not. If the piece index is negative or is larger
@@ -122,6 +173,28 @@ is_empty(Pieceset) ->
     #pieceset{size=Size, elements=Elements} = Pieceset,
     <<Memberbits:Size>> = Elements,
     Memberbits == 0.
+
+
+%% @doc Returns true if there are no members missing from the set
+%% @end
+-spec is_full(pieceset()) -> boolean().
+is_full(Pieceset) ->
+    #pieceset{elements=Elements} = Pieceset,
+    is_bitstring(Elements) orelse error(badarg),
+    is_full_(Elements).
+
+is_full_(<<Pieces:16, Rest/bitstring>>) ->
+    (Pieces == 16#FFFF) andalso is_full_(Rest);
+is_full_(<<Pieces:8, Rest/bitstring>>) ->
+    (Pieces == 16#FF) andalso is_full_(Rest);
+is_full_(<<1:1, Rest/bitstring>>) ->
+    is_full_(Rest);
+is_full_(<<>>) ->
+    true;
+is_full_(_) ->
+    false.
+
+
 
 %% @doc
 %% Insert a piece into the piece index. If the piece index is
@@ -462,14 +535,67 @@ pad_binary_test() ->
     Set = ?set:from_binary(Bitfield, 4),
     ?assertEqual(Bitfield, ?set:to_binary(Set)).
 
+%% An empty pieceset should include the number of pieces
+empty_pieceset_string_test() ->
+    ?assertEqual("<pieceset(8) []>", ?set:to_string(?set:empty(8))).
+
+one_element_pieceset_string_test() ->
+    ?assertEqual("<pieceset(8) [0]>", ?set:to_string(?set:from_list([0], 8))).
+
+two_element_0_pieceset_string_test() ->
+    ?assertEqual("<pieceset(8) [0,2]>", ?set:to_string(?set:from_list([0,2], 8))).
+
+two_element_1_pieceset_string_test() ->
+    ?assertEqual("<pieceset(16) [0,15]>", ?set:to_string(?set:from_list([0,15], 16))).
+
+three_element_pieceset_string_test() ->
+    ?assertEqual("<pieceset(8) [0,2,7]>", ?set:to_string(?set:from_list([0,2,7], 8))).
+
+two_element_range_string_test() ->
+    ?assertEqual("<pieceset(8) [0-1]>", ?set:to_string(?set:from_list([0,1], 8))).
+
+three_element_range_string_test() ->
+    ?assertEqual("<pieceset(8) [0-2]>", ?set:to_string(?set:from_list([0,1,2], 8))).
+
+ranges_string_test() ->
+    ?assertEqual("<pieceset(8) [0,2-3,5-7]>", ?set:to_string(?set:from_list([0,2,3,5,6,7], 8))).
+
+
+
 -ifdef(PROPER).
 prop_min() ->
     ?FORALL({Elem, Size},
-    ?SUCHTHAT({E, S}, {nat(), nat()}, E < S andalso S > 1),
-        Elem == ?set:min(?set:from_list([Elem], Size))).
+    ?SUCHTHAT({E, S}, {non_neg_integer(), pos_integer()}, E < S),
+    begin
+        Elem == ?set:min(?set:from_list([Elem], Size))
+    end).
+
+prop_full() ->
+    ?FORALL(Size, pos_integer(),
+    begin
+        All = lists:seq(0, Size - 1),
+        Set = ?set:from_list(All, Size),
+        ?set:is_full(Set)
+    end).
+
+prop_not_full() ->
+    ?FORALL({Elem, Size},
+    ?SUCHTHAT({E, S}, {non_neg_integer(), pos_integer()}, E < S),
+    begin
+        All = lists:seq(0, Size - 1),
+        Not = lists:delete(Elem, All),
+        Set = ?set:from_list(Not, Size),
+        not ?set:is_full(Set)
+    end).
 
 prop_min_test() ->
-    proper:quickcheck(prop_min()).
+    ?assertEqual(true, proper:quickcheck(prop_min())).
+
+prop_full_test() ->
+    ?assertEqual(true, proper:quickcheck(prop_full())).
+
+prop_not_full_test() ->
+    ?assertEqual(true, proper:quickcheck(prop_not_full())).
 
 -endif.
 -endif.

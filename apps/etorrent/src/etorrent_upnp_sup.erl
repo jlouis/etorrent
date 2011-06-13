@@ -52,23 +52,16 @@ add_upnp_entity(Category, Proplist) ->
 
 -ifdef(EUNIT).
 
-
-shutdown(Pid) ->
-    Ref = erlang:monitor(process, Pid),
-    unlink(Pid),
-    exit(Pid, shutdown),
-    receive {'DOWN', Ref, _, _, _} -> ok end.
-
 setup_upnp_sup_tree() ->
-    {ok, Pid0} = etorrent_event:start_link(),
-    {ok, Pid1} = etorrent_table:start_link(),
-    {ok, Pid2} = etorrent_upnp_sup:start_link(),
+    {event, {ok, Pid0}} = {event, etorrent_event:start_link()},
+    {table, {ok, Pid1}} = {table, etorrent_table:start_link()},
+    {upnp,  {ok, Pid2}} = {upnp,  etorrent_upnp_sup:start_link()},
     {Pid0, Pid1, Pid2}.
 
 teardown_upnp_sup_tree({Pid0, Pid1, Pid2}) ->
-    ok = shutdown(Pid0),
-    ok = shutdown(Pid1),
-    ok = shutdown(Pid2).
+    ok = etorrent_utils:shutdown(Pid0),
+    ok = etorrent_utils:shutdown(Pid1),
+    ok = etorrent_utils:shutdown(Pid2).
 
 upnp_sup_test_() ->
     {foreach,

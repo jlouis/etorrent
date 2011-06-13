@@ -17,7 +17,9 @@
 
 -export([new/0,
          new/2,
+         flush/1,
          to_list/1,
+         pieces/1,
          push/2,
          push/4,
          pop/1,
@@ -26,7 +28,9 @@
          is_head/4,
          has_offset/3,
          is_low/1,
-         needs/1]).
+         needs/1,
+         member/4,
+         delete/4]).
 
 
 -type pieceindex() :: etorrent_types:piece_index().
@@ -49,14 +53,6 @@ new() ->
     new(2, 10).
 
 
-%% @doc Get the list of chunks in the request queue
-%% @end
--spec to_list(#requestqueue{}) -> [requestspec()].
-to_list(Requestqueue) ->
-    #requestqueue{queue=Queue} = Requestqueue,
-    queue:to_list(Queue).
-
-
 %% @doc Create an empty request queue and specify pipeline thresholds
 %% @end
 -spec new(non_neg_integer(), pos_integer()) -> rqueue().
@@ -68,11 +64,37 @@ new(Lowthreshold, Highthreshold) ->
     InitQueue.
 
 
+%% @doc Remove all items from a request queue and return an empty queue
+%% @end
+-spec flush(rqueue()) -> rqueue().
+flush(Requestqueue) ->
+    #requestqueue{low_limit=Low, high_limit=High} = Requestqueue,
+    new(Low, High).
+
+
+%% @doc Get the list of chunks in the request queue
+%% @end
+-spec to_list(rqueue()) -> [requestspec()].
+to_list(Requestqueue) ->
+    #requestqueue{queue=Queue} = Requestqueue,
+    queue:to_list(Queue).
+
+
+%% @doc Return a list of all unique pieces that occur in the queue
+%% @end
+-spec pieces(rqueue()) -> [pieceindex()].
+pieces(Requestqueue) ->
+    #requestqueue{queue=Queue} = Requestqueue,
+    Requests = queue:to_list(Queue),
+    lists:usort([Index || {Index, _, _} <- Requests]).
+
+
+
 %% @doc Push a request onto the end of the request queue
 %% The queue returns a new queue including the new request.
 %% @end
 -spec push(pieceindex(), chunkoffset(),
-           chunklength(), #requestqueue{}) -> rqueue().
+           chunklength(), rqueue()) -> rqueue().
 push(Pieceindex, Offset, Length, Requestqueue) ->
     #requestqueue{queue=Queue} = Requestqueue,
     NewQueue = queue:in({Pieceindex, Offset, Length}, Queue),
@@ -82,7 +104,7 @@ push(Pieceindex, Offset, Length, Requestqueue) ->
 %% @doc Push a list of requests onto the end of the request queue
 %% The function returns a new queue including the new requests.
 %% @end
--spec push([requestspec()], #requestqueue{}) -> rqueue().
+-spec push([requestspec()], rqueue()) -> rqueue().
 push(Requests, Requestqueue) ->
     #requestqueue{queue=Queue} = Requestqueue,
     TmpQueue = queue:from_list(Requests),
@@ -92,16 +114,16 @@ push(Requests, Requestqueue) ->
 
 %% @doc Return the head of the request queue and the tail of the queue
 %% If the request queue is empty the function will throw a badarg error.
+%% TODO - rename this function tail and add pop function
 %% @end
--spec pop(#requestqueue{}) -> {requestspec(), rqueue()}.
+-spec pop(rqueue()) -> rqueue().
 pop(Requestqueue) ->
     #requestqueue{queue=Queue} = Requestqueue,
     case queue:out(Queue) of
         {empty, _} ->
             erlang:error(badarg);
-        {{value, Head}, Tail} ->
-            NewReqs = Requestqueue#requestqueue{queue=Tail},
-            {Head, NewReqs}
+        {{value, _}, Tail} ->
+            Requestqueue#requestqueue{queue=Tail}
     end.
 
 
@@ -119,7 +141,7 @@ peek(Requestqueue) ->
 
 %% @doc Return the number of requests in the queue.
 %% @end
--spec size(#requestqueue{}) -> non_neg_integer().
+-spec size(rqueue()) -> non_neg_integer().
 size(Requestqueue) ->
     #requestqueue{queue=Queue} = Requestqueue,
     queue:len(Queue).
@@ -155,7 +177,7 @@ has_offset(Pieceindex, Offset, Requestqueue) ->
 
 %% @doc Check if the number or open requests is below the pipeline threshold
 %% @end
--spec is_low(#requestqueue{}) -> boolean().
+-spec is_low(rqueue()) -> boolean().
 is_low(Requestqueue) ->
     #requestqueue{low_limit=Low, queue=Queue} = Requestqueue,
     queue:len(Queue) =< Low.
@@ -167,7 +189,7 @@ is_low(Requestqueue) ->
 %% If not, the number of requests needed to hit the high threshold
 %% is returned regardless of whether the queue is low or not.
 %% @end
--spec needs(#requestqueue{}) -> non_neg_integer().
+-spec needs(rqueue()) -> non_neg_integer().
 needs(Requestqueue) ->
     #requestqueue{high_limit=High, queue=Queue} = Requestqueue,
     Length = queue:len(Queue),
@@ -175,6 +197,28 @@ needs(Requestqueue) ->
         true  -> High - Length;
         false -> 0
     end.
+
+%% @doc Check if a request queue contains a specific request
+%% @end
+-spec member(pieceindex(), chunkoffset(),
+             chunklength(), rqueue()) -> boolean().
+member(Piece, Offset, Length, Requestqueue) ->
+    %% The implementation of queue will not change in a 1000 years
+    #requestqueue{queue=Queue} = Requestqueue,
+    Chunk = {Piece, Offset, Length},
+    queue:member(Chunk, Queue).
+
+
+%% @doc Delete a specific request from the request queue
+%% @end
+-spec delete(pieceindex(), chunkoffset(),
+             chunklength(), rqueue()) -> rqueue().
+delete(Piece, Offset, Length, Requestqueue) ->
+    %% The implementation of queue will not change in a 1000 years
+    #requestqueue{queue=Queue} = Requestqueue,
+    Chunk = {Piece, Offset, Length},
+    NewQueue = queue:filter(fun(Item) -> Item =/= Chunk end, Queue),
+    Requestqueue#requestqueue{queue=NewQueue}.
 
 
 -ifdef(TEST).
@@ -193,12 +237,12 @@ empty_test_() ->
 one_request_test_() ->
     Q0 = ?rqueue:new(),
     Q1 = ?rqueue:push(0, 0, 1, Q0),
-    {Req, Q2} = ?rqueue:pop(Q1),
+    Q2 = ?rqueue:pop(Q1),
     [?_assertEqual(1, ?rqueue:size(Q1)),
      ?_assertEqual({0,0,1}, ?rqueue:peek(Q1)),
-     ?_assertEqual({0,0,1}, Req),
      ?_assertEqual([{0,0,1}], ?rqueue:to_list(Q1)),
-     ?_assertEqual([], ?rqueue:to_list(Q2))].
+     ?_assertEqual([], ?rqueue:to_list(Q2)),
+     ?_assertEqual(0, ?rqueue:size(?rqueue:flush(Q1)))].
 
 head_check_test_() ->
     Q0 = ?rqueue:new(),
@@ -235,16 +279,27 @@ push_list_test_() ->
     Q0 = ?rqueue:new(),
     Q1 = ?rqueue:push(0, 0, 1, Q0),
     Q2 = ?rqueue:push([{0,1,1},{0,2,1}], Q1),
-    {R0, OQ0} = ?rqueue:pop(Q2),
-    {R1, OQ1} = ?rqueue:pop(OQ0),
-    {R2, OQ2} = ?rqueue:pop(OQ1),
-    [?_assertEqual({0,0,1}, R0),
-     ?_assertEqual({0,1,1}, R1),
-     ?_assertEqual({0,2,1}, R2),
+    OQ0 = ?rqueue:pop(Q2),
+    OQ1 = ?rqueue:pop(OQ0),
+    OQ2 = ?rqueue:pop(OQ1),
+    [?_assertEqual({0,0,1}, ?rqueue:peek(Q2)),
+     ?_assertEqual({0,1,1}, ?rqueue:peek(OQ0)),
+     ?_assertEqual({0,2,1}, ?rqueue:peek(OQ1)),
      ?_assertEqual([{0,0,1},{0,1,1},{0,2,1}], ?rqueue:to_list(Q2)),
      ?_assertEqual([], ?rqueue:to_list(OQ2))].
 
-
+member_delete_test() ->
+    Q0 = ?rqueue:new(),
+    Q1 = ?rqueue:push(0, 0, 1, Q0),
+    Q2 = ?rqueue:push(0, 1, 1, Q1),
+    ?assert(?rqueue:member(0, 0, 1, Q1)),
+    ?assertNot(?rqueue:member(0, 1, 1, Q1)),
+    ?assert(?rqueue:member(0, 1, 1, Q2)),
+    Q3 = ?rqueue:delete(0, 1, 1, Q2),
+    ?assertNot(?rqueue:member(0, 1, 1, Q3)),
+    ?assert(?rqueue:member(0, 0, 1, Q3)),
+    Q4 = ?rqueue:delete(0, 0, 1, Q3),
+    ?assertNot(?rqueue:member(0, 0, 1, Q4)).
 
 -endif.
 

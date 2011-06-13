@@ -6,7 +6,6 @@
    [
     etorrent_acceptor_sup,
     etorrent_choker,
-    etorrent_chunk_mgr,
     etorrent_counters,
     etorrent_dirwatcher,
     etorrent_dirwatcher_s,
@@ -16,7 +15,6 @@
     etorrent_listener,
     etorrent_mgr,
     etorrent_peer_mgr,
-    etorrent_piece_mgr,
     etorrent_rate_mgr,
     etorrent_sup,
     etorrent_t_pool_sup,

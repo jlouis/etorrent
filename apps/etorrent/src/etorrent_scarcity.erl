@@ -54,9 +54,9 @@
 
 
 %% gproc entries
--export([register_scarcity_server/1,
-         lookup_scarcity_server/1,
-         await_scarcity_server/1]).
+-export([register_server/1,
+         lookup_server/1,
+         await_server/1]).
 
 %% api functions
 -export([start_link/2,
@@ -77,19 +77,21 @@
 
 
 -type torrent_id() :: etorrent_types:torrent_id().
+-type pieceindex() :: etorrent_types:pieceindex().
 -type pieceset() :: etorrent_pieceset:pieceset().
 -type monitorset() :: etorrent_monitorset:monitorset().
 -type timeserver() :: etorrent_timer:timeserver().
+-type table() :: atom() | ets:tid().
 
 -record(watcher, {
-    pid :: pid(),
-    ref :: reference(),
-    tag :: term(),
-    pieceset :: pieceset(),
-    piecelist :: [pos_integer()],
-    interval :: pos_integer(),
-    changed  :: boolean(),
-    timer_ref :: none | reference()}).
+    pid = exit(required) :: pid(),
+    ref = exit(required) :: reference(),
+    tag = exit(required) :: term(),
+    pieceset  = exit(required) :: pieceset(),
+    piecelist = exit(required) :: [pos_integer()],
+    interval  = exit(required) :: pos_integer(),
+    changed   = exit(required) :: boolean(),
+    timer_ref = exit(required) :: none | reference()}).
 
 %% Watcher states:
 %% waiting: changed=false, timer_ref=none
@@ -97,33 +99,33 @@
 %% updated: changed=true,  timer_ref=reference()
 
 -record(state, {
-    torrent_id :: torrent_id(),
-    timeserver :: timeserver(),
-    num_peers  :: array(),
-    peer_monitors :: monitorset(),
-    watchers :: [#watcher{}]}).
+    torrent_id    = exit(required) :: torrent_id(),
+    timeserver    = exit(required) :: timeserver(),
+    num_peers     = exit(required) :: table(),
+    peer_monitors = exit(required) :: monitorset(),
+    watchers      = exit(required) :: [#watcher{}]}).
 
 -compile({no_auto_import, [monitor/2, demonitor/1]}).
 -import(erlang, [monitor/2, demonitor/1]).
 
 %% @doc Register as the scarcity server for a torrent
 %% @end
--spec register_scarcity_server(torrent_id()) -> true.
-register_scarcity_server(TorrentID) ->
+-spec register_server(torrent_id()) -> true.
+register_server(TorrentID) ->
     gproc:add_local_name({etorrent, TorrentID, scarcity}).
 
 
 %% @doc Lookup the scarcity server for a torrent
 %% @end
--spec lookup_scarcity_server(torrent_id()) -> pid().
-lookup_scarcity_server(TorrentID) ->
+-spec lookup_server(torrent_id()) -> pid().
+lookup_server(TorrentID) ->
     gproc:lookup_local_name({etorrent, TorrentID, scarcity}).
 
 
 %% @doc Wait for the scarcity server of a torrent to register
 %% @end
--spec await_scarcity_server(torrent_id()) -> pid().
-await_scarcity_server(TorrentID) ->
+-spec await_server(torrent_id()) -> pid().
+await_server(TorrentID) ->
     Name = {etorrent, TorrentID, scarcity},
     {Pid, undefined} = gproc:await({n, l, Name}, 5000),
     Pid.
@@ -135,12 +137,12 @@ await_scarcity_server(TorrentID) ->
 %% @end
 -spec start_link(torrent_id(), pos_integer()) -> {ok, pid()}.
 start_link(TorrentID, Numpieces) ->
-    start_link(TorrentID, native, Numpieces).
+    start_link(TorrentID, etorrent_timer:native(), Numpieces).
 
 
 -spec start_link(torrent_id(), timeserver(), pos_integer()) -> {ok, pid()}.
 start_link(TorrentID, Timeserver, Numpieces) ->
-    gen_server:start_link(?MODULE, [TorrentID, Timeserver, Numpieces], []).
+    gen_server:start_link(?MODULE, {TorrentID, Timeserver, Numpieces}, []).
 
 
 %% @doc Register as a peer
@@ -151,7 +153,7 @@ start_link(TorrentID, Timeserver, Numpieces) ->
 %% @end
 -spec add_peer(torrent_id(), pieceset()) -> ok.
 add_peer(TorrentID, Pieceset) ->
-    SrvPid = lookup_scarcity_server(TorrentID),
+    SrvPid = lookup_server(TorrentID),
     gen_server:call(SrvPid, {add_peer, self(), Pieceset}).
 
 
@@ -161,7 +163,7 @@ add_peer(TorrentID, Pieceset) ->
 %% @end
 -spec add_piece(torrent_id(), pos_integer(), pieceset()) -> ok.
 add_piece(TorrentID, Index, Pieceset) ->
-    SrvPid = lookup_scarcity_server(TorrentID),
+    SrvPid = lookup_server(TorrentID),
     gen_server:call(SrvPid, {add_piece, self(), Index, Pieceset}).
 
 
@@ -172,7 +174,7 @@ add_piece(TorrentID, Index, Pieceset) ->
 %% @end
 -spec get_order(torrent_id(), pieceset()) -> {ok, [pos_integer()]}.
 get_order(TorrentID, Pieceset) ->
-    SrvPid = lookup_scarcity_server(TorrentID),
+    SrvPid = lookup_server(TorrentID),
     gen_server:call(SrvPid, {get_order, Pieceset}).
 
 %% @doc Receive updates to changes in scarcity
@@ -190,7 +192,7 @@ watch(TorrentID, Tag, Pieceset) ->
 -spec watch(torrent_id(), term(), pieceset(), pos_integer()) ->
     {ok, reference(), [pos_integer()]}.
 watch(TorrentID, Tag, Pieceset, Interval) ->
-    SrvPid = lookup_scarcity_server(TorrentID),
+    SrvPid = lookup_server(TorrentID),
     gen_server:call(SrvPid, {watch, self(), Interval, Tag, Pieceset}).
 
 %% @doc Cancel updates to changes in scarcity
@@ -198,18 +200,19 @@ watch(TorrentID, Tag, Pieceset, Interval) ->
 %% @end
 -spec unwatch(torrent_id(), reference()) -> ok.
 unwatch(TorrentID, Ref) ->
-    SrvPid = lookup_scarcity_server(TorrentID),
+    SrvPid = lookup_server(TorrentID),
     gen_server:call(SrvPid, {unwatch, Ref}).
 
 
 %% @private
-init([TorrentID, Timeserver, Numpieces]) ->
+-spec init({torrent_id(), timeserver(), pieceindex()}) -> {ok, #state{}}.
+init({TorrentID, Timeserver, Numpieces}) ->
     Tab = ets:new(etorrent_scarcity, [set,private]),
     %% Set all counters to 0 so we don't need to handle default
     %% values for new pieces anywhere else in the module.
     [ets:insert(Tab, {I, 0}) || I <- lists:seq(0, Numpieces - 1)],
 
-    register_scarcity_server(TorrentID),
+    register_server(TorrentID),
     InitState = #state{
         torrent_id=TorrentID,
         timeserver=Timeserver,
@@ -360,14 +363,14 @@ code_change(_, State, _) ->
     {ok, State}.
 
 
--spec sorted_piecelist(pieceset(), array()) -> [pos_integer()].
-sorted_piecelist(Piecelist, Numpeers) ->
+-spec sorted_piecelist([pieceindex()], table()) -> [pieceindex()].
+sorted_piecelist(Piecelist, Numpeers) when is_list(Piecelist) ->
     Tagged = [{ets:lookup_element(Numpeers, I, 2), I} || I <- Piecelist],
     Sorted = lists:sort(Tagged),
     [I || {_, I} <- Sorted].
 
 
--spec decrement(pieceset(), array()) -> array().
+-spec decrement(pieceset(), table()) -> table().
 decrement(Pieceset, Numpeers) ->
     etorrent_pieceset:foldl(fun(Piece, Acc) ->
         ets:update_counter(Numpeers, Piece, -1),
@@ -376,7 +379,7 @@ decrement(Pieceset, Numpeers) ->
     Numpeers.
 
 
--spec increment(pieceset(), array()) -> array().
+-spec increment(pieceset(), table()) -> table().
 increment(Pieceset, Numpeers) ->
     etorrent_pieceset:foldl(fun(Piece, Acc) ->
         ets:update_counter(Numpeers, Piece, 1),
@@ -386,7 +389,7 @@ increment(Pieceset, Numpeers) ->
 
 
 -spec send_updates(pieceset() | pos_integer(), [#watcher{}],
-                   array(), timeserver()) -> [#watcher{}].
+                   table(), timeserver()) -> [#watcher{}].
 send_updates(Index, Watchers, Numpeers, Time) when is_integer(Index) ->
     HasChanged = fun(Watchedset) ->
         etorrent_pieceset:is_member(Index, Watchedset)
@@ -400,8 +403,9 @@ send_updates(Pieceset, Watchers, Numpeers, Time) ->
     end,
     [send_update(HasChanged, Watcher, Numpeers, Time) || Watcher <- Watchers].
 
+
 -spec send_update(fun((pieceset()) -> boolean()), #watcher{},
-                  array(), timeserver()) -> ok.
+                  table(), timeserver()) -> #watcher{}.
 send_update(HasChanged, Watcher, Numpeers, Time) ->
     #watcher{
         pieceset=Pieceset,
@@ -427,7 +431,7 @@ send_update(HasChanged, Watcher, Numpeers, Time) ->
             Watcher
     end.
 
--spec send_update(#watcher{}, array(), timeserver()) -> reference().
+-spec send_update(#watcher{}, table(), timeserver()) -> reference().
 send_update(Watcher, Numpeers, Time) ->
     #watcher{
         pid=Pid,
@@ -474,13 +478,13 @@ test_data(N) ->
     {N, Time, Pid}.
 
 register_case() ->
-    true = ?scarcity:register_scarcity_server(0),
-    ?assertEqual(self(), ?scarcity:lookup_scarcity_server(0)),
-    ?assertEqual(self(), ?scarcity:await_scarcity_server(0)).
+    true = ?scarcity:register_server(0),
+    ?assertEqual(self(), ?scarcity:lookup_server(0)),
+    ?assertEqual(self(), ?scarcity:await_server(0)).
 
 server_registers_case() ->
     {ok, Pid} = ?scarcity:start_link(1, 16),
-    ?assertEqual(Pid, ?scarcity:lookup_scarcity_server(1)).
+    ?assertEqual(Pid, ?scarcity:lookup_server(1)).
 
 initial_ordering_case({N, Time, Pid}) ->
     {ok, Order} = ?scarcity:get_order(N, pieces([0,1,2,3,4,5,6,7])),
