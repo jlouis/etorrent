@@ -918,7 +918,7 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
 ** TODO When should the RTT values be updated
    Whenever we receive an ACK for a sent packet which only got sent
    once, we should use it for the RTT value updating.
-*** TODO Enable tracking of stuff w.r.t. sent packets
+*** DONE Enable tracking of stuff w.r.t. sent packets
     We should make a time stamp whenever a packet is leaving and gets
     sent. This value should be stored in the packet wrapper.
 *** TODO Enable pickup of sent packets upon ACKs
@@ -999,7 +999,6 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
      initial rtt_var = 800 ms
      initial rto     = 3000 ms
      CCONTROL_TARGET is 100 * 1000 us i.e., 100 ms.
-
 
 * TODO Even though the test case says OK! there might be bad things
   So we should go through the test cases a bit and see what

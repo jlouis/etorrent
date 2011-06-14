@@ -42,6 +42,7 @@
 -record(pkt_wrap, {
           packet            :: utp_proto:packet(),
           transmissions = 0 :: integer(),
+          send_time = 0 :: integer(),
           need_resend = false :: boolean()
          }).
 -type pkt() :: #pkt_wrap{}.
@@ -123,7 +124,7 @@ send_ack(SockInfo,
                         },
     Win = advertised_window(Buf),
     case utp_socket:send_pkt(Win, SockInfo, AckPacket) of
-        ok ->
+        {ok, _} ->
             ok;
         {error, Reason} ->
             ?WARN([dropping_packet, {error, Reason}]),
@@ -153,9 +154,10 @@ send_packet(Ty, Bin,
                   extension = [],
                   payload = Bin },
     Win = advertised_window(Buf),
-    ok = utp_socket:send_pkt(Win, SockInfo, P),
+    {ok, SendTime} = utp_socket:send_pkt(Win, SockInfo, P),
     Wrap = #pkt_wrap { packet = P,
-                       transmissions = 0,
+                       transmissions = 1,
+                       send_time = SendTime,
                        need_resend = false },
     Buf#pkt_buf { seq_no = utp_util:bit16(SeqNo+1),
                   retransmission_queue = [Wrap | RetransQueue]
@@ -542,8 +544,9 @@ retransmit_packet(PktBuf, SockInfo) ->
                 transmissions = N } = Oldest,
     Win = advertised_window(PktBuf),
     ?DEBUG([resending, utp_proto:format_pkt(Pkt)]),
-    ok = utp_socket:send_pkt(Win, SockInfo, Pkt),
-    Wrap = Oldest#pkt_wrap { transmissions = N+1 },
+    {ok, SendTime} = utp_socket:send_pkt(Win, SockInfo, Pkt),
+    Wrap = Oldest#pkt_wrap { transmissions = N+1,
+                             send_time = SendTime},
     PktBuf#pkt_buf { retransmission_queue = [Wrap | Rest] }.
 
 pick_oldest_packet(#pkt_buf { retransmission_queue = [Candidate | R] }) ->

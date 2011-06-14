@@ -89,7 +89,7 @@ send_aux(0, Socket, Addr, Port, Payload) ->
 send_aux(N, Socket, Addr, Port, Payload) ->
     case gen_udp:send(Socket, Addr, Port, Payload) of
         ok ->
-            ok;
+            {ok, utp_proto:current_time_us()};
         {error, enobufs} ->
             %% Special case this
             timer:sleep(150), % Wait a bit for the queue to clear
