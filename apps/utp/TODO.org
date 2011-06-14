@@ -838,6 +838,10 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
 ** DONE Update the LEDBAT code whenever we grab an incoming packet
 ** DONE Set up a LEDBAT timer
 ** DONE Handle the LEDBAT timer when it triggers
+* DONE What should be done when the LEDBAT timer trigger?
+  And also: Why is it triggering?
+
+  Code mistake.
 * TODO RTT Measurement
   This is probably different in uTP from the standard TCP protocol
 
@@ -924,11 +928,7 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
 *** TODO Enable pickup of sent packets upon ACKs
     When we ACK a packet, we should pick them up together with the
     ACK-time and then update the internal counters around RTT by
-    ACKing packets correctly
-* DONE What should be done when the LEDBAT timer trigger?
-  And also: Why is it triggering?
-
-  Code mistake.
+    ACKing packets correctly.
 * Congestion control
   To handle congestion control, we must enable LEDBAT congestion
   control tracking on the socket as well.

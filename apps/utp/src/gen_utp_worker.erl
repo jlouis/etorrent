@@ -308,7 +308,7 @@ connected({timeout, _, ledbat_timeout},
           #state { pkt_window = Window } = State) ->
     set_ledbat_timer(),
     {next_state, connected,
-     State#state { pkt_window = pkt_window:bump_ledbat(Window)}};
+     State#state { pkt_window = utp_window:bump_ledbat(Window)}};
 connected({timeout, Ref, {zerowindow_timeout, _N}},
           #state {
             pkt_buf = PktBuf,
@@ -446,7 +446,7 @@ fin_sent({timeout, _, ledbat_timeout},
           #state { pkt_window = Window } = State) ->
     set_ledbat_timer(),
     {next_state, fin_sent,
-     State#state { pkt_window = pkt_window:bump_ledbat(Window)}};
+     State#state { pkt_window = utp_window:bump_ledbat(Window)}};
 
 fin_sent({timeout, Ref, {retransmit_timeout, N}},
          #state { 
