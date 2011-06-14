@@ -331,13 +331,13 @@ update_send_buffer(AckNo, #pkt_buf { seq_no = NextSeqNo } = PB) ->
     WindowStart = utp_util:bit16(SeqNo - WindowSize),
     case view_ack_no(AckNo, WindowStart, WindowSize) of
         {ok, AcksAhead} ->
-            {Ret, Acked, PB1} = prune_acked(AcksAhead, WindowStart, PB),
+            {Ret, AckedPs, PB1} = prune_acked(AcksAhead, WindowStart, PB),
             FinState = case Ret of
                            ok -> [];
                            fin_sent_acked -> [fin_sent_acked]
                        end,
-            {ok, FinState ++ view_ack_state(Acked, PB1),
-                 AcksAhead,
+            {ok, FinState ++ view_ack_state(length(AckedPs), PB1),
+                 AckedPs,
                  PB1};
         {ack_is_old, _AcksAhead} ->
             ?DEBUG([node(), ack_is_old,
@@ -362,13 +362,14 @@ prune_acked(AckAhead, WindowStart,
                                 Distance =< AckAhead
                         end,
                         RQ),
+    
     RetState = case contains_st_fin(AckedPs) of
                    true ->
                        fin_sent_acked;
                    false ->
                        ok
                end,
-    {RetState, length(AckedPs), PB#pkt_buf { retransmission_queue = N_RQ }}.
+    {RetState, AckedPs, PB#pkt_buf { retransmission_queue = N_RQ }}.
 
 contains_st_fin([]) -> false;
 contains_st_fin([#pkt_wrap {
@@ -439,12 +440,12 @@ handle_packet(State,
         {ok, {N_PacketBuffer1, RecvMessages}} ->
             %% The Packet may have ACK'ed stuff from our send buffer. Update
             %% the send buffer accordingly
-            {ok, SendMessages, _AcksAhead, N_PacketBuffer2} =
+            {ok, SendMessages, AckedPs, N_PacketBuffer2} =
                 update_send_buffer(AckNo, N_PacketBuffer1),
 
             {ok, N_PacketBuffer2,
              utp_window:handle_window_size(PktWindow, WindowSize),
-             SendMessages ++ RecvMessages};
+             SendMessages ++ RecvMessages ++ [{acked, AckedPs}]};
         no_data when Type == st_state ->
             %% The packet has no data
             {ok, SendMessages, _AcksAhead, N_PacketBuffer2} =
