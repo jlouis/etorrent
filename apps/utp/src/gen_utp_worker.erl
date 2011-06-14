@@ -306,6 +306,7 @@ connected(close, #state { sock_info = SockInfo,
                              pkt_buf = NPBuf } };
 connected({timeout, _, ledbat_timeout},
           #state { pkt_window = Window } = State) ->
+    set_ledbat_timer(),
     {next_state, connected,
      State#state { pkt_window = pkt_window:bump_ledbat(Window)}};
 connected({timeout, Ref, {zerowindow_timeout, _N}},
@@ -443,6 +444,7 @@ fin_sent({pkt, Pkt, {TS, TSDiff, RecvTime}},
     end;
 fin_sent({timeout, _, ledbat_timeout},
           #state { pkt_window = Window } = State) ->
+    set_ledbat_timer(),
     {next_state, fin_sent,
      State#state { pkt_window = pkt_window:bump_ledbat(Window)}};
 
@@ -864,4 +866,4 @@ update_window(Window, Sample, Pkt) ->
         utp_window:handle_advertised_window(X, Pkt).
 
 set_ledbat_timer() ->
-    gen_fsm:start_timer(60*1000, ledbat_timer).
+    gen_fsm:start_timer(60*1000, ledbat_timeout).

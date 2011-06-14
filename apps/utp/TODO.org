@@ -925,6 +925,10 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
     When we ACK a packet, we should pick them up together with the
     ACK-time and then update the internal counters around RTT by
     ACKing packets correctly
+* DONE What should be done when the LEDBAT timer trigger?
+  And also: Why is it triggering?
+
+  Code mistake.
 * Congestion control
   To handle congestion control, we must enable LEDBAT congestion
   control tracking on the socket as well.

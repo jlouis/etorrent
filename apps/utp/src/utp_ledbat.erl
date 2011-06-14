@@ -16,9 +16,9 @@
           round_trip_time :: integer(),
           round_trip_time_variance :: integer(),
           base_history_q :: queue(),
-                  delay_base :: integer(),
-                  last_sample :: integer(),
-                  cur_delay_history_q   :: queue() }).
+          delay_base :: integer(),
+          last_sample :: integer(),
+          cur_delay_history_q   :: queue() }).
 
 -opaque t() :: #ledbat{}.
 
