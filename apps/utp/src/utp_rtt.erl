@@ -1,11 +1,20 @@
 -module(utp_rtt).
 
 -export([
-         rtt_update/3,
-         rtt_timeout/2
+         rtt_update/2,
+         rtt_rto/1,
+         rtt_ack_packet/4
         ]).
 
+-define(MAX_WINDOW_INCREASE, 3000).
 -define(DEFAULT_RTT_TIMEOUT, 500).
+
+-record(rtt, {rtt :: integer(),
+              var :: integer()
+             }).
+
+-opaque t() :: #rtt{}.
+-export_type([t/0]).
 
 %% Every packet that is ACKed, either by falling in the range
 %% (last_ack_nr, ack_nr] or by explicitly being acked by a Selective
@@ -21,16 +30,38 @@
 %% rtt and rtt_var are calculated by the following formula, every time
 %% a packet is ACKed:
 
-rtt_update(RTT, PacketRTT, RTTVar) ->
-    Delta = RTT - PacketRTT,
-    [{rtt_var, RTTVar + ((abs(Delta) - RTTVar) / 4)},
-     {rtt, RTT + (PacketRTT - RTT) / 8}].
+rtt_update(Estimate, RTT) ->
+    case RTT of
+        none ->
+            true = Estimate < 6000,
+            #rtt { rtt = round(Estimate),
+                   var = round(Estimate / 2)};
+        #rtt { rtt = LastRTT, var = Var} ->
+            Delta = LastRTT - Estimate,
+            #rtt { rtt = round(LastRTT - LastRTT/8 + Estimate/8),
+                   var = round(Var + (abs(Delta) - Var) / 4) }
+    end.
 
 %% The default timeout for packets associated with the socket is also
 %% updated every time rtt and rtt_var is updated. It is set to:
 
-rtt_timeout(RTT, RTT_Var) ->
-    max(?DEFAULT_RTT_TIMEOUT, RTT + RTT_Var * 4).
+rtt_rto(#rtt { rtt = RTT, var = Var}) ->
+    max(RTT + Var * 4, ?DEFAULT_RTT_TIMEOUT).
+
+%% ACKnowledge an incoming packet
+rtt_ack_packet(History, RTT, TimeSent, TimeAcked) ->
+    true = TimeAcked >= TimeSent,
+    Estimate = TimeAcked - TimeSent,
+
+    NewRTT = rtt_update(Estimate, RTT),
+    NewHistory = case RTT of
+                     none ->
+                         History;
+                     #rtt{} ->
+                         utp_ledbat:add_sample(History, Estimate)
+                 end,
+    NewRTO = rtt_rto(NewRTT),
+    {ok, NewRTO, NewRTT, NewHistory}.
 
 %% Every time a socket sends or receives a packet, it updates its
 %% timeout counter. If no packet has arrived within timeout number of
@@ -43,4 +74,5 @@ rtt_timeout(RTT, RTT_Var) ->
 %% The initial timeout is set to 1000 milliseconds, and later updated
 %% according to the formula above. For every packet consecutive
 %% subsequent packet that times out, the timeout is doubled.
+    
 

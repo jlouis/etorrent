@@ -875,10 +875,6 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
      What the measured delay was
      And when the window was maxed out
 
-   ; Two variables are kept:
-     The RTT
-     The RTT Variance
-
    ; Updating the send_quota:
      dt is the time that went past from the last send quota update
      If we know the max_window currently allowed:
@@ -889,6 +885,11 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
        limit add to max_window
 
      push this on top of the current send quota
+
+*** DONE How RTT Acks are handled given packets
+   ; Two variables are kept:
+     The RTT
+     The RTT Variance
 
    ; When ACK'ing packets:
      If the packet was never resent, we can simply use it for the
@@ -911,6 +912,23 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
      Now set the new RTO:
        rto := max(rtt + rtt_var * 4, 500)
 
+** Where should the RTT values be stored?
+   On the socket or in the window code? What is the most simple place
+   to do this work?
+** TODO When should the RTT values be updated
+   Whenever we receive an ACK for a sent packet which only got sent
+   once, we should use it for the RTT value updating.
+*** TODO Enable tracking of stuff w.r.t. sent packets
+    We should make a time stamp whenever a packet is leaving and gets
+    sent. This value should be stored in the packet wrapper.
+*** TODO Enable pickup of sent packets upon ACKs
+    When we ACK a packet, we should pick them up together with the
+    ACK-time and then update the internal counters around RTT by
+    ACKing packets correctly
+* Congestion control
+  To handle congestion control, we must enable LEDBAT congestion
+  control tracking on the socket as well.
+** TODO How LEDBAT congestion control is applied to the game!
    ; Applying LEDBAT congestion control:
      sanity checks:
        assert(min_rtt >= 0);
@@ -982,11 +1000,7 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
      initial rto     = 3000 ms
      CCONTROL_TARGET is 100 * 1000 us i.e., 100 ms.
 
-** Where should the RTT values be stored?
-   On the socket or in the window code?
-** When should the RTT values be updated
-   Whenever we receive an ACK for a sent packet which only got sent
-   once, we should use it for the RTT value updating.
+
 * TODO Even though the test case says OK! there might be bad things
   So we should go through the test cases a bit and see what
   happens. Waiting a bit in the end of test case to see if something
