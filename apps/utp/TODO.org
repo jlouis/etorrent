@@ -842,7 +842,7 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   And also: Why is it triggering?
 
   Code mistake.
-* TODO RTT Measurement
+* DONE RTT Measurement
   This is probably different in uTP from the standard TCP protocol
 
   It is, because we have an explicit RTT-timer inside the packet. This
@@ -863,7 +863,7 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
    The information is somewhat non-complete as always.
 
    And the problem is that it may not be right!
-** TODO What does the code say in utp.cpp?
+** DONE What does the code say in utp.cpp?
    This will perhaps tell us something about the concept of RTT
    measurements we need to carry out. There may be something important
    to discern from the code base.
@@ -916,19 +916,55 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
      Now set the new RTO:
        rto := max(rtt + rtt_var * 4, 500)
 
-** Where should the RTT values be stored?
+** DONE Where should the RTT values be stored?
    On the socket or in the window code? What is the most simple place
    to do this work?
-** TODO When should the RTT values be updated
+
+   The two obvious places are:
+
+   The #socket{} structure.
+   The #window{} structure.
+
+   Ok, we expect the #window{} structure to be about congestion
+   control. So we would expect the #window{} structure to contain the
+   information about handling of the window. Hence, it should be in
+   the window.
+
+   On the other hand, the RTT measurement is a property of
+   the #socket{} not of the window. So it should probably be placed on
+   the socket instead.
+
+   WE PICK THE SOCKET. IT IS A PROPERTY OF THE SOCKET!
+** DONE When should the RTT values be updated
    Whenever we receive an ACK for a sent packet which only got sent
    once, we should use it for the RTT value updating.
 *** DONE Enable tracking of stuff w.r.t. sent packets
     We should make a time stamp whenever a packet is leaving and gets
     sent. This value should be stored in the packet wrapper.
-*** TODO Enable pickup of sent packets upon ACKs
+*** DONE Propagate the ACK'ed packets to the top-level
+    This change opens up the possibilities for doing stuff to these
+    packets. In particular, we want to track the RTT and add LEDBAT
+    samples as well, I think.
+*** DONE Enable pickup of sent packets upon ACKs
     When we ACK a packet, we should pick them up together with the
     ACK-time and then update the internal counters around RTT by
     ACKing packets correctly.
+
+    We have a socket, and a list of Acked packets. Update the RTT
+    sampling with these packets.
+
+    Find all Acked packets that have been sent once.
+    For each packet, track its RTT by sending it through the socket.
+* TODO Make sure we are LEDBAT sampling where needed
+* TODO Why is the ledbat bumper being ticked almost immediately?
+* TODO How do we handle the case where LEDBAT is ticked while the RTT structure is "none"?
+  Can it happen?
+  What should we do about it?
+* TODO Make sure we are sampling the right kind of LEDBAT sample
+  What is the sample we should use for LEDBAT? Is it the TSDiff we get
+  from the other end, or is it the estimate we calculate in the round
+  trip time? In other words, what is the right value to use here? We
+  have several available, so make sure we select the right one.
 * Congestion control
   To handle congestion control, we must enable LEDBAT congestion
   control tracking on the socket as well.
