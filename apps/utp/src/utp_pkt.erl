@@ -21,6 +21,7 @@
 
          advertised_window/1,
 
+         extract_rtt/1,
          retransmit_packet/2
          ]).
 
@@ -46,6 +47,7 @@
           need_resend = false :: boolean()
          }).
 -type pkt() :: #pkt_wrap{}.
+
 
 -record(pkt_buf, {
           recv_buf    = queue:new()     :: queue(),
@@ -629,4 +631,9 @@ buffer_dequeue(#pkt_buf { recv_buf = Q } = Buf) ->
         {empty, _} ->
             empty
     end.
+
+extract_rtt(Packets) ->
+    [TS || #pkt_wrap { send_time = TS} = P <- Packets,
+           P#pkt_wrap.transmissions == 1].
+
 

@@ -212,7 +212,7 @@ syn_sent({pkt, #packet { ty = st_state,
     %% We reverse the list so they are in the order we got them originally
     [incoming(self(), P, T) || {pkt, P, T} <- lists:reverse(Packets)],
     %% @todo Consider LEDBAT here
-    N_PktWin = update_window(PktWin, TSDiff, WindowSize),
+    N_PktWin = update_window(PktWin, WindowSize),
     ReplyMicro = utp_util:bit32(TS - RecvTime),
     set_ledbat_timer(),
     {next_state, connected,
@@ -279,7 +279,7 @@ connected({pkt, Pkt, {TS, TSDiff, RecvTime}},
     ?DEBUG([node(), incoming_pkt, connected, utp_proto:format_pkt(Pkt)]),
 
     {ok, Messages, N_SockInfo, N_PKI, N_PB, N_PRI, ZWinTimeout} =
-        handle_packet_incoming(Pkt, utp_util:bit32(TS - RecvTime), TSDiff, State),
+        handle_packet_incoming(Pkt, utp_util:bit32(TS - RecvTime), RecvTime, TSDiff, State),
     N_RetransTimer = handle_retransmit_timer(Messages, RetransTimer),
 
     %% Calculate the next state
@@ -305,10 +305,10 @@ connected(close, #state { sock_info = SockInfo,
                              retransmit_timeout = NRTimer,
                              pkt_buf = NPBuf } };
 connected({timeout, _, ledbat_timeout},
-          #state { pkt_window = Window } = State) ->
+          #state { sock_info = SI } = State) ->
     set_ledbat_timer(),
     {next_state, connected,
-     State#state { pkt_window = utp_window:bump_ledbat(Window)}};
+     State#state { sock_info = utp_socket:bump_ledbat(SI)}};
 connected({timeout, Ref, {zerowindow_timeout, _N}},
           #state {
             pkt_buf = PktBuf,
@@ -420,7 +420,7 @@ fin_sent({pkt, Pkt, {TS, TSDiff, RecvTime}},
     ?DEBUG([node(), incoming_pkt, fin_sent, utp_proto:format_pkt(Pkt)]),
 
     {ok, Messages, N_SockInfo, N_PKI, N_PB, N_PRI, ZWinTimeout} =
-        handle_packet_incoming(Pkt, utp_util:bit32(TS - RecvTime), TSDiff, State),
+        handle_packet_incoming(Pkt, utp_util:bit32(TS - RecvTime), RecvTime, TSDiff, State),
     N_RetransTimer = handle_retransmit_timer(Messages, RetransTimer),
 
     %% Calculate the next state
@@ -443,10 +443,10 @@ fin_sent({pkt, Pkt, {TS, TSDiff, RecvTime}},
             end
     end;
 fin_sent({timeout, _, ledbat_timeout},
-          #state { pkt_window = Window } = State) ->
+          #state { sock_info = SI } = State) ->
     set_ledbat_timer(),
     {next_state, fin_sent,
-     State#state { pkt_window = utp_window:bump_ledbat(Window)}};
+     State#state { sock_info = utp_socket:bump_ledbat(SI)}};
 
 fin_sent({timeout, Ref, {retransmit_timeout, N}},
          #state { 
@@ -745,7 +745,7 @@ mk_syn() ->
 
 
 
-handle_packet_incoming(Pkt, ReplyMicro, TSDiff,
+handle_packet_incoming(Pkt, ReplyMicro, TimeAcked, TSDiff,
                        #state {
                               pkt_buf = PB,
                               proc_info = PRI,
@@ -759,11 +759,11 @@ handle_packet_incoming(Pkt, ReplyMicro, TSDiff,
     of
         {ok, N_PB1, N_PKW, Messages} ->
 
-            N_SockInfo = utp_socket:update_reply_micro(SockInfo, ReplyMicro),
+            N_SockInfo = update_rtt(SockInfo, ReplyMicro, TimeAcked, Messages),
             
             ?DEBUG([node(), messages, Messages]),
             %% The packet may bump the advertised window from the peer, update
-            N_PKW2 = update_window(N_PKW, TSDiff, Pkt),
+            N_PKW2 = update_window(N_PKW, Pkt),
             
             %% The incoming datagram may have payload we can deliver to an application
             {_Drainage, N_PRI, N_PB} = satisfy_recvs(PRI, N_PB1),
@@ -861,9 +861,27 @@ view_zerowindow_reopen(Old, New) ->
     K = utp_pkt:advertised_window(New),
     N == 0 andalso K > 1000. % Only open up the window when we have processed a considerable amount
 
-update_window(Window, Sample, Pkt) ->
-    X = utp_window:update_ledbat(Window, Sample),
-        utp_window:handle_advertised_window(X, Pkt).
+update_window(Window, Pkt) ->
+    utp_window:handle_advertised_window(Window, Pkt).
 
 set_ledbat_timer() ->
     gen_fsm:start_timer(60*1000, ledbat_timeout).
+
+update_rtt(SockInfo, ReplyMicro, TimeAcked, Messages) ->
+    N_SockInfo = case proplists:get_value(acked, Messages) of
+                     undefined ->
+                         SockInfo;
+                     Packets when is_list(Packets) ->
+                         Eligible = utp_pkt:extract_rtt(Packets),
+                         lists:foldl(fun(TimeSent, Acc) ->
+                                             utp_socket:ack_packet_rtt(Acc,
+                                                                       TimeSent,
+                                                                       TimeAcked)
+                                     end,
+                                     SockInfo,
+                                     Eligible)
+                 end,
+    utp_socket:update_reply_micro(N_SockInfo, ReplyMicro).
+
+
+

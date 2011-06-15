@@ -72,7 +72,7 @@ base_test_cases() ->
     [connect_n_communicate,
      backwards_communication,
      full_duplex_communication,
-     rwin_test,
+     %rwin_test,
      piggyback,
      close_1,
      close_2,

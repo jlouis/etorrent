@@ -10,10 +10,8 @@
          view_zero_window/1,
          bump_window/1,
          rto/1,
-         max_window_send/2,
+         max_window_send/2
 
-         update_ledbat/2,
-         bump_ledbat/1
         ]).
 
 -record(pkt_window, {
@@ -34,9 +32,7 @@
           %% Timestamps
           %% --------------------
           %% When was the window last totally full (in send direction)
-          last_maxed_out_window :: integer(),
-
-          ledbat = none :: none | utp_ledbat:t()
+          last_maxed_out_window :: integer()
          }).
 
 
@@ -74,12 +70,4 @@ bump_window(#pkt_window {} = Win) ->
 
 rto(#pkt_window { rto = RTO }) ->
     RTO.
-
-update_ledbat(#pkt_window { ledbat = none } = Window, Sample) ->
-    Window#pkt_window { ledbat = utp_ledbat:mk(Sample) };
-update_ledbat(#pkt_window { ledbat = Ledbat } = Window, Sample) ->
-    Window#pkt_window { ledbat = utp_ledbat:add_sample(Ledbat, Sample) }.
-
-bump_ledbat(#pkt_window { ledbat = L } = Window) ->
-    Window#pkt_window { ledbat = utp_ledbat:clock_tick(L) }.
     

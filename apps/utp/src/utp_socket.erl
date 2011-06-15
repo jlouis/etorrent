@@ -16,7 +16,9 @@
 
          update_round_trip/2,
          rto/1,
-         ack_packet_rtt/4
+         ack_packet_rtt/3,
+         update_ledbat/2,
+         bump_ledbat/1
         ]).
 
 -export([
@@ -35,7 +37,8 @@
 	  socket      :: inet:socket(),
           conn_id_send :: 'not_set' | integer(),
           reply_micro :: integer(),
-          round_trip  :: utp_rtt:t() | none
+          round_trip  :: utp_rtt:t() | none,
+          ledbat = none :: none | utp_ledbat:t()
 	 }).
 -opaque t() :: #sock_info{}.
 -export_type([t/0]).
@@ -127,15 +130,22 @@ update_round_trip(V, #sock_info { round_trip = RTT } = SI) ->
 rto(#sock_info { round_trip = RTT }) ->
     utp_rtt:rto(RTT).
 
-ack_packet_rtt(LedbatHistory, #sock_info { round_trip = RTT } = SI,
+ack_packet_rtt(#sock_info { round_trip = RTT,
+                            ledbat = LedbatHistory } = SI,
                TimeSent, TimeAcked) ->
-    {ok, NewRTO, NewRTT, NewHistory} = utp_rtt:ack_packet(LedbatHistory,
+    {ok, _NewRTO, NewRTT, NewHistory} = utp_rtt:ack_packet(LedbatHistory,
                                                           RTT,
                                                           TimeSent,
                                                           TimeAcked),
-    {ok, NewRTO,
-         SI#sock_info { round_trip = NewRTT },
-         NewHistory}.
+    SI#sock_info { round_trip = NewRTT,
+                   ledbat     = NewHistory}.
 
+update_ledbat(#sock_info { ledbat = none } = SockInfo, Sample) ->
+    SockInfo#sock_info { ledbat = utp_ledbat:mk(Sample) };
+update_ledbat(#sock_info { ledbat = Ledbat } = SockInfo, Sample) ->
+    SockInfo#sock_info { ledbat = utp_ledbat:add_sample(Ledbat, Sample) }.
+
+bump_ledbat(#sock_info { ledbat = L } = SockInfo) ->
+    SockInfo#sock_info { ledbat = utp_ledbat:clock_tick(L) }.
      
                                             
