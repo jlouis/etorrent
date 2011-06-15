@@ -1,9 +1,9 @@
 -module(utp_rtt).
 
 -export([
-         rtt_update/2,
-         rtt_rto/1,
-         rtt_ack_packet/4
+         update/2,
+         rto/1,
+         ack_packet/4
         ]).
 
 -define(MAX_WINDOW_INCREASE, 3000).
@@ -30,7 +30,7 @@
 %% rtt and rtt_var are calculated by the following formula, every time
 %% a packet is ACKed:
 
-rtt_update(Estimate, RTT) ->
+update(Estimate, RTT) ->
     case RTT of
         none ->
             true = Estimate < 6000,
@@ -45,22 +45,22 @@ rtt_update(Estimate, RTT) ->
 %% The default timeout for packets associated with the socket is also
 %% updated every time rtt and rtt_var is updated. It is set to:
 
-rtt_rto(#rtt { rtt = RTT, var = Var}) ->
+rto(#rtt { rtt = RTT, var = Var}) ->
     max(RTT + Var * 4, ?DEFAULT_RTT_TIMEOUT).
 
 %% ACKnowledge an incoming packet
-rtt_ack_packet(History, RTT, TimeSent, TimeAcked) ->
+ack_packet(History, RTT, TimeSent, TimeAcked) ->
     true = TimeAcked >= TimeSent,
     Estimate = TimeAcked - TimeSent,
 
-    NewRTT = rtt_update(Estimate, RTT),
+    NewRTT = update(Estimate, RTT),
     NewHistory = case RTT of
                      none ->
                          History;
                      #rtt{} ->
                          utp_ledbat:add_sample(History, Estimate)
                  end,
-    NewRTO = rtt_rto(NewRTT),
+    NewRTO = rto(NewRTT),
     {ok, NewRTO, NewRTT, NewHistory}.
 
 %% Every time a socket sends or receives a packet, it updates its

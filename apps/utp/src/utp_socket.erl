@@ -12,7 +12,11 @@
          order_packets/2,
          conn_id_recv/1,
          send_reset/6,
-         hostname_port/1
+         hostname_port/1,
+
+         update_round_trip/2,
+         rto/1,
+         ack_packet_rtt/4
         ]).
 
 -export([
@@ -30,7 +34,8 @@
 	  port        :: port_number(),
 	  socket      :: inet:socket(),
           conn_id_send :: 'not_set' | integer(),
-          reply_micro :: integer()
+          reply_micro :: integer(),
+          round_trip  :: utp_rtt:t() | none
 	 }).
 -opaque t() :: #sock_info{}.
 -export_type([t/0]).
@@ -44,7 +49,8 @@ mk(Addr, Opts, PacketSize, Port, Socket) ->
                  port = Port,
                  socket = Socket,
                  conn_id_send = not_set,
-                 reply_micro = 0
+                 reply_micro = 0,
+                 round_trip = none
                }.
 
 update_reply_micro(#sock_info {} = SockInfo, RU) ->
@@ -113,3 +119,23 @@ order_packets(#packet { seq_no = S1 } = P1, #packet { seq_no = S2 } = P2) ->
 packet_size(_Socket) ->
     %% @todo FIX get_packet_size/1 to actually work!
     1000.
+
+update_round_trip(V, #sock_info { round_trip = RTT } = SI) ->
+    N_RTT = utp_rtt:update(V, RTT),
+    SI#sock_info { round_trip = N_RTT }.
+
+rto(#sock_info { round_trip = RTT }) ->
+    utp_rtt:rto(RTT).
+
+ack_packet_rtt(LedbatHistory, #sock_info { round_trip = RTT } = SI,
+               TimeSent, TimeAcked) ->
+    {ok, NewRTO, NewRTT, NewHistory} = utp_rtt:ack_packet(LedbatHistory,
+                                                          RTT,
+                                                          TimeSent,
+                                                          TimeAcked),
+    {ok, NewRTO,
+         SI#sock_info { round_trip = NewRTT },
+         NewHistory}.
+
+     
+                                            
