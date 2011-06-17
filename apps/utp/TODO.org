@@ -955,7 +955,10 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
 
     Find all Acked packets that have been sent once.
     For each packet, track its RTT by sending it through the socket.
-* TODO Make sure we are LEDBAT sampling where needed
+* DONE Should the LEDBAT tick bump more than one sampler?
+  Probably yes!
+  Yes, it should tick everything
+
 * TODO Why is the ledbat bumper being ticked almost immediately?
 * TODO How do we handle the case where LEDBAT is ticked while the RTT structure is "none"?
   Can it happen?
@@ -965,18 +968,53 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   from the other end, or is it the estimate we calculate in the round
   trip time? In other words, what is the right value to use here? We
   have several available, so make sure we select the right one.
+
+  Look at the code in libutp here. It is best to look into that code
+  and make informed decisions based upon what it is doing. It is in
+  any case much better than doing something else!
+
+  Ok, there are three delay histories that are tracked(!!):
+  rtt_hist:
+    This value tracks the ESTIMATED rtt from the other end. It is used
+    in updating the send_quota of a socket. And that is its only use.
+
+  our_hist:
+    This will track *our* delay history towards the other end. It is
+    used by us to track the delay history over time.
+
+    Our delay is used when considering the LEDBAT congestion control.
+
+  their_hist:
+    This will be used to track the delay in their direction. That is,
+    we use it to record the delay they are having towards our end. We
+    will only be using this for clock skew locally.
+** DONE Track rtt_hist
+** DONE Track our_hist
+   Build the code that enables us to track our_hist
+** TODO Track their hist
+   Their hist is needed to carry out some shifts later, but they are
+   not that important in the beginning.
+* TODO We should be tracking when the window was last maxed out
+  I don't know why, but we should be tracking this as well.
+
+  The reason we ought to track this is that whenever we max out the
+  window, we should stop scaling the gain for 300ms
 * Congestion control
   To handle congestion control, we must enable LEDBAT congestion
   control tracking on the socket as well.
+** TODO Do we track min_rtt as we should?
+   If now, we must track the min_rtt as well, but I think we are
+   tracking it.
 ** TODO How LEDBAT congestion control is applied to the game!
+   The purpose of this code is to control the cwnd based on the
+   off-target value we have. The cwnd is the congestion window value
+   and it will act as a limiter for how many bytes we will send!
+
    ; Applying LEDBAT congestion control:
      sanity checks:
        assert(min_rtt >= 0);
        our_delay is the minimum of min_rtt and hist.get_value()
        assert(our_delay >= 0 andalso our_delay != INT_MAX);
-
-     Call UTP_DelaySample(socket_address, our_delay / 1000)
-       % What does this thing do????
 
      target = CCONTROL_TARGET (in uS)
      if target is negative, force it to 100000;
@@ -1018,7 +1056,7 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
               scaled_gain = 0;
      }
 
-     Now update the MAX Window
+     Now update the MAX Window (This is the congestion window)
 
      if (scaled_gain + max_window < MIN_WINDOW_SIZE) {
               max_window = MIN_WINDOW_SIZE;
@@ -1039,7 +1077,8 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
      initial rtt_var = 800 ms
      initial rto     = 3000 ms
      CCONTROL_TARGET is 100 * 1000 us i.e., 100 ms.
-
+* TODO Handle the retransmit timeout by decaying the congestion window correctly
+* TODO Handle the duplicate ack case by counting and then enabling congestion window updates
 * TODO Even though the test case says OK! there might be bad things
   So we should go through the test cases a bit and see what
   happens. Waiting a bit in the end of test case to see if something

@@ -215,8 +215,9 @@ syn_sent({pkt, #packet { ty = st_state,
     N_PktWin = update_window(PktWin, WindowSize),
     ReplyMicro = utp_util:bit32(TS - RecvTime),
     set_ledbat_timer(),
+    N_SockInfo = utp_socket:update_our_ledbat(SockInfo, TSDiff),
     {next_state, connected,
-     State#state { sock_info = utp_socket:update_reply_micro(SockInfo, ReplyMicro),
+     State#state { sock_info = utp_socket:update_reply_micro(N_SockInfo, ReplyMicro),
                    pkt_window = N_PktWin,
                    retransmit_timeout = clear_retransmit_timer(RTimeout),
                    pkt_buf = utp_pkt:init_ackno(PktBuf, utp_util:bit16(PktSeqNo+1))}};
@@ -759,7 +760,8 @@ handle_packet_incoming(Pkt, ReplyMicro, TimeAcked, TSDiff,
     of
         {ok, N_PB1, N_PKW, Messages} ->
 
-            N_SockInfo = update_rtt(SockInfo, ReplyMicro, TimeAcked, Messages),
+            N_SockInfo_T = update_rtt(SockInfo, ReplyMicro, TimeAcked, Messages),
+            N_SockInfo   = utp_socket:update_our_ledbat(N_SockInfo_T, TSDiff),
             
             ?DEBUG([node(), messages, Messages]),
             %% The packet may bump the advertised window from the peer, update
@@ -865,7 +867,7 @@ update_window(Window, Pkt) ->
     utp_window:handle_advertised_window(Window, Pkt).
 
 set_ledbat_timer() ->
-    gen_fsm:start_timer(60*1000, ledbat_timeout).
+    gen_fsm:start_timer(timer:seconds(60), ledbat_timeout).
 
 update_rtt(SockInfo, ReplyMicro, TimeAcked, Messages) ->
     N_SockInfo = case proplists:get_value(acked, Messages) of
@@ -882,6 +884,7 @@ update_rtt(SockInfo, ReplyMicro, TimeAcked, Messages) ->
                                      Eligible)
                  end,
     utp_socket:update_reply_micro(N_SockInfo, ReplyMicro).
+
 
 
 

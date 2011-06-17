@@ -17,7 +17,8 @@
          update_round_trip/2,
          rto/1,
          ack_packet_rtt/3,
-         update_ledbat/2,
+         update_rtt_ledbat/2,
+         update_our_ledbat/2,
          bump_ledbat/1
         ]).
 
@@ -38,7 +39,8 @@
           conn_id_send :: 'not_set' | integer(),
           reply_micro :: integer(),
           round_trip  :: utp_rtt:t() | none,
-          ledbat = none :: none | utp_ledbat:t()
+          rtt_ledbat = none :: none | utp_ledbat:t(),
+          our_ledbat = none :: none | utp_ledbat:t()
 	 }).
 -opaque t() :: #sock_info{}.
 -export_type([t/0]).
@@ -131,21 +133,28 @@ rto(#sock_info { round_trip = RTT }) ->
     utp_rtt:rto(RTT).
 
 ack_packet_rtt(#sock_info { round_trip = RTT,
-                            ledbat = LedbatHistory } = SI,
+                            rtt_ledbat = LedbatHistory } = SI,
                TimeSent, TimeAcked) ->
     {ok, _NewRTO, NewRTT, NewHistory} = utp_rtt:ack_packet(LedbatHistory,
-                                                          RTT,
-                                                          TimeSent,
-                                                          TimeAcked),
+                                                           RTT,
+                                                           TimeSent,
+                                                           TimeAcked),
     SI#sock_info { round_trip = NewRTT,
-                   ledbat     = NewHistory}.
+                   rtt_ledbat     = NewHistory}.
 
-update_ledbat(#sock_info { ledbat = none } = SockInfo, Sample) ->
-    SockInfo#sock_info { ledbat = utp_ledbat:mk(Sample) };
-update_ledbat(#sock_info { ledbat = Ledbat } = SockInfo, Sample) ->
-    SockInfo#sock_info { ledbat = utp_ledbat:add_sample(Ledbat, Sample) }.
+update_rtt_ledbat(#sock_info { rtt_ledbat = none } = SockInfo, Sample) ->
+    SockInfo#sock_info { rtt_ledbat = utp_ledbat:mk(Sample) };
+update_rtt_ledbat(#sock_info { rtt_ledbat = Ledbat } = SockInfo, Sample) ->
+    SockInfo#sock_info { rtt_ledbat = utp_ledbat:add_sample(Ledbat, Sample) }.
 
-bump_ledbat(#sock_info { ledbat = L } = SockInfo) ->
-    SockInfo#sock_info { ledbat = utp_ledbat:clock_tick(L) }.
+update_our_ledbat(#sock_info { our_ledbat = none } = SockInfo, Sample) ->
+    SockInfo#sock_info { our_ledbat = utp_ledbat:mk(Sample) };
+update_our_ledbat(#sock_info { our_ledbat = Ledbat } = SockInfo, Sample) ->
+    SockInfo#sock_info { our_ledbat = utp_ledbat:add_sample(Ledbat, Sample) }.
+
+bump_ledbat(#sock_info { rtt_ledbat = L,
+                         our_ledbat = Our} = SockInfo) ->
+    SockInfo#sock_info { rtt_ledbat = utp_ledbat:clock_tick(L),
+                         our_ledbat = utp_ledbat:clock_tick(Our)}.
      
                                             
