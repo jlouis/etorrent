@@ -10,7 +10,7 @@
 -define(DEFAULT_RTT_TIMEOUT, 500).
 
 -record(rtt, {rtt :: integer(),
-              var :: integer()
+              var = 800 :: integer()
              }).
 
 -opaque t() :: #rtt{}.

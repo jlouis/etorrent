@@ -999,13 +999,10 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
 
   The reason we ought to track this is that whenever we max out the
   window, we should stop scaling the gain for 300ms
-* Congestion control
+* DONE Congestion control
   To handle congestion control, we must enable LEDBAT congestion
   control tracking on the socket as well.
-** TODO Do we track min_rtt as we should?
-   If now, we must track the min_rtt as well, but I think we are
-   tracking it.
-** TODO How LEDBAT congestion control is applied to the game!
+** DONE How LEDBAT congestion control is applied to the game!
    The purpose of this code is to control the cwnd based on the
    off-target value we have. The cwnd is the congestion window value
    and it will act as a limiter for how many bytes we will send!
@@ -1077,6 +1074,29 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
      initial rtt_var = 800 ms
      initial rto     = 3000 ms
      CCONTROL_TARGET is 100 * 1000 us i.e., 100 ms.
+* TODO Estimate shifting
+  When and why do we shift the estimate?
+* TODO MinRTT
+  How do we calculate the MinRTT? How do we track it? Where does it
+  belong? How do we extract it?
+
+  Belong: Definitely a property of the socket!
+* TODO What are we *really* using the pkt_window structure for? What does it contain?
+  This is now interesting, as it looks like everything or almost
+  everything of the window has been placed in other structures.
+* TODO Location of OptSndBuf?
+  Where is the correct location for OptSendBuf? Currently I am partial
+  to having it inside the SockInfo structure because the buffer is a
+  property of the socket.
+
+  Where is it currently located?
+* TODO When considering the history, should we consider the our_history?
+  Or should we rather consider one of the other history types?
+* TODO How should the rto be updated and when?
+  There is a need to set the next rto value based on the current
+  timeout. The initial value is 3000, and the default rtt timeout is
+  500 in the code base. When we set the retransmit timeout, we ought
+  to update this value correctly.
 * TODO Handle the retransmit timeout by decaying the congestion window correctly
 * TODO Handle the duplicate ack case by counting and then enabling congestion window updates
 * TODO Even though the test case says OK! there might be bad things
