@@ -446,7 +446,7 @@ handle_packet(State,
                 update_send_buffer(AckNo, N_PacketBuffer1),
 
             {ok, N_PacketBuffer2,
-             utp_window:handle_window_size(PktWindow, WindowSize),
+             utp_network:handle_window_size(PktWindow, WindowSize),
              SendMessages ++ RecvMessages ++ [{acked, AckedPs}]};
         no_data when Type == st_state ->
             %% The packet has no data
@@ -454,7 +454,7 @@ handle_packet(State,
                 update_send_buffer(AckNo, N_PacketBuffer),
             
             {ok, N_PacketBuffer2,
-             utp_window:handle_window_size(PktWindow, WindowSize),
+             utp_network:handle_window_size(PktWindow, WindowSize),
              SendMessages};
         no_data when Type == st_data ->
             ?DEBUG([duplicate_packet]),
@@ -462,7 +462,7 @@ handle_packet(State,
                 update_send_buffer(AckNo, N_PacketBuffer),
 
             {ok, N_PacketBuffer2,
-                 utp_window:handle_window_size(PktWindow, WindowSize),
+                 utp_network:handle_window_size(PktWindow, WindowSize),
                  SendMessages}
     end.
 
@@ -615,7 +615,7 @@ bytes_free_in_window(PktBuf, PktWindow) ->
 
 max_window_send(#pkt_buf { opt_snd_buf_sz = SendBufSz },
                 PKT_Window) ->
-    utp_window:max_window_send(SendBufSz, PKT_Window).
+    utp_network:max_window_send(SendBufSz, PKT_Window).
 
 
 enqueue_payload(Payload, #pkt_buf { recv_buf = Q } = PB) ->

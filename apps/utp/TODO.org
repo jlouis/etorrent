@@ -959,6 +959,21 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   Probably yes!
   Yes, it should tick everything
 
+* TODO Is handle_packet_incoming always called in the connected state?
+  This looks wrong. I think that at least sometimes, we ought to have
+  a call from a state different from the connected state.
+* TODO Create utp_network as a module
+  It turns out it is smart to create a module, utp_network into which
+  we shove the socket code and the window code. That way, it will be
+  possible to keep much of the socket stuff pretty static while
+  altering the window stuff efficiently.
+
+  To do this, we create a new module, and move stuff from utp_window
+  and utp_socket into this module, one thing at a time. Then we walk
+  through the rest of the code base to fix the calls such that we now
+  call with the new kind of module.
+** DONE Alter utp_window to utp_network
+** TODO Push the socket_info stuff into utp_network
 * TODO Why is the ledbat bumper being ticked almost immediately?
 * TODO How do we handle the case where LEDBAT is ticked while the RTT structure is "none"?
   Can it happen?
@@ -1361,3 +1376,13 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
 
   Only do this if we suspect there is an error due to a missed
   timeout. Currently there does not seem to be one.
+
+
+
+
+
+
+
+
+
+

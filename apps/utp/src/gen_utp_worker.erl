@@ -99,8 +99,7 @@
 -define(DEFAULT_FSM_TIMEOUT, 10*60*1000).
 %% STATE RECORDS
 %% ----------------------------------------------------------------------
--record(state, { sock_info    :: utp_socket:t(),
-                 pkt_window   :: utp_window:t(),
+-record(state, { network :: utp_network:t(),
                  pkt_buf      :: utp_pkt:buf(),
                  proc_info    :: utp_process:t(),
                  connector    :: {{reference(), pid()}, [{pkt, #packet{}, term()}]},
@@ -164,16 +163,15 @@ sync_send_event(Pid, Event) ->
 init([Socket, Addr, Port, Options]) ->
     case validate_options(Options) of
         ok ->
-            PktWindow  = utp_window:mk(),
             PktBuf   = utp_pkt:mk(?DEFAULT_OPT_RECV_SZ),
             ProcInfo = utp_process:mk(),
             CanonAddr = canonicalize_address(Addr),
-            SockInfo = utp_socket:mk(CanonAddr, Options, ?DEFAULT_PACKET_SIZE, Port, Socket),
-            {ok, idle, #state{ sock_info = SockInfo,
+            SockInfo = utp_socket:mk(CanonAddr, Options, Port, Socket),
+            Network  = utp_network:mk(?DEFAULT_PACKET_SIZE, SockInfo),
+            {ok, idle, #state{ network = Network,
                                pkt_buf   = PktBuf,
                                proc_info = ProcInfo,
-                               options=  Options,
-                               pkt_window  = PktWindow }};
+                               options=  Options }};
         badarg ->
             {stop, badarg}
     end.
@@ -201,9 +199,8 @@ syn_sent({pkt, #packet { ty = st_state,
                          win_sz = WindowSize,
 			 seq_no = PktSeqNo },
 	       {TS, TSDiff, RecvTime}},
-	 #state { sock_info = SockInfo,
+	 #state { network = Network,
                   pkt_buf = PktBuf,
-                  pkt_window = PktWin,
                   connector = {From, Packets},
                   retransmit_timeout = RTimeout
                 } = State) ->
@@ -212,13 +209,11 @@ syn_sent({pkt, #packet { ty = st_state,
     %% We reverse the list so they are in the order we got them originally
     [incoming(self(), P, T) || {pkt, P, T} <- lists:reverse(Packets)],
     %% @todo Consider LEDBAT here
-    N_PktWin = update_window(PktWin, WindowSize),
     ReplyMicro = utp_util:bit32(TS - RecvTime),
     set_ledbat_timer(),
-    N_SockInfo = utp_socket:update_our_ledbat(SockInfo, TSDiff),
+    N_Network = utp_network:update_our_ledbat(Network, WindowSize, TSDiff),
     {next_state, connected,
-     State#state { sock_info = utp_socket:update_reply_micro(N_SockInfo, ReplyMicro),
-                   pkt_window = N_PktWin,
+     State#state { network = utp_network:update_reply_micro(N_Network, ReplyMicro),
                    retransmit_timeout = clear_retransmit_timer(RTimeout),
                    pkt_buf = utp_pkt:init_ackno(PktBuf, utp_util:bit16(PktSeqNo+1))}};
 syn_sent({pkt, _Packet, _Timing} = Pkt,
@@ -227,17 +222,17 @@ syn_sent({pkt, _Packet, _Timing} = Pkt,
      State#state {
        connector = {From, [Pkt | Packets]}}};
 syn_sent(close, #state {
-           pkt_window = Window,
+           network = Network,
            retransmit_timeout = RTimeout
           } = State) ->
     clear_retransmit_timer(RTimeout),
-    Gracetime = lists:min([60, utp_window:rto(Window) * 2]),
+    Gracetime = lists:min([60, utp_network:rto(Network) * 2]),
     Timer = set_retransmit_timer(Gracetime, undefined),
     {next_state, syn_sent, State#state {
                              retransmit_timeout = Timer }};
 syn_sent({timeout, TRef, {retransmit_timeout, N}},
          #state { retransmit_timeout = {set, TRef},
-                  sock_info = SockInfo,
+                  network = Network,
                   connector = {From, _},
                   pkt_buf = PktBuf
                 } = State) ->
@@ -250,8 +245,7 @@ syn_sent({timeout, TRef, {retransmit_timeout, N}},
             % Resend packet
             SynPacket = mk_syn(),
             Win = utp_pkt:advertised_window(PktBuf),
-            {ok, _} = utp_socket:send_pkt(Win, SockInfo, SynPacket,
-                                     utp_socket:conn_id_recv(SockInfo)),
+            {ok, _} = utp_network:send_pkt(Win, Network, SynPacket, conn_id_recv),
             ?DEBUG([syn_packet_resent]),
             {next_state, syn_sent,
              State#state {
@@ -279,7 +273,7 @@ connected({pkt, Pkt, {TS, TSDiff, RecvTime}},
 	  #state { retransmit_timeout = RetransTimer } = State) ->
     ?DEBUG([node(), incoming_pkt, connected, utp_proto:format_pkt(Pkt)]),
 
-    {ok, Messages, N_SockInfo, N_PKI, N_PB, N_PRI, ZWinTimeout} =
+    {ok, Messages, N_Network, N_PB, N_PRI, ZWinTimeout} =
         handle_packet_incoming(Pkt, utp_util:bit32(TS - RecvTime), RecvTime, TSDiff, State),
     N_RetransTimer = handle_retransmit_timer(Messages, RetransTimer),
 
@@ -291,47 +285,44 @@ connected({pkt, Pkt, {TS, TSDiff, RecvTime}},
                         connected
                 end,
     {next_state, ?TRACE(NextState),
-     State#state { pkt_window = N_PKI,
-                   pkt_buf = N_PB,
-                   sock_info = N_SockInfo,
+     State#state { pkt_buf = N_PB,
+                   network = N_Network,
                    retransmit_timeout = N_RetransTimer,
                    zerowindow_timeout = ZWinTimeout,
                    proc_info = N_PRI }};
-connected(close, #state { sock_info = SockInfo,
+connected(close, #state { network = Network,
                           retransmit_timeout = RTimer,
                           pkt_buf = PktBuf } = State) ->
-    NPBuf = utp_pkt:send_fin(SockInfo, PktBuf),
+    NPBuf = utp_pkt:send_fin(Network, PktBuf),
     NRTimer = handle_retransmit_timer([fin_sent], RTimer),
     {next_state, fin_sent, State#state {
                              retransmit_timeout = NRTimer,
                              pkt_buf = NPBuf } };
 connected({timeout, _, ledbat_timeout},
-          #state { sock_info = SI } = State) ->
+          #state { network = Network } = State) ->
     set_ledbat_timer(),
     {next_state, connected,
-     State#state { sock_info = utp_socket:bump_ledbat(SI)}};
+     State#state { network = utp_socket:bump_ledbat(Network)}};
 connected({timeout, Ref, {zerowindow_timeout, _N}},
           #state {
             pkt_buf = PktBuf,
             proc_info = ProcessInfo,
-            sock_info = SockInfo,
-            pkt_window = WindowInfo,
+            network = Network,
             zerowindow_timeout = {set, Ref}} = State) ->
-    N_Win = utp_window:bump_window(WindowInfo),
+    N_Network = utp_window:bump_window(Network),
     {_FillMessages, ZWinTimer, N_PktBuf, N_ProcessInfo} =
-        fill_window(SockInfo, ProcessInfo, N_Win, PktBuf, undefined),
+        fill_window(N_Network, ProcessInfo, PktBuf, undefined),
     {next_state, connected,
      State#state {
        zerowindow_timeout = ZWinTimer,
        pkt_buf = N_PktBuf,
-       pkt_window = N_Win,
        proc_info = N_ProcessInfo}};
 connected({timeout, Ref, {retransmit_timeout, N}},
          #state { 
             pkt_buf = PacketBuf,
-            sock_info = SockInfo,
+            network = Network,
             retransmit_timeout = {set, Ref} = Timer} = State) ->
-    case handle_timeout(Ref, N, PacketBuf, SockInfo, Timer) of
+    case handle_timeout(Ref, N, PacketBuf, Network, Timer) of
         stray ->
             {next_state, connected, State};
         gave_up ->
@@ -351,9 +342,9 @@ got_fin(close, State) ->
 got_fin({timeout, Ref, {retransmit_timeout, N}},
         #state { 
           pkt_buf = PacketBuf,
-          sock_info = SockInfo,
+          network = Network,
           retransmit_timeout = Timer} = State) ->
-    case handle_timeout(Ref, N, PacketBuf, SockInfo, Timer) of
+    case handle_timeout(Ref, N, PacketBuf, Network, Timer) of
         stray ->
             {next_state, got_fin, State};
         gave_up ->
@@ -379,11 +370,10 @@ got_fin(_Msg, State) ->
 
 %% @private
 destroy_delay({timeout, Ref, {retransmit_timeout, N}},
-         #state { 
-            pkt_buf = PacketBuf,
-            sock_info = SockInfo,
-            retransmit_timeout = Timer} = State) ->
-    case handle_timeout(Ref, N, PacketBuf, SockInfo, Timer) of
+         #state { pkt_buf = PacketBuf,
+                  network = Network,
+                  retransmit_timeout = Timer} = State) ->
+    case handle_timeout(Ref, N, PacketBuf, Network, Timer) of
         stray ->
             {next_state, destroy_delay, State};
         gave_up ->
@@ -420,15 +410,14 @@ fin_sent({pkt, Pkt, {TS, TSDiff, RecvTime}},
 	  #state { retransmit_timeout = RetransTimer } = State) ->
     ?DEBUG([node(), incoming_pkt, fin_sent, utp_proto:format_pkt(Pkt)]),
 
-    {ok, Messages, N_SockInfo, N_PKI, N_PB, N_PRI, ZWinTimeout} =
+    {ok, Messages, N_Network, N_PB, N_PRI, ZWinTimeout} =
         handle_packet_incoming(Pkt, utp_util:bit32(TS - RecvTime), RecvTime, TSDiff, State),
     N_RetransTimer = handle_retransmit_timer(Messages, RetransTimer),
 
     %% Calculate the next state
     N_State = State#state {
-                pkt_window = N_PKI,
                 pkt_buf = N_PB,
-                sock_info = N_SockInfo,
+                network = N_Network,
                 retransmit_timeout = N_RetransTimer,
                 zerowindow_timeout = ZWinTimeout,
                 proc_info = N_PRI },
@@ -444,17 +433,16 @@ fin_sent({pkt, Pkt, {TS, TSDiff, RecvTime}},
             end
     end;
 fin_sent({timeout, _, ledbat_timeout},
-          #state { sock_info = SI } = State) ->
+          #state { network = NW } = State) ->
     set_ledbat_timer(),
     {next_state, fin_sent,
-     State#state { sock_info = utp_socket:bump_ledbat(SI)}};
+     State#state { network = utp_network:bump_ledbat(NW)}};
 
 fin_sent({timeout, Ref, {retransmit_timeout, N}},
-         #state { 
-            pkt_buf = PacketBuf,
-            sock_info = SockInfo,
-            retransmit_timeout = Timer} = State) ->
-    case handle_timeout(Ref, N, PacketBuf, SockInfo, Timer) of
+         #state { pkt_buf = PacketBuf,
+                  network = Network,
+                  retransmit_timeout = Timer} = State) ->
+    case handle_timeout(Ref, N, PacketBuf, Network, Timer) of
         stray ->
             {next_state, fin_sent, State};
         gave_up ->
@@ -488,30 +476,28 @@ destroy(_Msg, State) ->
 
 %% @private
 idle(connect,
-     From, State = #state { sock_info = SockInfo,
-                            pkt_buf   = PktBuf}) ->
-    {Address, Port} = utp_socket:hostname_port(SockInfo),
+     From, State = #state { network = Network,
+                            pkt_buf = PktBuf}) ->
+    {Address, Port} = utp_network:hostname_port(Network),
     Conn_id_recv = utp_proto:mk_connection_id(),
     gen_utp:register_process(self(), {Conn_id_recv, Address, Port}),
     
     ConnIdSend = Conn_id_recv + 1,
-    N_SockInfo = utp_socket:set_conn_id(ConnIdSend, SockInfo),
+    N_Network = utp_network:set_conn_id(ConnIdSend, Network),
 
     SynPacket = mk_syn(),
     Win = utp_pkt:advertised_window(PktBuf),
-    {ok, _} = utp_socket:send_pkt(Win, N_SockInfo, SynPacket, Conn_id_recv),
+    {ok, _} = utp_network:send_pkt(Win, N_Network, SynPacket, conn_id_recv),
     {next_state, syn_sent,
-     State#state {
-       sock_info = N_SockInfo,
-       retransmit_timeout = set_retransmit_timer(?SYN_TIMEOUT, undefined),
-       pkt_buf     = utp_pkt:init_seqno(PktBuf, 2),
-       connector = {From, []} }};
-idle({accept, SYN}, _From, #state { sock_info = SockInfo,
-                                    pkt_window = PktWin,
+     State#state { network = N_Network,
+                   retransmit_timeout = set_retransmit_timer(?SYN_TIMEOUT, undefined),
+                   pkt_buf     = utp_pkt:init_seqno(PktBuf, 2),
+                   connector = {From, []} }};
+idle({accept, SYN}, _From, #state { network = Network,
                                     options = Options,
                                     pkt_buf   = PktBuf } = State) ->
     Conn_id_send = SYN#packet.conn_id,
-    N_SockInfo = utp_socket:set_conn_id(Conn_id_send, SockInfo),
+    N_Network = utp_network:set_conn_id(Conn_id_send, Network),
 
     SeqNo = case proplists:get_value(force_seq_no, Options) of
                 undefined -> utp_pkt:mk_random_seq_no();
@@ -526,11 +512,10 @@ idle({accept, SYN}, _From, #state { sock_info = SockInfo,
 			  extension = ?SYN_EXTS
 			},
     Win = utp_pkt:advertised_window(PktBuf),
-    {ok, _} = utp_socket:send_pkt(Win, N_SockInfo, AckPacket),
+    {ok, _} = utp_network:send_pkt(Win, N_Network, AckPacket),
     set_ledbat_timer(),
     {reply, ok, connected,
-            State#state { sock_info = N_SockInfo,
-                          pkt_window = utp_window:handle_advertised_window(PktWin, SYN),
+            State#state { network = utp_network:handle_advertised_window(N_Network, SYN),
                           pkt_buf = utp_pkt:init_ackno(
                                       utp_pkt:init_seqno(PktBuf,
                                                          utp_util:bit16(SeqNo + 1)),
@@ -541,14 +526,14 @@ idle(_Msg, _From, State) ->
 
 %% @private
 connected({recv, Length}, From, #state { proc_info = PI,
-                                         sock_info = SockInfo,
+                                         network = Network,
                                          pkt_buf   = PKB } = State) ->
     PI1 = utp_process:enqueue_receiver(From, Length, PI),
     case satisfy_recvs(PI1, PKB) of
         {_, N_PRI, N_PKB} ->
             case view_zerowindow_reopen(PKB, N_PKB) of
                 true ->
-                    utp_pkt:handle_send_ack(SockInfo, N_PKB, [send_ack, no_piggyback]),
+                    utp_pkt:handle_send_ack(Network, N_PKB, [send_ack, no_piggyback]),
                     ignore;
                 false ->
                     ignore
@@ -557,16 +542,14 @@ connected({recv, Length}, From, #state { proc_info = PI,
                                                   pkt_buf   = N_PKB } }
     end;
 connected({send, Data}, From, #state {
-                          sock_info = SockInfo,
+                          network = Network,
 			  proc_info = PI,
-			  pkt_window  = PKI,
                           zerowindow_timeout = ZWinTimer,
 			  pkt_buf   = PKB } = State) ->
     ProcInfo = utp_process:enqueue_sender(From, Data, PI),
     {_FillMessages, N_ZWinTimer, PKB1, ProcInfo1} =
-        fill_window(SockInfo,
+        fill_window(Network,
                     ProcInfo,
-                    PKI,
                     PKB,
                     ZWinTimer),
     {next_state, connected, State#state {
@@ -712,13 +695,14 @@ handle_retransmit_timer(Messages, RetransTimer) ->
             end
     end.
 
-fill_window(SockInfo, ProcessInfo, WindowInfo, PktBuffer, ZWinTimer) ->
+fill_window(Network, ProcessInfo, PktBuffer, ZWinTimer) ->
     {Messages, N_PktBuffer, N_ProcessInfo} =
-        utp_pkt:fill_window(SockInfo,
+        utp_pkt:fill_window(Network,
                             ProcessInfo,
-                            WindowInfo,
                             PktBuffer),
-    case utp_window:view_zero_window(WindowInfo) of
+    %% Capture and handle the case where the other end has given up in
+    %% the space department of its receive buffer.
+    case utp_network:view_zero_window(Network) of
         ok ->
             {Messages, cancel_zerowin_timer(ZWinTimer), N_PktBuffer, N_ProcessInfo};
         zero ->
@@ -747,44 +731,40 @@ mk_syn() ->
 
 
 handle_packet_incoming(Pkt, ReplyMicro, TimeAcked, TSDiff,
-                       #state {
-                              pkt_buf = PB,
-                              proc_info = PRI,
-                              pkt_window = PKW,
-                              sock_info = SockInfo,
-                              zerowindow_timeout = ZWin
+                       #state { pkt_buf = PB,
+                                proc_info = PRI,
+                                network = Network,
+                                zerowindow_timeout = ZWin
                              }) ->
     %% Handle the incoming packet
     try
-        utp_pkt:handle_packet(connected, Pkt, PKW, PB)
+        utp_pkt:handle_packet(connected, Pkt, Network, PB)
     of
-        {ok, N_PB1, N_PKW, Messages} ->
+        {ok, N_PB1, N_Network2, Messages} ->
 
-            N_SockInfo_T = update_rtt(SockInfo, ReplyMicro, TimeAcked, Messages),
-            N_SockInfo   = utp_socket:update_our_ledbat(N_SockInfo_T, TSDiff),
+            N_Network = update_window(N_Network2, ReplyMicro, TimeAcked, Messages, TSDiff, Pkt),
             
             ?DEBUG([node(), messages, Messages]),
             %% The packet may bump the advertised window from the peer, update
-            N_PKW2 = update_window(N_PKW, Pkt),
             
             %% The incoming datagram may have payload we can deliver to an application
             {_Drainage, N_PRI, N_PB} = satisfy_recvs(PRI, N_PB1),
             
             %% Fill up the send window again with the new information
             {FillMessages, ZWinTimeout, N_PB2, N_PRI2} =
-                fill_window(N_SockInfo, N_PRI, N_PKW2, N_PB, ZWin),
+                fill_window(N_Network, N_PRI, N_PB, ZWin),
             %% @todo This ACK may be cancelled if we manage to push something out
             %%       the window, etc., but the code is currently ready for it!
             %% The trick is to clear the message.
 
             %% Send out an ACK if needed
-            utp_pkt:handle_send_ack(N_SockInfo, N_PB2, Messages ++ FillMessages),
+            utp_pkt:handle_send_ack(N_Network, N_PB2, Messages ++ FillMessages),
 
-            {ok, Messages, N_SockInfo, N_PKW2, N_PB2, N_PRI2, ZWinTimeout}
+            {ok, Messages, N_Network, N_PB2, N_PRI2, ZWinTimeout}
     catch
         throw:{error, is_far_in_future} ->
             ?DEBUG([old_packet_received]),
-            {ok, [], SockInfo, PKW, PB, PRI, ZWin}
+            {ok, [], Network, PB, PRI, ZWin}
     end.
 
 handle_timeout(Ref, N, PacketBuf, SockInfo, {set, Ref} = Timer) ->
@@ -863,27 +843,26 @@ view_zerowindow_reopen(Old, New) ->
     K = utp_pkt:advertised_window(New),
     N == 0 andalso K > 1000. % Only open up the window when we have processed a considerable amount
 
-update_window(Window, Pkt) ->
-    utp_window:handle_advertised_window(Window, Pkt).
-
 set_ledbat_timer() ->
     gen_fsm:start_timer(timer:seconds(60), ledbat_timeout).
 
-update_rtt(SockInfo, ReplyMicro, TimeAcked, Messages) ->
-    N_SockInfo = case proplists:get_value(acked, Messages) of
-                     undefined ->
-                         SockInfo;
-                     Packets when is_list(Packets) ->
-                         Eligible = utp_pkt:extract_rtt(Packets),
-                         lists:foldl(fun(TimeSent, Acc) ->
-                                             utp_socket:ack_packet_rtt(Acc,
-                                                                       TimeSent,
-                                                                       TimeAcked)
-                                     end,
-                                     SockInfo,
-                                     Eligible)
-                 end,
-    utp_socket:update_reply_micro(N_SockInfo, ReplyMicro).
+update_window(Network, ReplyMicro, TimeAcked, Messages, TSDiff, Pkt) ->
+    N3 = utp_network:update_our_ledbat(Network, TSDiff),
+    N2 = utp_network:handle_advertised_window(N3, Pkt),
+    N = case proplists:get_value(acked, Messages) of
+            undefined ->
+                N2;
+            Packets when is_list(Packets) ->
+                Eligible = utp_pkt:extract_rtt(Packets),
+                lists:foldl(fun(TimeSent, Acc) ->
+                                    utp_network:ack_packet_rtt(Acc,
+                                                               TimeSent,
+                                                               TimeAcked)
+                            end,
+                            N2,
+                            Eligible)
+        end,
+    utp_network:update_reply_micro(N, ReplyMicro).
 
 
 
