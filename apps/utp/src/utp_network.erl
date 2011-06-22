@@ -24,8 +24,9 @@
          bump_window/1,
          rto/1,
          max_window_send/2,
-         congestion_control/6
-
+         congestion_control/6,
+         hostname_port/1,
+         set_conn_id/2
         ]).
 
 -export([
@@ -112,11 +113,18 @@ view_zero_window(#network { peer_advertised_window = N }) when N > 0 ->
 view_zero_window(#network { peer_advertised_window = 0 }) ->
     zero.
 
+set_conn_id(ConnIDSend, #network { sock_info = SI } = NW) ->
+    N = utp_socket:set_conn_id(ConnIDSend, SI),
+    NW#network { sock_info = N }.
+            
 bump_window(#network {} = Win) ->
     PacketSize = utp_socket:packet_size(todo),
     Win#network {
       peer_advertised_window = PacketSize
      }.
+
+hostname_port(#network { sock_info = SI}) ->
+    utp_socket:hostname_port(SI).
 
 send_pkt(AdvWin, #network { sock_info = SockInfo } = Network, Packet) ->
     send_pkt(AdvWin, Network, Packet, utp_socket:conn_id(SockInfo)).

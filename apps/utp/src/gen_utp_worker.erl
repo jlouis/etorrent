@@ -211,7 +211,8 @@ syn_sent({pkt, #packet { ty = st_state,
     %% @todo Consider LEDBAT here
     ReplyMicro = utp_util:bit32(TS - RecvTime),
     set_ledbat_timer(),
-    N_Network = utp_network:update_our_ledbat(Network, WindowSize, TSDiff),
+    N2 = utp_network:handle_advertised_window(WindowSize, Network),
+    N_Network = utp_network:update_our_ledbat(N2, TSDiff),
     {next_state, connected,
      State#state { network = utp_network:update_reply_micro(N_Network, ReplyMicro),
                    retransmit_timeout = clear_retransmit_timer(RTimeout),
@@ -302,14 +303,14 @@ connected({timeout, _, ledbat_timeout},
           #state { network = Network } = State) ->
     set_ledbat_timer(),
     {next_state, connected,
-     State#state { network = utp_socket:bump_ledbat(Network)}};
+     State#state { network = utp_network:bump_ledbat(Network)}};
 connected({timeout, Ref, {zerowindow_timeout, _N}},
           #state {
             pkt_buf = PktBuf,
             proc_info = ProcessInfo,
             network = Network,
             zerowindow_timeout = {set, Ref}} = State) ->
-    N_Network = utp_window:bump_window(Network),
+    N_Network = utp_network:bump_window(Network),
     {_FillMessages, ZWinTimer, N_PktBuf, N_ProcessInfo} =
         fill_window(N_Network, ProcessInfo, PktBuf, undefined),
     {next_state, connected,

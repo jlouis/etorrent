@@ -8,8 +8,10 @@
          set_conn_id/2,
          packet_size/1,
 
+         send_pkt/3,
          order_packets/2,
          conn_id_recv/1,
+         conn_id/1,
          send_reset/6,
          hostname_port/1
         ]).
@@ -41,6 +43,9 @@ mk(Addr, Opts, Port, Socket) ->
 hostname_port(#sock_info { addr = Addr, port = Port }) ->
     {Addr, Port}.
 
+conn_id(#sock_info { conn_id_send = ConnId }) ->
+    ConnId.
+
 conn_id_recv(#sock_info { conn_id_send = ConnId }) ->
     ConnId - 1. % This is the receiver conn_id we use at the SYN point.
 
@@ -54,6 +59,13 @@ send_reset(Socket, Addr, Port, ConnIDSend, AckNo, SeqNo) ->
                   conn_id = ConnIDSend },
     TSDiff = 0,
     send(Socket, Addr, Port, Packet, TSDiff).
+
+send_pkt(#sock_info {
+            addr = Addr,
+            port = Port,
+            socket = Socket },
+         Pkt, TSDiff) ->
+    send(Socket, Addr, Port, Pkt, TSDiff).
 
 send(Socket, Addr, Port, Packet, TSDiff) ->
     utp_proto:validate(Packet),

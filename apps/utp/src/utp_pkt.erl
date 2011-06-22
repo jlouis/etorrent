@@ -17,7 +17,7 @@
          handle_packet/4,
          buffer_dequeue/1,
          buffer_putback/2,
-         fill_window/4,
+         fill_window/3,
 
          advertised_window/1,
 
@@ -138,25 +138,25 @@ send_ack(SockInfo,
 %%       rather than this variant where we send a special packet with
 %%       FIN set.
 %% @end
-send_fin(SockInfo, Buf) ->
+send_fin(Network, Buf) ->
     send_packet(st_fin, <<>>, % Empty packet for now
-                Buf, SockInfo).
+                Buf, Network).
 
-send_packet(Bin, Buf, SockInfo) ->
-    send_packet(st_data, Bin, Buf, SockInfo).
+send_packet(Bin, Buf, Network) ->
+    send_packet(st_data, Bin, Buf, Network).
 
 send_packet(Ty, Bin,
             #pkt_buf { seq_no = SeqNo,
                        next_expected_seq_no = AckNo,
                        retransmission_queue = RetransQueue } = Buf,
-            SockInfo) ->
+            Network) ->
     P = #packet { ty = Ty,
                   seq_no  = SeqNo,
                   ack_no  = utp_util:bit16(AckNo-1),
                   extension = [],
                   payload = Bin },
     Win = advertised_window(Buf),
-    {ok, SendTime} = utp_socket:send_pkt(Win, SockInfo, P),
+    {ok, SendTime} = utp_network:send_pkt(Win, Network, P),
     Wrap = #pkt_wrap { packet = P,
                        transmissions = 1,
                        send_time = SendTime,
@@ -511,24 +511,24 @@ fill_from_proc_queue(N, MaxPktSz, Q, Proc) ->
 
 %% @doc Given a queue of things to send, transmit packets from it
 %% @end
-transmit_queue(Q, Buf, SockInfo) ->
+transmit_queue(Q, Buf, Network) ->
     L = queue:to_list(Q),
     lists:foldl(fun(Data, B) ->
-                        send_packet(Data, B, SockInfo)
+                        send_packet(Data, B, Network)
                 end,
                 Buf,
                 L).
 
 %% @doc Fill up the Window with packets in the outgoing direction
 %% @end
-fill_window(SockInfo, ProcQueue, PktWindow, PktBuf) ->
-    FreeInWindow = bytes_free_in_window(PktBuf, PktWindow),
+fill_window(Network, ProcQueue, PktBuf) ->
+    FreeInWindow = bytes_free_in_window(PktBuf, Network),
     %% Fill a queue of stuff to transmit
     {TxQueue, NProcQueue} =
         fill_from_proc_queue(FreeInWindow, PktBuf, ProcQueue),
 
     %% Send out the queue of packets to transmit
-    NBuf1 = transmit_queue(TxQueue, PktBuf, SockInfo),
+    NBuf1 = transmit_queue(TxQueue, PktBuf, Network),
     %% Eventually shove the Nagled packet in the tail
     Result = case queue:is_empty(TxQueue) of
                  true ->
@@ -600,8 +600,8 @@ view_inflight_bytes(#pkt_buf{ retransmission_queue = Q }) ->
             {ok, Sum}
     end.
 
-bytes_free_in_window(PktBuf, PktWindow) ->
-    MaxSend = max_window_send(PktBuf, PktWindow),
+bytes_free_in_window(PktBuf, Network) ->
+    MaxSend = max_window_send(PktBuf, Network),
     case view_inflight_bytes(PktBuf) of
         buffer_full ->
             0;
@@ -614,8 +614,8 @@ bytes_free_in_window(PktBuf, PktWindow) ->
     end.
 
 max_window_send(#pkt_buf { opt_snd_buf_sz = SendBufSz },
-                PKT_Window) ->
-    utp_network:max_window_send(SendBufSz, PKT_Window).
+                Network) ->
+    utp_network:max_window_send(SendBufSz, Network).
 
 
 enqueue_payload(Payload, #pkt_buf { recv_buf = Q } = PB) ->
