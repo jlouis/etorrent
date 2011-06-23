@@ -114,7 +114,7 @@ mk_random_seq_no() ->
 
 %% @doc Toss out an ACK packet on the Socket.
 %% @end
-send_ack(SockInfo,
+send_ack(Network,
          #pkt_buf { seq_no = SeqNo,
                     next_expected_seq_no = AckNo
                   } = Buf) ->
@@ -125,7 +125,7 @@ send_ack(SockInfo,
                           extension = []
                         },
     Win = advertised_window(Buf),
-    case utp_socket:send_pkt(Win, SockInfo, AckPacket) of
+    case utp_network:send_pkt(Win, Network, AckPacket) of
         {ok, _} ->
             ok;
         {error, Reason} ->
@@ -541,13 +541,13 @@ fill_window(Network, ProcQueue, PktBuf) ->
 %% PACKET RETRANSMISSION
 %% ----------------------------------------------------------------------
 
-retransmit_packet(PktBuf, SockInfo) ->
+retransmit_packet(PktBuf, Network) ->
     {Oldest, Rest} = pick_oldest_packet(PktBuf),
     #pkt_wrap { packet = Pkt,
                 transmissions = N } = Oldest,
     Win = advertised_window(PktBuf),
     ?DEBUG([resending, utp_proto:format_pkt(Pkt)]),
-    {ok, SendTime} = utp_socket:send_pkt(Win, SockInfo, Pkt),
+    {ok, SendTime} = utp_network:send_pkt(Win, Network, Pkt),
     Wrap = Oldest#pkt_wrap { transmissions = N+1,
                              send_time = SendTime},
     PktBuf#pkt_buf { retransmission_queue = [Wrap | Rest] }.

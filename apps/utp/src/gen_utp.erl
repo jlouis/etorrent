@@ -27,8 +27,8 @@
          incoming_unknown/3]).
 
 -type port_number() :: 0..16#FFFF.
--opaque utp_socket() :: {utp_sock, pid()}.
--export_type([utp_socket/0]).
+-opaque socket() :: {utp_sock, pid()}.
+-export_type([socket/0]).
 
 -type listen_opts() :: {backlog, integer()}.
 
@@ -69,14 +69,14 @@ start_link(Port) ->
 
 %% @equiv connect(Addr, Port, [])
 -spec connect(inet:ip_address() | inet:hostname(), port_number()) ->
-                     {ok, utp_socket()} | {error, term()}.
+                     {ok, socket()} | {error, term()}.
 connect(Addr, Port) ->
     connect(Addr, Port, []).
 
 %% @doc Connect to a foreign uTP peer
 %% @end
 -spec connect(inet:ip_address() | inet:hostname(), port_number(), [term()]) ->
-                     {ok, utp_socket()} | {error, term()}.
+                     {ok, socket()} | {error, term()}.
 connect(Addr, Port, Options) ->
     {ok, Socket} = get_socket(),
     {ok, Pid} = gen_utp_worker_pool:start_child(Socket, Addr, Port, Options),
@@ -92,17 +92,17 @@ connect(Addr, Port, Options) ->
 %% cannot fail from there on out, so we can just simply let the proxy to the work for now.
 %% There may be some things that changes when you add timeouts to connections.
 %% @end
--spec accept() -> {ok, utp_socket()}.
+-spec accept() -> {ok, socket()}.
 accept() ->
     {ok, _Socket} = call(accept).
 
 %% @doc Send a message on a uTP Socket
 %% @end
--spec send(utp_socket(), iolist() | binary() | string()) -> ok | {error, term()}.
+-spec send(socket(), iolist() | binary() | string()) -> ok | {error, term()}.
 send({utp_sock, Pid}, Msg) ->
     gen_utp_worker:send(Pid, iolist_to_binary(Msg)).
 
--spec send_msg(utp_socket(), term()) -> ok | {error, term()}.
+-spec send_msg(socket(), term()) -> ok | {error, term()}.
 send_msg(Socket, Msg) ->
     EMsg = term_to_binary(Msg, [compressed]),
     Digest = crypto:sha(EMsg),
@@ -114,7 +114,7 @@ send_msg(Socket, Msg) ->
 %%   `0' means to fetch all available data. There is currently no provision for timeouts on sockets,
 %%   but that will be provided later on.
 %% @end
--spec recv(utp_socket(), integer()) ->
+-spec recv(socket(), integer()) ->
                   {ok, binary()} | {error, term()}.
 recv({utp_sock, Pid}, Length) when Length >= 0 ->
     gen_utp_worker:recv(Pid, Length).

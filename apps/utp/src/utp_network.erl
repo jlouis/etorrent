@@ -14,6 +14,7 @@
          mk/2,
 
          update_reply_micro/2,
+         update_round_trip/2,
 
          ack_packet_rtt/3,
          update_rtt_ledbat/2,
@@ -90,15 +91,15 @@ mk(PacketSize, SockInfo) ->
 update_reply_micro(#network {} = SockInfo, RU) ->
     SockInfo#network { reply_micro = RU }.
 
-
 update_round_trip(V, #network { round_trip = RTT } = NW) ->
     N_RTT = utp_rtt:update(V, RTT),
     NW#network { round_trip = N_RTT }.
 
-handle_advertised_window(PKW, #packet { win_sz = Win }) ->
-    handle_advertised_window(PKW, Win);
-handle_advertised_window(#network{} = PKWin, NewWin) when is_integer(NewWin) ->
-    PKWin#network { peer_advertised_window = NewWin }.
+handle_advertised_window(Network, #packet { win_sz = Win }) ->
+    handle_advertised_window(Network, Win);
+handle_advertised_window(#network{} = Network, NewWin)
+  when is_integer(NewWin) ->
+    Network#network { peer_advertised_window = NewWin }.
 
 handle_window_size(#network {} = PKI, WindowSize) ->
     PKI#network { peer_advertised_window = WindowSize }.
@@ -129,9 +130,12 @@ hostname_port(#network { sock_info = SI}) ->
 send_pkt(AdvWin, #network { sock_info = SockInfo } = Network, Packet) ->
     send_pkt(AdvWin, Network, Packet, utp_socket:conn_id(SockInfo)).
 
+send_pkt(AdvWin, #network { sock_info = SockInfo } = Network, Packet, conn_id_recv) ->
+    send_pkt(AdvWin, Network, Packet, utp_socket:conn_id_recv(SockInfo));
 send_pkt(AdvWin,
          #network { sock_info = SockInfo,
-                    reply_micro = TSDiff}, Packet, ConnId) ->
+                    reply_micro = TSDiff}, Packet, ConnId)
+  when is_integer(ConnId) ->
     Pkt = Packet#packet { conn_id = ConnId,
                           win_sz = AdvWin },
     ?DEBUG([node(), outgoing_pkt, utp_proto:format_pkt(Pkt)]),

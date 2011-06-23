@@ -100,7 +100,7 @@
 %% STATE RECORDS
 %% ----------------------------------------------------------------------
 -record(state, { network :: utp_network:t(),
-                 pkt_buf      :: utp_pkt:buf(),
+                 pkt_buf      :: utp_pkt:t(),
                  proc_info    :: utp_process:t(),
                  connector    :: {{reference(), pid()}, [{pkt, #packet{}, term()}]},
                  zerowindow_timeout :: undefined | {set, reference()},
@@ -211,7 +211,7 @@ syn_sent({pkt, #packet { ty = st_state,
     %% @todo Consider LEDBAT here
     ReplyMicro = utp_util:bit32(TS - RecvTime),
     set_ledbat_timer(),
-    N2 = utp_network:handle_advertised_window(WindowSize, Network),
+    N2 = utp_network:handle_advertised_window(Network, WindowSize),
     N_Network = utp_network:update_our_ledbat(N2, TSDiff),
     {next_state, connected,
      State#state { network = utp_network:update_reply_micro(N_Network, ReplyMicro),
