@@ -959,10 +959,12 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   Probably yes!
   Yes, it should tick everything
 
-* TODO Is handle_packet_incoming always called in the connected state?
-  This looks wrong. I think that at least sometimes, we ought to have
-  a call from a state different from the connected state.
-* TODO Create utp_network as a module
+* DONE What are we *really* using the pkt_window structure for? What does it contain?
+  This is now interesting, as it looks like everything or almost
+  everything of the window has been placed in other structures.
+* DONE Rewrite the utp_window record as utp_network
+
+* DONE Create utp_network as a module
   It turns out it is smart to create a module, utp_network into which
   we shove the socket code and the window code. That way, it will be
   possible to keep much of the socket stuff pretty static while
@@ -973,7 +975,11 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   through the rest of the code base to fix the calls such that we now
   call with the new kind of module.
 ** DONE Alter utp_window to utp_network
-** TODO Push the socket_info stuff into utp_network
+** DONE Push the socket_info stuff into utp_network
+* TODO There are crashes in the LEDBAT code. Investigate why
+* TODO Is handle_packet_incoming always called in the connected state?
+  This looks wrong. I think that at least sometimes, we ought to have
+  a call from a state different from the connected state.
 * TODO Why is the ledbat bumper being ticked almost immediately?
 * TODO How do we handle the case where LEDBAT is ticked while the RTT structure is "none"?
   Can it happen?
@@ -1096,9 +1102,6 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   belong? How do we extract it?
 
   Belong: Definitely a property of the socket!
-* TODO What are we *really* using the pkt_window structure for? What does it contain?
-  This is now interesting, as it looks like everything or almost
-  everything of the window has been placed in other structures.
 * TODO Location of OptSndBuf?
   Where is the correct location for OptSendBuf? Currently I am partial
   to having it inside the SockInfo structure because the buffer is a

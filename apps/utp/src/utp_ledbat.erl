@@ -46,6 +46,8 @@ shift(#ledbat { base_history_q = BQ } = LEDBAT, Offset) ->
                           BQ),
     LEDBAT#ledbat { base_history_q = New_Queue }.
 
+add_sample(none, Sample) ->
+    mk(Sample);
 add_sample(#ledbat { base_history_q = BQ,
                      delay_base     = DelayBase,
                      cur_delay_history_q   = DQ } = LEDBAT, Sample) ->
