@@ -976,50 +976,12 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   call with the new kind of module.
 ** DONE Alter utp_window to utp_network
 ** DONE Push the socket_info stuff into utp_network
-* TODO There are crashes in the LEDBAT code. Investigate why
-* TODO Is handle_packet_incoming always called in the connected state?
-  This looks wrong. I think that at least sometimes, we ought to have
-  a call from a state different from the connected state.
-* TODO Why is the ledbat bumper being ticked almost immediately?
-* TODO How do we handle the case where LEDBAT is ticked while the RTT structure is "none"?
-  Can it happen?
-  What should we do about it?
-* TODO Make sure we are sampling the right kind of LEDBAT sample
-  What is the sample we should use for LEDBAT? Is it the TSDiff we get
-  from the other end, or is it the estimate we calculate in the round
-  trip time? In other words, what is the right value to use here? We
-  have several available, so make sure we select the right one.
+* DONE Why is the ledbat bumper being ticked almost immediately?
+  Wrong, it isn't. The reason we thought it was is simply due to the
+  fact that when we get in a ledbat_timeout, we set the timer
+  again. I've fixed the code to set the timer after processing the
+  clock bumps.
 
-  Look at the code in libutp here. It is best to look into that code
-  and make informed decisions based upon what it is doing. It is in
-  any case much better than doing something else!
-
-  Ok, there are three delay histories that are tracked(!!):
-  rtt_hist:
-    This value tracks the ESTIMATED rtt from the other end. It is used
-    in updating the send_quota of a socket. And that is its only use.
-
-  our_hist:
-    This will track *our* delay history towards the other end. It is
-    used by us to track the delay history over time.
-
-    Our delay is used when considering the LEDBAT congestion control.
-
-  their_hist:
-    This will be used to track the delay in their direction. That is,
-    we use it to record the delay they are having towards our end. We
-    will only be using this for clock skew locally.
-** DONE Track rtt_hist
-** DONE Track our_hist
-   Build the code that enables us to track our_hist
-** TODO Track their hist
-   Their hist is needed to carry out some shifts later, but they are
-   not that important in the beginning.
-* TODO We should be tracking when the window was last maxed out
-  I don't know why, but we should be tracking this as well.
-
-  The reason we ought to track this is that whenever we max out the
-  window, we should stop scaling the gain for 300ms
 * DONE Congestion control
   To handle congestion control, we must enable LEDBAT congestion
   control tracking on the socket as well.
@@ -1095,26 +1057,63 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
      initial rtt_var = 800 ms
      initial rto     = 3000 ms
      CCONTROL_TARGET is 100 * 1000 us i.e., 100 ms.
+* TODO There are crashes in the LEDBAT code. Investigate why
+  The reason it crashes is because the RTT structure is currently
+  "none" when we try to update the ledbat values. Let us surmise...
+
+  Do we at any rate update the RTT values yet, or are they living
+  their life incorrectly?
+
+  Is 'none' possible in one direction if it has never sent any kind of
+  data? I think it is.
+
+  There is an obvious fix which is to ignore this case or set up a
+  sensible default value.
+* TODO Is handle_packet_incoming always called in the connected state?
+  This looks wrong. I think that at least sometimes, we ought to have
+  a call from a state different from the connected state. We can fix
+  this by passing in the current state of the caller and see what
+  happen when we do exactly that.
+* TODO We should be tracking when the window was last maxed out
+  I don't know why, but we should be tracking this as well.
+
+  The reason we ought to track this is that whenever we max out the
+  window, we should stop scaling the gain for 300ms. This is to
+  protect the system against aggressive scaling in the case where we
+  max out the window. Tracking this is pretty simple really. We just
+  record when we max out the window in #network{} and then when we
+  want to scale, we check this value to see if
+
+  a) it is set
+  b) it is older than 300ms.
 * TODO Estimate shifting
   When and why do we shift the estimate?
+
+  This requires some digging!
 * TODO MinRTT
   How do we calculate the MinRTT? How do we track it? Where does it
   belong? How do we extract it?
 
-  Belong: Definitely a property of the socket!
+  Belong: Definitely a property of the network.
 * TODO Location of OptSndBuf?
   Where is the correct location for OptSendBuf? Currently I am partial
   to having it inside the SockInfo structure because the buffer is a
   property of the socket.
 
   Where is it currently located?
-* TODO When considering the history, should we consider the our_history?
-  Or should we rather consider one of the other history types?
+
+  This has its home in the #sock_info{} structure for sure. It is the
+  only real place to have this. It is a static buffer limit we set on
+  the socket, so it ought to be a static property there.
 * TODO How should the rto be updated and when?
   There is a need to set the next rto value based on the current
   timeout. The initial value is 3000, and the default rtt timeout is
   500 in the code base. When we set the retransmit timeout, we ought
   to update this value correctly.
+
+  This ought to be rather simple now we have a proper RTT calculation
+  live. When we are to set the RTO, we ought to simply set it based on
+  a call for the current RTO in the #network{} code. And that's it.
 * TODO Handle the retransmit timeout by decaying the congestion window correctly
 * TODO Handle the duplicate ack case by counting and then enabling congestion window updates
 * TODO Even though the test case says OK! there might be bad things
@@ -1185,6 +1184,38 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   the belief is that when you accept a connection, you know what is
   going to happen in the other end. This is only doable if we run the
   same test in parallel.
+* TODO Make sure we are sampling the right kind of LEDBAT sample
+  What is the sample we should use for LEDBAT? Is it the TSDiff we get
+  from the other end, or is it the estimate we calculate in the round
+  trip time? In other words, what is the right value to use here? We
+  have several available, so make sure we select the right one.
+
+  Look at the code in libutp here. It is best to look into that code
+  and make informed decisions based upon what it is doing. It is in
+  any case much better than doing something else!
+
+  Ok, there are three delay histories that are tracked(!!):
+  rtt_hist:
+    This value tracks the ESTIMATED rtt from the other end. It is used
+    in updating the send_quota of a socket. And that is its only use.
+
+  our_hist:
+    This will track *our* delay history towards the other end. It is
+    used by us to track the delay history over time.
+
+    Our delay is used when considering the LEDBAT congestion control.
+
+  their_hist:
+    This will be used to track the delay in their direction. That is,
+    we use it to record the delay they are having towards our end. We
+    will only be using this for clock skew locally.
+** DONE Track rtt_hist
+** DONE Track our_hist
+   Build the code that enables us to track our_hist
+** TODO Track their hist
+   Their hist is needed to carry out some shifts later, but they are
+   not that important in the beginning.
+
 * Packet size control
 * Handle timeout bumping:
   ``Every time a socket sends or receives a packet, it updates its

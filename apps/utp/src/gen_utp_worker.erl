@@ -301,9 +301,10 @@ connected(close, #state { network = Network,
                              pkt_buf = NPBuf } };
 connected({timeout, _, ledbat_timeout},
           #state { network = Network } = State) ->
-    set_ledbat_timer(),
+    N_Network = bump_ledbat(Network),
     {next_state, connected,
-     State#state { network = utp_network:bump_ledbat(Network)}};
+     State#state { network = N_Network}};
+
 connected({timeout, Ref, {zerowindow_timeout, _N}},
           #state {
             pkt_buf = PktBuf,
@@ -435,9 +436,9 @@ fin_sent({pkt, Pkt, {TS, TSDiff, RecvTime}},
     end;
 fin_sent({timeout, _, ledbat_timeout},
           #state { network = NW } = State) ->
-    set_ledbat_timer(),
+    N_Network = bump_ledbat(NW),
     {next_state, fin_sent,
-     State#state { network = utp_network:bump_ledbat(NW)}};
+     State#state { network = N_Network }};
 
 fin_sent({timeout, Ref, {retransmit_timeout, N}},
          #state { pkt_buf = PacketBuf,
@@ -845,6 +846,7 @@ view_zerowindow_reopen(Old, New) ->
     N == 0 andalso K > 1000. % Only open up the window when we have processed a considerable amount
 
 set_ledbat_timer() ->
+    error_logger:info_report([self(), setting_ledbat_timer]),
     gen_fsm:start_timer(timer:seconds(60), ledbat_timeout).
 
 update_window(Network, ReplyMicro, TimeAcked, Messages, TSDiff, Pkt) ->
@@ -865,6 +867,10 @@ update_window(Network, ReplyMicro, TimeAcked, Messages, TSDiff, Pkt) ->
         end,
     utp_network:update_reply_micro(N, ReplyMicro).
 
-
+bump_ledbat(Network) ->
+    N_Network = utp_network:bump_ledbat(Network),
+    set_ledbat_timer(),
+    N_Network.
+    
 
 
