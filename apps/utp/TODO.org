@@ -1057,6 +1057,11 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
      initial rtt_var = 800 ms
      initial rto     = 3000 ms
      CCONTROL_TARGET is 100 * 1000 us i.e., 100 ms.
+* DONE Is handle_packet_incoming always called in the connected state?
+  This looks wrong. I think that at least sometimes, we ought to have
+  a call from a state different from the connected state. We can fix
+  this by passing in the current state of the caller and see what
+  happen when we do exactly that.
 * TODO There are crashes in the LEDBAT code. Investigate why
   The reason it crashes is because the RTT structure is currently
   "none" when we try to update the ledbat values. Let us surmise...
@@ -1069,11 +1074,6 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
 
   There is an obvious fix which is to ignore this case or set up a
   sensible default value.
-* TODO Is handle_packet_incoming always called in the connected state?
-  This looks wrong. I think that at least sometimes, we ought to have
-  a call from a state different from the connected state. We can fix
-  this by passing in the current state of the caller and see what
-  happen when we do exactly that.
 * TODO We should be tracking when the window was last maxed out
   I don't know why, but we should be tracking this as well.
 

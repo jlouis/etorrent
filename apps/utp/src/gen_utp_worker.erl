@@ -275,7 +275,8 @@ connected({pkt, Pkt, {TS, TSDiff, RecvTime}},
     ?DEBUG([node(), incoming_pkt, connected, utp_proto:format_pkt(Pkt)]),
 
     {ok, Messages, N_Network, N_PB, N_PRI, ZWinTimeout} =
-        handle_packet_incoming(Pkt, utp_util:bit32(TS - RecvTime), RecvTime, TSDiff, State),
+        handle_packet_incoming(connected,
+                               Pkt, utp_util:bit32(TS - RecvTime), RecvTime, TSDiff, State),
     N_RetransTimer = handle_retransmit_timer(Messages, RetransTimer),
 
     %% Calculate the next state
@@ -413,7 +414,8 @@ fin_sent({pkt, Pkt, {TS, TSDiff, RecvTime}},
     ?DEBUG([node(), incoming_pkt, fin_sent, utp_proto:format_pkt(Pkt)]),
 
     {ok, Messages, N_Network, N_PB, N_PRI, ZWinTimeout} =
-        handle_packet_incoming(Pkt, utp_util:bit32(TS - RecvTime), RecvTime, TSDiff, State),
+        handle_packet_incoming(fin_sent,
+                               Pkt, utp_util:bit32(TS - RecvTime), RecvTime, TSDiff, State),
     N_RetransTimer = handle_retransmit_timer(Messages, RetransTimer),
 
     %% Calculate the next state
@@ -732,7 +734,7 @@ mk_syn() ->
 
 
 
-handle_packet_incoming(Pkt, ReplyMicro, TimeAcked, TSDiff,
+handle_packet_incoming(FSMState, Pkt, ReplyMicro, TimeAcked, TSDiff,
                        #state { pkt_buf = PB,
                                 proc_info = PRI,
                                 network = Network,
@@ -740,7 +742,7 @@ handle_packet_incoming(Pkt, ReplyMicro, TimeAcked, TSDiff,
                              }) ->
     %% Handle the incoming packet
     try
-        utp_pkt:handle_packet(connected, Pkt, Network, PB)
+        utp_pkt:handle_packet(FSMState, Pkt, Network, PB)
     of
         {ok, N_PB1, N_Network2, Messages} ->
 
