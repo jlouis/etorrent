@@ -9,7 +9,7 @@
 -define(MAX_WINDOW_INCREASE, 3000).
 -define(DEFAULT_RTT_TIMEOUT, 500).
 
--record(rtt, {rtt :: integer(),
+-record(rtt, {rtt = 500 :: integer(),
               var = 800 :: integer()
              }).
 
@@ -33,9 +33,13 @@
 update(Estimate, RTT) ->
     case RTT of
         none ->
-            true = Estimate < 6000,
-            #rtt { rtt = round(Estimate),
-                   var = round(Estimate / 2)};
+            case Estimate < 6000 of
+                true ->
+                    #rtt { rtt = round(Estimate),
+                           var = round(Estimate / 2)};
+                false ->
+                    error({estimate_too_high, Estimate})
+            end;
         #rtt { rtt = LastRTT, var = Var} ->
             Delta = LastRTT - Estimate,
             #rtt { rtt = round(LastRTT - LastRTT/8 + Estimate/8),

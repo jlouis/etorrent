@@ -69,6 +69,8 @@ add_sample(#ledbat { base_history_q = BQ,
                     last_sample = Sample,
                     cur_delay_history_q = N_DQ }.
 
+clock_tick(none) ->
+    none;
 clock_tick(#ledbat{ base_history_q  = BaseQ,
                     last_sample = Sample,
                     delay_base = DelayBase } = LEDBAT) ->
