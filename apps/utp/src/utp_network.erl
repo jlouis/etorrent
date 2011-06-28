@@ -25,7 +25,7 @@
          bump_window/1,
          rto/1,
          max_window_send/1,
-         congestion_control/5,
+         congestion_control/4,
          hostname_port/1,
          set_conn_id/2
         ]).
@@ -177,9 +177,9 @@ bump_ledbat(#network { rtt_ledbat = L,
 -define(MAX_CWND_INCREASE_BYTES_PER_RTT, 3000). % bytes
 -define(MIN_WINDOW_SIZE, 3000). % bytes
 congestion_control(#network { cwnd = Cwnd,
+                              sock_info = SockInfo,
                               min_rtt = MinRtt } = Network,
                    LastMaxedOutTime,
-                   OptSndBuf,
                    BytesAcked,
                    OurHistory) ->
     true = MinRtt > 0,
@@ -220,7 +220,7 @@ congestion_control(#network { cwnd = Cwnd,
                      ok ->
                          ScaledGain
                  end,
-    NewCwnd = clamp(Cwnd + Alteration, ?MIN_WINDOW_SIZE, OptSndBuf),
+    NewCwnd = clamp(Cwnd + Alteration, ?MIN_WINDOW_SIZE, utp_socket:send_buf_sz(SockInfo)),
 
     Network#network {
       cwnd = NewCwnd
