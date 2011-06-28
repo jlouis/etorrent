@@ -55,6 +55,7 @@
           reply_micro :: integer(),
 
           %% Round trip time measurements and LEDBAT
+          min_rtt = 30000000 :: integer(),
           round_trip  :: utp_rtt:t() | none,
           rtt_ledbat = none :: none | utp_ledbat:t(),
           our_ledbat = none :: none | utp_ledbat:t(),
@@ -144,6 +145,7 @@ rto(#network { round_trip = RTT }) ->
     utp_rtt:rto(RTT).
 
 ack_packet_rtt(#network { round_trip = RTT,
+                          min_rtt    = MinRTT,
                           rtt_ledbat = LedbatHistory } = NW,
                TimeSent, TimeAcked) ->
     {ok, _NewRTO, NewRTT, NewHistory} = utp_rtt:ack_packet(LedbatHistory,
@@ -151,7 +153,8 @@ ack_packet_rtt(#network { round_trip = RTT,
                                                            TimeSent,
                                                            TimeAcked),
     NW#network { round_trip = NewRTT,
-                   rtt_ledbat     = NewHistory}.
+                 min_rtt = min(TimeAcked - TimeSent, MinRTT),
+                 rtt_ledbat     = NewHistory}.
 
 
 update_rtt_ledbat(#network { rtt_ledbat = none } = SockInfo, Sample) ->
@@ -172,8 +175,8 @@ bump_ledbat(#network { rtt_ledbat = L,
 -define(CONGESTION_CONTROL_TARGET, 100). % ms, perhaps we should run this in us
 -define(MAX_CWND_INCREASE_BYTES_PER_RTT, 3000). % bytes
 -define(MIN_WINDOW_SIZE, 3000). % bytes
-congestion_control(#network { cwnd = Cwnd } = Network,
-                   MinRtt,
+congestion_control(#network { cwnd = Cwnd,
+                              min_rtt = MinRtt } = Network,
                    LastMaxedOutTime,
                    OptSndBuf,
                    BytesAcked,
@@ -217,6 +220,7 @@ congestion_control(#network { cwnd = Cwnd } = Network,
                          ScaledGain
                  end,
     NewCwnd = clamp(Cwnd + Alteration, ?MIN_WINDOW_SIZE, OptSndBuf),
+
     Network#network {
       cwnd = NewCwnd
      }.
