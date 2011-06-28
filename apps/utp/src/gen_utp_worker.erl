@@ -271,13 +271,14 @@ connected({pkt, #packet { ty = st_syn }, _}, State) ->
     ?INFO([duplicate_syn_packet, ignoring]),
     {next_state, connected, State};
 connected({pkt, Pkt, {TS, TSDiff, RecvTime}},
-	  #state { retransmit_timeout = RetransTimer } = State) ->
+	  #state { retransmit_timeout = RetransTimer,
+                   network = Network } = State) ->
     ?DEBUG([node(), incoming_pkt, connected, utp_proto:format_pkt(Pkt)]),
 
     {ok, Messages, N_Network, N_PB, N_PRI, ZWinTimeout} =
         handle_packet_incoming(connected,
                                Pkt, utp_util:bit32(TS - RecvTime), RecvTime, TSDiff, State),
-    N_RetransTimer = handle_retransmit_timer(Messages, RetransTimer),
+    N_RetransTimer = handle_retransmit_timer(Messages, Network, RetransTimer),
 
     %% Calculate the next state
     NextState = case proplists:get_value(got_fin, Messages) of
@@ -296,7 +297,7 @@ connected(close, #state { network = Network,
                           retransmit_timeout = RTimer,
                           pkt_buf = PktBuf } = State) ->
     NPBuf = utp_pkt:send_fin(Network, PktBuf),
-    NRTimer = handle_retransmit_timer([fin_sent], RTimer),
+    NRTimer = handle_retransmit_timer([fin_sent], Network, RTimer),
     {next_state, fin_sent, State#state {
                              retransmit_timeout = NRTimer,
                              pkt_buf = NPBuf } };
@@ -410,13 +411,14 @@ fin_sent({pkt, #packet { ty = st_reset }, _},
     N_PRI = error_all(PRI, econnreset),
     {next_state, destroy, State#state { proc_info = N_PRI }};
 fin_sent({pkt, Pkt, {TS, TSDiff, RecvTime}},
-	  #state { retransmit_timeout = RetransTimer } = State) ->
+	  #state { retransmit_timeout = RetransTimer
+                 } = State) ->
     ?DEBUG([node(), incoming_pkt, fin_sent, utp_proto:format_pkt(Pkt)]),
 
     {ok, Messages, N_Network, N_PB, N_PRI, ZWinTimeout} =
         handle_packet_incoming(fin_sent,
                                Pkt, utp_util:bit32(TS - RecvTime), RecvTime, TSDiff, State),
-    N_RetransTimer = handle_retransmit_timer(Messages, RetransTimer),
+    N_RetransTimer = handle_retransmit_timer(Messages, N_Network, RetransTimer),
 
     %% Calculate the next state
     N_State = State#state {
@@ -654,9 +656,6 @@ satisfy_recvs(Processes, Buffer) ->
 	    {ok, Processes, Buffer}
     end.
 
-set_retransmit_timer(Timer) ->
-    set_retransmit_timer(?DEFAULT_RETRANSMIT_TIMEOUT, Timer).
-
 set_retransmit_timer(N, Timer) ->
     set_retransmit_timer(N, N, Timer).
 
@@ -677,7 +676,7 @@ clear_retransmit_timer({set, Ref}) ->
     ?DEBUG([node(), clearing_retransmit_timer]),
     undefined.
 
-handle_retransmit_timer(Messages, RetransTimer) ->
+handle_retransmit_timer(Messages, Network, RetransTimer) ->
     F = fun(E, Acc) ->
                 case proplists:get_value(E, Messages) of
                     true ->
@@ -689,7 +688,7 @@ handle_retransmit_timer(Messages, RetransTimer) ->
     Analyzer = fun(L) -> lists:foldl(F, false, L) end,
     case Analyzer([recv_ack, fin_sent]) of
         true ->
-            set_retransmit_timer(RetransTimer);
+            set_retransmit_timer(utp_network:rto(Network), RetransTimer);
         false ->
             case Analyzer([all_acked]) of
                 true ->

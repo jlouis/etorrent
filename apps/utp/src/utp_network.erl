@@ -63,7 +63,6 @@
           %% --------------------
           %% Set when we update the zero window to 0 so we can reset it to 1.
           zero_window_timeout :: none | {set, reference()},
-          rto = 3000 :: integer(), % Retransmit timeout default
 
           %% Timestamps
           %% --------------------
