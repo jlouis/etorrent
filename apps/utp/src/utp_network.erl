@@ -24,8 +24,8 @@
          view_zero_window/1,
          bump_window/1,
          rto/1,
-         max_window_send/2,
-         congestion_control/6,
+         max_window_send/1,
+         congestion_control/5,
          hostname_port/1,
          set_conn_id/2
         ]).
@@ -104,9 +104,10 @@ handle_advertised_window(#network{} = Network, NewWin)
 handle_window_size(#network {} = PKI, WindowSize) ->
     PKI#network { peer_advertised_window = WindowSize }.
 
-max_window_send(SendBufSz,
-                #network { peer_advertised_window = AdvertisedWindow,
+max_window_send(#network { peer_advertised_window = AdvertisedWindow,
+                           sock_info = SI,
                            cwnd = MaxSendWindow }) ->
+    SendBufSz = utp_socket:send_buf_sz(SI),
     lists:min([SendBufSz, AdvertisedWindow, MaxSendWindow]).
 
 view_zero_window(#network { peer_advertised_window = N }) when N > 0 ->

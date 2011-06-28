@@ -30,10 +30,7 @@
 
 %% The default RecvBuf size: 8K
 -define(OPT_RECV_BUF, 8192).
--define(PACKET_SIZE, 350).
 -define(REORDER_BUFFER_MAX_SIZE, 511).
--define(OUTGOING_BUFFER_MAX_SIZE, 511).
--define(OPT_SEND_BUF, ?OUTGOING_BUFFER_MAX_SIZE * ?PACKET_SIZE).
 
 %% TYPES
 %% ----------------------------------------------------------------------
@@ -64,8 +61,6 @@
 
           %% Packet buffer settings
           %% --------------------
-          %% Size of the outgoing buffer on the socket
-          opt_snd_buf_sz  = ?OPT_SEND_BUF :: integer(),
           %% Same, for the recv buffer
           opt_recv_buf_sz = ?OPT_RECV_BUF :: integer(),
 
@@ -594,14 +589,12 @@ view_inflight_bytes(#pkt_buf{ retransmission_queue = [] }) ->
     buffer_empty;
 view_inflight_bytes(#pkt_buf{ retransmission_queue = Q }) ->
     case lists:sum([payload_size(Pkt) || Pkt <- Q]) of
-        Sum when Sum >= ?OPT_SEND_BUF ->
-            buffer_full;
         Sum ->
             {ok, Sum}
     end.
 
 bytes_free_in_window(PktBuf, Network) ->
-    MaxSend = max_window_send(PktBuf, Network),
+    MaxSend = utp_ntwork:max_window_send(Network),
     case view_inflight_bytes(PktBuf) of
         buffer_full ->
             0;
@@ -612,11 +605,6 @@ bytes_free_in_window(PktBuf, Network) ->
         {ok, _Inflight} ->
             0
     end.
-
-max_window_send(#pkt_buf { opt_snd_buf_sz = SendBufSz },
-                Network) ->
-    utp_network:max_window_send(SendBufSz, Network).
-
 
 enqueue_payload(Payload, #pkt_buf { recv_buf = Q } = PB) ->
     PB#pkt_buf { recv_buf = queue:in(Payload, Q) }.

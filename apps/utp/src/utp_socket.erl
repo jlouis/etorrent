@@ -7,6 +7,7 @@
          mk/4,
          set_conn_id/2,
          packet_size/1,
+         send_buf_sz/1,
 
          send_pkt/3,
          order_packets/2,
@@ -18,6 +19,9 @@
 
 -type ip_address() :: inet:ip4_address().
 -type port_number() :: 0..16#FFFF.
+-define(OUTGOING_BUFFER_MAX_SIZE, 511).
+-define(PACKET_SIZE, 350).
+-define(OPT_SEND_BUF, ?OUTGOING_BUFFER_MAX_SIZE * ?PACKET_SIZE).
 
 -record(sock_info, {
 	  %% Stuff pertaining to the socket:
@@ -25,7 +29,11 @@
 	  opts        :: [{atom(), term()}], %% Options on the socket
 	  port        :: port_number(),
 	  socket      :: inet:socket(),
-          conn_id_send :: 'not_set' | integer()
+          conn_id_send :: 'not_set' | integer(),
+
+          %% Size of the outgoing buffer on the socket
+          opt_snd_buf_sz  = ?OPT_SEND_BUF :: integer()
+
 	 }).
 -opaque t() :: #sock_info{}.
 -export_type([t/0]).
@@ -39,6 +47,9 @@ mk(Addr, Opts, Port, Socket) ->
                  socket = Socket,
                  conn_id_send = not_set
                }.
+
+send_buf_sz(#sock_info { opt_snd_buf_sz = SBZ }) ->
+    SBZ.
 
 hostname_port(#sock_info { addr = Addr, port = Port }) ->
     {Addr, Port}.
