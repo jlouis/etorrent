@@ -1104,6 +1104,16 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   This ought to be rather simple now we have a proper RTT calculation
   live. When we are to set the RTO, we ought to simply set it based on
   a call for the current RTO in the #network{} code. And that's it.
+* DONE Enable code that will consider the cwnd
+  We are currently totally ignoring the congestion window. We ought to
+  consider the congestion window size when sending out packets in the
+  right way.
+
+  Considering the congestion window is all about knowing the window
+  and limiting the send factor based upon how many bytes are free in
+  that window. In other words, we need to plan the appropriate call to
+  the code in and around congestion_control/2 in the utp_network
+  module.
 * TODO Estimate shifting
   When and why do we shift the estimate?
 
@@ -1133,17 +1143,6 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   this value is positive.
 
   Does this make sense at all? What does the SHIFT value do?
-
-* TODO Enable code that will consider the cwnd
-  We are currently totally ignoring the congestion window. We ought to
-  consider the congestion window size when sending out packets in the
-  right way.
-
-  Considering the congestion window is all about knowing the window
-  and limiting the send factor based upon how many bytes are free in
-  that window. In other words, we need to plan the appropriate call to
-  the code in and around congestion_control/5 in the utp_network
-  module.
 * TODO We should be tracking when the window was last maxed out
   I don't know why, but we should be tracking this as well.
 

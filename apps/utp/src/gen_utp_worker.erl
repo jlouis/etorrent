@@ -853,20 +853,22 @@ set_ledbat_timer() ->
 update_window(Network, ReplyMicro, TimeAcked, Messages, TSDiff, Pkt) ->
     N3 = utp_network:update_our_ledbat(Network, TSDiff),
     N2 = utp_network:handle_advertised_window(N3, Pkt),
-    N = case proplists:get_value(acked, Messages) of
-            undefined ->
-                N2;
-            Packets when is_list(Packets) ->
-                Eligible = utp_pkt:extract_rtt(Packets),
-                lists:foldl(fun(TimeSent, Acc) ->
-                                    utp_network:ack_packet_rtt(Acc,
-                                                               TimeSent,
-                                                               TimeAcked)
-                            end,
-                            N2,
-                            Eligible)
-        end,
-    utp_network:update_reply_micro(N, ReplyMicro).
+    N1 = case proplists:get_value(acked, Messages) of
+             undefined ->
+                 N2;
+             Packets when is_list(Packets) ->
+                 Eligible = utp_pkt:extract_rtt(Packets),
+                 N = lists:foldl(fun(TimeSent, Acc) ->
+                                         utp_network:ack_packet_rtt(Acc,
+                                                                    TimeSent,
+                                                                    TimeAcked)
+                                 end,
+                                 N2,
+                                 Eligible),
+                 BytesAcked = utp_pkt:extract_payload_size(Packets),
+                 utp_network:congestion_control(N, BytesAcked)           
+         end,
+    utp_network:update_reply_micro(N1, ReplyMicro).
 
 bump_ledbat(Network) ->
     N_Network = utp_network:bump_ledbat(Network),

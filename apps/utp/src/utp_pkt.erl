@@ -22,6 +22,7 @@
          advertised_window/1,
 
          extract_rtt/1,
+         extract_payload_size/1,
          retransmit_packet/2
          ]).
 
@@ -623,5 +624,10 @@ buffer_dequeue(#pkt_buf { recv_buf = Q } = Buf) ->
 extract_rtt(Packets) ->
     [TS || #pkt_wrap { send_time = TS} = P <- Packets,
            P#pkt_wrap.transmissions == 1].
+
+extract_payload_size(Packets) ->
+    lists:sum([byte_size(Pl) || #pkt_wrap { packet = #packet { payload = Pl } } <- Packets]).
+
+                  
 
 
