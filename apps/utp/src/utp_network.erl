@@ -19,6 +19,7 @@
          ack_packet_rtt/3,
          update_rtt_ledbat/2,
          update_our_ledbat/2,
+         update_window_maxed_out/1,
          bump_ledbat/1,
 
          view_zero_window/1,
@@ -89,6 +90,11 @@ mk(PacketSize, SockInfo) ->
               
                last_maxed_out_window = utp_proto:current_time_ms() - 300
              }.
+
+update_window_maxed_out(#network {} = NW) ->
+    NW#network {
+      last_maxed_out_window = utp_proto:current_time_ms()
+     }.
 
 update_reply_micro(#network {} = SockInfo, RU) ->
     SockInfo#network { reply_micro = RU }.

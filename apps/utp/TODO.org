@@ -1104,6 +1104,46 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   This ought to be rather simple now we have a proper RTT calculation
   live. When we are to set the RTO, we ought to simply set it based on
   a call for the current RTO in the #network{} code. And that's it.
+* TODO Estimate shifting
+  When and why do we shift the estimate?
+
+  THIS HAPPENS IN EVERY INCOMING PACKET!
+
+  When do we shift the estimate? --
+    We consider their delay as well as ours.
+    We add a sample on their delay
+    If the sampled delay base is LESS than the previous delay base, we
+      might have a skewing clock in the game.
+    If difference is less than 10 ms, we may adjust.
+    Adjustment is on OUR-HIST, not theirs.
+  Why do we shift the estimate? --
+    We shift the estimate because we want to tackle clock skew. If the
+    delay they are seeing becomes less, it means that their clock has
+    skewed compared to ours. We should hence take the skew and add it
+    to our delay history to make up for the skew we are experiencing.
+
+  Another shift:
+
+  If our history value is GREATER than the min_rtt seen on the
+  line. We compensate. This is done because otherwise, the base delay
+  is probably not going to be correct. We have seen a better minimum
+  delay than what the history tracker has.
+
+  The compensation is to shift: VAL - MIN_RTT. Since VAL is greater,
+  this value is positive.
+
+  Does this make sense at all? What does the SHIFT value do?
+
+* TODO Enable code that will consider the cwnd
+  We are currently totally ignoring the congestion window. We ought to
+  consider the congestion window size when sending out packets in the
+  right way.
+
+  Considering the congestion window is all about knowing the window
+  and limiting the send factor based upon how many bytes are free in
+  that window. In other words, we need to plan the appropriate call to
+  the code in and around congestion_control/5 in the utp_network
+  module.
 * TODO We should be tracking when the window was last maxed out
   I don't know why, but we should be tracking this as well.
 
@@ -1115,27 +1155,11 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   want to scale, we check this value to see if:
 
   b) it is older than 300ms, and we set it when we start.
-** Track
+** TODO Track
+   When is the window maxed out? It is maxed out when we can't send
+   anymore data on the socket. This has to wait until we actually use
+   the max window.
 ** DONE Use
-* TODO Estimate shifting
-  When and why do we shift the estimate?
-
-  When do we shift the estimate? -- 
-  Why do we shift the estimate? --
-    We shift the estimate because 
-  This requires some digging!
-
-  
-* TODO Enable code that will consider the cwnd
-  We are currently totally ignoring the congestion window. We ought to
-  consider the congestion window size when sending out packets in the
-  right way.
-
-  Considering the congestion window is all about knowing the window
-  and limiting the send factor based upon how many bytes are free in
-  that window. In other words, we need to plan the appropriate call to
-  the code in and around congestion_control/5 in the utp_network
-  module.
 * TODO Handle the retransmit timeout by decaying the congestion window correctly
 * TODO Handle the duplicate ack case by counting and then enabling congestion window updates
 * TODO Even though the test case says OK! there might be bad things
