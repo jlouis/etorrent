@@ -55,9 +55,10 @@ current_time_us() ->
     S1 = M*1000000 + S,
     Micro + S1*1000000.
 
+-spec current_time_ms() -> integer().
 current_time_ms() ->
     {M, S, Micro} = os:timestamp(),
-    (Micro / 1000) + S*1000 + M*1000000*1000.
+    (Micro div 1000) + S*1000 + M*1000000*1000.
 
 -spec encode(packet(), timestamp()) -> binary().
 encode(#packet { ty = Type,
