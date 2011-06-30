@@ -1112,14 +1112,20 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   protect the system against aggressive scaling in the case where we
   max out the window. Tracking this is pretty simple really. We just
   record when we max out the window in #network{} and then when we
-  want to scale, we check this value to see if
+  want to scale, we check this value to see if:
 
-  a) it is set
-  b) it is older than 300ms.
+  b) it is older than 300ms, and we set it when we start.
+** Track
+** DONE Use
 * TODO Estimate shifting
   When and why do we shift the estimate?
 
+  When do we shift the estimate? -- 
+  Why do we shift the estimate? --
+    We shift the estimate because 
   This requires some digging!
+
+  
 * TODO Enable code that will consider the cwnd
   We are currently totally ignoring the congestion window. We ought to
   consider the congestion window size when sending out packets in the

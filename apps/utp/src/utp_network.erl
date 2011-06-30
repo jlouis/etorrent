@@ -25,7 +25,7 @@
          bump_window/1,
          rto/1,
          max_window_send/1,
-         congestion_control/3,
+         congestion_control/2,
          hostname_port/1,
          set_conn_id/2
         ]).
@@ -85,7 +85,9 @@ mk(PacketSize, SockInfo) ->
                sock_info   = SockInfo,
                reply_micro = 0,
                round_trip = none,
-               cwnd = ?INITIAL_CWND
+               cwnd = ?INITIAL_CWND,
+              
+               last_maxed_out_window = utp_proto:current_time_ms() - 300
              }.
 
 update_reply_micro(#network {} = SockInfo, RU) ->
@@ -179,8 +181,8 @@ bump_ledbat(#network { rtt_ledbat = L,
 congestion_control(#network { cwnd = Cwnd,
                               our_ledbat = OurHistory,
                               sock_info = SockInfo,
-                              min_rtt = MinRtt } = Network,
-                   LastMaxedOutTime,
+                              min_rtt = MinRtt,
+                              last_maxed_out_window = LastMaxedOutTime } = Network,
                    BytesAcked) ->
     true = MinRtt > 0,
     OurDelay = min(MinRtt, utp_ledbat:get_value(OurHistory)),
