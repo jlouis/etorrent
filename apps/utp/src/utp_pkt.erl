@@ -595,7 +595,7 @@ view_inflight_bytes(#pkt_buf{ retransmission_queue = Q }) ->
     end.
 
 bytes_free_in_window(PktBuf, Network) ->
-    MaxSend = utp_ntwork:max_window_send(Network),
+    MaxSend = utp_network:max_window_send(Network),
     case view_inflight_bytes(PktBuf) of
         buffer_full ->
             0;

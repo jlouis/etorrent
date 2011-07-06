@@ -184,22 +184,30 @@ bump_ledbat(#network { rtt_ledbat = L,
 -define(CONGESTION_CONTROL_TARGET, 100). % ms, perhaps we should run this in us
 -define(MAX_CWND_INCREASE_BYTES_PER_RTT, 3000). % bytes
 -define(MIN_WINDOW_SIZE, 3000). % bytes
+congestion_control(#network {} = NW, 0) ->
+    NW; %% Nothing acked, so skip maintaining the congestion control
 congestion_control(#network { cwnd = Cwnd,
                               our_ledbat = OurHistory,
                               sock_info = SockInfo,
                               min_rtt = MinRtt,
                               last_maxed_out_window = LastMaxedOutTime } = Network,
-                   BytesAcked) ->
-    true = MinRtt > 0,
-    OurDelay = min(MinRtt, utp_ledbat:get_value(OurHistory)),
-    true = OurDelay >= 0,
-
+                   BytesAcked) when BytesAcked > 0 ->
+    case MinRtt of
+        K when K > 0 ->
+            ignore;
+        K ->
+            error({min_rtt_violated, K})
+    end,
+    OurDelay =
+        case min(MinRtt, utp_ledbat:get_value(OurHistory)) of
+            O when O >= 0 ->
+                O;
+            Otherwise ->
+                error({our_delay_violated, Otherwise})
+        end,
     TargetDelay = ?CONGESTION_CONTROL_TARGET,
 
     TargetOffset = OurDelay - TargetDelay,
-    
-    true = BytesAcked > 0,
-
     %% Compute the Window Factor. The window might have shrunk since
     %% last time, so take the minimum of the bytes acked and the
     %% window maximum.  Divide by the maximal value of the Windows and
@@ -219,8 +227,12 @@ congestion_control(#network { cwnd = Cwnd,
     %% How much is the scaled gain?
     ScaledGain = ?MAX_CWND_INCREASE_BYTES_PER_RTT * WindowFactor * DelayFactor,
     
-    true = ScaledGain =< 1 + ?MAX_CWND_INCREASE_BYTES_PER_RTT * min(BytesAcked, Cwnd)
-        / max(Cwnd, BytesAcked),
+    case ScaledGain =< 1 + ?MAX_CWND_INCREASE_BYTES_PER_RTT * min(BytesAcked, Cwnd)
+        / max(Cwnd, BytesAcked) of
+        true -> ignore;
+        false ->
+            error({scale_gain_violation, ScaledGain, BytesAcked, Cwnd})
+    end,
 
     Alteration = case consider_last_maxed_window(LastMaxedOutTime) of
                      too_soon ->

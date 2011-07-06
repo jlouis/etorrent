@@ -1114,6 +1114,9 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   that window. In other words, we need to plan the appropriate call to
   the code in and around congestion_control/2 in the utp_network
   module.
+* TODO Code fails, figure out why
+  There are some errors that suddenly occur in our code base and we
+  don't know exactly why that happens. This should be investigated.
 * TODO Estimate shifting
   When and why do we shift the estimate?
 
@@ -1261,6 +1264,11 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
    Their hist is needed to carry out some shifts later, but they are
    not that important in the beginning.
 
+* TODO Try to eliminate lifted types
+  The uTP code has a lot of "lifts" of the form none | elem() for some
+  element elem. Try to get rid of them by instating good defaults and
+  use the defaults where needed. This simplifies the code paths quite
+  a lot.
 * Packet size control
 * Handle timeout bumping:
   ``Every time a socket sends or receives a packet, it updates its
