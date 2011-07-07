@@ -29,7 +29,8 @@
          congestion_control/2,
          hostname_port/1,
          set_conn_id/2,
-         decay_window/1
+         decay_window/1,
+         reset_window/1
         ]).
 
 -export([
@@ -264,6 +265,12 @@ consider_last_maxed_window(LastMaxedOutTime) ->
             ok
     end.
 
+reset_window(#network {
+               packet_size = PacketSize
+               } = NW) ->
+    NW#network { cwnd = PacketSize }.
+    
+                
 decay_window(#network {
                 last_window_decay = LastDecay,
                 cwnd = Cwnd

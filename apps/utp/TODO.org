@@ -1188,7 +1188,23 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
    the max window.
 ** DONE Use
 * DONE Handle the retransmit timeout by decaying the congestion window correctly
+  Correctly in this case is to reset the window to the packet size,
+  not gracefully decaying the window, as we are doing right now.
+
+  Rather, we should just reset the window to the initial packet size
+  and go from there. It looks as if this is what one will have to do
+  in this case.
 * TODO Handle the duplicate ack case by counting and then enabling congestion window updates
+  So --,
+
+  How do we detect this is the case in the first place?
+    This is based on the idea of selective acks. If segments are lost
+    in the selective ACK phase, then we decay the window.
+    
+
+  How do we decay the window?
+    With the already implemented window decaying routine.
+
 * TODO Even though the test case says OK! there might be bad things
   So we should go through the test cases a bit and see what
   happens. Waiting a bit in the end of test case to see if something

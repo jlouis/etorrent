@@ -781,7 +781,7 @@ handle_timeout(Ref, N, PacketBuf, Network, {set, Ref} = Timer) ->
         false ->
             N_Timer = set_retransmit_timer(N*2, Timer),
             N_PB = utp_pkt:retransmit_packet(PacketBuf, Network),
-            N_Network = utp_network:decay_window(Network),
+            N_Network = utp_network:reset_window(Network),
             {reinstalled, N_Timer, N_PB, N_Network}
     end;
 handle_timeout(_Ref, _N, _PacketBuf, _Network, _Timer) ->
