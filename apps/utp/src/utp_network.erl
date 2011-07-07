@@ -28,7 +28,8 @@
          max_window_send/1,
          congestion_control/2,
          hostname_port/1,
-         set_conn_id/2
+         set_conn_id/2,
+         decay_window/1
         ]).
 
 -export([
@@ -69,7 +70,8 @@
           %% Timestamps
           %% --------------------
           %% When was the window last totally full (in send direction)
-          last_maxed_out_window :: integer()
+          last_maxed_out_window :: integer(),
+          last_window_decay :: integer()
        }).
 
 
@@ -77,18 +79,20 @@
 -export_type([t/0]).
 
 -define(INITIAL_CWND, 3000).
-
+-define(MAX_WINDOW_DECAY, 100). % ms, we can only decay the window at this time
 %% ----------------------------------------------------------------------
 -spec mk(integer(),
          utp_socket:t()) -> t().
 mk(PacketSize, SockInfo) ->
+    Now = utp_proto:current_time_ms(),
     #network { packet_size = PacketSize,
                sock_info   = SockInfo,
                reply_micro = 0,
                round_trip = none,
                cwnd = ?INITIAL_CWND,
               
-               last_maxed_out_window = utp_proto:current_time_ms() - 300
+               last_maxed_out_window = Now - 300,
+               last_window_decay     = Now
              }.
 
 update_window_maxed_out(#network {} = NW) ->
@@ -260,3 +264,18 @@ consider_last_maxed_window(LastMaxedOutTime) ->
             ok
     end.
 
+decay_window(#network {
+                last_window_decay = LastDecay,
+                cwnd = Cwnd
+               } = Network) ->
+    Now = utp_proto:current_time_ms(),
+    case Now - LastDecay of
+        K when K >= ?MAX_WINDOW_DECAY ->
+            Network#network {
+              last_window_decay = Now,
+              cwnd = max(round(Cwnd * 0.5), ?MIN_WINDOW_SIZE)
+             };
+        _Otherwise ->
+            Network
+    end.
+                       
