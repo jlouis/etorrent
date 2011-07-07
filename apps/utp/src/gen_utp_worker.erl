@@ -331,8 +331,9 @@ connected({timeout, Ref, {retransmit_timeout, N}},
             {next_state, connected, State};
         gave_up ->
             {next_state, reset, State};
-        {reinstalled, N_Timer, N_PB} ->
+        {reinstalled, N_Timer, N_PB, N_Network} ->
             {next_state, connected, State#state { retransmit_timeout = N_Timer,
+                                                  network = N_Network,
                                                   pkt_buf = N_PB }}
     end;
 connected(_Msg, State) ->
@@ -353,8 +354,9 @@ got_fin({timeout, Ref, {retransmit_timeout, N}},
             {next_state, got_fin, State};
         gave_up ->
             {next_state, reset, State};
-        {reinstalled, N_Timer, N_PB} ->
+        {reinstalled, N_Timer, N_PB, N_Network} ->
             {next_state, got_fin, State#state { retransmit_timeout = N_Timer,
+                                                network = N_Network,
                                                 pkt_buf = N_PB }}
     end;
 got_fin({pkt, #packet { ty = st_state }, _}, State) ->
@@ -382,9 +384,10 @@ destroy_delay({timeout, Ref, {retransmit_timeout, N}},
             {next_state, destroy_delay, State};
         gave_up ->
             {next_state, destroy, State, 0};
-        {reinstalled, N_Timer, N_PB} ->
+        {reinstalled, N_Timer, N_PB, N_Network} ->
             {next_state, destroy, State#state {
                                     retransmit_timeout = N_Timer,
+                                    network = N_Network,
                                     pkt_buf = N_PB}, 0}
     end;
 destroy_delay({pkt, #packet { ty = st_fin }, _}, State) ->
@@ -453,8 +456,9 @@ fin_sent({timeout, Ref, {retransmit_timeout, N}},
             {next_state, fin_sent, State};
         gave_up ->
             {next_state, destroy, State, 0};
-        {reinstalled, N_Timer, N_PB} ->
+        {reinstalled, N_Timer, N_PB, N_Network} ->
             {next_state, fin_sent, State#state { retransmit_timeout = N_Timer,
+                                                 network = N_Network,
                                                  pkt_buf = N_PB }}
     end;
 fin_sent(_Msg, State) ->
@@ -770,16 +774,17 @@ handle_packet_incoming(FSMState, Pkt, ReplyMicro, TimeAcked, TSDiff,
             {ok, [], Network, PB, PRI, ZWin}
     end.
 
-handle_timeout(Ref, N, PacketBuf, SockInfo, {set, Ref} = Timer) ->
+handle_timeout(Ref, N, PacketBuf, Network, {set, Ref} = Timer) ->
     case N > ?RTO_DESTROY_VALUE of
         true ->
             gave_up;
         false ->
             N_Timer = set_retransmit_timer(N*2, Timer),
-            N_PB = utp_pkt:retransmit_packet(PacketBuf, SockInfo),
-            {reinstalled, N_Timer, N_PB}
+            N_PB = utp_pkt:retransmit_packet(PacketBuf, Network),
+            N_Network = utp_network:decay_window(Network),
+            {reinstalled, N_Timer, N_PB, N_Network}
     end;
-handle_timeout(_Ref, _N, _PacketBuf, _Sockinfo, _Timer) ->
+handle_timeout(_Ref, _N, _PacketBuf, _Network, _Timer) ->
     ?ERR([stray_retransmit_timer, _Ref, _N, _Timer]),
     stray.
 

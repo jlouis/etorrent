@@ -1187,7 +1187,7 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
    anymore data on the socket. This has to wait until we actually use
    the max window.
 ** DONE Use
-* TODO Handle the retransmit timeout by decaying the congestion window correctly
+* DONE Handle the retransmit timeout by decaying the congestion window correctly
 * TODO Handle the duplicate ack case by counting and then enabling congestion window updates
 * TODO Even though the test case says OK! there might be bad things
   So we should go through the test cases a bit and see what
