@@ -1194,17 +1194,6 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   Rather, we should just reset the window to the initial packet size
   and go from there. It looks as if this is what one will have to do
   in this case.
-* TODO Handle the duplicate ack case by counting and then enabling congestion window updates
-  So --,
-
-  How do we detect this is the case in the first place?
-    This is based on the idea of selective acks. If segments are lost
-    in the selective ACK phase, then we decay the window.
-    
-
-  How do we decay the window?
-    With the already implemented window decaying routine.
-
 * TODO Even though the test case says OK! there might be bad things
   So we should go through the test cases a bit and see what
   happens. Waiting a bit in the end of test case to see if something
@@ -1246,7 +1235,7 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   the belief is that when you accept a connection, you know what is
   going to happen in the other end. This is only doable if we run the
   same test in parallel.
-* TODO Make sure we are sampling the right kind of LEDBAT sample
+* DONE Make sure we are sampling the right kind of LEDBAT sample
   What is the sample we should use for LEDBAT? Is it the TSDiff we get
   from the other end, or is it the estimate we calculate in the round
   trip time? In other words, what is the right value to use here? We
@@ -1274,7 +1263,7 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
 ** DONE Track rtt_hist
 ** DONE Track our_hist
    Build the code that enables us to track our_hist
-** TODO Track their hist
+** DONE Track their hist
    Their hist is needed to carry out some shifts later, but they are
    not that important in the beginning.
 
@@ -1353,6 +1342,17 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
    weed out stuff the other end already have. Then we should decide
    what to retransmit and how. We probably shouldn't just "retransmit
    the oldest packet" as we do now though.
+* TODO Handle the duplicate ack case by counting and then enabling congestion window updates
+  So --,
+
+  How do we detect this is the case in the first place?
+    This is based on the idea of selective acks. If segments are lost
+    in the selective ACK phase, then we decay the window.
+    
+
+  How do we decay the window?
+    With the already implemented window decaying routine.
+
 * Nagle code
   Nagling is fairly easy to do. When there is less than a packet to
   send out, we simply say: "No, won't send" and set a nagle timer. If

@@ -62,7 +62,7 @@
           round_trip  :: utp_rtt:t() | none,
           rtt_ledbat = none :: none | utp_ledbat:t(),
           our_ledbat = none :: none | utp_ledbat:t(),
-
+          their_ledbat = none :: none | utp_ledbat:t(),
           %% Timeouts,
           %% --------------------
           %% Set when we update the zero window to 0 so we can reset it to 1.
@@ -101,8 +101,9 @@ update_window_maxed_out(#network {} = NW) ->
       last_maxed_out_window = utp_proto:current_time_ms()
      }.
 
-update_reply_micro(#network {} = SockInfo, RU) ->
-    SockInfo#network { reply_micro = RU }.
+update_reply_micro(#network { their_ledbat = TL } = SockInfo, RU) ->
+    SockInfo#network { reply_micro = RU,
+                       their_ledbat = utp_ledbat:add_sample(TL, RU) }.
 
 update_round_trip(V, #network { round_trip = RTT } = NW) ->
     N_RTT = utp_rtt:update(V, RTT),
@@ -182,9 +183,11 @@ update_our_ledbat(#network { our_ledbat = Ledbat } = SockInfo, Sample) ->
     SockInfo#network { our_ledbat = utp_ledbat:add_sample(Ledbat, Sample) }.
 
 bump_ledbat(#network { rtt_ledbat = L,
-                         our_ledbat = Our} = SockInfo) ->
+                       their_ledbat = Their,
+                       our_ledbat = Our} = SockInfo) ->
     SockInfo#network { rtt_ledbat = utp_ledbat:clock_tick(L),
-                         our_ledbat = utp_ledbat:clock_tick(Our)}.
+                       their_ledbat = utp_ledbat:clock_tick(Their),
+                       our_ledbat = utp_ledbat:clock_tick(Our)}.
 
 -define(CONGESTION_CONTROL_TARGET, 100). % ms, perhaps we should run this in us
 -define(MAX_CWND_INCREASE_BYTES_PER_RTT, 3000). % bytes
