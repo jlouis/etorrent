@@ -1186,6 +1186,11 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
    When is the window maxed out? It is maxed out when we can't send
    anymore data on the socket. This has to wait until we actually use
    the max window.
+
+   Ok, we need to detect if we exhausted the window, so we can track
+   that the window was maxed out. It should be pretty easy to do, just
+   detect that there are 0 bytes more free space in the window and
+   then if that is the case, we should just track it.
 ** DONE Use
 * DONE Handle the retransmit timeout by decaying the congestion window correctly
   Correctly in this case is to reset the window to the packet size,
@@ -1304,8 +1309,14 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
     libutp *DOES* have zero windows!
     libutp *DOES* use 350 byte packets, not 150 bytes packet
 * Loss Congestion control
-  Use packet loss as the congestion control mechanism
-* Congestion window code
+  Use packet loss as the congestion control mechanism.
+
+  This is partially done. Retransmission loss is currently done as per
+  the protocol spec.
+
+  We still need to handle duplicate ACK loss, but it better wait till
+  we have Selective ACK (SACK) support.
+* DONE Congestion window code
   Hinges on RTT Measurement. I think this will solve itself more or
   less when we focus on getting LEDBAT to work correctly.
 
