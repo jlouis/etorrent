@@ -30,7 +30,10 @@
          hostname_port/1,
          set_conn_id/2,
          decay_window/1,
-         reset_window/1
+         reset_window/1,
+
+         handle_clock_skew/2,
+         handle_estimate_exceed/1
         ]).
 
 -export([
@@ -288,4 +291,52 @@ decay_window(#network {
         _Otherwise ->
             Network
     end.
-                       
+
+handle_estimate_exceed(#network { min_rtt = MinRtt,
+                                  our_ledbat = Ours
+                                } = NW) ->
+    OurDelay = utp_ledbat:get_value(Ours),
+    Diff = OurDelay - MinRtt,
+    case Diff of
+        K when K > 0 ->
+            NW#network {
+              our_ledbat = utp_ledbat:shift(Ours, K) };
+        _Otherwise ->
+            NW
+    end.
+
+handle_clock_skew(#network { their_ledbat = none }, NW) ->
+    NW;
+handle_clock_skew(#network {
+                     their_ledbat = OldTheirs },
+                  #network {
+                    their_ledbat = Theirs,
+                    our_ledbat   = Ours
+                   } = NW) ->
+    OldDelayBase = utp_ledbat:base_delay(OldTheirs),
+    TheirBase = utp_ledbat:base_delay(Theirs),
+    Diff = OldDelayBase - TheirBase,
+    case utp_ledbat:compare_less(
+           TheirBase,
+           OldDelayBase) of
+        true when Diff < 10000 ->
+            NW#network { our_ledbat = utp_ledbat:shift(Ours, Diff) };
+        true ->
+            NW;
+        false ->
+            NW
+    end.
+              
+            
+
+
+
+
+
+
+
+
+
+
+
+

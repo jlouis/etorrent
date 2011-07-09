@@ -1142,7 +1142,7 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
      into what this entails: Slow start, fast recovery from detection,
      etc.
 
-* TODO Estimate shifting
+* DONE Estimate shifting
   When and why do we shift the estimate?
 
   THIS HAPPENS IN EVERY INCOMING PACKET!

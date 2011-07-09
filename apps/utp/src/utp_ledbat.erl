@@ -29,8 +29,10 @@
          mk/1,
          add_sample/2,
          shift/2,
+         base_delay/1,
          get_value/1,
-         clock_tick/1
+         clock_tick/1,
+         compare_less/2
         ]).
 
 -record(ledbat, {
@@ -110,10 +112,29 @@ clock_tick(#ledbat{ base_history_q  = BaseQ,
     LEDBAT#ledbat { base_history_q = N_BaseQ,
                     delay_base = min(N_DelayBase, DelayBase) }.
 
+%% @doc Fetch the delay base of the LEDBAT structure
+%% @end
+base_delay(#ledbat { delay_base = DB}) ->
+    DB.
+
 %% @doc Get out the current estimate.
 %% @end
 get_value(#ledbat { cur_delay_history_q = DelayQ }) ->
     lists:min(queue:to_list(DelayQ)).
+
+%% @doc Compare if L < R taking wrapping into account
+%% @end
+compare_less(L, R) ->
+    %% To see why this is correct, imagine a unit circle
+    %% One direction is walking downwards from the L clockwise until
+    %%  we hit the R
+    %% The other direction is walking upwards, counter-clockwise
+    Down = utp_util:bit32(L - R),
+    Up   = utp_util:bit32(R - L),
+
+    %% If the walk-up distance is the shortest, L < R, otherwise R < L
+    Up < Down.
+
 
 %% ----------------------------------------------------------------------
 update_history(Sample, Queue) ->
@@ -138,18 +159,6 @@ minimum_by(Comparator, [H | T], M) ->
 rotate(Q) ->
     {{value, E}, RQ} = queue:out(Q),
     queue:in(E, RQ).
-
-%% @doc Compare if L < R taking wrapping into account
-compare_less(L, R) ->
-    %% To see why this is correct, imagine a unit circle
-    %% One direction is walking downwards from the L clockwise until
-    %%  we hit the R
-    %% The other direction is walking upwards, counter-clockwise
-    Down = utp_util:bit32(L - R),
-    Up   = utp_util:bit32(R - L),
-
-    %% If the walk-up distance is the shortest, L < R, otherwise R < L
-    Up < Down.
 
 queue_map(F, Q) ->
     L = queue:to_list(Q),
