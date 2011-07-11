@@ -1171,7 +1171,7 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   this value is positive.
 
   Does this make sense at all? What does the SHIFT value do?
-* TODO We should be tracking when the window was last maxed out
+* DONE We should be tracking when the window was last maxed out
   I don't know why, but we should be tracking this as well.
 
   The reason we ought to track this is that whenever we max out the

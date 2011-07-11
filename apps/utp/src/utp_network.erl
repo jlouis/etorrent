@@ -11,6 +11,7 @@
 -export([
          handle_window_size/2,
          handle_advertised_window/2,
+         handle_maxed_out_window/2,
          mk/2,
 
          update_reply_micro/2,
@@ -326,7 +327,17 @@ handle_clock_skew(#network {
         false ->
             NW
     end.
-              
+
+handle_maxed_out_window(Messages, #network {} = NW) ->              
+    case proplists:get_value(window_maxed_out, Messages) of
+        true ->
+            NW#network {
+              last_maxed_out_window = utp_proto:current_time_ms()
+             };
+        undefined ->
+            NW
+    end.
+
             
 
 

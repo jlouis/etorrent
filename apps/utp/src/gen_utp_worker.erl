@@ -747,9 +747,9 @@ handle_packet_incoming(FSMState, Pkt, ReplyMicro, TimeAcked, TSDiff,
     try
         utp_pkt:handle_packet(FSMState, Pkt, Network, PB)
     of
-        {ok, N_PB1, N_Network2, Messages} ->
+        {ok, N_PB1, N_Network3, Messages} ->
 
-            N_Network = update_window(N_Network2, ReplyMicro, TimeAcked, Messages, TSDiff, Pkt),
+            N_Network2 = update_window(N_Network3, ReplyMicro, TimeAcked, Messages, TSDiff, Pkt),
             
             ?DEBUG([node(), messages, Messages]),
             %% The packet may bump the advertised window from the peer, update
@@ -759,7 +759,9 @@ handle_packet_incoming(FSMState, Pkt, ReplyMicro, TimeAcked, TSDiff,
             
             %% Fill up the send window again with the new information
             {FillMessages, ZWinTimeout, N_PB2, N_PRI2} =
-                fill_window(N_Network, N_PRI, N_PB, ZWin),
+                fill_window(N_Network2, N_PRI, N_PB, ZWin),
+
+            N_Network = utp_network:handle_maxed_out_window(Messages, N_Network2),
             %% @todo This ACK may be cancelled if we manage to push something out
             %%       the window, etc., but the code is currently ready for it!
             %% The trick is to clear the message.

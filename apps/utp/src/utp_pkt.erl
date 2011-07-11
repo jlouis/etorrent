@@ -477,7 +477,7 @@ handle_packet_type(Type, SeqNo, Buf) ->
 %% ----------------------------------------------------------------------
 
 %% @doc Build up a queue of payload to send
-%% This function builds up to `N' packets to send out -- each packet up
+%% This function builds up to `N' bytes to send out -- each packet up
 %% to the packet size. The functions satisfies data from the
 %% process_queue of processes waiting to get data sent. It returns an
 %% updates ProcessQueue record and a `queue' of the packets that are
@@ -489,8 +489,13 @@ fill_from_proc_queue(N, Buf, ProcQ) ->
 
 %% @doc Worker for fill_from_proc_queue/3
 %% @end
+-spec fill_from_proc_queue(integer(),
+                           integer(),
+                           queue(),
+                           utp_process:t()) ->
+                                  {window_maxed_out | ok, queue(), utp_process:t()}.
 fill_from_proc_queue(0, _Sz, Q, Proc) ->
-    {Q, Proc};
+    {window_maxed_out, Q, Proc};
 fill_from_proc_queue(N, MaxPktSz, Q, Proc) ->
     ToFill = case N =< MaxPktSz of
                  true -> N;
@@ -500,9 +505,9 @@ fill_from_proc_queue(N, MaxPktSz, Q, Proc) ->
         {filled, Bin, Proc1} ->
             fill_from_proc_queue(N - ToFill, MaxPktSz, queue:in(Bin, Q), Proc1);
         {partial, Bin, Proc1} ->
-            {queue:in(Bin, Q), Proc1};
+            {ok, queue:in(Bin, Q), Proc1};
         zero ->
-            {Q, Proc}
+            {ok, Q, Proc}
     end.
 
 %% @doc Given a queue of things to send, transmit packets from it
@@ -520,9 +525,13 @@ transmit_queue(Q, Buf, Network) ->
 fill_window(Network, ProcQueue, PktBuf) ->
     FreeInWindow = bytes_free_in_window(PktBuf, Network),
     %% Fill a queue of stuff to transmit
-    {TxQueue, NProcQueue} =
-        fill_from_proc_queue(FreeInWindow, PktBuf, ProcQueue),
-
+    {Res, TxQueue, NProcQueue} = fill_from_proc_queue(FreeInWindow, PktBuf, ProcQueue),
+    MaxOut = case Res of
+                 ok ->
+                     [];
+                 window_maxed_out ->
+                     [window_maxed_out]
+             end,
     %% Send out the queue of packets to transmit
     NBuf1 = transmit_queue(TxQueue, PktBuf, Network),
     %% Eventually shove the Nagled packet in the tail
@@ -532,7 +541,7 @@ fill_window(Network, ProcQueue, PktBuf) ->
                  false ->
                      []
              end,
-    {Result, NBuf1, NProcQueue}.
+    {Result ++ MaxOut, NBuf1, NProcQueue}.
 
 %% PACKET RETRANSMISSION
 %% ----------------------------------------------------------------------
