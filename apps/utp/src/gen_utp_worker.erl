@@ -306,7 +306,6 @@ connected({timeout, _, ledbat_timeout},
     N_Network = bump_ledbat(Network),
     {next_state, connected,
      State#state { network = N_Network}};
-
 connected({timeout, Ref, {zerowindow_timeout, _N}},
           #state {
             pkt_buf = PktBuf,
@@ -523,6 +522,7 @@ idle({accept, SYN}, _From, #state { network = Network,
 			},
     Win = utp_pkt:advertised_window(PktBuf),
     {ok, _} = utp_network:send_pkt(Win, N_Network, AckPacket),
+    %% @todo retransmit timer here?
     set_ledbat_timer(),
     {reply, ok, connected,
             State#state { network = utp_network:handle_advertised_window(N_Network, SYN),
@@ -554,16 +554,19 @@ connected({recv, Length}, From, #state { proc_info = PI,
 connected({send, Data}, From, #state {
                           network = Network,
 			  proc_info = PI,
+                          retransmit_timeout = RTimer,
                           zerowindow_timeout = ZWinTimer,
 			  pkt_buf   = PKB } = State) ->
     ProcInfo = utp_process:enqueue_sender(From, Data, PI),
-    {_FillMessages, N_ZWinTimer, PKB1, ProcInfo1} =
+    {FillMessages, N_ZWinTimer, PKB1, ProcInfo1} =
         fill_window(Network,
                     ProcInfo,
                     PKB,
                     ZWinTimer),
+    N_RTimer = handle_send_retransmit_timer(FillMessages, Network, RTimer),
     {next_state, connected, State#state {
                               zerowindow_timeout = N_ZWinTimer,
+                              retransmit_timeout = N_RTimer,
 			      proc_info = ProcInfo1,
 			      pkt_buf   = PKB1 }};
 connected(_Msg, _From, State) ->
@@ -680,6 +683,16 @@ clear_retransmit_timer({set, Ref}) ->
     ?DEBUG([node(), clearing_retransmit_timer]),
     undefined.
 
+%% @doc Handle the retransmit timer in the send direction
+handle_send_retransmit_timer(Messages, Network, RetransTimer) ->
+    case proplists:get_value(sent_data, Messages) of
+        true ->
+            set_retransmit_timer(utp_network:rto(Network), RetransTimer);
+        undefined ->
+            %% We sent nothing out, just use the current timer
+            RetransTimer
+    end.
+
 handle_retransmit_timer(Messages, Network, RetransTimer) ->
     F = fun(E, Acc) ->
                 case proplists:get_value(E, Messages) of
@@ -690,7 +703,7 @@ handle_retransmit_timer(Messages, Network, RetransTimer) ->
                 end
         end,
     Analyzer = fun(L) -> lists:foldl(F, false, L) end,
-    case Analyzer([recv_ack, fin_sent]) of
+    case Analyzer([recv_ack, fin_sent, sent_data]) of
         true ->
             set_retransmit_timer(utp_network:rto(Network), RetransTimer);
         false ->

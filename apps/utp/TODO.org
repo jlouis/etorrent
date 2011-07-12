@@ -1182,7 +1182,7 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   want to scale, we check this value to see if:
 
   b) it is older than 300ms, and we set it when we start.
-** TODO Track
+** DONE Track
    When is the window maxed out? It is maxed out when we can't send
    anymore data on the socket. This has to wait until we actually use
    the max window.
@@ -1199,6 +1199,91 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   Rather, we should just reset the window to the initial packet size
   and go from there. It looks as if this is what one will have to do
   in this case.
+* DONE Congestion window code
+  Hinges on RTT Measurement. I think this will solve itself more or
+  less when we focus on getting LEDBAT to work correctly.
+
+  DON'T START THIS BEFORE RTT MEASUREMENT IS THERE.
+
+  There is no reason to attempt starting this before the RTT
+  measurement parts are written down.
+* DONE Make sure we are sampling the right kind of LEDBAT sample
+  What is the sample we should use for LEDBAT? Is it the TSDiff we get
+  from the other end, or is it the estimate we calculate in the round
+  trip time? In other words, what is the right value to use here? We
+  have several available, so make sure we select the right one.
+
+  Look at the code in libutp here. It is best to look into that code
+  and make informed decisions based upon what it is doing. It is in
+  any case much better than doing something else!
+
+  Ok, there are three delay histories that are tracked(!!):
+  rtt_hist:
+    This value tracks the ESTIMATED rtt from the other end. It is used
+    in updating the send_quota of a socket. And that is its only use.
+
+  our_hist:
+    This will track *our* delay history towards the other end. It is
+    used by us to track the delay history over time.
+
+    Our delay is used when considering the LEDBAT congestion control.
+
+  their_hist:
+    This will be used to track the delay in their direction. That is,
+    we use it to record the delay they are having towards our end. We
+    will only be using this for clock skew locally.
+** DONE Track rtt_hist
+** DONE Track our_hist
+   Build the code that enables us to track our_hist
+** DONE Track their hist
+   Their hist is needed to carry out some shifts later, but they are
+   not that important in the beginning.
+
+* DONE Handle timeout bumping:
+  ``Every time a socket sends or receives a packet, it updates its
+  timeout counter. If no packet has arrived within timeout number of
+  milliseconds from the last timeout counter reset, the socket
+  triggers a timeout. It will set its packet_size and max_window to
+  the smallest packet size (150 bytes). This allows it to send one
+  more packet, and this is how the socket gets started again if the
+  window size goes down to zero.''
+
+  This is a *bumping* and not a setting of the timeout
+  counter. Whenever something happens on the line, we bump the
+  timeout. If nothing has happened and timeout trigger, we can decide
+  what to do in that event. If there is outstanding data, we should
+  resend it. If there is *no* outstanding data, we need to decide what
+  to do.
+
+  Don't trust the *BEP 29* doc here,
+  *THE SPEC IS LYING ITS ASS OFF*
+** DONE Check that we bump the counter on incoming packet activity
+   This is whenever ack_packet gets called.
+** DONE Check that we bump the counter on outgoing packet activity
+   This is whenever we write a packet to the outgoing socket
+** DONE Make sure we only trigger the timeot on packets in flight
+   We currently use some code to keep track if we should set the
+   timeout or not. Perhaps we should just trigger and then handle it
+   by ignoring the timeout when set. This is a way easier path to take
+   rather than keeping track of if the timeout should be set or not.
+
+   On the other hand, the rules could be fairly simple. Only ACKs can
+   potentially close the inflight window and if we send off a packet
+   we *must* have opened the window.
+
+   Yeah, any sent packet *MUST* open the window. And the only way to
+   close the window is to do the obvious thing when all packets have
+   been ACK'ed. So this works.
+** DONE Consider the zero-window.
+   We have a separate zerowin timer in our code base. We could decide
+   not to have this, but rather have everything on the timeout
+   counter. Also, check if the 150 packet size point is correct or
+   wrong compared to the source code.
+
+   *THIS PIECE IS WRONG IN THE BEP DOC!*
+*** DONE libutp, zerowindow motherfucker, do you speak it?
+    libutp *DOES* have zero windows!
+    libutp *DOES* use 350 byte packets, not 150 bytes packet
 * TODO Even though the test case says OK! there might be bad things
   So we should go through the test cases a bit and see what
   happens. Waiting a bit in the end of test case to see if something
@@ -1240,90 +1325,15 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   the belief is that when you accept a connection, you know what is
   going to happen in the other end. This is only doable if we run the
   same test in parallel.
-* DONE Make sure we are sampling the right kind of LEDBAT sample
-  What is the sample we should use for LEDBAT? Is it the TSDiff we get
-  from the other end, or is it the estimate we calculate in the round
-  trip time? In other words, what is the right value to use here? We
-  have several available, so make sure we select the right one.
-
-  Look at the code in libutp here. It is best to look into that code
-  and make informed decisions based upon what it is doing. It is in
-  any case much better than doing something else!
-
-  Ok, there are three delay histories that are tracked(!!):
-  rtt_hist:
-    This value tracks the ESTIMATED rtt from the other end. It is used
-    in updating the send_quota of a socket. And that is its only use.
-
-  our_hist:
-    This will track *our* delay history towards the other end. It is
-    used by us to track the delay history over time.
-
-    Our delay is used when considering the LEDBAT congestion control.
-
-  their_hist:
-    This will be used to track the delay in their direction. That is,
-    we use it to record the delay they are having towards our end. We
-    will only be using this for clock skew locally.
-** DONE Track rtt_hist
-** DONE Track our_hist
-   Build the code that enables us to track our_hist
-** DONE Track their hist
-   Their hist is needed to carry out some shifts later, but they are
-   not that important in the beginning.
-
 * TODO Try to eliminate lifted types
   The uTP code has a lot of "lifts" of the form none | elem() for some
   element elem. Try to get rid of them by instating good defaults and
   use the defaults where needed. This simplifies the code paths quite
   a lot.
 * Packet size control
-* Handle timeout bumping:
-  ``Every time a socket sends or receives a packet, it updates its
-  timeout counter. If no packet has arrived within timeout number of
-  milliseconds from the last timeout counter reset, the socket
-  triggers a timeout. It will set its packet_size and max_window to
-  the smallest packet size (150 bytes). This allows it to send one
-  more packet, and this is how the socket gets started again if the
-  window size goes down to zero.''
-
-  This is a *bumping* and not a setting of the timeout
-  counter. Whenever something happens on the line, we bump the
-  timeout. If nothing has happened and timeout trigger, we can decide
-  what to do in that event. If there is outstanding data, we should
-  resend it. If there is *no* outstanding data, we need to decide what
-  to do.
-
-  Don't trust the *BEP 29* doc here,
-  *THE SPEC IS LYING ITS ASS OFF*
-** TODO Check that we bump the counter on incoming packet activity
-** TODO Check that we bump the counter on outgoing packet activity
-** DONE Consider the zero-window.
-   We have a separate zerowin timer in our code base. We could decide
-   not to have this, but rather have everything on the timeout
-   counter. Also, check if the 150 packet size point is correct or
-   wrong compared to the source code.
-
-   *THIS PIECE IS WRONG IN THE BEP DOC!*
-*** DONE libutp, zerowindow motherfucker, do you speak it?
-    libutp *DOES* have zero windows!
-    libutp *DOES* use 350 byte packets, not 150 bytes packet
-* Loss Congestion control
-  Use packet loss as the congestion control mechanism.
-
-  This is partially done. Retransmission loss is currently done as per
-  the protocol spec.
-
-  We still need to handle duplicate ACK loss, but it better wait till
-  we have Selective ACK (SACK) support.
-* DONE Congestion window code
-  Hinges on RTT Measurement. I think this will solve itself more or
-  less when we focus on getting LEDBAT to work correctly.
-
-  DON'T START THIS BEFORE RTT MEASUREMENT IS THERE.
-
-  There is no reason to attempt starting this before the RTT
-  measurement parts are written down.
+* TODO When we move to CS_GOT_FIN, set RTO
+  The rto should be set to min(rto*3, 60). This sounds a bit wrong
+  perhaps.
 * Implement Delayed ACKs
   Fairly easily done. You simply count how many bytes we have ACKed
   since last and set a timer. Whenever the timer triggers, or we go
@@ -1364,6 +1374,14 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   How do we decay the window?
     With the already implemented window decaying routine.
 
+* Loss Congestion control
+  Use packet loss as the congestion control mechanism.
+
+  This is partially done. Retransmission loss is currently done as per
+  the protocol spec.
+
+  We still need to handle duplicate ACK loss, but it better wait till
+  we have Selective ACK (SACK) support.
 * Nagle code
   Nagling is fairly easy to do. When there is less than a packet to
   send out, we simply say: "No, won't send" and set a nagle timer. If
@@ -1488,6 +1506,11 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
 
   Only do this if we suspect there is an error due to a missed
   timeout. Currently there does not seem to be one.
+
+
+
+
+
 
 
 

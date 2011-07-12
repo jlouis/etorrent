@@ -376,8 +376,7 @@ contains_st_fin([#pkt_wrap {
 contains_st_fin([_ | R]) ->
     contains_st_fin(R).
 
-view_ack_state(0, _PB) ->
-    [];
+view_ack_state(0, _PB) -> [];
 view_ack_state(N, PB) when is_integer(N) ->
     case has_inflight_data(PB) of
         true ->
@@ -539,7 +538,7 @@ fill_window(Network, ProcQueue, PktBuf) ->
                  true ->
                      [no_piggyback];
                  false ->
-                     []
+                     [sent_data]
              end,
     {Result ++ MaxOut, NBuf1, NProcQueue}.
 
