@@ -1331,7 +1331,7 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   use the defaults where needed. This simplifies the code paths quite
   a lot.
 * Packet size control
-* TODO When we move to CS_GOT_FIN, set RTO
+* DONE When we move to CS_GOT_FIN, set RTO
   The rto should be set to min(rto*3, 60). This sounds a bit wrong
   perhaps.
 * Implement Delayed ACKs
