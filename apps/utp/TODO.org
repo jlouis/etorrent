@@ -1284,6 +1284,25 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
 *** DONE libutp, zerowindow motherfucker, do you speak it?
     libutp *DOES* have zero windows!
     libutp *DOES* use 350 byte packets, not 150 bytes packet
+* DONE When we move to CS_GOT_FIN, set RTO
+  The rto should be set to min(rto*3, 60). This sounds a bit wrong
+  perhaps.
+* TODO Implement Delayed ACKs
+  Fairly easily done. You simply count how many bytes we have ACKed
+  since last and set a timer. Whenever the timer triggers, or we go
+  above the ACKED_BYTES threshold, we send out an ACK. Piggybacking
+  will reset this if it happens.
+** Delayed ACKS - Make sure we immediately ack the FIN packet. Don't delay him!
+   Easy right now, but keep this as it is important when you
+   introduce delayed ACKs.
+
+   In a delayed ACK world, we ought to do something about the FIN
+   packet and ACK it right away. Otherwise it will wait until the delay
+   trigger is tripped and that will take some time.
+** List of states that should periodically send out ACKs
+   CONNECTED, DESTROY_DELAY, GOT_FIN, FIN_SENT
+
+* Implement KEEP ALIVES
 * TODO Even though the test case says OK! there might be bad things
   So we should go through the test cases a bit and see what
   happens. Waiting a bit in the end of test case to see if something
@@ -1330,25 +1349,6 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   element elem. Try to get rid of them by instating good defaults and
   use the defaults where needed. This simplifies the code paths quite
   a lot.
-* Packet size control
-* DONE When we move to CS_GOT_FIN, set RTO
-  The rto should be set to min(rto*3, 60). This sounds a bit wrong
-  perhaps.
-* Implement Delayed ACKs
-  Fairly easily done. You simply count how many bytes we have ACKed
-  since last and set a timer. Whenever the timer triggers, or we go
-  above the ACKED_BYTES threshold, we send out an ACK. Piggybacking
-  will reset this if it happens.
-** Delayed ACKS - Make sure we immediately ack the FIN packet. Don't delay him!
-  Easy right now, but keep this as it is important when you
-  introduce delayed ACKs.
-
-  In a delayed ACK world, we ought to do something about the FIN
-  packet and ACK it right away. Otherwise it will wait until the delay
-  trigger is tripped and that will take some time.
-
-** List of states that should periodically send out ACKs
-   CONNECTED, DESTROY_DELAY, GOT_FIN, FIN_SENT
 * SACK support
   SACK support has two directions
 ** SACK in the send direction
@@ -1521,3 +1521,12 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
 
 
 
+* Packet size control
+  How does this code handle packet sizes? Whenever it needs a packet
+  size, it calls get_packet_size() which essentially either returns a
+  standard packet or if DYNAMIC_PACKET_SIZE_ENABLED is set a dynamic
+  packet size.
+
+  It looks there is no dynamic packet size control by default. Hence
+  we postpone this problem till later when we know something more
+  about it.

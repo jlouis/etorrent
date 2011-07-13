@@ -105,7 +105,7 @@
                  connector    :: {{reference(), pid()}, [{pkt, #packet{}, term()}]},
                  zerowindow_timeout :: undefined | {set, reference()},
                  retransmit_timeout :: undefined | {set, reference()},
-
+                 delayed_ack_timeout :: undefined | {set, integer(), reference()},
                  options = [] :: [{atom(), term()}]
                }).
 
@@ -275,7 +275,7 @@ connected({pkt, Pkt, {TS, TSDiff, RecvTime}},
                    network = Network } = State) ->
     ?DEBUG([node(), incoming_pkt, connected, utp_proto:format_pkt(Pkt)]),
 
-    {ok, Messages, N_Network, N_PB, N_PRI, ZWinTimeout} =
+    {ok, Messages, N_Network, N_PB, N_PRI, ZWinTimeout, N_DelayAck} =
         handle_packet_incoming(connected,
                                Pkt, utp_util:bit32(TS - RecvTime), RecvTime, TSDiff, State),
 
@@ -295,6 +295,7 @@ connected({pkt, Pkt, {TS, TSDiff, RecvTime}},
                    network = N_Network,
                    retransmit_timeout = N_RetransTimer,
                    zerowindow_timeout = ZWinTimeout,
+                   delayed_ack_timeout = N_DelayAck,
                    proc_info = N_PRI }};
 connected(close, #state { network = Network,
                           retransmit_timeout = RTimer,
@@ -309,6 +310,15 @@ connected({timeout, _, ledbat_timeout},
     N_Network = bump_ledbat(Network),
     {next_state, connected,
      State#state { network = N_Network}};
+connected({timeout, Ref, send_delayed_ack},
+          #state {
+            pkt_buf = PktBuf,
+            network = Network,
+            delayed_ack_timeout = {set, _, Ref}
+           } = State) ->
+    N_Timer = utp_pkt:trigger_delayed_ack(Network, PktBuf),
+    {next_state, connected,
+     State#state { delayed_ack_timeout = N_Timer }};
 connected({timeout, Ref, {zerowindow_timeout, _N}},
           #state {
             pkt_buf = PktBuf,
@@ -408,7 +418,7 @@ fin_sent({pkt, Pkt, {TS, TSDiff, RecvTime}},
                  } = State) ->
     ?DEBUG([node(), incoming_pkt, fin_sent, utp_proto:format_pkt(Pkt)]),
 
-    {ok, Messages, N_Network, N_PB, N_PRI, ZWinTimeout} =
+    {ok, Messages, N_Network, N_PB, N_PRI, ZWinTimeout, N_DelayAck} =
         handle_packet_incoming(fin_sent,
                                Pkt, utp_util:bit32(TS - RecvTime), RecvTime, TSDiff, State),
     N_RetransTimer = handle_retransmit_timer(Messages, N_Network, RetransTimer),
@@ -419,6 +429,7 @@ fin_sent({pkt, Pkt, {TS, TSDiff, RecvTime}},
                 network = N_Network,
                 retransmit_timeout = N_RetransTimer,
                 zerowindow_timeout = ZWinTimeout,
+                delayed_ack_timeout = N_DelayAck,
                 proc_info = N_PRI },
     case proplists:get_value(fin_sent_acked, Messages) of
         true ->
@@ -436,7 +447,15 @@ fin_sent({timeout, _, ledbat_timeout},
     N_Network = bump_ledbat(NW),
     {next_state, fin_sent,
      State#state { network = N_Network }};
-
+fin_sent({timeout, Ref, send_delayed_ack},
+          #state {
+            pkt_buf = PktBuf,
+            network = Network,
+            delayed_ack_timeout = {set, _, Ref}
+           } = State) ->
+    N_Timer = utp_pkt:trigger_delayed_ack(Network, PktBuf),
+    {next_state, fin_sent,
+     State#state { delayed_ack_timeout = N_Timer }};
 fin_sent({timeout, Ref, {retransmit_timeout, N}},
          #state { pkt_buf = PacketBuf,
                   network = Network,
@@ -528,18 +547,20 @@ idle(_Msg, _From, State) ->
 %% @private
 connected({recv, Length}, From, #state { proc_info = PI,
                                          network = Network,
+                                         delayed_ack_timeout = DelayAckT,
                                          pkt_buf   = PKB } = State) ->
     PI1 = utp_process:enqueue_receiver(From, Length, PI),
     case satisfy_recvs(PI1, PKB) of
         {_, N_PRI, N_PKB} ->
-            case view_zerowindow_reopen(PKB, N_PKB) of
-                true ->
-                    utp_pkt:handle_send_ack(Network, N_PKB, [send_ack, no_piggyback]),
-                    ignore;
-                false ->
-                    ignore
-            end,
+            N_Delay = case view_zerowindow_reopen(PKB, N_PKB) of
+                          true ->
+                              utp_pkt:handle_send_ack(Network, N_PKB, DelayAckT,
+                                                      [send_ack, no_piggyback], 0);
+                          false ->
+                              DelayAckT
+                      end,
             {next_state, connected, State#state { proc_info = N_PRI,
+                                                  delayed_ack_timeout = N_Delay,
                                                   pkt_buf   = N_PKB } }
     end;
 connected({send, Data}, From, #state {
@@ -745,7 +766,8 @@ handle_packet_incoming(FSMState, Pkt, ReplyMicro, TimeAcked, TSDiff,
                        #state { pkt_buf = PB,
                                 proc_info = PRI,
                                 network = Network,
-                                zerowindow_timeout = ZWin
+                                zerowindow_timeout = ZWin,
+                                delayed_ack_timeout = DelayAckT
                              }) ->
     %% Handle the incoming packet
     try
@@ -771,13 +793,25 @@ handle_packet_incoming(FSMState, Pkt, ReplyMicro, TimeAcked, TSDiff,
             %% The trick is to clear the message.
 
             %% Send out an ACK if needed
-            utp_pkt:handle_send_ack(N_Network, N_PB2, Messages ++ FillMessages),
+            AckedBytes = acked_bytes(Messages),
+            N_DelayAckT = utp_pkt:handle_send_ack(N_Network, N_PB2,
+                                                  DelayAckT,
+                                                  Messages ++ FillMessages,
+                                                  AckedBytes),
 
-            {ok, Messages, N_Network, N_PB2, N_PRI2, ZWinTimeout}
+            {ok, Messages, N_Network, N_PB2, N_PRI2, ZWinTimeout, N_DelayAckT}
     catch
         throw:{error, is_far_in_future} ->
             ?DEBUG([old_packet_received]),
             {ok, [], Network, PB, PRI, ZWin}
+    end.
+
+acked_bytes(Messages) ->
+    case proplists:get_value(acked, Messages) of
+        undefined ->
+            0;
+        Acked when is_list(Acked) ->
+            utp_pkt:extract_payload_size(Acked)
     end.
 
 handle_timeout(Ref, N, PacketBuf, Network, {set, Ref} = Timer) ->
