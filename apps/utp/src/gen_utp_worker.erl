@@ -803,7 +803,7 @@ handle_packet_incoming(FSMState, Pkt, ReplyMicro, TimeAcked, TSDiff,
     catch
         throw:{error, is_far_in_future} ->
             ?DEBUG([old_packet_received]),
-            {ok, [], Network, PB, PRI, ZWin}
+            {ok, [], Network, PB, PRI, ZWin, DelayAckT}
     end.
 
 acked_bytes(Messages) ->
