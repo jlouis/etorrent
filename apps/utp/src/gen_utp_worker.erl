@@ -377,21 +377,9 @@ got_fin(_Msg, State) ->
     {next_state, got_fin, State}.
 
 %% @private
-destroy_delay({timeout, Ref, {retransmit_timeout, N}},
-         #state { pkt_buf = PacketBuf,
-                  network = Network,
-                  retransmit_timeout = Timer} = State) ->
-    case handle_timeout(Ref, N, PacketBuf, Network, Timer) of
-        stray ->
-            {next_state, destroy_delay, State};
-        gave_up ->
-            {next_state, destroy, State, 0};
-        {reinstalled, N_Timer, N_PB, N_Network} ->
-            {next_state, destroy, State#state {
-                                    retransmit_timeout = N_Timer,
-                                    network = N_Network,
-                                    pkt_buf = N_PB}, 0}
-    end;
+destroy_delay({timeout, Ref, {retransmit_timeout, _N}},
+         #state { retransmit_timeout = {set, Ref} } = State) ->
+    {next_state, destroy, State#state { retransmit_timeout = undefined }, 0};
 destroy_delay({pkt, #packet { ty = st_fin }, _}, State) ->
     {next_state, destroy_delay, State};
 destroy_delay(close, State) ->
