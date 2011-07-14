@@ -279,17 +279,13 @@ connected({pkt, Pkt, {TS, TSDiff, RecvTime}},
         handle_packet_incoming(connected,
                                Pkt, utp_util:bit32(TS - RecvTime), RecvTime, TSDiff, State),
 
+    N_RetransTimer =  handle_recv_retransmit_timer(Messages, Network, RetransTimer),
 
-    %% Calculate the next state
-    {NextState, N_RetransTimer} =
+    NextState = 
         case proplists:get_value(got_fin, Messages) of
-            true ->
-                {got_fin, handle_retransmit_timer(Messages, Network, RetransTimer)};
-            undefined ->
-                {connected, set_retransmit_timer(
-                              min(utp_network:rto(Network)*3, 60),
-                              RetransTimer)}
-                end,
+            true -> got_fin;
+            undefined -> connected
+        end,
     {next_state, ?TRACE(NextState),
      State#state { pkt_buf = N_PB,
                    network = N_Network,
@@ -301,7 +297,7 @@ connected(close, #state { network = Network,
                           retransmit_timeout = RTimer,
                           pkt_buf = PktBuf } = State) ->
     NPBuf = utp_pkt:send_fin(Network, PktBuf),
-    NRTimer = handle_retransmit_timer([fin_sent], Network, RTimer),
+    NRTimer = handle_recv_retransmit_timer([fin_sent], Network, RTimer),
     {next_state, fin_sent, State#state {
                              retransmit_timeout = NRTimer,
                              pkt_buf = NPBuf } };
@@ -421,7 +417,7 @@ fin_sent({pkt, Pkt, {TS, TSDiff, RecvTime}},
     {ok, Messages, N_Network, N_PB, N_PRI, ZWinTimeout, N_DelayAck} =
         handle_packet_incoming(fin_sent,
                                Pkt, utp_util:bit32(TS - RecvTime), RecvTime, TSDiff, State),
-    N_RetransTimer = handle_retransmit_timer(Messages, N_Network, RetransTimer),
+    N_RetransTimer = handle_recv_retransmit_timer(Messages, N_Network, RetransTimer),
 
     %% Calculate the next state
     N_State = State#state {
@@ -705,7 +701,7 @@ handle_send_retransmit_timer(Messages, Network, RetransTimer) ->
             RetransTimer
     end.
 
-handle_retransmit_timer(Messages, Network, RetransTimer) ->
+handle_recv_retransmit_timer(Messages, Network, RetransTimer) ->
     F = fun(E, Acc) ->
                 case proplists:get_value(E, Messages) of
                     true ->
