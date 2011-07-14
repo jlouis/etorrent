@@ -410,7 +410,7 @@ view_ack_state(0, _PB) -> [];
 view_ack_state(N, PB) when is_integer(N) ->
     case has_inflight_data(PB) of
         true ->
-            [{recv_ack, true}];
+            [{data_inflight, true}];
         false ->
             [{all_acked, true}]
     end.

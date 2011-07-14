@@ -715,7 +715,7 @@ handle_retransmit_timer(Messages, Network, RetransTimer) ->
                 end
         end,
     Analyzer = fun(L) -> lists:foldl(F, false, L) end,
-    case Analyzer([recv_ack, fin_sent, sent_data]) of
+    case Analyzer([data_inflight, fin_sent]) of
         true ->
             set_retransmit_timer(utp_network:rto(Network), RetransTimer);
         false ->
