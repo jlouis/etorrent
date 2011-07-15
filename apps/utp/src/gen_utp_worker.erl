@@ -756,8 +756,6 @@ mk_syn() ->
                extension = ?SYN_EXTS
              }. % Rest are defaults
 
-
-
 handle_packet_incoming(FSMState, Pkt, ReplyMicro, TimeAcked, TSDiff,
                        #state { pkt_buf = PB,
                                 proc_info = PRI,

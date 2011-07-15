@@ -1287,10 +1287,20 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
 * DONE When we move to CS_GOT_FIN, set RTO
   The rto should be set to min(rto*3, 60). This sounds a bit wrong
   perhaps.
-* TODO We trip the RTT estimate assertion
+* DONE We trip the RTT estimate assertion
   The RTT estimate gets WAY WAY too high very quickly. This hints that
   there is some bug in the RTT estimator which we are triggering. We
   need to investigate why this is.
+
+  Send time is in us.
+  Ack time is in us.
+
+  So the RTT is returned in us. This clearly describes what the
+  problem is as our number is 1000 times too big. To fix it, we must
+  understand when and how the utp.cpp divides it down by a factor of
+  1000 somewhere.
+
+  A div by 1000 was missing.
 * TODO When implementing delayed ACKs, investigate timing
   So the timing of the delayed ack packet is such that it will leave
   later than normally. This means we must think about timing of that

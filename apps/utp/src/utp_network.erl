@@ -15,7 +15,6 @@
          mk/2,
 
          update_reply_micro/2,
-         update_round_trip/2,
 
          ack_packet_rtt/3,
          update_rtt_ledbat/2,
@@ -108,10 +107,6 @@ update_window_maxed_out(#network {} = NW) ->
 update_reply_micro(#network { their_ledbat = TL } = SockInfo, RU) ->
     SockInfo#network { reply_micro = RU,
                        their_ledbat = utp_ledbat:add_sample(TL, RU) }.
-
-update_round_trip(V, #network { round_trip = RTT } = NW) ->
-    N_RTT = utp_rtt:update(V, RTT),
-    NW#network { round_trip = N_RTT }.
 
 handle_advertised_window(Network, #packet { win_sz = Win }) ->
     handle_advertised_window(Network, Win);

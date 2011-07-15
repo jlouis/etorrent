@@ -1,7 +1,6 @@
 -module(utp_rtt).
 
 -export([
-         update/2,
          rto/1,
          ack_packet/4
         ]).
@@ -56,7 +55,7 @@ rto(#rtt { rtt = RTT, var = Var}) ->
 %% ACKnowledge an incoming packet
 ack_packet(History, RTT, TimeSent, TimeAcked) ->
     true = TimeAcked >= TimeSent,
-    Estimate = TimeAcked - TimeSent,
+    Estimate = utp_util:bit32(TimeAcked - TimeSent) div 1000,
 
     NewRTT = update(Estimate, RTT),
     NewHistory = case RTT of
