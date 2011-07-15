@@ -175,13 +175,19 @@ handle_send_ack(Network, PktBuf, DelayAck, Messages, AckedBytes) ->
             %% Ack structure at all.
             DelayAck;
         true ->
-            case proplists:get_value(no_piggyback, Messages) of
+            case proplists:get_value(got_fin, Messages) of
                 true ->
-                    handle_delayed_ack(DelayAck, AckedBytes, Network, PktBuf);
+                    send_ack(Network, PktBuf),
+                    cancel_delayed_ack(DelayAck);
                 undefined ->
-                    %% The requested ACK is already sent as a piggyback on
-                    %% top of a data message. There is no reason to resend it.
-                    cancel_delayed_ack(DelayAck)
+                    case proplists:get_value(no_piggyback, Messages) of
+                        true ->
+                            handle_delayed_ack(DelayAck, AckedBytes, Network, PktBuf);
+                        undefined ->
+                            %% The requested ACK is already sent as a piggyback on
+                            %% top of a data message. There is no reason to resend it.
+                            cancel_delayed_ack(DelayAck)
+                    end
             end
     end.
 
