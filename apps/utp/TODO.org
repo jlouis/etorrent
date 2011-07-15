@@ -1324,7 +1324,10 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
    packet and ACK it right away. Otherwise it will wait until the delay
    trigger is tripped and that will take some time.
 ** List of states that should periodically send out ACKs
-   CONNECTED, DESTROY_DELAY, GOT_FIN, FIN_SENT
+   CONNECTED, FIN_SENT - Obvious as they are actually working like we
+   expect them to.
+
+   DESTROY_DELAY, GOT_FIN - More interesting!
 * TODO Make code which allows us to graph various counters on a running system
   We need to be able to graph the output over time. I think we should
   look into and use the "folsom" application for this as it would an

@@ -676,12 +676,10 @@ set_retransmit_timer(N, Timer) ->
 
 set_retransmit_timer(N, K, undefined) ->
     Ref = gen_fsm:start_timer(N, {retransmit_timeout, K}),
-    ?DEBUG([node(), setting_retransmit_timer]),
     {set, Ref};
 set_retransmit_timer(N, K, {set, Ref}) ->
     gen_fsm:cancel_timer(Ref),
     N_Ref = gen_fsm:start_timer(N, {retransmit_timeout, K}),
-    ?DEBUG([node(), setting_retransmit_timer]),
     {set, N_Ref}.
 
 clear_retransmit_timer(undefined) ->
@@ -886,7 +884,6 @@ view_zerowindow_reopen(Old, New) ->
     N == 0 andalso K > 1000. % Only open up the window when we have processed a considerable amount
 
 set_ledbat_timer() ->
-    error_logger:info_report([self(), setting_ledbat_timer]),
     gen_fsm:start_timer(timer:seconds(60), ledbat_timeout).
 
 update_window(Network, ReplyMicro, TimeAcked, Messages, TSDiff, Pkt) ->
