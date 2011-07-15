@@ -1301,8 +1301,8 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   1000 somewhere.
 
   A div by 1000 was missing.
-* TODO When implementing delayed ACKs, investigate timing
-  So the timing of the delayed ack packet is such that it will leave
+* DONE When implementing delayed ACKs, investigate timing
+  So the timing of the delayed ACK packet is such that it will leave
   later than normally. This means we must think about timing of that
   packet. It will leave later, so it should be stamped in at a later
   time. Since the receiver sees the packet with a 100ms delay, he will
@@ -1311,21 +1311,25 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   We need to look into what the code is doing here in the uTP de-facto
   implementation. When the speed on the line is high, it is no
   trouble. But it does become troubling when the speed is low.
-* TODO Implement Delayed ACKs
+
+  The code does nothing! Ok, so we will currently do nothing!
+* DONE Implement Delayed ACKs
   Fairly easily done. You simply count how many bytes we have ACKed
   since last and set a timer. Whenever the timer triggers, or we go
   above the ACKED_BYTES threshold, we send out an ACK. Piggybacking
   will reset this if it happens.
-** Delayed ACKS - Make sure we immediately ack the FIN packet. Don't delay him!
+** DONE Basic delayed ACK implementation
+** DONE Delayed ACKs - Make sure we immediately ack the FIN packet. Don't delay him!
    Easy right now, but keep this as it is important when you
    introduce delayed ACKs.
 
    In a delayed ACK world, we ought to do something about the FIN
    packet and ACK it right away. Otherwise it will wait until the delay
    trigger is tripped and that will take some time.
-** List of states that should periodically send out ACKs
+** DONE List of states that should periodically send out ACKs
    CONNECTED, FIN_SENT - Obvious as they are actually working like we
-   expect them to.
+   expect them to. These ought to work as expected and send out
+   delayed ACK messages.
 
    DESTROY_DELAY, GOT_FIN - More interesting!
 * TODO Make code which allows us to graph various counters on a running system
@@ -1335,7 +1339,7 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   it. Essentially, we need something we can look at and then go "Oh,
   this is just WRONG!". We prefer a simple CSV-like output so it can
   be plotted in R.
-* Implement KEEP ALIVES
+* Implement KEEP ALIVE
 * TODO Even though the test case says OK! there might be bad things
   So we should go through the test cases a bit and see what
   happens. Waiting a bit in the end of test case to see if something

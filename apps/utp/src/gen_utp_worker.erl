@@ -367,6 +367,15 @@ got_fin({timeout, Ref, {retransmit_timeout, N}},
                                                 network = N_Network,
                                                 pkt_buf = N_PB }}
     end;
+got_fin({timeout, Ref, send_delayed_ack},
+        #state {
+          pkt_buf = PktBuf,
+          network = Network,
+          delayed_ack_timeout = {set, _, Ref}
+         } = State) ->
+    N_Timer = utp_pkt:trigger_delayed_ack(Network, PktBuf),
+    {next_state, got_fin,
+     State#state { delayed_ack_timeout = N_Timer }};
 got_fin({pkt, #packet { ty = st_state }, _}, State) ->
     %% State packets incoming can be ignored. Why? Because state packets from the other
     %% end doesn't matter at this point: We got the FIN completed, so we can't send or receive
@@ -386,6 +395,15 @@ got_fin(_Msg, State) ->
 destroy_delay({timeout, Ref, {retransmit_timeout, _N}},
          #state { retransmit_timeout = {set, Ref} } = State) ->
     {next_state, destroy, State#state { retransmit_timeout = undefined }, 0};
+destroy_delay({timeout, Ref, send_delayed_ack},
+              #state {
+                pkt_buf = PktBuf,
+                network = Network,
+                delayed_ack_timeout = {set, _, Ref}
+               } = State) ->
+    N_Timer = utp_pkt:trigger_delayed_ack(Network, PktBuf),
+    {next_state, destroy_delay,
+     State#state { delayed_ack_timeout = N_Timer }};
 destroy_delay({pkt, #packet { ty = st_fin }, _}, State) ->
     {next_state, destroy_delay, State};
 destroy_delay(close, State) ->
