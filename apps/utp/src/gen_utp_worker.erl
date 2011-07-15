@@ -786,10 +786,7 @@ handle_packet_incoming(FSMState, Pkt, ReplyMicro, TimeAcked, TSDiff,
         {ok, N_PB1, N_Network3, Messages} ->
 
             N_Network2 = update_window(N_Network3, ReplyMicro, TimeAcked, Messages, TSDiff, Pkt),
-            
-            ?DEBUG([node(), messages, Messages]),
             %% The packet may bump the advertised window from the peer, update
-            
             %% The incoming datagram may have payload we can deliver to an application
             {_Drainage, N_PRI, N_PB} = satisfy_recvs(PRI, N_PB1),
             
