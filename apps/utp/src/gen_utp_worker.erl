@@ -163,9 +163,9 @@ sync_send_event(Pid, Event) ->
 init([Socket, Addr, Port, Options]) ->
     case validate_options(Options) of
         ok ->
-            PktBuf   = utp_pkt:mk(?DEFAULT_OPT_RECV_SZ),
+            PktBuf   = utp_buffer:mk(?DEFAULT_OPT_RECV_SZ),
             ProcInfo = utp_process:mk(),
-            CanonAddr = canonicalize_address(Addr),
+            CanonAddr = utp_util:canonicalize_address(Addr),
             SockInfo = utp_socket:mk(CanonAddr, Options, Port, Socket),
             Network  = utp_network:mk(?DEFAULT_PACKET_SIZE, SockInfo),
             {ok, idle, #state{ network = Network,
@@ -216,7 +216,7 @@ syn_sent({pkt, #packet { ty = st_state,
     {next_state, connected,
      State#state { network = utp_network:update_reply_micro(N_Network, ReplyMicro),
                    retransmit_timeout = clear_retransmit_timer(RTimeout),
-                   pkt_buf = utp_pkt:init_ackno(PktBuf, utp_util:bit16(PktSeqNo+1))}};
+                  pkt_buf = utp_buffer:init_ackno(PktBuf, utp_util:bit16(PktSeqNo + 1))}};
 syn_sent({pkt, _Packet, _Timing} = Pkt,
          #state { connector = {From, Packets}} = State) ->
     {next_state, syn_sent,
@@ -245,7 +245,7 @@ syn_sent({timeout, TRef, {retransmit_timeout, N}},
         false ->
             % Resend packet
             SynPacket = mk_syn(),
-            Win = utp_pkt:advertised_window(PktBuf),
+            Win = utp_buffer:advertised_window(PktBuf),
             {ok, _} = utp_network:send_pkt(Win, Network, SynPacket, conn_id_recv),
             ?DEBUG([syn_packet_resent]),
             {next_state, syn_sent,
@@ -296,7 +296,7 @@ connected({pkt, Pkt, {TS, TSDiff, RecvTime}},
 connected(close, #state { network = Network,
                           retransmit_timeout = RTimer,
                           pkt_buf = PktBuf } = State) ->
-    NPBuf = utp_pkt:send_fin(Network, PktBuf),
+    NPBuf = utp_buffer:send_fin(Network, PktBuf),
     NRTimer = handle_recv_retransmit_timer([fin_sent], Network, RTimer),
     {next_state, fin_sent, State#state {
                              retransmit_timeout = NRTimer,
@@ -519,13 +519,13 @@ idle(connect,
     N_Network = utp_network:set_conn_id(ConnIdSend, Network),
 
     SynPacket = mk_syn(),
-    Win = utp_pkt:advertised_window(PktBuf),
+    Win = utp_buffer:advertised_window(PktBuf),
     {ok, _} = utp_network:send_pkt(Win, N_Network, SynPacket, conn_id_recv),
     {next_state, syn_sent,
      State#state { network = N_Network,
                    retransmit_timeout = set_retransmit_timer(?SYN_TIMEOUT, undefined),
-                   pkt_buf     = utp_pkt:init_seqno(PktBuf, 2),
-                   connector = {From, []} }};
+                  pkt_buf     = utp_buffer:init_seqno(PktBuf, 2),
+                  connector = {From, []}}};
 idle({accept, SYN}, _From, #state { network = Network,
                                     options = Options,
                                     pkt_buf   = PktBuf } = State) ->
@@ -533,7 +533,7 @@ idle({accept, SYN}, _From, #state { network = Network,
     N_Network = utp_network:set_conn_id(Conn_id_send, Network),
 
     SeqNo = case proplists:get_value(force_seq_no, Options) of
-                undefined -> utp_pkt:mk_random_seq_no();
+                undefined -> utp_buffer:mk_random_seq_no();
                 K -> K
             end,
     AckNo = SYN#packet.seq_no,
@@ -544,16 +544,16 @@ idle({accept, SYN}, _From, #state { network = Network,
 			  ack_no = AckNo,
 			  extension = ?SYN_EXTS
 			},
-    Win = utp_pkt:advertised_window(PktBuf),
+    Win = utp_buffer:advertised_window(PktBuf),
     {ok, _} = utp_network:send_pkt(Win, N_Network, AckPacket),
     %% @todo retransmit timer here?
     set_ledbat_timer(),
     {reply, ok, connected,
             State#state { network = utp_network:handle_advertised_window(N_Network, SYN),
-                          pkt_buf = utp_pkt:init_ackno(
-                                      utp_pkt:init_seqno(PktBuf,
-                                                         utp_util:bit16(SeqNo + 1)),
-                                                         utp_util:bit16(AckNo + 1))}};
+                         pkt_buf = utp_buffer:init_ackno(
+                                        utp_buffer:init_seqno(PktBuf,
+                                                              utp_util:bit16(SeqNo + 1)),
+                                                           utp_util:bit16(AckNo + 1))}};
 
 idle(_Msg, _From, State) ->
     {reply, idle, {error, enotconn}, State}.
@@ -664,13 +664,13 @@ satisfy_buffer(From, 0, Res, Buffer) ->
     reply(From, {ok, Res}),
     {ok, Buffer};
 satisfy_buffer(From, Length, Res, Buffer) ->
-    case utp_pkt:buffer_dequeue(Buffer) of
+    case utp_buffer:buffer_dequeue(Buffer) of
 	{ok, Bin, N_Buffer} when byte_size(Bin) =< Length ->
 	    satisfy_buffer(From, Length - byte_size(Bin), <<Res/binary, Bin/binary>>, N_Buffer);
 	{ok, Bin, N_Buffer} when byte_size(Bin) > Length ->
 	    <<Cut:Length/binary, Rest/binary>> = Bin,
 	    satisfy_buffer(From, 0, <<Res/binary, Cut/binary>>,
-			   utp_pkt:buffer_putback(Rest, N_Buffer));
+			   utp_buffer:buffer_putback(Rest, N_Buffer));
 	empty ->
 	    {rb_drained, From, Length, Res, Buffer}
     end.
@@ -741,9 +741,9 @@ handle_recv_retransmit_timer(Messages, Network, RetransTimer) ->
 
 fill_window(Network, ProcessInfo, PktBuffer, ZWinTimer) ->
     {Messages, N_PktBuffer, N_ProcessInfo} =
-        utp_pkt:fill_window(Network,
-                            ProcessInfo,
-                            PktBuffer),
+        utp_buffer:fill_window(Network,
+                               ProcessInfo,
+                               PktBuffer),
     %% Capture and handle the case where the other end has given up in
     %% the space department of its receive buffer.
     case utp_network:view_zero_window(Network) of
@@ -781,11 +781,11 @@ handle_packet_incoming(FSMState, Pkt, ReplyMicro, TimeAcked, TSDiff,
                              }) ->
     %% Handle the incoming packet
     try
-        utp_pkt:handle_packet(FSMState, Pkt, Network, PB)
+        utp_buffer:handle_packet(FSMState, Pkt, Network, PB)
     of
         {ok, N_PB1, N_Network3, Messages} ->
 
-            N_Network2 = update_window(N_Network3, ReplyMicro, TimeAcked, Messages, TSDiff, Pkt),
+            N_Network2 = utp_network:update_window(N_Network3, ReplyMicro, TimeAcked, Messages, TSDiff, Pkt),
             %% The packet may bump the advertised window from the peer, update
             %% The incoming datagram may have payload we can deliver to an application
             {_Drainage, N_PRI, N_PB} = satisfy_recvs(PRI, N_PB1),
@@ -818,7 +818,7 @@ acked_bytes(Messages) ->
         undefined ->
             0;
         Acked when is_list(Acked) ->
-            utp_pkt:extract_payload_size(Acked)
+            utp_buffer:extract_payload_size(Acked)
     end.
 
 handle_timeout(Ref, N, PacketBuf, Network, {set, Ref} = Timer) ->
@@ -827,21 +827,13 @@ handle_timeout(Ref, N, PacketBuf, Network, {set, Ref} = Timer) ->
             gave_up;
         false ->
             N_Timer = set_retransmit_timer(N*2, Timer),
-            N_PB = utp_pkt:retransmit_packet(PacketBuf, Network),
+            N_PB = utp_buffer:retransmit_packet(PacketBuf, Network),
             N_Network = utp_network:reset_window(Network),
             {reinstalled, N_Timer, N_PB, N_Network}
     end;
 handle_timeout(_Ref, _N, _PacketBuf, _Network, _Timer) ->
     ?ERR([stray_retransmit_timer, _Ref, _N, _Timer]),
     stray.
-
-%% ----------------------------------------------------------------------
-
-canonicalize_address(S) when is_list(S) ->
-    {ok, CAddr} = inet:getaddr(S, inet),
-    CAddr;
-canonicalize_address({_, _, _, _} = Addr) ->
-    Addr.
 
 error_all(ProcessInfo, ErrorReason) ->
     F = fun(From) ->
@@ -874,12 +866,12 @@ validate_options(_) ->
     badarg.
 
 draining_receive(L, PktBuf) ->
-    case utp_pkt:buffer_dequeue(PktBuf) of
+    case utp_buffer:buffer_dequeue(PktBuf) of
         empty ->
             empty;
         {ok, Bin, N_Buffer} when byte_size(Bin) > L ->
             <<Cut:L/binary, Rest/binary>> = Bin,
-            {ok, Cut, utp_pkt:buffer_putback(Rest, N_Buffer)};
+            {ok, Cut, utp_buffer:buffer_putback(Rest, N_Buffer)};
         {ok, Bin, N_Buffer} when byte_size(Bin) == L ->
             {ok, Bin, N_Buffer};
         {ok, Bin, N_Buffer} when byte_size(Bin) < L ->
@@ -894,36 +886,12 @@ draining_receive(L, PktBuf) ->
     end.
 
 view_zerowindow_reopen(Old, New) ->
-    N = utp_pkt:advertised_window(Old),
-    K = utp_pkt:advertised_window(New),
+    N = utp_buffer:advertised_window(Old),
+    K = utp_buffer:advertised_window(New),
     N == 0 andalso K > 1000. % Only open up the window when we have processed a considerable amount
 
 set_ledbat_timer() ->
     gen_fsm:start_timer(timer:seconds(60), ledbat_timeout).
-
-update_window(Network, ReplyMicro, TimeAcked, Messages, TSDiff, Pkt) ->
-    N6 = utp_network:update_reply_micro(Network, ReplyMicro),
-    N5 = utp_network:handle_clock_skew(
-           Network, % Deliberately the old delay base
-           N6),
-    N4 = utp_network:update_our_ledbat(N5, TSDiff),
-    N3 = utp_network:handle_estimate_exceed(N4),
-    N2 = utp_network:handle_advertised_window(N3, Pkt),
-    case proplists:get_value(acked, Messages) of
-        undefined ->
-            N2;
-        Packets when is_list(Packets) ->
-            Eligible = utp_pkt:extract_rtt(Packets),
-            N = lists:foldl(fun(TimeSent, Acc) ->
-                                    utp_network:ack_packet_rtt(Acc,
-                                                               TimeSent,
-                                                               TimeAcked)
-                            end,
-                            N2,
-                            Eligible),
-            BytesAcked = utp_pkt:extract_payload_size(Packets),
-            utp_network:congestion_control(N, BytesAcked)           
-    end.
 
 
 bump_ledbat(Network) ->
@@ -932,7 +900,7 @@ bump_ledbat(Network) ->
     N_Network.
     
 trigger_delayed_ack(Network, PktBuf) ->
-    utp_pkt:send_ack(Network, PktBuf),
+    utp_buffer:send_ack(Network, PktBuf),
     undefined.
 
 cancel_delayed_ack(undefined) ->
@@ -943,14 +911,14 @@ cancel_delayed_ack({set, _Count, Ref}) ->
 
 handle_delayed_ack(undefined, AckedBytes, Network, PktBuf)
   when AckedBytes >= ?DELAYED_ACK_BYTE_THRESHOLD ->
-    utp_pkt:send_ack(Network, PktBuf),
+    utp_buffer:send_ack(Network, PktBuf),
     undefined;
 handle_delayed_ack(undefined, AckedBytes, _Network, _PktBuf) ->
     Ref = gen_fsm:start_timer(?DELAYED_ACK_TIME_THRESHOLD, send_delayed_ack),
     {set, AckedBytes, Ref};
 handle_delayed_ack({set, ByteCount, _Ref} = DelayAck, AckedBytes, Network, PktBuf)
   when ByteCount+AckedBytes >= ?DELAYED_ACK_BYTE_THRESHOLD ->
-    utp_pkt:send_ack(Network, PktBuf),
+    utp_buffer:send_ack(Network, PktBuf),
     cancel_delayed_ack(DelayAck);
 handle_delayed_ack({set, ByteCount, Ref}, AckedBytes, _Network, _PktBuf) ->
     {set, ByteCount+AckedBytes, Ref}.
@@ -966,7 +934,7 @@ handle_send_ack(Network, PktBuf, DelayAck, Messages, AckedBytes) ->
         true ->
             case proplists:get_value(got_fin, Messages) of
                 true ->
-                    utp_pkt:send_ack(Network, PktBuf),
+                    utp_buffer:send_ack(Network, PktBuf),
                     cancel_delayed_ack(DelayAck);
                 undefined ->
                     case proplists:get_value(no_piggyback, Messages) of
@@ -979,3 +947,4 @@ handle_send_ack(Network, PktBuf, DelayAck, Messages, AckedBytes) ->
                     end
             end
     end.
+

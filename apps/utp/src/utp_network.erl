@@ -40,6 +40,8 @@
          send_pkt/3, send_pkt/4
         ]).
 
+-export([update_window/6]).
+
 -record(network, {
           %% Static Socket info information
           sock_info :: utp_socket:t(),
@@ -79,7 +81,7 @@
        }).
 
 
--opaque t() :: #network{}.
+-opaque({t,{type,{82,16},record,[{atom,{82,17},network}]},[]}).
 -export_type([t/0]).
 
 -define(INITIAL_CWND, 3000).
@@ -346,3 +348,28 @@ handle_maxed_out_window(Messages, #network {} = NW) ->
 
 
 
+
+
+update_window(Network, ReplyMicro, TimeAcked, Messages, TSDiff, Pkt) ->
+    N6 = update_reply_micro(Network, ReplyMicro),
+    N5 = handle_clock_skew(
+Network,  % Deliberately the old delay base
+N6),
+    N4 = update_our_ledbat(N5, TSDiff),
+    N3 = handle_estimate_exceed(N4),
+    N2 = handle_advertised_window(N3, Pkt),
+    case proplists:get_value(acked, Messages) of
+        undefined ->
+            N2;
+        Packets when is_list(Packets) ->
+            Eligible = utp_buffer:extract_rtt(Packets),
+            N = lists:foldl(fun(TimeSent, Acc) ->
+                                    ack_packet_rtt(Acc,
+                                                   TimeSent,
+                                                   TimeAcked)
+                            end,
+                            N2,
+                            Eligible),
+            BytesAcked = utp_buffer:extract_payload_size(Packets),
+            congestion_control(N, BytesAcked)
+    end.

@@ -1,5 +1,5 @@
 %% @doc Low level packet buffer management.
--module(utp_pkt).
+-module(utp_buffer).
 
 -include("log.hrl").
 -include("utp.hrl").

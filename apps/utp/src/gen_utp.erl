@@ -27,7 +27,7 @@
          incoming_unknown/3]).
 
 -type port_number() :: 0..16#FFFF.
--opaque socket() :: {utp_sock, pid()}.
+-opaque({socket,{type,{30,21},tuple,[{atom,{30,22},utp_sock},{type,{30,32},pid,[]}]},[]}).
 -export_type([socket/0]).
 
 -type listen_opts() :: {backlog, integer()}.
@@ -271,7 +271,7 @@ handle_cast({generate_reset, #packet { conn_id = ConnID,
             #state { socket = Socket } = State) ->
     ?DEBUG([pushback_reset]),
     {ok, _} = utp_socket:send_reset(Socket, Addr, Port, ConnID, SeqNo,
-                                    utp_pkt:mk_random_seq_no()),
+                                    utp_buffer:mk_random_seq_no()),
     {noreply, State};
 handle_cast(_Msg, State) ->
     {noreply, State}.
