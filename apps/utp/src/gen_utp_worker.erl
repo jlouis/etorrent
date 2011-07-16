@@ -312,7 +312,7 @@ connected({timeout, Ref, send_delayed_ack},
             network = Network,
             delayed_ack_timeout = {set, _, Ref}
            } = State) ->
-    N_Timer = utp_pkt:trigger_delayed_ack(Network, PktBuf),
+    N_Timer = trigger_delayed_ack(Network, PktBuf),
     {next_state, connected,
      State#state { delayed_ack_timeout = N_Timer }};
 connected({timeout, Ref, {zerowindow_timeout, _N}},
@@ -373,7 +373,7 @@ got_fin({timeout, Ref, send_delayed_ack},
           network = Network,
           delayed_ack_timeout = {set, _, Ref}
          } = State) ->
-    N_Timer = utp_pkt:trigger_delayed_ack(Network, PktBuf),
+    N_Timer = trigger_delayed_ack(Network, PktBuf),
     {next_state, got_fin,
      State#state { delayed_ack_timeout = N_Timer }};
 got_fin({pkt, #packet { ty = st_state }, _}, State) ->
@@ -401,7 +401,7 @@ destroy_delay({timeout, Ref, send_delayed_ack},
                 network = Network,
                 delayed_ack_timeout = {set, _, Ref}
                } = State) ->
-    N_Timer = utp_pkt:trigger_delayed_ack(Network, PktBuf),
+    N_Timer = trigger_delayed_ack(Network, PktBuf),
     {next_state, destroy_delay,
      State#state { delayed_ack_timeout = N_Timer }};
 destroy_delay({pkt, #packet { ty = st_fin }, _}, State) ->
@@ -467,7 +467,7 @@ fin_sent({timeout, Ref, send_delayed_ack},
             network = Network,
             delayed_ack_timeout = {set, _, Ref}
            } = State) ->
-    N_Timer = utp_pkt:trigger_delayed_ack(Network, PktBuf),
+    N_Timer = trigger_delayed_ack(Network, PktBuf),
     {next_state, fin_sent,
      State#state { delayed_ack_timeout = N_Timer }};
 fin_sent({timeout, Ref, {retransmit_timeout, N}},
@@ -568,8 +568,8 @@ connected({recv, Length}, From, #state { proc_info = PI,
         {_, N_PRI, N_PKB} ->
             N_Delay = case view_zerowindow_reopen(PKB, N_PKB) of
                           true ->
-                              utp_pkt:handle_send_ack(Network, N_PKB, DelayAckT,
-                                                      [send_ack, no_piggyback], 0);
+                              handle_send_ack(Network, N_PKB, DelayAckT,
+                                              [send_ack, no_piggyback], 0);
                           false ->
                               DelayAckT
                       end,
@@ -801,10 +801,10 @@ handle_packet_incoming(FSMState, Pkt, ReplyMicro, TimeAcked, TSDiff,
 
             %% Send out an ACK if needed
             AckedBytes = acked_bytes(Messages),
-            N_DelayAckT = utp_pkt:handle_send_ack(N_Network, N_PB2,
-                                                  DelayAckT,
-                                                  Messages ++ FillMessages,
-                                                  AckedBytes),
+            N_DelayAckT = handle_send_ack(N_Network, N_PB2,
+                                          DelayAckT,
+                                          Messages ++ FillMessages,
+                                          AckedBytes),
 
             {ok, Messages, N_Network, N_PB2, N_PRI2, ZWinTimeout, N_DelayAckT}
     catch
@@ -931,5 +931,51 @@ bump_ledbat(Network) ->
     set_ledbat_timer(),
     N_Network.
     
+trigger_delayed_ack(Network, PktBuf) ->
+    utp_pkt:send_ack(Network, PktBuf),
+    undefined.
 
+cancel_delayed_ack(undefined) ->
+    undefined; %% It was never there, ignore it
+cancel_delayed_ack({set, _Count, Ref}) ->
+    gen_fsm:cancel_timer(Ref),
+    undefined.
 
+handle_delayed_ack(undefined, AckedBytes, Network, PktBuf)
+  when AckedBytes >= ?DELAYED_ACK_BYTE_THRESHOLD ->
+    utp_pkt:send_ack(Network, PktBuf),
+    undefined;
+handle_delayed_ack(undefined, AckedBytes, _Network, _PktBuf) ->
+    Ref = gen_fsm:start_timer(?DELAYED_ACK_TIME_THRESHOLD, send_delayed_ack),
+    {set, AckedBytes, Ref};
+handle_delayed_ack({set, ByteCount, _Ref} = DelayAck, AckedBytes, Network, PktBuf)
+  when ByteCount+AckedBytes >= ?DELAYED_ACK_BYTE_THRESHOLD ->
+    utp_pkt:send_ack(Network, PktBuf),
+    cancel_delayed_ack(DelayAck);
+handle_delayed_ack({set, ByteCount, Ref}, AckedBytes, _Network, _PktBuf) ->
+    {set, ByteCount+AckedBytes, Ref}.
+
+%% @doc Consider if we should send out an ACK and do it if so
+%% @end
+handle_send_ack(Network, PktBuf, DelayAck, Messages, AckedBytes) ->
+    case proplists:get_value(send_ack, Messages) of
+        undefined ->
+            %% We should not send out an ACK, so don't alter the Delayed
+            %% Ack structure at all.
+            DelayAck;
+        true ->
+            case proplists:get_value(got_fin, Messages) of
+                true ->
+                    utp_pkt:send_ack(Network, PktBuf),
+                    cancel_delayed_ack(DelayAck);
+                undefined ->
+                    case proplists:get_value(no_piggyback, Messages) of
+                        true ->
+                            handle_delayed_ack(DelayAck, AckedBytes, Network, PktBuf);
+                        undefined ->
+                            %% The requested ACK is already sent as a piggyback on
+                            %% top of a data message. There is no reason to resend it.
+                            cancel_delayed_ack(DelayAck)
+                    end
+            end
+    end.

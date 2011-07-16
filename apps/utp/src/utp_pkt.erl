@@ -13,8 +13,6 @@
          mk_random_seq_no/0,
          send_fin/2,
          send_ack/2,
-         handle_send_ack/5,
-         trigger_delayed_ack/2,
          handle_packet/4,
          buffer_dequeue/1,
          buffer_putback/2,
@@ -74,7 +72,7 @@
           %% @todo Discover this one
           pkt_size = 1000 :: integer()
          }).
--opaque t() :: #pkt_buf{}.
+-opaque({t,{type,{77,16},record,[{atom,{77,17},pkt_buf}]},[]}).
 
 %% Track send quota available
 -record(send_quota, {
@@ -165,55 +163,6 @@ send_packet(Ty, Bin,
     Buf#pkt_buf { seq_no = utp_util:bit16(SeqNo+1),
                   retransmission_queue = [Wrap | RetransQueue]
                 }.
-
-%% @doc Consider if we should send out an ACK and do it if so
-%% @end
-handle_send_ack(Network, PktBuf, DelayAck, Messages, AckedBytes) ->
-    case proplists:get_value(send_ack, Messages) of
-        undefined ->
-            %% We should not send out an ACK, so don't alter the Delayed
-            %% Ack structure at all.
-            DelayAck;
-        true ->
-            case proplists:get_value(got_fin, Messages) of
-                true ->
-                    send_ack(Network, PktBuf),
-                    cancel_delayed_ack(DelayAck);
-                undefined ->
-                    case proplists:get_value(no_piggyback, Messages) of
-                        true ->
-                            handle_delayed_ack(DelayAck, AckedBytes, Network, PktBuf);
-                        undefined ->
-                            %% The requested ACK is already sent as a piggyback on
-                            %% top of a data message. There is no reason to resend it.
-                            cancel_delayed_ack(DelayAck)
-                    end
-            end
-    end.
-
-trigger_delayed_ack(Network, PktBuf) ->
-    send_ack(Network, PktBuf),
-    undefined.
-
-handle_delayed_ack(undefined, AckedBytes, Network, PktBuf)
-  when AckedBytes >= ?DELAYED_ACK_BYTE_THRESHOLD ->
-    send_ack(Network, PktBuf),
-    undefined;
-handle_delayed_ack(undefined, AckedBytes, _Network, _PktBuf) ->
-    Ref = gen_fsm:start_timer(?DELAYED_ACK_TIME_THRESHOLD, send_delayed_ack),
-    {set, AckedBytes, Ref};
-handle_delayed_ack({set, ByteCount, _Ref} = DelayAck, AckedBytes, Network, PktBuf)
-  when ByteCount+AckedBytes >= ?DELAYED_ACK_BYTE_THRESHOLD ->
-    send_ack(Network, PktBuf),
-    cancel_delayed_ack(DelayAck);
-handle_delayed_ack({set, ByteCount, Ref}, AckedBytes, _Network, _PktBuf) ->
-    {set, ByteCount+AckedBytes, Ref}.
-    
-cancel_delayed_ack(undefined) ->
-    undefined; %% It was never there, ignore it
-cancel_delayed_ack({set, _Count, Ref}) ->
-    gen_fsm:cancel_timer(Ref),
-    undefined.
 
 %% RECEIVE PATH
 %% ----------------------------------------------------------------------
