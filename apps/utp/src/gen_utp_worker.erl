@@ -244,7 +244,7 @@ syn_sent({timeout, TRef, {retransmit_timeout, N}},
             {next_state, reset, State#state {retransmit_timeout = undefined}};
         false ->
             % Resend packet
-            SynPacket = mk_syn(),
+            SynPacket = utp_proto:mk_syn(),
             Win = utp_buffer:advertised_window(PktBuf),
             {ok, _} = utp_network:send_pkt(Win, Network, SynPacket, conn_id_recv),
             ?DEBUG([syn_packet_resent]),
@@ -518,7 +518,7 @@ idle(connect,
     ConnIdSend = Conn_id_recv + 1,
     N_Network = utp_network:set_conn_id(ConnIdSend, Network),
 
-    SynPacket = mk_syn(),
+    SynPacket = utp_proto:mk_syn(),
     Win = utp_buffer:advertised_window(PktBuf),
     {ok, _} = utp_network:send_pkt(Win, N_Network, SynPacket, conn_id_recv),
     {next_state, syn_sent,
@@ -764,13 +764,6 @@ set_zerowin_timer(undefined) ->
                               {zerowindow_timeout, ?ZERO_WINDOW_DELAY}),
     {set, Ref};
 set_zerowin_timer({set, Ref}) -> {set, Ref}. % Already set, do nothing
-
-mk_syn() ->
-     #packet { ty = st_syn,
-               seq_no = 1,
-               ack_no = 0,
-               extension = ?SYN_EXTS
-             }. % Rest are defaults
 
 handle_packet_incoming(FSMState, Pkt, ReplyMicro, TimeAcked, TSDiff,
                        #state { pkt_buf = PB,

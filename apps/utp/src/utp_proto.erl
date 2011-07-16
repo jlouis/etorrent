@@ -18,6 +18,10 @@
          format_pkt/1
         ]).
 
+-export([mk_syn/0]).
+%% Default extensions to use when SYN/SYNACK'ing
+-define(SYN_EXTS, [{ext_bits, <<0:64/integer>>}]).
+
 -type conn_id() :: 0..16#FFFF.
 -export_type([packet/0,
               conn_id/0]).
@@ -226,3 +230,11 @@ inverse_decode_test() ->
 -endif.
 -endif.
 
+
+
+mk_syn() ->
+     #packet { ty = st_syn,
+               seq_no = 1,
+               ack_no = 0,
+               extension = ?SYN_EXTS
+             }. % Rest are defaults
