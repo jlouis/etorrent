@@ -279,12 +279,11 @@ connected({pkt, Pkt, {TS, TSDiff, RecvTime}},
 
     N_RetransTimer =  handle_recv_retransmit_timer(Messages, Network, RetransTimer),
 
-    NextState = 
-        case proplists:get_value(got_fin, Messages) of
-            true -> got_fin;
-            undefined -> connected
-        end,
-    {next_state, ?TRACE(NextState),
+    NextState = case proplists:get_value(got_fin, Messages) of
+                    true -> got_fin;
+                    undefined -> connected
+                end,
+    {next_state, NextState,
      State#state { pkt_buf = N_PB,
                    network = N_Network,
                    retransmit_timeout = N_RetransTimer,
@@ -925,6 +924,3 @@ ack_analyze_further(Messages) ->
             end
     end.
                                                             
-
-
-
