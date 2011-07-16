@@ -890,25 +890,41 @@ handle_delayed_ack({set, ByteCount, Ref}, AckedBytes, _Network, _PktBuf) ->
 %% @doc Consider if we should send out an ACK and do it if so
 %% @end
 handle_send_ack(Network, PktBuf, DelayAck, Messages, AckedBytes) ->
+    case view_ack_messages(Messages) of
+        nothing ->
+            DelayAck;
+        got_fin ->
+            utp_buffer:send_ack(Network, PktBuf),
+            cancel_delayed_ack(DelayAck);
+        no_piggyback ->
+            handle_delayed_ack(DelayAck, AckedBytes, Network, PktBuf);
+        piggybacked ->
+            %% The requested ACK is already sent as a piggyback on
+            %% top of a data message. There is no reason to resend it.
+            cancel_delayed_ack(DelayAck)
+    end.
+
+view_ack_messages(Messages) ->
     case proplists:get_value(send_ack, Messages) of
         undefined ->
-            %% We should not send out an ACK, so don't alter the Delayed
-            %% Ack structure at all.
-            DelayAck;
+            nothing;
         true ->
-            case proplists:get_value(got_fin, Messages) of
+            ack_analyze_further(Messages)
+    end.
+
+ack_analyze_further(Messages) ->
+    case proplists:get_value(got_fin, Messages) of
+        true ->
+            got_fin;
+        undefined ->
+            case proplists:get_value(no_piggyback, Messages) of
                 true ->
-                    utp_buffer:send_ack(Network, PktBuf),
-                    cancel_delayed_ack(DelayAck);
+                    no_piggyback;
                 undefined ->
-                    case proplists:get_value(no_piggyback, Messages) of
-                        true ->
-                            handle_delayed_ack(DelayAck, AckedBytes, Network, PktBuf);
-                        undefined ->
-                            %% The requested ACK is already sent as a piggyback on
-                            %% top of a data message. There is no reason to resend it.
-                            cancel_delayed_ack(DelayAck)
-                    end
+                    piggybacked
             end
     end.
+                                                            
+
+
 
