@@ -19,6 +19,8 @@
         ]).
 
 -export([mk_syn/0]).
+
+-export([mk_ack/2]).
 %% Default extensions to use when SYN/SYNACK'ing
 -define(SYN_EXTS, [{ext_bits, <<0:64/integer>>}]).
 
@@ -238,3 +240,10 @@ mk_syn() ->
                ack_no = 0,
                extension = ?SYN_EXTS
              }. % Rest are defaults
+
+mk_ack(SeqNo, AckNo) ->
+    #packet {ty = st_state,
+	     seq_no = SeqNo,
+	     ack_no = AckNo,
+	     extension = ?SYN_EXTS
+           }.

@@ -7,6 +7,7 @@
 -export([
          mk/1,
 
+         init_counters/3,
          init_seqno/2,
          init_ackno/2,
 
@@ -97,11 +98,17 @@ mk(OptRecv) ->
         opt_recv_buf_sz = OptRecv
        }.
 
+init_counters(#pkt_buf{} = PBuf, SeqNo, NextExpected)
+  when SeqNo >= 0, SeqNo < 65536,
+       NextExpected >= 0, NextExpected < 65536 ->
+    PBuf#pkt_buf { seq_no = SeqNo,
+                  next_expected_seq_no = NextExpected}.
+
 init_seqno(#pkt_buf {} = PBuf, SeqNo) when SeqNo >= 0, SeqNo < 65536->
     PBuf#pkt_buf { seq_no = SeqNo }.
 
-init_ackno(#pkt_buf{} = PBuf, AckNo) ->
-    PBuf#pkt_buf { next_expected_seq_no = AckNo }.
+init_ackno(#pkt_buf{} = PBuf, NextExpected) ->
+    PBuf#pkt_buf {next_expected_seq_no = NextExpected}.
 
 mk_random_seq_no() ->
     <<N:16/integer>> = crypto:rand_bytes(2),

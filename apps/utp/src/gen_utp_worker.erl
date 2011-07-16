@@ -484,13 +484,11 @@ idle(connect,
     {Address, Port} = utp_network:hostname_port(Network),
     Conn_id_recv = utp_proto:mk_connection_id(),
     gen_utp:register_process(self(), {Conn_id_recv, Address, Port}),
-    
-    ConnIdSend = Conn_id_recv + 1,
-    N_Network = utp_network:set_conn_id(ConnIdSend, Network),
+    N_Network = utp_network:set_conn_id(Conn_id_recv + 1, Network),
 
     SynPacket = utp_proto:mk_syn(),
-    Win = utp_buffer:advertised_window(PktBuf),
-    {ok, _} = utp_network:send_pkt(Win, N_Network, SynPacket, conn_id_recv),
+    send_pkt(PktBuf, N_Network, SynPacket),
+
     {next_state, syn_sent,
      State#state { network = N_Network,
                    retransmit_timeout = set_retransmit_timer(?SYN_TIMEOUT, undefined),
@@ -499,6 +497,7 @@ idle(connect,
 idle({accept, SYN}, _From, #state { network = Network,
                                     options = Options,
                                     pkt_buf   = PktBuf } = State) ->
+    1 = SYN#packet.seq_no,
     Conn_id_send = SYN#packet.conn_id,
     N_Network = utp_network:set_conn_id(Conn_id_send, Network),
 
@@ -506,27 +505,27 @@ idle({accept, SYN}, _From, #state { network = Network,
                 undefined -> utp_buffer:mk_random_seq_no();
                 K -> K
             end,
-    AckNo = SYN#packet.seq_no,
-    1 = AckNo,
 
-    AckPacket = #packet { ty = st_state,
-			  seq_no = SeqNo,
-			  ack_no = AckNo,
-			  extension = ?SYN_EXTS
-			},
+    AckPacket = utp_proto:mk_ack(SeqNo, SYN#packet.seq_no),
+    send_pkt(PktBuf, N_Network, AckPacket),
+
     Win = utp_buffer:advertised_window(PktBuf),
     {ok, _} = utp_network:send_pkt(Win, N_Network, AckPacket),
+
     %% @todo retransmit timer here?
     set_ledbat_timer(),
     {reply, ok, connected,
             State#state { network = utp_network:handle_advertised_window(N_Network, SYN),
-                         pkt_buf = utp_buffer:init_ackno(
-                                        utp_buffer:init_seqno(PktBuf,
-                                                              utp_util:bit16(SeqNo + 1)),
-                                                           utp_util:bit16(AckNo + 1))}};
+                          pkt_buf = utp_buffer:init_counters(PktBuf,
+                                                             utp_util:bit16(SeqNo + 1),
+                                                             utp_util:bit16(SYN#packet.seq_no + 1))}};
 
 idle(_Msg, _From, State) ->
     {reply, idle, {error, enotconn}, State}.
+
+send_pkt(PktBuf, N_Network, SynPacket) ->
+    Win = utp_buffer:advertised_window(PktBuf),
+    {ok, _} = utp_network:send_pkt(Win, N_Network, SynPacket, conn_id_recv).
 
 %% @private
 connected({recv, Length}, From, #state { proc_info = PI,
