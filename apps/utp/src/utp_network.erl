@@ -154,7 +154,6 @@ send_pkt(AdvWin,
   when is_integer(ConnId) ->
     Pkt = Packet#packet { conn_id = ConnId,
                           win_sz = AdvWin },
-    ?DEBUG([node(), outgoing_pkt, utp_proto:format_pkt(Pkt)]),
     utp_socket:send_pkt(SockInfo, Pkt, TSDiff).
 
 rto(#network { round_trip = RTT }) ->

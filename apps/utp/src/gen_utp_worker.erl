@@ -273,8 +273,6 @@ connected({pkt, #packet { ty = st_syn }, _}, State) ->
 connected({pkt, Pkt, {TS, TSDiff, RecvTime}},
 	  #state { retransmit_timeout = RetransTimer,
                    network = Network } = State) ->
-    ?DEBUG([node(), incoming_pkt, connected, utp_proto:format_pkt(Pkt)]),
-
     {ok, Messages, N_Network, N_PB, N_PRI, ZWinTimeout, N_DelayAck} =
         handle_packet_incoming(connected,
                                Pkt, utp_util:bit32(TS - RecvTime), RecvTime, TSDiff, State),
