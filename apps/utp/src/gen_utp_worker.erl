@@ -409,8 +409,6 @@ fin_sent({pkt, #packet { ty = st_reset }, _},
 fin_sent({pkt, Pkt, {TS, TSDiff, RecvTime}},
 	  #state { retransmit_timeout = RetransTimer
                  } = State) ->
-    ?DEBUG([node(), incoming_pkt, fin_sent, utp_proto:format_pkt(Pkt)]),
-
     {ok, Messages, N_Network, N_PB, N_PRI, ZWinTimeout, N_DelayAck} =
         handle_packet_incoming(fin_sent,
                                Pkt, utp_util:bit32(TS - RecvTime), RecvTime, TSDiff, State),
