@@ -191,7 +191,7 @@ syn_sent({pkt, #packet { ty = st_reset }, _},
     %% We received a reset packet in the connected state. This means an abrupt
     %% disconnect, so move to the RESET state right away after telling people
     %% we can't fulfill their requests.
-    N_PRI = error_all(PRI, econnrefused),
+    N_PRI = utp_process:error_all(PRI, econnrefused),
     %% Also handle the guy making the connection
     reply(From, econnrefused),
     {next_state, destroy, State#state { proc_info = N_PRI }, 0};
@@ -265,7 +265,7 @@ connected({pkt, #packet { ty = st_reset }, _},
     %% We received a reset packet in the connected state. This means an abrupt
     %% disconnect, so move to the RESET state right away after telling people
     %% we can't fulfill their requests.
-    N_PRI = error_all(PRI, econnreset),
+    N_PRI = utp_process:error_all(PRI, econnreset),
     {next_state, reset, State#state { proc_info = N_PRI }};
 connected({pkt, #packet { ty = st_syn }, _}, State) ->
     ?INFO([duplicate_syn_packet, ignoring]),
@@ -298,11 +298,8 @@ connected(close, #state { network = Network,
     {next_state, fin_sent, State#state {
                              retransmit_timeout = NRTimer,
                              pkt_buf = NPBuf } };
-connected({timeout, _, ledbat_timeout},
-          #state { network = Network } = State) ->
-    N_Network = bump_ledbat(Network),
-    {next_state, connected,
-     State#state { network = N_Network}};
+connected({timeout, _, ledbat_timeout}, State) ->
+    {next_state, connected, bump_ledbat(State)};
 connected({timeout, Ref, send_delayed_ack}, State) ->
     {next_state, connected, trigger_delayed_ack(Ref, State)};
 connected({timeout, Ref, {zerowindow_timeout, _N}},
@@ -401,7 +398,7 @@ fin_sent({pkt, #packet { ty = st_reset }, _},
     %% We received a reset packet in the connected state. This means an abrupt
     %% disconnect, so move to the RESET state right away after telling people
     %% we can't fulfill their requests.
-    N_PRI = error_all(PRI, econnreset),
+    N_PRI = utp_process:error_all(PRI, econnreset),
     {next_state, destroy, State#state { proc_info = N_PRI }};
 fin_sent({pkt, Pkt, {TS, TSDiff, RecvTime}},
 	  #state { retransmit_timeout = RetransTimer
@@ -430,11 +427,8 @@ fin_sent({pkt, Pkt, {TS, TSDiff, RecvTime}},
                     {next_state, fin_sent, N_State}
             end
     end;
-fin_sent({timeout, _, ledbat_timeout},
-          #state { network = NW } = State) ->
-    N_Network = bump_ledbat(NW),
-    {next_state, fin_sent,
-     State#state { network = N_Network }};
+fin_sent({timeout, _, ledbat_timeout}, State) ->
+    {next_state, fin_sent, bump_ledbat(State)};
 fin_sent({timeout, Ref, send_delayed_ack}, State) ->
     {next_state, fin_sent, trigger_delayed_ack(Ref, State)};
 fin_sent({timeout, Ref, {retransmit_timeout, N}},
@@ -467,7 +461,7 @@ reset(_Msg, State) ->
 %% @private
 %% Die deliberately on close for now
 destroy(timeout, #state { proc_info = ProcessInfo } = State) ->
-    N_ProcessInfo = error_all(ProcessInfo, econnreset),
+    N_ProcessInfo = utp_process:error_all(ProcessInfo, econnreset),
     {stop, normal, State#state { proc_info = N_ProcessInfo }};
 destroy(_Msg, State) ->
     %% Ignore messages
@@ -532,7 +526,7 @@ connected({recv, Length}, From, #state { proc_info = PI,
     PI1 = utp_process:enqueue_receiver(From, Length, PI),
     case satisfy_recvs(PI1, PKB) of
         {_, N_PRI, N_PKB} ->
-            N_Delay = case view_zerowindow_reopen(PKB, N_PKB) of
+            N_Delay = case utp_buffer:view_zerowindow_reopen(PKB, N_PKB) of
                           true ->
                               handle_send_ack(Network, N_PKB, DelayAckT,
                                               [send_ack, no_piggyback], 0);
@@ -569,7 +563,7 @@ connected(_Msg, _From, State) ->
 got_fin({recv, L}, _From, #state { pkt_buf = PktBuf,
                                    proc_info = ProcInfo } = State) ->
     true = utp_process:recv_buffer_empty(ProcInfo),
-    case draining_receive(L, PktBuf) of
+    case utp_buffer:draining_receive(L, PktBuf) of
         {ok, Bin, N_PktBuf} ->
             {reply, {ok, Bin}, got_fin, State#state { pkt_buf = N_PktBuf}};
         empty ->
@@ -584,7 +578,7 @@ got_fin({send, _Data}, _From, State) ->
 fin_sent({recv, L}, _From, #state { pkt_buf = PktBuf,
                                     proc_info = ProcInfo } = State) ->
     true = utp_process:recv_buffer_empty(ProcInfo),
-    case draining_receive(L, PktBuf) of
+    case utp_buffer:draining_receive(L, PktBuf) of
         {ok, Bin, N_PktBuf} ->
             {reply, {ok, Bin}, fin_sent, State#state { pkt_buf = N_PktBuf}};
         empty ->
@@ -719,8 +713,7 @@ fill_window(Network, ProcessInfo, PktBuffer, ZWinTimer) ->
             {Messages, set_zerowin_timer(ZWinTimer), N_PktBuffer, N_ProcessInfo}
     end.
 
-cancel_zerowin_timer(undefined) ->
-    undefined;
+cancel_zerowin_timer(undefined) -> undefined;
 cancel_zerowin_timer({set, Ref}) ->
     gen_fsm:cancel_timer(Ref),
     undefined.
@@ -794,13 +787,6 @@ handle_timeout(_Ref, _N, _PacketBuf, _Network, _Timer) ->
     ?ERR([stray_retransmit_timer, _Ref, _N, _Timer]),
     stray.
 
-error_all(ProcessInfo, ErrorReason) ->
-    F = fun(From) ->
-                gen_fsm:reply(From, {error, ErrorReason})
-        end,
-    utp_process:apply_all(ProcessInfo, F),
-    utp_process:mk().
-
 -spec validate_options([term()]) -> ok | badarg.
 validate_options([{backlog, N} | R]) ->
     case is_integer(N) of
@@ -824,39 +810,13 @@ validate_options([]) ->
 validate_options(_) ->
     badarg.
 
-draining_receive(L, PktBuf) ->
-    case utp_buffer:buffer_dequeue(PktBuf) of
-        empty ->
-            empty;
-        {ok, Bin, N_Buffer} when byte_size(Bin) > L ->
-            <<Cut:L/binary, Rest/binary>> = Bin,
-            {ok, Cut, utp_buffer:buffer_putback(Rest, N_Buffer)};
-        {ok, Bin, N_Buffer} when byte_size(Bin) == L ->
-            {ok, Bin, N_Buffer};
-        {ok, Bin, N_Buffer} when byte_size(Bin) < L ->
-            case draining_receive(L - byte_size(Bin), N_Buffer) of
-                empty ->
-                    {partial_read, Bin, N_Buffer};
-                {ok, Bin2, N_Buffer2} ->
-                    {ok, <<Bin/binary, Bin2/binary>>, N_Buffer2};
-                {partial_read, Bin2, N_Buffer} ->
-                    {partial_read, <<Bin/binary, Bin2/binary>>, N_Buffer}
-            end
-    end.
-
-view_zerowindow_reopen(Old, New) ->
-    N = utp_buffer:advertised_window(Old),
-    K = utp_buffer:advertised_window(New),
-    N == 0 andalso K > 1000. % Only open up the window when we have processed a considerable amount
-
 set_ledbat_timer() ->
     gen_fsm:start_timer(timer:seconds(60), ledbat_timeout).
 
-
-bump_ledbat(Network) ->
+bump_ledbat(#state { network = Network } = State) ->
     N_Network = utp_network:bump_ledbat(Network),
     set_ledbat_timer(),
-    N_Network.
+    State#state { network = N_Network }.
     
 trigger_delayed_ack(Ref, #state {
                        pkt_buf = PktBuf,
@@ -923,4 +883,3 @@ ack_analyze_further(Messages) ->
                     piggybacked
             end
     end.
-                                                            

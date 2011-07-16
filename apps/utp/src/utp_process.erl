@@ -22,11 +22,13 @@
 
          apply_all/2
 	]).
+
+-export([error_all/2]).
 -record(proc_info, {
 	  receiver_q :: queue(),
 	  sender_q   :: queue()
 }).
--opaque t() :: #proc_info{}.
+-opaque({t,{type,{29,16},record,[{atom,{29,17},proc_info}]},[]}).
 -export_type([t/0]).
 
 mk() ->
@@ -144,3 +146,11 @@ bytes_in_recv_buffer(#proc_info { receiver_q = RQ }) ->
     lists:sum([byte_size(Payload) || {receiver, _From, _Sz, Payload} <- L]).
 
 
+
+
+error_all(ProcessInfo, ErrorReason) ->
+    F = fun(From) ->
+                gen_fsm:reply(From, {error, ErrorReason})
+        end,
+    apply_all(ProcessInfo, F),
+    mk().

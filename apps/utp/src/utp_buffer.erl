@@ -26,6 +26,10 @@
          retransmit_packet/2
          ]).
 
+-export([view_zerowindow_reopen/2]).
+
+-export([draining_receive/2]).
+
 %% DEFINES
 %% ----------------------------------------------------------------------
 
@@ -631,3 +635,29 @@ extract_payload_size(Packets) ->
                   
 
 
+
+
+view_zerowindow_reopen(Old, New) ->
+    N = advertised_window(Old),
+    K = advertised_window(New),
+    N == 0 andalso K > 1000. % Only open up the window when we have processed a considerable amount
+
+draining_receive(L, PktBuf) ->
+    case buffer_dequeue(PktBuf) of
+        empty ->
+            empty;
+        {ok, Bin, N_Buffer} when byte_size(Bin) > L ->
+            <<Cut:L/binary, Rest/binary>> = Bin,
+            {ok, Cut, buffer_putback(Rest, N_Buffer)};
+        {ok, Bin, N_Buffer} when byte_size(Bin) == L ->
+            {ok, Bin, N_Buffer};
+        {ok, Bin, N_Buffer} when byte_size(Bin) < L ->
+            case draining_receive(L - byte_size(Bin), N_Buffer) of
+                empty ->
+                    {partial_read, Bin, N_Buffer};
+                {ok, Bin2, N_Buffer2} ->
+                    {ok, <<Bin/binary, Bin2/binary>>, N_Buffer2};
+                {partial_read, Bin2, N_Buffer} ->
+                    {partial_read, <<Bin/binary, Bin2/binary>>, N_Buffer}
+            end
+    end.
