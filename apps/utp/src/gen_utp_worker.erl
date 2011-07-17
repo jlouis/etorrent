@@ -287,13 +287,9 @@ connected({pkt, Pkt, {TS, TSDiff, RecvTime}}, State) ->
                    delayed_ack_timeout = N_DelayAck,
                    process = N_PRI }};
 connected(close, #state { network = Network,
-                          retransmit_timeout = RTimer,
                           buffer = PktBuf } = State) ->
     NPBuf = utp_buffer:send_fin(Network, PktBuf),
-    NRTimer = handle_recv_retransmit_timer([fin_sent], Network, RTimer),
-    {next_state, fin_sent, State#state {
-                             retransmit_timeout = NRTimer,
-                             buffer = NPBuf } };
+    {next_state, fin_sent, State#state { buffer = NPBuf } };
 connected({timeout, _, ledbat_timeout}, State) ->
     {next_state, connected, bump_ledbat(State)};
 connected({timeout, Ref, send_delayed_ack}, State) ->
@@ -671,15 +667,7 @@ handle_send_retransmit_timer(Messages, Network, RetransTimer) ->
     end.
 
 handle_recv_retransmit_timer(Messages, Network, RetransTimer) ->
-    F = fun(E, Acc) ->
-                case proplists:get_value(E, Messages) of
-                    true ->
-                        true;
-                    undefined ->
-                        Acc
-                end
-        end,
-    Analyzer = fun(L) -> lists:foldl(F, false, L) end,
+    Analyzer = fun(L) -> lists:foldl(is_set(Messages), false, L) end,
     case Analyzer([data_inflight, fin_sent]) of
         true ->
             set_retransmit_timer(utp_network:rto(Network), RetransTimer);
@@ -689,6 +677,16 @@ handle_recv_retransmit_timer(Messages, Network, RetransTimer) ->
                     clear_retransmit_timer(RetransTimer);
                 false ->
                     RetransTimer % Just pass it along with no update
+            end
+    end.
+
+is_set(Messages) ->
+    fun(E, Acc) ->
+            case proplists:get_value(E, Messages) of
+                true ->
+                    true;
+                undefined ->
+                    Acc
             end
     end.
 
