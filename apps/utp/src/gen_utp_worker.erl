@@ -100,8 +100,8 @@
 %% STATE RECORDS
 %% ----------------------------------------------------------------------
 -record(state, { network :: utp_network:t(),
-                 pkt_buf      :: utp_pkt:t(),
-                 proc_info    :: utp_process:t(),
+                 buffer      :: utp_pkt:t(),
+                 process    :: utp_process:t(),
                  connector    :: {{reference(), pid()}, [{pkt, #packet{}, term()}]},
                  zerowindow_timeout :: undefined | {set, reference()},
                  retransmit_timeout :: undefined | {set, reference()},
@@ -169,8 +169,8 @@ init([Socket, Addr, Port, Options]) ->
             SockInfo = utp_socket:mk(CanonAddr, Options, Port, Socket),
             Network  = utp_network:mk(?DEFAULT_PACKET_SIZE, SockInfo),
             {ok, idle, #state{ network = Network,
-                               pkt_buf   = PktBuf,
-                               proc_info = ProcInfo,
+                               buffer   = PktBuf,
+                               process = ProcInfo,
                                options=  Options }};
         badarg ->
             {stop, badarg}
@@ -186,7 +186,7 @@ idle(_Msg, S) ->
 
 %% @private
 syn_sent({pkt, #packet { ty = st_reset }, _},
-         #state { proc_info = PRI,
+         #state { process = PRI,
                   connector = {From, _} } = State) ->
     %% We received a reset packet in the connected state. This means an abrupt
     %% disconnect, so move to the RESET state right away after telling people
@@ -194,13 +194,13 @@ syn_sent({pkt, #packet { ty = st_reset }, _},
     N_PRI = utp_process:error_all(PRI, econnrefused),
     %% Also handle the guy making the connection
     reply(From, econnrefused),
-    {next_state, destroy, State#state { proc_info = N_PRI }, 0};
+    {next_state, destroy, State#state { process = N_PRI }, 0};
 syn_sent({pkt, #packet { ty = st_state,
                          win_sz = WindowSize,
 			 seq_no = PktSeqNo },
 	       {TS, TSDiff, RecvTime}},
 	 #state { network = Network,
-                  pkt_buf = PktBuf,
+                  buffer = PktBuf,
                   connector = {From, Packets},
                   retransmit_timeout = RTimeout
                 } = State) ->
@@ -216,7 +216,7 @@ syn_sent({pkt, #packet { ty = st_state,
     {next_state, connected,
      State#state { network = utp_network:update_reply_micro(N_Network, ReplyMicro),
                    retransmit_timeout = clear_retransmit_timer(RTimeout),
-                  pkt_buf = utp_buffer:init_ackno(PktBuf, utp_util:bit16(PktSeqNo + 1))}};
+                  buffer = utp_buffer:init_ackno(PktBuf, utp_util:bit16(PktSeqNo + 1))}};
 syn_sent({pkt, _Packet, _Timing} = Pkt,
          #state { connector = {From, Packets}} = State) ->
     {next_state, syn_sent,
@@ -235,7 +235,7 @@ syn_sent({timeout, TRef, {retransmit_timeout, N}},
          #state { retransmit_timeout = {set, TRef},
                   network = Network,
                   connector = {From, _},
-                  pkt_buf = PktBuf
+                  buffer = PktBuf
                 } = State) ->
     ?DEBUG([syn_timeout_triggered]),
     case N > ?SYN_TIMEOUT_THRESHOLD of
@@ -261,18 +261,17 @@ syn_sent(_Msg, S) ->
 
 %% @private
 connected({pkt, #packet { ty = st_reset }, _},
-          #state { proc_info = PRI } = State) ->
+          #state { process = PRI } = State) ->
     %% We received a reset packet in the connected state. This means an abrupt
     %% disconnect, so move to the RESET state right away after telling people
     %% we can't fulfill their requests.
     N_PRI = utp_process:error_all(PRI, econnreset),
-    {next_state, reset, State#state { proc_info = N_PRI }};
+    {next_state, reset, State#state { process = N_PRI }};
 connected({pkt, #packet { ty = st_syn }, _}, State) ->
     ?INFO([duplicate_syn_packet, ignoring]),
     {next_state, connected, State};
 connected({pkt, Pkt, {TS, TSDiff, RecvTime}},
-	  #state { retransmit_timeout = RetransTimer,
-                   network = Network } = State) ->
+	  #state { retransmit_timeout = RetransTimer } = State) ->
     {ok, Messages, N_Network, N_PB, N_PRI, ZWinTimeout, N_DelayAck} =
         handle_packet_incoming(connected,
                                Pkt, utp_util:bit32(TS - RecvTime), RecvTime, TSDiff, State),
@@ -283,28 +282,28 @@ connected({pkt, Pkt, {TS, TSDiff, RecvTime}},
                     undefined -> connected
                 end,
     {next_state, NextState,
-     State#state { pkt_buf = N_PB,
+     State#state { buffer = N_PB,
                    network = N_Network,
                    retransmit_timeout = N_RetransTimer,
                    zerowindow_timeout = ZWinTimeout,
                    delayed_ack_timeout = N_DelayAck,
-                   proc_info = N_PRI }};
+                   process = N_PRI }};
 connected(close, #state { network = Network,
                           retransmit_timeout = RTimer,
-                          pkt_buf = PktBuf } = State) ->
+                          buffer = PktBuf } = State) ->
     NPBuf = utp_buffer:send_fin(Network, PktBuf),
     NRTimer = handle_recv_retransmit_timer([fin_sent], Network, RTimer),
     {next_state, fin_sent, State#state {
                              retransmit_timeout = NRTimer,
-                             pkt_buf = NPBuf } };
+                             buffer = NPBuf } };
 connected({timeout, _, ledbat_timeout}, State) ->
     {next_state, connected, bump_ledbat(State)};
 connected({timeout, Ref, send_delayed_ack}, State) ->
     {next_state, connected, trigger_delayed_ack(Ref, State)};
 connected({timeout, Ref, {zerowindow_timeout, _N}},
           #state {
-            pkt_buf = PktBuf,
-            proc_info = ProcessInfo,
+            buffer = PktBuf,
+            process = ProcessInfo,
             network = Network,
             zerowindow_timeout = {set, Ref}} = State) ->
     N_Network = utp_network:bump_window(Network),
@@ -313,11 +312,11 @@ connected({timeout, Ref, {zerowindow_timeout, _N}},
     {next_state, connected,
      State#state {
        zerowindow_timeout = ZWinTimer,
-       pkt_buf = N_PktBuf,
-       proc_info = N_ProcessInfo}};
+       buffer = N_PktBuf,
+       process = N_ProcessInfo}};
 connected({timeout, Ref, {retransmit_timeout, N}},
          #state { 
-            pkt_buf = PacketBuf,
+            buffer = PacketBuf,
             network = Network,
             retransmit_timeout = {set, Ref} = Timer} = State) ->
     case handle_timeout(Ref, N, PacketBuf, Network, Timer) of
@@ -328,7 +327,7 @@ connected({timeout, Ref, {retransmit_timeout, N}},
         {reinstalled, N_Timer, N_PB, N_Network} ->
             {next_state, connected, State#state { retransmit_timeout = N_Timer,
                                                   network = N_Network,
-                                                  pkt_buf = N_PB }}
+                                                  buffer = N_PB }}
     end;
 connected(_Msg, State) ->
     %% Ignore messages
@@ -340,7 +339,7 @@ got_fin(close, State) ->
     {next_state, destroy_delay, State};
 got_fin({timeout, Ref, {retransmit_timeout, N}},
         #state { 
-          pkt_buf = PacketBuf,
+          buffer = PacketBuf,
           network = Network,
           retransmit_timeout = Timer} = State) ->
     case handle_timeout(Ref, N, PacketBuf, Network, Timer) of
@@ -351,7 +350,7 @@ got_fin({timeout, Ref, {retransmit_timeout, N}},
         {reinstalled, N_Timer, N_PB, N_Network} ->
             {next_state, got_fin, State#state { retransmit_timeout = N_Timer,
                                                 network = N_Network,
-                                                pkt_buf = N_PB }}
+                                                buffer = N_PB }}
     end;
 got_fin({timeout, Ref, send_delayed_ack}, State) ->
     {next_state, got_fin, trigger_delayed_ack(Ref, State)};
@@ -393,12 +392,12 @@ fin_sent({pkt, #packet { ty = st_syn }, _},
     %% I have seen it happen in tests, however unlikely that it happens in real life.
     {next_state, fin_sent, State};
 fin_sent({pkt, #packet { ty = st_reset }, _},
-         #state { proc_info = PRI } = State) ->
+         #state { process = PRI } = State) ->
     %% We received a reset packet in the connected state. This means an abrupt
     %% disconnect, so move to the RESET state right away after telling people
     %% we can't fulfill their requests.
     N_PRI = utp_process:error_all(PRI, econnreset),
-    {next_state, destroy, State#state { proc_info = N_PRI }};
+    {next_state, destroy, State#state { process = N_PRI }};
 fin_sent({pkt, Pkt, {TS, TSDiff, RecvTime}},
 	  #state { retransmit_timeout = RetransTimer
                  } = State) ->
@@ -409,12 +408,12 @@ fin_sent({pkt, Pkt, {TS, TSDiff, RecvTime}},
 
     %% Calculate the next state
     N_State = State#state {
-                pkt_buf = N_PB,
+                buffer = N_PB,
                 network = N_Network,
                 retransmit_timeout = N_RetransTimer,
                 zerowindow_timeout = ZWinTimeout,
                 delayed_ack_timeout = N_DelayAck,
-                proc_info = N_PRI },
+                process = N_PRI },
     case proplists:get_value(fin_sent_acked, Messages) of
         true ->
             {next_state, destroy, N_State, 0};
@@ -431,7 +430,7 @@ fin_sent({timeout, _, ledbat_timeout}, State) ->
 fin_sent({timeout, Ref, send_delayed_ack}, State) ->
     {next_state, fin_sent, trigger_delayed_ack(Ref, State)};
 fin_sent({timeout, Ref, {retransmit_timeout, N}},
-         #state { pkt_buf = PacketBuf,
+         #state { buffer = PacketBuf,
                   network = Network,
                   retransmit_timeout = Timer} = State) ->
     case handle_timeout(Ref, N, PacketBuf, Network, Timer) of
@@ -442,7 +441,7 @@ fin_sent({timeout, Ref, {retransmit_timeout, N}},
         {reinstalled, N_Timer, N_PB, N_Network} ->
             {next_state, fin_sent, State#state { retransmit_timeout = N_Timer,
                                                  network = N_Network,
-                                                 pkt_buf = N_PB }}
+                                                 buffer = N_PB }}
     end;
 fin_sent(_Msg, State) ->
     %% Ignore messages
@@ -459,9 +458,9 @@ reset(_Msg, State) ->
 
 %% @private
 %% Die deliberately on close for now
-destroy(timeout, #state { proc_info = ProcessInfo } = State) ->
+destroy(timeout, #state { process = ProcessInfo } = State) ->
     N_ProcessInfo = utp_process:error_all(ProcessInfo, econnreset),
-    {stop, normal, State#state { proc_info = N_ProcessInfo }};
+    {stop, normal, State#state { process = N_ProcessInfo }};
 destroy(_Msg, State) ->
     %% Ignore messages
     ?ERR([node(), async_message, destroy, _Msg]),
@@ -470,7 +469,7 @@ destroy(_Msg, State) ->
 %% @private
 idle(connect,
      From, State = #state { network = Network,
-                            pkt_buf = PktBuf}) ->
+                            buffer = PktBuf}) ->
     {Address, Port} = utp_network:hostname_port(Network),
     Conn_id_recv = utp_proto:mk_connection_id(),
     gen_utp:register_process(self(), {Conn_id_recv, Address, Port}),
@@ -482,11 +481,11 @@ idle(connect,
     {next_state, syn_sent,
      State#state { network = N_Network,
                    retransmit_timeout = set_retransmit_timer(?SYN_TIMEOUT, undefined),
-                  pkt_buf     = utp_buffer:init_seqno(PktBuf, 2),
+                  buffer     = utp_buffer:init_seqno(PktBuf, 2),
                   connector = {From, []}}};
 idle({accept, SYN}, _From, #state { network = Network,
                                     options = Options,
-                                    pkt_buf   = PktBuf } = State) ->
+                                    buffer   = PktBuf } = State) ->
     1 = SYN#packet.seq_no,
     Conn_id_send = SYN#packet.conn_id,
     N_Network = utp_network:set_conn_id(Conn_id_send, Network),
@@ -500,7 +499,7 @@ idle({accept, SYN}, _From, #state { network = Network,
     set_ledbat_timer(),
     {reply, ok, connected,
             State#state { network = utp_network:handle_advertised_window(N_Network, SYN),
-                          pkt_buf = utp_buffer:init_counters(PktBuf,
+                          buffer = utp_buffer:init_counters(PktBuf,
                                                              utp_util:bit16(SeqNo + 1),
                                                              utp_util:bit16(SYN#packet.seq_no + 1))}};
 
@@ -519,10 +518,10 @@ send_pkt(PktBuf, N_Network, SynPacket) ->
     {ok, _} = utp_network:send_pkt(Win, N_Network, SynPacket, conn_id_recv).
 
 %% @private
-connected({recv, Length}, From, #state { proc_info = PI,
+connected({recv, Length}, From, #state { process = PI,
                                          network = Network,
                                          delayed_ack_timeout = DelayAckT,
-                                         pkt_buf   = PKB } = State) ->
+                                         buffer   = PKB } = State) ->
     PI1 = utp_process:enqueue_receiver(From, Length, PI),
     case satisfy_recvs(PI1, PKB) of
         {_, N_PRI, N_PKB} ->
@@ -533,16 +532,16 @@ connected({recv, Length}, From, #state { proc_info = PI,
                           false ->
                               DelayAckT
                       end,
-            {next_state, connected, State#state { proc_info = N_PRI,
+            {next_state, connected, State#state { process = N_PRI,
                                                   delayed_ack_timeout = N_Delay,
-                                                  pkt_buf   = N_PKB } }
+                                                  buffer   = N_PKB } }
     end;
 connected({send, Data}, From, #state {
                           network = Network,
-			  proc_info = PI,
+			  process = PI,
                           retransmit_timeout = RTimer,
                           zerowindow_timeout = ZWinTimer,
-			  pkt_buf   = PKB } = State) ->
+			  buffer   = PKB } = State) ->
     ProcInfo = utp_process:enqueue_sender(From, Data, PI),
     {FillMessages, N_ZWinTimer, PKB1, ProcInfo1} =
         fill_window(Network,
@@ -553,38 +552,38 @@ connected({send, Data}, From, #state {
     {next_state, connected, State#state {
                               zerowindow_timeout = N_ZWinTimer,
                               retransmit_timeout = N_RTimer,
-			      proc_info = ProcInfo1,
-			      pkt_buf   = PKB1 }};
+			      process = ProcInfo1,
+			      buffer   = PKB1 }};
 connected(_Msg, _From, State) ->
     ?ERR([sync_message, connected, _Msg, _From]),
     {next_state, connected, State}.
 
 %% @private
-got_fin({recv, L}, _From, #state { pkt_buf = PktBuf,
-                                   proc_info = ProcInfo } = State) ->
+got_fin({recv, L}, _From, #state { buffer = PktBuf,
+                                   process = ProcInfo } = State) ->
     true = utp_process:recv_buffer_empty(ProcInfo),
     case utp_buffer:draining_receive(L, PktBuf) of
         {ok, Bin, N_PktBuf} ->
-            {reply, {ok, Bin}, got_fin, State#state { pkt_buf = N_PktBuf}};
+            {reply, {ok, Bin}, got_fin, State#state { buffer = N_PktBuf}};
         empty ->
             {reply, {error, eof}, got_fin, State};
         {partial_read, Bin, N_PktBuf} ->
-            {reply, {error, {partial, Bin}}, got_fin, State#state { pkt_buf = N_PktBuf}}
+            {reply, {error, {partial, Bin}}, got_fin, State#state { buffer = N_PktBuf}}
     end;
 got_fin({send, _Data}, _From, State) ->
     {reply, {error, econnreset}, got_fin, State}.
 
 %% @private
-fin_sent({recv, L}, _From, #state { pkt_buf = PktBuf,
-                                    proc_info = ProcInfo } = State) ->
+fin_sent({recv, L}, _From, #state { buffer = PktBuf,
+                                    process = ProcInfo } = State) ->
     true = utp_process:recv_buffer_empty(ProcInfo),
     case utp_buffer:draining_receive(L, PktBuf) of
         {ok, Bin, N_PktBuf} ->
-            {reply, {ok, Bin}, fin_sent, State#state { pkt_buf = N_PktBuf}};
+            {reply, {ok, Bin}, fin_sent, State#state { buffer = N_PktBuf}};
         empty ->
             {reply, {error, eof}, fin_sent, State};
         {partial_read, Bin, N_PktBuf} ->
-            {reply, {error, {partial, Bin}}, fin_sent, State#state { pkt_buf = N_PktBuf}}
+            {reply, {error, {partial, Bin}}, fin_sent, State#state { buffer = N_PktBuf}}
     end;
 fin_sent({send, _Data}, _From, State) ->
     {reply, {error, econnreset}, fin_sent, State}.
@@ -725,8 +724,8 @@ set_zerowin_timer(undefined) ->
 set_zerowin_timer({set, Ref}) -> {set, Ref}. % Already set, do nothing
 
 handle_packet_incoming(FSMState, Pkt, ReplyMicro, TimeAcked, TSDiff,
-                       #state { pkt_buf = PB,
-                                proc_info = PRI,
+                       #state { buffer = PB,
+                                process = PRI,
                                 network = Network,
                                 zerowindow_timeout = ZWin,
                                 delayed_ack_timeout = DelayAckT
@@ -819,7 +818,7 @@ bump_ledbat(#state { network = Network } = State) ->
     State#state { network = N_Network }.
     
 trigger_delayed_ack(Ref, #state {
-                       pkt_buf = PktBuf,
+                       buffer = PktBuf,
                        network = Network,
                        delayed_ack_timeout = {set, _, Ref}
                       } = State) ->
