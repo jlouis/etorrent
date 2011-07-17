@@ -237,7 +237,6 @@ syn_sent({timeout, TRef, {retransmit_timeout, N}},
                   connector = {From, _},
                   buffer = PktBuf
                 } = State) ->
-    ?DEBUG([syn_timeout_triggered]),
     case N > ?SYN_TIMEOUT_THRESHOLD of
         true ->
             reply(From, {error, etimedout}),
@@ -247,7 +246,6 @@ syn_sent({timeout, TRef, {retransmit_timeout, N}},
             SynPacket = utp_proto:mk_syn(),
             Win = utp_buffer:advertised_window(PktBuf),
             {ok, _} = utp_network:send_pkt(Win, Network, SynPacket, conn_id_recv),
-            ?DEBUG([syn_packet_resent]),
             {next_state, syn_sent,
              State#state {
                retransmit_timeout = set_retransmit_timer(N*2, undefined)
@@ -609,7 +607,6 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 %%%===================================================================
 
 satisfy_buffer(From, 0, Res, Buffer) ->
-    ?DEBUG([recv, From, byte_size(Res)]),
     reply(From, {ok, Res}),
     {ok, Buffer};
 satisfy_buffer(From, Length, Res, Buffer) ->
@@ -631,7 +628,6 @@ satisfy_recvs(Processes, Buffer) ->
 		{ok, N_Buffer} ->
 		    satisfy_recvs(N_Processes, N_Buffer);
 		{rb_drained, F, L, R, N_Buffer} ->
-                    ?DEBUG([receive_buffer_drained, F, L, byte_size(R)]),
 		    {rb_drained, utp_process:putback_receiver(F, L, R, N_Processes), N_Buffer}
 	    end;
 	empty ->
@@ -653,7 +649,6 @@ clear_retransmit_timer(undefined) ->
     undefined;
 clear_retransmit_timer({set, Ref}) ->
     gen_fsm:cancel_timer(Ref),
-    ?DEBUG([node(), clearing_retransmit_timer]),
     undefined.
 
 %% @doc Handle the retransmit timer in the send direction
@@ -755,7 +750,6 @@ handle_packet_incoming(FSMState, Pkt, ReplyMicro, TimeAcked, TSDiff,
             {ok, Messages, N_Network, N_PB2, N_PRI2, ZWinTimeout, N_DelayAckT, N_RetransTimer}
     catch
         throw:{error, is_far_in_future} ->
-            ?DEBUG([old_packet_received]),
             {ok, [], Network, PB, PRI, ZWin, DelayAckT}
     end.
 

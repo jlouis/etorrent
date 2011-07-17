@@ -163,11 +163,9 @@ incoming_unknown(#packet { ty = st_syn } = Packet, Addr, Port) ->
     gen_server:cast(?MODULE, {incoming_syn, Packet, Addr, Port});
 incoming_unknown(#packet{ ty = st_reset } = _Packet, _Addr, _Port) ->
     %% Stray RST packet received, ignore since there is no connection for it
-    ?DEBUG([stray_reset_incoming, _Packet]),
     ok;
 incoming_unknown(#packet{} = Packet, Addr, Port) ->
     %% Stray, RST it
-    ?DEBUG([stray_packet_incoming, Packet]),
     gen_server:cast(?MODULE, {generate_reset, Packet, Addr, Port}).
 
 %% @doc Register a process as the recipient of a given incoming message
@@ -269,7 +267,6 @@ handle_cast({incoming_syn, Packet, Addr, Port}, #state { listen_queue = Q,
 handle_cast({generate_reset, #packet { conn_id = ConnID,
                                        seq_no  = SeqNo }, Addr, Port},
             #state { socket = Socket } = State) ->
-    ?DEBUG([pushback_reset]),
     {ok, _} = utp_socket:send_reset(Socket, Addr, Port, ConnID, SeqNo,
                                     utp_buffer:mk_random_seq_no()),
     {noreply, State};

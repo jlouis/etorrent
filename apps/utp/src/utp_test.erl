@@ -30,10 +30,14 @@
 %% ----------------------------------------------------------------------
     
 test_connector_1() ->
+    redbug:start("et:trace_me(_, none, none, fin, _)", [{print_file, "test_connector_1.trace"}]),
     {ok, Sock} = repeating_connect("localhost", 3333),
     ok = gen_utp:send(Sock, "HELLO"),
     ok = gen_utp:send(Sock, "WORLD"),
+    et:trace_me(50, none, none, fin, [testing]),
+    redbug:stop(),
     {ok, gen_utp_trace:grab()}.
+
 
 test_connector_2() ->
     {ok, Sock} = repeating_connect("localhost", 3333),

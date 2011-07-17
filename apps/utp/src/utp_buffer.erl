@@ -272,12 +272,10 @@ update_recv_buffer(SeqNo, <<>>,
 update_recv_buffer(_SeqNo, <<>>, PB, _State) -> {ok, PB};
 update_recv_buffer(SeqNo, Payload, #pkt_buf { fin_state = {got_fin, SeqNo},
                                               next_expected_seq_no = SeqNo } = PB, State) ->
-    ?DEBUG([got_fin_confirm, SeqNo]),
     N_PB = recv_buffer_enqueue(State, Payload, PB),
     {got_fin, N_PB#pkt_buf { next_expected_seq_no = utp_util:bit16(SeqNo+1)}};
 update_recv_buffer(SeqNo, Payload, #pkt_buf { next_expected_seq_no = SeqNo } = PB, State) ->
     %% This is the next expected packet, yay!
-    ?DEBUG([got_expected, SeqNo, utp_util:bit16(SeqNo+1)]),
     N_PB = recv_buffer_enqueue(State, Payload, PB),
     satisfy_from_reorder_buffer(
       N_PB#pkt_buf { next_expected_seq_no = utp_util:bit16(SeqNo+1) }, State);
@@ -294,7 +292,6 @@ satisfy_from_reorder_buffer(#pkt_buf { reorder_buf = [] } = PB, _State) ->
 satisfy_from_reorder_buffer(#pkt_buf { next_expected_seq_no = AckNo,
                                        fin_state = {got_fin, AckNo},
                                        reorder_buf = [{AckNo, PL} | R]} = PB, State) ->
-    ?DEBUG([got_fin_confirm_from_ro_buffer]),
     N_PB = recv_buffer_enqueue(State, PL, PB),
     {got_fin, N_PB#pkt_buf { next_expected_seq_no = utp_util:bit16(AckNo+1),
                              reorder_buf = R}};
@@ -334,10 +331,6 @@ update_send_buffer(AckNo, #pkt_buf { seq_no = NextSeqNo } = PB) ->
                  AckedPs,
                  PB1};
         {ack_is_old, _AcksAhead} ->
-            ?DEBUG([node(), ack_is_old,
-                                      {acks_ahead, _AcksAhead},
-                                      {window_size, WindowSize},
-                                      {window_start, WindowStart}]),
             {ok, [{old_ack, true}], 0, PB}
     end.
 
@@ -448,7 +441,6 @@ handle_packet(State,
              utp_network:handle_window_size(PktWindow, WindowSize),
              SendMessages};
         no_data when Type == st_data ->
-            ?DEBUG([duplicate_packet]),
             {ok, SendMessages, _AcksAhead, N_PacketBuffer2} =
                 update_send_buffer(AckNo, N_PacketBuffer),
 
@@ -461,6 +453,7 @@ handle_packet(State,
 handle_packet_type(Type, SeqNo, Buf) ->
     case Type of
         st_fin ->
+            et:trace_me(50, none, none, fin, [saw_st_fin, SeqNo]),
             Buf#pkt_buf { fin_state = {got_fin, SeqNo} };
         st_data ->
             Buf;
@@ -546,7 +539,6 @@ retransmit_packet(PktBuf, Network) ->
     #pkt_wrap { packet = Pkt,
                 transmissions = N } = Oldest,
     Win = advertised_window(PktBuf),
-    ?DEBUG([resending, utp_proto:format_pkt(Pkt)]),
     {ok, SendTime} = utp_network:send_pkt(Win, Network, Pkt),
     Wrap = Oldest#pkt_wrap { transmissions = N+1,
                              send_time = SendTime},
