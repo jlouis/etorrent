@@ -276,8 +276,7 @@ connected({pkt, Pkt, {TS, TSDiff, RecvTime}},
     {ok, Messages, N_Network, N_PB, N_PRI, ZWinTimeout, N_DelayAck} =
         handle_packet_incoming(connected,
                                Pkt, utp_util:bit32(TS - RecvTime), RecvTime, TSDiff, State),
-
-    N_RetransTimer =  handle_recv_retransmit_timer(Messages, Network, RetransTimer),
+    N_RetransTimer =  handle_recv_retransmit_timer(Messages, N_Network, RetransTimer),
 
     NextState = case proplists:get_value(got_fin, Messages) of
                     true -> got_fin;
