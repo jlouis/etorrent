@@ -270,12 +270,10 @@ connected({pkt, #packet { ty = st_reset }, _},
 connected({pkt, #packet { ty = st_syn }, _}, State) ->
     ?INFO([duplicate_syn_packet, ignoring]),
     {next_state, connected, State};
-connected({pkt, Pkt, {TS, TSDiff, RecvTime}},
-	  #state { retransmit_timeout = RetransTimer } = State) ->
-    {ok, Messages, N_Network, N_PB, N_PRI, ZWinTimeout, N_DelayAck} =
+connected({pkt, Pkt, {TS, TSDiff, RecvTime}}, State) ->
+    {ok, Messages, N_Network, N_PB, N_PRI, ZWinTimeout, N_DelayAck, N_RetransTimer} =
         handle_packet_incoming(connected,
                                Pkt, utp_util:bit32(TS - RecvTime), RecvTime, TSDiff, State),
-    N_RetransTimer =  handle_recv_retransmit_timer(Messages, N_Network, RetransTimer),
 
     NextState = case proplists:get_value(got_fin, Messages) of
                     true -> got_fin;
@@ -398,14 +396,10 @@ fin_sent({pkt, #packet { ty = st_reset }, _},
     %% we can't fulfill their requests.
     N_PRI = utp_process:error_all(PRI, econnreset),
     {next_state, destroy, State#state { process = N_PRI }};
-fin_sent({pkt, Pkt, {TS, TSDiff, RecvTime}},
-	  #state { retransmit_timeout = RetransTimer
-                 } = State) ->
-    {ok, Messages, N_Network, N_PB, N_PRI, ZWinTimeout, N_DelayAck} =
+fin_sent({pkt, Pkt, {TS, TSDiff, RecvTime}}, State) ->
+    {ok, Messages, N_Network, N_PB, N_PRI, ZWinTimeout, N_DelayAck, N_RetransTimer} =
         handle_packet_incoming(fin_sent,
                                Pkt, utp_util:bit32(TS - RecvTime), RecvTime, TSDiff, State),
-    N_RetransTimer = handle_recv_retransmit_timer(Messages, N_Network, RetransTimer),
-
     %% Calculate the next state
     N_State = State#state {
                 buffer = N_PB,
@@ -728,15 +722,15 @@ handle_packet_incoming(FSMState, Pkt, ReplyMicro, TimeAcked, TSDiff,
                                 process = PRI,
                                 network = Network,
                                 zerowindow_timeout = ZWin,
+                                retransmit_timeout = RetransTimer,
                                 delayed_ack_timeout = DelayAckT
                              }) ->
     %% Handle the incoming packet
     try
         utp_buffer:handle_packet(FSMState, Pkt, Network, PB)
     of
-        {ok, N_PB1, N_Network3, Messages} ->
-
-            N_Network2 = utp_network:update_window(N_Network3, ReplyMicro, TimeAcked, Messages, TSDiff, Pkt),
+        {ok, N_PB1, N_Network3, RecvMessages} ->
+            N_Network2 = utp_network:update_window(N_Network3, ReplyMicro, TimeAcked, RecvMessages, TSDiff, Pkt),
             %% The packet may bump the advertised window from the peer, update
             %% The incoming datagram may have payload we can deliver to an application
             {_Drainage, N_PRI, N_PB} = satisfy_recvs(PRI, N_PB1),
@@ -744,6 +738,8 @@ handle_packet_incoming(FSMState, Pkt, ReplyMicro, TimeAcked, TSDiff,
             %% Fill up the send window again with the new information
             {FillMessages, ZWinTimeout, N_PB2, N_PRI2} =
                 fill_window(N_Network2, N_PRI, N_PB, ZWin),
+
+            Messages = RecvMessages ++ FillMessages,
 
             N_Network = utp_network:handle_maxed_out_window(Messages, N_Network2),
             %% @todo This ACK may be cancelled if we manage to push something out
@@ -754,10 +750,11 @@ handle_packet_incoming(FSMState, Pkt, ReplyMicro, TimeAcked, TSDiff,
             AckedBytes = acked_bytes(Messages),
             N_DelayAckT = handle_send_ack(N_Network, N_PB2,
                                           DelayAckT,
-                                          Messages ++ FillMessages,
+                                          Messages,
                                           AckedBytes),
+            N_RetransTimer =  handle_recv_retransmit_timer(Messages, N_Network, RetransTimer),
 
-            {ok, Messages, N_Network, N_PB2, N_PRI2, ZWinTimeout, N_DelayAckT}
+            {ok, Messages, N_Network, N_PB2, N_PRI2, ZWinTimeout, N_DelayAckT, N_RetransTimer}
     catch
         throw:{error, is_far_in_future} ->
             ?DEBUG([old_packet_received]),
