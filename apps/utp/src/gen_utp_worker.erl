@@ -491,15 +491,9 @@ idle({accept, SYN}, _From, #state { network = Network,
     1 = SYN#packet.seq_no,
     Conn_id_send = SYN#packet.conn_id,
     N_Network = utp_network:set_conn_id(Conn_id_send, Network),
-
-    SeqNo = case proplists:get_value(force_seq_no, Options) of
-                undefined -> utp_buffer:mk_random_seq_no();
-                K -> K
-            end,
+    SeqNo = init_seq_no(Options),
 
     AckPacket = utp_proto:mk_ack(SeqNo, SYN#packet.seq_no),
-    send_pkt(PktBuf, N_Network, AckPacket),
-
     Win = utp_buffer:advertised_window(PktBuf),
     {ok, _} = utp_network:send_pkt(Win, N_Network, AckPacket),
 
@@ -513,6 +507,13 @@ idle({accept, SYN}, _From, #state { network = Network,
 
 idle(_Msg, _From, State) ->
     {reply, idle, {error, enotconn}, State}.
+
+init_seq_no(Options) ->
+    case proplists:get_value(force_seq_no, Options) of
+        undefined -> utp_buffer:mk_random_seq_no();
+        K -> K
+    end.
+
 
 send_pkt(PktBuf, N_Network, SynPacket) ->
     Win = utp_buffer:advertised_window(PktBuf),
