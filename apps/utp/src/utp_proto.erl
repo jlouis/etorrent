@@ -7,20 +7,12 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
--export([mk_connection_id/0,
-         current_time_us/0,
-         current_time_ms/0,
-	 payload_size/1,
-	 encode/2,
-	 decode/1,
-         
-         validate/1,
-         format_pkt/1
-        ]).
+-export([format_pkt/1, succinct_format_packet/1, validate/1, encode/2, decode/1,
+         mk_syn/0, mk_ack/2]).
 
--export([mk_syn/0]).
+-export([current_time_us/0, current_time_ms/0]).
 
--export([mk_ack/2]).
+-export([mk_connection_id/0, payload_size/1]).
 %% Default extensions to use when SYN/SYNACK'ing
 -define(SYN_EXTS, [{ext_bits, <<0:64/integer>>}]).
 
@@ -36,6 +28,12 @@
 -define(ST_STATE, 2).
 -define(ST_RESET, 3).
 -define(ST_SYN,   4).
+
+succinct_format_packet(#packet { ty = Ty, win_sz = WinSz,
+                                 seq_no = SeqNo,
+                                 ack_no = AckNo,
+                                 payload = PL }) ->
+    {Ty, {s, SeqNo}, {a, AckNo}, {w, WinSz}, {sz, byte_size(PL)}}.
 
 format_pkt(#packet { ty = Ty, conn_id = ConnID, win_sz = WinSz,
                      seq_no = SeqNo,

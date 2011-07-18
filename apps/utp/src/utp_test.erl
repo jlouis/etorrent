@@ -6,8 +6,8 @@
 -export([
          test_connector_1/0,
          test_connectee_1/1,
-         test_connector_2/0,
-         test_connectee_2/1,
+         test_backwards_connect/0,
+         test_backwards_listen/1,
          test_full_duplex_out/0, test_full_duplex_in/1,
          test_close_in_1/1,
          test_close_out_1/0,
@@ -24,22 +24,20 @@
          test_rwin_in/2,
          test_rwin_out/1,
 
-         get/1
+         get/1,
+
+         c/0, l/0
          ]).
 
 %% ----------------------------------------------------------------------
     
 test_connector_1() ->
-    redbug:start("et:trace_me(_, none, none, fin, _)", [{print_file, "test_connector_1.trace"}]),
     {ok, Sock} = repeating_connect("localhost", 3333),
     ok = gen_utp:send(Sock, "HELLO"),
     ok = gen_utp:send(Sock, "WORLD"),
-    et:trace_me(50, none, none, fin, [testing]),
-    redbug:stop(),
     {ok, gen_utp_trace:grab()}.
 
-
-test_connector_2() ->
+test_backwards_connect() ->
     {ok, Sock} = repeating_connect("localhost", 3333),
     case gen_utp:recv(Sock, 10) of
         {ok, <<"HELLOWORLD">>} ->
@@ -49,7 +47,7 @@ test_connector_2() ->
             {{error, econnreset}, gen_utp_trace:grab()}
     end.
 
-test_connectee_2(Options) ->
+test_backwards_listen(Options) ->
     ok = listen(Options),
     {ok, Sock} = gen_utp:accept(),
     ok = gen_utp:send(Sock, <<"HELLO">>),
@@ -252,13 +250,12 @@ get(N) when is_integer(N) ->
     {ok, gen_utp_trace:grab()}.
 
 listen(Config) ->
-    Opts = case ?config(force_seq_no, Config) of
+    Opts = case proplists:get_value(force_seq_no, Config) of
                K when is_integer(K),
                       K >= 0,
                       K =<  16#FFFF ->
                    [{force_seq_no, K}];
                _Otherwise ->
-                   ?ERR([no_forced_seq_no, Config]),
                    []
            end,
     case gen_utp:listen(Opts) of
@@ -267,3 +264,14 @@ listen(Config) ->
         {error, ealreadylistening} ->
             ok
     end.
+
+%% ----------------------------------------------------------------------
+l() ->
+    utp:start_app(3333),
+    utp_test:test_backwards_listen([]).
+
+c() ->
+    utp:start_app(3334),
+    utp_filter:start(),
+    utp_test:test_backwards_connect().
+

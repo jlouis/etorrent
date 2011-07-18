@@ -9,7 +9,7 @@ start() ->
 start(ExtraOptions) ->
     Options =
         [{event_order, event_ts},
-         {scale, 3},
+         {scale, 2},
          {max_actors, 10},
          {trace_pattern, {utp, max}},
          {trace_global, true},

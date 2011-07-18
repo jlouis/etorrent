@@ -146,7 +146,7 @@ close(Pid) ->
 
 %% ----------------------------------------------------------------------
 incoming(Pid, Packet, Timing) ->
-    utp:report_event(50, peer, us, packet, [{packet, Packet}]),
+    utp:report_event(50, peer, us, utp_proto:succinct_format_packet(Packet), [{packet, Packet}]),
     gen_fsm:send_event(Pid, {pkt, Packet, Timing}).
 
 reply(To, Msg) ->

@@ -45,10 +45,8 @@ end_per_group(_Group, _Config) ->
     ok.
 
 init_per_suite(Config) ->
-    {ok, ConnectNode} = test_server:start_node('connector', slave, []),
-    ok = rpc:call(ConnectNode, utp, start_app, [3334]),    
-    {ok, ConnecteeNode} = test_server:start_node('connectee', slave, []),
-    ok = rpc:call(ConnecteeNode, utp, start_app, [3333]),
+    ConnectNode = start_node(connector,3334),
+    ConnecteeNode = start_node(connectee,3333),
     [{connector, ConnectNode},
      {connectee, ConnecteeNode} | Config].
 
@@ -136,7 +134,7 @@ backwards_communication() ->
     [].
 
 backwards_communication(Config) ->
-    two_way(Config, test_connectee_2, test_connector_2).
+    two_way(Config, test_backwards_listen, test_backwards_connect).
 
 full_duplex_communication() ->
     [].
@@ -219,3 +217,10 @@ connect_n_send_big(Config) ->
 
 %% Helpers
 %% ----------------------------------------------------------------------
+
+start_node(Name,Port) ->
+    {ok, ConnectNode} = test_server:start_node(Name, slave, []),
+    ok = rpc:call(ConnectNode, utp, start_app, [Port]),
+    ConnectNode.
+
+
