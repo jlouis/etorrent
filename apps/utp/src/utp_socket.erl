@@ -80,6 +80,8 @@ send_pkt(#sock_info {
 
 send(Socket, Addr, Port, Packet, TSDiff) ->
     utp_proto:validate(Packet),
+    utp:report_event(50, us, peer, packet, [{addr_port, Addr, Port},
+                                            {packet, Packet}]),
     send_aux(1, Socket, Addr, Port, utp_proto:encode(Packet, TSDiff)).
 
 send_aux(0, Socket, Addr, Port, Payload) ->
