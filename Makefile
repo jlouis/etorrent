@@ -3,6 +3,7 @@
 ## GNU-make
 ETORRENT_VERSION=1.2.1
 UTP_VERSION=0.1
+ERTS_VERSION=5.8.5
 
 all: compile
 
@@ -102,7 +103,7 @@ console:
 		-pa ../../deps/riak_err/ebin
 
 console-raw:
-	dev/etorrent-dev/erts-5.8.4/bin/erl \
+	dev/etorrent-dev/erts-${ERTS_VERSION}/bin/erl \
 		-pa apps/etorrent/ebin \
 		-pa apps/utp/ebin \
 	        -boot start_clean
