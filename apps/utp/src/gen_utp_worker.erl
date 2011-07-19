@@ -407,12 +407,7 @@ fin_sent({pkt, Pkt, {TS, TSDiff, RecvTime}}, State) ->
         true ->
             {next_state, report(destroy), N_State, 0};
         undefined ->
-            case proplists:get_value(got_fin, Messages) of
-                true ->
-                    {next_state, destroy, N_State, 0};
-                undefined ->
-                    {next_state, fin_sent, N_State}
-            end
+            {next_state, fin_sent, N_State}
     end;
 fin_sent({timeout, _, ledbat_timeout}, State) ->
     {next_state, fin_sent, bump_ledbat(State)};
