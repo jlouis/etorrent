@@ -328,8 +328,11 @@ connected(_Msg, State) ->
     {next_state, connected, State}.
 
 %% @private
-got_fin(close, State) ->
-    {next_state, report(destroy_delay), State};
+got_fin(close, #state { 
+          retransmit_timeout = Timer,
+          network = Network } = State) ->
+    N_Timer = set_retransmit_timer(utp_network:rto(Network), Timer),
+    {next_state, report(destroy_delay), State#state { retransmit_timeout = N_Timer } };
 got_fin({timeout, Ref, {retransmit_timeout, N}},
         #state { 
           buffer = PacketBuf,
