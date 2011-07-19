@@ -4,8 +4,8 @@
 -include_lib("common_test/include/ct.hrl").
 
 -export([
-         test_connector_1/0,
-         test_connectee_1/1,
+         test_connect_n_communicate_connect/0,
+         test_connect_n_communicate_listen/1,
          test_backwards_connect/0,
          test_backwards_listen/1,
          test_full_duplex_out/0, test_full_duplex_in/1,
@@ -31,10 +31,19 @@
 
 %% ----------------------------------------------------------------------
     
-test_connector_1() ->
+test_connect_n_communicate_connect() ->
     {ok, Sock} = repeating_connect("localhost", 3333),
     ok = gen_utp:send(Sock, "HELLO"),
     ok = gen_utp:send(Sock, "WORLD"),
+    {ok, gen_utp_trace:grab()}.
+
+test_connect_n_communicate_listen(Options) ->
+    ok =  listen(Options),
+    {ok, Port} = gen_utp:accept(),
+    {ok, R1} = gen_utp:recv(Port, 5),
+    {ok, R2} = gen_utp:recv(Port, 5),
+    ok = gen_utp:close(Port),
+    {<<"HELLO">>, <<"WORLD">>} = {R1, R2},
     {ok, gen_utp_trace:grab()}.
 
 test_backwards_connect() ->
@@ -129,15 +138,6 @@ test_close_in_3(Options) ->
     ok = gen_utp:send(Sock, "WORLD"),
     {ok, <<"HELLO">>} = gen_utp:recv(Sock, 5),
     ok = gen_utp:close(Sock),
-    {ok, gen_utp_trace:grab()}.
-
-test_connectee_1(Options) ->
-    ok =  listen(Options),
-    {ok, Port} = gen_utp:accept(),
-    {ok, R1} = gen_utp:recv(Port, 5),
-    {ok, R2} = gen_utp:recv(Port, 5),
-    ok = gen_utp:close(Port),
-    {<<"HELLO">>, <<"WORLD">>} = {R1, R2},
     {ok, gen_utp_trace:grab()}.
 
 test_send_large_file(Data) ->

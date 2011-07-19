@@ -151,9 +151,9 @@ connect_n_communicate(Config) ->
     spawn(fun() ->
                   %% @todo, should fix this timer invocation
                   timer:sleep(3000),
-                  rpc:call(C1, utp_test, test_connector_1, [])
+                  rpc:call(C1, utp_test, test_connect_n_communicate_connect, [])
           end),
-    {ok, _TR} = rpc:call(C2, utp_test, test_connectee_1, [Config]),
+    {ok, _TR} = rpc:call(C2, utp_test, test_connect_n_communicate_listen, [Config]),
     ok.
 
 rwin_test() ->
