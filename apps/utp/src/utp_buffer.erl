@@ -55,7 +55,7 @@
 -type pkt() :: #pkt_wrap{}.
 
 
--record(pkt_buf, {
+-record(buffer, {
           recv_buf    = queue:new()     :: queue(),
           reorder_buf = []              :: orddict:orddict(),
           %% When we have a working protocol, this retransmission queue is probably
@@ -96,23 +96,23 @@
 
 %% PKT BUF INITIALIZATION
 %% ----------------------------------------------------------------------
-mk(none)    -> #pkt_buf{};
+mk(none)    -> #buffer{};
 mk(OptRecv) ->
-    #pkt_buf {
+    #buffer {
         opt_recv_buf_sz = OptRecv
        }.
 
-init_counters(#pkt_buf{} = PBuf, SeqNo, NextExpected)
+init_counters(#buffer{} = PBuf, SeqNo, NextExpected)
   when SeqNo >= 0, SeqNo < 65536,
        NextExpected >= 0, NextExpected < 65536 ->
-    PBuf#pkt_buf { seq_no = SeqNo,
+    PBuf#buffer { seq_no = SeqNo,
                   next_expected_seq_no = NextExpected}.
 
-init_seqno(#pkt_buf {} = PBuf, SeqNo) when SeqNo >= 0, SeqNo < 65536->
-    PBuf#pkt_buf { seq_no = SeqNo }.
+init_seqno(#buffer {} = PBuf, SeqNo) when SeqNo >= 0, SeqNo < 65536->
+    PBuf#buffer { seq_no = SeqNo }.
 
-init_ackno(#pkt_buf{} = PBuf, NextExpected) ->
-    PBuf#pkt_buf {next_expected_seq_no = NextExpected}.
+init_ackno(#buffer{} = PBuf, NextExpected) ->
+    PBuf#buffer {next_expected_seq_no = NextExpected}.
 
 mk_random_seq_no() ->
     <<N:16/integer>> = crypto:rand_bytes(2),
@@ -125,7 +125,7 @@ mk_random_seq_no() ->
 %% @doc Toss out an ACK packet on the Socket.
 %% @end
 send_ack(Network,
-         #pkt_buf { seq_no = SeqNo,
+         #buffer { seq_no = SeqNo,
                     next_expected_seq_no = AckNo
                   } = Buf) ->
     %% @todo Send out an ack message here
@@ -156,7 +156,7 @@ send_packet(Bin, Buf, Network) ->
     send_packet(st_data, Bin, Buf, Network).
 
 send_packet(Ty, Bin,
-            #pkt_buf { seq_no = SeqNo,
+            #buffer { seq_no = SeqNo,
                        next_expected_seq_no = AckNo,
                        retransmission_queue = RetransQueue } = Buf,
             Network) ->
@@ -171,7 +171,7 @@ send_packet(Ty, Bin,
                        transmissions = 1,
                        send_time = SendTime,
                        need_resend = false },
-    Buf#pkt_buf { seq_no = utp_util:bit16(SeqNo+1),
+    Buf#buffer { seq_no = utp_util:bit16(SeqNo+1),
                   retransmission_queue = [Wrap | RetransQueue]
                 }.
 
@@ -182,7 +182,7 @@ send_packet(Ty, Bin,
 %% The `SeqNo' given is validated with respect to the current state of
 %% the connection.
 %% @end
-validate_seq_no(SeqNo, #pkt_buf { next_expected_seq_no = NextExpected }) ->
+validate_seq_no(SeqNo, #buffer { next_expected_seq_no = NextExpected }) ->
     case utp_util:bit16(SeqNo - NextExpected) of
         _SeqAhead when SeqNo == (NextExpected - 1) ->
             {ok, no_data};
@@ -211,9 +211,9 @@ valid_state(State) ->
 %%   are informational only, and if they generate ACK's it is not from this part of
 %%   the code.
 %% @end
-consider_send_ack(#pkt_buf { reorder_buf = RB1,
+consider_send_ack(#buffer { reorder_buf = RB1,
                              next_expected_seq_no = Seq1 },
-                  #pkt_buf { reorder_buf = RB2,
+                  #buffer { reorder_buf = RB2,
                              next_expected_seq_no = Seq2})
   when RB1 =/= RB2 orelse Seq1 =/= Seq2 ->
     [{send_ack, true}];
@@ -229,8 +229,8 @@ handle_receive_buffer(SeqNo, Payload, PacketBuffer, State) ->
     case update_recv_buffer(SeqNo, Payload, PacketBuffer, State) of
         %% Force an ACK out in this case
         duplicate -> {PacketBuffer, [{send_ack, true}]};
-        {ok, #pkt_buf{} = PB} -> {PB, consider_send_ack(PacketBuffer, PB)};
-        {got_fin, #pkt_buf{} = PB} -> {PB, [{got_fin, true},
+        {ok, #buffer{} = PB} -> {PB, consider_send_ack(PacketBuffer, PB)};
+        {got_fin, #buffer{} = PB} -> {PB, [{got_fin, true},
                                             {send_ack, true}]} % *Always* ACK the FIN packet!
     end.
 
@@ -266,19 +266,19 @@ handle_incoming_datagram_payload(SeqNo, Payload, PacketBuffer, State) ->
 %% sequence, it should go into the reorder buffer in the right spot.
 %% @end
 update_recv_buffer(SeqNo, <<>>,
-                   #pkt_buf { fin_state ={got_fin, SeqNo},
+                   #buffer { fin_state ={got_fin, SeqNo},
                               next_expected_seq_no = SeqNo } = PacketBuffer, _State) ->
     {got_fin, PacketBuffer};
 update_recv_buffer(_SeqNo, <<>>, PB, _State) -> {ok, PB};
-update_recv_buffer(SeqNo, Payload, #pkt_buf { fin_state = {got_fin, SeqNo},
+update_recv_buffer(SeqNo, Payload, #buffer { fin_state = {got_fin, SeqNo},
                                               next_expected_seq_no = SeqNo } = PB, State) ->
     N_PB = recv_buffer_enqueue(State, Payload, PB),
-    {got_fin, N_PB#pkt_buf { next_expected_seq_no = utp_util:bit16(SeqNo+1)}};
-update_recv_buffer(SeqNo, Payload, #pkt_buf { next_expected_seq_no = SeqNo } = PB, State) ->
+    {got_fin, N_PB#buffer { next_expected_seq_no = utp_util:bit16(SeqNo+1)}};
+update_recv_buffer(SeqNo, Payload, #buffer { next_expected_seq_no = SeqNo } = PB, State) ->
     %% This is the next expected packet, yay!
     N_PB = recv_buffer_enqueue(State, Payload, PB),
     satisfy_from_reorder_buffer(
-      N_PB#pkt_buf { next_expected_seq_no = utp_util:bit16(SeqNo+1) }, State);
+      N_PB#buffer { next_expected_seq_no = utp_util:bit16(SeqNo+1) }, State);
 update_recv_buffer(SeqNo, Payload, PB, _State) when is_integer(SeqNo) ->
     reorder_buffer_in(SeqNo, Payload, PB).
 
@@ -287,36 +287,36 @@ recv_buffer_enqueue(connected, Payload, PB) -> enqueue_payload(Payload, PB).
 
 %% @doc Try to satisfy the next_expected_seq_no directly from the reorder buffer.
 %% @end
-satisfy_from_reorder_buffer(#pkt_buf { reorder_buf = [] } = PB, _State) ->
+satisfy_from_reorder_buffer(#buffer { reorder_buf = [] } = PB, _State) ->
     {ok, PB};
-satisfy_from_reorder_buffer(#pkt_buf { next_expected_seq_no = AckNo,
+satisfy_from_reorder_buffer(#buffer { next_expected_seq_no = AckNo,
                                        fin_state = {got_fin, AckNo},
                                        reorder_buf = [{AckNo, PL} | R]} = PB, State) ->
     N_PB = recv_buffer_enqueue(State, PL, PB),
-    {got_fin, N_PB#pkt_buf { next_expected_seq_no = utp_util:bit16(AckNo+1),
+    {got_fin, N_PB#buffer { next_expected_seq_no = utp_util:bit16(AckNo+1),
                              reorder_buf = R}};
-satisfy_from_reorder_buffer(#pkt_buf { next_expected_seq_no = AckNo,
+satisfy_from_reorder_buffer(#buffer { next_expected_seq_no = AckNo,
                                        reorder_buf = [{AckNo, PL} | R]} = PB,
                             State) ->
     N_PB = recv_buffer_enqueue(State, PL, PB),
     satisfy_from_reorder_buffer(
-      N_PB#pkt_buf { next_expected_seq_no = utp_util:bit16(AckNo+1),
+      N_PB#buffer { next_expected_seq_no = utp_util:bit16(AckNo+1),
                      reorder_buf = R}, State);
-satisfy_from_reorder_buffer(#pkt_buf { } = PB, _State) ->
+satisfy_from_reorder_buffer(#buffer { } = PB, _State) ->
     {ok, PB}.
 
 %% @doc Enter the packet into the reorder buffer, watching out for duplicates
 %% @end
-reorder_buffer_in(SeqNo, Payload, #pkt_buf { reorder_buf = OD } = PB) ->
+reorder_buffer_in(SeqNo, Payload, #buffer { reorder_buf = OD } = PB) ->
     case orddict:is_key(SeqNo, OD) of
         true -> duplicate;
-        false -> {ok, PB#pkt_buf { reorder_buf = orddict:store(SeqNo, Payload, OD) }}
+        false -> {ok, PB#buffer { reorder_buf = orddict:store(SeqNo, Payload, OD) }}
     end.
 
 %% SEND PATH
 %% ----------------------------------------------------------------------
 
-update_send_buffer(AckNo, #pkt_buf { seq_no = NextSeqNo } = PB) ->
+update_send_buffer(AckNo, #buffer { seq_no = NextSeqNo } = PB) ->
     SeqNo = utp_util:bit16(NextSeqNo - 1),
     WindowSize = send_window_count(PB),
     WindowStart = utp_util:bit16(SeqNo - WindowSize),
@@ -341,7 +341,7 @@ update_send_buffer(AckNo, #pkt_buf { seq_no = NextSeqNo } = PB) ->
 %%       the ack_no I think.
 %% @end
 prune_acked(AckAhead, WindowStart,
-            #pkt_buf { retransmission_queue = RQ } = PB) ->
+            #buffer { retransmission_queue = RQ } = PB) ->
     {AckedPs, N_RQ} = lists:partition(
                         fun(#pkt_wrap {
                                packet = #packet { seq_no = SeqNo } }) ->
@@ -356,7 +356,7 @@ prune_acked(AckAhead, WindowStart,
                    false ->
                        ok
                end,
-    {RetState, AckedPs, PB#pkt_buf { retransmission_queue = N_RQ }}.
+    {RetState, AckedPs, PB#buffer { retransmission_queue = N_RQ }}.
 
 contains_st_fin([]) -> false;
 contains_st_fin([#pkt_wrap {
@@ -374,8 +374,8 @@ view_ack_state(N, PB) when is_integer(N) ->
             [{all_acked, true}]
     end.
 
-has_inflight_data(#pkt_buf { retransmission_queue = [] }) -> false;
-has_inflight_data(#pkt_buf { retransmission_queue = [_|_] }) -> true.
+has_inflight_data(#buffer { retransmission_queue = [] }) -> false;
+has_inflight_data(#buffer { retransmission_queue = [_|_] }) -> true.
 
 %% @doc View the state of the Ack
 %% Given the `AckNo' and when the `WindowStart' started, we scrutinize the Ack
@@ -390,7 +390,7 @@ view_ack_no(AckNo, WindowStart, WindowSize) ->
             {ok, N}
     end.
 
-send_window_count(#pkt_buf { retransmission_queue = RQ }) ->
+send_window_count(#buffer { retransmission_queue = RQ }) ->
     length(RQ).
 
 
@@ -454,7 +454,7 @@ handle_packet_type(Type, SeqNo, Buf) ->
     case Type of
         st_fin ->
             et:trace_me(50, none, none, fin, [saw_st_fin, SeqNo]),
-            Buf#pkt_buf { fin_state = {got_fin, SeqNo} };
+            Buf#buffer { fin_state = {got_fin, SeqNo} };
         st_data ->
             Buf;
         st_state ->
@@ -473,7 +473,7 @@ handle_packet_type(Type, SeqNo, Buf) ->
 %% @end
 fill_from_proc_queue(N, Buf, ProcQ) ->
     TxQ = queue:new(),
-    fill_from_proc_queue(N, Buf#pkt_buf.pkt_size, TxQ, ProcQ).
+    fill_from_proc_queue(N, Buf#buffer.pkt_size, TxQ, ProcQ).
 
 %% @doc Worker for fill_from_proc_queue/3
 %% @end
@@ -542,9 +542,9 @@ retransmit_packet(PktBuf, Network) ->
     {ok, SendTime} = utp_network:send_pkt(Win, Network, Pkt),
     Wrap = Oldest#pkt_wrap { transmissions = N+1,
                              send_time = SendTime},
-    PktBuf#pkt_buf { retransmission_queue = [Wrap | Rest] }.
+    PktBuf#buffer { retransmission_queue = [Wrap | Rest] }.
 
-pick_oldest_packet(#pkt_buf { retransmission_queue = [Candidate | R] }) ->
+pick_oldest_packet(#buffer { retransmission_queue = [Candidate | R] }) ->
     pick_oldest_packet(Candidate, R, []).
 
 pick_oldest_packet(Candidate, [], Accum) ->
@@ -568,7 +568,7 @@ recv_buf_size(Q) ->
 
 %% @doc Calculate the advertised window to use
 %% @end
-advertised_window(#pkt_buf { recv_buf = Q,
+advertised_window(#buffer { recv_buf = Q,
                              opt_recv_buf_sz = Sz }) ->
     FillValue = recv_buf_size(Q),
     case Sz - FillValue of
@@ -582,9 +582,9 @@ payload_size(#pkt_wrap { packet = Packet }) ->
     byte_size(Packet#packet.payload).
 
 
-view_inflight_bytes(#pkt_buf{ retransmission_queue = [] }) ->
+view_inflight_bytes(#buffer{ retransmission_queue = [] }) ->
     buffer_empty;
-view_inflight_bytes(#pkt_buf{ retransmission_queue = Q }) ->
+view_inflight_bytes(#buffer{ retransmission_queue = Q }) ->
     case lists:sum([payload_size(Pkt) || Pkt <- Q]) of
         Sum ->
             {ok, Sum}
@@ -603,16 +603,16 @@ bytes_free_in_window(PktBuf, Network) ->
             0
     end.
 
-enqueue_payload(Payload, #pkt_buf { recv_buf = Q } = PB) ->
-    PB#pkt_buf { recv_buf = queue:in(Payload, Q) }.
+enqueue_payload(Payload, #buffer { recv_buf = Q } = PB) ->
+    PB#buffer { recv_buf = queue:in(Payload, Q) }.
 
-buffer_putback(B, #pkt_buf { recv_buf = Q } = Buf) ->
-    Buf#pkt_buf { recv_buf = queue:in_r(B, Q) }.
+buffer_putback(B, #buffer { recv_buf = Q } = Buf) ->
+    Buf#buffer { recv_buf = queue:in_r(B, Q) }.
 
-buffer_dequeue(#pkt_buf { recv_buf = Q } = Buf) ->
+buffer_dequeue(#buffer { recv_buf = Q } = Buf) ->
     case queue:out(Q) of
         {{value, E}, Q1} ->
-            {ok, E, Buf#pkt_buf { recv_buf = Q1 }};
+            {ok, E, Buf#buffer { recv_buf = Q1 }};
         {empty, _} ->
             empty
     end.
