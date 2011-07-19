@@ -77,7 +77,7 @@
           %% @todo Discover this one
           pkt_size = 1000 :: integer()
          }).
--opaque({t,{type,{77,16},record,[{atom,{77,17},pkt_buf}]},[]}).
+-opaque t() :: #buffer{}.
 
 %% Track send quota available
 -record(send_quota, {
