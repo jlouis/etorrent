@@ -159,7 +159,6 @@ listen() ->
 %% @doc New unknown incoming packet
 incoming_unknown(#packet { ty = st_syn } = Packet, Addr, Port) ->
     %% SYN packet, so pass it in
-    ?INFO([syn_packet_incoming]),
     gen_server:cast(?MODULE, {incoming_syn, Packet, Addr, Port});
 incoming_unknown(#packet{ ty = st_reset } = _Packet, _Addr, _Port) ->
     %% Stray RST packet received, ignore since there is no connection for it
@@ -253,14 +252,10 @@ handle_cast({incoming_syn, Packet, Addr, Port}, #state { listen_queue = Q,
     Elem = {Packet, Addr, Port},
     case push_syn(Elem, Q) of
         synq_full ->
-            ?INFO([syn_queue_full]),
             {noreply, S}; % @todo RESET sent back?
         duplicate ->
-            ?INFO([duplicate_syn_received]),
             {noreply, S};
         {ok, Pairings, NewQ} ->
-            ?INFO([{paired, Pairings},
-                    {syn_q, NewQ}]),
             [accept_incoming_conn(Socket, Acc, SYN, ListenOpts) || {Acc, SYN} <- Pairings],
             {noreply, S#state { listen_queue = NewQ }}
     end;

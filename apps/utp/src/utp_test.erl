@@ -58,29 +58,19 @@ test_backwards_listen(Options) ->
 test_full_duplex_in(Options) ->
     ok = listen(Options),
     {ok, Sock} = gen_utp:accept(),
-    ?INFO([duplex, accept]),
     ok = gen_utp:send(Sock, <<"HELLO">>),
     ok = gen_utp:send(Sock, <<"WORLD">>),
-    ?INFO([duplex, sent]),
     {ok, <<"12345">>} = gen_utp:recv(Sock, 5),
-    ?INFO([duplex, recv_1]),
     {ok, <<"67890">>} = gen_utp:recv(Sock, 5),
-    ?INFO([duplex, recv_2]),
     ok = gen_utp:close(Sock),
-    ?INFO([duplex, close]),
     {ok, gen_utp_trace:grab()}.
 
 test_full_duplex_out() ->
     {ok, Sock} = repeating_connect("localhost", 3333),
-    ?INFO([duplex_out, connected]),
     ok = gen_utp:send(Sock, "12345"),
-    ?INFO([duplex_out, send_1]),
     ok = gen_utp:send(Sock, "67890"),
-    ?INFO([duplex_out, send_2]),
     {ok, <<"HELLOWORLD">>} = gen_utp:recv(Sock, 10),
-    ?INFO([duplex_out, recv]),
     ok = gen_utp:close(Sock),
-    ?INFO([duplex_out, closed]),
     {ok, gen_utp_trace:grab()}.
 
 test_close_out_1() ->
