@@ -231,7 +231,7 @@ handle_receive_buffer(SeqNo, Payload, PacketBuffer, State) ->
         duplicate -> {PacketBuffer, [{send_ack, true}]};
         {ok, #buffer{} = PB} -> {PB, consider_send_ack(PacketBuffer, PB)};
         {got_fin, #buffer{} = PB} -> {PB, [{got_fin, true},
-                                            {send_ack, true}]} % *Always* ACK the FIN packet!
+                                           {send_ack, true}]} % *Always* ACK the FIN packet!
     end.
 
 
@@ -266,16 +266,15 @@ handle_incoming_datagram_payload(SeqNo, Payload, PacketBuffer, State) ->
 %% sequence, it should go into the reorder buffer in the right spot.
 %% @end
 update_recv_buffer(SeqNo, <<>>,
-                   #buffer { fin_state ={got_fin, SeqNo},
-                              next_expected_seq_no = SeqNo } = PacketBuffer, _State) ->
-    {got_fin, PacketBuffer};
+                   #buffer { fin_state = {got_fin, SeqNo},
+                             next_expected_seq_no = SeqNo } = PacketBuffer, _State) ->
+    {got_fin, PacketBuffer#buffer { next_expected_seq_no = utp_util:bit16(SeqNo+1)}};
 update_recv_buffer(_SeqNo, <<>>, PB, _State) -> {ok, PB};
 update_recv_buffer(SeqNo, Payload, #buffer { fin_state = {got_fin, SeqNo},
-                                              next_expected_seq_no = SeqNo } = PB, State) ->
+                                             next_expected_seq_no = SeqNo } = PB, State) ->
     N_PB = recv_buffer_enqueue(State, Payload, PB),
     {got_fin, N_PB#buffer { next_expected_seq_no = utp_util:bit16(SeqNo+1)}};
 update_recv_buffer(SeqNo, Payload, #buffer { next_expected_seq_no = SeqNo } = PB, State) ->
-    %% This is the next expected packet, yay!
     N_PB = recv_buffer_enqueue(State, Payload, PB),
     satisfy_from_reorder_buffer(
       N_PB#buffer { next_expected_seq_no = utp_util:bit16(SeqNo+1) }, State);
