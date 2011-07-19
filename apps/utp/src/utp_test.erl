@@ -35,6 +35,8 @@ test_connect_n_communicate_connect() ->
     {ok, Sock} = repeating_connect("localhost", 3333),
     ok = gen_utp:send(Sock, "HELLO"),
     ok = gen_utp:send(Sock, "WORLD"),
+    timer:sleep(1000),
+    ok = gen_utp:close(Sock),
     {ok, gen_utp_trace:grab()}.
 
 test_connect_n_communicate_listen(Options) ->
@@ -257,11 +259,29 @@ listen(Config) ->
 
 %% ----------------------------------------------------------------------
 l() ->
+    l(connect_n_communicate).
+
+l(T) ->
     utp:start_app(3333),
-    utp_test:test_backwards_listen([]).
+    utp_filter:start(),
+    (parse_listen(T))([]).
+
+parse_listen(test_backwards) ->
+    fun test_backwards_listen/1;
+parse_listen(connect_n_communicate) ->
+    fun test_connect_n_communicate_listen/1.
 
 c() ->
+    c(connect_n_communicate).
+
+c(T) ->
     utp:start_app(3334),
     utp_filter:start(),
-    utp_test:test_backwards_connect().
+    (parse_connect(T))().
+
+parse_connect(test_backwards) ->
+    fun test_backwards_connect/0;
+parse_connect(connect_n_communicate) ->
+    fun test_connect_n_communicate_connect/0.
+
 
