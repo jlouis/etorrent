@@ -554,39 +554,17 @@ connected(_Msg, _From, State) ->
     {next_state, connected, State}.
 
 %% @private
-got_fin({recv, L}, _From, #state { buffer = PktBuf,
-                                   process = ProcInfo } = State) ->
-    true = utp_process:recv_buffer_empty(ProcInfo),
-    case utp_buffer:draining_receive(L, PktBuf) of
-        {ok, Bin, N_PktBuf} ->
-            utp:report_event(60, us, client, {ok, size(Bin)}, [Bin]),
-            {reply, {ok, Bin}, got_fin, State#state { buffer = N_PktBuf}};
-        empty ->
-            utp:report_event(60, us, client, {error, eof}, []),
-            {reply, {error, eof}, got_fin, State};
-        {partial_read, Bin, N_PktBuf} ->
-            utp:report_event(60, us, client, {error, {partial, size(Bin)}}, [Bin]),
-            {reply, {error, {partial, Bin}}, got_fin, State#state { buffer = N_PktBuf}}
-    end;
+got_fin({recv, L}, _From,State) ->
+    {ok, Reply, NewProcessState} = drain_buffer(L, State),
+    {reply, Reply, got_fin, NewProcessState};
 got_fin({send, _Data}, _From, State) ->
     utp:report_event(60, us, client, {error, econnreset}, []),
     {reply, {error, econnreset}, got_fin, State}.
 
 %% @private
-fin_sent({recv, L}, _From, #state { buffer = PktBuf,
-                                    process = ProcInfo } = State) ->
-    true = utp_process:recv_buffer_empty(ProcInfo),
-    case utp_buffer:draining_receive(L, PktBuf) of
-        {ok, Bin, N_PktBuf} ->
-            utp:report_event(60, us, client, {ok, size(Bin)}, [Bin]),
-            {reply, {ok, Bin}, fin_sent, State#state { buffer = N_PktBuf}};
-        empty ->
-            utp:report_event(60, us, client, {error, eof}, []),
-            {reply, {error, eof}, fin_sent, State};
-        {partial_read, Bin, N_PktBuf} ->
-            utp:report_event(60, us, client, {error, {partial, size(Bin)}}, [Bin]),
-            {reply, {error, {partial, Bin}}, fin_sent, State#state { buffer = N_PktBuf}}
-    end;
+fin_sent({recv, L}, _From, State) ->
+    {ok, Reply, NewProcessState} = drain_buffer(L, State),
+    {reply, Reply, fin_sent, NewProcessState};
 fin_sent({send, _Data}, _From, State) ->
     utp:report_event(60, us, client, {error, econnreset}),
     {reply, {error, econnreset}, fin_sent, State}.
@@ -888,6 +866,22 @@ ack_analyze_further(Messages) ->
                     piggybacked
             end
     end.
+
+drain_buffer(L, #state { buffer = PktBuf,
+                         process = ProcInfo } = State) ->
+    true = utp_process:recv_buffer_empty(ProcInfo),
+    case utp_buffer:draining_receive(L, PktBuf) of
+        {ok, Bin, N_PktBuf} ->
+            utp:report_event(60, us, client, {ok, size(Bin)}, [Bin]),
+            {ok, {ok, Bin}, State#state { buffer = N_PktBuf}};
+        empty ->
+            utp:report_event(60, us, client, {error, eof}, []),
+            {ok, {error, eof}, State};
+        {partial_read, Bin, N_PktBuf} ->
+            utp:report_event(60, us, client, {error, {partial, size(Bin)}}, [Bin]),
+            {ok, {error, {partial, Bin}}, State#state { buffer = N_PktBuf}}
+    end.
+
 
 report(NewState) ->
     utp:report_event(50, us, NewState, []),
