@@ -473,6 +473,7 @@ idle(connect,
 idle({accept, SYN}, _From, #state { network = Network,
                                     options = Options,
                                     buffer   = PktBuf } = State) ->
+    utp:report_event(50, peer, us, utp_proto:succinct_format_packet(SYN), [{packet, SYN}]),
     1 = SYN#packet.seq_no,
     Conn_id_send = SYN#packet.conn_id,
     N_Network = utp_network:set_conn_id(Conn_id_send, Network),
@@ -484,7 +485,7 @@ idle({accept, SYN}, _From, #state { network = Network,
 
     %% @todo retransmit timer here?
     set_ledbat_timer(),
-    {reply, ok, connected,
+    {reply, ok, report(connected),
             State#state { network = utp_network:handle_advertised_window(N_Network, SYN),
                           buffer = utp_buffer:init_counters(PktBuf,
                                                              utp_util:bit16(SeqNo + 1),
