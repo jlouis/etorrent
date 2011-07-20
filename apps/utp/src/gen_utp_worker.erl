@@ -119,28 +119,33 @@ start_link(Socket, Addr, Port, Options) ->
 %% @doc Send a connect event
 %% @end
 connect(Pid) ->
+    utp:report_event(60, client, us, connect, []),
     sync_send_event(Pid, connect).
 
 %% @doc Send an accept event
 %% @end
 accept(Pid, SynPacket) ->
+    utp:report_event(60, client, us, accept, [SynPacket]),
     sync_send_event(Pid, {accept, SynPacket}).
 
 %% @doc Receive some bytes from the socket. Blocks until the said amount of
 %% bytes have been read.
 %% @end
 recv(Pid, Amount) ->
+    utp:report_event(60, client, us, {recv, Amount}, []),
     gen_fsm:sync_send_event(Pid, {recv, Amount}, infinity).
 
 %% @doc Send some bytes from the socket. Blocks until the said amount of
 %% bytes have been sent and has been accepted by the underlying layer.
 %% @end
 send(Pid, Data) ->
+    utp:report_event(60, client, us, {send, size(Data)}, [Data]),
     gen_fsm:sync_send_event(Pid, {send, Data}, infinity).
 
 %% @doc Send a close event
 %% @end
 close(Pid) ->
+    utp:report_event(60, client, us, close, []),
     %% Consider making it sync, but the de-facto implementation isn't
     gen_fsm:send_event(Pid, close).
 
@@ -150,6 +155,7 @@ incoming(Pid, Packet, Timing) ->
     gen_fsm:send_event(Pid, {pkt, Packet, Timing}).
 
 reply(To, Msg) ->
+    utp:report_event(60, us, client, reply, [Msg]),
     gen_fsm:reply(To, Msg).
 
 sync_send_event(Pid, Event) ->
@@ -485,6 +491,7 @@ idle({accept, SYN}, _From, #state { network = Network,
 
     %% @todo retransmit timer here?
     set_ledbat_timer(),
+    utp:report_event(60, us, client, ok, []),
     {reply, ok, report(connected),
             State#state { network = utp_network:handle_advertised_window(N_Network, SYN),
                           buffer = utp_buffer:init_counters(PktBuf,
@@ -552,13 +559,17 @@ got_fin({recv, L}, _From, #state { buffer = PktBuf,
     true = utp_process:recv_buffer_empty(ProcInfo),
     case utp_buffer:draining_receive(L, PktBuf) of
         {ok, Bin, N_PktBuf} ->
+            utp:report_event(60, us, client, {ok, size(Bin)}, [Bin]),
             {reply, {ok, Bin}, got_fin, State#state { buffer = N_PktBuf}};
         empty ->
+            utp:report_event(60, us, client, {error, eof}, []),
             {reply, {error, eof}, got_fin, State};
         {partial_read, Bin, N_PktBuf} ->
+            utp:report_event(60, us, client, {error, {partial, size(Bin)}}, [Bin]),
             {reply, {error, {partial, Bin}}, got_fin, State#state { buffer = N_PktBuf}}
     end;
 got_fin({send, _Data}, _From, State) ->
+    utp:report_event(60, us, client, {error, econnreset}, []),
     {reply, {error, econnreset}, got_fin, State}.
 
 %% @private
@@ -567,19 +578,25 @@ fin_sent({recv, L}, _From, #state { buffer = PktBuf,
     true = utp_process:recv_buffer_empty(ProcInfo),
     case utp_buffer:draining_receive(L, PktBuf) of
         {ok, Bin, N_PktBuf} ->
+            utp:report_event(60, us, client, {ok, size(Bin)}, [Bin]),
             {reply, {ok, Bin}, fin_sent, State#state { buffer = N_PktBuf}};
         empty ->
+            utp:report_event(60, us, client, {error, eof}, []),
             {reply, {error, eof}, fin_sent, State};
         {partial_read, Bin, N_PktBuf} ->
+            utp:report_event(60, us, client, {error, {partial, size(Bin)}}, [Bin]),
             {reply, {error, {partial, Bin}}, fin_sent, State#state { buffer = N_PktBuf}}
     end;
 fin_sent({send, _Data}, _From, State) ->
+    utp:report_event(60, us, client, {error, econnreset}),
     {reply, {error, econnreset}, fin_sent, State}.
 
 %% @private
 reset({recv, _L}, _From, State) ->
+    utp:report_event(60, us, client, {error, econnreset}),
     {reply, {error, econnreset}, reset, State};
 reset({send, _Data}, _From, State) ->
+    utp:report_event(60, us, client, {error, econnreset}),
     {reply, {error, econnreset}, reset, State}.
 
 %% @private
