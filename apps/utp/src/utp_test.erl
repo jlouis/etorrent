@@ -259,13 +259,15 @@ listen(Config) ->
 
 %% ----------------------------------------------------------------------
 l() ->
-    l(test_full_duplex).
+    l(test_close_1).
 
 l(T) ->
     utp:start_app(3333),
     utp_filter:start(),
     (parse_listen(T))([]).
 
+parse_listen(test_close_1) ->
+    fun test_close_in_1/1;
 parse_listen(test_full_duplex) ->
     fun test_full_duplex_in/1;
 parse_listen(test_backwards) ->
@@ -274,13 +276,15 @@ parse_listen(test_connect_n_communicate) ->
     fun test_connect_n_communicate_listen/1.
 
 c() ->
-    c(test_full_duplex).
+    c(test_close_1).
 
 c(T) ->
     utp:start_app(3334),
     utp_filter:start(),
     (parse_connect(T))().
 
+parse_connect(test_close_1) ->
+    fun test_close_out_1/0;
 parse_connect(test_full_duplex) ->
     fun test_full_duplex_out/0;
 parse_connect(test_backwards) ->
