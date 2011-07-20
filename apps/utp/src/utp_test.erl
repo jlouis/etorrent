@@ -259,13 +259,17 @@ listen(Config) ->
 
 %% ----------------------------------------------------------------------
 l() ->
-    l(test_close_3).
+    l(test_piggyback).
 
 l(T) ->
     utp:start_app(3333),
     utp_filter:start(),
     (parse_listen(T))([]).
 
+parse_listen(test_piggyback) ->
+    fun(O) ->
+            test_piggyback_in(<<"HELLO">>, O)
+    end;
 parse_listen(test_close_3) ->
     fun test_close_in_3/1;
 parse_listen(test_close_2) ->
@@ -280,14 +284,17 @@ parse_listen(test_connect_n_communicate) ->
     fun test_connect_n_communicate_listen/1.
 
 c() ->
-    c(test_close_3).
+    c(test_piggyback).
 
 c(T) ->
     utp:start_app(3334),
     utp_filter:start(),
     (parse_connect(T))().
 
-
+parse_connect(test_piggyback) ->
+    fun () ->
+            test_piggyback_out(<<"HELLO">>)
+    end;
 parse_connect(test_close_3) ->
     fun test_close_out_3/0;
 parse_connect(test_close_2) ->
