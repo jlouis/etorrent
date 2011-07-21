@@ -756,7 +756,8 @@ handle_packet_incoming(FSMState, Pkt, ReplyMicro, TimeAcked, TSDiff,
             {ok, Messages, N_Network, N_PB2, N_PRI2, ZWinTimeout, N_DelayAckT, N_RetransTimer}
     catch
         throw:{error, is_far_in_future} ->
-            {ok, [], Network, PB, PRI, ZWin, DelayAckT}
+            utp:report_event(90, us, is_far_in_future, [Pkt]),
+            {ok, [], Network, PB, PRI, ZWin, DelayAckT, RetransTimer}
     end.
 
 acked_bytes(Messages) ->

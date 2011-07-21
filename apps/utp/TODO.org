@@ -1363,6 +1363,60 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
 
   Actually, after looking at it, we are doing this correctly!
   
+* DONE Fix this problem with bad matches:
+  There is a problem with a mistake in the code base I don't know why happens.
+
+  =SUPERVISOR REPORT==== 21-Jul-2011::18:40:53 ===
+     Supervisor: {local,gen_utp_worker_pool}
+     Context:    child_terminated
+     Reason:     {{badmatch,
+                      {ok,[],
+                          {network,
+                              {sock_info,
+                                  {127,0,0,1},
+                                  [],3333,#Port<13287.1203>,9926,178850},
+                              8192,undefined,3000,350,4294966282,30000000,
+                              none,none,
+                              {ledbat,
+                                  {[0,0,0,0,0,0,0,0,0,0,0],[0]},
+                                  0,0,
+                                  {[0],[0]}},
+                              {ledbat,
+                                  {[4294966282,4294966282,4294966282,
+                                    4294966282,4294966282,4294966282,
+                                    4294966282,4294966282,4294966282,
+                                    4294966282,4294966282],
+                                   [4294966282]},
+                                  4294966282,4294966282,
+                                  {[0],[0]}},
+                              undefined,1311266452929,1311266453229},
+                          {buffer,
+                              {[],[]},
+                              [],
+                              [{pkt_wrap,
+                                   {packet,st_data,undefined,0,3,65535,[],
+                                       <<"WORLD">>},
+                                   1,1311266453240270,false},
+                               {pkt_wrap,
+                                   {packet,st_data,undefined,0,2,65535,[],
+                                       <<"HELLO">>},
+                                   1,1311266453239179,false}],
+                              0,0,4,none,8192,1000},
+                          {proc_info,{[],[]},{[],[]}},
+                          undefined,undefined}},
+                  [{gen_utp_worker,connected,2},
+                   {gen_fsm,handle_msg,7},
+                   {proc_lib,init_p_do_apply,3}]}
+     Offender:   [{pid,<13287.74.0>},
+                  {name,child},
+                  {mfargs,{gen_utp_worker,start_link,undefined}},
+                  {restart_type,temporary},
+                  {shutdown,15000},
+                  {child_type,worker}]
+* TODO Why do we get packets which are "Far into the Future" on an otherwise perfect line?
+  This is odd. Maybe there is something with the wraparound which
+  fails? In any case, I believe that could be the cause of the
+  problem. Check it!
 * TODO Make code which allows us to graph various counters on a running system
   We need to be able to graph the output over time. I think we should
   look into and use the "folsom" application for this as it would an
