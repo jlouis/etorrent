@@ -1357,6 +1357,17 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   Here is the error: When a fin is sent, the sequence counter on the
   receiving side did not get bumped if the FIN was an empty packet.
 * TODO Fix the problem with delayed ACK messages on piggyback
+  The problem is that the delayed ACK timer trigger on the byte
+  count. We simply have too many bytes received and that promptly
+  trigger the sending of an ACK.
+
+  The fix is to try to fill the window straight away and if we sent
+  data, we can forget about the ACK timer altogether because we just
+  succeeded in getting data out on the socket.
+
+  It suggests that the checking for the delayed ACK timer should
+  happen later on in the order of code so we don't send out an ACK
+  almost as soon as we detect something is odd here.
 * TODO Make code which allows us to graph various counters on a running system
   We need to be able to graph the output over time. I think we should
   look into and use the "folsom" application for this as it would an
