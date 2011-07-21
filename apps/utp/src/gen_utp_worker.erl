@@ -244,6 +244,7 @@ syn_sent({timeout, TRef, {retransmit_timeout, N}},
                   connector = {From, _},
                   buffer = PktBuf
                 } = State) ->
+    report_timer_trigger(retransmit),
     case N > ?SYN_TIMEOUT_THRESHOLD of
         true ->
             reply(From, {error, etimedout}),
@@ -305,6 +306,7 @@ connected({timeout, Ref, {zerowindow_timeout, _N}},
             process = ProcessInfo,
             network = Network,
             zerowindow_timeout = {set, Ref}} = State) ->
+    report_timer_trigger(zerowin),
     N_Network = utp_network:bump_window(Network),
     {_FillMessages, ZWinTimer, N_PktBuf, N_ProcessInfo} =
         fill_window(N_Network, ProcessInfo, PktBuf, undefined),
@@ -318,6 +320,7 @@ connected({timeout, Ref, {retransmit_timeout, N}},
             buffer = PacketBuf,
             network = Network,
             retransmit_timeout = {set, Ref} = Timer} = State) ->
+    report_timer_trigger(retransmit),
     case handle_timeout(Ref, N, PacketBuf, Network, Timer) of
         stray ->
             {next_state, connected, State};
@@ -344,6 +347,7 @@ got_fin({timeout, Ref, {retransmit_timeout, N}},
           buffer = PacketBuf,
           network = Network,
           retransmit_timeout = Timer} = State) ->
+    report_timer_trigger(retransmit),
     case handle_timeout(Ref, N, PacketBuf, Network, Timer) of
         stray ->
             {next_state, got_fin, State};
@@ -374,6 +378,7 @@ got_fin(_Msg, State) ->
 %% @private
 destroy_delay({timeout, Ref, {retransmit_timeout, _N}},
          #state { retransmit_timeout = {set, Ref} } = State) ->
+    report_timer_trigger(retransmit),
     {next_state, report(destroy), State#state { retransmit_timeout = undefined }, 0};
 destroy_delay({timeout, Ref, send_delayed_ack}, State) ->
     {next_state, destroy_delay, trigger_delayed_ack(Ref, State)};
@@ -426,6 +431,7 @@ fin_sent({timeout, Ref, {retransmit_timeout, N}},
          #state { buffer = PacketBuf,
                   network = Network,
                   retransmit_timeout = Timer} = State) ->
+    report_timer_trigger(retransmit),
     case handle_timeout(Ref, N, PacketBuf, Network, Timer) of
         stray ->
             {next_state, fin_sent, State};
@@ -633,9 +639,11 @@ set_retransmit_timer(N, Timer) ->
     set_retransmit_timer(N, N, Timer).
 
 set_retransmit_timer(N, K, undefined) ->
+    report_timer_set(retransmit),
     Ref = gen_fsm:start_timer(N, {retransmit_timeout, K}),
     {set, Ref};
 set_retransmit_timer(N, K, {set, Ref}) ->
+    report_timer_bump(retransmit),
     gen_fsm:cancel_timer(Ref),
     N_Ref = gen_fsm:start_timer(N, {retransmit_timeout, K}),
     {set, N_Ref}.
@@ -643,6 +651,7 @@ set_retransmit_timer(N, K, {set, Ref}) ->
 clear_retransmit_timer(undefined) ->
     undefined;
 clear_retransmit_timer({set, Ref}) ->
+    report_timer_clear(retransmit),
     gen_fsm:cancel_timer(Ref),
     undefined.
 
@@ -696,10 +705,12 @@ fill_window(Network, ProcessInfo, PktBuffer, ZWinTimer) ->
 
 cancel_zerowin_timer(undefined) -> undefined;
 cancel_zerowin_timer({set, Ref}) ->
+    report_timer_clear(zerowin),
     gen_fsm:cancel_timer(Ref),
     undefined.
 
 set_zerowin_timer(undefined) ->
+    report_timer_set(zerowin),
     Ref = gen_fsm:start_timer(?ZERO_WINDOW_DELAY,
                               {zerowindow_timeout, ?ZERO_WINDOW_DELAY}),
     {set, Ref};
@@ -794,9 +805,11 @@ validate_options(_) ->
     badarg.
 
 set_ledbat_timer() ->
+    report_timer_set(ledbat),
     gen_fsm:start_timer(timer:seconds(60), ledbat_timeout).
 
 bump_ledbat(#state { network = Network } = State) ->
+    report_timer_trigger(ledbat),
     N_Network = utp_network:bump_ledbat(Network),
     set_ledbat_timer(),
     State#state { network = N_Network }.
@@ -806,12 +819,14 @@ trigger_delayed_ack(Ref, #state {
                        network = Network,
                        delayed_ack_timeout = {set, _, Ref}
                       } = State) ->
+    report_timer_trigger(delayed_ack),
     utp_buffer:send_ack(Network, PktBuf),
     State#state { delayed_ack_timeout = undefined }.
 
 cancel_delayed_ack(undefined) ->
     undefined; %% It was never there, ignore it
 cancel_delayed_ack({set, _Count, Ref}) ->
+    report_timer_clear(delayed_ack),
     gen_fsm:cancel_timer(Ref),
     undefined.
 
@@ -820,6 +835,7 @@ handle_delayed_ack(undefined, AckedBytes, Network, PktBuf)
     utp_buffer:send_ack(Network, PktBuf),
     undefined;
 handle_delayed_ack(undefined, AckedBytes, _Network, _PktBuf) ->
+    report_timer_set(delay_ack),
     Ref = gen_fsm:start_timer(?DELAYED_ACK_TIME_THRESHOLD, send_delayed_ack),
     {set, AckedBytes, Ref};
 handle_delayed_ack({set, ByteCount, _Ref} = DelayAck, AckedBytes, Network, PktBuf)
@@ -882,6 +898,18 @@ drain_buffer(L, #state { buffer = PktBuf,
             {ok, {error, {partial, Bin}}, State#state { buffer = N_PktBuf}}
     end.
 
+
+report_timer_clear(Type) ->
+    utp:report_event(80, us, {timer, clear, Type}, []).
+
+report_timer_trigger(Type) ->
+    utp:report_event(85, us, {timer, trigger, Type}, []).
+
+report_timer_set(Type) ->
+    utp:report_event(80, us, {timer, set, Type}, []).
+
+report_timer_bump(Type) ->
+    utp:report_event(80, us, {timer, bump, Type}, []).
 
 report(NewState) ->
     utp:report_event(50, us, NewState, []),
