@@ -1332,7 +1332,7 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
    delayed ACK messages.
 
    DESTROY_DELAY, GOT_FIN - More interesting!
-* TODO Figure out why FINs are resent quickly
+* DONE Figure out why FINs are resent quickly
   I think it is due to a wrong retransmit timer that triggers. It is
   probably reset the wrong way or something like that.
 
@@ -1354,6 +1354,9 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   2. Install a probe on that particular test.
   3. Test if the packet was received.
 
+  Here is the error: When a fin is sent, the sequence counter on the
+  receiving side did not get bumped if the FIN was an empty packet.
+* TODO Fix the problem with delayed ACK messages on piggyback
 * TODO Make code which allows us to graph various counters on a running system
   We need to be able to graph the output over time. I think we should
   look into and use the "folsom" application for this as it would an
