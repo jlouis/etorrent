@@ -35,13 +35,14 @@ test_connect_n_communicate_connect() ->
     {ok, Sock} = repeating_connect("localhost", 3333),
     ok = gen_utp:send(Sock, "HELLO"),
     ok = gen_utp:send(Sock, "WORLD"),
-    timer:sleep(1000),
+    timer:sleep(6000),
     ok = gen_utp:close(Sock),
     {ok, gen_utp_trace:grab()}.
 
 test_connect_n_communicate_listen(Options) ->
     ok =  listen(Options),
     {ok, Port} = gen_utp:accept(),
+    timer:sleep(5000),
     {ok, R1} = gen_utp:recv(Port, 5),
     {ok, R2} = gen_utp:recv(Port, 5),
     ok = gen_utp:close(Port),
