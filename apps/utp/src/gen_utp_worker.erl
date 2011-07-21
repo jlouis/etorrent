@@ -900,18 +900,18 @@ drain_buffer(L, #state { buffer = PktBuf,
 
 
 report_timer_clear(Type) ->
-    utp:report_event(80, us, {timer, clear, Type}, []).
+    utp:report_event(80, us, timer, {clear, Type}, []).
 
 report_timer_trigger(Type) ->
-    utp:report_event(85, us, {timer, trigger, Type}, []).
+    utp:report_event(85, timer, us, {trigger, Type}, []).
 
 report_timer_set(Type) ->
-    utp:report_event(80, us, {timer, set, Type}, []).
+    utp:report_event(80, us, timer, {set, Type}, []).
 
 report_timer_bump(Type) ->
-    utp:report_event(80, us, {timer, bump, Type}, []).
+    utp:report_event(80, us, timer, {bump, Type}, []).
 
 report(NewState) ->
-    utp:report_event(50, us, NewState, []),
+    utp:report_event(55, us, NewState, []),
     NewState.
 
