@@ -276,11 +276,11 @@ parse_listen(test_large) ->
     end;
 parse_listen(test_rwin) ->
     fun(O) ->
-            test_rwin_in(<<"HELLO">>, O)
+            test_rwin_in(large_data(), O)
     end;
 parse_listen(test_piggyback) ->
     fun(O) ->
-            test_piggyback_in(<<"HELLO">>, O)
+            test_piggyback_in(large_data(), O)
     end;
 parse_listen(test_close_3) ->
     fun test_close_in_3/1;
@@ -309,11 +309,11 @@ parse_connect(test_large) ->
     end;
 parse_connect(test_rwin) ->
     fun () ->
-            test_rwin_out(<<"HELLO">>)
+            test_rwin_out(large_data())
     end;
 parse_connect(test_piggyback) ->
     fun () ->
-            test_piggyback_out(<<"HELLO">>)
+            test_piggyback_out(large_data())
     end;
 parse_connect(test_close_3) ->
     fun test_close_out_3/0;
