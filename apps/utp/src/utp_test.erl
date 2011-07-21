@@ -259,14 +259,25 @@ listen(Config) ->
     end.
 
 %% ----------------------------------------------------------------------
+large_data() ->
+    binary:copy(<<"HELLOHELLO">>, 5000).
+
 l() ->
-    l(test_piggyback).
+    l(test_large).
 
 l(T) ->
     utp:start_app(3333),
     utp_filter:start(),
     (parse_listen(T))([]).
 
+parse_listen(test_large) ->
+    fun(O) ->
+            test_recv_large_file(large_data(), O)
+    end;
+parse_listen(test_rwin) ->
+    fun(O) ->
+            test_rwin_in(<<"HELLO">>, O)
+    end;
 parse_listen(test_piggyback) ->
     fun(O) ->
             test_piggyback_in(<<"HELLO">>, O)
@@ -285,13 +296,21 @@ parse_listen(test_connect_n_communicate) ->
     fun test_connect_n_communicate_listen/1.
 
 c() ->
-    c(test_piggyback).
+    c(test_large).
 
 c(T) ->
     utp:start_app(3334),
     utp_filter:start(),
     (parse_connect(T))().
 
+parse_connect(test_large) ->
+    fun () ->
+            test_send_large_file(large_data())
+    end;
+parse_connect(test_rwin) ->
+    fun () ->
+            test_rwin_out(<<"HELLO">>)
+    end;
 parse_connect(test_piggyback) ->
     fun () ->
             test_piggyback_out(<<"HELLO">>)
