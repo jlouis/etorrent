@@ -25,8 +25,9 @@
          test_rwin_out/1,
 
          get/1,
+         opt_seq_no/0,
 
-         c/0, c/1, l/0, l/1
+         c/0, c/1, l/0, l/2
          ]).
 
 %% ----------------------------------------------------------------------
@@ -263,12 +264,15 @@ large_data() ->
     binary:copy(<<"HELLOHELLO">>, 5000).
 
 l() ->
-    l(test_large).
+    l(test_large, []).
 
-l(T) ->
+opt_seq_no() ->
+    {force_seq_no, 65535}.
+
+l(T, Opts) ->
     utp:start_app(3333),
     utp_filter:start(),
-    (parse_listen(T))([]).
+    (parse_listen(T))(Opts).
 
 parse_listen(test_large) ->
     fun(O) ->

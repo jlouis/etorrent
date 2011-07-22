@@ -1417,6 +1417,24 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   This is odd. Maybe there is something with the wraparound which
   fails? In any case, I believe that could be the cause of the
   problem. Check it!
+
+  Error occurs in backwards communication at least.
+
+  The problem is that we may have:
+
+  Send FIN, sequence #X
+  Send State, sequence #X
+                Get FIN, bump packet expected to #X+1
+                Get State, now this one is too old.
+
+  We should probably just use the state packet and ignore it sequence
+  counter. That is, we should decide what fields, if any, we would
+  like to use from such a state packet. Throwing it out seems a little
+  premature.
+* TODO If we run two different kinds of tests, why doesn't it complete correctly?
+  I ran a test_backwards in Listen and test_large in Connect. It fails
+  in an odd way since there is not sent back a reset packet and we
+  definitely should in this case. Investigate!
 * TODO Make code which allows us to graph various counters on a running system
   We need to be able to graph the output over time. I think we should
   look into and use the "folsom" application for this as it would an
@@ -1424,6 +1442,9 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   it. Essentially, we need something we can look at and then go "Oh,
   this is just WRONG!". We prefer a simple CSV-like output so it can
   be plotted in R.
+* TODO Enable full nastiness on the lo interface
+  Re-enable nastiness on the lo interface and run some tests on the
+  protocol. This will allow us to check for correctness again.
 * Implement KEEP ALIVE
 * TODO Even though the test case says OK! there might be bad things
   So we should go through the test cases a bit and see what
