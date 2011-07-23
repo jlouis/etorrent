@@ -281,17 +281,28 @@ connected({pkt, Pkt, {TS, TSDiff, RecvTime}}, State) ->
         handle_packet_incoming(connected,
                                Pkt, utp_util:bit32(TS - RecvTime), RecvTime, TSDiff, State),
 
-    NextState = case proplists:get_value(got_fin, Messages) of
-                    true -> report(got_fin);
-                    undefined -> connected
-                end,
+    {NextState,
+     N_ProcessInfo } = case proplists:get_value(got_fin, Messages) of
+                           true ->
+                               %% We need to tell all processes that had data to send that
+                               %% it is now in limbo. In particular we don't know if it will
+                               %% ever complete
+                               utp_process:apply_senders(N_PRI,
+                                                         fun(From) ->
+                                                                 reply(From, {error, eclosed})
+                                                         end),
+                               
+                               {report(got_fin), utp_process:clear_senders(N_PRI)};
+                           undefined ->
+                               {connected, N_PRI}
+                       end,
     {next_state, NextState,
      State#state { buffer = N_PB,
                    network = N_Network,
                    retransmit_timeout = N_RetransTimer,
                    zerowindow_timeout = ZWinTimeout,
                    delayed_ack_timeout = N_DelayAck,
-                   process = N_PRI }};
+                   process = N_ProcessInfo }};
 connected(close, #state { network = Network,
                           buffer = PktBuf } = State) ->
     NPBuf = utp_buffer:send_fin(Network, PktBuf),
