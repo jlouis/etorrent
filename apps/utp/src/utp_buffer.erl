@@ -431,21 +431,14 @@ handle_packet(State,
             {ok, N_PacketBuffer2,
              utp_network:handle_window_size(PktWindow, WindowSize),
              SendMessages ++ RecvMessages ++ [{acked, AckedPs}]};
-        no_data when Type == st_state ->
+        no_data when Type == st_state orelse Type == st_data ->
             %% The packet has no data
             {ok, SendMessages, _AcksAhead, N_PacketBuffer2} =
                 update_send_buffer(AckNo, N_PacketBuffer),
             
             {ok, N_PacketBuffer2,
              utp_network:handle_window_size(PktWindow, WindowSize),
-             SendMessages};
-        no_data when Type == st_data ->
-            {ok, SendMessages, _AcksAhead, N_PacketBuffer2} =
-                update_send_buffer(AckNo, N_PacketBuffer),
-
-            {ok, N_PacketBuffer2,
-                 utp_network:handle_window_size(PktWindow, WindowSize),
-                 SendMessages}
+             SendMessages}
     end.
 
 
