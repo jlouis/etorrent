@@ -1436,10 +1436,40 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   in the Buffer manager. The bug is such that we unfortunately wrap
   around and get a packet from the future since we forget a bit16
   calculation.
+* DONE Fix the listen/accept register bug
+  We never monitor processes in the accept-queue. This is a mistake
+  and must be cleaned up!
+* TODO Fix the problem with reflecting RESET back
+  So, if we were the socket initiator or the acceptor is a different
+  thing. It governs what kind of message we should push back to the
+  other end. Simply because otherwise, we don't get the right kind of
+  reset message :/
+
+  Currently, we *throw* RESET the other way, but the RESET we send is
+  obviously the wrong one, and close-down doesn't happen.
+
+  Again, what does the de-facto code do?
+
+  The De-facto code checks both conn_id_send || conn_id_recv.
+
+  This means we should try to figure out the same kind of
+  information :/ It is not clear what to do in this case so it
+  requires thinking, probably away from the keyboard.
+* TODO Decide what to do in "GOT_FIN" when a retransmit timer triggers
+  It is not clear what one should do in this case. Decide what is the
+  correct order of things to do.
+
+  This also requires thinking away from the keyboard to solve.
 * TODO If we run two different kinds of tests, why doesn't it complete correctly?
   I ran a test_backwards in Listen and test_large in Connect. It fails
   in an odd way since there is not sent back a reset packet and we
   definitely should in this case. Investigate!
+
+  Two errors on this one:
+  a) Wrong pairing meant we did not correctly enter the connection in
+  the monitored set.
+  b) The RESETs we send back are wrong in the ConnID number so they
+  never arrive at the right spot in the other end.
 * TODO Make code which allows us to graph various counters on a running system
   We need to be able to graph the output over time. I think we should
   look into and use the "folsom" application for this as it would an
@@ -1668,7 +1698,13 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
 
 
 
+* Add controlling_process/2 support
+  A socket should monitor its initiator and have the equivalent of a
+  "controlling_process/2" associated with it. That way, a kill of a
+  process will mean that the socket itself closes down gracefully if
+  the controlling process of the socket dies.
 
+  This corresponds to how gen_tcp is working.
 * Packet size control
   How does this code handle packet sizes? Whenever it needs a packet
   size, it calls get_packet_size() which essentially either returns a
