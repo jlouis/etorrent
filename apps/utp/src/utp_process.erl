@@ -20,7 +20,11 @@
 	 bytes_in_recv_buffer/1,
          recv_buffer_empty/1,
 
-         apply_all/2
+         apply_all/2,
+         apply_senders/2,
+         apply_receivers/2,
+
+         clear_senders/1
 	]).
 
 -export([error_all/2]).
@@ -36,13 +40,23 @@ mk() ->
                  sender_q   = queue:new() }.
 
 apply_all(PI, F) ->
-    [F(From) || From <- all_processes(PI)].
+    apply_senders(PI, F),
+    apply_receivers(PI, F).
 
-all_processes(#proc_info { receiver_q = RQ,
-                           sender_q   = SQ }) ->
-    RL = [From || {receiver, From, _, _} <- queue:to_list(RQ)],
-    SL = [From || {sender, From, _Data} <- queue:to_list(SQ)],
-    RL ++ SL.
+apply_senders(PI, F) ->
+    [F(From) || From <- all_senders(PI)].
+
+apply_receivers(PI, F) ->
+    [F(From) || From <- all_receivers(PI)].
+
+clear_senders(PI) ->
+    PI#proc_info { sender_q = queue:new() }.
+
+all_senders(#proc_info { sender_q = SQ }) ->
+    [From || {sender, From, _Data} <- queue:to_list(SQ)].
+
+all_receivers(#proc_info { receiver_q = RQ }) ->
+    [From || {receiver, From, _, _} <- queue:to_list(RQ)].
 
 -spec enqueue_receiver(term(), integer(), t()) -> t().
 enqueue_receiver(From, Length, #proc_info { receiver_q = RQ } = PI) ->
