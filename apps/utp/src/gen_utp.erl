@@ -165,6 +165,7 @@ incoming_unknown(#packet{ ty = st_reset } = _Packet, _Addr, _Port) ->
     ok;
 incoming_unknown(#packet{} = Packet, Addr, Port) ->
     %% Stray, RST it
+    utp:report_event(95, us, unknown_packet, [Packet]),
     gen_server:cast(?MODULE, {generate_reset, Packet, Addr, Port}).
 
 %% @doc Register a process as the recipient of a given incoming message
@@ -214,11 +215,14 @@ handle_call(accept, _From, #state { listen_queue = closed } = S) ->
     {reply, {error, no_listen}, S};
 handle_call(accept, From, #state { listen_queue = Q,
                                    listen_options = ListenOpts,
+                                   monitored = Monitored,
                                    socket = Socket } = S) ->
     false = Q =:= closed,
     {ok, Pairings, NewQ} = push_acceptor(From, Q),
-    [accept_incoming_conn(Socket, Acc, SYN, ListenOpts) || {Acc, SYN} <- Pairings],
-    {noreply, S#state { listen_queue = NewQ }};
+    N_MonitorTree = pair_acceptors(ListenOpts, Socket, Pairings, Monitored),
+    
+    {noreply, S#state { listen_queue = NewQ,
+                        monitored = N_MonitorTree }};
 handle_call({listen, Options}, _From, #state { listen_queue = closed } = S) ->
     QLen = proplists:get_value(backlog, Options),
     {reply, ok, S#state { listen_queue = new_accept_queue(QLen),
@@ -240,6 +244,15 @@ handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
 
+pair_acceptors(ListenOpts, Socket, Pairings, Monitored) ->
+    PidsCIDs = [accept_incoming_conn(Socket, Acc, SYN, ListenOpts) || {Acc, SYN} <- Pairings],
+    lists:foldl(fun({Pid, CID}, MTree) ->
+                        Ref = erlang:monitor(process, Pid),
+                        gb_trees:enter(Ref, CID, MTree)
+                end,
+                Monitored,
+                PidsCIDs).
+
 %% @private
 handle_cast({incoming_syn, _P, _Addr, _Port}, #state { listen_queue = closed } = S) ->
     %% Not listening on queue
@@ -248,6 +261,7 @@ handle_cast({incoming_syn, _P, _Addr, _Port}, #state { listen_queue = closed } =
     {noreply, S};
 handle_cast({incoming_syn, Packet, Addr, Port}, #state { listen_queue = Q,
                                                          listen_options = ListenOpts,
+                                                         monitored = Monitored,
                                                          socket = Socket } = S) ->
     Elem = {Packet, Addr, Port},
     case push_syn(Elem, Q) of
@@ -256,8 +270,9 @@ handle_cast({incoming_syn, Packet, Addr, Port}, #state { listen_queue = Q,
         duplicate ->
             {noreply, S};
         {ok, Pairings, NewQ} ->
-            [accept_incoming_conn(Socket, Acc, SYN, ListenOpts) || {Acc, SYN} <- Pairings],
-            {noreply, S#state { listen_queue = NewQ }}
+            N_Monitored = pair_acceptors(ListenOpts, Socket, Pairings, Monitored),
+            {noreply, S#state { listen_queue = NewQ,
+                                monitored = N_Monitored }}
     end;
 handle_cast({generate_reset, #packet { conn_id = ConnID,
                                        seq_no  = SeqNo }, Addr, Port},
@@ -278,6 +293,7 @@ handle_info({udp, _Socket, IP, Port, Datagram},
     {noreply, S};
 handle_info({'DOWN', Ref, process, _Pid, _Reason}, #state { monitored = MM } = S) ->
     CID = gb_trees:get(Ref, MM),
+    utp:report_event(95, us, 'DOWN', [{monitored, MM}, {ref, Ref}, {cid, CID}]),
     true = ets:delete(?TAB, CID),
     {noreply, S#state { monitored = gb_trees:delete(Ref, MM)}};
 handle_info(_Info, State) ->
@@ -331,10 +347,12 @@ accept_incoming_conn(Socket, From, {SynPacket, Addr, Port}, ListenOpts) ->
     %% We should register because we are the ones that can avoid the deadlock here
     %% @todo This call can in principle fail due to a conn_id being in use, but we will
     %% know if that happens.
-    case reg_proc(Pid, {SynPacket#packet.conn_id + 1, Addr, Port}) of
+    CID = {SynPacket#packet.conn_id + 1, Addr, Port},
+    case reg_proc(Pid, CID) of
         ok ->
             ok = gen_utp_worker:accept(Pid, SynPacket),
-            gen_server:reply(From, {ok, {utp_sock, Pid}})
+            gen_server:reply(From, {ok, {utp_sock, Pid}}),
+            {Pid, CID}
     end.
 
 new_accept_queue(QLen) ->
