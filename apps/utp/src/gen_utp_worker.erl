@@ -99,9 +99,9 @@
 -define(DEFAULT_FSM_TIMEOUT, 10*60*1000).
 %% STATE RECORDS
 %% ----------------------------------------------------------------------
--record(state, { network :: utp_network:t(),
-                 buffer      :: utp_pkt:t(),
-                 process    :: utp_process:t(),
+-record(state, { network      :: utp_network:t(),
+                 buffer       :: utp_buffer:t(),
+                 process      :: utp_process:t(),
                  connector    :: {{reference(), pid()}, [{pkt, #packet{}, term()}]},
                  zerowindow_timeout :: undefined | {set, reference()},
                  retransmit_timeout :: undefined | {set, reference()},
