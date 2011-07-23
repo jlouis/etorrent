@@ -292,9 +292,10 @@ handle_info({udp, _Socket, IP, Port, Datagram},
     inet:setopts(Socket, [{active, once}]),
     {noreply, S};
 handle_info({'DOWN', Ref, process, _Pid, _Reason}, #state { monitored = MM } = S) ->
-    CID = gb_trees:get(Ref, MM),
+    {CID, Addr, Port} = gb_trees:get(Ref, MM),
     utp:report_event(95, us, 'DOWN', [{monitored, MM}, {ref, Ref}, {cid, CID}]),
-    true = ets:delete(?TAB, CID),
+    true = ets:delete(?TAB, {CID, Addr, Port}),
+    true = ets:delete(?TAB, {CID+1, Addr, Port}),
     {noreply, S#state { monitored = gb_trees:delete(Ref, MM)}};
 handle_info(_Info, State) ->
     ?ERR([unknown_handle_info, _Info, State]),
@@ -347,7 +348,7 @@ accept_incoming_conn(Socket, From, {SynPacket, Addr, Port}, ListenOpts) ->
     %% We should register because we are the ones that can avoid the deadlock here
     %% @todo This call can in principle fail due to a conn_id being in use, but we will
     %% know if that happens.
-    CID = {SynPacket#packet.conn_id + 1, Addr, Port},
+    CID = {SynPacket#packet.conn_id, Addr, Port},
     case reg_proc(Pid, CID) of
         ok ->
             ok = gen_utp_worker:accept(Pid, SynPacket),
@@ -367,12 +368,15 @@ get_socket() ->
 call(Msg) ->
     gen_server:call(?MODULE, Msg, infinity).
 
-reg_proc(Proc, CID) ->
-    case ets:member(?TAB, {CID, Proc}) of
+reg_proc(Proc, {ConnId, Addr, Port}) ->
+    case ets:member(?TAB, {ConnId, Addr, Port})
+        orelse ets:member(?TAB, {ConnId+1, Addr, Port})
+    of
         true ->
             {error, conn_id_in_use};
         false ->
-            true = ets:insert(?TAB, {CID, Proc}),
+            true = ets:insert(?TAB, [{{ConnId,   Addr, Port}, Proc},
+                                     {{ConnId+1, Addr, Port}, Proc}]),
             ok
     end.
 
