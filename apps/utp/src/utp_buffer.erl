@@ -183,8 +183,10 @@ send_packet(Ty, Bin,
 %% the connection.
 %% @end
 validate_seq_no(SeqNo, #buffer { next_expected_seq_no = NextExpected }) ->
-    case utp_util:bit16(SeqNo - NextExpected) of
-        _SeqAhead when SeqNo == (NextExpected - 1) ->
+    Diff = utp_util:bit16(SeqNo - NextExpected),
+    DiffMinusOne   = utp_util:bit16(SeqNo - (NextExpected - 1)),
+    case Diff of
+        _SeqAhead when DiffMinusOne == 0 ->
             {ok, no_data};
         SeqAhead when SeqAhead >= ?REORDER_BUFFER_SIZE ->
             {error, is_far_in_future};

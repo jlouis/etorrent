@@ -1413,7 +1413,7 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
                   {restart_type,temporary},
                   {shutdown,15000},
                   {child_type,worker}]
-* TODO Why do we get packets which are "Far into the Future" on an otherwise perfect line?
+* DONE Why do we get packets which are "Far into the Future" on an otherwise perfect line?
   This is odd. Maybe there is something with the wraparound which
   fails? In any case, I believe that could be the cause of the
   problem. Check it!
@@ -1431,6 +1431,11 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   counter. That is, we should decide what fields, if any, we would
   like to use from such a state packet. Throwing it out seems a little
   premature.
+
+  The problem is due to a wraparound bug in the validate_seq_no code
+  in the Buffer manager. The bug is such that we unfortunately wrap
+  around and get a packet from the future since we forget a bit16
+  calculation.
 * TODO If we run two different kinds of tests, why doesn't it complete correctly?
   I ran a test_backwards in Listen and test_large in Connect. It fails
   in an odd way since there is not sent back a reset packet and we
