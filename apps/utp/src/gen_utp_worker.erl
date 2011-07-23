@@ -378,6 +378,10 @@ got_fin({pkt, #packet { ty = st_state }, _}, State) ->
     %% Our Timeout will move us on (or a close). The other end is in the FIN_SENT state, so
     %% he will only send state packets when he needs to ack some of our stuff, which he wont.
     {next_state, got_fin, State};
+got_fin({pkt, #packet {ty = st_reset}, _}, #state {process = Process} = State) ->
+    %% The other end requests that we close down the socket? Ok, lets just comply:
+    N_Process = utp_process:error_all(Process, econnreset),
+    {next_state, report(destroy), State#state { process = N_Process }, 0};
 got_fin({pkt, #packet { ty = st_fin }, _}, State) ->
     %% @todo We should probably send out an ACK for the FIN here since it is a retransmit
     {next_state, got_fin, State};

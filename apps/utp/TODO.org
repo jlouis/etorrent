@@ -1469,14 +1469,9 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
     ConnID RECV: N+1 (one more than what is in the packet, ensures a flip)
 
   So we should store N and N+1 in any case.
-* TODO Fix an ST_RESET from the "got_fin" state.
+* DONE Fix an ST_RESET from the "got_fin" state.
   If we are in the "got_fin" state and get back an ST_RESET, handle it correctly.
-* TODO Decide what to do in "GOT_FIN" when a retransmit timer triggers
-  It is not clear what one should do in this case. Decide what is the
-  correct order of things to do.
-
-  This also requires thinking away from the keyboard to solve.
-* TODO If we run two different kinds of tests, why doesn't it complete correctly?
+* DONE If we run two different kinds of tests, why doesn't it complete correctly?
   I ran a test_backwards in Listen and test_large in Connect. It fails
   in an odd way since there is not sent back a reset packet and we
   definitely should in this case. Investigate!
@@ -1486,6 +1481,11 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   the monitored set.
   b) The RESETs we send back are wrong in the ConnID number so they
   never arrive at the right spot in the other end.
+* TODO Decide what to do in "GOT_FIN" when a retransmit timer triggers
+  It is not clear what one should do in this case. Decide what is the
+  correct order of things to do.
+
+  This also requires thinking away from the keyboard to solve.
 * TODO Make code which allows us to graph various counters on a running system
   We need to be able to graph the output over time. I think we should
   look into and use the "folsom" application for this as it would an
