@@ -1488,18 +1488,41 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   it. Essentially, we need something we can look at and then go "Oh,
   this is just WRONG!". We prefer a simple CSV-like output so it can
   be plotted in R.
-** TODO Create a new process utp_trace and link him into supervision
-** utp_trace recognizes different tracked counters
-** utp_trace reads configuration options
+** DONE Create a new process utp_trace and link him into supervision
+** DONE utp_trace recognizes different tracked counters
+** DONE utp_trace reads configuration options
  If tracing is enabled, it will write a trace file. The trace file
  is written in a neat format which is easy to read by R. There should
  be an X-coordinate and then an output on an Y-coordinate of the type
  we need to plot here.
+** What kind of format does R recognize?
+ We need to figure out what kind of format we can get R to read and
+ understand the easiest. I think we need a way to plot comma-separated
+ values to R. We are perhaps best off placing each value in its own
+ file of pairs: Time stamp and value count. That way we can read in
+ numerous such data to R and then plot them one at a time.
+
+ There are two things to consider:
+ * How do we name the file?
+   We should probably hack the pid or something such into the file
+   name:
+
+   pid.connection_id.countertype.csv
+
+ * How do we convert the time stamp to something R can work with?
+   This is a good question which needs to be researched.
+
+** Build a file mapper
+   Appending to a file is a question of also checking if the file is
+   there at all. If it is not there, we should create the file and
+   open it. The basic call is "append" which append something on an
+   opened file in the file mapper.
 ** Create an R-plotter for the tracing file format.
  The R-plotter should be able to read in the raw data and then show
  them as plots over time. This enables us to log different aspects of
  the timing structures in the code. Logging these is very important if
  the goal is to fix and correct issues around the counter structures.
+
 * TODO Enable full nastiness on the lo interface
   Re-enable nastiness on the lo interface and run some tests on the
   protocol. This will allow us to check for correctness again.
