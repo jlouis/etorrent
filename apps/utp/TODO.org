@@ -1495,7 +1495,7 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
  is written in a neat format which is easy to read by R. There should
  be an X-coordinate and then an output on an Y-coordinate of the type
  we need to plot here.
-** What kind of format does R recognize?
+** DONE What kind of format does R recognize?
  We need to figure out what kind of format we can get R to read and
  understand the easiest. I think we need a way to plot comma-separated
  values to R. We are perhaps best off placing each value in its own
@@ -1507,16 +1507,20 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
    We should probably hack the pid or something such into the file
    name:
 
-   pid.connection_id.countertype.csv
+   pid(unix).pid(process).countertype.csv
 
  * How do we convert the time stamp to something R can work with?
    This is a good question which needs to be researched.
 
-** Build a file mapper
+   We looked at this. R can work with some UnixTS.fractional stuff
+   easily
+** DONE Build a file mapper
    Appending to a file is a question of also checking if the file is
    there at all. If it is not there, we should create the file and
    open it. The basic call is "append" which append something on an
    opened file in the file mapper.
+** TODO Enable tracing for RTT
+** Test tracing for RTT
 ** Create an R-plotter for the tracing file format.
  The R-plotter should be able to read in the raw data and then show
  them as plots over time. This enables us to log different aspects of
