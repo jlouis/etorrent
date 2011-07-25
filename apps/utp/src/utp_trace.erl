@@ -71,8 +71,7 @@ handle_cast({trace_point, TimeStamp, Connection, Counter, Count},
     {noreply, State#state { map = N_Map }};
 handle_cast(close_all, #state { enabled = true, map = M }) ->
     [file:close(H) || {_K, H} <- dict:to_list(M)],
-    #state { enabled = ture,
-             map = dict:new() };
+    #state { enabled = true, map = dict:new() };
 handle_cast(Msg, State) ->
     ?ERR([unknown_handle_case, Msg, State]),
     {noreply, State}.
