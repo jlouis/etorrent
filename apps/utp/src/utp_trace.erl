@@ -16,7 +16,7 @@
          close_all/0,
 
          start_link/1,
-         trace/3
+         trace/2
         ]).
 
 %% gen_server callbacks
@@ -38,9 +38,9 @@
 start_link(Options) ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [Options], []).
 
-trace(Connection, Counter, Count) ->
+trace(Counter, Count) ->
     Now = erlang:now(),
-    gen_server:cast(?SERVER, {trace_point, Now, Connection, Counter, Count}).
+    gen_server:cast(?SERVER, {trace_point, Now, self(), Counter, Count}).
 
 close_all() ->
     gen_server:cast(?SERVER, close_all).
@@ -101,12 +101,8 @@ find_handle({Connection, Counter} = Id, Map) when is_atom(Counter) ->
             {Map, Handle}
     end.
 
-format_ip({I1, I2, I3, I4}) ->
-    IS = [integer_to_list(K) || K <- [I1, I2, I3, I4]],
-    string:join(IS, ".").
-
-format_conn({ConnId, Addr, Port}) ->
-    [integer_to_list(ConnId), "-", format_ip(Addr), ":", integer_to_list(Port)].
+format_conn(Connection) ->
+    pid_to_list(Connection).
 
 create_handle(Connection, Counter) ->
     FName = [os:getpid(), "-", format_conn(Connection), "-", atom_to_list(Counter)],
@@ -120,3 +116,8 @@ format_message({Mega, Secs, Micro}, Count) ->
 
 trace_message(Handle, Event) ->
     ok = file:write(Handle, Event).
+
+
+
+
+
