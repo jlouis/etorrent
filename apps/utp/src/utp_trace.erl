@@ -9,6 +9,8 @@
 
 -behaviour(gen_server).
 
+-include("log.hrl").
+
 %% API
 -export([
          start_link/1,
@@ -21,7 +23,8 @@
 
 -define(SERVER, ?MODULE). 
 
--record(state, { enabled = false :: boolean() }).
+-record(state, { enabled = false :: boolean(),
+                 map = dict:new():: dict() }).
 
 %%%===================================================================
 %%% API
@@ -43,7 +46,8 @@ trace(Connection, Counter, Count) ->
 init([Options]) ->
     case proplists:get_value(trace_counters, Options) of
         true ->
-            {ok, #state { enabled = true }};
+            {ok, #state { enabled = true,
+                          map = dict:new() }};
         undefined -> {ok, #state{ enabled = false}}
     end.
 
@@ -55,7 +59,13 @@ handle_call(_Request, _From, State) ->
 %% @private
 handle_cast(_Msg, #state { enabled = false } = State) ->
     {noreply, State};
-handle_cast(_Msg, State) ->
+handle_cast({trace_point, TimeStamp, Connection, Counter, Count},
+            #state { enabled = true, map = Map } = State) ->
+    {N_Map, Handle} = find_handle({Connection, Counter}, Map),
+    trace_message(Handle, format_message(TimeStamp, Count)),
+    {noreply, State#state { map = N_Map }};
+handle_cast(Msg, State) ->
+    ?ERR([unknown_handle_case, Msg, State]),
     {noreply, State}.
 
 %% @private
@@ -71,5 +81,13 @@ code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 %%%===================================================================
-%%% Internal functions
-%%%===================================================================
+
+find_handle({{_ConnId, _Addr, _Port}, Counter}, Map) when is_atom(Counter) ->
+    {Map, todo}.
+
+format_message(_Timestamp, _Count) ->
+    todo.
+
+trace_message(_Handle, _Event) ->
+    todo.
+
