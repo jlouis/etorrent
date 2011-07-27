@@ -30,6 +30,7 @@
 %% a packet is ACKed:
 
 update(Estimate, RTT) ->
+    utp_trace:trace(rtt_estimate, Estimate),
     case RTT of
         none ->
             case Estimate < 6000 of
@@ -50,7 +51,10 @@ update(Estimate, RTT) ->
 rto(none) ->
     ?DEFAULT_RTT_TIMEOUT;
 rto(#rtt { rtt = RTT, var = Var}) ->
-    max(RTT + Var * 4, ?DEFAULT_RTT_TIMEOUT).
+    RTO = max(RTT + Var * 4, ?DEFAULT_RTT_TIMEOUT),
+    utp_trace:trace(rtt_rto, RTO),
+    RTO.
+
 
 %% ACKnowledge an incoming packet
 ack_packet(History, RTT, TimeSent, TimeAcked) ->
