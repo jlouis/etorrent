@@ -49,6 +49,7 @@ update(Estimate, RTT) ->
 %% The default timeout for packets associated with the socket is also
 %% updated every time rtt and rtt_var is updated. It is set to:
 rto(none) ->
+    utp_trace:trace(rtt_rot, ?DEFAULT_RTT_TIMEOUT),
     ?DEFAULT_RTT_TIMEOUT;
 rto(#rtt { rtt = RTT, var = Var}) ->
     RTO = max(RTT + Var * 4, ?DEFAULT_RTT_TIMEOUT),
@@ -83,4 +84,3 @@ ack_packet(History, RTT, TimeSent, TimeAcked) ->
 %% according to the formula above. For every packet consecutive
 %% subsequent packet that times out, the timeout is doubled.
     
-

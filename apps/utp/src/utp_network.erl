@@ -123,7 +123,9 @@ max_window_send(#network { peer_advertised_window = AdvertisedWindow,
                            sock_info = SI,
                            cwnd = MaxSendWindow }) ->
     SendBufSz = utp_socket:send_buf_sz(SI),
-    lists:min([SendBufSz, AdvertisedWindow, MaxSendWindow]).
+    Min = lists:min([SendBufSz, AdvertisedWindow, MaxSendWindow]),
+    utp_trace:trace(max_window, Min),
+    Min.
 
 view_zero_window(#network { peer_advertised_window = N }) when N > 0 ->
     ok; % There is no reason to update the window
@@ -213,9 +215,11 @@ congestion_control(#network { cwnd = Cwnd,
             Otherwise ->
                 error({our_delay_violated, Otherwise})
         end,
+    utp_trace:trace(queue_delay, OurDelay),
     TargetDelay = ?CONGESTION_CONTROL_TARGET,
 
     TargetOffset = OurDelay - TargetDelay,
+    utp_trace:trace(target_offset, TargetOffset),
     %% Compute the Window Factor. The window might have shrunk since
     %% last time, so take the minimum of the bytes acked and the
     %% window maximum.  Divide by the maximal value of the Windows and
@@ -250,6 +254,7 @@ congestion_control(#network { cwnd = Cwnd,
                  end,
     NewCwnd = clamp(Cwnd + Alteration, ?MIN_WINDOW_SIZE, utp_socket:send_buf_sz(SockInfo)),
 
+    utp_trace:trace(congestion_window, NewCwnd),
     Network#network {
       cwnd = NewCwnd
      }.
