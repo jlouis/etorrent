@@ -8,7 +8,7 @@
 -behaviour(supervisor).
 
 %% API
--export([start_link/1]).
+-export([start_link/1, start_link/2]).
 
 %% Supervisor callbacks
 -export([init/1]).

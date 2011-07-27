@@ -265,7 +265,7 @@ l(T) ->
     l(T, []).
 
 l(T, Opts) ->
-    utp:start_app(3333),
+    utp:start_app(3333, Opts),
     utp_filter:start(),
     (parse_listen(T))(Opts).
 
@@ -301,7 +301,7 @@ c(T) ->
     c(T, []).
 
 c(T, Opts) ->
-    utp:start_app(3334),
+    utp:start_app(3334, Opts),
     utp_filter:start(),
     (parse_connect(T))(Opts).
 

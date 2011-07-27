@@ -19,7 +19,11 @@ start(_StartType, _StartArgs) ->
                {ok, P} -> P;
                undefined  -> 3333
            end,
-    case utp_sup:start_link(Port) of
+    Opts = case application:get_env(utp, opts) of
+               {ok, O} -> O;
+               undefined -> []
+           end,
+    case utp_sup:start_link(Port, Opts) of
         {ok, Pid} ->
             {ok, Pid};
         {error, Reason} ->

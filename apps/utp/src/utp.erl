@@ -2,7 +2,7 @@
 
 -export([
          start/1,
-         start_app/1,
+         start_app/1, start_app/2,
 
          report_event/4, report_event/5
          ]).
@@ -13,7 +13,11 @@ start(Port) ->
     utp_sup:start_link(Port).
 
 start_app(Port) ->
+    start_app(Port, []).
+
+start_app(Port, Opts) ->
     application:set_env(utp, udp_port, Port),
+    application:set_env(utp, opts, Opts),
     ok = ensure_started([sasl, gproc, crypto]),
     application:start(utp).
 
