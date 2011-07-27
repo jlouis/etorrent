@@ -67,13 +67,11 @@ handle_call(_Request, _From, State) ->
 %% @private
 handle_cast(_Msg, #state { enabled = false } = State) ->
     {noreply, State};
-handle_cast({trace_point, TimeStamp, Connection, Counter, Count} = TP,
+handle_cast({trace_point, TimeStamp, Connection, Counter, Count},
             #state { enabled = true, map = Map } = State) ->
-    utp:report_event(95, us, trace, [TP]),
     {N_Map, Handle} = find_handle({Connection, Counter}, Map),
     Msg = format_message(TimeStamp, Count),
     trace_message(Handle, Msg),
-    error_logger:info_report([{Connection, Counter, Msg}]),
     {noreply, State#state { map = N_Map }};
 handle_cast(close_all, #state { enabled = true, map = M }) ->
     [file:close(H) || {_K, H} <- dict:to_list(M)],
@@ -115,10 +113,9 @@ create_handle(Connection, Counter) ->
     Handle.
 
 format_message({Mega, Secs, Micro}, Count) ->
-    Time = [Mega*1000000+Secs, ".", io_lib:format("~6..0B", [Micro])],
-    [integer_to_list(Time), "|", integer_to_list(Count), "\n"].
+    Time = [integer_to_list(Mega*1000000+Secs), ".", io_lib:format("~6..0B", [Micro])],
+    [Time, "|", integer_to_list(Count), "\n"].
 
 trace_message(Handle, Event) ->
-    error_logger:info_report({tracing, Handle, Event}),
     ok = file:write(Handle, Event).
 
