@@ -203,8 +203,8 @@ reply(To, Msg) ->
 %%                     {stop, Reason}
 %% @end
 %%--------------------------------------------------------------------
-init([Port, Opts]) ->
-    {ok, Socket} = gen_udp:open(Port, [binary, {active, once}] ++ Opts),
+init([Port, _Opts]) ->
+    {ok, Socket} = gen_udp:open(Port, [binary, {active, once}]),
     ets:new(?TAB, [named_table, protected, set]),
     {ok, #state{ monitored = gb_trees:empty(),
                  listen_queue = closed,
@@ -400,11 +400,7 @@ validate_listen_opts([{force_seq_no, N} | R]) ->
         false ->
             badarg
     end;
-validate_listen_opts(_) ->
-    badarg.
-
-    
-
-
-
-
+validate_listen_opts([{trace_counters, B} | R]) when is_boolean(B) ->
+    validate_listen_opts(R);
+validate_listen_opts([_U | R]) ->
+    validate_listen_opts(R).
