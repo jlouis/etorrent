@@ -51,9 +51,12 @@ close_all() ->
 init([Options]) ->
     case proplists:get_value(trace_counters, Options) of
         true ->
+            error_logger:info_report(tracer_enabled),
             {ok, #state { enabled = true,
                           map = dict:new() }};
-        undefined -> {ok, #state{ enabled = false}}
+        undefined ->
+            error_logger:info_report(tracer_disabled),
+            {ok, #state{ enabled = false}}
     end.
 
 %% @private
@@ -64,14 +67,17 @@ handle_call(_Request, _From, State) ->
 %% @private
 handle_cast(_Msg, #state { enabled = false } = State) ->
     {noreply, State};
-handle_cast({trace_point, TimeStamp, Connection, Counter, Count},
+handle_cast({trace_point, TimeStamp, Connection, Counter, Count} = TP,
             #state { enabled = true, map = Map } = State) ->
+    utp:report_event(95, us, trace, [TP]),
     {N_Map, Handle} = find_handle({Connection, Counter}, Map),
-    trace_message(Handle, format_message(TimeStamp, Count)),
+    Msg = format_message(TimeStamp, Count),
+    trace_message(Handle, Msg),
+    error_logger:info_report([{Connection, Counter, Msg}]),
     {noreply, State#state { map = N_Map }};
 handle_cast(close_all, #state { enabled = true, map = M }) ->
     [file:close(H) || {_K, H} <- dict:to_list(M)],
-    #state { enabled = true, map = dict:new() };
+    {noreply, #state { enabled = true, map = dict:new() }};
 handle_cast(Msg, State) ->
     ?ERR([unknown_handle_case, Msg, State]),
     {noreply, State}.
@@ -105,18 +111,14 @@ format_conn(Connection) ->
 
 create_handle(Connection, Counter) ->
     FName = [os:getpid(), "-", format_conn(Connection), "-", atom_to_list(Counter)],
-    {ok, Handle} = file:open(FName, [write, raw, binary, {delayed_write, 8192, 3000}]),
+    {ok, Handle} = file:open(FName, [write, raw, binary]),
     Handle.
 
 format_message({Mega, Secs, Micro}, Count) ->
     Time = [Mega*1000000+Secs, ".", io_lib:format("~6..0B", [Micro])],
-    CountS = integer_to_list(Count),
-    [Time, $|, CountS, $\n].
+    [integer_to_list(Time), "|", integer_to_list(Count), "\n"].
 
 trace_message(Handle, Event) ->
+    error_logger:info_report({tracing, Handle, Event}),
     ok = file:write(Handle, Event).
-
-
-
-
 
