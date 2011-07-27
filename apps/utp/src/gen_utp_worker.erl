@@ -805,6 +805,10 @@ validate_options([{backlog, N} | R]) ->
         false ->
             badarg
     end;
+validate_options([{trace_counters, TF} | R]) when is_boolean(TF) ->
+    validate_options(R);
+validate_options([{trace_counters, _} | _]) ->
+    badarg;
 validate_options([{force_seq_no, N} | R]) ->
     case is_integer(N) of
         true when N >= 0,
@@ -817,8 +821,9 @@ validate_options([{force_seq_no, N} | R]) ->
     end;
 validate_options([]) ->
     ok;
-validate_options(_) ->
-    badarg.
+validate_options([_Unknown | R]) ->
+    %% @todo Skip unknown options silently for now.
+    validate_options(R).
 
 set_ledbat_timer() ->
     report_timer_set(ledbat),

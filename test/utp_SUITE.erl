@@ -95,7 +95,7 @@ two_way(Config, In, Out) ->
     R = make_ref(),
     spawn(fun() ->
                   timer:sleep(3000),
-                  {Reply, TR} = rpc:call(C1, utp_test, Out, []),
+                  {Reply, TR} = rpc:call(C1, utp_test, Out, [Config]),
                   ct:log("OUT PATH TRACE:~n~p~n", [TR]),
                   N ! {done, Reply, R}
           end),
@@ -151,7 +151,7 @@ connect_n_communicate(Config) ->
     spawn(fun() ->
                   %% @todo, should fix this timer invocation
                   timer:sleep(3000),
-                  rpc:call(C1, utp_test, test_connect_n_communicate_connect, [])
+                  rpc:call(C1, utp_test, test_connect_n_communicate_connect, [Config])
           end),
     {ok, _TR} = rpc:call(C2, utp_test, test_connect_n_communicate_listen, [Config]),
     ok.
@@ -165,7 +165,7 @@ rwin_test(Config) ->
     spawn_link(fun() ->
                        timer:sleep(3000),
                        {ok, TR} = rpc:call(?config(connector, Config),
-                                           utp_test, test_rwin_out, [FileData]),
+                                           utp_test, test_rwin_out, [FileData, Config]),
                        ct:log("RWIN OUT:~n~p~n", [TR])
                end),
     {ok, TR} = rpc:call(?config(connectee, Config),
@@ -184,7 +184,7 @@ piggyback(Config) ->
                        timer:sleep(3000),
                        {ok, Socket1, TR} =
                            rpc:call(?config(connector, Config),
-                                    utp_test, test_piggyback_out, [FileData]),
+                                    utp_test, test_piggyback_out, [FileData, Config]),
                        ct:log("Piggyback out:~n~p~n", [TR]),
                        Controller ! {done, Ref, Socket1}
                end),
@@ -209,7 +209,7 @@ connect_n_send_big(Config) ->
     spawn(fun() ->
                   timer:sleep(3000),
                   rpc:call(?config(connector, Config),
-                           utp_test, test_send_large_file, [FileData])
+                           utp_test, test_send_large_file, [FileData, Config])
           end),
     {ok, _TR} = rpc:call(?config(connectee, Config),
                          utp_test, test_recv_large_file, [FileData, Config]),

@@ -4,36 +4,28 @@
 -include_lib("common_test/include/ct.hrl").
 
 -export([
-         test_connect_n_communicate_connect/0,
-         test_connect_n_communicate_listen/1,
-         test_backwards_connect/0,
-         test_backwards_listen/1,
-         test_full_duplex_out/0, test_full_duplex_in/1,
-         test_close_in_1/1,
-         test_close_out_1/0,
-         test_close_in_2/1,
-         test_close_out_2/0,
-         test_close_in_3/1,
-         test_close_out_3/0,
-         test_send_large_file/1,
-         test_recv_large_file/2,
+         test_connect_n_communicate_connect/1, test_connect_n_communicate_listen/1,
+         test_backwards_connect/1, test_backwards_listen/1,
+         test_full_duplex_out/1, test_full_duplex_in/1,
+         test_close_in_1/1, test_close_out_1/1,
+         test_close_in_2/1, test_close_out_2/1,
+         test_close_in_3/1, test_close_out_3/1,
+         test_send_large_file/2, test_recv_large_file/2,
 
-         test_piggyback_in/2,
-         test_piggyback_out/1,
+         test_piggyback_in/2, test_piggyback_out/2,
 
-         test_rwin_in/2,
-         test_rwin_out/1,
+         test_rwin_in/2, test_rwin_out/2,
 
          get/1,
          opt_seq_no/0,
 
-         c/0, c/1, l/0, l/1, l/2
+         c/0, c/1, c/2, l/0, l/1, l/2
          ]).
 
 %% ----------------------------------------------------------------------
     
-test_connect_n_communicate_connect() ->
-    {ok, Sock} = repeating_connect("localhost", 3333),
+test_connect_n_communicate_connect(Opts) ->
+    {ok, Sock} = repeating_connect("localhost", 3333, Opts),
     ok = gen_utp:send(Sock, "HELLO"),
     ok = gen_utp:send(Sock, "WORLD"),
     timer:sleep(6000),
@@ -50,8 +42,8 @@ test_connect_n_communicate_listen(Options) ->
     {<<"HELLO">>, <<"WORLD">>} = {R1, R2},
     {ok, gen_utp_trace:grab()}.
 
-test_backwards_connect() ->
-    {ok, Sock} = repeating_connect("localhost", 3333),
+test_backwards_connect(Opts) ->
+    {ok, Sock} = repeating_connect("localhost", 3333, Opts),
     case gen_utp:recv(Sock, 10) of
         {ok, <<"HELLOWORLD">>} ->
             ok = gen_utp:close(Sock),
@@ -78,16 +70,16 @@ test_full_duplex_in(Options) ->
     ok = gen_utp:close(Sock),
     {ok, gen_utp_trace:grab()}.
 
-test_full_duplex_out() ->
-    {ok, Sock} = repeating_connect("localhost", 3333),
+test_full_duplex_out(Opts) ->
+    {ok, Sock} = repeating_connect("localhost", 3333, Opts),
     ok = gen_utp:send(Sock, "12345"),
     ok = gen_utp:send(Sock, "67890"),
     {ok, <<"HELLOWORLD">>} = gen_utp:recv(Sock, 10),
     ok = gen_utp:close(Sock),
     {ok, gen_utp_trace:grab()}.
 
-test_close_out_1() ->
-    {ok, Sock} = repeating_connect("localhost", 3333),
+test_close_out_1(Opts) ->
+    {ok, Sock} = repeating_connect("localhost", 3333, Opts),
     ok = gen_utp:close(Sock),
     {error, econnreset} = gen_utp:send(Sock, <<"HELLO">>),
     {ok, gen_utp_trace:grab()}.
@@ -105,8 +97,8 @@ test_close_in_1(Options) ->
     ok = gen_utp:close(Sock),
     {ok, gen_utp_trace:grab()}.
 
-test_close_out_2() ->
-    {ok, Sock} = repeating_connect("localhost", 3333),
+test_close_out_2(Opts) ->
+    {ok, Sock} = repeating_connect("localhost", 3333, Opts),
     timer:sleep(3000),
     case gen_utp:send(Sock, <<"HELLO">>) of
         ok ->
@@ -129,8 +121,8 @@ test_close_in_2(Options) ->
     end,
     {ok, gen_utp_trace:grab()}.
 
-test_close_out_3() ->
-    {ok, Sock} = repeating_connect("localhost", 3333),
+test_close_out_3(Opts) ->
+    {ok, Sock} = repeating_connect("localhost", 3333, Opts),
     ok = gen_utp:send(Sock, <<"HELLO">>),
     {ok, <<"WORLD">>} = gen_utp:recv(Sock, 5),
     ok = gen_utp:close(Sock),
@@ -144,20 +136,20 @@ test_close_in_3(Options) ->
     ok = gen_utp:close(Sock),
     {ok, gen_utp_trace:grab()}.
 
-test_send_large_file(Data) ->
-    {ok, Sock} = repeating_connect("localhost", 3333),
+test_send_large_file(Data, Opts) ->
+    {ok, Sock} = repeating_connect("localhost", 3333, Opts),
     ok = gen_utp:send(Sock, Data),
     ok = gen_utp:close(Sock),
     {ok, gen_utp_trace:grab()}.
 
 %% Infinitely repeat connecting. A timetrap will capture the problem
--spec repeating_connect(term(), integer()) -> no_return() | {ok, any()}.
-repeating_connect(Host, Port) ->
-    case gen_utp:connect(Host, Port) of
+-spec repeating_connect(term(), integer(), [term()]) -> no_return() | {ok, any()}.
+repeating_connect(Host, Port, Opts) ->
+    case gen_utp:connect(Host, Port, Opts) of
         {ok, Sock} ->
             {ok, Sock};
         {error, etimedout} ->
-            repeating_connect(Host, Port)
+            repeating_connect(Host, Port, Opts)
     end.
 
 test_rwin_in(Data, Options) ->
@@ -179,15 +171,15 @@ rwin_recv(Sock, Sz, Acc) when Sz > 10000 ->
     {ok, B} = gen_utp:recv(Sock, 10000),
     rwin_recv(Sock, Sz - 10000, <<Acc/binary, B/binary>>).
 
-test_rwin_out(Data) ->
-    {ok, Sock} = repeating_connect("localhost", 3333),
+test_rwin_out(Data, Opts) ->
+    {ok, Sock} = repeating_connect("localhost", 3333, Opts),
     ok = gen_utp:send(Sock, Data),
     ok = gen_utp:close(Sock),
     {ok, gen_utp_trace:grab()}.
 
-test_piggyback_out(Data) ->
+test_piggyback_out(Data, Opts) ->
     Sz = byte_size(Data),
-    {ok, Sock} = repeating_connect("localhost", 3333),
+    {ok, Sock} = repeating_connect("localhost", 3333, Opts),
     {Recv, Ref} = {self(), make_ref()},
     spawn_link(fun() ->
                        ok = gen_utp:send(Sock, Data),
@@ -306,33 +298,37 @@ c() ->
     c(test_large).
 
 c(T) ->
+    c(T, []).
+
+c(T, Opts) ->
     utp:start_app(3334),
     utp_filter:start(),
-    (parse_connect(T))().
+    (parse_connect(T))(Opts).
 
 parse_connect(test_large) ->
-    fun () ->
-            test_send_large_file(large_data())
+    fun (O) ->
+            test_send_large_file(large_data(), O)
     end;
 parse_connect(test_rwin) ->
-    fun () ->
-            test_rwin_out(large_data())
+    fun (O) ->
+            test_rwin_out(large_data(), O)
     end;
 parse_connect(test_piggyback) ->
-    fun () ->
-            test_piggyback_out(large_data())
+    fun (O) ->
+            test_piggyback_out(large_data(), O)
     end;
 parse_connect(test_close_3) ->
-    fun test_close_out_3/0;
+    fun test_close_out_3/1;
 parse_connect(test_close_2) ->
-    fun test_close_out_2/0;
+    fun test_close_out_2/1;
 parse_connect(test_close_1) ->
-    fun test_close_out_1/0;
+    fun test_close_out_1/1;
 parse_connect(test_full_duplex) ->
-    fun test_full_duplex_out/0;
+    fun test_full_duplex_out/1;
 parse_connect(test_backwards) ->
-    fun test_backwards_connect/0;
+    fun test_backwards_connect/1;
 parse_connect(test_connect_n_communicate) ->
-    fun test_connect_n_communicate_connect/0.
+    fun test_connect_n_communicate_connect/1.
+
 
 
