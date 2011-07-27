@@ -218,7 +218,7 @@ congestion_control(#network { cwnd = Cwnd,
     utp_trace:trace(queue_delay, OurDelay),
     TargetDelay = ?CONGESTION_CONTROL_TARGET,
 
-    TargetOffset = OurDelay - TargetDelay,
+    TargetOffset = TargetDelay - OurDelay,
     utp_trace:trace(target_offset, TargetOffset),
     %% Compute the Window Factor. The window might have shrunk since
     %% last time, so take the minimum of the bytes acked and the
@@ -338,21 +338,6 @@ handle_maxed_out_window(Messages, #network {} = NW) ->
         undefined ->
             NW
     end.
-
-            
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 update_window(Network, ReplyMicro, TimeAcked, Messages, TSDiff, Pkt) ->
     N6 = update_reply_micro(Network, ReplyMicro),
