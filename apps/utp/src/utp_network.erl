@@ -256,7 +256,7 @@ congestion_control(#network { cwnd = Cwnd,
 
     utp_trace:trace(congestion_window, NewCwnd),
     Network#network {
-      cwnd = NewCwnd
+      cwnd = round(NewCwnd)
      }.
 
 

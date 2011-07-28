@@ -76,11 +76,12 @@ putback_receiver(From, Length, Data, #proc_info { receiver_q = RQ} = PI) ->
     NQ = queue:in_r({receiver, From, Length, Data}, RQ),
     PI#proc_info { receiver_q = NQ }.
 
-enqueue_sender(From, Data, #proc_info { sender_q = SQ } = PI) ->
+-spec enqueue_sender({pid(), reference()}, binary(), t()) -> t().
+enqueue_sender(From, Data, #proc_info { sender_q = SQ } = PI) when is_binary(Data) ->
     NQ = queue:in({sender, From, Data}, SQ),
     PI#proc_info { sender_q = NQ }.
 
-fill_via_send_queue(N, #proc_info { sender_q = SQ } = PI) ->
+fill_via_send_queue(N, #proc_info { sender_q = SQ } = PI) when is_integer(N) ->
     case dequeue(N, SQ, <<>>) of
         {done, Bin, SQ1} ->
             {filled, Bin, PI#proc_info { sender_q = SQ1}};
