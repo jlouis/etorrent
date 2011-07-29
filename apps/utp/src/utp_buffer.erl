@@ -332,7 +332,7 @@ update_send_buffer(AckNo, #buffer { seq_no = NextSeqNo } = PB) ->
                  AckedPs,
                  PB1};
         {ack_is_old, _AcksAhead} ->
-            {ok, [{old_ack, true}], 0, PB}
+            {ok, [{old_ack, true}], [], PB}
     end.
 
 %% @doc Prune the retransmission queue for ACK'ed packets.
