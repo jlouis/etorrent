@@ -1481,6 +1481,12 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   the monitored set.
   b) The RESETs we send back are wrong in the ConnID number so they
   never arrive at the right spot in the other end.
+* TODO close_2 fails on a bad line
+  To solve this, we must:
+
+** TODO Write a way to continue a test until it fails.
+** TODO Use it on close_2.
+** TODO See what is wrong in close_2.
 * TODO Enable full nastiness on the lo interface
   Re-enable nastiness on the lo interface and run some tests on the
   protocol. This will allow us to check for correctness again.

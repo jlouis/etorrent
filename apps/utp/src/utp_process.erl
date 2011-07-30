@@ -14,7 +14,6 @@
 	 enqueue_receiver/3,
          putback_receiver/4,
          dequeue_receiver/1,
-	 dequeue_packet/2,
 
          fill_via_send_queue/2,
 	 bytes_in_recv_buffer/1,
@@ -109,41 +108,6 @@ dequeue(N, Q, Acc) ->
         {value, {sender, From, Data}} when byte_size(Data) > N ->
             <<Take:N/binary, Rest/binary>> = Data,
             dequeue(0, queue:in_r({sender, From, Rest}, NQ), <<Acc/binary, Take/binary>>)
-    end.
-
-dequeue_packet(#proc_info { sender_q = SQ } = PI, Size) when Size > 0 ->
-    case dequeue_packet(<<>>, SQ, Size) of
-	{ok, Payload, NewSQ} ->
-	    {value, Payload, PI#proc_info { sender_q = NewSQ }};
-	{partial, <<>>, SQ} ->
-	    none;
-	{partial, Payload, NewSQ} ->
-	    {value, Payload, PI#proc_info { sender_q = NewSQ }}
-    end.
-
-dequeue_packet(Payload, Q, 0) ->
-    {ok, Payload, Q};
-dequeue_packet(Payload, Q, N) when is_integer(N) ->
-    case queue:out(Q) of
-	{empty, _} ->
-	    {partial, Payload, Q};
-	{{value, {sender, From, Data}}, NewQ} ->
-	    case Data of
-		<<PL:N/binary, Rest/binary>> ->
-		    {ok, <<Payload/binary, PL/binary>>,
-		     case Rest of
-			 <<>> ->
-			     gen_utp:reply(From, ok),
-			     NewQ;
-			 Remaining ->
-			     queue:in_r({sender, From, Remaining}, NewQ)
-		     end};
-		<<PL/binary>> when byte_size(PL) < N ->
-		    gen_utp:reply(From, ok),
-		    dequeue_packet(<<Payload/binary, PL/binary>>,
-				   NewQ,
-				   N - byte_size(PL))
-	    end
     end.
 
 %% @doc Predicate: is the receive buffer empty
