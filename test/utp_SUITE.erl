@@ -26,8 +26,10 @@ init_per_group(Group, Config) when Group == main_group;
                                    Group == parallel_main_group;
                                    Group == stress_group ->
     TCProps = ?config(tc_group_properties, Config),
-    {_A,_B,C} = ?config(shuffle, TCProps),
-    [{force_seq_no, (65536 - (C rem 5)) rem 65536} | Config];
+    case ?config(shuffle, TCProps) of
+        undefined -> Config;
+        {_A,_B,C} -> [{force_seq_no, (65536 - (C rem 5)) rem 65536} | Config]
+    end;
 init_per_group(_Group, Config) ->
     Config.
 
@@ -83,7 +85,7 @@ groups() ->
      {parallel_main_group, [shuffle, parallel, {repeat_until_any_fail, 30}],
       base_test_cases()},
      {stress_group, [{repeat_until_any_fail, 50}],
-      [piggyback]}].
+      [close_2]}].
 
 all() ->
     [{group, main_group}].
