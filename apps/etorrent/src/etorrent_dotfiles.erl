@@ -3,7 +3,30 @@
 %% @end
 
 %% exported functions
--export([torrents/0]).
+-export([make/0,
+         torrents/0]).
+
+%% private functions
+-export([exists/1]).
+
+%% include files
+-include_lib("kernel/include/file.hrl").
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
+%% @doc Ensure that the dotfile directory exists.
+%% @end
+-spec make() -> ok.
+make() ->
+    Dir = gproc:get_env(l, etorrent, dotdir),
+    case exists(Dir) of
+        true -> ok;
+        false -> make_(Dir)
+    end.
+
+make_(Dir) ->
+    file:make_dir(Dir).
 
 %% @doc List all available torrent files.
 %% @end
@@ -11,8 +34,17 @@
 torrents() ->
     [].
 
+%% @private Check if a file path exists.
+-spec exists(Path::string()) -> boolean().
+exists(Path) ->
+    case file:read_file_info(Path) of
+        {ok, _} -> true;
+        {error, _} -> false
+    end.
+        
+        
+
 -ifdef(TEST).
--include_lib("eunit/include/eunit.hrl").
 
 %% @private Update dotdir configuration parameter to point to a new directory.
 setup_config() ->
@@ -33,10 +65,16 @@ dotfiles_test_() ->
     {foreach, local,
         fun setup_config/0,
         fun teardown_config/1, [
-    ?_test(test_no_torrents())
+    ?_test(test_no_torrents()),
+    ?_test(test_ensure_exists())
     ]}}.
 
 test_no_torrents() ->
     ?assertEqual([], ?MODULE:torrents()).
+
+test_ensure_exists() ->
+    ?assertNot(?MODULE:exists(gproc:get_env(l, etorrent, dotdir))),
+    ok = ?MODULE:make(),
+    ?assert(?MODULE:exists(gproc:get_env(l, etorrent, dotdir))).
 
 -endif.
