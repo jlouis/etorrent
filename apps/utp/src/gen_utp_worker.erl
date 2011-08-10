@@ -133,14 +133,24 @@ accept(Pid, SynPacket) ->
 %% @end
 recv(Pid, Amount) ->
     utp:report_event(60, client, us, {recv, Amount}, []),
-    gen_fsm:sync_send_event(Pid, {recv, Amount}, infinity).
+    try
+        gen_fsm:sync_send_event(Pid, {recv, Amount}, infinity)
+    catch
+        error:{noproc, _} ->
+            {error, enoconn}
+    end.
 
 %% @doc Send some bytes from the socket. Blocks until the said amount of
 %% bytes have been sent and has been accepted by the underlying layer.
 %% @end
 send(Pid, Data) ->
     utp:report_event(60, client, us, {send, size(Data)}, [Data]),
-    gen_fsm:sync_send_event(Pid, {send, Data}, infinity).
+    try
+        gen_fsm:sync_send_event(Pid, {send, Data}, infinity)
+    catch
+        error:{noproc, _} ->
+            {error, enoconn}
+    end.
 
 %% @doc Send a close event
 %% @end
