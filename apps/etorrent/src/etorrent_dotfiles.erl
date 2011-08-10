@@ -97,7 +97,6 @@ test_ensure_exists() ->
     ?assert(?MODULE:exists(gproc:get_env(l, etorrent, dotdir))).
 
 test_copy_torrent() ->
-    c:pwd(),
     Torrent = "../../../test/etorrent_eunit_SUITE_data/debian-6.0.2.1-amd64-netinst.iso.torrent",
     ok = ?MODULE:copy(Torrent),
     ?assertEqual({ok, ["debian-6.0.2.1-amd64-netinst.iso.torrent"]}, ?MODULE:torrents()).
