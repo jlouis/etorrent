@@ -8,7 +8,7 @@
          test_backwards_connect/1, test_backwards_listen/1,
          test_full_duplex_out/1, test_full_duplex_in/1,
          test_close_in_1/1, test_close_out_1/1,
-         test_close_in_2/1, test_close_out_2/1,
+         test_close_in_2/1, test_close_out_2/1, test_close_out_2_et/1, test_close_in_2_et/1,
          test_close_in_3/1, test_close_out_3/1,
          test_send_large_file/2, test_recv_large_file/2,
 
@@ -19,11 +19,27 @@
          get/1,
          opt_seq_no/0,
 
-         c/0, c/1, c/2, l/0, l/1, l/2
+         c/0, c/1, c/2, l/0, l/1, l/2,
+         rc/1, rc/2, rl/1, rl/2,
+         run_event_trace/3
          ]).
 
 %% ----------------------------------------------------------------------
-    
+
+run_event_trace(F, Config, Name) ->
+    case proplists:get_value(event_trace_dir, Config) of
+        undefined ->
+            F(Config);
+        Dir ->
+            {ok, ColPid} = et_collector:start_link([]),
+            try
+                F(Config)
+            after
+                et_collector:save_event_file(ColPid, filename:join([Dir, Name]), []),
+                et_collector:clear_table(ColPid)
+            end
+    end.
+            
 test_connect_n_communicate_connect(Opts) ->
     {ok, Sock} = repeating_connect("localhost", 3333, Opts),
     ok = gen_utp:send(Sock, "HELLO"),
@@ -97,6 +113,12 @@ test_close_in_1(Options) ->
     ok = gen_utp:close(Sock),
     {ok, gen_utp_trace:grab()}.
 
+test_close_out_2_et(Opts) ->
+    run_event_trace(
+      fun test_close_out_2/1,
+      Opts,
+      "close_2.out").
+
 test_close_out_2(Opts) ->
     {ok, Sock} = repeating_connect("localhost", 3333, Opts),
     timer:sleep(3000),
@@ -104,10 +126,18 @@ test_close_out_2(Opts) ->
         ok ->
             ignore;
         {error, econnreset} ->
+            ignore;
+        {error, enoconn} ->
             ignore
     end,
     ok = gen_utp:close(Sock),
     {ok, gen_utp_trace:grab()}.
+
+test_close_in_2_et(Options) ->
+    run_event_trace(
+      fun test_close_in_2/1,
+      Options,
+      "close_2.in").
 
 test_close_in_2(Options) ->
     ok =  listen(Options),
@@ -261,6 +291,28 @@ l() ->
 opt_seq_no() ->
     {force_seq_no, 65535}.
 
+rl(T) ->
+    rl(T, []).
+
+rl(T, Opts) ->
+    utp:start_app(3333, Opts),
+    {ok, Pid} = utp_filter:start(),
+    Fun = parse_listen(T),
+    case proplists:get_value(rounds, Opts) of
+        undefined ->
+            repeat(50, Pid, Fun, Opts);
+        N ->
+            repeat(N, Pid, Fun, Opts)
+    end.
+
+repeat(0, _, _, _) ->
+    ok;
+repeat(N, VPid, Fun, Opts) ->
+    io:format("Running ~B~n", [N]),
+    {ok, _} = Fun(Opts),
+    utp_filter:clear(VPid),
+    repeat(N-1, VPid, Fun, Opts).
+
 l(T) ->
     l(T, []).
 
@@ -285,6 +337,8 @@ parse_listen(test_close_3) ->
     fun test_close_in_3/1;
 parse_listen(test_close_2) ->
     fun test_close_in_2/1;
+parse_listen(test_close_2_et) ->
+    fun test_close_in_2_et/1;
 parse_listen(test_close_1) ->
     fun test_close_in_1/1;
 parse_listen(test_full_duplex) ->
@@ -305,6 +359,20 @@ c(T, Opts) ->
     utp_filter:start(),
     (parse_connect(T))(Opts).
 
+rc(T) ->
+    rc(T, []).
+
+rc(T, Opts) ->
+    utp:start_app(3334, Opts),
+    {ok, Pid} = utp_filter:start(),
+    Fun = parse_connect(T),
+    case proplists:get_value(rounds, Opts) of
+        undefined ->
+            repeat(50, Pid, Fun, Opts);
+        N ->
+            repeat(N, Pid, Fun, Opts)
+    end.
+
 parse_connect(test_large) ->
     fun (O) ->
             test_send_large_file(large_data(), O)
@@ -321,6 +389,8 @@ parse_connect(test_close_3) ->
     fun test_close_out_3/1;
 parse_connect(test_close_2) ->
     fun test_close_out_2/1;
+parse_connect(test_close_2_et) ->
+    fun test_close_out_2_et/1;
 parse_connect(test_close_1) ->
     fun test_close_out_1/1;
 parse_connect(test_full_duplex) ->

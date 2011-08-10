@@ -13,7 +13,7 @@
          piggyback/0, piggyback/1,
          rwin_test/0, rwin_test/1,
          close_1/0, close_1/1,
-         close_2/0, close_2/1,
+         close_2/0, close_2/1, close_2_et/0, close_2_et/1,
          close_3/0, close_3/1,
          connect_n_send_big/0, connect_n_send_big/1 ]).
 
@@ -49,7 +49,9 @@ end_per_group(_Group, _Config) ->
 init_per_suite(Config) ->
     ConnectNode = start_node(connector,3334),
     ConnecteeNode = start_node(connectee,3333),
-    [{connector, ConnectNode},
+    EventTraceDir = "./",
+    [{event_trace_dir, EventTraceDir},
+     {connector, ConnectNode},
      {connectee, ConnecteeNode} | Config].
 
 end_per_suite(Config) ->
@@ -85,7 +87,7 @@ groups() ->
      {parallel_main_group, [shuffle, parallel, {repeat_until_any_fail, 30}],
       base_test_cases()},
      {stress_group, [{repeat_until_any_fail, 50}],
-      [close_2]}].
+      [close_2_et]}].
 
 all() ->
     [{group, main_group}].
@@ -125,6 +127,12 @@ close_2() ->
 
 close_2(Config) ->
     two_way(Config, test_close_in_2, test_close_out_2).
+
+close_2_et() ->
+    [].
+
+close_2_et(Config) ->
+    two_way(Config, test_close_in_2_et, test_close_out_2_et).
 
 close_3() ->
     [].

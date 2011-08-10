@@ -1,6 +1,7 @@
 -module(utp_filter).
 
--export([start/0, start/1]).
+-export([start/0, start/1,
+         clear/1]).
 
 
 start() ->
@@ -18,3 +19,7 @@ start(ExtraOptions) ->
          {title, "uTP tracer"} | ExtraOptions],
     et_viewer:start(Options).
 
+
+clear(P) ->
+    ColPid = et_viewer:get_collector_pid(P),
+    ok = et_collector:clear_table(ColPid).
