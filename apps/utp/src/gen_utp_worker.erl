@@ -136,7 +136,7 @@ recv(Pid, Amount) ->
     try
         gen_fsm:sync_send_event(Pid, {recv, Amount}, infinity)
     catch
-        error:{noproc, _} ->
+        exit:{noproc, _} ->
             {error, enoconn}
     end.
 
@@ -148,7 +148,7 @@ send(Pid, Data) ->
     try
         gen_fsm:sync_send_event(Pid, {send, Data}, infinity)
     catch
-        error:{noproc, _} ->
+        exit:{noproc, _} ->
             {error, enoconn}
     end.
 
