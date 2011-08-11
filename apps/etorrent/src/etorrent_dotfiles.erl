@@ -5,7 +5,7 @@
 %% exported functions
 -export([make/0,
          torrents/0,
-         copy_file/1,
+         copy_torrent/1,
          copy_path/1,
          info_path/1,
          info_hash/1,
@@ -60,8 +60,8 @@ torrents() ->
 %% The torrent file is copied to $DOTDIR/$INFOHASH.torrent. After a copy
 %% of the torrent file has been made it is safe to delete the original file.
 %% @end
--spec copy_file(Torrentfile::string()) -> ok.
-copy_file(Torrentfile) when is_list(Torrentfile) ->
+-spec copy_torrent(Torrentfile::string()) -> ok.
+copy_torrent(Torrentfile) when is_list(Torrentfile) ->
     case info_hash(Torrentfile) of
         {error, _}=Error ->
             Error;
@@ -218,11 +218,11 @@ test_hex_infohash() ->
     ?assertEqual({ok, testhex()}, ?MODULE:hex_info_hash(testhash())).
 
 test_copy_torrent() ->
-    ?assertEqual({ok, testhex()}, ?MODULE:copy_file(testpath())),
+    ?assertEqual({ok, testhex()}, ?MODULE:copy_torrent(testpath())),
     ?assertEqual({ok, [testhex()]}, ?MODULE:torrents()).
 
 test_info_filename() ->
-    {ok, Infohash} = ?MODULE:copy_file(testpath()),
+    {ok, Infohash} = ?MODULE:copy_torrent(testpath()),
     ?assertEqual(testinfo(), lists:last(filename:split(?MODULE:info_path(Infohash)))).
 
 test_info_hash() ->
