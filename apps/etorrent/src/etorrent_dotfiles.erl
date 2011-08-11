@@ -6,6 +6,7 @@
 -export([make/0,
          torrents/0,
          copy_torrent/1,
+         read_torrent/1,
          torrent_path/1,
          info_path/1,
          info_hash/1,
@@ -57,10 +58,10 @@ torrents() ->
     end.
 
 %% @doc Make a private copy of a torrent file.
-%% The torrent file is copied to $DOTDIR/$INFOHASH.torrent. After a copy
-%% of the torrent file has been made it is safe to delete the original file.
+%% The info hash of the torrent is returned. After a torrent has been copied
+%% the info hash should be used to identify a torrent path.
 %% @end
--spec copy_torrent(Torrentfile::string()) -> ok.
+-spec copy_torrent(Torrentfile::string()) -> {ok, Infohash::[byte()]}.
 copy_torrent(Torrentfile) when is_list(Torrentfile) ->
     case info_hash(Torrentfile) of
         {error, _}=Error ->
@@ -71,6 +72,19 @@ copy_torrent(Torrentfile) when is_list(Torrentfile) ->
                 {error, _}=Error -> Error;
                 {ok, _} -> {ok, Infohash}
             end
+    end.
+
+
+%% @doc Return the contents of a torrent.
+%% @end
+-spec read_torrent(Infohash::[byte()]) -> {ok, bencode()} | {error, _}.
+read_torrent(Infohash) ->
+    Path = torrent_path(Infohash),
+    case file:read_file(Path) of
+        {error, _}=Error ->
+            Error;
+        {ok, Bin} ->
+            etorrent_bcoding:decode(Bin)
     end.
 
 
