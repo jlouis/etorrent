@@ -6,7 +6,7 @@
 -export([make/0,
          torrents/0,
          copy_torrent/1,
-         copy_path/1,
+         torrent_path/1,
          info_path/1,
          info_hash/1,
          read_info/1,
@@ -66,15 +66,15 @@ copy_torrent(Torrentfile) when is_list(Torrentfile) ->
         {error, _}=Error ->
             Error;
         {ok, Infohash} ->
-            Dest = copy_path(Infohash),
+            Dest = torrent_path(Infohash),
             case file:copy(Torrentfile, Dest) of
                 {error, _}=Error -> Error;
                 {ok, _} -> {ok, Infohash}
             end
     end.
 
--spec copy_path(Infohash::binary()) -> Torrentpath::string().
-copy_path(Infohash) ->
+-spec torrent_path(Infohash::binary()) -> Torrentpath::string().
+torrent_path(Infohash) ->
     base_path(Infohash) ++ ".torrent".
 
 %% @doc Get the path of the info file for a torrent.
@@ -87,7 +87,7 @@ info_path(Infohash) ->
     base_path(Infohash) ++ ".info".
 
 %% @doc Return an incomplete path into the .etorrent directory.
-%% The path should be unique for each torrent. copy_path/1 and
+%% The path should be unique for each torrent. torrent_path/1 and
 %% info_path/1 exists to add an extension to this path.
 %% @end
 -spec base_path(Infohash::binary()) -> Path::string().
