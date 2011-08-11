@@ -73,24 +73,26 @@ copy_torrent(Torrentfile) when is_list(Torrentfile) ->
             end
     end.
 
--spec torrent_path(Infohash::binary()) -> Torrentpath::string().
+
+%% @doc Return the private path to a copied torrent metadata file.
+%% @end
+-spec torrent_path(Infohash::[byte()]) -> Torrentpath::string().
 torrent_path(Infohash) ->
     base_path(Infohash) ++ ".torrent".
 
-%% @doc Get the path of the info file for a torrent.
-%% A corresponding .info file is created to each .torrent file that is
-%% started. The .info file contains a snapshot of the running state of
-%% a torrent.
+
+%% @doc Return the private path to a a torrent info file.
 %% @end
--spec info_path(Infohash::binary()) -> Infopath::string().
+-spec info_path(Infohash::[byte()]) -> Infopath::string().
 info_path(Infohash) ->
     base_path(Infohash) ++ ".info".
 
-%% @doc Return an incomplete path into the .etorrent directory.
-%% The path should be unique for each torrent. torrent_path/1 and
-%% info_path/1 exists to add an extension to this path.
+
+%% @doc Return a path pointing into the private directory.
+%% A path based on the info hash should be more unique than a path based
+%% on the original torrent filename or filenames within a torrent.
 %% @end
--spec base_path(Infohash::binary()) -> Path::string().
+-spec base_path(Infohash::[byte()]) -> Path::string().
 base_path(Infohash) ->
     assert_hex_hash(Infohash),
     filename:join([dotdir(), Infohash]).
@@ -109,13 +111,14 @@ info_hash(Torrentfile) ->
             Error
     end.
 
-%% @private
+%% @private Hex encode an info hash.
 info_hash_to_hex(<<Infohash:20/binary>>) ->
     ToHex = fun(I) -> string:to_lower(integer_to_list(I, 16)) end,
     HexIO = [ToHex(I) || <<I>> <= Infohash],
     lists:flatten(HexIO).
 
-%% @private
+
+%% @private Catch raw info hashes that slips through.
 assert_hex_hash(Infohash) ->
     length(Infohash) =:= 40 orelse erlang:error(badlength),
     IsHex = fun
@@ -125,17 +128,17 @@ assert_hex_hash(Infohash) ->
     end,
     lists:all(IsHex, Infohash) orelse erlang:error(badhex).
     
-    
 
-%% @todo Make caller provide a default value to return if {error, enoent}?
+%% @doc Read the contents of the .info file of a torrent.
+%% @end
 -spec read_info(binary()) -> {ok, bencode()} | {error, atom()}.
 read_info(Infohash) ->
     File = info_path(Infohash),
     etorrent_bcoding:parse_file(File).
 
-%% @todo No synchronization. This function is expected to be called periodically
-%% from a single process to write a complete copy of the state. (by the process
-%% that is authorative on this information).
+
+%% @doc Rewrite the contents of the .info file of a torrent.
+%% @end
 -spec write_info(binary(), bencode()) -> ok | {error, atom()}.
 write_info(Infohash, Data) ->
     Bin = etorrent_bcoding:encode(Data),
