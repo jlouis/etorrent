@@ -1481,15 +1481,25 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   the monitored set.
   b) The RESETs we send back are wrong in the ConnID number so they
   never arrive at the right spot in the other end.
-* TODO close_2 fails on a bad line
+* DONE close_2 fails on a bad line
   To solve this, we must:
 
-** TODO Write a way to continue a test until it fails.
-** TODO Use it on close_2.
-** TODO See what is wrong in close_2.
+** DONE Write a way to continue a test until it fails.
+** DONE Use it on close_2.
+** DONE See what is wrong in close_2.
+   It turns out it was a very simple thing. We did not account for
+   dead processes and that can happen. A recent fix to the code makes
+   it possible for the backend system to gracefully tell this to a
+   client through an error message.
+
 * TODO Enable full nastiness on the lo interface
   Re-enable nastiness on the lo interface and run some tests on the
   protocol. This will allow us to check for correctness again.
+* TODO Investigate the timeout problem
+  It looks like there is a timeout bug still present in the code. When
+  this bug triggers the system times out. We know that the piggyback
+  test can trigger the error, so running repeated tests on that one
+  could be what we should do.
 * DONE Make code which allows us to graph various counters on a running system
   We need to be able to graph the output over time. I think we should
   look into and use the "folsom" application for this as it would an
@@ -1538,6 +1548,15 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
 
  Tom Moertel suggested ggplot2. ggplot2 is definitely part of the
  solution.
+
+ So to do this, we need to track some data in the real world. To track
+ data in the real world, we need to have a set up where we can track
+ what happens when the system is running. We should then ask the
+ tracer to output the trace data for various connections.
+
+ When we have the data, we should write an R-script which can take the
+ raw data and plot it through ggplot2. At that point in time, it
+ should be mostly done.
 * Implement KEEP ALIVE
 * TODO Even though the test case says OK! there might be bad things
   So we should go through the test cases a bit and see what

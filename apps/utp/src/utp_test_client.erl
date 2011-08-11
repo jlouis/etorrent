@@ -45,7 +45,7 @@ ls() ->
 get(File, Filename) ->
     case cmd({file, File}) of
         {ok, {filedata, Data}} ->
-            ok = file:write_file(Filename, Data);
+            file:write_file(Filename, Data, [exclusive]);
         {error, Reason} ->
             {error, Reason}
     end.
@@ -69,7 +69,7 @@ cmd(Cmd) ->
 %% @end
 %%--------------------------------------------------------------------
 init([]) ->
-    case gen_utp:connect("port1394.ds1-vby.adsl.cybercity.dk", 3838) of
+    case gen_utp:connect("horus.0x90.dk", 3838) of
         {ok, Socket} ->
             {ok, #state{ socket = Socket }};
         {error, Reason} ->
@@ -92,8 +92,7 @@ init([]) ->
 %%--------------------------------------------------------------------
 handle_call({cmd, Cmd}, _From, #state { socket = Sock } = State) ->
     ok = gen_utp:send_msg(Sock, Cmd),
-    case gen_utp:recv_msg(Sock
-) of
+    case gen_utp:recv_msg(Sock) of
         {ok, Msg} ->
             {reply, {ok, Msg}, State};
         {error, Reason} ->
