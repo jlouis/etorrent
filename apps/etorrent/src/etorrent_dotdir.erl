@@ -191,14 +191,7 @@ teardown_config(_Dir) ->
 testpath() ->
     "../../../test/etorrent_eunit_SUITE_data/debian-6.0.2.1-amd64-netinst.iso.torrent".
 
-testfile() ->
-    "debian-6.0.2.1-amd64-netinst.iso.torrent".
-
-testhash() ->
-    <<142,215,218,181,31,70,216,236,194,208,141,204,28,28,160,136,237,138,83,180>>.
-
 testhex()  -> "8ed7dab51f46d8ecc2d08dcc1c1ca088ed8a53b4".
-testcopy() -> "8ed7dab51f46d8ecc2d08dcc1c1ca088ed8a53b4.torrent".
 testinfo() -> "8ed7dab51f46d8ecc2d08dcc1c1ca088ed8a53b4.info".
 
 
@@ -231,9 +224,6 @@ test_ensure_exists() ->
     ?assertNot(?MODULE:exists(dotdir())),
     ok = ?MODULE:make(),
     ?assert(?MODULE:exists(dotdir())).
-
-test_hex_infohash() ->
-    ?assertEqual({ok, testhex()}, ?MODULE:hex_info_hash(testhash())).
 
 test_copy_torrent() ->
     ?assertEqual({ok, testhex()}, ?MODULE:copy_torrent(testpath())),
