@@ -1,4 +1,4 @@
--module(etorrent_dotfiles).
+-module(etorrent_dotdir).
 %% @doc Functions to access the .etorrent directory.
 %% @end
 
