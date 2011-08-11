@@ -191,25 +191,39 @@ test_rwin_in(Data, Options) ->
     Sz = byte_size(Data),
     ok = listen(Options),
     {ok, Sock} = gen_utp:accept(),
-    Data = rwin_recv(Sock, Sz, <<>>),
-    ok = gen_utp:close(Sock),
+    case rwin_recv(Sock, Sz, <<>>) of
+        early_close ->
+            done;
+        Data ->
+            ok = gen_utp:close(Sock)
+    end,
     {ok, gen_utp_trace:grab()}.
 
 rwin_recv(_Sock, 0, Binary) ->
     Binary;
 rwin_recv(Sock, Sz, Acc) when Sz =< 10000 ->
     timer:sleep(3000),
-    {ok, B} = gen_utp:recv(Sock, Sz),
-    rwin_recv(Sock, 0, <<Acc/binary, B/binary>>);
+    case gen_utp:recv(Sock, Sz) of
+        {ok, B} -> 
+            rwin_recv(Sock, 0, <<Acc/binary, B/binary>>);
+        {error, enoconn} ->
+            early_close
+    end;
 rwin_recv(Sock, Sz, Acc) when Sz > 10000 ->
     timer:sleep(3000),
-    {ok, B} = gen_utp:recv(Sock, 10000),
-    rwin_recv(Sock, Sz - 10000, <<Acc/binary, B/binary>>).
+    case gen_utp:recv(Sock, 10000) of
+        {ok, B} ->
+            rwin_recv(Sock, Sz - 10000, <<Acc/binary, B/binary>>);
+        {error, enoconn} ->
+            early_close
+    end.
 
 test_rwin_out(Data, Opts) ->
     {ok, Sock} = repeating_connect("localhost", 3333, Opts),
-    ok = gen_utp:send(Sock, Data),
-    ok = gen_utp:close(Sock),
+    case gen_utp:send(Sock, Data) of
+        ok -> ok = gen_utp:close(Sock);
+        {error, enoconn} -> done
+    end,
     {ok, gen_utp_trace:grab()}.
 
 test_piggyback_out(Data, Opts) ->
@@ -309,7 +323,10 @@ repeat(0, _, _, _) ->
     ok;
 repeat(N, VPid, Fun, Opts) ->
     io:format("Running ~B~n", [N]),
-    {ok, _} = Fun(Opts),
+    case Fun(Opts) of
+        {ok, _} -> ok;
+        {ok, _, _} -> ok
+    end,
     utp_filter:clear(VPid),
     repeat(N-1, VPid, Fun, Opts).
 
