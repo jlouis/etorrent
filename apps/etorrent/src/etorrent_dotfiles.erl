@@ -69,7 +69,7 @@ copy_file(Torrentfile) when is_list(Torrentfile) ->
             Dest = copy_path(Infohash),
             case file:copy(Torrentfile, Dest) of
                 {error, _}=Error -> Error;
-                {ok, _} -> ok
+                {ok, _} -> {ok, Infohash}
             end
     end.
 
@@ -218,12 +218,12 @@ test_hex_infohash() ->
     ?assertEqual({ok, testhex()}, ?MODULE:hex_info_hash(testhash())).
 
 test_copy_torrent() ->
-    ok = ?MODULE:copy_file(testpath()),
+    ?assertEqual({ok, testhex()}, ?MODULE:copy_file(testpath())),
     ?assertEqual({ok, [testhex()]}, ?MODULE:torrents()).
 
 test_info_filename() ->
-    ok = ?MODULE:copy_file(testpath()),
-    ?assertEqual({ok, [testhex()]}, ?MODULE:torrents()).
+    {ok, Infohash} = ?MODULE:copy_file(testpath()),
+    ?assertEqual(testinfo(), lists:last(filename:split(?MODULE:info_path(Infohash)))).
 
 test_info_hash() ->
     ?assertEqual({ok, testhex()}, ?MODULE:info_hash(testpath())).
