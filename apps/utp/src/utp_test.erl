@@ -105,9 +105,9 @@ test_close_in_1(Options) ->
     {ok, Sock} = gen_utp:accept(),
     timer:sleep(3000),
     case gen_utp:send(Sock, <<"HELLO">>) of
-        ok ->
-            ignore;
         {error, econnreset} ->
+            ignore;
+        {error, enoconn} ->
             ignore
     end,
     ok = gen_utp:close(Sock),
