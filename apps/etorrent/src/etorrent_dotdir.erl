@@ -29,7 +29,7 @@
 %% @end
 -spec make() -> ok.
 make() ->
-    Dir = gproc:get_env(l, etorrent, dotdir),
+    Dir = dotdir(),
     case exists(Dir) of
         true -> ok;
         false -> make_(Dir)
