@@ -147,9 +147,13 @@ assert_hex_hash(Infohash) ->
 %% @end
 -spec read_info(binary()) -> {ok, bencode()} | {error, atom()}.
 read_info(Infohash) ->
-    File = info_path(Infohash),
-    etorrent_bcoding:parse_file(File).
-
+    Path = info_path(Infohash),
+    case file:read_file(Path) of
+        {error, _}=Error ->
+            Error;
+        {ok, Bin} ->
+            etorrent_bcoding:decode(Bin)
+    end.
 
 %% @doc Rewrite the contents of the .info file of a torrent.
 %% @end
@@ -212,7 +216,9 @@ dotfiles_test_() ->
                 ?_test(test_copy_torrent()),
                 ?_test(test_info_filename()),
                 ?_test(test_info_hash()),
-                ?_test(test_read_torrent())
+                ?_test(test_read_torrent()),
+                ?_test(test_read_info()),
+                ?_test(test_write_info())
             ]}
         ]}
     ]}.
@@ -242,4 +248,12 @@ test_read_torrent() ->
     RawInfohash = etorrent_metainfo:get_infohash(Metadata),
     ?assertEqual(Infohash, info_hash_to_hex(RawInfohash)).
 
+test_read_info() ->
+    {ok, Infohash} = ?MODULE:copy_torrent(testpath()),
+    {error, enoent} = ?MODULE:read_info(Infohash).
+
+test_write_info() ->
+    {ok, Infohash} = ?MODULE:copy_torrent(testpath()),
+    ok = ?MODULE:write_info(Infohash, [{<<"a">>, 1}]),
+    {ok, [{<<"a">>, 1}]} = ?MODULE:read_info(Infohash).
 -endif.
