@@ -218,7 +218,8 @@ dotfiles_test_() ->
                 fun(_) -> ok end, [
                 ?_test(test_copy_torrent()),
                 ?_test(test_info_filename()),
-                ?_test(test_info_hash())
+                ?_test(test_info_hash()),
+                ?_test(test_read_torrent())
             ]}
         ]}
     ]}.
@@ -244,5 +245,11 @@ test_info_filename() ->
 
 test_info_hash() ->
     ?assertEqual({ok, testhex()}, ?MODULE:info_hash(testpath())).
+
+test_read_torrent() ->
+    {ok, Infohash} = ?MODULE:copy_torrent(testpath()),
+    {ok, Metadata} = ?MODULE:read_torrent(Infohash),
+    RawInfohash = etorrent_metainfo:get_infohash(Metadata),
+    ?assertEqual(Infohash, info_hash_to_hex(RawInfohash)).
 
 -endif.
