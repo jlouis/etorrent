@@ -243,12 +243,7 @@ test_piggyback_in(Data, Options) ->
 
 test_recv_large_file(Data, Options) ->
     Sz = byte_size(Data),
-    case listen(Options) of
-        ok ->
-            ignore;
-        {error, ealreadylistening} ->
-            ignore
-    end,
+    ok = listen(Options),
     {ok, Port} = gen_utp:accept(),
     {ok, Data} = gen_utp:recv(Port, Sz),
     ok = gen_utp:close(Port),
