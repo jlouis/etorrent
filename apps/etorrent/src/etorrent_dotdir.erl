@@ -29,7 +29,7 @@
 %% @end
 -spec make() -> ok.
 make() ->
-    Dir = dotdir(),
+    Dir = etorrent_config:dotdir(),
     case exists(Dir) of
         true -> ok;
         false -> file:make_dir(Dir)
@@ -42,7 +42,7 @@ make() ->
 %% @end
 -spec torrents() -> {ok, [Filenames::string()]} | {error, noent}.
 torrents() ->
-    case file:list_dir(dotdir()) of
+    case file:list_dir(etorrent_config:dotdir()) of
         {ok, Files} ->
             IsTorrent = fun(Str) -> lists:suffix(".torrent", Str) end,
             Basename = fun(Str) -> filename:basename(Str, ".torrent") end,
@@ -106,7 +106,7 @@ info_path(Infohash) ->
 -spec base_path(Infohash::[byte()]) -> Path::string().
 base_path(Infohash) ->
     assert_hex_hash(Infohash),
-    filename:join([dotdir(), Infohash]).
+    filename:join([etorrent_config:dotdir(), Infohash]).
 
 
 %% @doc Get the info hash of a torrent file.
@@ -171,23 +171,19 @@ exists(Path) ->
         {error, _} -> false
     end.
 
-%% @private
-dotdir() -> gproc:get_env(l, etorrent, dotdir).
-        
-        
 
 -ifdef(TEST).
 
 %% @private Update dotdir configuration parameter to point to a new directory.
 setup_config() ->
-    Dir = etorrent_config:dotdir(),
-    gproc:get_set_env(l, etorrent, dotdir, [{default, Dir}]),
-    Dir.
+    Dir = test_server:temp_name("/tmp/etorrent."),
+    ok = meck:new(etorrent_config, []),
+    ok = meck:expect(etorrent_config, dotdir, fun () -> Dir end).
 
 %% @private Delete the directory pointed to by the dotdir configuration parameter.
-teardown_config(_Dir) ->
+teardown_config(_) ->
     %% @todo Recursive file:delete.
-    ok.
+    ok = meck:unload(etorrent_config).
 
 testpath() ->
     "../../../test/etorrent_eunit_SUITE_data/debian-6.0.2.1-amd64-netinst.iso.torrent".
@@ -198,18 +194,8 @@ testinfo() -> "8ed7dab51f46d8ecc2d08dcc1c1ca088ed8a53b4.info".
 
 dotfiles_test_() ->
     {setup,local,
-        fun() ->
-            application:start(gproc),
-            ok = meck:new(etorrent_config, []),
-            ok = meck:expect(etorrent_config, dotdir, fun
-                () -> test_server:temp_name("/tmp/etorrent.")
-            end)
-        end,
-        fun(_) ->
-            application:stop(gproc),
-            ?assert(meck:validate(etorrent_config)),
-            ok = meck:unload(etorrent_config)
-        end, [
+        fun() -> application:start(gproc) end,
+        fun(_) -> application:stop(gproc) end, [
         {foreach,local,
             fun setup_config/0,
             fun teardown_config/1, [
@@ -233,9 +219,9 @@ test_no_torrents() ->
     ?assertEqual({error, enoent}, ?MODULE:torrents()).
 
 test_ensure_exists() ->
-    ?assertNot(?MODULE:exists(dotdir())),
+    ?assertNot(?MODULE:exists(etorrent_config:dotdir())),
     ok = ?MODULE:make(),
-    ?assert(?MODULE:exists(dotdir())).
+    ?assert(?MODULE:exists(etorrent_config:dotdir())).
 
 test_ensure_exists_error() ->
     meck:new(file, [unstick,passthrough]),
