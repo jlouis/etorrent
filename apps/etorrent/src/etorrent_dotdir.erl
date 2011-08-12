@@ -202,7 +202,7 @@ dotfiles_test_() ->
             fun teardown_config/1, [
             ?_test(test_no_torrents()),
             ?_test(test_ensure_exists()),
-            ?_test(test_ensure_exists_error()),
+            test_ensure_exists_error_(),
             {setup,local,
                 fun() -> ?MODULE:make() end,
                 fun(_) -> ok end, [
@@ -224,13 +224,19 @@ test_ensure_exists() ->
     ok = ?MODULE:make(),
     ?assert(?MODULE:exists(etorrent_config:dotdir())).
 
-test_ensure_exists_error() ->
-    meck:new(file, [unstick,passthrough]),
-    meck:expect(file, read_file_info, fun(_) -> {error, enoent} end),
-    meck:expect(file, make_dir, fun(_) -> {error, eacces} end),
-    ?assertEqual({error, eacces}, ?MODULE:make()),
-    ?assert(meck:validate(file)),
-    meck:unload(file).
+test_ensure_exists_error_() ->
+    {setup,
+        _Setup=fun() ->
+        ok = meck:new(file, [unstick,passthrough]),
+        ok = meck:expect(file, read_file_info, fun(_) -> {error, enoent} end),
+        ok = meck:expect(file, make_dir, fun(_) -> {error, eacces} end)
+        end,
+        _Teardown=fun(_) -> 
+        meck:unload(file)
+        end,
+        {inorder, [
+            ?_assertEqual({error, eacces}, ?MODULE:make()),
+            ?_assert(meck:validate(file))]}}.
 
 test_copy_torrent() ->
     ?assertEqual({ok, testhex()}, ?MODULE:copy_torrent(testpath())),
