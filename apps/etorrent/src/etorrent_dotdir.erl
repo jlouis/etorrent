@@ -186,7 +186,8 @@ teardown_config(_) ->
     ok = meck:unload(etorrent_config).
 
 testpath() ->
-    "../../../test/etorrent_eunit_SUITE_data/debian-6.0.2.1-amd64-netinst.iso.torrent".
+    "../" "../" "../"
+    "test/" "etorrent_eunit_SUITE_data/debian-6.0.2.1-amd64-netinst.iso.torrent".
 
 testhex()  -> "8ed7dab51f46d8ecc2d08dcc1c1ca088ed8a53b4".
 testinfo() -> "8ed7dab51f46d8ecc2d08dcc1c1ca088ed8a53b4.info".
