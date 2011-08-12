@@ -32,11 +32,8 @@ make() ->
     Dir = dotdir(),
     case exists(Dir) of
         true -> ok;
-        false -> make_(Dir)
+        false -> file:make_dir(Dir)
     end.
-
-make_(Dir) ->
-    file:make_dir(Dir).
 
 %% @doc List all available torrent files.
 %% The torrent files are identified by their info hashes. This is more
@@ -183,7 +180,7 @@ dotdir() -> gproc:get_env(l, etorrent, dotdir).
 
 %% @private Update dotdir configuration parameter to point to a new directory.
 setup_config() ->
-    Dir = test_server:temp_name("/tmp/etorrent."),
+    Dir = etorrent_config:dotdir(),
     gproc:get_set_env(l, etorrent, dotdir, [{default, Dir}]),
     Dir.
 
@@ -199,17 +196,26 @@ testhex()  -> "8ed7dab51f46d8ecc2d08dcc1c1ca088ed8a53b4".
 testinfo() -> "8ed7dab51f46d8ecc2d08dcc1c1ca088ed8a53b4.info".
 
 
-
-
 dotfiles_test_() ->
     {setup,local,
-        fun() -> application:start(gproc) end,
-        fun(_) -> application:stop(gproc) end, [
+        fun() ->
+            application:start(gproc),
+            ok = meck:new(etorrent_config, []),
+            ok = meck:expect(etorrent_config, dotdir, fun
+                () -> test_server:temp_name("/tmp/etorrent.")
+            end)
+        end,
+        fun(_) ->
+            application:stop(gproc),
+            ?assert(meck:validate(etorrent_config)),
+            ok = meck:unload(etorrent_config)
+        end, [
         {foreach,local,
             fun setup_config/0,
             fun teardown_config/1, [
             ?_test(test_no_torrents()),
             ?_test(test_ensure_exists()),
+            ?_test(test_ensure_exists_error()),
             {setup,local,
                 fun() -> ?MODULE:make() end,
                 fun(_) -> ok end, [
@@ -230,6 +236,14 @@ test_ensure_exists() ->
     ?assertNot(?MODULE:exists(dotdir())),
     ok = ?MODULE:make(),
     ?assert(?MODULE:exists(dotdir())).
+
+test_ensure_exists_error() ->
+    meck:new(file, [unstick,passthrough]),
+    meck:expect(file, read_file_info, fun(_) -> {error, enoent} end),
+    meck:expect(file, make_dir, fun(_) -> {error, eacces} end),
+    ?assertEqual({error, eacces}, ?MODULE:make()),
+    ?assert(meck:validate(file)),
+    meck:unload(file).
 
 test_copy_torrent() ->
     ?assertEqual({ok, testhex()}, ?MODULE:copy_torrent(testpath())),
