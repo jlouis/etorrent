@@ -197,23 +197,24 @@ dotfiles_test_() ->
     {setup,local,
         fun() -> application:start(gproc) end,
         fun(_) -> application:stop(gproc) end, [
-        {foreach,local,
+        {foreach,local, 
             fun setup_config/0,
             fun teardown_config/1, [
             ?_test(test_no_torrents()),
             ?_test(test_ensure_exists()),
-            test_ensure_exists_error_(),
-            {setup,local,
+            test_ensure_exists_error_()] ++
+            [{setup,local,
                 fun() -> ?MODULE:make() end,
-                fun(_) -> ok end, [
+                fun(_) -> ok end,
+                [T]} || T <- [
                 ?_test(test_copy_torrent()),
+                test_copy_torrent_error_(),
                 ?_test(test_info_filename()),
                 ?_test(test_info_hash()),
                 ?_test(test_read_torrent()),
                 ?_test(test_read_info()),
-                ?_test(test_write_info())
-            ]}
-        ]}
+                ?_test(test_write_info())]]
+        }
     ]}.
 
 test_no_torrents() ->
@@ -241,6 +242,21 @@ test_ensure_exists_error_() ->
 test_copy_torrent() ->
     ?assertEqual({ok, testhex()}, ?MODULE:copy_torrent(testpath())),
     ?assertEqual({ok, [testhex()]}, ?MODULE:torrents()).
+
+test_copy_torrent_error_() ->
+     {setup,
+        _Setup=fun() ->
+        ok = meck:new(file, [unstick,passthrough]),
+        ok = meck:expect(file, copy, fun(_, _) -> {error, eacces} end)
+        end,
+        _Teardown=fun(_) -> 
+        meck:unload(file)
+        end,
+        {inorder, [
+            ?_assertEqual({error, eacces}, ?MODULE:copy_torrent(testpath())),
+            ?_assertEqual({ok, []}, ?MODULE:torrents()),
+            ?_assert(meck:validate(file))]}}.
+   
 
 test_info_filename() ->
     {ok, Infohash} = ?MODULE:copy_torrent(testpath()),
