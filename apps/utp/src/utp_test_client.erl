@@ -14,7 +14,7 @@
 -export([start_link/0,
 
          ls/0,
-         get/2,
+         get/1,
          cmd/1]).
 
 %% gen_server callbacks
@@ -42,16 +42,16 @@ start_link() ->
 ls() ->
     cmd(ls).
 
-get(File, Filename) ->
-    case cmd({file, File}) of
-        {ok, {filedata, Data}} ->
-            file:write_file(Filename, Data, [exclusive]);
+get(File) ->
+    case cmd({get, File}) of
+        {ok, Data} ->
+            file:write_file(File, Data, [exclusive]);
         {error, Reason} ->
             {error, Reason}
     end.
 
 cmd(Cmd) ->
-    gen_server:call(?SERVER, {cmd, Cmd}).
+    gen_server:call(?SERVER, {cmd, Cmd}, infinity).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -69,7 +69,7 @@ cmd(Cmd) ->
 %% @end
 %%--------------------------------------------------------------------
 init([]) ->
-    case gen_utp:connect("horus.0x90.dk", 3838) of
+    case gen_utp:connect("10.0.0.11", 3838) of
         {ok, Socket} ->
             {ok, #state{ socket = Socket }};
         {error, Reason} ->
@@ -94,7 +94,7 @@ handle_call({cmd, Cmd}, _From, #state { socket = Sock } = State) ->
     ok = gen_utp:send_msg(Sock, Cmd),
     case gen_utp:recv_msg(Sock) of
         {ok, Msg} ->
-            {reply, {ok, Msg}, State};
+            {reply, Msg, State};
         {error, Reason} ->
             {reply, {error, Reason}, State}
     end;
