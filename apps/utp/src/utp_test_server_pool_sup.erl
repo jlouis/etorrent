@@ -24,7 +24,9 @@
 %% Starts the supervisor
 %% @end
 start_link() ->
-    supervisor:start_link({local, ?SERVER}, ?MODULE, []).
+    {ok, P} = supervisor:start_link({local, ?SERVER}, ?MODULE, []),
+    {ok, _} = start_child(),
+    {ok, P}.
 
 start_child() ->
     supervisor:start_child(?MODULE, []).
