@@ -125,7 +125,7 @@ recv_msg(Socket) ->
             case recv(Socket, Sz) of
                 {ok, <<Digest:20/binary, EMsg/binary>>} ->
                     Digest = crypto:sha(EMsg),
-                    Term = binary_to_term(EMsg),
+                    Term = binary_to_term(EMsg, [safe]),
                     {ok, Term};
                 {error, Reason} ->
                     {error, Reason}

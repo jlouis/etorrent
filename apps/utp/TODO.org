@@ -1492,6 +1492,11 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
    it possible for the backend system to gracefully tell this to a
    client through an error message.
 
+* TODO If we enter the GOT_FIN state, we can't ever serve waiting processes
+  This is pretty obvious. If we enter the got-fin state, we are not
+  able to ever serve a process waiting for the data it requested. We
+  should probably abort the receiver with a message that we can't
+  satisfy it.
 * TODO Enable full nastiness on the lo interface
   Re-enable nastiness on the lo interface and run some tests on the
   protocol. This will allow us to check for correctness again.
