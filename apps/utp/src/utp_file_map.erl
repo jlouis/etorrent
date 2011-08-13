@@ -81,8 +81,20 @@ read(FName) ->
     {ok, Data} = file:read_file(FName),
     Data.
 
-make_file_map(_Dir) ->
-    dict:new().
+make_file_map(Dir) ->
+    FileNames = filelib:fold_files(Dir,
+                                   "*\.jpg", false,
+                                   fun(FN, Acc) ->
+                                           [FN | Acc]
+                                   end,
+                                   []),
+    L = [begin
+             F = list_to_atom(filename:basename(File)),
+             Path = filename:join(Dir, File),
+             {F, Path}
+         end || File <- FileNames],
+
+    dict:from_list(L).
 
 
 
