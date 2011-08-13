@@ -27,7 +27,7 @@
 %% Starts the server
 %% @end
 start_link() ->
-    gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
+    gen_server:start_link(?MODULE, [], []).
 
 %%%===================================================================
 
@@ -68,20 +68,23 @@ handle_cast(_Msg, State) ->
 
 %% @private
 handle_info(timeout, #state { socket = none} = State) ->
+    error_logger:info_report([accepting]),
     case gen_utp:accept() of
         {ok, Sock} ->
-            {ok, _Pid} = utp_test_server_pool:start_child(),
+            error_logger:info_report([accepted]),
+            {ok, _Pid} = utp_test_server_pool_sup:start_child(),
             {noreply, State#state { socket = Sock }, 0}
     end;
 handle_info(timeout, #state { socket = Sock } = State) ->
     %% Read from the socket.
-    Cmd = read_socket(Sock),
+    {ok, Cmd} = gen_utp:recv_msg(Sock),
     case validate_message(Cmd) of
         ok ->
             Res = utp_file_map:cmd(Cmd),
-            write_socket(Sock, Res),
+            gen_utp:send_msg(Sock, Res),
             {noreply, State, 0};
         error ->
+            error_logger:info_report([invalid_cmd, Cmd]),
             gen_utp:close(Sock),
             {stop, normal, State}
     end;
@@ -117,19 +120,8 @@ code_change(_OldVsn, State, _Extra) ->
 
 validate_message(ls) ->
     ok;
-validate_message({file, FName}) when is_atom(FName) ->
+validate_message({get, _FName}) ->
     ok;
 validate_message(_Otherwise) ->
     error.
-
-read_socket(Sock) ->
-    {ok, X} = gen_utp:recv(Sock, 4),
-    <<Len:32/integer>> = X,
-    {ok, Data} = gen_utp:recv(Sock, Len),
-    binary_to_term(Data, [safe]).
-
-write_socket(Sock, Msg) ->
-    Data = term_to_binary(Msg),
-    Len = byte_size(Data),
-    ok = gen_utp:send(Sock, <<Len:32/integer, Data/binary>>).
 
