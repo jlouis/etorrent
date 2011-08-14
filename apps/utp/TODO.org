@@ -1567,11 +1567,11 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   So we should go through the test cases a bit and see what
   happens. Waiting a bit in the end of test case to see if something
   outputs extra stuff is probably worth it.
-* TODO Write a test server on a local branch
+* DONE Write a test server on a local branch
   A test server is a way to carry out a real-world test. We build a
   server which can be loaded by real people and then we see what
   happens.
-* TODO Use "Horus" to carry out a client test over the Internet.
+* DONE Use "Horus" to carry out a client test over the Internet.
   We need to do some real-world testing and to do that we need some
   real-world stuff to happen. Use Horus for that.
 
@@ -1812,5 +1812,6 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   retransmission should probably be ignored as the socket is in a
   pseudo-dead state. It is not that an important things to get right
   though.
+
 
 
