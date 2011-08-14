@@ -11,7 +11,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0,
+-export([start_link/0, start_link/2,
 
          ls/0,
          get/1,
@@ -37,7 +37,12 @@
 %% @end
 %%--------------------------------------------------------------------
 start_link() ->
-    gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
+    Host = "horus.0x90.dk", Port = 3838,
+    start_link(Host, Port).
+   
+
+start_link(Host, Port) ->
+    gen_server:start_link({local, ?SERVER}, ?MODULE, [Host, Port], []).
 
 ls() ->
     cmd(ls).
@@ -68,8 +73,8 @@ cmd(Cmd) ->
 %%                     {stop, Reason}
 %% @end
 %%--------------------------------------------------------------------
-init([]) ->
-    case gen_utp:connect("10.0.0.11", 3838) of
+init([Host, Port]) ->
+    case gen_utp:connect(Host, Port) of
         {ok, Socket} ->
             {ok, #state{ socket = Socket }};
         {error, Reason} ->
