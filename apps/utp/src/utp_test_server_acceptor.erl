@@ -73,11 +73,11 @@ handle_info(timeout, #state { socket = none} = State) ->
         {ok, Sock} ->
             error_logger:info_report([accepted]),
             {ok, _Pid} = utp_test_server_pool_sup:start_child(),
-            {noreply, State#state { socket = Sock }, 0};
-        {error, Something} ->
-            error_logger:info_report([accept_error, Something]),
-            {ok, _Pid} = utp_test_server_pool_sup:start_child(),
-            {stop, normal, State}
+            {noreply, State#state { socket = Sock }, 0}
+        %% {error, Something} ->
+        %%     error_logger:info_report([accept_error, Something]),
+        %%     {ok, _Pid} = utp_test_server_pool_sup:start_child(),
+        %%     {stop, normal, State}
     end;
 handle_info(timeout, #state { socket = Sock } = State) ->
     %% Read from the socket.
