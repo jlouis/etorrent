@@ -1505,6 +1505,8 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   this bug triggers the system times out. We know that the piggyback
   test can trigger the error, so running repeated tests on that one
   could be what we should do.
+* TODO If we get wrong packets, don't decode them, but error out
+  This should be fairly simple to actually do.
 * DONE Make code which allows us to graph various counters on a running system
   We need to be able to graph the output over time. I think we should
   look into and use the "folsom" application for this as it would an
