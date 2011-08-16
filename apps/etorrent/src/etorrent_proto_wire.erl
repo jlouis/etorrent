@@ -8,6 +8,11 @@
 
 -include("etorrent_version.hrl").
 
+-ifdef(TEST).
+-include_lib("proper/include/proper.hrl").
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 -export([incoming_packet/2,
 	 send_msg/3,
 	 decode_bitfield/2,
@@ -215,7 +220,9 @@ complete_handshake(Socket, InfoHash, LocalPeerId) ->
 %% completed by a call to complete_handshake/3.</p>
 %% @end
 -spec receive_handshake(port()) ->
-    {error, term()} | {ok, [{integer(), term()}], binary(), binary()}.
+    {'error',term() | {'bad_header',binary()}}
+    | {'ok',['extended_messaging' | 'fast_extension',...],<<_:160>>}
+    | {'ok',['extended_messaging' | 'fast_extension',...],<<_:160>>,<<_:160>>}.
 receive_handshake(Socket) ->
     Header = protocol_header(),
     case gen_tcp:send(Socket, Header) of
@@ -230,10 +237,11 @@ receive_handshake(Socket) ->
 %% everything to the peer and await the peer to get back to us. When he
 %% eventually gets back, we can check his InfoHash against ours.</p>
 %% @end
--type capabilities() :: [{integer(), atom()}].
--spec initiate_handshake(port(), binary(), binary()) ->
-    {error, term()} | {ok, capabilities(), binary(), binary()}
-                    | {ok, capabilities(), binary()}.
+-type peerid() :: <<_:160>>.
+-type infohash() :: <<_:160>>.
+-spec initiate_handshake(port(), peerid(), infohash()) ->
+     {'error',atom() | {'bad_header',binary()}}
+     | {'ok',['extended_messaging' | 'fast_extension',...],<<_:160>>}.
 initiate_handshake(Socket, LocalPeerId, InfoHash) ->
     % Since we are the initiator, send out this handshake
     Header = protocol_header(),
@@ -372,11 +380,29 @@ encode_fastset([Idx | Rest]) ->
     R = encode_fastset(Rest),
     <<R/binary, Idx:32>>.
 
+-spec extended_msg_contents(etorrent_types:portum(), binary(), integer()) -> binary().
 extended_msg_contents(Port, ClientVersion, ReqQ) ->
     iolist_to_binary(
       etorrent_bcoding:encode(
 	[{<<"p">>, Port},
-	 {<<"v">>, list_to_binary(ClientVersion)},
+	 {<<"v">>, ClientVersion},
 	 {<<"reqq">>, ReqQ},
-	 {<<"m">>, empty_dict}])).
+	 {<<"m">>, {}}])).
+
+
+-ifdef(EUNIT).
+
+ext_msg_contents_test() ->
+    Expected = <<"d1:mde1:pi1729e4:reqqi100e1:v20:Etorrent v-test-casee">>,
+    Computed = extended_msg_contents(1729, <<"Etorrent v-test-case">>, 100),
+    ?assertEqual(Expected, Computed).
+
+-endif.
+
+
+
+
+
+
+
 

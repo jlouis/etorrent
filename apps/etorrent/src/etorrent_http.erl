@@ -28,7 +28,7 @@
 -spec request(string()) -> {error, term()} | {ok, http_response()}.
 request(URL) ->
     Mod = find_http_module(),
-    case Mod:request(get, {URL, [{"User-Agent", ?AGENT_TRACKER_STRING},
+    case Mod:request(get, {URL, [{"User-Agent", binary_to_list(?AGENT_TRACKER_STRING)},
                                    {"Host", decode_host(URL)},
                                    {"Accept", "*/*"},
                                    {"Accept-Encoding", "gzip, identity"}]},

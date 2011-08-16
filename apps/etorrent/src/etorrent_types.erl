@@ -38,7 +38,8 @@
     integer()
 	| binary()
 	| [bcode(),...]
-	| [{binary(), bcode()},...].
+	| [{binary(), bcode()},...]
+        | {}.
 
 -type torrent_id() :: integer().
 -type file_path() :: string().
