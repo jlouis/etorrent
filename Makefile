@@ -23,8 +23,18 @@ eunit:
 doc:
 	rebar skip_deps=true doc
 
-dialyze: compile
-	rebar skip_deps=true dialyze
+plt-clean:
+	rm -f etorrent_dialyzer.plt
+
+build-plt:
+	dialyzer --build_plt -r deps -r apps --output_plt etorrent_dialyzer.plt \
+	--apps kernel crypto stdlib sasl inets
+
+dialyze: dialyze-etorrent
+
+dialyze-etorrent:
+	dialyzer --src -r apps/etorrent --plt etorrent_dialyzer.plt \
+	-Werror_handling -Wrace_conditions -Wbehaviours
 
 typer:
 	typer --plt ~/.etorrent_dialyzer_plt -r apps -I apps/etorrent/include
