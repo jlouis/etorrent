@@ -153,29 +153,29 @@ track_torrent(ID, Filename, Table) ->
         {value, Props} ->
             UploadTotal = proplists:get_value(all_time_uploaded, Props),
             UploadDiff  = proplists:get_value(uploaded, Props),
-	        Uploaded    = UploadTotal + UploadDiff,
+            Uploaded    = UploadTotal + UploadDiff,
 
             DownloadTotal = proplists:get_value(all_time_downloaded, Props),
             DownloadDiff  = proplists:get_value(downloaded, Props),
-	        Downloaded    = DownloadTotal + DownloadDiff,
+            Downloaded    = DownloadTotal + DownloadDiff,
 
-	        case proplists:get_value(state, Props) of
-		        unknown ->
+            case proplists:get_value(state, Props) of
+                unknown ->
                     ignore;
-		        seeding ->
+                seeding ->
                     dets:insert(Table,
-				        {Filename, [
+                        {Filename, [
                             {state, seeding},
-					        {uploaded, Uploaded},
-					        {downloaded, Downloaded}]});
-		         _  ->
+                                    {uploaded, Uploaded},
+                                    {downloaded, Downloaded}]});
+                _  ->
                     TorrentPid = etorrent_torrent_ctl:lookup_server(ID),
                     {ok, Valid} = etorrent_torrent_ctl:valid_pieces(TorrentPid),
                     Bitfield = etorrent_pieceset:to_binary(Valid),
                     dets:insert(Table,
 			            {Filename, [
-                            {state, {bitfield, Bitfield}},
-				            {uploaded, Uploaded},
-				            {downloaded, Downloaded}]})
+                                                {state, {bitfield, Bitfield}},
+                                                {uploaded, Uploaded},
+                                                {downloaded, Downloaded}]})
 	        end
     end.
