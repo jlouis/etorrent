@@ -67,8 +67,7 @@
          unregister_open_file/2,
          await_open_file/2]).
 
--export([check_piece/2,
-         check_piece_completion/2]).
+-export([check_piece/3]).
 
 -export([init/1,
          handle_call/3,
@@ -113,7 +112,7 @@ start_link(TorrentID, Torrent) ->
 %% @end
 -spec allocate(torrent_id()) -> ok.
 allocate(TorrentID) ->
-    {ok, DirPid} = await_directory(TorrentID),
+    DirPid = await_directory(TorrentID),
     {ok, Files}  = get_files(DirPid),
     Dldir = etorrent_config:download_dir(),
     lists:foreach(
@@ -134,7 +133,7 @@ allocate(TorrentID) ->
 -spec allocate(torrent_id(), string(), integer()) -> ok.
 allocate(TorrentId, FilePath, BytesToWrite) ->
     ok = schedule_io_operation(TorrentId, FilePath),
-    {ok, FilePid} = await_open_file(TorrentId, FilePath),
+    FilePid = await_open_file(TorrentId, FilePath),
     ok = etorrent_io_file:allocate(FilePid, BytesToWrite).
 
 piece_sizes(Torrent) ->
@@ -151,7 +150,7 @@ piece_sizes(Torrent) ->
 %% @end
 -spec read_piece(torrent_id(), piece_index()) -> {'ok', piece_bin()}.
 read_piece(TorrentID, Piece) ->
-    {ok, DirPid} = await_directory(TorrentID),
+    DirPid = await_directory(TorrentID),
     {ok, Positions} = get_positions(DirPid, Piece),
     BlockList = read_file_blocks(TorrentID, Positions),
     {ok, iolist_to_binary(BlockList)}.
@@ -161,7 +160,7 @@ read_piece(TorrentID, Piece) ->
 %% @end
 -spec piece_size(torrent_id(), piece_index()) -> {ok, integer()}.
 piece_size(TorrentID, Piece) ->
-    {ok, DirPid} = await_directory(TorrentID),
+    DirPid = await_directory(TorrentID),
     {ok, Positions} = get_positions(DirPid, Piece),
     {ok, lists:sum([L || {_, _, L} <- Positions])}.
 
@@ -173,7 +172,7 @@ piece_size(TorrentID, Piece) ->
 -spec read_chunk(torrent_id(), piece_index(),
                  chunk_offset(), chunk_len()) -> {'ok', chunk_bin()}.
 read_chunk(TorrentID, Piece, Offset, Length) ->
-    {ok, DirPid} = await_directory(TorrentID),
+    DirPid = await_directory(TorrentID),
     {ok, Positions} = get_positions(DirPid, Piece),
     ChunkPositions  = chunk_positions(Offset, Length, Positions),
     BlockList = read_file_blocks(TorrentID, ChunkPositions),
@@ -186,7 +185,7 @@ read_chunk(TorrentID, Piece, Offset, Length) ->
 -spec write_chunk(torrent_id(), piece_index(),
                   chunk_offset(), chunk_bin()) -> 'ok'.
 write_chunk(TorrentID, Piece, Offset, Chunk) ->
-    {ok, DirPid} = await_directory(TorrentID),
+    DirPid = await_directory(TorrentID),
     {ok, Positions} = get_positions(DirPid, Piece),
     Length = byte_size(Chunk),
     ChunkPositions = chunk_positions(Offset, Length, Positions),
@@ -203,7 +202,7 @@ read_file_blocks(_, []) ->
     [];
 read_file_blocks(TorrentID, [{Path, Offset, Length}|T]=L) ->
     ok = schedule_io_operation(TorrentID, Path),
-    {ok, FilePid} = await_open_file(TorrentID, Path),
+    FilePid = await_open_file(TorrentID, Path),
     case etorrent_io_file:read(FilePid, Offset, Length) of
         {error, eagain} ->
             %% XXX - potential race condition
@@ -222,7 +221,7 @@ write_file_blocks(_, <<>>, []) ->
     ok;
 write_file_blocks(TorrentID, Chunk, [{Path, Offset, Length}|T]=L) ->
     ok = schedule_io_operation(TorrentID, Path),
-    {ok, FilePid} = await_open_file(TorrentID, Path),
+    FilePid = await_open_file(TorrentID, Path),
     <<Block:Length/binary, Rest/binary>> = Chunk,
     case etorrent_io_file:write(FilePid, Offset, Block) of
         {error, eagain} ->
@@ -255,13 +254,23 @@ file_paths(Torrent) ->
 file_sizes(Torrent) ->
     file_path_len(Torrent).
 
+
+directory_name(TorrentID) ->
+    {etorrent, TorrentID, directory}.
+
+file_server_name(TorrentID, Path) ->
+    {etorrent, TorrentID, Path, file}.
+
+open_server_name(TorrentID, Path) ->
+    {etorrent, TorrentID, Path, file, open}.
+
 %% @doc
 %% Register the current process as the directory server for
 %% the given torrent.
 %% @end
 -spec register_directory(torrent_id()) -> true.
 register_directory(TorrentID) ->
-    gproc:add_local_name({etorrent, TorrentID, directory}).
+    etorrent_utils:register(directory_name(TorrentID)).
 
 %% @end
 %% Register the current process as the file server for the
@@ -271,8 +280,7 @@ register_directory(TorrentID) ->
 %% @doc
 -spec register_file_server(torrent_id(), file_path()) -> true.
 register_file_server(TorrentID, Path) ->
-    gproc:add_local_name({etorrent, TorrentID, Path, file}).
-
+    etorrent_utils:register(file_server_name(TorrentID, Path)).
 
 %% @doc
 %% Lookup the process id of the directory server responsible
@@ -281,17 +289,15 @@ register_file_server(TorrentID, Path) ->
 %% @end
 -spec lookup_directory(torrent_id()) -> pid().
 lookup_directory(TorrentID) ->
-    gproc:lookup_local_name({etorrent, TorrentID, directory}).
+    etorrent_utils:lookup(directory_name(TorrentID)).
 
 %% @doc
 %% Wait for the directory server for this torrent to appear
 %% in the process registry.
 %% @end
--spec await_directory(torrent_id()) -> {ok, pid()}.
+-spec await_directory(torrent_id()) -> pid().
 await_directory(TorrentID) ->
-    Name = {etorrent, TorrentID, directory},
-    {DirPid, undefined} = gproc:await({n, l, Name}, ?AWAIT_TIMEOUT),
-    {ok, DirPid}.
+    etorrent_utils:await(directory_name(TorrentID), ?AWAIT_TIMEOUT).
 
 %% @doc
 %% Lookup the process id of the file server responsible for
@@ -300,7 +306,7 @@ await_directory(TorrentID) ->
 %% @end
 -spec lookup_file_server(torrent_id(), file_path()) -> pid().
 lookup_file_server(TorrentID, Path) ->
-    gproc:lookup_local_name({etorrent, TorrentID, Path, file}).
+    etorrent_utils:lookup(file_server_name(TorrentID, Path)).
 
 %% @doc
 %% Register the current process as a file server as being
@@ -309,7 +315,7 @@ lookup_file_server(TorrentID, Path) ->
 %% @end
 -spec register_open_file(torrent_id(), file_path()) -> true.
 register_open_file(TorrentID, Path) ->
-    gproc:add_local_name({etorrent, TorrentID, Path, file, open}).
+    etorrent_utils:register(open_server_name(TorrentID, Path)).
 
 %% @doc
 %% Register that the current process is a file server that
@@ -318,28 +324,23 @@ register_open_file(TorrentID, Path) ->
 %% @end
 -spec unregister_open_file(torrent_id(), file_path()) -> true.
 unregister_open_file(TorrentID, Path) ->
-    gproc:unreg({n, l, {etorrent, TorrentID, Path, file, open}}).
-
+    etorrent_utils:unregister(open_server_name(TorrentID, Path)).
 
 %% @doc
 %% Wait for the file server responsible for the given file to start
 %% and return the process id of the file server.
 %% @end
--spec await_file_server(torrent_id(), file_path()) -> {ok, pid()}.
+-spec await_file_server(torrent_id(), file_path()) -> pid().
 await_file_server(TorrentID, Path) ->
-    Name = {etorrent, TorrentID, Path, file},
-    {FilePid, undefined} = gproc:await({n, l, Name}, ?AWAIT_TIMEOUT),
-    {ok, FilePid}.
+    etorrent_utils:await(file_server_name(TorrentID, Path), ?AWAIT_TIMEOUT).
 
 %% @doc
 %% Wait for the file server responsible for the given file
 %% to enter a state where it is able to perform IO operations.
 %% @end
--spec await_open_file(torrent_id(), file_path()) -> {ok, pid()}.
+-spec await_open_file(torrent_id(), file_path()) -> pid().
 await_open_file(TorrentID, Path) ->
-    Name = {etorrent, TorrentID, Path, file, open},
-    {FilePid, undefined} = gproc:await({n, l, Name}, ?AWAIT_TIMEOUT),
-    {ok, FilePid}.
+    etorrent_utils:await(open_server_name(TorrentID, Path), ?AWAIT_TIMEOUT).
 
 %% @doc
 %% Fetch the offsets and length of the file blocks of the piece
@@ -363,41 +364,21 @@ get_files(Pid) ->
 %% @end
 -spec schedule_io_operation(torrent_id(), file_path()) -> ok.
 schedule_io_operation(Directory, RelPath) ->
-    {ok, DirPid} = await_directory(Directory),
+    DirPid = await_directory(Directory),
     gen_server:cast(DirPid, {schedule_operation, RelPath}).
 
-%% @doc Check a piece for completion and mark it for correctness
-%% @todo Perhaps this is not the entirely correct place for this, but
-%% it is better than the fs-checker it came from.
-%% @end
--spec check_piece_completion(torrent_id(), integer()) -> ok.
-check_piece_completion(TorrentID, Idx) ->
-    case check_piece(TorrentID, Idx) of
-	{ok, PieceSize} ->
-            ok = etorrent_torrent:statechange(TorrentID, [{subtract_left, PieceSize}]),
-            ok = etorrent_piece_mgr:statechange(TorrentID, Idx, fetched),
-            _  = etorrent_table:foreach_peer(TorrentID,
-                     fun(Pid) -> etorrent_peer_control:have(Pid, Idx) end),
-            ok;
-        wrong_hash ->
-            ok = etorrent_piece_mgr:statechange(TorrentID, Idx, not_fetched)
-    end.
 
-%% @doc Search the ETS tables for the Piece with Index and
-%%      write it back to disk. Returns the size of the piece in question
-%% @todo Perhaps this is not the "correct" place for this function, but
-%% it is still an improvement over the old location.
+%% @doc Validate a piece against a SHA1 hash.
+%% This reads the piece into memory before it is hashed.
+%% If the piece is valid the size of the piece is returned.
 %% @end
--spec check_piece(torrent_id(), integer()) ->
-			 {ok, integer()} | wrong_hash.
-check_piece(TorrentID, PieceIndex) ->
-    InfoHash = etorrent_piece_mgr:piece_hash(TorrentID, PieceIndex),
-    {ok, PieceBin} = etorrent_io:read_piece(TorrentID, PieceIndex),
-    case crypto:sha(PieceBin) == InfoHash of
-	true ->
-	    {ok, byte_size(PieceBin)};
-	false ->
-	    wrong_hash
+-spec check_piece(torrent_id(), integer(),
+                  <<_:160>>) -> {ok, integer()} | wrong_hash.
+check_piece(TorrentID, Pieceindex, Piecehash) ->
+    {ok, Piecebin} = etorrent_io:read_piece(TorrentID, Pieceindex),
+    case crypto:sha(Piecebin) == Piecehash of
+        true  -> {ok, byte_size(Piecebin)};
+        false -> wrong_hash
     end.
 
 %% ----------------------------------------------------------------------
@@ -472,7 +453,7 @@ handle_cast({schedule_operation, RelPath}, State) ->
     %% If the file is open, just update the access time.
     WithNewFile = case FileInfo of
         false ->
-            {ok, NewPid} = await_file_server(TorrentID, RelPath),
+            NewPid = await_file_server(TorrentID, RelPath),
             NewMon = erlang:monitor(process, NewPid),
             ok = etorrent_io_file:open(NewPid),
             NewFile = #io_file{

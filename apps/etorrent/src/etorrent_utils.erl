@@ -14,13 +14,27 @@
 -export([gsplit/2, queue_remove/2, group/1,
 	 list_shuffle/1, date_str/1, any_to_list/1,
      merge_proplists/2, compare_proplists/2,
-     wait/1, expect/1, shutdown/1]).
+     find/2, wait/1, expect/1, shutdown/1, ping/1,
+     first/0, group/2]).
+
+%% "mock-like" functions
+-export([reply/1]).
 
 %% "time-like" functions
 -export([now_subtract_seconds/2]).
 
 %% "bittorrent-like" functions
 -export([decode_ips/1]).
+
+%% "registry-like" functions
+-export([register/1,
+         register_member/1,
+         unregister/1,
+         unregister_member/1,
+         lookup/1,
+         lookup_members/1,
+         await/1,
+         await/2]).
 
 %%====================================================================
 
@@ -98,6 +112,30 @@ group(E, K, []) -> [{E, K}];
 group(E, K, [E | R]) -> group(E, K+1, R);
 group(E, K, [F | R]) -> [{E, K} | group(F, 1, R)].
 
+%% @doc Group a list of values using a key function.
+%% This function will return a list of key-value pairs where
+%% the key is returned by the key function and the value is
+%% a list of values having that key.
+%% The function must return a {Key, Value} pair.
+%% @end
+-spec group(fun((term()) -> {term(), term()}), []) -> [{term(), []}].
+group(Function, List) ->
+    groupby(Function, List, gb_trees:empty()).
+
+groupby(_Function, [], Acc) ->
+    gb_trees:to_list(Acc);
+
+groupby(Function, [H|T], Acc) ->
+    {Key, Value} = Function(H),
+    TmpAcc = case gb_trees:is_defined(Key, Acc) of
+        true  -> Acc;
+        false -> gb_trees:insert(Key, [], Acc)
+    end,
+    Values = gb_trees:get(Key, TmpAcc),
+    NewAcc = gb_trees:update(Key, [Value|Values], TmpAcc),
+    groupby(Function, T, NewAcc).
+
+
 % @doc Subtract a time delta in millsecs from a now() triple
 % @end
 -spec now_subtract_seconds({integer(), integer(), integer()}, integer()) ->
@@ -141,15 +179,27 @@ compare_proplists(Prop1, Prop2) ->
 
 %% @doc Wait for a monitored process to exit
 %% @end
--spec wait(reference()) -> ok.
-wait(MRef) ->
-    receive {'DOWN', MRef, process, _, _} -> ok end.
+-spec wait(reference() | pid) -> ok.
+wait(MRef) when is_reference(MRef) ->
+    receive {'DOWN', MRef, process, _, _} -> ok end;
+
+wait(Pid) when is_pid(Pid) ->
+    MRef = erlang:monitor(process, Pid),
+    wait(MRef).
+
 
 %% @doc Wait for a message to arrive
 %% @end
 -spec expect(term()) -> ok.
 expect(Message) ->
     receive Message -> ok end.
+
+%% @doc Return the first message from the inbox
+%% @end
+-spec first() -> term().
+first() ->
+    receive Message -> Message end.
+
 
 %% @doc Shutdown a child process
 %% @end
@@ -160,10 +210,150 @@ shutdown(Pid) ->
     exit(Pid, shutdown),
     wait(MRef).
 
+%% @doc Ensure that a previous message has been handled
+%% @end
+-spec ping(pid() | [pid()]) -> ok.
+ping(Pid) when is_pid(Pid) ->
+    {status, Pid, _, _} = sys:get_status(Pid),
+    ok;
+
+ping(Pids) ->
+    [ping(Pid) || Pid <- Pids],
+    ok.
+
+
+%% @doc Handle a gen_server call using a function
+%% @end
+-spec reply(fun((term()) -> term())) -> ok.
+reply(Handler) ->
+    receive {'$gen_call', Client, Call} ->
+        gen_server:reply(Client, Handler(Call))
+    end.
+
+
+%% @doc Return the first element in the list that matches a condition
+%% If no element matched the condition 'false' is returned.
+%% @end
+-spec find(fun((term()) -> boolean()), [term]) -> false | term().
+find(_, []) ->
+    false;
+
+find(Condition, [H|T]) ->
+    case Condition(H) of
+        true  -> H;
+        false -> find(Condition, T)
+    end.
+    
+
+%% @doc Register the local process under a local name
+%% @end
+-spec register(tuple()) -> true.
+register(Name) ->
+    gproc:add_local_name(Name).
+
+%% @doc Register the local process as a member of a group
+%% @end
+-spec register_member(tuple()) -> true.
+register_member(Group) ->
+    gproc:reg({p, l, Group}, member).
+
+
+%% @doc Unregister the local process from a name
+%% @end
+-spec unregister(tuple()) -> true.
+unregister(Name) ->
+    gproc:unreg({n, l, Name}).
+
+%% @doc Unregister the local process as a member of a group
+%% @end
+-spec unregister_member(tuple()) -> true.
+unregister_member(Group) ->
+    gproc:unreg({p, l, Group}).
+
+
+%% @doc Resolve a local name to a pid
+%% @end
+-spec lookup(tuple()) -> pid().
+lookup(Name) ->
+    gproc:lookup_pid({n, l, Name}).
+
+%% @doc Lookup the process id's of all members of a group
+%% @end
+-spec lookup_members(tuple()) -> [pid()].
+lookup_members(Group) ->
+    gproc:lookup_pids({p, l, Group}).
+
+
+%% @doc Wait until a process registers under a local name
+%% @end
+-spec await(tuple()) -> pid().
+await(Name) ->
+    await(Name, 5000).
+
+-spec await(tuple(), non_neg_integer()) -> pid().
+await(Name, Timeout) ->
+    {Pid, undefined} = gproc:await({n, l, Name}, Timeout),
+    Pid.
+
+
+
 
 %%====================================================================
 
 -ifdef(EUNIT).
+-define(utils, ?MODULE).
+
+find_nomatch_test() ->
+    False = fun(_) -> false end,
+    ?assertEqual(false, ?utils:find(False, [1,2,3])).
+
+find_match_test() ->
+    Last = fun(E) -> E == 3 end,
+    ?assertEqual(3, ?utils:find(Last, [1,2,3])).
+
+reply_test() ->
+    Pid = spawn_link(fun() ->
+        ?utils:reply(fun(call) -> reply end)
+    end),
+    ?assertEqual(reply, gen_server:call(Pid, call)).
+
+register_test_() ->
+    {setup,
+        fun() -> application:start(gproc) end,
+        fun(_) -> application:stop(gproc) end,
+    [?_test(test_register()),
+     ?_test(test_register_group())
+    ]}.
+
+test_register() ->
+    true = ?utils:register(name),
+    ?assertEqual(self(), ?utils:lookup(name)),
+    ?assertEqual(self(), ?utils:await(name)).
+
+test_register_group() ->
+    ?assertEqual([], ?utils:lookup_members(group)),
+    true = ?utils:register_member(group),
+    ?assertEqual([self()], ?utils:lookup_members(group)),
+    Main = self(),
+    Pid = spawn_link(fun() ->
+        ?utils:register_member(group),
+        Main ! registered,
+        ?utils:expect(die)
+    end),
+    ?utils:expect(registered),
+    ?assertEqual([self(),Pid], lists:sort(?utils:lookup_members(group))),
+    ?utils:unregister_member(group),
+    ?assertEqual([Pid], ?utils:lookup_members(group)),
+    Pid ! die, ?utils:wait(Pid),
+    ?utils:ping(whereis(gproc)),
+    ?assertEqual([], ?utils:lookup_members(group)).
+
+groupby_duplicates_test() ->
+    Inp = [c, a, b, c, a, b],
+    Exp = [{a, [a,a]}, {b, [b,b]}, {c, [c,c]}],
+    Fun = fun(E) -> {E, E} end,
+    ?assertEqual(Exp, ?utils:group(Fun, Inp)).
+
 -ifdef(PROPER).
 
 prop_gsplit_split() ->

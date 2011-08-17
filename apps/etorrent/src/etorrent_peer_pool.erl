@@ -52,8 +52,8 @@ start_child(TrackerUrl, PeerId, InfoHash, Id, {IP, Port}, Capabilities, Socket) 
 				 Capabilities,
 				 Socket]) of
         {ok, _Pid} ->
-            RecvPid = gproc:lookup_local_name({peer, Socket, receiver}),
-            ControlPid = gproc:lookup_local_name({peer, Socket, control}),
+            RecvPid = etorrent_peer_recv:await_server(Socket),
+            ControlPid = etorrent_peer_control:await_server(Socket),
             {ok, RecvPid, ControlPid};
         {error, Reason} ->
             ?ERR([{start_child_peer, Reason}]),
