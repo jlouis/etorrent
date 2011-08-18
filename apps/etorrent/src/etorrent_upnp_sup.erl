@@ -53,15 +53,22 @@ add_upnp_entity(Category, Proplist) ->
 -ifdef(EUNIT).
 
 setup_upnp_sup_tree() ->
-    {event, {ok, Pid0}} = {event, etorrent_event:start_link()},
-    {table, {ok, Pid1}} = {table, etorrent_table:start_link()},
-    {upnp,  {ok, Pid2}} = {upnp,  etorrent_upnp_sup:start_link()},
-    {Pid0, Pid1, Pid2}.
+    {event, Event} = {event, etorrent_event:start_link()},
+    {table, Table} = {table, etorrent_table:start_link()},
+    {upnp,  UPNP}  = {upnp,  etorrent_upnp_sup:start_link()},
+    {Event, Table, UPNP}.
 
-teardown_upnp_sup_tree({Pid0, Pid1, Pid2}) ->
-    ok = etorrent_utils:shutdown(Pid0),
-    ok = etorrent_utils:shutdown(Pid1),
-    ok = etorrent_utils:shutdown(Pid2).
+teardown_upnp_sup_tree({Event, Table, UPNP}) ->
+    Shutdown = fun
+        ({ok, Pid}) -> etorrent_utils:shutdown(Pid);
+        ({error, Reason}) -> Reason
+    end,
+    EventStatus = Shutdown(Event),
+    TableStatus = Shutdown(Table),
+    UPNPStatus  = Shutdown(UPNP),
+    ?assertEqual(ok, EventStatus),
+    ?assertEqual(ok, TableStatus),
+    ?assertEqual(ok, UPNPStatus).
 
 upnp_sup_test_() ->
     {foreach,
