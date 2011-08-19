@@ -1505,6 +1505,13 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   this bug triggers the system times out. We know that the piggyback
   test can trigger the error, so running repeated tests on that one
   could be what we should do.
+
+** DONE One timeout problem has been found and eliminated.
+   We have found a timeout problem w.r.t. the tag sent_data which was
+   not checked if the window was re-filled up. This affected the
+   correctness of the code since a dropped packet could deadlock us
+   down.
+
 * TODO If we get wrong packets, don't decode them, but error out
   This should be fairly simple to actually do.
 * DONE Make code which allows us to graph various counters on a running system
