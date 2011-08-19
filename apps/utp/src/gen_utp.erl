@@ -292,10 +292,10 @@ handle_info({udp, _Socket, IP, Port, Datagram},
     inet:setopts(Socket, [{active, once}]),
     {noreply, S};
 handle_info({'DOWN', Ref, process, _Pid, _Reason}, #state { monitored = MM } = S) ->
-    {CID, Addr, Port} = gb_trees:get(Ref, MM),
+    {CID, Addr, Port} = CAP = gb_trees:get(Ref, MM),
+    error_logger:info_report([{down, CAP}]),
     utp:report_event(95, us, 'DOWN', [{monitored, MM}, {ref, Ref}, {cid, CID}]),
-    true = ets:delete(?TAB, {CID, Addr, Port}),
-    true = ets:delete(?TAB, {CID+1, Addr, Port}),
+    ok = unreg(CID, Addr, Port),
     {noreply, S#state { monitored = gb_trees:delete(Ref, MM)}};
 handle_info(_Info, State) ->
     ?ERR([unknown_handle_info, _Info, State]),
@@ -373,12 +373,19 @@ reg_proc(Proc, {ConnId, Addr, Port}) ->
         orelse ets:member(?TAB, {ConnId+1, Addr, Port})
     of
         true ->
-            {error, conn_id_in_use};
+            Rows = ets:match(?TAB, '$1'),
+            {error, conn_id_in_use, Rows};
         false ->
             true = ets:insert(?TAB, [{{ConnId,   Addr, Port}, Proc},
                                      {{ConnId+1, Addr, Port}, Proc}]),
             ok
     end.
+
+unreg(CID, Addr, Port) ->
+    true = ets:member(?TAB, {CID, Addr, Port}) orelse ets:member(?TAB, {CID+1, Addr, Port}),
+    true = ets:delete(?TAB, {CID, Addr, Port}),
+    true = ets:delete(?TAB, {CID+1, Addr, Port}),
+    ok.
 
 -spec validate_listen_opts([listen_opts()]) -> ok | badarg.
 validate_listen_opts([]) ->

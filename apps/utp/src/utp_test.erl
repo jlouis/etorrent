@@ -325,7 +325,8 @@ repeat(N, VPid, Fun, Opts) ->
     io:format("Running ~B~n", [N]),
     case Fun(Opts) of
         {ok, _} -> ok;
-        {ok, _, _} -> ok
+        {ok, _, _} -> ok;
+        ok -> ok
     end,
     utp_filter:clear(VPid),
     repeat(N-1, VPid, Fun, Opts).
@@ -348,7 +349,8 @@ parse_listen(test_rwin) ->
     end;
 parse_listen(test_piggyback) ->
     fun(O) ->
-            test_piggyback_in(large_data(), O)
+            {ok, Sock, _} = test_piggyback_in(large_data(), O),
+            gen_utp:close(Sock)
     end;
 parse_listen(test_close_3) ->
     fun test_close_in_3/1;
@@ -400,7 +402,8 @@ parse_connect(test_rwin) ->
     end;
 parse_connect(test_piggyback) ->
     fun (O) ->
-            test_piggyback_out(large_data(), O)
+            {ok, Sock, _} = test_piggyback_out(large_data(), O),
+            gen_utp:close(Sock)
     end;
 parse_connect(test_close_3) ->
     fun test_close_out_3/1;
