@@ -194,14 +194,19 @@ g_extension_one() ->
 g_extension() ->
     list(g_extension_one()).
 
+g_payload() ->
+    ?LET(PayLoad,
+         ?SUCHTHAT(PL, binary(), byte_size(PL) > 0),
+         PayLoad).
+
 g_packet() ->
     ?LET({Ty, ConnID, WindowSize, SeqNo, AckNo,
 	  Extension, Payload},
 	 {g_type(), g_uint16(), g_uint32(), g_uint16(), g_uint16(),
-	  g_extension(), binary()},
-                 #packet { ty = Ty, conn_id = ConnID, win_sz = WindowSize,
-                           seq_no = SeqNo, ack_no = AckNo, extension = Extension,
-                           payload = case Ty of st_state -> <<>>; _ -> Payload end }).
+	  g_extension(), g_payload()},
+         #packet { ty = Ty, conn_id = ConnID, win_sz = WindowSize,
+                   seq_no = SeqNo, ack_no = AckNo, extension = Extension,
+                   payload = case Ty of st_state -> <<>>; _ -> Payload end }).
 
 prop_ext_dec_inv() ->
     ?FORALL(E, g_extension(),
