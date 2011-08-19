@@ -579,7 +579,7 @@ connected({send, Data}, From, #state {
                               zerowindow_timeout = N_ZWinTimer,
                               retransmit_timeout = N_RTimer,
 			      process = ProcInfo1,
-			      buffer   = PKB1 }};
+			      buffer  = PKB1 }};
 connected(_Msg, _From, State) ->
     ?ERR([sync_message, connected, _Msg, _From]),
     {next_state, connected, State}.
@@ -692,7 +692,7 @@ handle_send_retransmit_timer(Messages, Network, RetransTimer) ->
 
 handle_recv_retransmit_timer(Messages, Network, RetransTimer) ->
     Analyzer = fun(L) -> lists:foldl(is_set(Messages), false, L) end,
-    case Analyzer([data_inflight, fin_sent]) of
+    case Analyzer([data_inflight, fin_sent, sent_data]) of
         true ->
             set_retransmit_timer(utp_network:rto(Network), RetransTimer);
         false ->
