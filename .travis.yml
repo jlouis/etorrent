@@ -1,0 +1,17 @@
+language: erlang
+branches:
+  only:
+    - master
+    - next
+    - pu
+    - utp
+notifications:
+  email: false
+  irc:
+    - "irc.freenode.org#etorrent"
+env:
+  - R14B03
+  - R14B02
+  - R14B01
+  - R14A
+  - R13B04

@@ -21,6 +21,12 @@ Flag days are when you need to do something to your setup
      may have to delete your fast_resume_file though the system was
      configured to do a silent system upgrade.
 
+## Build Status
+
+Currently, we are running build-bots through
+[http://travis-ci.org](Travis CI). [![Build Status](http://travis-ci.org/jlouis/etorrent.png?branch=master)](http://travis-ci.org//jlouis/etorrent)
+
+
 ## Why
 
 ETORRENT was mostly conceived as an experiment in how easy it would be

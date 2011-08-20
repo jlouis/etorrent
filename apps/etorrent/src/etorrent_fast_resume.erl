@@ -174,8 +174,8 @@ track_torrent(ID, Filename, Table) ->
                     Bitfield = etorrent_pieceset:to_binary(Valid),
                     dets:insert(Table,
 			            {Filename, [
-                            {state, {bitfield, Bitfield}},
-				            {uploaded, Uploaded},
-				            {downloaded, Downloaded}]})
+                                                {state, {bitfield, Bitfield}},
+                                                {uploaded, Uploaded},
+                                                {downloaded, Downloaded}]})
 	        end
     end.
