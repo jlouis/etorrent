@@ -3,7 +3,9 @@
 -include("utp.hrl").
 
 -ifdef(TEST).
+-ifdef(EQC).
 -include_lib("eqc/include/eqc.hrl").
+-endif.
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
