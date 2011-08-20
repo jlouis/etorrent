@@ -1,4 +1,10 @@
 language: erlang
+branches:
+  only:
+    - master
+    - next
+    - pu
+    - utp
 notifications:
   email: false
   irc:
@@ -9,4 +15,3 @@ env:
   - R14B01
   - R14A
   - R13B04
-  - R13B03
