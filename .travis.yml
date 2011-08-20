@@ -1,6 +1,8 @@
 language: erlang
 notifications:
-  disabled: true
+  email: false
+  irc:
+    - "irc.freenode.org#etorrent"
 env:
   - R14B03
   - R14B02
