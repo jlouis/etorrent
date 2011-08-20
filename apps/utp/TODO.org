@@ -1492,6 +1492,17 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
    it possible for the backend system to gracefully tell this to a
    client through an error message.
 
+* TODO When we disconnect due to an error, we better clean up
+  There is something murky where we don't get a process moved to its
+  destroy state. Thus, the process hangs around and is still there,
+  even though I would have presumed it should have gone to death.
+
+  To find this, run a repeated test of test_piggyback and then look up
+  and query one of the processes that have troubles and figure out
+  what its internal state is and what it is currently doing.
+
+  We could attach a debugger to it, or send it a message for
+  formatting its internal state.
 * TODO If we enter the GOT_FIN state, we can't ever serve waiting processes
   This is pretty obvious. If we enter the got-fin state, we are not
   able to ever serve a process waiting for the data it requested. We
