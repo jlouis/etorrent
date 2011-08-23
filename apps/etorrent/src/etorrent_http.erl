@@ -105,13 +105,12 @@ decode_host(URL) ->
 
 %% Find the version of the HTTP module to call.
 find_http_module() ->
-    case erlang:system_info(otp_release) of
-	"R14A" ->
-	    httpc;
-	_ ->
-	    http
+   case erlang:system_info(otp_release) of
+       "R13B03" -> http;
+       "R13B04" -> http;
+       _ -> httpc
     end.
-
+ 
 rfc_3986_unreserved_characters() ->
     % jlouis: I deliberately killed ~ from the list as it seems the Mainline
     %  client doesn't announce this.
