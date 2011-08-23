@@ -429,7 +429,7 @@ fin_sent({pkt, #packet { ty = st_reset }, _},
     %% disconnect, so move to the RESET state right away after telling people
     %% we can't fulfill their requests.
     N_PRI = utp_process:error_all(PRI, econnreset),
-    {next_state, report(destroy), State#state { process = N_PRI }};
+    {next_state, report(destroy), State#state { process = N_PRI }, 0};
 fin_sent({pkt, Pkt, {TS, TSDiff, RecvTime}}, State) ->
     {ok, Messages, N_Network, N_PB, N_PRI, ZWinTimeout, N_DelayAck, N_RetransTimer} =
         handle_packet_incoming(fin_sent,
@@ -488,7 +488,7 @@ destroy(timeout, #state { process = ProcessInfo } = State) ->
 destroy(_Msg, State) ->
     %% Ignore messages
     ?ERR([node(), async_message, destroy, _Msg]),
-    {next_state, destroy, State}.
+    {next_state, destroy, State, 0}.
 
 %% @private
 idle(connect,

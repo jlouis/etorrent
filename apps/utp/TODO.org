@@ -1492,7 +1492,7 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
    it possible for the backend system to gracefully tell this to a
    client through an error message.
 
-* TODO When we disconnect due to an error, we better clean up
+* DONE When we disconnect due to an error, we better clean up
   There is something murky where we don't get a process moved to its
   destroy state. Thus, the process hangs around and is still there,
   even though I would have presumed it should have gone to death.
@@ -1503,6 +1503,13 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
 
   We could attach a debugger to it, or send it a message for
   formatting its internal state.
+
+  There is a call, sys:get_status/1,2 for this!
+
+  State is destroy, so there is something that does not get cleaned up
+  like it should be! That is the problem all the time.
+
+  Fixed, there was a missing timeout in a single destroy statement.
 * TODO If we enter the GOT_FIN state, we can't ever serve waiting processes
   This is pretty obvious. If we enter the got-fin state, we are not
   able to ever serve a process waiting for the data it requested. We
