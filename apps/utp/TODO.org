@@ -1510,28 +1510,6 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   like it should be! That is the problem all the time.
 
   Fixed, there was a missing timeout in a single destroy statement.
-* TODO If we enter the GOT_FIN state, we can't ever serve waiting processes
-  This is pretty obvious. If we enter the got-fin state, we are not
-  able to ever serve a process waiting for the data it requested. We
-  should probably abort the receiver with a message that we can't
-  satisfy it.
-* TODO Enable full nastiness on the lo interface
-  Re-enable nastiness on the lo interface and run some tests on the
-  protocol. This will allow us to check for correctness again.
-* TODO Investigate the timeout problem
-  It looks like there is a timeout bug still present in the code. When
-  this bug triggers the system times out. We know that the piggyback
-  test can trigger the error, so running repeated tests on that one
-  could be what we should do.
-
-** DONE One timeout problem has been found and eliminated.
-   We have found a timeout problem w.r.t. the tag sent_data which was
-   not checked if the window was re-filled up. This affected the
-   correctness of the code since a dropped packet could deadlock us
-   down.
-
-* TODO If we get wrong packets, don't decode them, but error out
-  This should be fairly simple to actually do.
 * DONE Make code which allows us to graph various counters on a running system
   We need to be able to graph the output over time. I think we should
   look into and use the "folsom" application for this as it would an
@@ -1572,28 +1550,21 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
    opened file in the file mapper.
 ** DONE Enable tracing for RTT
 ** DONE Test tracing for RTT
-* Create an R-plotter for the tracing file format.
- The R-plotter should be able to read in the raw data and then show
- them as plots over time. This enables us to log different aspects of
- the timing structures in the code. Logging these is very important if
- the goal is to fix and correct issues around the counter structures.
+* DONE Enable full nastiness on the lo interface
+  Re-enable nastiness on the lo interface and run some tests on the
+  protocol. This will allow us to check for correctness again.
+* DONE Investigate the timeout problem
+  It looks like there is a timeout bug still present in the code. When
+  this bug triggers the system times out. We know that the piggyback
+  test can trigger the error, so running repeated tests on that one
+  could be what we should do.
 
- Tom Moertel suggested ggplot2. ggplot2 is definitely part of the
- solution.
+** DONE One timeout problem has been found and eliminated.
+   We have found a timeout problem w.r.t. the tag sent_data which was
+   not checked if the window was re-filled up. This affected the
+   correctness of the code since a dropped packet could deadlock us
+   down.
 
- So to do this, we need to track some data in the real world. To track
- data in the real world, we need to have a set up where we can track
- what happens when the system is running. We should then ask the
- tracer to output the trace data for various connections.
-
- When we have the data, we should write an R-script which can take the
- raw data and plot it through ggplot2. At that point in time, it
- should be mostly done.
-* Implement KEEP ALIVE
-* TODO Even though the test case says OK! there might be bad things
-  So we should go through the test cases a bit and see what
-  happens. Waiting a bit in the end of test case to see if something
-  outputs extra stuff is probably worth it.
 * DONE Write a test server on a local branch
   A test server is a way to carry out a real-world test. We build a
   server which can be loaded by real people and then we see what
@@ -1623,12 +1594,38 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   utp_client_test:ls().
   utp_client_test:get(naked_leashed_japanese_radioactive_cat, "NLJRC.jpg").
 
+* TODO If we enter the GOT_FIN state, we can't ever serve waiting processes
+  This is pretty obvious. If we enter the got-fin state, we are not
+  able to ever serve a process waiting for the data it requested. We
+  should probably abort the receiver with a message that we can't
+  satisfy it.
+* TODO If we get wrong packets, don't decode them, but error out
+  This should be fairly simple to actually do.
+* Create an R-plotter for the tracing file format.
+ The R-plotter should be able to read in the raw data and then show
+ them as plots over time. This enables us to log different aspects of
+ the timing structures in the code. Logging these is very important if
+ the goal is to fix and correct issues around the counter structures.
+
+ Tom Moertel suggested ggplot2. ggplot2 is definitely part of the
+ solution.
+
+ So to do this, we need to track some data in the real world. To track
+ data in the real world, we need to have a set up where we can track
+ what happens when the system is running. We should then ask the
+ tracer to output the trace data for various connections.
+
+ When we have the data, we should write an R-script which can take the
+ raw data and plot it through ggplot2. At that point in time, it
+ should be mostly done.
+* Implement KEEP ALIVE
 * TODO Enable parallel tests
   The parallel tests should be to run the *same* test many times next
   to each other. Otherwise, we may end up with something wrong since
   the belief is that when you accept a connection, you know what is
   going to happen in the other end. This is only doable if we run the
   same test in parallel.
+** DONE A quick field test shows parallelism ought to work.
 * TODO Try to eliminate lifted types
   The uTP code has a lot of "lifts" of the form none | elem() for some
   element elem. Try to get rid of them by instating good defaults and
@@ -1683,7 +1680,7 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   queue and be handled as resends. We currently fake-retransmit it,
   but it looks easier to simpler use the same queueing facility of the
   other end.
-* TODO There seems to be yet another SYN bug
+* DONE There seems to be yet another SYN bug
   It looks as if we are facing yet another bug due to SYNs being
   duplicate. We should probably track what we do with SYN
   packets. There are not that many of them and knowing what does wrong
@@ -1722,7 +1719,7 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
 
    If we *know* a buffer is full, we ought to handle it right away by
    doing the right thing(tm).
-* The ConnId lookup table should guard against generating an already existing random number.
+* DONE The ConnId lookup table should guard against generating an already existing random number.
   This is fairly simple. When generating a new ConnID, look up if we
   already have one.
 * Grace period on used ConnIDs?
@@ -1740,7 +1737,6 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   This is probably not needed if we triple the ConnID over the IP/Port
   pairs.
 * Consider proper for testing.
-
 * What happens if an acceptor dies?
   There are really two things here:
 
@@ -1759,7 +1755,6 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   its owner dies, so will the socket.
 
 
-
 * TODO in the GOT_FIN state, we should still process the ACK numbers
   It is only the parts about reading in data we should skip.
   We can update the internal buffers, but since we are in GOT_FIN, we
@@ -1769,16 +1764,7 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   down. He will then upon receipt also move to the got_fin state and
   we are both at the point where we close down.
 
-
-
-
-
-
-
-
-
-
-
+  I actually think this is currently being done!
 * TODO timetrap timeouts should result in logging
 * TODO Looks like resets are sent to the wrong place
   If we get in a wrong packet, to where should the RESET be sent in
@@ -1791,20 +1777,6 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
 
   Only do this if we suspect there is an error due to a missed
   timeout. Currently there does not seem to be one.
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 * Add controlling_process/2 support
   A socket should monitor its initiator and have the equivalent of a
   "controlling_process/2" associated with it. That way, a kill of a

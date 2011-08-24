@@ -370,21 +370,22 @@ call(Msg) ->
 
 reg_proc(Proc, {ConnId, Addr, Port}) ->
     case ets:member(?TAB, {ConnId, Addr, Port})
-        orelse ets:member(?TAB, {ConnId+1, Addr, Port})
+        orelse ets:member(?TAB, {utp_til:bit16(ConnId+1), Addr, Port})
     of
         true ->
             Rows = ets:match(?TAB, '$1'),
             {error, conn_id_in_use, Rows};
         false ->
             true = ets:insert(?TAB, [{{ConnId,   Addr, Port}, Proc},
-                                     {{ConnId+1, Addr, Port}, Proc}]),
+                                     {{utp_util:bit16(ConnId+1), Addr, Port}, Proc}]),
             ok
     end.
 
 unreg(CID, Addr, Port) ->
-    true = ets:member(?TAB, {CID, Addr, Port}) orelse ets:member(?TAB, {CID+1, Addr, Port}),
+    true = ets:member(?TAB, {CID, Addr, Port})
+        orelse ets:member(?TAB, {utp_util:bit16(CID+1), Addr, Port}),
     true = ets:delete(?TAB, {CID, Addr, Port}),
-    true = ets:delete(?TAB, {CID+1, Addr, Port}),
+    true = ets:delete(?TAB, {utp_util:bit16(CID+1), Addr, Port}),
     ok.
 
 -spec validate_listen_opts([listen_opts()]) -> ok | badarg.
