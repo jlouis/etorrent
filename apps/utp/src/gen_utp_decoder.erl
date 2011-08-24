@@ -45,30 +45,36 @@ handle_call(_Request, _From, State) ->
 
 %% @private
 handle_cast({packet, P, Addr, Port}, S) ->
-    {#packet { conn_id = CID,
-               ty = PTy } = Packet, TS, TSDiff, RecvTime} = utp_proto:decode(P),
-    case PTy of
-        st_reset ->
-            case gen_utp:lookup_registrar(CID, Addr, Port) of
-                {ok, Pid} ->
-                    gen_utp_worker:incoming(Pid, Packet, {TS, TSDiff, RecvTime});
-                not_found ->
-                    case gen_utp:lookup_registrar(CID+1, Addr, Port) of
+    case utp_proto:decode(P) of
+        {ok, 
+         {#packet { conn_id = CID,
+                    ty = PTy } = Packet, TS, TSDiff, RecvTime}} ->
+            case PTy of
+                st_reset ->
+                    case gen_utp:lookup_registrar(CID, Addr, Port) of
+                        {ok, Pid} ->
+                            gen_utp_worker:incoming(Pid, Packet, {TS, TSDiff, RecvTime});
+                        not_found ->
+                            case gen_utp:lookup_registrar(CID+1, Addr, Port) of
+                                {ok, Pid} ->
+                                    gen_utp_worker:incoming(Pid, Packet, {TS, TSDiff, RecvTime});
+                                not_found ->
+                                    gen_utp:incoming_unknown(Packet, Addr, Port)
+                            end
+                    end;
+                _OtherState ->
+                    case gen_utp:lookup_registrar(CID, Addr, Port) of
                         {ok, Pid} ->
                             gen_utp_worker:incoming(Pid, Packet, {TS, TSDiff, RecvTime});
                         not_found ->
                             gen_utp:incoming_unknown(Packet, Addr, Port)
                     end
-            end;
-        _OtherState ->
-            case gen_utp:lookup_registrar(CID, Addr, Port) of
-                {ok, Pid} ->
-                    gen_utp_worker:incoming(Pid, Packet, {TS, TSDiff, RecvTime});
-                not_found ->
-                    gen_utp:incoming_unknown(Packet, Addr, Port)
-            end
-    end,
-    {noreply, S};
+            end,
+            {noreply, S};
+        {error, Reason} ->
+            error_logger:info_report([decoder_error, Reason]),
+            {noreply, S}
+    end;
 handle_cast(_Msg, State) ->
     {noreply, State}.
 

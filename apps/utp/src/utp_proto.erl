@@ -85,8 +85,20 @@ encode(#packet { ty = Type,
       ExtBin/binary,
       Payload/binary>>.
 
--spec decode(binary()) -> {packet(), timestamp(), timestamp(), timestamp()}.
+
+-spec decode(binary()) -> {ok, {packet(), timestamp(), timestamp(), timestamp()}}
+                              | {error, term()}.
 decode(Packet) ->
+    try
+        P = decode_packet(Packet),
+        {ok, P}
+    catch
+        error:Reason ->
+            {error, Reason}
+    end.
+
+-spec decode_packet(binary()) -> {packet(), timestamp(), timestamp(), timestamp()}.
+decode_packet(Packet) ->
     TS = current_time_us(),
 
     %% Decode packet
