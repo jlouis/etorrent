@@ -370,7 +370,7 @@ call(Msg) ->
 
 reg_proc(Proc, {ConnId, Addr, Port}) ->
     case ets:member(?TAB, {ConnId, Addr, Port})
-        orelse ets:member(?TAB, {utp_til:bit16(ConnId+1), Addr, Port})
+        orelse ets:member(?TAB, {utp_util:bit16(ConnId+1), Addr, Port})
     of
         true ->
             Rows = ets:match(?TAB, '$1'),
