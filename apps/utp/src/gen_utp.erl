@@ -374,7 +374,7 @@ reg_proc(Proc, {ConnId, Addr, Port}) ->
     of
         true ->
             Rows = ets:match(?TAB, '$1'),
-            {error, conn_id_in_use, Rows};
+            {error, {conn_id_in_use, Rows}};
         false ->
             true = ets:insert(?TAB, [{{ConnId,   Addr, Port}, Proc},
                                      {{utp_util:bit16(ConnId+1), Addr, Port}, Proc}]),
