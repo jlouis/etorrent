@@ -1793,7 +1793,7 @@ utp_process.erl:69: Record construction #proc_info{receiver_q::'undefined' | que
   It looks there is no dynamic packet size control by default. Hence
   we postpone this problem till later when we know something more
   about it.
-* TODO Storing CID+1 should in principle be checked against overflow
+* DONE Storing CID+1 should in principle be checked against overflow
   In the ETS table registry, we should in principle be checking around
   overflow.
 * TODO Decide what to do in "GOT_FIN" when a retransmit timer triggers
