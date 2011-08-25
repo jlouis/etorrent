@@ -221,6 +221,7 @@ send(Msg, #state { torrent_id = Id} = S) ->
         {ok, Sz} ->
             NR = etorrent_rate:update(S#state.rate, Sz),
             ok = etorrent_torrent:statechange(Id, [{add_upload, Sz}]),
+            ok = etorrent_rlimit:send(Sz),
             {ok, S#state { rate = NR}};
         {{error, E}, _Amount} ->
             {error, E, S}

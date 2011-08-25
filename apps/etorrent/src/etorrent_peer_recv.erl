@@ -109,8 +109,10 @@ go_slow(S) ->
 handle_packet(Packet, #state { id = Id } = S) ->
     Msg = etorrent_proto_wire:decode_msg(Packet),
     NR = etorrent_rate:update(S#state.rate, byte_size(Packet)),
-    ok = etorrent_torrent:statechange(Id, [{add_downloaded, byte_size(Packet)}]),
+    PacketSize = byte_size(Packet),
+    ok = etorrent_torrent:statechange(Id, [{add_downloaded, PacketSize}]),
     etorrent_peer_control:incoming_msg(S#state.controller, Msg),
+    ok = etorrent_rlimit:recv(PacketSize),
     NewCount = case Msg of {piece, _, _, _} -> 0;
                            _ -> S#state.last_piece_msg_count
                end,
