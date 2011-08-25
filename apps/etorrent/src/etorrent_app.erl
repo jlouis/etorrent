@@ -43,6 +43,7 @@ start(_Type, _Args) ->
     case etorrent_sup:start_link(PeerId) of
 	{ok, Pid} ->
         etorrent_log:init_settings(),
+	    ok = etorrent_rlimit:init(),
 	    ok = etorrent_memory_logger:add_handler(),
 	    ok = etorrent_file_logger:add_handler(),
 	    ok = etorrent_callback_handler:add_handler(),
