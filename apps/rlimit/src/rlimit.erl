@@ -68,8 +68,8 @@ join(_Name) ->
 %% @end
 -spec wait(atom(), non_neg_integer()) -> non_neg_integer().
 wait(Name, _Version) ->
-    %% @todo Hopefully, the scheduler will provide enough of a delay.
-    erlang:yield(),
+    %% @todo Don't sleep for an arbitrary amount of time.
+    timer:sleep(100),
     %% @todo Warn when NewVersion =:= Version
     ets:lookup_element(Name, version, 2).
 
