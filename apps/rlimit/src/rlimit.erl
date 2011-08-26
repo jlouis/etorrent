@@ -26,7 +26,7 @@
 
 %% @doc Create a new rate limited flow.
 %% @end
--spec new(atom(), non_neg_integer(), non_neg_integer()) -> ok.
+-spec new(atom(), pos_integer() | infinity, non_neg_integer()) -> ok.
 new(Name, Limit, Interval) ->
     ets:new(Name, [public, named_table, set]),
     {ok, TRef} = timer:apply_interval(Interval, ?MODULE, reset, [Name]),
@@ -50,6 +50,8 @@ take(N, Name) when is_integer(N), N >= 0, is_atom(Name) ->
     Limit = ets:lookup_element(Name, limit, 2),
     take(N, Name, Limit).
 
+take(_N, _Name, infinity) ->
+    ok;
 take(N, Name, Limit) when N >= 0 ->
     case ets:update_counter(Name, tokens, {2,N}) of
         %% Limit exceeded. Keep the amount of tokens that we did
