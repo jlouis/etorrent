@@ -18,7 +18,7 @@
 %% multiple intervals.
 
 %% exported functions
--export([new/3, take/2]).
+-export([new/3, join/1, wait/2, take/2]).
 
 %% private functions
 -export([reset/1]).
@@ -31,7 +31,9 @@ new(Name, Limit, Interval) ->
     ets:new(Name, [public, named_table, set]),
     {ok, TRef} = timer:apply_interval(Interval, ?MODULE, reset, [Name]),
     ets:insert(Name, [
+        {version, 0},
         {limit, Limit},
+        {fair, Limit},
         {tokens, 0},
         {timer, TRef}]),
     ok.
@@ -39,8 +41,31 @@ new(Name, Limit, Interval) ->
 %% @private Reset the token counter of a flow.
 -spec reset(atom()) -> true.
 reset(Name) ->
-    ets:insert(Name, {tokens, 0}).
+    %% The version number starts at 0 and restarts when it reaches 16#FFFF.
+    %% The version number can be rolling because we only use it as a way to
+    %% tell logical intervals apart.
+    ets:update_counter(Name, version, {2,1,16#FFFF,0}),
+    %% Add Limit number of tokens to the bucket at the start of each interval.
+    Limit = ets:lookup_element(Name, limit, 2),
+    %% @todo Cap the token counter to Limit multiple a number of intevals to
+    %% protect us from huge bursts after idle intervals. Use 5 intervals as
+    %% a reasonable default for now.
+    Cap = Limit * 5,
+    ets:update_counter(Name, tokens, {2,Limit,Cap,Cap}).
 
+%% @doc Add the current process as the member of a flow.
+%% The process is removed from the flow when it exists. Exiting is the only
+%% way to remove a member of a flow.
+%% @end
+-spec join(atom()) -> ok.
+join(_Name) ->
+    ok.
+
+%% @doc Wait until the start of the next interval.
+%% @end
+-spec wait(atom(), non_neg_integer()) -> ok.
+wait(_Name, _Version) ->
+    ok.
 
 
 %% @doc Aquire a slot to send or receive N tokens.
