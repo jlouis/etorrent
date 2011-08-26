@@ -33,8 +33,9 @@ new(Name, Limit, Interval) ->
     ets:insert(Name, [
         {version, 0},
         {limit, Limit},
+        {burst, 5 * Limit},
         {fair, Limit},
-        {tokens, Limit},
+        {tokens, Limit * 5},
         {timer, TRef}]),
     ok.
 
@@ -48,11 +49,11 @@ reset(Name) ->
     ets:update_counter(Name, version, {2,1,16#FFFF,0}),
     %% Add Limit number of tokens to the bucket at the start of each interval.
     Limit = ets:lookup_element(Name, limit, 2),
-    %% @todo Cap the token counter to Limit multiple a number of intevals to
-    %% protect us from huge bursts after idle intervals. Use 5 intervals as
-    %% a reasonable default for now.
-    Cap = Limit * 5,
-    ets:update_counter(Name, tokens, {2,Limit,Cap,Cap}).
+    %% Cap the token counter to Limit multiple a number of intevals to protect
+    %% us from huge bursts after idle intervals. The default is to only accumulate
+    %% five intervals worth of tokens in the bucket.
+    Burst = ets:lookup_element(Name, burst, 2),
+    ets:update_counter(Name, tokens, {2,Limit,Burst,Burst}).
 
 
 %% @doc Add the current process as the member of a flow.
@@ -61,6 +62,7 @@ reset(Name) ->
 %% @end
 -spec join(atom()) -> ok.
 join(_Name) ->
+    random:seed(now()),
     ok.
 
 
@@ -113,3 +115,42 @@ take(N, Name, Limit, Version) when N >= 0 ->
                     take(N, Name, Limit, NewVersion)
             end
     end.
+
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+
+
+-define(setup(Test),
+    {spawn,
+    {setup, local,
+        fun() ->
+            rlimit:new(test_flow, 512, 1000),
+            rlimit:join(test_flow)
+        end,
+        fun(_) -> ok end,
+        ?_test(Test)}}).
+
+rlimit_test_() ->
+    {inorder,
+        [?setup(reset_once()),
+         ?setup(take_small()),
+         ?setup(take_large()),
+         ?setup(take_larger()),
+         ?setup(take_huge())]}.
+
+reset_once() ->
+    rlimit:reset(test_flow).
+
+take_small() ->
+    ok = rlimit:take(512 div 16, test_flow).
+
+take_large() ->
+    ok = rlimit:take(512, test_flow).
+
+take_larger() ->
+    ok = rlimit:take(512 * 2, test_flow).
+
+take_huge() ->
+    ok = rlimit:take(512 * 6, test_flow).
+
+-endif.
