@@ -38,6 +38,7 @@ new(Name, Limit, Interval) ->
         {timer, TRef}]),
     ok.
 
+
 %% @private Reset the token counter of a flow.
 -spec reset(atom()) -> true.
 reset(Name) ->
@@ -53,6 +54,7 @@ reset(Name) ->
     Cap = Limit * 5,
     ets:update_counter(Name, tokens, {2,Limit,Cap,Cap}).
 
+
 %% @doc Add the current process as the member of a flow.
 %% The process is removed from the flow when it exists. Exiting is the only
 %% way to remove a member of a flow.
@@ -61,11 +63,14 @@ reset(Name) ->
 join(_Name) ->
     ok.
 
+
 %% @doc Wait until the start of the next interval.
 %% @end
--spec wait(atom(), non_neg_integer()) -> ok.
-wait(_Name, _Version) ->
-    ok.
+-spec wait(atom(), non_neg_integer()) -> non_neg_integer().
+wait(Name, _Version) ->
+    %% @todo Hopefully, the scheduler will provide enough of a delay.
+    erlang:yield(),
+    ets:lookup_element(Name, version, 2).
 
 
 %% @doc Aquire a slot to send or receive N tokens.
@@ -73,23 +78,21 @@ wait(_Name, _Version) ->
 -spec take(non_neg_integer(), atom()) -> ok.
 take(N, Name) when is_integer(N), N >= 0, is_atom(Name) ->
     Limit = ets:lookup_element(Name, limit, 2),
-    take(N, Name, Limit).
+    Version = ets:lookup_element(Name, version, 2),
+    take(N, Name, Limit, Version).
 
-take(_N, _Name, infinity) ->
+take(_N, _Name, infinity, _Version) ->
     ok;
-take(N, Name, Limit) when N >= 0 ->
+take(N, Name, Limit, Version) when N >= 0 ->
     case ets:update_counter(Name, tokens, {2,N}) of
         %% Limit exceeded. Keep the amount of tokens that we did
         %% manage to take before exceeding the limit.
         Tokens when Tokens >= Limit ->
             Over = Tokens - Limit,
             Under = N - Over,
-            %% Hopefully, the scheduler will provide enough of a delay
-            %% for the token counter to reset inbetween. If not, we'll
-            %% notice this function being called a substantial number
-            %% of times more than take/2.
-            erlang:yield(),
-            take(N-Under, Name, Limit);
+            NewVersion = wait(Name, Version),
+            %% @todo Warn when NewVersion =:= Version
+            take(N-Under, Name, Limit, NewVersion);
         Tokens when Tokens < Limit ->
             %% Use difference between token counter and the token limit
             %% to compute the probability of a message being delayed.
@@ -102,8 +105,8 @@ take(N, Name, Limit) when N >= 0 ->
                     %% Ensure that the token counter is never negative. We will loose
                     %% some tokens if the token counter was reset inbetween.
                     ets:update_counter(Name, tokens, {2,-N,0,0}),
-                    erlang:yield(),
-                    take(N, Name, Limit);
+                    NewVersion = wait(Name, Version),
+                    take(N, Name, Limit, NewVersion);
                 _ ->
                     ok
             end
