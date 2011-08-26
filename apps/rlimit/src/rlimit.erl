@@ -34,7 +34,7 @@ new(Name, Limit, Interval) ->
         {version, 0},
         {limit, Limit},
         {fair, Limit},
-        {tokens, 0},
+        {tokens, Limit},
         {timer, TRef}]),
     ok.
 
@@ -70,6 +70,7 @@ join(_Name) ->
 wait(Name, _Version) ->
     %% @todo Hopefully, the scheduler will provide enough of a delay.
     erlang:yield(),
+    %% @todo Warn when NewVersion =:= Version
     ets:lookup_element(Name, version, 2).
 
 
@@ -84,30 +85,31 @@ take(N, Name) when is_integer(N), N >= 0, is_atom(Name) ->
 take(_N, _Name, infinity, _Version) ->
     ok;
 take(N, Name, Limit, Version) when N >= 0 ->
-    case ets:update_counter(Name, tokens, {2,N}) of
-        %% Limit exceeded. Keep the amount of tokens that we did
-        %% manage to take before exceeding the limit.
-        Tokens when Tokens >= Limit ->
-            Over = Tokens - Limit,
-            Under = N - Over,
+    case ets:update_counter(Name, tokens, {2,-N}) of
+        %% Limit exceeded. Return all tokens and wait for next interval.
+        Tokens when Tokens =< 0 ->
+            ets:update_counter(Name, tokens, {2,N}),
             NewVersion = wait(Name, Version),
-            %% @todo Warn when NewVersion =:= Version
-            take(N-Under, Name, Limit, NewVersion);
-        Tokens when Tokens < Limit ->
-            %% Use difference between token counter and the token limit
-            %% to compute the probability of a message being delayed.
-            %% Add one token to the difference to ensure that a message
-            %% has a 50% chance, instead of 0%, of being sent when difference
-            %% is one token.
-            Distance = Limit - Tokens,
-            case random:uniform(Distance) of
-                1 ->
-                    %% Ensure that the token counter is never negative. We will loose
-                    %% some tokens if the token counter was reset inbetween.
-                    ets:update_counter(Name, tokens, {2,-N,0,0}),
+            take(N, Name, Limit, NewVersion);
+        Tokens ->
+            %% Use difference between the bottom of the bucket and the previous
+            %% token count and the packet size to compute the probability of a
+            %% message being delayed.
+            %% This gives smaller control protocol messages a higher likelyness of
+            %% receiving service, avoiding starvation from larger data protocol
+            %% messages consuming the rate of entire intervals when a low rate
+            %% is used.
+            PreviousTokens = Tokens + N,
+            case random:uniform(PreviousTokens) of
+                %% Allow message if the random number falls within
+                %% the range of tokens left in the bucket after take.
+                Rand when Rand =< Tokens ->
+                    ok;
+                 %% Disallow message if the random number falls within
+                 %% the range of the tokens taken from the bucket.
+                 Rand when Rand > Tokens ->
+                    ets:update_counter(Name, tokens, {2,N}),
                     NewVersion = wait(Name, Version),
-                    take(N, Name, Limit, NewVersion);
-                _ ->
-                    ok
+                    take(N, Name, Limit, NewVersion)
             end
     end.
