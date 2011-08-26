@@ -15,10 +15,10 @@
 %% @end
 -spec init() -> ok.
 init() ->
-    DownloadLimit = etorrent_config:max_download_limit(),
-    UploadLimit = etorrent_config:max_upload_limit(),
-    ok = rlimit:new(?DOWNLOAD, DownloadLimit, 1000),
-    ok = rlimit:new(?UPLOAD, UploadLimit, 1000).
+    DLRate = etorrent_config:max_download_rate(),
+    ULRate = etorrent_config:max_upload_rate(),
+    ok = rlimit:new(?DOWNLOAD, DLRate, 1000),
+    ok = rlimit:new(?UPLOAD, ULRate, 1000).
 
 %% @doc Aquire a send slot.
 %% @end
