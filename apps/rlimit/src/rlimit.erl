@@ -82,7 +82,11 @@ wait(Name, _Version) ->
 take(N, Name) when is_integer(N), N >= 0, is_atom(Name) ->
     Limit = ets:lookup_element(Name, limit, 2),
     Version = ets:lookup_element(Name, version, 2),
-    take(N, Name, Limit, Version).
+    Before = now(),
+    ok = take(N, Name, Limit, Version),
+    After = now(),
+    _Delay = timer:now_diff(After, Before),
+    ok.
 
 take(_N, _Name, infinity, _Version) ->
     ok;
