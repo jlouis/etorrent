@@ -92,7 +92,7 @@ cb_go_fast(P) ->
 %% @end
 -spec cb_go_slow(pid()) -> ok.
 cb_go_slow(P) ->
-    gen_server:call(P, go_slow).
+    gen_server:call(P, go_slow, infinity).
 
 %% =======================================================================
 

@@ -18,7 +18,7 @@
 %% multiple intervals.
 
 %% exported functions
--export([new/3, join/1, wait/2, take/2]).
+-export([new/3, join/1, wait/2, atake/3, take/2]).
 
 %% private functions
 -export([reset/1]).
@@ -74,6 +74,15 @@ wait(Name, _Version) ->
     timer:sleep(100),
     %% @todo Warn when NewVersion =:= Version
     ets:lookup_element(Name, version, 2).
+
+%% @doc Asynchronously aquire a slot to send or receive N tokens.
+%% A user defined message will be sent to the calling process once a slot
+%% has been aquired. A linked process is started to perform the operation.
+%% @end
+-spec atake(non_neg_integer(), term(), atom()) -> pid().
+atake(N, Message, Name) ->
+    Caller = self(),
+    spawn_link(fun() -> take(N, Name), Caller ! Message end).
 
 
 %% @doc Aquire a slot to send or receive N tokens.
@@ -150,7 +159,8 @@ rlimit_test_() ->
          ?setup(take_small()),
          ?setup(take_large()),
          ?setup(take_larger()),
-         ?setup(take_huge())]}.
+         ?setup(take_huge()),
+         ?setup(async_take())]}.
 
 reset_once() ->
     rlimit:reset(test_flow).
@@ -166,5 +176,10 @@ take_larger() ->
 
 take_huge() ->
     ok = rlimit:take(512 * 6, test_flow).
+
+async_take() ->
+    Pid = rlimit:atake(512, continue, test_flow),
+    receive continue -> ok end,
+    false = is_process_alive(Pid).
 
 -endif.
