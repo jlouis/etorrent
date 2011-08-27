@@ -34,7 +34,7 @@ new(Name, Limit, Interval) ->
         {version, 0},
         {limit, Limit},
         {burst, 5 * Limit},
-        {fair, Limit},
+        {fair, Limit div 5}, %% Should be limit / size(group)
         {tokens, Limit * 5},
         {timer, TRef}]),
     ok.
@@ -87,13 +87,14 @@ take(N, Name) when is_integer(N), N >= 0, is_atom(Name) ->
 take(_N, _Name, infinity, _Version) ->
     ok;
 take(N, Name, Limit, Version) when N >= 0 ->
-    case ets:update_counter(Name, tokens, {2,-N}) of
-        %% Limit exceeded. Return all tokens and wait for next interval.
-        Tokens when Tokens =< 0 ->
-            ets:update_counter(Name, tokens, {2,N}),
+    M = slice(N, Limit),
+    case ets:update_counter(Name, tokens, [{2,0},{2,-M}]) of
+        %% Empty bucket. Wait until the next interval for more tokens.
+        [_, Tokens] when Tokens =< 0 ->
+            ets:update_counter(Name, tokens, {2,M}),
             NewVersion = wait(Name, Version),
             take(N, Name, Limit, NewVersion);
-        Tokens ->
+        [Previous, Tokens] ->
             %% Use difference between the bottom of the bucket and the previous
             %% token count and the packet size to compute the probability of a
             %% message being delayed.
@@ -101,8 +102,7 @@ take(N, Name, Limit, Version) when N >= 0 ->
             %% receiving service, avoiding starvation from larger data protocol
             %% messages consuming the rate of entire intervals when a low rate
             %% is used.
-            PreviousTokens = Tokens + N,
-            case random:uniform(PreviousTokens) of
+            case random:uniform(Previous) of
                 %% Allow message if the random number falls within
                 %% the range of tokens left in the bucket after take.
                 Rand when Rand =< Tokens ->
@@ -110,11 +110,21 @@ take(N, Name, Limit, Version) when N >= 0 ->
                  %% Disallow message if the random number falls within
                  %% the range of the tokens taken from the bucket.
                  Rand when Rand > Tokens ->
-                    ets:update_counter(Name, tokens, {2,N}),
+                    ets:update_counter(Name, tokens, {2,M}),
                     NewVersion = wait(Name, Version),
                     take(N, Name, Limit, NewVersion)
             end
     end.
+
+%% @private Only take at most Limit tokens during an interval.
+%% This ensures that we can send messages that are larger than
+%% the Limit/Burst of a flow.
+-spec slice(non_neg_integer(), non_neg_integer()) -> non_neg_integer().
+slice(Tokens, Limit) when Tokens > Limit ->
+    Limit;
+slice(Tokens, Limit) when Tokens =< Limit ->
+    Tokens.
+
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
