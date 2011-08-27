@@ -34,5 +34,7 @@ recv(Bytes) ->
     rlimit:take(Bytes, ?DOWNLOAD).
 
 %% @private Convert KB/s to B/s
+to_byte_rate(infinity) ->
+    infinity;
 to_byte_rate(KB) ->
     1024 * KB.
