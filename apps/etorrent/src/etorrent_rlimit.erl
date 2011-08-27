@@ -15,10 +15,10 @@
 %% @end
 -spec init() -> ok.
 init() ->
-    DownloadLimit = etorrent_config:max_download_limit(),
-    UploadLimit = etorrent_config:max_upload_limit(),
-    ok = rlimit:new(?DOWNLOAD, DownloadLimit, 1000),
-    ok = rlimit:new(?UPLOAD, UploadLimit, 1000).
+    DLRate = etorrent_config:max_download_rate(),
+    ULRate = etorrent_config:max_upload_rate(),
+    ok = rlimit:new(?DOWNLOAD, to_byte_rate(DLRate), 1000),
+    ok = rlimit:new(?UPLOAD, to_byte_rate(ULRate), 1000).
 
 %% @doc Aquire a send slot.
 %% @end
@@ -32,3 +32,7 @@ send(Bytes) ->
 -spec recv(non_neg_integer()) -> ok.
 recv(Bytes) ->
     rlimit:take(Bytes, ?DOWNLOAD).
+
+%% @private Convert KB/s to B/s
+to_byte_rate(KB) ->
+    1024 * KB.
