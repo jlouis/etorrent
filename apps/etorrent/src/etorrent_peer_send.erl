@@ -364,14 +364,10 @@ handle_cast({remote_request, Index, Offset, Len},
             NQ = queue:in({Index, Offset, Len}, S#state.requests),
             {noreply, S#state{requests = NQ}, 0}
     end;
-handle_cast({go_fast, Pid}, S) ->
-    ok = etorrent_peer_recv:cb_go_fast(Pid),
-    {noreply, S#state { mode = fast }};
-handle_cast({go_slow, Pid}, S) ->
-    ok = etorrent_peer_recv:cb_go_slow(Pid),
-    {noreply, S#state { mode = slow }};
-handle_cast(_Msg, S) ->
-    {noreply, S}.
+
+handle_cast(Msg, State) ->
+    {stop, Msg, State}.
+
 
 %% @private
 terminate(_Reason, _S) ->
@@ -380,4 +376,3 @@ terminate(_Reason, _S) ->
 %% @private
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
-
