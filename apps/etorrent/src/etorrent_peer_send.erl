@@ -51,13 +51,10 @@
 
 -ignore_xref({start_link, 5}).
 
--type( mode() :: 'fast' | 'slow').
-
 -record(state, {
     socket = none                :: none | gen_tcp:socket(),
     requests                     :: queue(),
     fast_extension = false       :: boolean(),
-    mode = slow                  :: mode(),
     control_pid = none           :: none | pid(),
     rate                         :: etorrent_rate:rate(),
     choke = true                 :: boolean(),
@@ -203,7 +200,7 @@ send_message(Msg, S, Timeout) ->
     end.
 
 send(Msg, #state { torrent_id = Id} = S) ->
-    case etorrent_proto_wire:send_msg(S#state.socket, Msg, S#state.mode) of
+    case etorrent_proto_wire:send_msg(S#state.socket, Msg) of
         {ok, Sz} ->
             NR = etorrent_rate:update(S#state.rate, Sz),
             ok = etorrent_torrent:statechange(Id, [{add_upload, Sz}]),
