@@ -12,11 +12,11 @@
 %% beware of that</p>
 %% @end
 -module(etorrent_peer_send).
+-behaviour(gen_server).
 
 -include("etorrent_rate.hrl").
 -include("log.hrl").
 
--behaviour(gen_server).
 
 -ignore_xref([{'start_link', 3}]).
 %% Apart from standard gen_server things, the main idea of this module is
@@ -25,14 +25,15 @@
 %% messages one can send to a peer.
 -export([start_link/3,
          check_choke/1,
-
-         go_fast/1,
-         go_slow/1,
-
-         local_request/2, remote_request/4, cancel/4,
-         choke/1, unchoke/1, have/2,
-         not_interested/1, interested/1,
-	 extended_msg/1,
+         local_request/2,
+         remote_request/4,
+         cancel/4,
+         choke/1,
+         unchoke/1,
+         have/2,
+         not_interested/1,
+         interested/1,
+         extended_msg/1,
          bitfield/2]).
 
 %% gproc registry entries
@@ -41,23 +42,28 @@
          await_server/1]).
 
 %% gen_server callbacks
--export([init/1, handle_info/2, terminate/2, code_change/3,
-         handle_call/3, handle_cast/2]).
+-export([init/1,
+         handle_call/3,
+         handle_cast/2,
+         handle_info/2,
+         terminate/2,
+         code_change/3]).
+
 -ignore_xref({start_link, 5}).
 
 -type( mode() :: 'fast' | 'slow').
 
--record(state, {socket = none                :: none | gen_tcp:socket(),
-                requests                     :: queue(),
-                fast_extension = false       :: boolean(),
-                mode = slow                  :: mode(),
-		control_pid = none           :: none | pid(),
-                rate                         :: etorrent_rate:rate(),
-                choke = true                 :: boolean(),
-		%% Are we interested in the peer?
-                interested = false           :: boolean(),
-                torrent_id                   :: integer(),
-                file_system_pid              :: pid() }).
+-record(state, {
+    socket = none                :: none | gen_tcp:socket(),
+    requests                     :: queue(),
+    fast_extension = false       :: boolean(),
+    mode = slow                  :: mode(),
+    control_pid = none           :: none | pid(),
+    rate                         :: etorrent_rate:rate(),
+    choke = true                 :: boolean(),
+    %% Are we interested in the peer?
+    interested = false           :: boolean(),
+    torrent_id                   :: integer()}).
 
 -define(DEFAULT_KEEP_ALIVE_INTERVAL, 120*1000). % From proto. spec.
 -define(MAX_REQUESTS, 1024). % Maximal number of requests a peer may make.
@@ -171,26 +177,6 @@ bitfield(Pid, BitField) ->
 -spec extended_msg(pid()) -> ok.
 extended_msg(Pid) ->
     gen_server:cast(Pid, extended_msg).
-
-%% @doc Request that we enable fast messaging mode.
-%% <p>In this mode, message encoding is done by the underlying Erlang
-%% VM and not by us.</p>
-%% <p><b>Note:</b> The only intended caller of this function is {@link
-%% etorrent_peer_recv}, when it wants synchronization on the gear cange.</p>
-%% @end
--spec go_fast(pid()) -> ok.
-go_fast(Pid) ->
-    gen_server:cast(Pid, {go_fast, self()}).
-
-%% @doc Request that we enable slow messaging mode.
-%% <p>In this mode, message encoding is done by the code in this
-%% module, not by the VM kernel</p>
-%% <p><b>Note:</b> The only intended caller of this function is {@link
-%% etorrent_peer_recv}, when it wants synchronization on the gear cange.</p>
-%% @end
--spec go_slow(pid()) -> ok.
-go_slow(Pid) ->
-    gen_server:cast(Pid, {go_slow, self()}).
 
 
 %%--------------------------------------------------------------------
