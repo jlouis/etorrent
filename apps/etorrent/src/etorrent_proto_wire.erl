@@ -14,7 +14,7 @@
 -endif.
 
 -export([incoming_packet/2,
-	 send_msg/3,
+	 send_msg/2,
 	 decode_bitfield/2,
 	 encode_bitfield/2,
 	 decode_msg/1,
@@ -122,17 +122,11 @@ incoming_packet({partial, {Left, IOL}}, Packet)
 %% <p>The Mode supplied is either 'fast' or 'slow' depending on the
 %% mode of the Socket in question.</p>
 %% @end
--spec send_msg(port(), packet(), slow | fast) -> {ok | {error, term()},
-                                                  integer()}.
-send_msg(Socket, Msg, Mode) ->
+-spec send_msg(port(), packet()) -> {ok | {error, term()}, integer()}.
+send_msg(Socket, Msg) ->
     Datagram = encode_msg(Msg),
     Sz = byte_size(Datagram),
-    case Mode of
-        slow ->
-            {gen_tcp:send(Socket, <<Sz:32/big, Datagram/binary>>), Sz};
-        fast ->
-            {gen_tcp:send(Socket, Datagram), Sz}
-    end.
+    {gen_tcp:send(Socket, [<<Sz:32/big>>, Datagram]), Sz}.
 
 %% @doc Decode a binary bitfield into a pieceset
 %% @end
