@@ -423,13 +423,52 @@ handle_message(not_interested, State) ->
     NewState = State#state{remote=NewRemote},
     {ok, NewState};
 
-handle_message({request, Index, Offset, Len}, S) ->
-    etorrent_peer_send:remote_request(S#state.send_pid, Index, Offset, Len),
-    {ok, S};
+handle_message({request, Index, Offset, Length}, State) ->
+    #state{remote=Remote, config=Config, send_pid=SendPid} = State,
+    Requests = etorrent_peerstate:requests(Remote),
+    IsOverlimit = etorrent_rqueue:is_overlimit(Requests),
+    FastEnabled = etorrent_peerconf:fast(Config),
+    case etorrent_peerstate:choked(Remote) of
+        %% The remote peer is choked by the local peer. The peer should not
+        %% expect a PIECE message as a response while in this state. It was
+        %% most likely sent before it received the CHOKE message from us.
+        true when FastEnabled ->
+            %% In the original bittorrent specification the behaviour
+            %% in this situation was undefined. The FAST extension adds
+            %% a REJECT message which makes more sense than replying to
+            %% or dropping the request on the floor.
+            etorrent_peer_send:reject(SendPid, Index, Offset, Length),
+            {ok, State};
+        true ->
+            {ok, State};
 
-handle_message({cancel, Index, Offset, Len}, S) ->
-    etorrent_peer_send:cancel(S#state.send_pid, Index, Offset, Len),
-    {ok, S};
+        false when IsOverlimit, FastEnabled ->
+            %% We can only signal that we are only accepting a limited amount
+            %% of pipelined requests if the FAST extension is used.
+            etorrent_peer_send:reject(SendPid, Index, Offset, Length),
+            {ok, State};
+
+        false when IsOverlimit ->
+            {stop, max_queue_len_exceeded, State};
+
+        false ->
+            %% The remote peer is unchoked by the local peer. The peer expects a
+            %% PIECE message as a response to this message. If the local peer
+            %% chokes the remote peer before a response is sent the same rules
+            %% apply to this request as a requests received after the choke.
+            NewRequests = etorrent_rqueue:push(Index, Offset, Length, Requests),
+            NewRemote = etorrent_peerstate:requests(NewRequests, Remote),
+            NewState = State#state{remote=NewRemote},
+            {ok, NewState}
+    end;
+
+handle_message({cancel, Index, Offset, Length}, State) ->
+    #state{remote=Remote} = State,
+    Requests = etorrent_peerstate:requests(Remote),
+    NewRequests = etorrent_rqueue:delete(Index, Offset, Length, Requests),
+    NewRemote = etorrent_peerstate:requests(NewRequests, Remote),
+    NewState = State#state{remote=NewRemote},
+    {ok, State};
 
 handle_message({suggest, Piece}, State) ->
     #state{config=Config} = State,
