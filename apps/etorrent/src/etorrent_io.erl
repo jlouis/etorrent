@@ -55,6 +55,7 @@
          piece_sizes/1,
          read_piece/2,
          read_chunk/4,
+         aread_chunk/4,
          write_chunk/4,
          file_paths/1,
          file_sizes/1,
@@ -177,6 +178,21 @@ read_chunk(TorrentID, Piece, Offset, Length) ->
     ChunkPositions  = chunk_positions(Offset, Length, Positions),
     BlockList = read_file_blocks(TorrentID, ChunkPositions),
     {ok, iolist_to_binary(BlockList)}.
+
+
+%% @doc Read a chunk from disk and send it to the calling process.
+%% @end
+-spec aread_chunk(torrent_id(), piece_index(),
+                  chunk_offset(), chunk_len()) -> {ok, pid()}.
+aread_chunk(TorrentID, Piece, Offset, Length) ->
+    Caller = self(),
+    Pid = spawn_link(fun() ->
+        {ok, Data} = read_chunk(TorrentID, Piece, Offset, Length),
+        ok = etorrent_chunkstate:contents(Piece, Offset, Length, Data, Caller)
+    end),
+    {ok, Pid}.
+
+
 
 %% @doc
 %% Write a chunk to a piece by writing parts of the block
