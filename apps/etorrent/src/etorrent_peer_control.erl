@@ -215,6 +215,35 @@ poll_local_rqueue(Download, SendPid, Remote, Local) ->
             end
     end.
 
+%% @private Check if a new asynchronous chunk read needs to be started.
+%% A new chunk read should be started when a REQUEST message is pushed into an
+%% empty request queue. The calling code is expected to only call this function
+%% when the local peer is expected to send a PIECE request.
+push_remote_rqueue_hook(TorrentID, Requests) ->
+    case etorrent_rqueue:size(Requests) of
+        1 ->
+            {Piece, Offset, Length} = etorrent_rqueue:peek(Requests),
+            {ok, _} = etorrent_io:aread_chunk(TorrentID, Piece, Offset, Length),
+            ok;
+        N when N > 1 ->
+            ok
+    end.
+
+
+%% @private Check if a new asynchronous chunk read needs to be started.
+%% A new chunk read should be started when a REQUEST message is popped from a non
+%% empty request queue. The calling code is expected to call this function with
+%% the most recent version of the queue.
+pop_remote_rqueue_hook(TorrentID, Requests) ->
+    case etorrent_rqueue:size(Requests) of
+        0 ->
+            ok;
+        N when N > 0 ->
+            {Piece, Offset, Length} = etorrent_rqueue:peek(Requests),
+            {ok, _} = etorrent_io:aread_chunk(TorrentID, Piece, Offset, Length),
+            ok
+    end.
+
 
 %% @private
 init([TrackerUrl, LocalPeerID, InfoHash, TorrentID, {IP, Port}, Caps, Socket]) ->
@@ -458,6 +487,7 @@ handle_message({request, Index, Offset, Length}, State) ->
             %% PIECE message as a response to this message. If the local peer
             %% chokes the remote peer before a response is sent the same rules
             %% apply to this request as a requests received after the choke.
+            ok = push_remote_rqueue_hook(NewRequests),
             NewRemote = etorrent_peerstate:requests(NewRequests, Remote),
             NewState = State#state{remote=NewRemote},
             {ok, NewState}
