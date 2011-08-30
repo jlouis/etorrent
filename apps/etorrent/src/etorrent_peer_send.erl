@@ -25,7 +25,7 @@
 %% messages one can send to a peer.
 -export([start_link/3,
          check_choke/1,
-         local_request/2,
+         request/2,
          remote_request/4,
          cancel/4,
          choke/1,
@@ -104,7 +104,7 @@ remote_request(Pid, Index, Offset, Len) ->
     gen_server:cast(Pid, {remote_request, Index, Offset, Len}).
 
 %%--------------------------------------------------------------------
-%% Func: local_request(Pid, Index, Offset, Len)
+%% Func: request(Pid, Index, Offset, Len)
 %% Description: We request a piece from the peer: {Index, Offset, Len}
 %%--------------------------------------------------------------------
 
@@ -112,9 +112,9 @@ remote_request(Pid, Index, Offset, Len) ->
 %% <p>The dual to {@link remote_request/4}. We queue up a chunk for
 %% the peer to send back to us</p>
 %% @end
--spec local_request(pid(), {integer(), integer(), integer()}) -> ok.
-local_request(Pid, {Index, Offset, Size}) ->
-    gen_server:cast(Pid, {local_request, {Index, Offset, Size}}).
+-spec request(pid(), {integer(), integer(), integer()}) -> ok.
+request(Pid, {Index, Offset, Size}) ->
+    gen_server:cast(Pid, {request, {Index, Offset, Size}}).
 
 %% @doc Send a CANCEL message.
 %% @end
@@ -340,7 +340,7 @@ handle_cast({cancel, Index, OffSet, Len}, S) ->
     NQ = etorrent_utils:queue_remove({Index, OffSet, Len}, S#state.requests),
     {noreply, S#state{requests = NQ}, 0};
 
-handle_cast({local_request, {Index, Offset, Size}}, S) ->
+handle_cast({request, {Index, Offset, Size}}, S) ->
     send_message({request, Index, Offset, Size}, S);
 handle_cast({remote_request, Idx, Offset, Len},
     #state { fast_extension = true, choke = true } = S) ->

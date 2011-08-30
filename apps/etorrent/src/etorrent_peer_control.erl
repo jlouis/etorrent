@@ -208,7 +208,7 @@ poll_local_rqueue(Download, SendPid, Remote, Local) ->
                 {ok, assigned} ->
                     Local;
                 {ok, Chunks} ->
-                    [etorrent_peer_send:local_request(SendPid, Chunk)
+                    [etorrent_peer_send:request(SendPid, Chunk)
                     || Chunk <- Chunks],
                     NewRequests = etorrent_rqueue:push(Chunks, Requests),
                     etorrent_peerstate:requests(NewRequests, Local)
@@ -352,6 +352,8 @@ handle_info({chunk, {contents, Index, Offset, Length, Data}}, State) ->
             NewState = State#state{remote=NewRemote},
             ok = pop_remote_rqueue_hook(TorrentID, NewRequests),
             {noreply, NewState};
+        %% Same as clause #2. Peer returned to unchoked state. Non empty queue
+        %% while choked is considered invalid. It should have been flushed.
         {_Index, _Offset, _Length} when not Choked ->
             {noreply, State}
     end;
