@@ -426,7 +426,8 @@ handle_message(not_interested, State) ->
 handle_message({request, Index, Offset, Length}, State) ->
     #state{remote=Remote, config=Config, send_pid=SendPid} = State,
     Requests = etorrent_peerstate:requests(Remote),
-    IsOverlimit = etorrent_rqueue:is_overlimit(Requests),
+    NewRequests = etorrent_rqueue:push(Index, Offset, Length, Requests),
+    IsOverlimit = etorrent_rqueue:is_overlimit(NewRequests),
     FastEnabled = etorrent_peerconf:fast(Config),
     case etorrent_peerstate:choked(Remote) of
         %% The remote peer is choked by the local peer. The peer should not
@@ -456,7 +457,6 @@ handle_message({request, Index, Offset, Length}, State) ->
             %% PIECE message as a response to this message. If the local peer
             %% chokes the remote peer before a response is sent the same rules
             %% apply to this request as a requests received after the choke.
-            NewRequests = etorrent_rqueue:push(Index, Offset, Length, Requests),
             NewRemote = etorrent_peerstate:requests(NewRequests, Remote),
             NewState = State#state{remote=NewRemote},
             {ok, NewState}
@@ -468,7 +468,7 @@ handle_message({cancel, Index, Offset, Length}, State) ->
     NewRequests = etorrent_rqueue:delete(Index, Offset, Length, Requests),
     NewRemote = etorrent_peerstate:requests(NewRequests, Remote),
     NewState = State#state{remote=NewRemote},
-    {ok, State};
+    {ok, NewState};
 
 handle_message({suggest, Piece}, State) ->
     #state{config=Config} = State,
