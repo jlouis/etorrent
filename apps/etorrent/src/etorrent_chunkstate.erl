@@ -228,7 +228,7 @@ test_stored() ->
 
 test_contents() ->
     ok = ?chunkstate:contents(1, 2, 3, <<1,2,3>>, self()),
-    ?assertEqual({chunk, {contents, 1, 2, 3, <<1,2,3>>}}).
+    ?assertEqual({chunk, {contents, 1, 2, 3, <<1,2,3>>}}, pop()).
 
 test_forward() ->
     Main = self(),

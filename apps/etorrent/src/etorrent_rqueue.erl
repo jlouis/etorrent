@@ -28,6 +28,7 @@
          is_head/4,
          has_offset/3,
          is_low/1,
+         is_overlimit/1,
          needs/1,
          member/4,
          delete/4]).
@@ -47,6 +48,9 @@
 
 
 %% @doc Create an empty request queue with default pipeline thresholds
+%% Note that the outgoing and incoming request queue are subject to different
+%% default thresholds. We should probably remove this function to avoid any
+%% confusion about this being equal.
 %% @end
 -spec new() -> rqueue().
 new() ->
@@ -182,6 +186,13 @@ is_low(Requestqueue) ->
     #requestqueue{low_limit=Low, queue=Queue} = Requestqueue,
     queue:len(Queue) =< Low.
 
+%% @doc Check if the number of open requests exceed the upper threshold.
+%% @end
+-spec is_overlimit(rqueue()) -> boolean().
+is_overlimit(Requestqueue) ->
+    #requestqueue{high_limit=High, queue=Queue} = Requestqueue,
+    queue:len(Queue) >= High.
+
 
 %% @doc Return the number of requests needed to fill the queue.
 %% If the queue already contains the number of requests specified
@@ -274,6 +285,16 @@ needs_test_() ->
      ?_assertEqual(1, ?rqueue:needs(Q2)),
      ?_assertEqual(0, ?rqueue:needs(Q3)),
      ?_assertEqual(0, ?rqueue:needs(Q4))].
+
+high_check_test_() ->
+    Q0 = ?rqueue:new(1, 3),
+    Q1 = ?rqueue:push([null], Q0),
+    Q3 = ?rqueue:push([null, null, null], Q0),
+    Q4 = ?rqueue:push([null, null, null, null], Q0),
+    [?_assertEqual(false, ?rqueue:is_overlimit(Q0)),
+     ?_assertEqual(false, ?rqueue:is_overlimit(Q1)),
+     ?_assertEqual(true,  ?rqueue:is_overlimit(Q3)),
+     ?_assertEqual(true,  ?rqueue:is_overlimit(Q4))].
 
 push_list_test_() ->
     Q0 = ?rqueue:new(),
