@@ -192,9 +192,11 @@ check_remote_seeder(Remote, Local) ->
             exit(seeder)
     end.
 
-%% @doc Check if the request queue is low
--spec poll_queue(tservices(), pid(), peerstate(), peerstate()) -> peerstate().
-poll_queue(Download, SendPid, Remote, Local) ->
+
+%% @private Check if the local request queue is low on requests.
+%% An updated copy of the local peer state is returned, including any new requests.
+-spec poll_local_rqueue(tservices(), pid(), peerstate(), peerstate()) -> peerstate().
+poll_local_rqueue(Download, SendPid, Remote, Local) ->
     case etorrent_peerstate:needreqs(Local) of
         false ->
             Local;
@@ -212,7 +214,6 @@ poll_queue(Download, SendPid, Remote, Local) ->
                     etorrent_peerstate:requests(NewRequests, Local)
             end
     end.
-
 
 
 %% @private
@@ -305,13 +306,13 @@ handle_info({piece, {valid, Piece}}, State) ->
     WithLocal = etorrent_peerstate:hasone(Piece, Local),
     ok        = etorrent_peer_send:have(SendPid, Piece),
     TmpLocal  = recheck_local_interest(Piece, Remote, WithLocal, SendPid),
-    NewLocal  = poll_queue(Download, SendPid, Remote, TmpLocal),
+    NewLocal  = poll_local_rqueue(Download, SendPid, Remote, TmpLocal),
     NewState  = State#state{local=NewLocal},
     {noreply, NewState};
 
 handle_info({piece, {unassigned, _}}, State) ->
     #state{download=Download, send_pid=SendPid, local=Local, remote=Remote} = State,
-    NewLocal = poll_queue(Download, SendPid, Remote, Local),
+    NewLocal = poll_local_rqueue(Download, SendPid, Remote, Local),
     NewState = State#state{local=NewLocal},
     {noreply, NewState};
 
@@ -403,7 +404,7 @@ handle_message(unchoke, State) ->
     #state{send_pid=SendPid, download=Download, local=Local, remote=Remote} = State,
     ok = etorrent_peer_states:set_unchoke(TorrentID, self()),
     TmpLocal = etorrent_peerstate:choked(false, Local),
-    NewLocal = poll_queue(Download, SendPid, Remote, TmpLocal),
+    NewLocal = poll_local_rqueue(Download, SendPid, Remote, TmpLocal),
     NewState = State#state{local=NewLocal},
     {ok, NewState};
 
@@ -486,7 +487,7 @@ handle_message({have, Piece}, State) ->
     ok        = etorrent_scarcity:add_piece(TorrentID, Piece, Pieceset),
     TmpLocal  = check_local_interest(Piece, Local, SendPid),
     NewRemote = check_remote_seeder(TmpRemote, TmpLocal),
-    NewLocal  = poll_queue(Download, SendPid, NewRemote, TmpLocal),
+    NewLocal  = poll_local_rqueue(Download, SendPid, NewRemote, TmpLocal),
     NewState  = State#state{remote=NewRemote, local=NewLocal},
     {ok, NewState};
 
@@ -508,7 +509,7 @@ handle_message(have_all, State) ->
     ok        = etorrent_scarcity:add_peer(TorrentID, Pieceset),
     TmpLocal  = check_local_interest(Pieceset, Local, SendPid),
     NewRemote = check_remote_seeder(TmpRemote, TmpLocal),
-    NewLocal  = poll_queue(Download, SendPid, NewRemote, TmpLocal),
+    NewLocal  = poll_local_rqueue(Download, SendPid, NewRemote, TmpLocal),
     NewState  = State#state{remote=NewRemote, local=NewLocal},
     {ok, NewState};
 
@@ -519,7 +520,7 @@ handle_message({bitfield, Bitfield}, State) ->
     ok        = etorrent_scarcity:add_peer(TorrentID, Pieceset),
     TmpLocal  = check_local_interest(Pieceset, Local, SendPid),
     NewRemote = check_remote_seeder(TmpRemote, TmpLocal),
-    NewLocal  = poll_queue(Download, SendPid, NewRemote, TmpLocal),
+    NewLocal  = poll_local_rqueue(Download, SendPid, NewRemote, TmpLocal),
     NewState  = State#state{remote=NewRemote, local=NewLocal},
     {ok, NewState};
 
@@ -535,7 +536,7 @@ handle_message({piece, Index, Offset, Data}, State) ->
             ok = etorrent_download:chunk_stored(Index, Offset, Length, Download),
             NewRequests = etorrent_rqueue:pop(Requests),
             TmpLocal = etorrent_peerstate:requests(NewRequests, Local),
-            poll_queue(Download, SendPid, Remote, TmpLocal);
+            poll_local_rqueue(Download, SendPid, Remote, TmpLocal);
         false ->
             %% Stray piece, we could try to get hold of it but for now we just
             %% throw it on the floor. TODO - crash if the fast extension is enabled?
