@@ -330,6 +330,32 @@ handle_info({chunk, {fetched, Index, Offset, Length, _}}, State) ->
     NewState = State#state{local=NewLocal},
     {noreply, NewState};
 
+handle_info({chunk, {contents, Index, Offset, Length, Data}}, State) ->
+    #state{torrent_id=TorrentID, send_pid=SendPid, remote=Remote} = State,
+    Requests = etorrent_peerstate:requests(Remote),
+    Choked = etorrent_peerstate:choked(Remote),
+    case etorrent_rqueue:peek(Requests) of
+        %% When the remote peer enters the choked state with a non-empty
+        %% request queue we are expecting to receive the result of the last
+        %% asynchronous chunk read in the choked state.
+        false when Choked ->
+            {noreply, State};
+        %% The same applies to a peer that has entered the choked state and
+        %% quickly re-entered the unchoked state. Use separate clause for now.
+        false when not Choked ->
+            {noreply, State};
+        %% We must only reply with a PIECE message if the request at the head
+        %% of the remote request queue matches and the peer is unchoked.
+        {Index, Offset, Length} when not Choked ->
+            NewRequests = etorrent_rqueue:pop(Requests),
+            NewRemote = etorrent_peerstate:requests(NewRequests, Remote),
+            NewState = State#state{remote=NewRemote},
+            ok = pop_remote_rqueue_hook(TorrentID, NewRequests),
+            {noreply, NewState};
+        {_Index, _Offset, _Length} when not Choked ->
+            {noreply, State}
+    end;
+
 handle_info({piece, {valid, Piece}}, State) ->
     #state{send_pid=SendPid, download=Download, local=Local, remote=Remote} = State,
     WithLocal = etorrent_peerstate:hasone(Piece, Local),
@@ -454,7 +480,7 @@ handle_message(not_interested, State) ->
     {ok, NewState};
 
 handle_message({request, Index, Offset, Length}, State) ->
-    #state{remote=Remote, config=Config, send_pid=SendPid} = State,
+    #state{torrent_id=TorrentID, remote=Remote, config=Config, send_pid=SendPid} = State,
     Requests = etorrent_peerstate:requests(Remote),
     NewRequests = etorrent_rqueue:push(Index, Offset, Length, Requests),
     IsOverlimit = etorrent_rqueue:is_overlimit(NewRequests),
@@ -487,7 +513,7 @@ handle_message({request, Index, Offset, Length}, State) ->
             %% PIECE message as a response to this message. If the local peer
             %% chokes the remote peer before a response is sent the same rules
             %% apply to this request as a requests received after the choke.
-            ok = push_remote_rqueue_hook(NewRequests),
+            ok = push_remote_rqueue_hook(TorrentID, NewRequests),
             NewRemote = etorrent_peerstate:requests(NewRequests, Remote),
             NewState = State#state{remote=NewRemote},
             {ok, NewState}
