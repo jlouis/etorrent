@@ -350,6 +350,7 @@ handle_info({chunk, {contents, Index, Offset, Length, Data}}, State) ->
             NewRequests = etorrent_rqueue:pop(Requests),
             NewRemote = etorrent_peerstate:requests(NewRequests, Remote),
             NewState = State#state{remote=NewRemote},
+            ok = etorrent_peer_send:piece(SendPid, Index, Offset, Length, Data),
             ok = pop_remote_rqueue_hook(TorrentID, NewRequests),
             {noreply, NewState};
         %% Same as clause #2. Peer returned to unchoked state. Non empty queue

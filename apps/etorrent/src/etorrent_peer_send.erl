@@ -23,11 +23,16 @@
 %% to serve as a mediator for the peer in the send direction. Precisely,
 %% we have a message we can send to the process, for each of the possible
 %% messages one can send to a peer.
+
+%% other functions
 -export([start_link/3,
-         check_choke/1,
-         request/2,
-         remote_request/4,
+         check_choke/1]).
+
+%% message functions
+-export([request/2,
+         piece/5,
          cancel/4,
+         reject/4,
          choke/1,
          unchoke/1,
          have/2,
@@ -90,37 +95,36 @@ lookup_server(Socket) ->
 await_server(Socket) ->
     etorrent_utils:await(server_name(Socket)).
 
+%% @private Server name for encoder process.
 server_name(Socket) ->
     {etorrent, Socket, encoder}.
 
 
-%% @doc Queue up a remote request
-%% <p>A remote request is a request from the peer at the other
-%% end. This call queues up the chunk request in our send queue.</p>
-%% @end
-%%--------------------------------------------------------------------
--spec remote_request(pid(), integer(), integer(), integer()) -> ok.
-remote_request(Pid, Index, Offset, Len) ->
-    gen_server:cast(Pid, {remote_request, Index, Offset, Len}).
-
-%%--------------------------------------------------------------------
-%% Func: request(Pid, Index, Offset, Len)
-%% Description: We request a piece from the peer: {Index, Offset, Len}
-%%--------------------------------------------------------------------
-
-%% @doc send a REQUEST message
-%% <p>The dual to {@link remote_request/4}. We queue up a chunk for
-%% the peer to send back to us</p>
+%% @doc send a REQUEST message to the remote peer.
 %% @end
 -spec request(pid(), {integer(), integer(), integer()}) -> ok.
 request(Pid, {Index, Offset, Size}) ->
     gen_server:cast(Pid, {request, {Index, Offset, Size}}).
 
-%% @doc Send a CANCEL message.
+%% @doc send a PIECE message to the remote peer.
+%% @end
+-spec piece(pid(), integer(), integer(), integer(), binary()) -> ok.
+piece(Pid, Index, Offset, Length, Data) ->
+    gen_server:cast(Pid, {piece, Index, Offset, Length, Data}).
+
+
+%% @doc Send a CANCEL message to the remote peer.
 %% @end
 -spec cancel(pid(), integer(), integer(), integer()) -> ok.
 cancel(Pid, Index, Offset, Len) ->
     gen_server:cast(Pid, {cancel, Index, Offset, Len}).
+
+%% @doc Send a REJECT message to the remote peer.
+%% @end
+-spec reject(pid(), integer(), integer(), integer()) -> ok.
+reject(Pid, Index, Offset, Length) ->
+    gen_server:cast(Pid, {reject, Index, Offset, Length}).
+
 
 %% @doc CHOKE the peer.
 %% @end
@@ -311,6 +315,10 @@ handle_cast(check_choke, #state { choke = false } = S) ->
     {noreply, S, 0};
 
 %% Regular messages. We just send them onwards on the wire.
+handle_cast({piece, Index, Offset, _, Data}, State) ->
+    send_message({piece, Index, Offset, Data}, State);
+handle_cast({reject, Index, Offset, Length}, State) ->
+    send_message({reject_request, Index, Offset, Length}, State);
 handle_cast({bitfield, BF}, S) ->
     send_message({bitfield, BF}, S);
 handle_cast(extended_msg, S) ->
