@@ -117,6 +117,7 @@ check_choke(Pid) ->
 request(Pid, {Index, Offset, Size}) ->
     forward_message(Pid, {request, {Index, Offset, Size}}).
 
+
 %% @doc send a PIECE message to the remote peer.
 %% @end
 -spec piece(pid(), integer(), integer(), integer(), binary()) -> ok.
@@ -130,6 +131,7 @@ piece(Pid, Index, Offset, Length, Data) ->
 cancel(Pid, Index, Offset, Len) ->
     forward_message(Pid, {cancel, Index, Offset, Len}).
 
+
 %% @doc Send a REJECT message to the remote peer.
 %% @end
 -spec reject(pid(), integer(), integer(), integer()) -> ok.
@@ -142,6 +144,7 @@ reject(Pid, Index, Offset, Length) ->
 -spec choke(pid()) -> ok.
 choke(Pid) ->
     forward_message(Pid, choke).
+
 
 %% @doc UNCHOKE the peer.
 %% end
