@@ -24,7 +24,8 @@ start() ->
 
 start(Config) ->
     load_config(Config),
-    ensure_started([inets, crypto, sasl, gproc, ibrowse]),
+    {ok, Deps} = application:get_key(etorrent, applications),
+    true = lists:all(fun ensure_started/1, Deps),
     application:start(etorrent).
 
 stop() ->
@@ -124,13 +125,14 @@ generate_peer_id() ->
     PeerId = lists:flatten(io_lib:format("-ET~s-~12s", [?VERSION, Rand])),
     list_to_binary(PeerId).
 
-ensure_started([]) ->
-    ok;
-ensure_started([App | R]) ->
-    case application:start(App) of
-	ok ->
-	    ensure_started(R);
-	{error, {already_started, App}} ->
-	    ensure_started(R)
-    end.
 
+ensure_started(App) ->
+    case application:start(App) of
+        ok ->
+            true;
+        {error, {already_started, App}} ->
+            true;
+        Else ->
+            error_logger:error_msg("Couldn't start ~p: ~p", [App, Else]),
+            Else
+    end.
