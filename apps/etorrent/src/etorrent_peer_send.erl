@@ -72,7 +72,7 @@
 
 %%====================================================================
 
-%% @doc Start the send process
+%% @doc Start the encoder process.
 %% @end
 -spec start_link(port(), integer(), boolean()) ->
     ignore | {ok, pid()} | {error, any()}.
@@ -85,12 +85,12 @@ start_link(Socket, TorrentId, FastExtension) ->
 register_server(Socket) ->
     etorrent_utils:register(server_name(Socket)).
 
-%% @doc Lookup the encoding process for a socket
+%% @doc Lookup the encoder process for a socket
 -spec lookup_server(gen_tcp:socket()) -> pid().
 lookup_server(Socket) ->
     etorrent_utils:lookup(server_name(Socket)).
 
-%% @doc Wait for the encoding process for a socket to register
+%% @doc Wait for the encoder process for a socket to register
 -spec await_server(gen_tcp:socket()) -> pid().
 await_server(Socket) ->
     etorrent_utils:await(server_name(Socket)).
@@ -99,44 +99,6 @@ await_server(Socket) ->
 server_name(Socket) ->
     {etorrent, Socket, encoder}.
 
-
-%% @doc send a REQUEST message to the remote peer.
-%% @end
--spec request(pid(), {integer(), integer(), integer()}) -> ok.
-request(Pid, {Index, Offset, Size}) ->
-    gen_server:cast(Pid, {request, {Index, Offset, Size}}).
-
-%% @doc send a PIECE message to the remote peer.
-%% @end
--spec piece(pid(), integer(), integer(), integer(), binary()) -> ok.
-piece(Pid, Index, Offset, Length, Data) ->
-    gen_server:cast(Pid, {piece, Index, Offset, Length, Data}).
-
-
-%% @doc Send a CANCEL message to the remote peer.
-%% @end
--spec cancel(pid(), integer(), integer(), integer()) -> ok.
-cancel(Pid, Index, Offset, Len) ->
-    gen_server:cast(Pid, {cancel, Index, Offset, Len}).
-
-%% @doc Send a REJECT message to the remote peer.
-%% @end
--spec reject(pid(), integer(), integer(), integer()) -> ok.
-reject(Pid, Index, Offset, Length) ->
-    gen_server:cast(Pid, {reject, Index, Offset, Length}).
-
-
-%% @doc CHOKE the peer.
-%% @end
--spec choke(pid()) -> ok.
-choke(Pid) ->
-    gen_server:cast(Pid, choke).
-
-%% @doc UNCHOKE the peer.
-%% end
--spec unchoke(pid()) -> ok.
-unchoke(Pid) ->
-    gen_server:cast(Pid, unchoke).
 
 %% @doc Ask the process to check if a rechoke is necessary.
 %% <p>This call is used whenever we want to check the choke state of the peer.
@@ -148,37 +110,86 @@ unchoke(Pid) ->
 check_choke(Pid) ->
     gen_server:cast(Pid, check_choke).
 
+
+%% @doc send a REQUEST message to the remote peer.
+%% @end
+-spec request(pid(), {integer(), integer(), integer()}) -> ok.
+request(Pid, {Index, Offset, Size}) ->
+    forward_message(Pid, {request, {Index, Offset, Size}}).
+
+%% @doc send a PIECE message to the remote peer.
+%% @end
+-spec piece(pid(), integer(), integer(), integer(), binary()) -> ok.
+piece(Pid, Index, Offset, Length, Data) ->
+    forward_message(Pid, {piece, Index, Offset, Length, Data}).
+
+
+%% @doc Send a CANCEL message to the remote peer.
+%% @end
+-spec cancel(pid(), integer(), integer(), integer()) -> ok.
+cancel(Pid, Index, Offset, Len) ->
+    forward_message(Pid, {cancel, Index, Offset, Len}).
+
+%% @doc Send a REJECT message to the remote peer.
+%% @end
+-spec reject(pid(), integer(), integer(), integer()) -> ok.
+reject(Pid, Index, Offset, Length) ->
+    forward_message(Pid, {reject, Index, Offset, Length}).
+
+
+%% @doc CHOKE the peer.
+%% @end
+-spec choke(pid()) -> ok.
+choke(Pid) ->
+    forward_message(Pid, choke).
+
+%% @doc UNCHOKE the peer.
+%% end
+-spec unchoke(pid()) -> ok.
+unchoke(Pid) ->
+    forward_message(Pid, unchoke).
+
+
 %% @doc send a NOT_INTERESTED message
 %% @end
 -spec not_interested(pid()) -> ok.
 not_interested(Pid) ->
-    gen_server:cast(Pid, not_interested).
+    forward_message(Pid, not_interested).
+
 
 %% @doc send an INTERESTED message
 %% @end
 -spec interested(pid()) -> ok.
 interested(Pid) ->
-    gen_server:cast(Pid, interested).
+    forward_message(Pid, interested).
+
 
 %% @doc send a HAVE message
 %% @end
 -spec have(pid(), integer()) -> ok.
-have(Pid, PieceNumber) ->
-    gen_server:cast(Pid, {have, PieceNumber}).
+have(Pid, Piece) ->
+    forward_message(Pid, {have, Piece}).
+
 
 %% @doc Send a BITFIELD message to the peer
 %% @end
 -spec bitfield(pid(), binary()) -> ok. %% This should be checked
 bitfield(Pid, BitField) ->
-    gen_server:cast(Pid, {bitfield, BitField}).
+    forward_message(Pid, {bitfield, BitField}).
+
 
 %% @doc Send off the default EXT_MSG to the peer
 %% <p>This is part of BEP-10</p>
 %% @end
 -spec extended_msg(pid()) -> ok.
 extended_msg(Pid) ->
-    gen_server:cast(Pid, extended_msg).
+    forward_message(Pid, extended_msg).
 
+
+%% @private Send a message to the encoder process.
+%% The encoder process is expected to forward the message to the remote peer.
+forward_message(Pid, Message) ->
+    gen_server:cast(Pid, {forward, Message}).
 
 %%--------------------------------------------------------------------
 
