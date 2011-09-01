@@ -56,20 +56,17 @@
 -ignore_xref({start_link, 5}).
 
 -record(state, {
-    socket = none                :: none | gen_tcp:socket(),
-    requests                     :: queue(),
-    fast_extension = false       :: boolean(),
-    control_pid = none           :: none | pid(),
-    rate                         :: etorrent_rate:rate(),
-    choke = true                 :: boolean(),
-    %% Are we interested in the peer?
-    interested = false           :: boolean(),
-    torrent_id                   :: integer()}).
+    socket     :: gen_tcp:socket(),
+    buffer     :: queue(),
+    control    :: pid(),
+    limiter    :: none | pid(),
+    rate       :: etorrent_rate:rate(),
+    torrent_id :: integer()}).
+
 
 -define(DEFAULT_KEEP_ALIVE_INTERVAL, 120*1000). % From proto. spec.
 -define(MAX_REQUESTS, 1024). % Maximal number of requests a peer may make.
 
-%%====================================================================
 
 %% @doc Start the encoder process.
 %% @end
@@ -183,24 +180,21 @@ forward_message(Pid, Message) ->
     gen_server:cast(Pid, {forward, Message}).
 
 
-
-
-
-%%====================================================================
-
-
 %% @private
-init([Socket, TorrentId, FastExtension]) ->
+init([Socket, TorrentId, _FastExtension]) ->
+    register_server(Socket),
     erlang:send_after(?DEFAULT_KEEP_ALIVE_INTERVAL, self(), tick),
     erlang:send_after(?RATE_UPDATE, self(), rate_update),
-    register_server(Socket),
     CPid = etorrent_peer_control:await_server(Socket),
-    {ok, #state{socket = Socket,
-		requests = queue:new(),
+    State = #state{
+        socket = Socket,
+		buffer = queue:new(),
 		rate = etorrent_rate:init(),
-		control_pid = CPid,
-		torrent_id = TorrentId,
-		fast_extension = FastExtension}}.
+		control = CPid,
+        limiter = none,
+		torrent_id = TorrentId},
+    {ok, State}.
+
 
 %% @private
 handle_call(Msg, _From, State) ->
@@ -208,45 +202,71 @@ handle_call(Msg, _From, State) ->
 
 
 
-%% Regular messages. We just send them onwards on the wire.
+%% @private Bittorrent messages. Push them into the buffer.
 handle_cast({forward, Message}, State) ->
-    send_message(Message, State);
+    #state{buffer=Buffer, limiter=Limiter} = State,
+    case Limiter of
+        none ->
+            NewLimiter = etorrent_rlimit:send(1),
+            NewBuffer = queue:in(Message, Buffer),
+            NewState = State#state{buffer=NewBuffer, limiter=NewLimiter},
+            {noreply, NewState};
+        _ when is_pid(Limiter) ->
+            NewBuffer = queue:in(Message, Buffer),
+            NewState = State#state{buffer=NewBuffer},
+            {noreply, NewState}
+    end;
 
 handle_cast(Msg, State) ->
     {stop, Msg, State}.
 
 
-%% Whenever a tick is hit, we send out a keep alive message on the line.
 %% @private
-handle_info(tick, S) ->
+%% Whenever a tick is hit, we send out a keep alive message on the line.
+handle_info(tick, State) ->
+    #state{torrent_id=TorrentID, rate=Rate, socket=Socket} = State,
     erlang:send_after(?DEFAULT_KEEP_ALIVE_INTERVAL, self(), tick),
-    send_message(keep_alive, S, 0);
+    case send_message(TorrentID, keep_alive, Rate, Socket) of
+        {ok, NewRate, _Size} ->
+            NewState = State#state{rate=NewRate},
+            {noreply, NewState};
+        {stop, Reason} ->
+            {stop, Reason, State}
+    end;
 
 %% When we are requested to update our rate, we do it here.
 handle_info(rate_update, S) ->
     erlang:send_after(?RATE_UPDATE, self(), rate_update),
     Rate = etorrent_rate:update(S#state.rate, 0),
     ok = etorrent_peer_states:set_send_rate(S#state.torrent_id,
-					    S#state.control_pid,
+					    S#state.control,
 					    Rate#peer_rate.rate),
     {noreply, S#state { rate = Rate }};
 
-%% Different timeouts.
-%% When we are choking the peer and the piece cache is empty, garbage_collect() to reclaim
-%% space quickly rather than waiting for it to happen.
-%% @todo Consider if this can be simplified. It looks wrong here.
-handle_info(timeout, #state { choke = true} = S) ->
-    {noreply, S};
-handle_info(timeout, #state { choke = false, requests = Reqs} = S) ->
-    case queue:out(Reqs) of
-        {empty, _} ->
-            {noreply, S};
-        {{value, {Index, Offset, Len}}, NewQ} ->
-            send_piece(Index, Offset, Len, S#state { requests = NewQ } )
+handle_info({rlimit, continue}, State) ->
+    #state{torrent_id=TorrentID, rate=Rate, socket=Socket, buffer=Buffer} = State,
+    case queue:is_empty(Buffer) of
+        true ->
+            NewState = State#state{limiter=none},
+            {noreply, NewState};
+        false ->
+            Message = queue:head(Buffer),
+            case send_message(TorrentID, Message, Rate, Socket) of
+                {ok, NewRate, Size} ->
+                    Limiter = etorrent_rlimit:send(Size),
+                    NewBuffer = queue:tail(Buffer),
+                    NewState = State#state{
+                        rate=NewRate,
+                        buffer=NewBuffer,
+                        limiter=Limiter},
+                    {noreply, NewState};
+                {stop, Reason} ->
+                    {stop, Reason, State}
+            end
     end;
-handle_info(Msg, S) ->
-    ?WARN([got_unknown_message, Msg, S]),
-    {stop, {unknown_msg, Msg}}.
+
+handle_info(Msg, State) ->
+    {stop, Msg, State}.
 
 
 %% @private
@@ -258,34 +278,14 @@ terminate(_Reason, _S) ->
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
-%% Send off a piece message
-send_piece(Index, Offset, Len, S) ->
-    {ok, PieceData} =
-        etorrent_io:read_chunk(S#state.torrent_id, Index, Offset, Len),
-    Msg = {piece, Index, Offset, PieceData},
-    ok = etorrent_torrent:statechange(S#state.torrent_id,
-                                        [{add_upload, Len}]),
-    send_message(Msg, S).
-
-send_message(Msg, S) ->
-    send_message(Msg, S, 0).
-
 %% @todo: Think about the stop messages here. They are definitely wrong.
-send_message(Msg, S, Timeout) ->
-    case send(Msg, S) of
-        {ok, NS} -> {noreply, NS, Timeout};
-        {error, closed, NS} -> {stop, normal, NS};
-        {error, ebadf, NS} -> {stop, normal, NS}
+send_message(TorrentID, Message, Rate, Socket) ->
+    case etorrent_proto_wire:send_msg(Socket, Message) of
+        {ok, Size} ->
+            ok = etorrent_torrent:statechange(TorrentID, [{add_upload, Size}]),
+            {ok, etorrent_rate:update(Rate, Size), Size};
+        {{error, closed}, _} ->
+            {stop, normal};
+        {{error, ebadf}, _} ->
+            {stop, normal}
     end.
-
-send(Msg, #state { torrent_id = Id} = S) ->
-    case etorrent_proto_wire:send_msg(S#state.socket, Msg) of
-        {ok, Sz} ->
-            NR = etorrent_rate:update(S#state.rate, Sz),
-            ok = etorrent_torrent:statechange(Id, [{add_upload, Sz}]),
-            ok = etorrent_rlimit:send(Sz),
-            {ok, S#state { rate = NR}};
-        {{error, E}, _Amount} ->
-            {error, E, S}
-    end.
-
