@@ -235,13 +235,13 @@ handle_info(tick, State) ->
     end;
 
 %% When we are requested to update our rate, we do it here.
-handle_info(rate_update, S) ->
+handle_info(rate_update, State) ->
+    #state{torrent_id=TorrentID, rate=Rate, control=Control} = State,
     erlang:send_after(?RATE_UPDATE, self(), rate_update),
-    Rate = etorrent_rate:update(S#state.rate, 0),
-    ok = etorrent_peer_states:set_send_rate(S#state.torrent_id,
-					    S#state.control,
-					    Rate#peer_rate.rate),
-    {noreply, S#state { rate = Rate }};
+    NewRate = etorrent_rate:update(Rate, 0),
+    ok = etorrent_peer_states:set_send_rate(TorrentID, Control, NewRate#peer_rate.rate),
+    NewState = State#state{rate=NewRate},
+    {noreply, NewState};
 
 handle_info({rlimit, continue}, State) ->
     #state{torrent_id=TorrentID, rate=Rate, socket=Socket, buffer=Buffer} = State,
