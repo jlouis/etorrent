@@ -92,7 +92,7 @@ init([TorrentId, Socket]) ->
         rate = etorrent_rate:init(?RATE_FUDGE),
         id = TorrentId,
         controller = CPid},
-    {ok, State, 0}.
+    {ok, State}.
 
 
 %% @private
