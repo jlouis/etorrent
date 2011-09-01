@@ -25,8 +25,7 @@
 %% messages one can send to a peer.
 
 %% other functions
--export([start_link/3,
-         check_choke/1]).
+-export([start_link/3]).
 
 %% message functions
 -export([request/2,
@@ -98,17 +97,6 @@ await_server(Socket) ->
 %% @private Server name for encoder process.
 server_name(Socket) ->
     {etorrent, Socket, encoder}.
-
-
-%% @doc Ask the process to check if a rechoke is necessary.
-%% <p>This call is used whenever we want to check the choke state of the peer.
-%% If it is true, we perform a rechoke request. It is probably the wrong
-%% place to issue the rechoke request. Rather, it would be better if a
-%% control process does this.</p>
-%% @end
--spec check_choke(pid()) -> ok.
-check_choke(Pid) ->
-    gen_server:cast(Pid, check_choke).
 
 
 %% @doc send a REQUEST message to the remote peer.
@@ -196,34 +184,6 @@ forward_message(Pid, Message) ->
 
 
 
-perform_choke(#state { fast_extension = true} = S) ->
-    perform_fast_ext_choke(S);
-perform_choke(#state { choke = true } = S) ->
-    {noreply, S, 0};
-perform_choke(S) ->
-    local_choke(S),
-    send_message(choke, S#state{choke = true, requests = queue:new() }).
-
-perform_fast_ext_choke(#state { choke = true } = S) ->
-    {noreply, S, 0};
-perform_fast_ext_choke(S) ->
-     local_choke(S),
-     {ok, NS} = send(choke, S),
-     FS = empty_requests(NS),
-     {noreply, FS, 0}.
-
-empty_requests(S) ->
-    empty_requests(queue:out(S#state.requests), S).
-
-empty_requests({empty, Q}, S) ->
-    S#state { requests = Q };
-empty_requests({{value, {Index, Offset, Len}}, Next}, S) ->
-    {ok, NS} = send({reject_request, Index, Offset, Len}, S),
-    empty_requests(queue:out(Next), NS).
-
-local_choke(S) ->
-    etorrent_peer_states:set_local_choke(S#state.torrent_id,
-					 S#state.control_pid).
 
 
 %%====================================================================
@@ -247,48 +207,10 @@ handle_call(Msg, _From, State) ->
     {stop, Msg, State}.
 
 
-%% Handle requests to choke and unchoke. If we are already choking the peer,
-%% there is no reason to send the message again.
-%% @private
-handle_cast(choke, S) -> perform_choke(S);
-handle_cast(unchoke, #state { choke = false } = S) -> {noreply, S, 0};
-handle_cast(unchoke,
-        #state { choke = true, torrent_id = Torrent_Id, control_pid = ControlPid } = S) ->
-    ok = etorrent_peer_states:set_local_unchoke(Torrent_Id, ControlPid),
-    send_message(unchoke, S#state{choke = false});
-
-%% A request to check the current choke state and ask for a rechoking
-handle_cast(check_choke, #state { choke = true } = S) ->
-    {noreply, S, 0};
-handle_cast(check_choke, #state { choke = false } = S) ->
-    ok = etorrent_choker:perform_rechoke(),
-    {noreply, S, 0};
 
 %% Regular messages. We just send them onwards on the wire.
 handle_cast({forward, Message}, State) ->
     send_message(Message, State);
-
-handle_cast({request, {Index, Offset, Size}}, S) ->
-    send_message({request, Index, Offset, Size}, S);
-handle_cast({remote_request, Idx, Offset, Len},
-    #state { fast_extension = true, choke = true } = S) ->
-        send_message({reject_request, Idx, Offset, Len}, S, 0);
-handle_cast({remote_request, _Index, _Offset, _Len}, #state { choke = true } = S) ->
-    {noreply, S, 0};
-handle_cast({remote_request, Index, Offset, Len},
-            #state { choke = false, fast_extension = FastExtension,
-                     requests = Reqs} = S) ->
-    case queue:len(Reqs) > ?MAX_REQUESTS of
-        true when FastExtension == true ->
-            send_message({reject_request, Index, Offset, Len}, S, 0);
-        true ->
-            {stop, max_queue_len_exceeded, S};
-        false ->
-	    %% @todo consider to make a check here if the request is already
-	    %%  on queue. I don't think we will have that, except if stray.
-            NQ = queue:in({Index, Offset, Len}, S#state.requests),
-            {noreply, S#state{requests = NQ}, 0}
-    end;
 
 handle_cast(Msg, State) ->
     {stop, Msg, State}.

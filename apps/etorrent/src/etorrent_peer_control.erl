@@ -21,6 +21,7 @@
         unchoke/1,
         initialize/2,
         incoming_msg/2,
+        check_choke/1,
         stop/1]).
 
 %% gproc registry entries
@@ -138,6 +139,23 @@ initialize(Pid, Way) ->
 %% @end
 incoming_msg(Pid, Msg) ->
     gen_server:cast(Pid, {incoming_msg, Msg}).
+
+%% @doc Trigger a check of the current choke status.
+%% <p>
+%% Rechecking the current choke status ensures that an upload-slot is
+%% immediately allocated to a peer that has shown interest, if there is
+%% an available upload-slot.
+%% </p>
+%% <p>
+%% The current choke status is also rechecked when a peer has shown a lack
+%% of interest. This ensures that the upload-slot it has allocated, if it
+%% is unchoked at the time, is freed and reallocated to another peer.
+%% </p>
+%% @end
+-spec check_choke(pid()) -> ok.
+check_choke(Pid) ->
+    gen_server:cast(Pid, check_choke).
+
 
 
 %% @doc Check if a peer provided an interesting piece.
@@ -289,18 +307,65 @@ handle_cast({initialize, Way}, S) ->
         full ->
             {stop, normal, S}
     end;
+
 handle_cast({incoming_msg, Msg}, S) ->
     case handle_message(Msg, S) of
         {ok, NS} -> {noreply, NS};
         {stop, Reason, NS} -> {stop, Reason, NS}
     end;
-handle_cast(choke, S) ->
-    etorrent_peer_send:choke(S#state.send_pid),
-    {noreply, S};
 
-handle_cast(unchoke, S) ->
-    etorrent_peer_send:unchoke(S#state.send_pid),
-    {noreply, S};
+handle_cast(choke, State) ->
+    #state{
+        torrent_id=TorrentID, send_pid=SendPid,
+        remote=Remote, config=Config} = State,
+    case etorrent_peerstate:choked(Remote) of
+        false ->
+            Reqs = etorrent_peerstate:requests(Remote),
+            case etorrent_peerconf:fast(Config) of
+                true ->
+                    [etorrent_peer_send:reject(SendPid, Index, Offset, Length)
+                    || {Index, Offset, Length} <- etorrent_rqueue:to_list(Reqs)];
+                false ->
+                    []
+            end,
+            etorrent_peer_states:set_local_choke(TorrentID, self()),
+            etorrent_peer_send:choke(SendPid),
+            NewReqs = etorrent_rqueue:flush(Reqs),
+            TmpRemote = etorrent_peerstate:requests(NewReqs, Remote),
+            NewRemote = etorrent_peerstate:choked(true, TmpRemote),
+            NewState = State#state{remote=NewRemote},
+            {noreply, NewState};
+        true ->
+            {noreply, State}
+    end;
+
+handle_cast(unchoke, State) ->
+    #state{torrent_id=TorrentID, send_pid=SendPid, remote=Remote} = State,
+    case etorrent_peerstate:choked(Remote) of
+        false ->
+            %% @todo handle duplicate unchoke?
+            {noreply, State};
+        true ->
+            etorrent_peer_states:set_local_unchoke(TorrentID, self()),
+            etorrent_peer_send:unchoke(SendPid),
+            NewRemote = etorrent_peerstate:choked(false, Remote),
+            NewState = State#state{remote=NewRemote},
+            {noreply, NewState}
+    end;
+
+handle_cast(check_choke, State) ->
+    #state{remote=Remote} = State,
+    Choked = etorrent_peerstate:choked(Remote),
+    Interested = etorrent_peerstate:interested(Remote),
+    case {Choked, Interested} of
+        {false, false} ->
+            etorrent_choker:perform_rechoke();
+        {true, true} ->
+            etorrent_choker:perform_rechoke();
+        {_Choked, _Interested} ->
+            ok
+    end,
+    {noreply, State};
 
 handle_cast(interested, State) ->
     self() ! {interested, true},
@@ -467,17 +532,17 @@ handle_message(unchoke, State) ->
     {ok, NewState};
 
 handle_message(interested, State) ->
-    #state{torrent_id=TorrentID, send_pid=SendPid, remote=Remote} = State,
+    #state{torrent_id=TorrentID, remote=Remote} = State,
     ok = etorrent_peer_states:set_interested(TorrentID, self()),
-    ok = etorrent_peer_send:check_choke(SendPid),
+    ok = etorrent_peer_control:check_choke(self()),
     NewRemote = etorrent_peerstate:interested(true, Remote),
     NewState = State#state{remote=NewRemote},
     {ok, NewState};
 
 handle_message(not_interested, State) ->
-    #state{torrent_id=TorrentID, send_pid=SendPid, remote=Remote} = State,
+    #state{torrent_id=TorrentID, remote=Remote} = State,
     ok = etorrent_peer_states:set_not_interested(TorrentID, self()),
-    ok = etorrent_peer_send:check_choke(SendPid),
+    ok = etorrent_peer_control:check_choke(self()),
     NewRemote = etorrent_peerstate:interested(false, Remote),
     NewState = State#state{remote=NewRemote},
     {ok, NewState};
