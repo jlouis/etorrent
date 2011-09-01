@@ -123,7 +123,7 @@ handle_info({rlimit, continue}, State) ->
             PacketSize = byte_size(Packet),
             etorrent_rlimit:recv(PacketSize),
 	        NewState = handle_packet(Packet, State),
-	        {noreply, NewState, 0}
+	        {noreply, NewState}
     end;
 
 handle_info(rate_update, State) ->
@@ -134,7 +134,7 @@ handle_info(rate_update, State) ->
     ok = etorrent_peer_states:set_recv_rate(
             TorrentID, self(), NewRate#peer_rate.rate, SnubState),
     NewState = State#state{rate=NewRate, last_piece_msg_count=PieceCount+1},
-    {noreply, NewState, 0};
+    {noreply, NewState};
 
 handle_info({tcp_closed, _}, State) ->
     {stop, normal, State};

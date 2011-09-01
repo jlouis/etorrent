@@ -100,7 +100,7 @@ server_name(Socket) ->
 %% @end
 -spec request(pid(), {integer(), integer(), integer()}) -> ok.
 request(Pid, {Index, Offset, Size}) ->
-    forward_message(Pid, {request, {Index, Offset, Size}}).
+    forward_message(Pid, {request, Index, Offset, Size}).
 
 
 %% @doc send a PIECE message to the remote peer.
