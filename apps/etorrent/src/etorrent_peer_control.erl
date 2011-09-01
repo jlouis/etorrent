@@ -523,12 +523,27 @@ handle_message({request, Index, Offset, Length}, State) ->
     end;
 
 handle_message({cancel, Index, Offset, Length}, State) ->
-    #state{remote=Remote} = State,
-    Requests = etorrent_peerstate:requests(Remote),
-    NewRequests = etorrent_rqueue:delete(Index, Offset, Length, Requests),
-    NewRemote = etorrent_peerstate:requests(NewRequests, Remote),
-    NewState = State#state{remote=NewRemote},
-    {ok, NewState};
+    %% If the FAST extension is enabled the peer expects a REJECT response
+    %% to a CANCEL request. We assume that the CANCEL request refers to a
+    %% previously sent chunk REQUEST. If the REQUEST is not a member of the
+    %% remote request queue we can assume that we have sent a PIECE response.
+    %% If the REQUEST is a member of the remote request queue we remove it
+    %% and respond with a REJECT message. Either case is valid.
+    #state{send_pid=SendPid, remote=Remote, config=Config} = State,
+    Reqs = etorrent_peerstate:requests(Remote),
+    case etorrent_rqueue:member(Index, Offset, Length, Reqs) of
+        true ->
+            case etorrent_peerconf:fast(Config) of
+                false -> ok;
+                true  -> etorrent_peer_send:reject(SendPid, Index, Offset, Length)
+            end,
+            NewReqs = etorrent_rqueue:delete(Index, Offset, Length, Reqs),
+            NewRemote = etorrent_peerstate:requests(NewReqs, Remote),
+            NewState = State#state{remote=NewRemote},
+            {noreply, NewState};
+        false ->
+            {noreply, State}
+    end;
 
 handle_message({suggest, Piece}, State) ->
     #state{config=Config} = State,

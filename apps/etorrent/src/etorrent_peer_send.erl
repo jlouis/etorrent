@@ -121,8 +121,8 @@ request(Pid, {Index, Offset, Size}) ->
 %% @doc send a PIECE message to the remote peer.
 %% @end
 -spec piece(pid(), integer(), integer(), integer(), binary()) -> ok.
-piece(Pid, Index, Offset, Length, Data) ->
-    forward_message(Pid, {piece, Index, Offset, Length, Data}).
+piece(Pid, Index, Offset, Length, Data) when Length =:= byte_size(Data) ->
+    forward_message(Pid, {piece, Index, Offset, Data}).
 
 
 %% @doc Send a CANCEL message to the remote peer.
@@ -136,7 +136,7 @@ cancel(Pid, Index, Offset, Len) ->
 %% @end
 -spec reject(pid(), integer(), integer(), integer()) -> ok.
 reject(Pid, Index, Offset, Length) ->
-    forward_message(Pid, {reject, Index, Offset, Length}).
+    forward_message(Pid, {reject_request, Index, Offset, Length}).
 
 
 %% @doc CHOKE the peer.
@@ -186,7 +186,7 @@ bitfield(Pid, BitField) ->
 %% @end
 -spec extended_msg(pid()) -> ok.
 extended_msg(Pid) ->
-    forward_message(Pid, extended_msg).
+    forward_message(Pid, {extended, 0, etorrent_proto_wire:extended_msg_contents()}).
 
 
 %% @private Send a message to the encoder process.
@@ -297,38 +297,8 @@ handle_cast(check_choke, #state { choke = false } = S) ->
     {noreply, S, 0};
 
 %% Regular messages. We just send them onwards on the wire.
-handle_cast({piece, Index, Offset, _, Data}, State) ->
-    send_message({piece, Index, Offset, Data}, State);
-handle_cast({reject, Index, Offset, Length}, State) ->
-    send_message({reject_request, Index, Offset, Length}, State);
-handle_cast({bitfield, BF}, S) ->
-    send_message({bitfield, BF}, S);
-handle_cast(extended_msg, S) ->
-    send_message({extended, 0, etorrent_proto_wire:extended_msg_contents()}, S);
-handle_cast(not_interested, #state { interested = false} = S) ->
-    {noreply, S, 0};
-handle_cast(not_interested, #state { interested = true } = S) ->
-    send_message(not_interested, S#state { interested = false });
-handle_cast(interested, #state { interested = true } = S) ->
-    {noreply, S, 0};
-handle_cast(interested, #state { interested = false } = S) ->
-    send_message(interested, S#state { interested = true });
-handle_cast({have, Pn}, S) ->
-    send_message({have, Pn}, S);
-
-%% Cancels are handled specially when the fast extension is enabled.
-handle_cast({cancel, Idx, Offset, Len},
-        #state { fast_extension = true, requests = Requests} = S) ->
-    try
-	true = queue:member({Idx, Offset, Len}, Requests),
-        NQ = etorrent_utils:queue_remove({Idx, Offset, Len}, Requests),
-        {noreply, S#state { requests = NQ}, 0}
-    catch
-        exit:badmatch -> {stop, normal, S}
-    end;
-handle_cast({cancel, Index, OffSet, Len}, S) ->
-    NQ = etorrent_utils:queue_remove({Index, OffSet, Len}, S#state.requests),
-    {noreply, S#state{requests = NQ}, 0};
+handle_cast({forward, Message}, State) ->
+    send_message(Message, State);
 
 handle_cast({request, {Index, Offset, Size}}, S) ->
     send_message({request, Index, Offset, Size}, S);
@@ -354,6 +324,7 @@ handle_cast({remote_request, Index, Offset, Len},
 
 handle_cast(Msg, State) ->
     {stop, Msg, State}.
+
 
 %% Whenever a tick is hit, we send out a keep alive message on the line.
 %% @private
@@ -388,10 +359,10 @@ handle_info(Msg, S) ->
     {stop, {unknown_msg, Msg}}.
 
 
-
 %% @private
 terminate(_Reason, _S) ->
     ok.
+
 
 %% @private
 code_change(_OldVsn, State, _Extra) ->
