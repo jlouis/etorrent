@@ -260,10 +260,6 @@ local_choke(S) ->
 
 %%====================================================================
 
-%% @private
-handle_call(_Request, _From, State) ->
-    Reply = ok,
-    {reply, Reply, State}.
 
 %% @private
 init([Socket, TorrentId, FastExtension]) ->
@@ -278,38 +274,10 @@ init([Socket, TorrentId, FastExtension]) ->
 		torrent_id = TorrentId,
 		fast_extension = FastExtension}}.
 
-
-%% Whenever a tick is hit, we send out a keep alive message on the line.
 %% @private
-handle_info(tick, S) ->
-    erlang:send_after(?DEFAULT_KEEP_ALIVE_INTERVAL, self(), tick),
-    send_message(keep_alive, S, 0);
+handle_call(Msg, _From, State) ->
+    {stop, Msg, State}.
 
-%% When we are requested to update our rate, we do it here.
-handle_info(rate_update, S) ->
-    erlang:send_after(?RATE_UPDATE, self(), rate_update),
-    Rate = etorrent_rate:update(S#state.rate, 0),
-    ok = etorrent_peer_states:set_send_rate(S#state.torrent_id,
-					    S#state.control_pid,
-					    Rate#peer_rate.rate),
-    {noreply, S#state { rate = Rate }};
-
-%% Different timeouts.
-%% When we are choking the peer and the piece cache is empty, garbage_collect() to reclaim
-%% space quickly rather than waiting for it to happen.
-%% @todo Consider if this can be simplified. It looks wrong here.
-handle_info(timeout, #state { choke = true} = S) ->
-    {noreply, S};
-handle_info(timeout, #state { choke = false, requests = Reqs} = S) ->
-    case queue:out(Reqs) of
-        {empty, _} ->
-            {noreply, S};
-        {{value, {Index, Offset, Len}}, NewQ} ->
-            send_piece(Index, Offset, Len, S#state { requests = NewQ } )
-    end;
-handle_info(Msg, S) ->
-    ?WARN([got_unknown_message, Msg, S]),
-    {stop, {unknown_msg, Msg}}.
 
 %% Handle requests to choke and unchoke. If we are already choking the peer,
 %% there is no reason to send the message again.
@@ -386,6 +354,39 @@ handle_cast({remote_request, Index, Offset, Len},
 
 handle_cast(Msg, State) ->
     {stop, Msg, State}.
+
+%% Whenever a tick is hit, we send out a keep alive message on the line.
+%% @private
+handle_info(tick, S) ->
+    erlang:send_after(?DEFAULT_KEEP_ALIVE_INTERVAL, self(), tick),
+    send_message(keep_alive, S, 0);
+
+%% When we are requested to update our rate, we do it here.
+handle_info(rate_update, S) ->
+    erlang:send_after(?RATE_UPDATE, self(), rate_update),
+    Rate = etorrent_rate:update(S#state.rate, 0),
+    ok = etorrent_peer_states:set_send_rate(S#state.torrent_id,
+					    S#state.control_pid,
+					    Rate#peer_rate.rate),
+    {noreply, S#state { rate = Rate }};
+
+%% Different timeouts.
+%% When we are choking the peer and the piece cache is empty, garbage_collect() to reclaim
+%% space quickly rather than waiting for it to happen.
+%% @todo Consider if this can be simplified. It looks wrong here.
+handle_info(timeout, #state { choke = true} = S) ->
+    {noreply, S};
+handle_info(timeout, #state { choke = false, requests = Reqs} = S) ->
+    case queue:out(Reqs) of
+        {empty, _} ->
+            {noreply, S};
+        {{value, {Index, Offset, Len}}, NewQ} ->
+            send_piece(Index, Offset, Len, S#state { requests = NewQ } )
+    end;
+handle_info(Msg, S) ->
+    ?WARN([got_unknown_message, Msg, S]),
+    {stop, {unknown_msg, Msg}}.
+
 
 
 %% @private
