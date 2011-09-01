@@ -194,39 +194,7 @@ extended_msg(Pid) ->
 forward_message(Pid, Message) ->
     gen_server:cast(Pid, {forward, Message}).
 
-%%--------------------------------------------------------------------
 
-
-%% Send off a piece message
-send_piece(Index, Offset, Len, S) ->
-    {ok, PieceData} =
-        etorrent_io:read_chunk(S#state.torrent_id, Index, Offset, Len),
-    Msg = {piece, Index, Offset, PieceData},
-    ok = etorrent_torrent:statechange(S#state.torrent_id,
-                                        [{add_upload, Len}]),
-    send_message(Msg, S).
-
-send_message(Msg, S) ->
-    send_message(Msg, S, 0).
-
-%% @todo: Think about the stop messages here. They are definitely wrong.
-send_message(Msg, S, Timeout) ->
-    case send(Msg, S) of
-        {ok, NS} -> {noreply, NS, Timeout};
-        {error, closed, NS} -> {stop, normal, NS};
-        {error, ebadf, NS} -> {stop, normal, NS}
-    end.
-
-send(Msg, #state { torrent_id = Id} = S) ->
-    case etorrent_proto_wire:send_msg(S#state.socket, Msg) of
-        {ok, Sz} ->
-            NR = etorrent_rate:update(S#state.rate, Sz),
-            ok = etorrent_torrent:statechange(Id, [{add_upload, Sz}]),
-            ok = etorrent_rlimit:send(Sz),
-            {ok, S#state { rate = NR}};
-        {{error, E}, _Amount} ->
-            {error, E, S}
-    end.
 
 perform_choke(#state { fast_extension = true} = S) ->
     perform_fast_ext_choke(S);
@@ -367,3 +335,35 @@ terminate(_Reason, _S) ->
 %% @private
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
+
+%% Send off a piece message
+send_piece(Index, Offset, Len, S) ->
+    {ok, PieceData} =
+        etorrent_io:read_chunk(S#state.torrent_id, Index, Offset, Len),
+    Msg = {piece, Index, Offset, PieceData},
+    ok = etorrent_torrent:statechange(S#state.torrent_id,
+                                        [{add_upload, Len}]),
+    send_message(Msg, S).
+
+send_message(Msg, S) ->
+    send_message(Msg, S, 0).
+
+%% @todo: Think about the stop messages here. They are definitely wrong.
+send_message(Msg, S, Timeout) ->
+    case send(Msg, S) of
+        {ok, NS} -> {noreply, NS, Timeout};
+        {error, closed, NS} -> {stop, normal, NS};
+        {error, ebadf, NS} -> {stop, normal, NS}
+    end.
+
+send(Msg, #state { torrent_id = Id} = S) ->
+    case etorrent_proto_wire:send_msg(S#state.socket, Msg) of
+        {ok, Sz} ->
+            NR = etorrent_rate:update(S#state.rate, Sz),
+            ok = etorrent_torrent:statechange(Id, [{add_upload, Sz}]),
+            ok = etorrent_rlimit:send(Sz),
+            {ok, S#state { rate = NR}};
+        {{error, E}, _Amount} ->
+            {error, E, S}
+    end.
+
