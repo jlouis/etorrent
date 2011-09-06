@@ -18,6 +18,7 @@
          dropped/2,
          fetched/5,
          stored/5,
+         contents/5,
          forward/1]).
 
 %% inspection functions
@@ -100,6 +101,14 @@ stored(Piece, Offset, Length, Peerpid, Srvpid) ->
     Srvpid ! {chunk, {stored, Piece, Offset, Length, Peerpid}},
     ok.
 
+%% @doc Send the contents of a chunk to a process.
+%% @end
+-spec contents(non_neg_integer(), non_neg_integer(),
+               non_neg_integer(), binary(), pid()) -> ok.
+contents(Piece, Offset, Length, Data, PeerPid) ->
+    PeerPid ! {chunk, {contents, Piece, Offset, Length, Data}},
+    ok.
+
 
 %% @doc
 %% @end
@@ -159,7 +168,8 @@ chunkstate_test_() ->
          ?_test(test_dropped_all()),
          ?_test(test_fetched()),
          ?_test(test_stored()),
-         ?_test(test_forward())]}.
+         ?_test(test_forward()),
+         ?_test(test_contents())]}.
 
 test_request() ->
     Peer = self(),
@@ -215,6 +225,10 @@ test_stored() ->
     Pid = make_pid(),
     ok = ?chunkstate:stored(1, 2, 3, Pid, self()),
     ?assertEqual({chunk, {stored, 1, 2, 3, Pid}}, pop()).
+
+test_contents() ->
+    ok = ?chunkstate:contents(1, 2, 3, <<1,2,3>>, self()),
+    ?assertEqual({chunk, {contents, 1, 2, 3, <<1,2,3>>}}, pop()).
 
 test_forward() ->
     Main = self(),
