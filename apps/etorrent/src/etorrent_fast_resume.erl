@@ -17,6 +17,7 @@
 
 %% API
 -export([start_link/0,
+         list/0,
          query_state/1]).
 
 %% Privete API
@@ -32,8 +33,8 @@
          code_change/3]).
 
 -record(state, {
-    interval=3000,
-    table=none :: atom()
+          interval = timer:seconds(30) :: integer(),
+          table    = none :: atom()
 }).
 
 -ignore_xref([{start_link, 0}]).
@@ -45,6 +46,13 @@
 -spec start_link() -> {ok, pid()} | ignore | {error, term()}.
 start_link() ->
     gen_server:start_link({local, srv_name()}, ?MODULE, [], []).
+
+%% @doc Query the state of the whole table
+%%   This call will print the contents of the internal table via io
+%% @end
+-spec list() -> ok.
+list() ->
+    gen_server:call(srv_name(), list).
 
 %% @doc Query for the state of TorrentID, ID.
 %% <p>The function returns one of several possible values:</p>
@@ -90,15 +98,17 @@ update() ->
 init([]) ->
     %% TODO - check for errors when opening the dets table
     Statefile  = etorrent_config:fast_resume_file(),
-    {ok, Statetable} = case dets:open_file(Statefile, []) of
-        {ok, Table} ->
-            {ok, Table};
-        %% An old spoolfile may have been created using ets:tab2file.
-        %% Removing it and reopening the dets table works in this case.
-        {error,{not_a_dets_file, _}} ->
-            file:delete(Statefile),
-            dets:open_file(Statefile, [])
-    end,
+    {ok, Statetable} =
+        case dets:open_file(Statefile, []) of
+            {ok, Table} ->
+                {ok, Table};
+            %% An old spoolfile may have been created using ets:tab2file.
+            %% Removing it and reopening the dets table works in this case.
+            {error,{not_a_dets_file, _}} ->
+                etorrent_event:notify(statefile_is_not_dets),
+                file:delete(Statefile),
+                dets:open_file(Statefile, [])
+        end,
     InitState  = #state{table=Statetable},
     #state{interval=Interval} = InitState,
     _ = timer:apply_interval(Interval, ?MODULE, update, []),
@@ -117,16 +127,24 @@ handle_call({query_state, ID}, _From, State) ->
     end,
     {reply, Reply, State};
 
+handle_call(list, _, #state { table = Table } = State) ->
+    Traverser = fun(T) ->
+                        io:format("~p~n", [T]),
+                        continue
+                end,
+    dets:traverse(Table, Traverser),
+    {reply, ok, State};
 handle_call(update, _, State) ->
     %% Run a persistence operation on all torrents
     %% TODO - in the ETS implementation the state of all inactive
     %%        torrents was flushed out on each persitance operation.
     #state{table=Table} = State,
-    _ = [begin
-        TorrentID = proplists:get_value(id, Props),
-        Filename  = proplists:get_value(filename, Props),
-        track_torrent(TorrentID, Filename, Table)
-    end || Props <- etorrent_table:all_torrents()],
+    [begin
+         TorrentID = proplists:get_value(id, Props),
+         Filename  = proplists:get_value(filename, Props),
+         track_torrent(TorrentID, Filename, Table)
+     end || Props <- etorrent_table:all_torrents()],
+    dets:sync(Table),
     {reply, ok, State}.
 
 %% @private
