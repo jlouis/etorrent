@@ -41,11 +41,11 @@
    </div>
     <script type="text/javascript">
         $(document).ready(function() {
-                $.get('/ajax/etorrent_webui:log', function(data) {
+                $.get('/ajax/etorrent_webui/log', function(data) {
                     $('#log_list').html(data);
                 });
 
-                $.get('/ajax/etorrent_webui:list', function(data) {
+                $.get('/ajax/etorrent_webui/list', function(data) {
                     $('#downloading_list').html(data);
                     $('span#sparkline-leech').each(function (idx) {
                         $(this).sparkline('html', {
