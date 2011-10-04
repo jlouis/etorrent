@@ -43,7 +43,7 @@ start(_Type, _Args) ->
     PeerId = generate_peer_id(),
     case etorrent_sup:start_link(PeerId) of
 	{ok, Pid} ->
-        etorrent_log:init_settings(),
+            etorrent_log:init_settings(),
 	    ok = etorrent_rlimit:init(),
 	    ok = etorrent_memory_logger:add_handler(),
 	    ok = etorrent_file_logger:add_handler(),
@@ -88,35 +88,12 @@ stop(_State) ->
     ok.
 
 start_webui() ->
-    Config = default_webui_configuration(),
-    {ok, _Pid} = inets:start(httpd, Config, inets).
-
-default_webui_configuration() ->
-    [{modules,
-      [mod_alias,
-       mod_auth,
-       mod_esi,
-       mod_actions,
-       mod_cgi,
-       mod_dir,
-       mod_get,
-       mod_head,
-       mod_log,
-       mod_disk_log]},
-     {mime_types, [{"html", "text/html"},
-		   {"css", "text/css"},
-		   {"js", "text/javascript"}]},
-     {server_name,"etorrent_webui"},
-     {bind_address, etorrent_config:webui_address()},
-     {server_root,  etorrent_config:webui_log_dir()},
-     {port,         etorrent_config:webui_port()},
-     {document_root, filename:join([code:priv_dir(etorrent), "webui", "htdocs"])},
-     {directory_index, ["index.html"]},
-     {erl_script_alias, {"/ajax", [etorrent_webui]}},
-     {error_log, "error.log"},
-     {security_log, "security.log"},
-     {transfer_log, "transfer.log"}].
-
+    Dispatch = [ {'_', [{'_', etorrent_cowboy_handler, []}]} ],
+    {ok, _Pid} = cowboy:start_listener(http, 10,
+                                       cowboy_tcp_transport, [{port, 8080}],
+                                       cowboy_http_protocol, [{dispatch, Dispatch}]
+                                      ).
+    
 %% @doc Generate a random peer id for use
 %% @end
 generate_peer_id() ->
