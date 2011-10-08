@@ -336,7 +336,7 @@ init(Serverargs) ->
     PieceSizes = orddict:fetch(piecesizes, Args),
 
     TorrentPid = etorrent_torrent_ctl:await_server(TorrentID),
-    ScarcityPid = etorrent_scarcity:await_server(TorrentID),
+    _ScarcityPid = etorrent_scarcity:await_server(TorrentID),
     Pending = etorrent_pending:await_server(TorrentID),
     Endgame = etorrent_endgame:await_server(TorrentID),
     ok = etorrent_pending:receiver(self(), Pending),

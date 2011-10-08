@@ -129,7 +129,7 @@ initializing(timeout, #state{id=Id, torrent=Torrent, hashes=Hashes} = S0) ->
             %% Read the torrent, check its contents for what we are missing
             etorrent_table:statechange_torrent(Id, checking),
             etorrent_event:checking_torrent(Id),
-            ValidPieces = read_and_check_torrent(Id, Torrent, Hashes),
+            ValidPieces = read_and_check_torrent(Id, Hashes),
             Left = calculate_amount_left(Id, ValidPieces, Torrent),
             NumberOfPieces = etorrent_pieceset:capacity(ValidPieces),
             {AU, AD} =
@@ -199,22 +199,24 @@ handle_sync_event(valid_pieces, _, StateName, State) ->
     {reply, {ok, Valid}, StateName, State}.
 
 %% @private
+%% Tell the controller we have stored an index for this torrent file
 handle_info({piece, {stored, Index}}, started, State) ->
-    #state{id=TorrentID, hashes=Hashes, progress=Progress} = State,
+    #state{id=TorrentID, hashes=Hashes, progress=Progress, valid=ValidPieces} = State,
     Piecehash = fetch_hash(Index, Hashes),
     case etorrent_io:check_piece(TorrentID, Index, Piecehash) of
         {ok, PieceSize} ->
             Peers = etorrent_peer_control:lookup_peers(TorrentID),
             ok = etorrent_torrent:statechange(TorrentID, [{subtract_left, PieceSize}]),
             ok = etorrent_piecestate:valid(Index, Peers),
-            ok = etorrent_piecestate:valid(Index, Progress);
+            ok = etorrent_piecestate:valid(Index, Progress),
+            NewValidState = etorrent_pieceset:insert(Index, ValidPieces),
+            {next_state, started, State#state { valid = NewValidState }};
         wrong_hash ->
             Peers = etorrent_peer_control:lookup_peers(TorrentID),
             ok = etorrent_piecestate:invalid(Index, Progress),
-            ok = etorrent_piecestate:unassigned(Index, Peers)
-    end,
-    {next_state, started, State};
-
+            ok = etorrent_piecestate:unassigned(Index, Peers),
+            {next_state, started, State}
+    end;
 handle_info(Info, StateName, State) ->
     ?WARN([unknown_info, Info, StateName]),
     {next_state, StateName, State}.
@@ -242,14 +244,14 @@ calculate_amount_left(TorrentID, Valid, Torrent) ->
     Total - Downloaded.
 
 
-% @doc Read and check a torrent
-% <p>The torrent given by Id, and parsed content will be checked for
-%  correctness. We return a tuple
-%  with various information about said torrent: The decoded Torrent dictionary,
-%  the info hash and the number of pieces in the torrent.</p>
+% @doc Create an initial pieceset() for the torrent.
+% <p>Given a TorrentID and a binary of the Hashes of the torrent,
+%   form a `pieceset()' by querying the fast_resume system. If the fast resume
+%   system knows what is going on, use that information. Otherwise, form all possible
+%   pieces, but filter them through a correctness checker.</p>
 % @end
--spec read_and_check_torrent(integer(), bcode(), binary()) -> pieceset().
-read_and_check_torrent(TorrentID, Torrent, Hashes) ->
+-spec read_and_check_torrent(integer(), binary()) -> pieceset().
+read_and_check_torrent(TorrentID, Hashes) ->
     ok = etorrent_io:allocate(TorrentID),
     Numpieces = num_hashes(Hashes),
     %% Check the contents of the torrent, updates the state of the piecemap
@@ -257,23 +259,25 @@ read_and_check_torrent(TorrentID, Torrent, Hashes) ->
         {value, PL} ->
             case proplists:get_value(state, PL) of
                 seeding ->
-                    Fullset = etorrent_pieceset:full(Numpieces),
-                    load_pieceset(TorrentID, Fullset, Hashes);
+                    etorrent_pieceset:full(Numpieces);
                 {bitfield, Bin} ->
-                    Partset = etorrent_pieceset:from_binary(Bin, Numpieces),
-                    load_pieceset(TorrentID, Partset, Hashes)
+                    etorrent_pieceset:from_binary(Bin, Numpieces)
             end;
         unknown ->
-            None = etorrent_pieceset:empty(Numpieces),
-            load_pieceset(TorrentID, None, Hashes)
+            All  = etorrent_pieceset:full(Numpieces),
+            filter_pieces(TorrentID, All, Hashes)
     end.
 
 
--spec load_pieceset(torrentid(), pieceset(), binary()) -> pieceset().
-load_pieceset(TorrentID, InitPieces, Hashes) ->
-    Indexes = etorrent_pieceset:to_list(InitPieces),
+% @doc Filter a pieceset() w.r.t data on disk.
+% <p>Given a set of pieces to check, `ToCheck', check each piece in there for validity.
+%  return a pieceset() where all invalid pieces have been filtered out.</p>
+% @end
+-spec filter_pieces(torrentid(), pieceset(), binary()) -> pieceset().
+filter_pieces(TorrentID, ToCheck, Hashes) ->
+    Indexes = etorrent_pieceset:to_list(ToCheck),
     ValidIndexes = [I || I <- Indexes, is_valid_piece(TorrentID, I, Hashes)],
-    Numpieces = etorrent_pieceset:capacity(InitPieces),
+    Numpieces = etorrent_pieceset:capacity(ToCheck),
     etorrent_pieceset:from_list(ValidIndexes, Numpieces).
 
 -spec is_valid_piece(torrentid(), pieceindex(), binary()) -> boolean().
