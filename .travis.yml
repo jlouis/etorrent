@@ -10,6 +10,7 @@ notifications:
   irc:
     - "irc.freenode.org#etorrent"
 env:
+  - R14B04
   - R14B03
   - R14B02
   - R14B01
