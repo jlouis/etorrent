@@ -28,7 +28,7 @@ plt-clean:
 
 build-plt:
 	dialyzer --build_plt -r deps -r apps --output_plt etorrent_dialyzer.plt \
-	--apps kernel crypto stdlib sasl inets
+	--apps kernel crypto stdlib sasl inets tools xmerl erts
 
 dialyze: dialyze-etorrent
 

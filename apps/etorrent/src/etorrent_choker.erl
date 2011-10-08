@@ -157,9 +157,10 @@ move_cyclic_chain(Chain) ->
     %% Advance chain
     Back ++ Front.
 
-insert_new_peer_into_chain(Pid, Chain) ->
-    Length = length(Chain),
-    Index = lists:max([0, crypto:rand_uniform(0, Length)]),
+insert_new_peer_into_chain(Pid, []) ->
+    [Pid];
+insert_new_peer_into_chain(Pid, [_|_] = Chain) ->
+    Index = crypto:rand_uniform(0, length(Chain) + 1),
     {Front, Back} = lists:split(Index, Chain),
     Front ++ [Pid | Back].
 
