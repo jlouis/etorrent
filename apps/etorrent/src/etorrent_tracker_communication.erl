@@ -241,7 +241,7 @@ contact_tracker_udp(Url, IP, Port, Event,
 contact_tracker_http(Url, Event, S) ->
     RequestUrl = build_tracker_url(Url, Event, S),
     case etorrent_http:request(RequestUrl) of
-    {ok, {{_, 200, _}, _, Body}} ->
+    {ok, {{200, _}, _, Body}} ->
         case etorrent_bcoding:decode(Body) of
         {ok, BC} -> {ok, handle_tracker_response(Url, BC, S)};
         {error, _} ->
