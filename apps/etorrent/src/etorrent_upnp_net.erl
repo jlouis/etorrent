@@ -105,11 +105,10 @@ description(Cat, Prop) ->
 -spec subscribe(etorrent_types:upnp_service()) -> {ok, string()} | {error, _Reason}.
 subscribe(Service) ->
     {PubUrl, SubUrl} = build_sub_url(Service),
-    case ibrowse:send_req(SubUrl, [{"TIMEOUT", "infinite"},
-                                    {"NT", "upnp:event"},
-                                    {"CALLBACK", PubUrl}],
-                                subscribe, [], [{headers_as_is, true}]) of
-        {ok, _Status, Headers, _Body} ->
+    case lhttpc:request(SubUrl, subscribe, [{"TIMEOUT", "infinite"},
+                                            {"NT", "upnp:event"},
+                                            {"CALLBACK", PubUrl}], 30000) of
+        {ok, {{_Status, _}, Headers, _Body}} ->
             ?INFO({upnp_sub_done, SubUrl}),
             Sid = etorrent_upnp_proto:parse_sub_resp(Headers),
             {ok, Sid};
@@ -146,9 +145,9 @@ subscribe(Service) ->
 -spec unsubscribe(etorrent_types:upnp_service()) -> ok.
 unsubscribe(Service) ->
     {_PubUrl, SubUrl} = build_sub_url(Service),
-    ibrowse:send_req(SubUrl, [{"SID", "uuid:" ++ proplists:get_value(sid, Service)}],
-                     unsubscribe, [], [{headers_as_is, true}]).
-
+    lhttpc:request(SubUrl, unsubscribe, [{"SID",
+                                          "uuid:" ++ proplists:get_value(sid, Service)}],
+                   30000).
 
 %% @doc Add a port mapping to given UPnP service.
 %% @end
@@ -192,26 +191,25 @@ handle_call({invoke_action, Service, Action, Args}, _From, S) ->
                             binary_to_list(Type),
                             ":", binary_to_list(Ver),
                             "#", Action, "\""]),
-    case ibrowse:send_req(ActionUrl,
-                          [{"CONTENT-LENGTH", length(ReqBody)},
-                           {"SOAPACTION", SoapAct},
-                           {"CONTENT-TYPE", "text/xml; charset=\"utf-8\""}],
-                          post,
-                          ReqBody,
-                          [{headers_as_is, true}]) of
-        {ok, "200", _H, _B} ->
+    case lhttpc:request(ActionUrl, post,
+                        [{"CONTENT-LENGTH", length(ReqBody)},
+                         {"SOAPACTION", SoapAct},
+                         {"CONTENT-TYPE", "text/xml; charset=\"utf-8\""}],
+                        ReqBody,
+                        30*1000) of
+        {ok, {{200, _}, _H, _B}} ->
             {reply, ok, S};
-        {ok, "500", _, RespBody} ->
+        {ok, {{500, _}, _, RespBody}} ->
             {ECode, EDesc} = etorrent_upnp_proto:parse_ctl_err_resp(RespBody),
             {reply, {failed, ECode, EDesc}, S};
-        {ok, "405", _, _} ->
+        {ok, {{405, _}, _, _}} ->
             %% UPnP 1.0 spec indicates an invocation request may be rejected
             %% with a response of "405 Method Not Allowed", then a control
             %% point should retry the same request with HTTP M-POST method.
             %%
             %% Unfortunately Erlang httpc module doesn't support HTTP
             %% extension method, yet; ignores it and doesn't retry.
-            %% @todo: fix ibrowse to do so
+            %% @todo: fix lhttpc? or the code here to do so
             ?INFO({upnp_action_failed, 405, "M-POST not supported"}),
             {reply, {failed, 405, "M-POST not supported"}, S};
         {error, Reason} ->
@@ -323,13 +321,9 @@ discover(ST) ->
                             [etorrent_types:upnp_service()]} | {error, _Reason}.
 recv_desc(D) ->
     Url = binary_to_list(proplists:get_value(loc, D)),
-    {ok, Pid} = ibrowse:spawn_link_worker_process(Url),
-    case ibrowse:send_req_direct(Pid, Url, [{"ACCEPT-LANGUAGE", "en"}],
-                                            get, [], [{headers_as_is, true}]) of
-        {ok, _Status, _Headers, Body} ->
-            {ok, LocalAddr} = ibrowse:get_local_addr_direct(Pid, Url),
-            ibrowse:stop_worker_process(Pid),
-            case etorrent_upnp_proto:parse_description(LocalAddr, Body) of
+    case lhttpc:request(Url, get, [{"ACCEPT-LANGUAGE", "en"}], 30*1000) of
+        {ok, {{_Status, _}, _Headers, Body}} ->
+            case etorrent_upnp_proto:parse_description("", Body) of
                 {ok, DS, SS} ->
                     {ok, DS, SS};
                 {error, Reason} ->

@@ -20,7 +20,7 @@
     etorrent_t_pool_sup,
     etorrent_torrent
    ]},
-  {applications, [kernel, stdlib, cowboy, crypto, sasl, gproc, ibrowse]},
+  {applications, [kernel, stdlib, cowboy, crypto, sasl, gproc, lhttpc]},
   {mod, {etorrent_app, []}},
   {env, []}
  ]

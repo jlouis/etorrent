@@ -27,19 +27,18 @@
 -type http_response() :: {{string(), integer(), string()}, string(), string()}.
 -spec request(string()) -> {error, term()} | {ok, http_response()}.
 request(URL) ->
-    Mod = find_http_module(),
-    case Mod:request(get, {URL, [{"User-Agent", binary_to_list(?AGENT_TRACKER_STRING)},
+    case lhttpc:request(URL, get, [{"User-Agent", binary_to_list(?AGENT_TRACKER_STRING)},
                                    {"Host", decode_host(URL)},
                                    {"Accept", "*/*"},
-                                   {"Accept-Encoding", "gzip, identity"}]},
-                      [], [{headers_as_is, true}]) of
-        {ok, {{Version, StatusCode, ReasonPhrase}, Headers, Body}} ->
+                                   {"Accept-Encoding", "gzip, identity"}],
+                        15000) of
+        {ok, {{StatusCode, ReasonPhrase}, Headers, Body}} ->
             case decode_content_encoding(Headers) of
                 identity ->
-                    {ok, {{Version, StatusCode, ReasonPhrase}, Headers, Body}};
+                    {ok, {{StatusCode, ReasonPhrase}, Headers, Body}};
                 gzip ->
                     DecompressedBody = binary_to_list(zlib:gunzip(Body)),
-                    {ok, {{Version, StatusCode, ReasonPhrase}, Headers,
+                    {ok, {{StatusCode, ReasonPhrase}, Headers,
                      DecompressedBody}}
             end;
         E ->
@@ -102,15 +101,6 @@ decode_host(URL) ->
             Host ++ ":" ++ integer_to_list(N)
     end.
 
-
-%% Find the version of the HTTP module to call.
-find_http_module() ->
-   case erlang:system_info(otp_release) of
-       "R13B03" -> http;
-       "R13B04" -> http;
-       _ -> httpc
-    end.
- 
 rfc_3986_unreserved_characters() ->
     % jlouis: I deliberately killed ~ from the list as it seems the Mainline
     %  client doesn't announce this.
