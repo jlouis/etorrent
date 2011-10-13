@@ -27,8 +27,9 @@ start_link() ->
 init([]) ->
     UPNP_NET = {etorrent_upnp_net, {etorrent_upnp_net, start_link, []},
                 permanent, 2000, worker, [etorrent_upnp_net]},
-    HTTPd = {etorrent_upnp_httpd, {etorrent_upnp_httpd, start_link, []},
-             permanent, 2000, worker, [etorrent_upnp_httpd]},
+    HTTPd_Dispatch = [ {'_', [{'_', etorrent_upnp_handler, []}]} ],
+    HTTPd = cowboy:child_spec(10, cowboy_tcp_transport, [{port, 1234}],
+                                  cowboy_http_protocol, [{dispatch, HTTPd_Dispatch}]),
     Children = [UPNP_NET, HTTPd],
     RestartStrategy = {one_for_one, 1, 60},
     {ok, {RestartStrategy, Children}}.
