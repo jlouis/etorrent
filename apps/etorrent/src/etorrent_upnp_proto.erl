@@ -246,6 +246,14 @@ parse_ctl_err_resp(Resp) ->
     {ECode, EDesc}.
 
 
+%% @doc Parse headers, quick'n'dirty variant
+-define(CRLF, "\r\n").
+parse_headers(Bin) ->
+    Lines = binary:split(Bin, <<?CRLF>>, [global, trim]),
+    [begin
+         [Key, Value] = binary:split(L, <<": ">>, [trim]),
+         {Key, Value}
+     end || L <- Lines].
 %%
 %% @doc Parses UPnP service's response to our subscription request,
 %%      returns subscription id if succeeded. Or undefined if failed.
@@ -253,12 +261,12 @@ parse_ctl_err_resp(Resp) ->
 %%
 -spec parse_sub_resp(term()) -> string() | undefined.
 parse_sub_resp(Resp) ->
-    Headers = mochiweb_headers:from_binary(Resp),
-    case Headers of
-        undefined -> undefined;
-        _ ->
-            "uuid:" ++ Sid = mochiweb_headers:get_value("SID", Headers),
-            Sid
+    
+    Headers = parse_headers(Resp),
+    case lists:keyfind(<<"SID">>, 1, Headers) of
+        false -> undefined;
+        {_Key, <<"uuid:", Sid/binary>>} ->
+            binary_to_list(Sid)
     end.
 
 %%
