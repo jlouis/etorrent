@@ -44,42 +44,49 @@
                                     | {ok, uuid}
                                     | {error, _Reason}.
 parse_msearch_resp(Resp) ->
-    try
-        %% Only interested in headers, strips off first line of the response.
-        {ok, _, H} = erlang:decode_packet(http, list_to_binary(Resp), []),
-        Headers = mochiweb_headers:from_binary(H),
-        "max-age = " ++ A = mochiweb_headers:get_value("CACHE-CONTROL", Headers),
-        {Age, _} = string:to_integer(A),
-        Loc = list_to_binary(mochiweb_headers:get_value("LOCATION", Headers)),
-        Svr = list_to_binary(mochiweb_headers:get_value("SERVER", Headers)),
-        ST = mochiweb_headers:get_value("ST", Headers),
-        {Cat, Type, Ver} = case re:split(ST, ":", [{return, binary}]) of
-            [_, _, C, T, V] -> {C, T, V};
-            [<<"upnp">>, ?UPNP_RD_NAME] -> {<<"device">>, ?UPNP_RD_NAME, <<>>};
-            [<<"uuid">>, _] -> {<<"uuid">>, <<>>, <<>>}
-        end,
-        USN = mochiweb_headers:get_value("USN", Headers),
-        [_, UUID|_] = re:split(USN, ":", [{return, binary}]),
-        case Cat of
-            <<"device">> ->
-                {ok, device, [{type,    Type},
-                              {ver,     Ver},
-                              {uuid,    UUID},
-                              {loc,     Loc},
-                              {max_age, Age},
-                              {server,  Svr}]};
-            <<"service">> ->
-                {ok, service, [{type,   Type},
-                               {ver,    Ver},
-                               {uuid,   UUID},
-                               {loc,    Loc}]};
-            <<"uuid">> ->
-                {ok, uuid}
-        end
-    catch
-        error:Reason -> {error, Reason}
+    %% Only interested in headers, strips off first line of the response.
+    {ok, _, H} = erlang:decode_packet(http, list_to_binary(Resp), []),
+    case parse_headers(H) of
+        Headers when is_list(Headers) ->
+            Age = parse_max_age(Headers),
+            Loc = get_header(<<"LOCATION">>, Headers),
+            Svr = get_header(<<"SERVER">>, Headers),
+            ST  = get_header(<<"ST">>, Headers),
+            {Cat, Type, Ver} = case re:split(binary_to_list(ST), ":", [{return, binary}]) of
+                                   [_, _, C, T, V] -> {C, T, V};
+                                   [<<"upnp">>, ?UPNP_RD_NAME] -> {<<"device">>, ?UPNP_RD_NAME, <<>>};
+                                   [<<"uuid">>, _] -> {<<"uuid">>, <<>>, <<>>}
+                               end,
+            USN = get_header(<<"USN">>, Headers),
+            [_, UUID|_] = re:split(binary_to_list(USN), ":", [{return, binary}]),
+            case Cat of
+                <<"device">> ->
+                    {ok, device, [{type,    Type},
+                                  {ver,     Ver},
+                                  {uuid,    UUID},
+                                  {loc,     Loc},
+                                  {max_age, Age},
+                                  {server,  Svr}]};
+                <<"service">> ->
+                    {ok, service, [{type,   Type},
+                                   {ver,    Ver},
+                                   {uuid,   UUID},
+                                   {loc,    Loc}]};
+                <<"uuid">> ->
+                    {ok, uuid}
+            end
     end.
 
+parse_max_age(Headers) ->
+    case get_header(<<"CACHE-CONTROL">>, Headers) of
+        <<"max-age = ", A/binary>> ->
+            list_to_integer(binary_to_list(A))
+    end.
+
+get_header(Ty, H) ->
+    case lists:keyfind(Ty, 1, H) of
+        {_, V} -> V
+    end.
 
 %% @doc Parses given description of a UPnP device.
 %%
@@ -246,6 +253,16 @@ parse_ctl_err_resp(Resp) ->
     {ECode, EDesc}.
 
 
+%% @doc Parse headers, quick'n'dirty variant
+-define(CRLF, "\r\n").
+parse_headers(Bin) ->
+    Lines = binary:split(Bin, <<?CRLF>>, [global, trim]),
+    [begin
+         case binary:split(L, <<": ">>, [trim]) of
+             [Key, Value] -> {Key, Value};
+             Key -> {Key}
+         end
+     end || L <- Lines].
 %%
 %% @doc Parses UPnP service's response to our subscription request,
 %%      returns subscription id if succeeded. Or undefined if failed.
@@ -253,12 +270,12 @@ parse_ctl_err_resp(Resp) ->
 %%
 -spec parse_sub_resp(term()) -> string() | undefined.
 parse_sub_resp(Resp) ->
-    Headers = mochiweb_headers:from_binary(Resp),
-    case Headers of
-        undefined -> undefined;
-        _ ->
-            "uuid:" ++ Sid = mochiweb_headers:get_value("SID", Headers),
-            Sid
+    
+    Headers = parse_headers(Resp),
+    case lists:keyfind(<<"SID">>, 1, Headers) of
+        false -> undefined;
+        {_Key, <<"uuid:", Sid/binary>>} ->
+            binary_to_list(Sid)
     end.
 
 %%

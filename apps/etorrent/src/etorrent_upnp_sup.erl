@@ -27,8 +27,10 @@ start_link() ->
 init([]) ->
     UPNP_NET = {etorrent_upnp_net, {etorrent_upnp_net, start_link, []},
                 permanent, 2000, worker, [etorrent_upnp_net]},
-    HTTPd = {etorrent_upnp_httpd, {etorrent_upnp_httpd, start_link, []},
-             permanent, 2000, worker, [etorrent_upnp_httpd]},
+    HTTPd_Dispatch = [ {'_', [{'_', etorrent_upnp_handler, []}]} ],
+    HTTPd = cowboy:child_spec(upnp_cowboy,
+                              10, cowboy_tcp_transport, [{port, 1234}],
+                              cowboy_http_protocol, [{dispatch, HTTPd_Dispatch}]),
     Children = [UPNP_NET, HTTPd],
     RestartStrategy = {one_for_one, 1, 60},
     {ok, {RestartStrategy, Children}}.
@@ -74,8 +76,7 @@ upnp_sup_test_() ->
     {foreach,
         fun setup_upnp_sup_tree/0,
         fun teardown_upnp_sup_tree/1, [
-        ?_test(upnp_sup_tree_start_case()),
-        ?_test(multiple_instances_case())]}.
+        ?_test(upnp_sup_tree_start_case())]}.
 
 
 upnp_sup_tree_start_case() ->
@@ -88,18 +89,6 @@ upnp_sup_tree_start_case() ->
                                           {loc, {192,168,1,1}}]),
     ?assert(true).
 
-
-multiple_instances_case() ->
-    %% may need to run multiple instances, e.g. when doing test. make sure
-    %% embeded mochiweb http server will not conflict with each other in
-    %% that case.
-    %% simulates parallel run by starting another (default) mochiweb server 
-    {ok, _Server} = mochiweb_http:start([{name, multiple_instances_test},
-                                         {loop, {mochiweb_http, default_body}}]),
-    ?assert(true).
-
-
-%% @todo: Can do way more unit tests here.
 
 -endif.
 
