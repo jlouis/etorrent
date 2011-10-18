@@ -132,21 +132,16 @@ initializing(timeout, #state{id=Id, torrent=Torrent, hashes=Hashes} = S0) ->
             ValidPieces = read_and_check_torrent(Id, Hashes),
             Left = calculate_amount_left(Id, ValidPieces, Torrent),
             NumberOfPieces = etorrent_pieceset:capacity(ValidPieces),
-            {AU, AD} =
-                case etorrent_fast_resume:query_state(S#state.id) of
-                    unknown -> {0,0};
-                    {value, PL} ->
-                        {proplists:get_value(uploaded, PL),
-                         proplists:get_value(downloaded, PL)}
-                end,
+            {AlltimeUp,
+             AlltimeDown} = query_up_down_state(S#state.id),
 
             %% Add a torrent entry for this torrent.
             ok = etorrent_torrent:new(
                    Id,
                    {{uploaded, 0},
                     {downloaded, 0},
-                    {all_time_uploaded, AU},
-                    {all_time_downloaded, AD},
+                    {all_time_uploaded, AlltimeUp},
+                    {all_time_downloaded, AlltimeDown},
                     {left, Left},
                     {total, etorrent_metainfo:get_length(Torrent)},
                     {is_private, etorrent_metainfo:is_private(Torrent)},
@@ -173,6 +168,14 @@ initializing(timeout, #state{id=Id, torrent=Torrent, hashes=Hashes} = S0) ->
             garbage_collect(),
             NewState = S#state{tracker_pid=TrackerPid, valid=ValidPieces},
             {next_state, started, NewState}
+    end.
+
+query_up_down_state(Id) ->
+    case etorrent_fast_resume:query_state(Id) of
+        unknown -> {0,0};
+        {value, PL} ->
+            {proplists:get_value(uploaded, PL),
+             proplists:get_value(downloaded, PL)}
     end.
 
 %% @private
