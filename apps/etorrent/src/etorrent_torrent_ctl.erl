@@ -180,10 +180,15 @@ query_up_down_state(Id) ->
 
 %% @private
 started(check_torrent, State) ->
-    #state{id=TorrentID, valid=Pieces, hashes=Hashes} = State,
-    Indexes =  etorrent_pieceset:to_list(Pieces),
-    Invalid =  [I || I <- Indexes, is_valid_piece(TorrentID, I, Hashes)],
-    Invalid == [] orelse ?INFO([errornous_pieces, {Invalid}]),
+    #state{id=TorrentID, valid=ValidPieces, hashes=Hashes} = State,
+    NumPieces = etorrent_pieceset:capacity(ValidPieces),
+    Indexes =  etorrent_pieceset:to_list(etorrent_pieceset:full(NumPieces)),
+    case [I || I <- Indexes, not is_valid_piece(TorrentID, I, Hashes)] of
+        [] -> ignore;
+        Invalid when is_list(Invalid) ->
+            ?INFO([errornous_pieces, {Invalid}]),
+            ignore
+    end,
     {next_state, started, State};
 
 started(completed, #state{id=Id, tracker_pid=TrackerPid} = S) ->
@@ -267,9 +272,10 @@ read_and_check_torrent(TorrentID, Hashes) ->
                     etorrent_pieceset:from_binary(Bin, Numpieces)
             end;
         unknown ->
-            All  = etorrent_pieceset:full(Numpieces),
+            All = etorrent_pieceset:full(Numpieces),
             filter_pieces(TorrentID, All, Hashes)
     end.
+
 
 
 % @doc Filter a pieceset() w.r.t data on disk.
