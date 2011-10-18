@@ -25,6 +25,11 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
+%% gproc registry entries
+-export([register_server/1,
+         lookup_server/1,
+         await_server/1]).
+
 -type tier() :: etorrent_types:tier().
 -record(state, {queued_message = none :: none | started,
                 %% The hard timer is the time we *must* wait on the tracker.
@@ -65,6 +70,21 @@ start_link(ControlPid, UrlTiers, InfoHash, PeerId, TorrentId)
 -spec completed(pid()) -> ok.
 completed(Pid) ->
     gen_server:cast(Pid, completed).
+
+-spec register_server(integer()) -> true.
+register_server(TorrentID) ->
+    etorrent_utils:register(server_name(TorrentID)).
+
+-spec lookup_server(integer()) -> pid().
+lookup_server(TorrentID) ->
+    etorrent_utils:lookup(server_name(TorrentID)).
+
+-spec await_server(integer()) -> pid().
+await_server(TorrentID) ->
+    etorrent_utils:await(server_name(TorrentID)).
+
+server_name(TorrentID) ->
+    {etorrent, TorrentID, tracker}.
 
 %%====================================================================
 

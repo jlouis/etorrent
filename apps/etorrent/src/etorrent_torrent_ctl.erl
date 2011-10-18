@@ -38,14 +38,13 @@
 -type pieceset() :: etorrent_pieceset:pieceset().
 -type pieceindex() :: etorrent_types:pieceindex().
 -record(state, {
-    id          :: integer() ,
-    torrent     :: bcode(),   % Parsed torrent file
-    valid       :: pieceset(),
-    hashes      :: binary(),
-    info_hash   :: binary(),  % Infohash of torrent file
+    id          :: integer(),    % Index of this torrent
+    torrent     :: bcode(),      % Parsed torrent file
+    valid       :: pieceset(),   % A set of the valid pieces for this torrent
+    hashes      :: binary(),     % Piece hashes
+    info_hash   :: binary(),     % Infohash of torrent file
     peer_id     :: binary(),
-    parent_pid  :: pid(),
-    tracker_pid :: pid(),
+    parent_pid  :: pid(),        % Parent pid @todo remove this
     progress    :: pid(),
     pending     :: pid(),
     endgame     :: pid()}).
@@ -155,7 +154,7 @@ initializing(timeout, #state{id=Id, torrent=Torrent, hashes=Hashes} = S0) ->
             etorrent_event:started_torrent(Id),
 
             %% Start the tracker
-            {ok, TrackerPid} =
+            {ok, _TrackerPid} =
                 etorrent_torrent_sup:start_child_tracker(
                   S#state.parent_pid,
                   etorrent_metainfo:get_url(Torrent),
@@ -166,7 +165,7 @@ initializing(timeout, #state{id=Id, torrent=Torrent, hashes=Hashes} = S0) ->
             %% Since the process will now go to a state where it won't do anything
             %% for a long time, GC it.
             garbage_collect(),
-            NewState = S#state{tracker_pid=TrackerPid, valid=ValidPieces},
+            NewState = S#state{valid=ValidPieces},
             {next_state, started, NewState}
     end.
 
@@ -191,9 +190,10 @@ started(check_torrent, State) ->
     end,
     {next_state, started, State};
 
-started(completed, #state{id=Id, tracker_pid=TrackerPid} = S) ->
+started(completed, #state{id=Id} = S) ->
     etorrent_event:completed_torrent(Id),
-    etorrent_tracker_communication:completed(TrackerPid),
+    Pid = etorrent_tracker_communication:lookup_server(Id),
+    etorrent_tracker_communication:completed(Pid),
     {next_state, started, S}.
 
 %% @private
@@ -208,6 +208,7 @@ handle_sync_event(valid_pieces, _, StateName, State) ->
 
 %% @private
 %% Tell the controller we have stored an index for this torrent file
+%% The controller will update internal state and inform others
 handle_info({piece, {stored, Index}}, started, State) ->
     #state{id=TorrentID, hashes=Hashes, progress=Progress, valid=ValidPieces} = State,
     Piecehash = fetch_hash(Index, Hashes),
