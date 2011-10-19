@@ -38,14 +38,13 @@
 -type pieceset() :: etorrent_pieceset:pieceset().
 -type pieceindex() :: etorrent_types:pieceindex().
 -record(state, {
-    id          :: integer() ,
-    torrent     :: bcode(),   % Parsed torrent file
-    valid       :: pieceset(),
-    hashes      :: binary(),
-    info_hash   :: binary(),  % Infohash of torrent file
+    id          :: integer(),    % Index of this torrent
+    torrent     :: bcode(),      % Parsed torrent file
+    valid       :: pieceset(),   % A set of the valid pieces for this torrent
+    hashes      :: binary(),     % Piece hashes
+    info_hash   :: binary(),     % Infohash of torrent file
     peer_id     :: binary(),
-    parent_pid  :: pid(),
-    tracker_pid :: pid(),
+    parent_pid  :: pid(),        % Parent pid @todo remove this
     progress    :: pid(),
     pending     :: pid(),
     endgame     :: pid()}).
@@ -132,21 +131,16 @@ initializing(timeout, #state{id=Id, torrent=Torrent, hashes=Hashes} = S0) ->
             ValidPieces = read_and_check_torrent(Id, Hashes),
             Left = calculate_amount_left(Id, ValidPieces, Torrent),
             NumberOfPieces = etorrent_pieceset:capacity(ValidPieces),
-            {AU, AD} =
-                case etorrent_fast_resume:query_state(S#state.id) of
-                    unknown -> {0,0};
-                    {value, PL} ->
-                        {proplists:get_value(uploaded, PL),
-                         proplists:get_value(downloaded, PL)}
-                end,
+            {AlltimeUp,
+             AlltimeDown} = query_up_down_state(S#state.id),
 
             %% Add a torrent entry for this torrent.
             ok = etorrent_torrent:new(
                    Id,
                    {{uploaded, 0},
                     {downloaded, 0},
-                    {all_time_uploaded, AU},
-                    {all_time_downloaded, AD},
+                    {all_time_uploaded, AlltimeUp},
+                    {all_time_downloaded, AlltimeDown},
                     {left, Left},
                     {total, etorrent_metainfo:get_length(Torrent)},
                     {is_private, etorrent_metainfo:is_private(Torrent)},
@@ -160,7 +154,7 @@ initializing(timeout, #state{id=Id, torrent=Torrent, hashes=Hashes} = S0) ->
             etorrent_event:started_torrent(Id),
 
             %% Start the tracker
-            {ok, TrackerPid} =
+            {ok, _TrackerPid} =
                 etorrent_torrent_sup:start_child_tracker(
                   S#state.parent_pid,
                   etorrent_metainfo:get_url(Torrent),
@@ -171,21 +165,35 @@ initializing(timeout, #state{id=Id, torrent=Torrent, hashes=Hashes} = S0) ->
             %% Since the process will now go to a state where it won't do anything
             %% for a long time, GC it.
             garbage_collect(),
-            NewState = S#state{tracker_pid=TrackerPid, valid=ValidPieces},
+            NewState = S#state{valid=ValidPieces},
             {next_state, started, NewState}
+    end.
+
+query_up_down_state(Id) ->
+    case etorrent_fast_resume:query_state(Id) of
+        unknown -> {0,0};
+        {value, PL} ->
+            {proplists:get_value(uploaded, PL),
+             proplists:get_value(downloaded, PL)}
     end.
 
 %% @private
 started(check_torrent, State) ->
-    #state{id=TorrentID, valid=Pieces, hashes=Hashes} = State,
-    Indexes =  etorrent_pieceset:to_list(Pieces),
-    Invalid =  [I || I <- Indexes, is_valid_piece(TorrentID, I, Hashes)],
-    Invalid == [] orelse ?INFO([errornous_pieces, {Invalid}]),
+    #state{id=TorrentID, valid=ValidPieces, hashes=Hashes} = State,
+    NumPieces = etorrent_pieceset:capacity(ValidPieces),
+    Indexes =  etorrent_pieceset:to_list(etorrent_pieceset:full(NumPieces)),
+    case [I || I <- Indexes, not is_valid_piece(TorrentID, I, Hashes)] of
+        [] -> ignore;
+        Invalid when is_list(Invalid) ->
+            ?INFO([errornous_pieces, {Invalid}]),
+            ignore
+    end,
     {next_state, started, State};
 
-started(completed, #state{id=Id, tracker_pid=TrackerPid} = S) ->
+started(completed, #state{id=Id} = S) ->
     etorrent_event:completed_torrent(Id),
-    etorrent_tracker_communication:completed(TrackerPid),
+    Pid = etorrent_tracker_communication:lookup_server(Id),
+    etorrent_tracker_communication:completed(Pid),
     {next_state, started, S}.
 
 %% @private
@@ -200,6 +208,7 @@ handle_sync_event(valid_pieces, _, StateName, State) ->
 
 %% @private
 %% Tell the controller we have stored an index for this torrent file
+%% The controller will update internal state and inform others
 handle_info({piece, {stored, Index}}, started, State) ->
     #state{id=TorrentID, hashes=Hashes, progress=Progress, valid=ValidPieces} = State,
     Piecehash = fetch_hash(Index, Hashes),
@@ -264,9 +273,10 @@ read_and_check_torrent(TorrentID, Hashes) ->
                     etorrent_pieceset:from_binary(Bin, Numpieces)
             end;
         unknown ->
-            All  = etorrent_pieceset:full(Numpieces),
+            All = etorrent_pieceset:full(Numpieces),
             filter_pieces(TorrentID, All, Hashes)
     end.
+
 
 
 % @doc Filter a pieceset() w.r.t data on disk.
