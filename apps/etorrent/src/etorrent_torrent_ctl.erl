@@ -151,12 +151,6 @@ initializing(timeout, #state{id=Id, torrent=Torrent, hashes=Hashes} = S0) ->
                     {pieces, ValidPieces}},
                    NumberOfPieces),
 
-            %% Update the tracking map. This torrent has been started.
-            %% Altering this state marks the point where we will accept
-            %% Foreign connections on the torrent as well.
-            etorrent_table:statechange_torrent(Id, started),
-            etorrent_event:started_torrent(Id),
-
             %% Start the progress manager
             {ok, ProgressPid} =
                 etorrent_torrent_sup:start_progress(
@@ -164,6 +158,12 @@ initializing(timeout, #state{id=Id, torrent=Torrent, hashes=Hashes} = S0) ->
                   Id,
                   Torrent,
                   ValidPieces),
+
+            %% Update the tracking map. This torrent has been started.
+            %% Altering this state marks the point where we will accept
+            %% Foreign connections on the torrent as well.
+            etorrent_table:statechange_torrent(Id, started),
+            etorrent_event:started_torrent(Id),
 
             %% Start the tracker
             {ok, TrackerPid} =
