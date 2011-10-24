@@ -332,7 +332,7 @@ init(Serverargs) ->
     TorrentID = orddict:fetch(torrentid, Args),
     true = register_server(TorrentID),
     ChunkSize = orddict:fetch(chunksize, Args),
-    FetchedPieces = orddict:fetch(fetched, Args),
+    PiecesValid = orddict:fetch(fetched, Args),
     PieceSizes = orddict:fetch(piecesizes, Args),
 
     TorrentPid = etorrent_torrent_ctl:await_server(TorrentID),
@@ -342,7 +342,6 @@ init(Serverargs) ->
     ok = etorrent_pending:receiver(self(), Pending),
 
     NumPieces = length(PieceSizes),
-    PiecesValid = etorrent_pieceset:from_list(FetchedPieces, NumPieces),
     PiecesNone = etorrent_pieceset:from_list([], NumPieces),
 
     %% Initialize a full chunkset for all pieces that are left to download
