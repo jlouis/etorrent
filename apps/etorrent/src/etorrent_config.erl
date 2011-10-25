@@ -22,6 +22,7 @@
 	 max_files/0,
 	 max_peers/0,
 	 max_upload_rate/0,
+	 max_download_rate/0,
 	 max_upload_slots/0,
 	 optimistic_slots/0,
 	 profiling/0,
@@ -57,7 +58,8 @@ configuration_specification() ->
      optional(fs_watermark_high, 128),
      optional(max_upload_slots, auto),
      required(min_upload),
-     required(max_upload_rate),
+     optional(max_upload_rate, infinity),
+     optional(max_download_rate, infinity),
      required(port),
      required(logger_dir),
      required(logger_fname),
@@ -131,8 +133,11 @@ max_upload_slots() -> call(max_upload_slots).
 -spec optimistic_slots() -> pos_integer().
 optimistic_slots() -> call(min_upload).
 
--spec max_upload_rate() -> pos_integer().
+-spec max_upload_rate() -> pos_integer() | infinity.
 max_upload_rate() -> call(max_upload_rate).
+
+-spec max_download_rate() -> pos_integer() | infinity.
+max_download_rate() -> call(max_download_rate).
 
 -spec listen_port() -> pos_integer().
 listen_port() -> call(port).

@@ -1,0 +1,15 @@
+{application, rlimit, [
+  {description, "Simple rate limiting library"},
+  {vsn, "0.1.0"},
+  {registered, []},
+  {applications, [kernel, stdlib]},
+  {env, []}]}.
+
+
+
+
+
+
+
+
+

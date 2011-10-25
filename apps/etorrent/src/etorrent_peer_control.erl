@@ -21,6 +21,7 @@
         unchoke/1,
         initialize/2,
         incoming_msg/2,
+        check_choke/1,
         stop/1]).
 
 %% gproc registry entries
@@ -139,6 +140,23 @@ initialize(Pid, Way) ->
 incoming_msg(Pid, Msg) ->
     gen_server:cast(Pid, {incoming_msg, Msg}).
 
+%% @doc Trigger a check of the current choke status.
+%% <p>
+%% Rechecking the current choke status ensures that an upload-slot is
+%% immediately allocated to a peer that has shown interest, if there is
+%% an available upload-slot.
+%% </p>
+%% <p>
+%% The current choke status is also rechecked when a peer has shown a lack
+%% of interest. This ensures that the upload-slot it has allocated, if it
+%% is unchoked at the time, is freed and reallocated to another peer.
+%% </p>
+%% @end
+-spec check_choke(pid()) -> ok.
+check_choke(Pid) ->
+    gen_server:cast(Pid, check_choke).
+
+
 
 %% @doc Check if a peer provided an interesting piece.
 %% This function should be called when a have-message is received.
@@ -192,9 +210,11 @@ check_remote_seeder(Remote, Local) ->
             exit(seeder)
     end.
 
-%% @doc Check if the request queue is low
--spec poll_queue(tservices(), pid(), peerstate(), peerstate()) -> peerstate().
-poll_queue(Download, SendPid, Remote, Local) ->
+
+%% @private Check if the local request queue is low on requests.
+%% An updated copy of the local peer state is returned, including any new requests.
+-spec poll_local_rqueue(tservices(), pid(), peerstate(), peerstate()) -> peerstate().
+poll_local_rqueue(Download, SendPid, Remote, Local) ->
     case etorrent_peerstate:needreqs(Local) of
         false ->
             Local;
@@ -206,13 +226,41 @@ poll_queue(Download, SendPid, Remote, Local) ->
                 {ok, assigned} ->
                     Local;
                 {ok, Chunks} ->
-                    [etorrent_peer_send:local_request(SendPid, Chunk)
+                    [etorrent_peer_send:request(SendPid, Chunk)
                     || Chunk <- Chunks],
                     NewRequests = etorrent_rqueue:push(Chunks, Requests),
                     etorrent_peerstate:requests(NewRequests, Local)
             end
     end.
 
+%% @private Check if a new asynchronous chunk read needs to be started.
+%% A new chunk read should be started when a REQUEST message is pushed into an
+%% empty request queue. The calling code is expected to only call this function
+%% when the local peer is expected to send a PIECE request.
+push_remote_rqueue_hook(TorrentID, Requests) ->
+    case etorrent_rqueue:size(Requests) of
+        1 ->
+            {Piece, Offset, Length} = etorrent_rqueue:peek(Requests),
+            {ok, _} = etorrent_io:aread_chunk(TorrentID, Piece, Offset, Length),
+            ok;
+        N when N > 1 ->
+            ok
+    end.
+
+
+%% @private Check if a new asynchronous chunk read needs to be started.
+%% A new chunk read should be started when a REQUEST message is popped from a non
+%% empty request queue. The calling code is expected to call this function with
+%% the most recent version of the queue.
+pop_remote_rqueue_hook(TorrentID, Requests) ->
+    case etorrent_rqueue:size(Requests) of
+        0 ->
+            ok;
+        N when N > 0 ->
+            {Piece, Offset, Length} = etorrent_rqueue:peek(Requests),
+            {ok, _} = etorrent_io:aread_chunk(TorrentID, Piece, Offset, Length),
+            ok
+    end.
 
 
 %% @private
@@ -259,18 +307,65 @@ handle_cast({initialize, Way}, S) ->
         full ->
             {stop, normal, S}
     end;
+
 handle_cast({incoming_msg, Msg}, S) ->
     case handle_message(Msg, S) of
         {ok, NS} -> {noreply, NS};
         {stop, Reason, NS} -> {stop, Reason, NS}
     end;
-handle_cast(choke, S) ->
-    etorrent_peer_send:choke(S#state.send_pid),
-    {noreply, S};
 
-handle_cast(unchoke, S) ->
-    etorrent_peer_send:unchoke(S#state.send_pid),
-    {noreply, S};
+handle_cast(choke, State) ->
+    #state{
+        torrent_id=TorrentID, send_pid=SendPid,
+        remote=Remote, config=Config} = State,
+    case etorrent_peerstate:choked(Remote) of
+        false ->
+            Reqs = etorrent_peerstate:requests(Remote),
+            case etorrent_peerconf:fast(Config) of
+                true ->
+                    [etorrent_peer_send:reject(SendPid, Index, Offset, Length)
+                    || {Index, Offset, Length} <- etorrent_rqueue:to_list(Reqs)];
+                false ->
+                    []
+            end,
+            etorrent_peer_states:set_local_choke(TorrentID, self()),
+            etorrent_peer_send:choke(SendPid),
+            NewReqs = etorrent_rqueue:flush(Reqs),
+            TmpRemote = etorrent_peerstate:requests(NewReqs, Remote),
+            NewRemote = etorrent_peerstate:choked(true, TmpRemote),
+            NewState = State#state{remote=NewRemote},
+            {noreply, NewState};
+        true ->
+            {noreply, State}
+    end;
+
+handle_cast(unchoke, State) ->
+    #state{torrent_id=TorrentID, send_pid=SendPid, remote=Remote} = State,
+    case etorrent_peerstate:choked(Remote) of
+        false ->
+            %% @todo handle duplicate unchoke?
+            {noreply, State};
+        true ->
+            etorrent_peer_states:set_local_unchoke(TorrentID, self()),
+            etorrent_peer_send:unchoke(SendPid),
+            NewRemote = etorrent_peerstate:choked(false, Remote),
+            NewState = State#state{remote=NewRemote},
+            {noreply, NewState}
+    end;
+
+handle_cast(check_choke, State) ->
+    #state{remote=Remote} = State,
+    Choked = etorrent_peerstate:choked(Remote),
+    Interested = etorrent_peerstate:interested(Remote),
+    case {Choked, Interested} of
+        {false, false} ->
+            etorrent_choker:perform_rechoke();
+        {true, true} ->
+            etorrent_choker:perform_rechoke();
+        {_Choked, _Interested} ->
+            ok
+    end,
+    {noreply, State};
 
 handle_cast(interested, State) ->
     self() ! {interested, true},
@@ -300,18 +395,48 @@ handle_info({chunk, {fetched, Index, Offset, Length, _}}, State) ->
     NewState = State#state{local=NewLocal},
     {noreply, NewState};
 
+handle_info({chunk, {contents, Index, Offset, Length, Data}}, State) ->
+    #state{torrent_id=TorrentID, send_pid=SendPid, remote=Remote} = State,
+    Requests = etorrent_peerstate:requests(Remote),
+    Choked = etorrent_peerstate:choked(Remote),
+    case etorrent_rqueue:peek(Requests) of
+        %% When the remote peer enters the choked state with a non-empty
+        %% request queue we are expecting to receive the result of the last
+        %% asynchronous chunk read in the choked state.
+        false when Choked ->
+            {noreply, State};
+        %% The same applies to a peer that has entered the choked state and
+        %% quickly re-entered the unchoked state. Use separate clause for now.
+        false when not Choked ->
+            {noreply, State};
+        %% We must only reply with a PIECE message if the request at the head
+        %% of the remote request queue matches and the peer is unchoked.
+        {Index, Offset, Length} when not Choked ->
+            NewRequests = etorrent_rqueue:pop(Requests),
+            NewRemote = etorrent_peerstate:requests(NewRequests, Remote),
+            NewState = State#state{remote=NewRemote},
+            ok = etorrent_peer_send:piece(SendPid, Index, Offset, Length, Data),
+            ok = etorrent_torrent:statechange(TorrentID, [{add_upload, Length}]),
+            ok = pop_remote_rqueue_hook(TorrentID, NewRequests),
+            {noreply, NewState};
+        %% Same as clause #2. Peer returned to unchoked state. Non empty queue
+        %% while choked is considered invalid. It should have been flushed.
+        {_Index, _Offset, _Length} when not Choked ->
+            {noreply, State}
+    end;
+
 handle_info({piece, {valid, Piece}}, State) ->
     #state{send_pid=SendPid, download=Download, local=Local, remote=Remote} = State,
     WithLocal = etorrent_peerstate:hasone(Piece, Local),
     ok        = etorrent_peer_send:have(SendPid, Piece),
     TmpLocal  = recheck_local_interest(Piece, Remote, WithLocal, SendPid),
-    NewLocal  = poll_queue(Download, SendPid, Remote, TmpLocal),
+    NewLocal  = poll_local_rqueue(Download, SendPid, Remote, TmpLocal),
     NewState  = State#state{local=NewLocal},
     {noreply, NewState};
 
 handle_info({piece, {unassigned, _}}, State) ->
     #state{download=Download, send_pid=SendPid, local=Local, remote=Remote} = State,
-    NewLocal = poll_queue(Download, SendPid, Remote, Local),
+    NewLocal = poll_local_rqueue(Download, SendPid, Remote, Local),
     NewState = State#state{local=NewLocal},
     {noreply, NewState};
 
@@ -403,33 +528,88 @@ handle_message(unchoke, State) ->
     #state{send_pid=SendPid, download=Download, local=Local, remote=Remote} = State,
     ok = etorrent_peer_states:set_unchoke(TorrentID, self()),
     TmpLocal = etorrent_peerstate:choked(false, Local),
-    NewLocal = poll_queue(Download, SendPid, Remote, TmpLocal),
+    NewLocal = poll_local_rqueue(Download, SendPid, Remote, TmpLocal),
     NewState = State#state{local=NewLocal},
     {ok, NewState};
 
 handle_message(interested, State) ->
-    #state{torrent_id=TorrentID, send_pid=SendPid, remote=Remote} = State,
+    #state{torrent_id=TorrentID, remote=Remote} = State,
     ok = etorrent_peer_states:set_interested(TorrentID, self()),
-    ok = etorrent_peer_send:check_choke(SendPid),
+    ok = etorrent_peer_control:check_choke(self()),
     NewRemote = etorrent_peerstate:interested(true, Remote),
     NewState = State#state{remote=NewRemote},
     {ok, NewState};
 
 handle_message(not_interested, State) ->
-    #state{torrent_id=TorrentID, send_pid=SendPid, remote=Remote} = State,
+    #state{torrent_id=TorrentID, remote=Remote} = State,
     ok = etorrent_peer_states:set_not_interested(TorrentID, self()),
-    ok = etorrent_peer_send:check_choke(SendPid),
+    ok = etorrent_peer_control:check_choke(self()),
     NewRemote = etorrent_peerstate:interested(false, Remote),
     NewState = State#state{remote=NewRemote},
     {ok, NewState};
 
-handle_message({request, Index, Offset, Len}, S) ->
-    etorrent_peer_send:remote_request(S#state.send_pid, Index, Offset, Len),
-    {ok, S};
+handle_message({request, Index, Offset, Length}, State) ->
+    #state{torrent_id=TorrentID, remote=Remote, config=Config, send_pid=SendPid} = State,
+    Requests = etorrent_peerstate:requests(Remote),
+    NewRequests = etorrent_rqueue:push(Index, Offset, Length, Requests),
+    IsOverlimit = etorrent_rqueue:is_overlimit(NewRequests),
+    FastEnabled = etorrent_peerconf:fast(Config),
+    case etorrent_peerstate:choked(Remote) of
+        %% The remote peer is choked by the local peer. The peer should not
+        %% expect a PIECE message as a response while in this state. It was
+        %% most likely sent before it received the CHOKE message from us.
+        true when FastEnabled ->
+            %% In the original bittorrent specification the behaviour
+            %% in this situation was undefined. The FAST extension adds
+            %% a REJECT message which makes more sense than replying to
+            %% or dropping the request on the floor.
+            etorrent_peer_send:reject(SendPid, Index, Offset, Length),
+            {ok, State};
+        true ->
+            {ok, State};
 
-handle_message({cancel, Index, Offset, Len}, S) ->
-    etorrent_peer_send:cancel(S#state.send_pid, Index, Offset, Len),
-    {ok, S};
+        false when IsOverlimit, FastEnabled ->
+            %% We can only signal that we are only accepting a limited amount
+            %% of pipelined requests if the FAST extension is used.
+            etorrent_peer_send:reject(SendPid, Index, Offset, Length),
+            {ok, State};
+
+        false when IsOverlimit ->
+            {stop, max_queue_len_exceeded, State};
+
+        false ->
+            %% The remote peer is unchoked by the local peer. The peer expects a
+            %% PIECE message as a response to this message. If the local peer
+            %% chokes the remote peer before a response is sent the same rules
+            %% apply to this request as a requests received after the choke.
+            ok = push_remote_rqueue_hook(TorrentID, NewRequests),
+            NewRemote = etorrent_peerstate:requests(NewRequests, Remote),
+            NewState = State#state{remote=NewRemote},
+            {ok, NewState}
+    end;
+
+handle_message({cancel, Index, Offset, Length}, State) ->
+    %% If the FAST extension is enabled the peer expects a REJECT response
+    %% to a CANCEL request. We assume that the CANCEL request refers to a
+    %% previously sent chunk REQUEST. If the REQUEST is not a member of the
+    %% remote request queue we can assume that we have sent a PIECE response.
+    %% If the REQUEST is a member of the remote request queue we remove it
+    %% and respond with a REJECT message. Either case is valid.
+    #state{send_pid=SendPid, remote=Remote, config=Config} = State,
+    Reqs = etorrent_peerstate:requests(Remote),
+    case etorrent_rqueue:member(Index, Offset, Length, Reqs) of
+        true ->
+            case etorrent_peerconf:fast(Config) of
+                false -> ok;
+                true  -> etorrent_peer_send:reject(SendPid, Index, Offset, Length)
+            end,
+            NewReqs = etorrent_rqueue:delete(Index, Offset, Length, Reqs),
+            NewRemote = etorrent_peerstate:requests(NewReqs, Remote),
+            NewState = State#state{remote=NewRemote},
+            {noreply, NewState};
+        false ->
+            {noreply, State}
+    end;
 
 handle_message({suggest, Piece}, State) ->
     #state{config=Config} = State,
@@ -447,7 +627,7 @@ handle_message({have, Piece}, State) ->
     ok        = etorrent_scarcity:add_piece(TorrentID, Piece, Pieceset),
     TmpLocal  = check_local_interest(Piece, Local, SendPid),
     NewRemote = check_remote_seeder(TmpRemote, TmpLocal),
-    NewLocal  = poll_queue(Download, SendPid, NewRemote, TmpLocal),
+    NewLocal  = poll_local_rqueue(Download, SendPid, NewRemote, TmpLocal),
     NewState  = State#state{remote=NewRemote, local=NewLocal},
     {ok, NewState};
 
@@ -469,7 +649,7 @@ handle_message(have_all, State) ->
     ok        = etorrent_scarcity:add_peer(TorrentID, Pieceset),
     TmpLocal  = check_local_interest(Pieceset, Local, SendPid),
     NewRemote = check_remote_seeder(TmpRemote, TmpLocal),
-    NewLocal  = poll_queue(Download, SendPid, NewRemote, TmpLocal),
+    NewLocal  = poll_local_rqueue(Download, SendPid, NewRemote, TmpLocal),
     NewState  = State#state{remote=NewRemote, local=NewLocal},
     {ok, NewState};
 
@@ -480,7 +660,7 @@ handle_message({bitfield, Bitfield}, State) ->
     ok        = etorrent_scarcity:add_peer(TorrentID, Pieceset),
     TmpLocal  = check_local_interest(Pieceset, Local, SendPid),
     NewRemote = check_remote_seeder(TmpRemote, TmpLocal),
-    NewLocal  = poll_queue(Download, SendPid, NewRemote, TmpLocal),
+    NewLocal  = poll_local_rqueue(Download, SendPid, NewRemote, TmpLocal),
     NewState  = State#state{remote=NewRemote, local=NewLocal},
     {ok, NewState};
 
@@ -496,7 +676,7 @@ handle_message({piece, Index, Offset, Data}, State) ->
             ok = etorrent_download:chunk_stored(Index, Offset, Length, Download),
             NewRequests = etorrent_rqueue:pop(Requests),
             TmpLocal = etorrent_peerstate:requests(NewRequests, Local),
-            poll_queue(Download, SendPid, Remote, TmpLocal);
+            poll_local_rqueue(Download, SendPid, Remote, TmpLocal);
         false ->
             %% Stray piece, we could try to get hold of it but for now we just
             %% throw it on the floor. TODO - crash if the fast extension is enabled?
