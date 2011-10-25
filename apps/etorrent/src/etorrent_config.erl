@@ -11,6 +11,7 @@
 -export([dht/0,
 	 dht_port/0,
 	 dht_state_file/0,
+         dotdir/0,
 	 dirwatch_interval/0,
 	 download_dir/0,
 	 fast_resume_file/0,
@@ -29,7 +30,7 @@
 	 webui_address/0,
 	 webui_log_dir/0,
 	 webui_port/0,
-     use_upnp/0,
+         use_upnp/0,
 	 work_dir/0]).
 
 %% API
@@ -80,6 +81,10 @@ call(Key) ->
 
 -spec work_dir() -> file_path().
 work_dir() -> call(dir).
+
+-spec dotdir() -> file_path().
+dotdir() ->
+    call(dotdir).
 
 -spec download_dir() -> file_path().
 download_dir() -> call(download_dir).

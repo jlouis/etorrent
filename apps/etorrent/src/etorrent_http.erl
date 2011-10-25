@@ -24,7 +24,7 @@
 % implemented trackers (most of them)
 % </p>
 % @end
--type http_response() :: {{string(), integer(), string()}, string(), string()}.
+-type http_response() :: {{integer(), string()}, term(), iolist()}.
 -spec request(string()) -> {error, term()} | {ok, http_response()}.
 request(URL) ->
     case lhttpc:request(URL, get, [{"User-Agent", binary_to_list(?AGENT_TRACKER_STRING)},

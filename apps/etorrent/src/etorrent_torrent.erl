@@ -79,11 +79,12 @@ start_link() ->
 -spec new(integer(),
        {{uploaded, integer()},
         {downloaded, integer()},
-	    {all_time_uploaded, non_neg_integer()},
-	    {all_time_downloaded, non_neg_integer()},
+        {all_time_uploaded, non_neg_integer()},
+        {all_time_downloaded, non_neg_integer()},
         {left, integer()},
         {total, integer()},
-        {is_private, boolean()}}, integer()) -> ok.
+        {is_private, boolean()},
+        {pieces, etorrent_pieceset:pieceset()}}, integer()) -> ok.
 new(Id, Info, NPieces) ->
     gen_server:call(?SERVER, {new, Id, Info, NPieces}).
 
