@@ -332,7 +332,7 @@ init(Serverargs) ->
     TorrentID = orddict:fetch(torrentid, Args),
     true = register_server(TorrentID),
     ChunkSize = orddict:fetch(chunksize, Args),
-    FetchedPieces = orddict:fetch(fetched, Args),
+    PiecesValid = orddict:fetch(fetched, Args),
     PieceSizes = orddict:fetch(piecesizes, Args),
 
     TorrentPid = etorrent_torrent_ctl:await_server(TorrentID),
@@ -342,7 +342,6 @@ init(Serverargs) ->
     ok = etorrent_pending:receiver(self(), Pending),
 
     NumPieces = length(PieceSizes),
-    PiecesValid = etorrent_pieceset:from_list(FetchedPieces, NumPieces),
     PiecesNone = etorrent_pieceset:from_list([], NumPieces),
 
     %% Initialize a full chunkset for all pieces that are left to download
@@ -715,12 +714,13 @@ chunk_server_test_() ->
 testid() -> 2.
 
 setup_env() ->
-    Valid = [],
+    Sizes = [{0, 2}, {1, 2}, {2, 2}],
+    Valid = etorrent_pieceset:empty(length(Sizes)),
     {ok, Time} = ?timer:start_link(queue),
     {ok, PPid} = ?pending:start_link(testid()),
     {ok, EPid} = ?endgame:start_link(testid()),
     {ok, SPid} = ?scarcity:start_link(testid(), Time, 8),
-    {ok, CPid} = ?progress:start_link(testid(), 1, Valid, [{0, 2}, {1, 2}, {2, 2}], self()),
+    {ok, CPid} = ?progress:start_link(testid(), 1, Valid, Sizes, self()),
     ok = ?pending:register(PPid),
     ok = ?pending:receiver(CPid, PPid),
     {Time, EPid, PPid, SPid, CPid}.

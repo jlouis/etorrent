@@ -7,7 +7,10 @@
 -behaviour(supervisor).
 
 %% API
--export([start_link/3, start_child_tracker/5]).
+-export([start_link/3,
+
+         start_child_tracker/5,
+         start_progress/4]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -17,6 +20,7 @@
 -type tier() :: etorrent_types:tier().
 
 
+-define(DEFAULT_CHUNK_SIZE, 16#4000). % TODO - get this value from a configuration file
 %% =======================================================================
 
 %% @doc Start up the supervisor
@@ -48,6 +52,14 @@ start_child_tracker(Pid, UrlTiers, InfoHash, Local_Peer_Id, TorrentId) ->
                permanent, 15000, worker, [etorrent_tracker_communication]},
     supervisor:start_child(Pid, Tracker).
 
+-spec start_progress(pid(), etorrent_types:torrent_id(),
+                            etorrent_types:bcode(),
+                            etorrent_pieceset:pieceset()) ->
+                            {ok, pid()} | {ok, pid(), term()} | {error, term()}.
+start_progress(Pid, TorrentID, Torrent, ValidPieces) ->
+    Spec = progress_spec(TorrentID, Torrent, ValidPieces),
+    supervisor:start_child(Pid, Spec).
+    
 %% ====================================================================
 
 %% @private
@@ -57,7 +69,6 @@ init([{Torrent, TorrentPath, TorrentIH}, PeerID, TorrentID]) ->
         scarcity_manager_spec(TorrentID, Torrent),
         torrent_control_spec(TorrentID, Torrent, TorrentPath, TorrentIH, PeerID),
         endgame_spec(TorrentID),
-        progress_spec(TorrentID, Torrent),
         io_sup_spec(TorrentID, Torrent),
         peer_pool_spec(TorrentID)],
     {ok, {{one_for_all, 1, 60}, Children}}.
@@ -73,10 +84,9 @@ scarcity_manager_spec(TorrentID, Torrent) ->
         {etorrent_scarcity, start_link, [TorrentID, Numpieces]},
         permanent, 5000, worker, [etorrent_scarcity]}.
 
-progress_spec(TorrentID, Torrent) ->
-    ValidPieces = [], % TODO - retrieve this from a persistent state-file/table.
+progress_spec(TorrentID, Torrent, ValidPieces) ->
     PieceSizes  = etorrent_io:piece_sizes(Torrent), 
-    ChunkSize   = 16#4000, % TODO - get this value from a configuration file
+    ChunkSize   = ?DEFAULT_CHUNK_SIZE,
     Args = [TorrentID, ChunkSize, ValidPieces, PieceSizes, lookup],
     {chunk_mgr,
         {etorrent_progress, start_link, Args},

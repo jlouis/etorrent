@@ -112,11 +112,9 @@ init([Parent, Id, {Torrent, TorrentFile, TorrentIH}, PeerId]) ->
 %% @private
 %% @todo Split and simplify this monster function
 initializing(timeout, #state{id=Id, torrent=Torrent, hashes=Hashes} = S0) ->
-    Progress = etorrent_progress:await_server(Id),
     Pending  = etorrent_pending:await_server(Id),
     Endgame  = etorrent_endgame:await_server(Id),
     S = S0#state{
-        progress=Progress,
         pending=Pending,
         endgame=Endgame},
 
@@ -153,6 +151,14 @@ initializing(timeout, #state{id=Id, torrent=Torrent, hashes=Hashes} = S0) ->
                     {pieces, ValidPieces}},
                    NumberOfPieces),
 
+            %% Start the progress manager
+            {ok, ProgressPid} =
+                etorrent_torrent_sup:start_progress(
+                  S#state.parent_pid,
+                  Id,
+                  Torrent,
+                  ValidPieces),
+
             %% Update the tracking map. This torrent has been started.
             %% Altering this state marks the point where we will accept
             %% Foreign connections on the torrent as well.
@@ -168,10 +174,8 @@ initializing(timeout, #state{id=Id, torrent=Torrent, hashes=Hashes} = S0) ->
                   S#state.peer_id,
                   Id),
 
-            %% Since the process will now go to a state where it won't do anything
-            %% for a long time, GC it.
-            garbage_collect(),
-            NewState = S#state{tracker_pid=TrackerPid, valid=ValidPieces},
+            NewState = S#state{tracker_pid=TrackerPid, valid=ValidPieces,
+                               progress = ProgressPid },
             {next_state, started, NewState}
     end.
 
