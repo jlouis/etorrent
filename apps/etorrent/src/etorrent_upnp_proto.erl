@@ -149,7 +149,7 @@ ll_parse_desc(LocalAddr, DS, {DAcc, SAcc}) ->
     end.
     
 
--spec parse_device_desc(inet:ip_address(), string()) -> etorrent_types:upnp_device().
+-spec parse_device_desc(inet:ip_address(), term()) -> etorrent_types:upnp_device().
 parse_device_desc(LocalAddr, Desc) ->
     T = extract_xml_text(xmerl_xpath:string("deviceType/text()", Desc)),
     [_, _, _, Type|_] = re:split(T, ":", [{return, binary}]),
@@ -302,7 +302,7 @@ guess_sub_resp(Resp) ->
 %%      '''
 %% @end
 %% @todo See the explanation in ``etorrent_upnp_httpd''.
--spec parse_notify_msg(binary()) -> etorrent_types:upnp_notify() | undefined.
+-spec parse_notify_msg(binary()) -> undefined.
 parse_notify_msg(_Msg) ->
     undefined.
 

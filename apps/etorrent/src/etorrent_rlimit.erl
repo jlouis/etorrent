@@ -23,7 +23,7 @@ init() ->
 %% @doc Aquire a send slot.
 %% A continue message will be sent to the caller once a slot has been aquired.
 %% @end
--spec send(non_neg_integer()) -> ok.
+-spec send(non_neg_integer()) -> pid().
 send(Bytes) ->
     rlimit:atake(Bytes, {rlimit, continue}, ?UPLOAD).
 
@@ -31,7 +31,7 @@ send(Bytes) ->
 %% @doc Aquire a receive slot.
 %% A continue message will be sent to the caller once a slot has been aquired.
 %% @end
--spec recv(non_neg_integer()) -> ok.
+-spec recv(non_neg_integer()) -> pid().
 recv(Bytes) ->
     rlimit:atake(Bytes, {rlimit, continue}, ?DOWNLOAD).
 

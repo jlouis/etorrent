@@ -318,7 +318,7 @@ discover(ST) ->
 %% @end
 -spec recv_desc(etorrent_types:upnp_device()) ->
                        {ok, [etorrent_types:upnp_device()],
-                            [etorrent_types:upnp_service()]} | {error, _Reason}.
+                            [etorrent_types:upnp_service()]}.
 recv_desc(D) ->
     Url = binary_to_list(proplists:get_value(loc, D)),
     case lhttpc:request(Url, get, [{"ACCEPT-LANGUAGE", "en"}], 30*1000) of
@@ -329,10 +329,10 @@ recv_desc(D) ->
                 {error, Reason} ->
                     ?NOTIFY({malformed_upnp_desc, Body}),
                     {error, Reason}
-            end;
-        {error, Reason} ->
-            ?NOTIFY({upnp_desc_error, Reason}),
-            {error, Reason}
+            end
+        %% {error, Reason} ->
+        %%     ?NOTIFY({upnp_desc_error, Reason}),
+        %%     {error, Reason}
     end.
 
 
