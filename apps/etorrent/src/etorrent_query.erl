@@ -58,7 +58,6 @@ merge_peer_states(PeerList, StateList) ->
 
 merge_by([], _, _, _) -> [];
 merge_by(_, [], _, _) -> [];
-merge_by([], [], _CompareFun, _MergeFun) -> [];
 merge_by([I1 | R1], [I2 | R2], CompareFun, MergeFun) ->
     case CompareFun(I1, I2) of
         less ->
