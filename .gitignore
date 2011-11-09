@@ -1,6 +1,7 @@
 .#*
 *~
 /apps/etorrent/ebin/etorrent.app
+/apps/rlimit/ebin/rlimit.app
 /apps/etorrent/.eunit
 /apps/etorrent/src/tags
 /apps/etorrent/logs
