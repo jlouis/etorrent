@@ -354,23 +354,13 @@ build_tracker_url(Url, Event,
 	% For example, 
 	% /announce.php?passkey=43c08a5dd9e70a19f62adfd0ad76dw04
 	FlatUrl = lists:flatten(Url),
-	Delim = case in($?, FlatUrl) of
+	Delim = case lists:member($?, FlatUrl) of
 		true -> "&";
 		false -> "?"
 		end,
 	
     lists:concat([Url, Delim, etorrent_http:mk_header(EReq)]).
 
-
-%% @private
-%% Is H::char() in the string?
--spec in(char(), [char()]) -> boolean.
-in(H, [H|T]) ->
-	true;
-in(X, [H|T]) ->
-	in(X, T);
-in(_X, []) ->
-	false.
 
 
 %%% Tracker response lookup functions
