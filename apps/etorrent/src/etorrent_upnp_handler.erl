@@ -35,9 +35,9 @@ handle(Req, State) ->
             %%        subscribe / unsubscribe skeleton is done.
             case etorrent_upnp_proto:parse_notify_msg(ReqBody) of
                 undefined ->
-                    ignore;
-                Content ->
-                    etorrent_upnp_entity:notify(Content)
+                    ignore
+%%                Content ->
+%%                    etorrent_upnp_entity:notify(Content)
             end,
             {ok, Reply} = cowboy_http_req:reply(200, [{'Content-type', <<"text/plain">>}],
                                                 <<>>, Req),
