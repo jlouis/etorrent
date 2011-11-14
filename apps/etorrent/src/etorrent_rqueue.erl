@@ -31,6 +31,8 @@
          is_overlimit/1,
          needs/1,
          member/4,
+         repr/1,
+         view/1,
          delete/4]).
 
 
@@ -209,6 +211,37 @@ needs(Requestqueue) ->
         false -> 0
     end.
 
+%% @doc Represent a queue as an Erlang Term.
+%% A simple way to format a queue so it can be viewed from the outside
+%% @end
+-spec repr(rqueue()) -> term().
+repr(#requestqueue { high_limit = High, low_limit = Low,
+                     queue = Queue }) ->
+    [{high, High},
+     {low,  Low},
+     {queue_contect, queue:to_list(Queue)}].
+
+%% @doc View a queue as how full/empty it is
+%% The intention of this function is to capture a number of other
+%% mutual exclusive functions in one. Rather than request boolean()
+%% values, we simply carry out a single view on data after which
+%% we have the desired result.
+%% @end
+-spec view(rqueue()) ->
+                  {low, integer()} | {over_limit, integer()} | {needs, integer()}.
+view(#requestqueue { high_limit = Hi, low_limit = Lo, queue = Q }) ->
+    Len = queue:len(Q),
+    case Len >= Hi of
+        true when Len == Hi ->
+            full;
+        true ->
+            {over_limit, Len - Hi};
+        false when Len =< Lo ->
+            {low, Hi - Len};
+        false ->
+            {needs, Hi - Len}
+    end.
+
 %% @doc Check if a request queue contains a specific request
 %% @end
 -spec member(pieceindex(), chunkoffset(),
@@ -272,7 +305,11 @@ low_check_test_() ->
     Q2 = ?rqueue:push(0, 1, 1, Q1),
     [?_assert(?rqueue:is_low(Q0)),
      ?_assert(?rqueue:is_low(Q1)),
-     ?_assertNot(?rqueue:is_low(Q2))].
+     ?_assertNot(?rqueue:is_low(Q2)),
+     ?_assertEqual({low, 3}, ?rqueue:view(Q0)),
+     ?_assertEqual({low, 2}, ?rqueue:view(Q1)),
+     ?_assertEqual({needs, 1}, ?rqueue:view(Q2))
+     ].
 
 needs_test_() ->
     Q0 = ?rqueue:new(1, 3),
@@ -284,7 +321,9 @@ needs_test_() ->
      ?_assertEqual(2, ?rqueue:needs(Q1)),
      ?_assertEqual(1, ?rqueue:needs(Q2)),
      ?_assertEqual(0, ?rqueue:needs(Q3)),
-     ?_assertEqual(0, ?rqueue:needs(Q4))].
+     ?_assertEqual(full, ?rqueue:view(Q3)),
+     ?_assertEqual(0, ?rqueue:needs(Q4)),
+     ?_assertEqual({over_limit, 1}, ?rqueue:view(Q4))].
 
 high_check_test_() ->
     Q0 = ?rqueue:new(1, 3),
@@ -292,9 +331,13 @@ high_check_test_() ->
     Q3 = ?rqueue:push([null, null, null], Q0),
     Q4 = ?rqueue:push([null, null, null, null], Q0),
     [?_assertEqual(false, ?rqueue:is_overlimit(Q0)),
+     ?_assertEqual({low, 3}, ?rqueue:view(Q0)),
      ?_assertEqual(false, ?rqueue:is_overlimit(Q1)),
+     ?_assertEqual({low, 2}, ?rqueue:view(Q1)),
      ?_assertEqual(true,  ?rqueue:is_overlimit(Q3)),
-     ?_assertEqual(true,  ?rqueue:is_overlimit(Q4))].
+     ?_assertEqual(full, ?rqueue:view(Q3)),
+     ?_assertEqual(true,  ?rqueue:is_overlimit(Q4)),
+     ?_assertEqual({over_limit, 1}, ?rqueue:view(Q4))].
 
 push_list_test_() ->
     Q0 = ?rqueue:new(),
