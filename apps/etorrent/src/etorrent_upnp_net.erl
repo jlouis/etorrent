@@ -265,9 +265,9 @@ handle_info({udp, _Socket, _IP, _Port, Packet}, State) ->
         {ok, service, S} ->
             etorrent_upnp_entity:create(service, S);
         {ok, uuid} ->
-            ok;
-        {error, _Reason} ->
-            ?NOTIFY({malformed_upnp_msearch_resp, Packet})
+            ok
+        %% {error, _Reason} ->
+        %%     ?NOTIFY({malformed_upnp_msearch_resp, Packet})
     end,
     {noreply, State};
 handle_info(Info, State) ->
