@@ -42,7 +42,7 @@ file_server_sup_spec(TorrentID, Workdir, Files) ->
     Args = [TorrentID, Workdir, Files],
     {{TorrentID, file_server_sup},
         {etorrent_io_file_sup, start_link, Args},
-        permanent, 2000, supervisor, [etorrent_file_io_sup]}.
+        permanent, 2000, supervisor, [etorrent_io_file_sup]}.
 
 requests_sup_spec(TorrentID) ->
     {{TorrentID, request_sup},
