@@ -14,15 +14,15 @@
 -endif.
 
 -export([incoming_packet/2,
-	 send_msg/2,
-	 decode_bitfield/2,
-	 encode_bitfield/2,
-	 decode_msg/1,
-	 remaining_bytes/1,
-	 complete_handshake/3,
-	 receive_handshake/1,
-	 extended_msg_contents/0,
-	 initiate_handshake/3]).
+         send_msg/2,
+         decode_bitfield/2,
+         encode_bitfield/2,
+         decode_msg/1,
+         remaining_bytes/1,
+         complete_handshake/3,
+         receive_handshake/1,
+         extended_msg_contents/0,
+         initiate_handshake/3]).
 
 -define(DEFAULT_HANDSHAKE_TIMEOUT, 120000).
 -define(HANDSHAKE_SIZE, 68).
@@ -74,7 +74,7 @@
                 | have_none
                 | {reject_request, integer(), integer(), integer()}
                 | {allowed_fast, [integer()]}
-		| {extended, integer(), binary()}.
+                | {extended, integer(), binary()}.
 
 -type cont_state() :: {partial, binary() | {integer(), [binary()]}}.
 -type continuation() :: cont_state() | none.
@@ -161,11 +161,11 @@ decode_msg(Message) ->
        <<?HAVE, PieceNum:32/big>> -> {have, PieceNum};
        <<?BITFIELD, BitField/binary>> -> {bitfield, BitField};
        <<?REQUEST, Index:32/big, Begin:32/big, Len:32/big>> ->
-	   {request, Index, Begin, Len};
+           {request, Index, Begin, Len};
        <<?PIECE, Index:32/big, Begin:32/big, Data/binary>> ->
-	   {piece, Index, Begin, Data};
+           {piece, Index, Begin, Data};
        <<?CANCEL, Index:32/big, Begin:32/big, Len:32/big>> ->
-	   {cancel, Index, Begin, Len};
+           {cancel, Index, Begin, Len};
        <<?PORT, Port:16/big>> -> {port, Port};
        %% FAST EXTENSION MESSAGES
        <<?SUGGEST, Index:32/big>> -> {suggest, Index};
@@ -177,7 +177,7 @@ decode_msg(Message) ->
            {allowed_fast, decode_allowed_fast(FastSet)};
        %% EXTENDED MESSAGING
        <<?EXTENDED, Type:8, Contents/binary>> ->
-	   {extended, Type, Contents}
+           {extended, Type, Contents}
    end.
 
 %% @doc Tell how many bytes there are left on a continuation
@@ -271,27 +271,26 @@ encode_msg(Message) ->
        not_interested -> <<?NOT_INTERESTED>>;
        {have, PieceNum} -> <<?HAVE, PieceNum:32/big>>;
        {bitfield, BitField} -> <<?BITFIELD, BitField/binary>>;
-       {request, Index, Begin, Len} -> <<?REQUEST, Index:32/big, Begin:32/big, Len:32/big>>;
-       {piece, Index, Begin, Data} -> <<?PIECE, Index:32/big, Begin:32/big, Data/binary>>;
-       {cancel, Index, Begin, Len} -> <<?CANCEL, Index:32/big, Begin:32/big, Len:32/big>>;
+       {request, Index, Begin, Len} ->
+           <<?REQUEST, Index:32/big, Begin:32/big, Len:32/big>>;
+       {piece, Index, Begin, Data} ->
+           <<?PIECE, Index:32/big, Begin:32/big, Data/binary>>;
+       {cancel, Index, Begin, Len} ->
+           <<?CANCEL, Index:32/big, Begin:32/big, Len:32/big>>;
        {port, PortNum} -> <<?PORT, PortNum:16/big>>;
        %% FAST EXTENSION
        {suggest, Index} -> <<?SUGGEST, Index:32>>;
        have_all -> <<?HAVE_ALL>>;
        have_none -> <<?HAVE_NONE>>;
-       {reject_request, Index, Offset, Len} -> <<?REJECT_REQUEST, Index, Offset, Len>>;
+       {reject_request, Index, Offset, Len} ->
+           <<?REJECT_REQUEST, Index, Offset, Len>>;
        {allowed_fast, FastSet} ->
            BinFastSet = encode_fastset(FastSet),
            <<?ALLOWED_FAST, BinFastSet/binary>>;
        %% EXTENDED MESSAGING
        {extended, Type, Contents} ->
-	   <<?EXTENDED, Type:8, Contents/binary>>
+           <<?EXTENDED, Type:8, Contents/binary>>
    end.
-
-
-
-
-
 
 protocol_header() ->
     PSSize = length(?PROTOCOL_STRING),
@@ -346,13 +345,13 @@ receive_header(Socket, InfoHash) ->
 
 encode_proto_caps() ->
     ProtoSpec = lists:sum([%?EXT_FAST,
-			   ?EXT_EXTMSG,
+                           ?EXT_EXTMSG,
                            ?EXT_BASIS]),
     <<ProtoSpec:64/big>>.
 
 decode_proto_caps(N) ->
     Capabilities = [{?EXT_FAST,  fast_extension},
-		    {?EXT_EXTMSG, extended_messaging}],
+                    {?EXT_EXTMSG, extended_messaging}],
     Decoded = lists:foldl(
       fun
           ({M, Cap}, Acc) when (M band N) > 0 -> [Cap | Acc];
@@ -378,10 +377,10 @@ encode_fastset([Idx | Rest]) ->
 extended_msg_contents(Port, ClientVersion, ReqQ) ->
     iolist_to_binary(
       etorrent_bcoding:encode(
-	[{<<"p">>, Port},
-	 {<<"v">>, ClientVersion},
-	 {<<"reqq">>, ReqQ},
-	 {<<"m">>, {}}])).
+        [{<<"p">>, Port},
+         {<<"v">>, ClientVersion},
+         {<<"reqq">>, ReqQ},
+         {<<"m">>, {}}])).
 
 
 -ifdef(EUNIT).

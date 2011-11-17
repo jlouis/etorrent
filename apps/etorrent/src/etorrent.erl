@@ -161,7 +161,6 @@ s() -> show().
 %% @equiv show(Item)
 s(Item) -> show(Item).
 
-
 %%=====================================================================
 %% @todo Move this function (and its webui friend) to etorrent_torrent.
 percent_complete(R) ->
@@ -169,3 +168,4 @@ percent_complete(R) ->
     T = proplists:get_value(total, R),
     L = proplists:get_value(left, R),
     (T - L) / T * 100.
+
