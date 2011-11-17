@@ -56,7 +56,7 @@
 %% @end
 -spec new() -> rqueue().
 new() ->
-    new(2, 10).
+    new(2, 250).
 
 
 %% @doc Create an empty request queue and specify pipeline thresholds
