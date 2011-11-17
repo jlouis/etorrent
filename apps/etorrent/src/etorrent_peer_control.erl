@@ -274,9 +274,9 @@ init([TrackerUrl, LocalPeerID, InfoHash, TorrentID, {IP, Port}, Caps, Socket]) -
     TorrentPid  = etorrent_torrent_ctl:await_server(TorrentID),
     {ok, Valid} = etorrent_torrent_ctl:valid_pieces(TorrentPid),
     Numpieces   = etorrent_pieceset:capacity(Valid),
-    Local0 = etorrent_peerstate:new(Numpieces),
+    Local0 = etorrent_peerstate:new(Numpieces, 3, 16),
     Local  = etorrent_peerstate:pieces(Valid, Local0),
-    Remote = etorrent_peerstate:new(Numpieces),
+    Remote = etorrent_peerstate:new(Numpieces, 2, 250),
 
     Extended = proplists:get_bool(extended_messaging, Caps),
     Config0  = etorrent_peerconf:new(),
