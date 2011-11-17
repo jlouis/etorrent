@@ -9,7 +9,9 @@
 -behaviour(supervisor).
 
 %% exported functions
--export([start_link/1, start_child/4]).
+-export([start_link/2,
+         start_read/4,
+         start_write/5]).
 
 %% supervisor callbacks
 -export([init/1]).
@@ -17,25 +19,42 @@
 
 %% @doc Start the file I/O request supervisor.
 %% @end
-start_link(TorrentID) ->
-    supervisor:start_link(?MODULE, [TorrentID]).
+start_link(TorrentID, Operation) ->
+    supervisor:start_link(?MODULE, [TorrentID, Operation]).
 
 
-%% @doc Add a file I/O request process.
+%% @doc Start a read operation.
 %% @end
-start_child(TorrentID, Piece, Offset, Length) ->
-    SupPid = etorrent_utils:await({etorrent_io_req_sup, TorrentID}, infinity),
-    supervisor:start_child(SupPid, [Piece, Offset, Length, self()]).
+start_read(TorrentID, Piece, Offset, Length) ->
+    Pid = etorrent_utils:await({etorrent_io_req_sup,read,TorrentID}, infinity),
+    supervisor:start_child(Pid, [Piece, Offset, Length, self()]).
 
+%% @doc Start a write operation.
+%% @end
+start_write(TorrentID, Piece, Offset, Length, Chunk) ->
+    Pid = etorrent_utils:await({etorrent_io_req_sup,write,TorrentID}, infinity),
+    supervisor:start_child(Pid, [Piece, Offset, Length, Chunk, self()]).
 
 %% @private
-init([TorrentID]) ->
-    etorrent_utils:register({etorrent_io_req_sup, TorrentID}),
-    {ok, {{simple_one_for_one, 1, 60}, [request_spec(TorrentID)]}}. 
-
+init([TorrentID, Operation]) ->
+    etorrent_utils:register({etorrent_io_req_sup, Operation, TorrentID}),
+    ReqSpec = request_spec(TorrentID, Operation),
+    {ok, {{simple_one_for_one, 1, 60}, [ReqSpec]}}.
 
 %% @private
-request_spec(TorrentID) ->
+request_spec(TorrentID, read) ->
+    read_request_spec(TorrentID);
+request_spec(TorrentID, write) ->
+    write_request_spec(TorrentID).
+
+%% @private
+read_request_spec(TorrentID) ->
+    {undefined,
+        {etorrent_io_req, start_read, [TorrentID]},
+        transient, 2000, worker, [etorrent_io_req]}.
+
+%% @private
+write_request_spec(TorrentID) ->
     {undefined,                                                    
-        {etorrent_io_req, start_link, [TorrentID]},                        
+        {etorrent_io_req, start_write, [TorrentID]},
         transient, 2000, worker, [etorrent_io_req]}.
