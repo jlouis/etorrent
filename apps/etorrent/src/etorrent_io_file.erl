@@ -19,10 +19,10 @@
 %%
 %% @end
 -module(etorrent_io_file).
--behaviour(gen_server).
+-behaviour(gen_fsm).
 -define(GC_TIMEOUT, 5000).
 
-
+%% exported functions
 -export([start_link/3,
          open/1,
          close/1,
@@ -30,12 +30,15 @@
          write/3,
          allocate/2]).
 
+%% gen_fsm callbacks and states
 -export([init/1,
-         handle_call/3,
-         handle_cast/2,
-         handle_info/2,
-         terminate/2,
-         code_change/3]).
+         default/2, %% single state - be a gen_server
+         default/3, %% single state - be a gen_server
+         handle_event/3,
+         handle_sync_event/4,
+         handle_info/3,
+         terminate/3,
+         code_change/4]).
 
 
 -type torrent_id() :: etorrent_types:torrent_id().
@@ -61,19 +64,20 @@
 %% @end
 -spec start_link(torrent_id(), file_path(), file_path()) -> {'ok', pid()}.
 start_link(TorrentID, Path, FullPath) ->
-    gen_server:start_link(?MODULE, [TorrentID, Path, FullPath], [{spawn_opt, [{fullsweep_after, 0}]}]).
+    FsmOpts = [{spawn_opt, [{fullsweep_after, 0}]}],
+    gen_fsm:start_link(?MODULE, [TorrentID, Path, FullPath], FsmOpts).
 
 %% @doc Request to open the file
 %% @end
 -spec open(pid()) -> 'ok'.
 open(FilePid) ->
-    gen_server:cast(FilePid, open).
+    gen_fsm:send_event(FilePid, open).
 
 %% @doc Request to close the file
 %% @end
 -spec close(pid()) -> 'ok'.
 close(FilePid) ->
-    gen_server:cast(FilePid, close).
+    gen_fsm:send_event(FilePid, close).
 
 %% @doc Read bytes from file handle
 %% <p>Read `Length' bytes from filehandle at `Offset'</p>
@@ -81,7 +85,7 @@ close(FilePid) ->
 -spec read(pid(), block_offset(), block_len()) ->
           {ok, block_bin()} | {error, eagain}.
 read(FilePid, Offset, Length) ->
-    gen_server:call(FilePid, {read, Offset, Length}, ?CALL_TIMEOUT).
+    gen_fsm:sync_send_event(FilePid, {read, Offset, Length}, ?CALL_TIMEOUT).
 
 %% @doc Write bytes to file
 %% <p>Assume that the `Chunk' is of binary() type. Write it to the
@@ -90,13 +94,13 @@ read(FilePid, Offset, Length) ->
 -spec write(pid(), block_offset(), block_bin()) ->
           ok | {error, eagain}.
 write(FilePid, Offset, Chunk) ->
-    gen_server:call(FilePid, {write, Offset, Chunk}, ?CALL_TIMEOUT).
+    gen_fsm:sync_send_event(FilePid, {write, Offset, Chunk}, ?CALL_TIMEOUT).
 
 %% @doc Allocate the file up to the given size
 %% @end
 -spec allocate(pid(), integer()) -> ok.
 allocate(FilePid, Size) ->
-    gen_server:call(FilePid, {allocate, Size}, infinity).
+    gen_fsm:sync_send_event(FilePid, {allocate, Size}, infinity).
 
 %% @private
 init([TorrentID, RelPath, FullPath]) ->
@@ -108,29 +112,33 @@ init([TorrentID, RelPath, FullPath]) ->
         wqueue=queue:new(),
         relpath=RelPath,
         fullpath=FullPath},
-    {ok, InitState}.
+    {ok, default, InitState}.
 
 %% @private
-handle_call({read, _, _}, _, State) when State#state.handle == closed ->
-    {reply, {error, eagain}, State, ?GC_TIMEOUT};
-handle_call({write, _, _}, _, State) when State#state.handle == closed ->
-    {reply, {error, eagain}, State, ?GC_TIMEOUT};
-handle_call({read, Offset, Length}, _, State) ->
+default({read, _, _}, _, State) when State#state.handle == closed ->
+    {reply, {error, eagain}, default, State, ?GC_TIMEOUT};
+default({write, _, _}, _, State) when State#state.handle == closed ->
+    {reply, {error, eagain}, default, State, ?GC_TIMEOUT};
+
+default({read, Offset, Length}, _, State) ->
     #state{handle=Handle} = State,
     {ok, Chunk} = file:pread(Handle, Offset, Length),
-    {reply, {ok, Chunk}, State, ?GC_TIMEOUT};
-handle_call({write, Offset, Chunk}, _, State) ->
+    {reply, {ok, Chunk}, default, State, ?GC_TIMEOUT};
+
+default({write, Offset, Chunk}, _, State) ->
     #state{handle=Handle} = State,
     ok = file:pwrite(Handle, Offset, Chunk),
-    {reply, ok, State, ?GC_TIMEOUT};
-handle_call({allocate, _Sz}, _From, #state { handle = closed } = S) ->
-    {reply, {error, eagain}, S, ?GC_TIMEOUT};
-handle_call({allocate, Sz}, _From, #state { handle = FD } = S) ->
+    {reply, ok, default, State, ?GC_TIMEOUT};
+
+default({allocate, _Sz}, _From, #state { handle = closed } = S) ->
+    {reply, {error, eagain}, default, S, ?GC_TIMEOUT};
+
+default({allocate, Sz}, _From, #state { handle = FD } = S) ->
     fill_file(FD, Sz),
-    {reply, ok, S, ?GC_TIMEOUT}.
+    {reply, ok, default, S, ?GC_TIMEOUT}.
 
 %% @private
-handle_cast(open, State) ->
+default(open, State) ->
     #state{
         torrent=Torrent,
         handle=closed,
@@ -142,9 +150,9 @@ handle_cast(open, State) ->
     ok = filelib:ensure_dir(FullPath),
     {ok, Handle} = file:open(FullPath, FileOpts),
     NewState = State#state{handle=Handle},
-    {noreply, NewState, ?GC_TIMEOUT};
+    {next_state, default, NewState, ?GC_TIMEOUT};
 
-handle_cast(close, State) ->
+default(close, State) ->
     #state{
         torrent=Torrent,
         handle=Handle,
@@ -152,19 +160,30 @@ handle_cast(close, State) ->
     true = etorrent_io:unregister_open_file(Torrent, RelPath),
     ok = file:close(Handle),
     NewState = State#state{handle=closed},
-    {noreply, NewState, ?GC_TIMEOUT}.
+    {next_state, default, NewState, ?GC_TIMEOUT};
 
-%% @private
-handle_info(timeout, State) ->
+default(timeout, State) ->
     true = erlang:garbage_collect(),
-    {noreply, State}.
+    {next_state, default, State}.
 
 %% @private
-terminate(_, _) ->
+handle_event(_Msg, _Statename, _State) ->
     not_implemented.
 
 %% @private
-code_change(_, _, _) ->
+handle_sync_event(_Msg, _From, _Statename, _State) ->
+    not_implemented.
+
+%% @private
+handle_info(_Msg, _Statename, _State) ->
+    not_implemented.
+
+%% @private
+terminate(_Reason, _Statename, _State) ->
+    not_implemented.
+
+%% @private
+code_change(_OldVsn, _Statename, _State, _Extra) ->
     not_implemented.
 
 
