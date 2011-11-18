@@ -121,12 +121,14 @@ init([TorrentID, RelPath, FullPath]) ->
 
 %% @private handle asynchronous event in closed state.
 closed({read, Offset, Length}, From, #state{handle=closed}=State) ->
-    %% @todo send request for permission to open file handle.
+    #state{torrent=TorrentID, relpath=Relpath} = State,
+    ok = etorrent_io:schedule_operation(TorrentID, Relpath),
     NewState = enqueue_read(Offset, Length, From, State),
     {next_state, opening, NewState, ?GC_TIMEOUT};
 
 closed({write, Offset, Chunk}, From, #state{handle=closed}=State) ->
-    %% @todo send request for permission to open file handle.
+    #state{torrent=TorrentID, relpath=Relpath} = State,
+    ok = etorrent_io:schedule_operation(TorrentID, Relpath),
     NewState = enqueue_write(Offset, Chunk, From, State),
     {next_state, opening, NewState, ?GC_TIMEOUT};
 
