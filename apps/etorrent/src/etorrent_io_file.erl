@@ -149,8 +149,10 @@ opening(open, #state{handle=closed}=State) ->
     #state{torrent=Torrent, relpath=RelPath, fullpath=FullPath} = State,
     true = etorrent_io:register_open_file(Torrent, RelPath),
     Handle = open_file_handle(FullPath),
-    NewState = State#state{handle=Handle},
-    %% @todo respond to all enqueued requests. reset queues.
+    ok = dequeue_allocs(State#state.aqueue, Handle),
+    ok = dequeue_writes(State#state.rqueue, Handle),
+    ok = dequeue_reads(State#state.wqueue, Handle),
+    NewState = State#state{handle=Handle, rqueue=[], wqueue=[]},
     {next_state, opened, NewState, ?GC_TIMEOUT};
 
 opening(timeout, State) ->
@@ -276,6 +278,14 @@ dequeue_writes_([{Offset, Chunk, From}|T], Handle) ->
     ok = file:pwrite(Handle, Offset, Chunk),
     true = gen_fsm:reply(From, ok),
     dequeue_writes_(T, Handle).
+
+%% @private Perform the enqueued allocation request.
+dequeue_allocs([], _Handle) ->
+    ok;
+dequeue_allocs([{Size, From}], Handle) ->
+    ok = fill_file(Handle, Size),
+    true = gen_fsm:reply(From, ok),
+    ok.
 
 
 fill_file(FD, Missing) ->
