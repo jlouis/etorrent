@@ -220,6 +220,14 @@ code_change(_OldVsn, _Statename, _State, _Extra) ->
     not_implemented.
 
 
+%% @private Open a file handle, overriding the default settings.
+open_file_handle(Fullpath) ->
+    ok = filelib:ensure_dir(Fullpath),
+    Opts = [read,write,binary,raw,read_ahead,{delayed_write,1024*1024,3000}],
+    {ok, Handle} = file:open(Fullpath, Opts),
+    Handle.
+
+
 %% @private Enqueue a file pre-allocation request in the server state.
 %% A pre-allocation request is enqueued if it arrives in the closed and opening
 %% states. It's expected to only arrive once at startup of a torrent.
@@ -244,12 +252,30 @@ enqueue_write(Offset, Chunk, From, State) ->
     NewState = State#state{wqueue=NewWrites},
     NewState.
 
-%% @private Open a file handle, overriding the default settings.
-open_file_handle(Fullpath) ->
-    ok = filelib:ensure_dir(Fullpath),
-    Opts = [read,write,binary,raw,read_ahead,{delayed_write,1024*1024,3000}],
-    {ok, Handle} = file:open(Fullpath, Opts),
-    Handle.
+%% @private Respond to all enqueued read requests.
+dequeue_reads(Reads, Handle) ->
+    Reads1 = lists:sort(Reads),
+    dequeue_reads_(Reads1, Handle).
+
+dequeue_reads_([], _Handle) ->
+    ok;
+dequeue_reads_([{Offset, Length, From}|T], Handle) ->
+    {ok, Chunk} = file:pread(Handle, Offset, Length),
+    true = gen_fsm:reply(From, {ok, Chunk}),
+    dequeue_reads_(T, Handle).
+
+
+%% @private Perform all enqueued write requests.
+dequeue_writes(Writes, Handle) ->
+    Writes1 = lists:sort(Writes),
+    dequeue_writes_(Writes1, Handle).
+
+dequeue_writes_([], _Handle) ->
+    ok;
+dequeue_writes_([{Offset, Chunk, From}|T], Handle) ->
+    ok = file:pwrite(Handle, Offset, Chunk),
+    true = gen_fsm:reply(From, ok),
+    dequeue_writes_(T, Handle).
 
 
 fill_file(FD, Missing) ->
