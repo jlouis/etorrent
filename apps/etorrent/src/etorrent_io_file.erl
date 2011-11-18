@@ -54,8 +54,9 @@
 -record(state, {
     torrent :: torrent_id(),
     handle=closed :: closed | file:io_device(),
-    rqueue   :: queue(),
-    wqueue   :: queue(),
+    aqueue   :: list(),
+    rqueue   :: list(),
+    wqueue   :: list(),
     relpath  :: file_path(),
     fullpath :: file_path()}).
 
@@ -112,84 +113,93 @@ init([TorrentID, RelPath, FullPath]) ->
     InitState = #state{
         torrent=TorrentID,
         handle=closed,
-        rqueue=queue:new(),
-        wqueue=queue:new(),
+        aqueue=[], %% @todo allocation "queue" - always length of zero or one.
+        rqueue=[],
+        wqueue=[],
         relpath=RelPath,
         fullpath=FullPath},
     {ok, closed, InitState}.
 
 
 %% @private handle asynchronous event in closed state.
-closed({read, _, _}, _, State) when State#state.handle == closed ->
-    {reply, {error, eagain}, closed, State, ?GC_TIMEOUT};
-closed({write, _, _}, _, State) when State#state.handle == closed ->
-    {reply, {error, eagain}, closed, State, ?GC_TIMEOUT};
+closed({read, Offset, Length}, From, #state{handle=closed}=State) ->
+    %% @todo send request for permission to open file handle.
+    NewState = enqueue_read(Offset, Length, From, State),
+    {next_state, opening, NewState, ?GC_TIMEOUT};
 
-closed({read, Offset, Length}, _, State) ->
-    #state{handle=Handle} = State,
-    {ok, Chunk} = file:pread(Handle, Offset, Length),
-    {reply, {ok, Chunk}, closed, State, ?GC_TIMEOUT};
+closed({write, Offset, Chunk}, From, #state{handle=closed}=State) ->
+    %% @todo send request for permission to open file handle.
+    NewState = enqueue_write(Offset, Chunk, From, State),
+    {next_state, opening, NewState, ?GC_TIMEOUT};
 
-closed({write, Offset, Chunk}, _, State) ->
-    #state{handle=Handle} = State,
-    ok = file:pwrite(Handle, Offset, Chunk),
-    {reply, ok, closed, State, ?GC_TIMEOUT};
+closed({allocate, Size}, From, #state{handle=closed}=State) ->
+    %% @todo send request for permission to open file handle.
+    NewState = enqueue_alloc(Size, From, State),
+    {next_state, opening, NewState, ?GC_TIMEOUT}.
 
-closed({allocate, _Sz}, _From, #state { handle = closed } = S) ->
-    {reply, {error, eagain}, closed, S, ?GC_TIMEOUT};
-
-closed({allocate, Sz}, _From, #state { handle = FD } = S) ->
-    fill_file(FD, Sz),
-    {reply, ok, closed, S, ?GC_TIMEOUT}.
 
 %% @private handle synchronous event in closed state.
-closed(open, State) ->
-    #state{
-        torrent=Torrent,
-        handle=closed,
-        relpath=RelPath,
-        fullpath=FullPath} = State,
-    true = etorrent_io:register_open_file(Torrent, RelPath),
-    FileOpts = [read, write, binary, raw, read_ahead,
-                {delayed_write, 1024*1024, 3000}],
-    ok = filelib:ensure_dir(FullPath),
-    {ok, Handle} = file:open(FullPath, FileOpts),
-    NewState = State#state{handle=Handle},
-    {next_state, closed, NewState, ?GC_TIMEOUT};
-
-closed(close, State) ->
-    #state{
-        torrent=Torrent,
-        handle=Handle,
-        relpath=RelPath} = State,
-    true = etorrent_io:unregister_open_file(Torrent, RelPath),
-    ok = file:close(Handle),
-    NewState = State#state{handle=closed},
-    {next_state, closed, NewState, ?GC_TIMEOUT};
-
 closed(timeout, State) ->
     true = erlang:garbage_collect(),
     {next_state, closed, State}.
 
 
 %% @private handle asynchronous event in opening state.
-opening(Msg, State) ->
-    {stop, Msg, State}.
+opening(open, #state{handle=closed}=State) ->
+    #state{torrent=Torrent, relpath=RelPath, fullpath=FullPath} = State,
+    true = etorrent_io:register_open_file(Torrent, RelPath),
+    FileOpts = [read, write, binary, raw, read_ahead,
+                {delayed_write, 1024*1024, 3000}],
+    ok = filelib:ensure_dir(FullPath),
+    {ok, Handle} = file:open(FullPath, FileOpts),
+    NewState = State#state{handle=Handle},
+    %% @todo respond to all enqueued requests. reset queues.
+    {next_state, opened, NewState, ?GC_TIMEOUT};
+
+opening(timeout, State) ->
+    true = erlang:garbage_collect(),
+    {next_state, opening, State}.
 
 
 %% @private handle synchronous event in opening state.
-opening(Msg, _From, State) ->
-    {stop, Msg, State}.
+opening({read, Offset, Length}, From, #state{handle=closed}=State) ->
+    NewState = enqueue_read(Offset, Length, From, State),
+    {next_state, opening, NewState, ?GC_TIMEOUT};
+
+opening({write, Offset, Chunk}, From, #state{handle=closed}=State) ->
+    NewState = enqueue_write(Offset, Chunk, From, State),
+    {next_state, opening, NewState, ?GC_TIMEOUT};
+
+opening({allocate, Size}, From, #state{handle=closed}=State) ->
+    NewState = enqueue_alloc(Size, From, State),
+    {next_state, opening, NewState, ?GC_TIMEOUT}.
 
 
 %% @private handle asynchronous event in opened state.
-opened(Msg, State) ->
-    {stop, Msg, State}.
+opened(close, #state{handle=Handle}=State) ->
+    #state{torrent=Torrent, relpath=RelPath} = State,
+    true = etorrent_io:unregister_open_file(Torrent, RelPath),
+    ok = file:close(Handle),
+    NewState = State#state{handle=closed},
+    {next_state, closed, NewState, ?GC_TIMEOUT};
+
+opened(timeout, State) ->
+    true = erlang:garbage_collect(),
+    {next_state, opened, State}.
 
 
 %% @private handle synchronous event in opened state.
-opened(Msg, _From, State) ->
-    {stop, Msg, State}.
+opened({read, Offset, Length}, _From, #state{handle=Handle}=State) ->
+    {ok, Chunk} = file:pread(Handle, Offset, Length),
+    {reply, {ok, Chunk}, opened, State, ?GC_TIMEOUT};
+
+opened({write, Offset, Chunk}, _From, #state{handle=Handle}=State) ->
+    ok = file:pwrite(Handle, Offset, Chunk),
+    {reply, ok, opened, State, ?GC_TIMEOUT};
+
+opened({allocate, Size}, _From, #state{handle=Handle}=State) ->
+    fill_file(Handle, Size),
+    {reply, ok, opened, State, ?GC_TIMEOUT}.
 
 
 %% @private
@@ -211,6 +221,31 @@ terminate(_Reason, _Statename, _State) ->
 %% @private
 code_change(_OldVsn, _Statename, _State, _Extra) ->
     not_implemented.
+
+
+%% @private Enqueue a file pre-allocation request in the server state.
+%% A pre-allocation request is enqueued if it arrives in the closed and opening
+%% states. It's expected to only arrive once at startup of a torrent.
+enqueue_alloc(Size, From, State) ->
+    NewAllocs = [{Size, From}|State#state.aqueue],
+    NewState = State#state{aqueue=NewAllocs},
+    NewState.
+
+
+%% @private Enqueue a read request in the server state.
+%% A read request is enqueued if it arrives in the closed and opening states.
+enqueue_read(Offset, Length, From, State) ->
+    NewReads = [{Offset, Length, From}|State#state.rqueue],
+    NewState = State#state{rqueue=NewReads},
+    NewState.
+
+
+%% @private Enqueue a write request in the server state.
+%% A write request is enqueued if it arrives in the closed and opening states.
+enqueue_write(Offset, Chunk, From, State) ->
+    NewWrites = [{Offset, Chunk, From}|State#state.wqueue],
+    NewState = State#state{wqueue=NewWrites},
+    NewState.
 
 
 fill_file(FD, Missing) ->
