@@ -57,6 +57,7 @@
          read_chunk/4,
          aread_chunk/4,
          write_chunk/4,
+         awrite_chunk/4,
          file_paths/1,
          file_sizes/1,
          register_directory/1,
@@ -185,13 +186,7 @@ read_chunk(TorrentID, Piece, Offset, Length) ->
 -spec aread_chunk(torrent_id(), piece_index(),
                   chunk_offset(), chunk_len()) -> {ok, pid()}.
 aread_chunk(TorrentID, Piece, Offset, Length) ->
-    Caller = self(),
-    Pid = spawn_link(fun() ->
-        {ok, Data} = read_chunk(TorrentID, Piece, Offset, Length),
-        ok = etorrent_chunkstate:contents(Piece, Offset, Length, Data, Caller)
-    end),
-    {ok, Pid}.
-
+    etorrent_io_req:start_read(TorrentID, Piece, Offset, Length).
 
 
 %% @doc
@@ -206,6 +201,16 @@ write_chunk(TorrentID, Piece, Offset, Chunk) ->
     Length = byte_size(Chunk),
     ChunkPositions = chunk_positions(Offset, Length, Positions),
     ok = write_file_blocks(TorrentID, Chunk, ChunkPositions).
+
+
+%% @doc Write a chunk and send an acknowledgment to the calling process.
+%% @end
+-spec awrite_chunk(torrent_id(), piece_index(),
+                   chunk_offset(), chunk_bin()) -> ok.
+awrite_chunk(TorrentID, Piece, Offset, Chunk) ->
+    Length = byte_size(Chunk),
+    {ok,_} = etorrent_io_req:start_write(TorrentID, Piece, Offset, Length, Chunk),
+    receive {chunk, {written, Piece, Offset, Length}} -> ok end.
 
 
 %% @doc
