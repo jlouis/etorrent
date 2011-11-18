@@ -15,7 +15,7 @@
          close/1,
          read/3,
          write/3,
-	 allocate/2]).
+         allocate/2]).
 
 -export([init/1,
          handle_call/3,
@@ -34,6 +34,8 @@
 -record(state, {
     torrent :: torrent_id(),
     handle=closed :: closed | file:io_device(),
+    rqueue   :: queue(),
+    wqueue   :: queue(),
     relpath  :: file_path(),
     fullpath :: file_path()}).
 
@@ -89,6 +91,8 @@ init([TorrentID, RelPath, FullPath]) ->
     InitState = #state{
         torrent=TorrentID,
         handle=closed,
+        rqueue=queue:new(),
+        wqueue=queue:new(),
         relpath=RelPath,
         fullpath=FullPath},
     {ok, InitState}.
