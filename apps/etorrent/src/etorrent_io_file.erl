@@ -32,8 +32,12 @@
 
 %% gen_fsm callbacks and states
 -export([init/1,
-         default/2, %% single state - be a gen_server
-         default/3, %% single state - be a gen_server
+         closed/2,
+         closed/3,
+         opening/2,
+         opening/3,
+         opened/2,
+         opened/3,
          handle_event/3,
          handle_sync_event/4,
          handle_info/3,
@@ -112,33 +116,34 @@ init([TorrentID, RelPath, FullPath]) ->
         wqueue=queue:new(),
         relpath=RelPath,
         fullpath=FullPath},
-    {ok, default, InitState}.
+    {ok, closed, InitState}.
 
-%% @private
-default({read, _, _}, _, State) when State#state.handle == closed ->
-    {reply, {error, eagain}, default, State, ?GC_TIMEOUT};
-default({write, _, _}, _, State) when State#state.handle == closed ->
-    {reply, {error, eagain}, default, State, ?GC_TIMEOUT};
 
-default({read, Offset, Length}, _, State) ->
+%% @private handle asynchronous event in closed state.
+closed({read, _, _}, _, State) when State#state.handle == closed ->
+    {reply, {error, eagain}, closed, State, ?GC_TIMEOUT};
+closed({write, _, _}, _, State) when State#state.handle == closed ->
+    {reply, {error, eagain}, closed, State, ?GC_TIMEOUT};
+
+closed({read, Offset, Length}, _, State) ->
     #state{handle=Handle} = State,
     {ok, Chunk} = file:pread(Handle, Offset, Length),
-    {reply, {ok, Chunk}, default, State, ?GC_TIMEOUT};
+    {reply, {ok, Chunk}, closed, State, ?GC_TIMEOUT};
 
-default({write, Offset, Chunk}, _, State) ->
+closed({write, Offset, Chunk}, _, State) ->
     #state{handle=Handle} = State,
     ok = file:pwrite(Handle, Offset, Chunk),
-    {reply, ok, default, State, ?GC_TIMEOUT};
+    {reply, ok, closed, State, ?GC_TIMEOUT};
 
-default({allocate, _Sz}, _From, #state { handle = closed } = S) ->
-    {reply, {error, eagain}, default, S, ?GC_TIMEOUT};
+closed({allocate, _Sz}, _From, #state { handle = closed } = S) ->
+    {reply, {error, eagain}, closed, S, ?GC_TIMEOUT};
 
-default({allocate, Sz}, _From, #state { handle = FD } = S) ->
+closed({allocate, Sz}, _From, #state { handle = FD } = S) ->
     fill_file(FD, Sz),
-    {reply, ok, default, S, ?GC_TIMEOUT}.
+    {reply, ok, closed, S, ?GC_TIMEOUT}.
 
-%% @private
-default(open, State) ->
+%% @private handle synchronous event in closed state.
+closed(open, State) ->
     #state{
         torrent=Torrent,
         handle=closed,
@@ -150,9 +155,9 @@ default(open, State) ->
     ok = filelib:ensure_dir(FullPath),
     {ok, Handle} = file:open(FullPath, FileOpts),
     NewState = State#state{handle=Handle},
-    {next_state, default, NewState, ?GC_TIMEOUT};
+    {next_state, closed, NewState, ?GC_TIMEOUT};
 
-default(close, State) ->
+closed(close, State) ->
     #state{
         torrent=Torrent,
         handle=Handle,
@@ -160,11 +165,32 @@ default(close, State) ->
     true = etorrent_io:unregister_open_file(Torrent, RelPath),
     ok = file:close(Handle),
     NewState = State#state{handle=closed},
-    {next_state, default, NewState, ?GC_TIMEOUT};
+    {next_state, closed, NewState, ?GC_TIMEOUT};
 
-default(timeout, State) ->
+closed(timeout, State) ->
     true = erlang:garbage_collect(),
-    {next_state, default, State}.
+    {next_state, closed, State}.
+
+
+%% @private handle asynchronous event in opening state.
+opening(Msg, State) ->
+    {stop, Msg, State}.
+
+
+%% @private handle synchronous event in opening state.
+opening(Msg, _From, State) ->
+    {stop, Msg, State}.
+
+
+%% @private handle asynchronous event in opened state.
+opened(Msg, State) ->
+    {stop, Msg, State}.
+
+
+%% @private handle synchronous event in opened state.
+opened(Msg, _From, State) ->
+    {stop, Msg, State}.
+
 
 %% @private
 handle_event(_Msg, _Statename, _State) ->
