@@ -148,10 +148,7 @@ closed(timeout, State) ->
 opening(open, #state{handle=closed}=State) ->
     #state{torrent=Torrent, relpath=RelPath, fullpath=FullPath} = State,
     true = etorrent_io:register_open_file(Torrent, RelPath),
-    FileOpts = [read, write, binary, raw, read_ahead,
-                {delayed_write, 1024*1024, 3000}],
-    ok = filelib:ensure_dir(FullPath),
-    {ok, Handle} = file:open(FullPath, FileOpts),
+    Handle = open_file_handle(FullPath),
     NewState = State#state{handle=Handle},
     %% @todo respond to all enqueued requests. reset queues.
     {next_state, opened, NewState, ?GC_TIMEOUT};
@@ -246,6 +243,13 @@ enqueue_write(Offset, Chunk, From, State) ->
     NewWrites = [{Offset, Chunk, From}|State#state.wqueue],
     NewState = State#state{wqueue=NewWrites},
     NewState.
+
+%% @private Open a file handle, overriding the default settings.
+open_file_handle(Fullpath) ->
+    ok = filelib:ensure_dir(Fullpath),
+    Opts = [read,write,binary,raw,read_ahead,{delayed_write,1024*1024,3000}],
+    {ok, Handle} = file:open(Fullpath, Opts),
+    Handle.
 
 
 fill_file(FD, Missing) ->
