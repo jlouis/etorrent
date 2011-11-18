@@ -260,7 +260,7 @@ dequeue_reads_([], _Handle) ->
     ok;
 dequeue_reads_([{Offset, Length, From}|T], Handle) ->
     {ok, Chunk} = file:pread(Handle, Offset, Length),
-    true = gen_fsm:reply(From, {ok, Chunk}),
+    gen_fsm:reply(From, {ok, Chunk}),
     dequeue_reads_(T, Handle).
 
 
@@ -273,7 +273,7 @@ dequeue_writes_([], _Handle) ->
     ok;
 dequeue_writes_([{Offset, Chunk, From}|T], Handle) ->
     ok = file:pwrite(Handle, Offset, Chunk),
-    true = gen_fsm:reply(From, ok),
+    gen_fsm:reply(From, ok),
     dequeue_writes_(T, Handle).
 
 %% @private Perform the enqueued allocation request.
@@ -281,7 +281,7 @@ dequeue_allocs([], _Handle) ->
     ok;
 dequeue_allocs([{Size, From}], Handle) ->
     ok = fill_file(Handle, Size),
-    true = gen_fsm:reply(From, ok),
+    gen_fsm:reply(From, ok),
     ok.
 
 
