@@ -55,7 +55,7 @@
     torrent :: torrent_id(),
     handle=closed :: closed | file:io_device(),
     aqueue   :: list(),
-    rqueue   :: list(),
+    rqueue   :: list(), %% @todo allocation "queue" - always zero or one elems
     wqueue   :: list(),
     relpath  :: file_path(),
     fullpath :: file_path()}).
@@ -113,9 +113,7 @@ init([TorrentID, RelPath, FullPath]) ->
     InitState = #state{
         torrent=TorrentID,
         handle=closed,
-        aqueue=[], %% @todo allocation "queue" - always length of zero or one.
-        rqueue=[],
-        wqueue=[],
+        aqueue=[], rqueue=[], wqueue=[],
         relpath=RelPath,
         fullpath=FullPath},
     {ok, closed, InitState}.
