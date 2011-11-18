@@ -672,7 +672,7 @@ handle_message({piece, Index, Offset, Data}, State) ->
     NewLocal = case etorrent_rqueue:is_head(Index, Offset, Length, Requests) of
         true ->
             ok = etorrent_download:chunk_fetched(Index, Offset, Length, Download),
-            ok = etorrent_io:write_chunk(TorrentID, Index, Offset, Data),
+            ok = etorrent_io:awrite_chunk(TorrentID, Index, Offset, Data),
             ok = etorrent_download:chunk_stored(Index, Offset, Length, Download),
             NewRequests = etorrent_rqueue:pop(Requests),
             TmpLocal = etorrent_peerstate:requests(NewRequests, Local),
