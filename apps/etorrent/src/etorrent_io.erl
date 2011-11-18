@@ -186,7 +186,7 @@ read_chunk(TorrentID, Piece, Offset, Length) ->
 -spec aread_chunk(torrent_id(), piece_index(),
                   chunk_offset(), chunk_len()) -> {ok, pid()}.
 aread_chunk(TorrentID, Piece, Offset, Length) ->
-    etorrent_io_req:start_read(TorrentID, Piece, Offset, Length).
+    etorrent_io_req_sup:start_read(TorrentID, Piece, Offset, Length).
 
 
 %% @doc
@@ -209,7 +209,7 @@ write_chunk(TorrentID, Piece, Offset, Chunk) ->
                    chunk_offset(), chunk_bin()) -> ok.
 awrite_chunk(TorrentID, Piece, Offset, Chunk) ->
     Length = byte_size(Chunk),
-    {ok,_} = etorrent_io_req:start_write(TorrentID, Piece, Offset, Length, Chunk),
+    {ok,_} = etorrent_io_req_sup:start_write(TorrentID, Piece, Offset, Length, Chunk),
     receive {chunk, {written, Piece, Offset, Length}} -> ok end.
 
 

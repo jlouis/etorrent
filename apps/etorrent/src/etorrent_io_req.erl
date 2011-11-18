@@ -21,7 +21,7 @@
 %% @end
 start_read(TorrentID, Piece, Offset, Length, ClientPid) ->
     Args = [TorrentID, Piece, Offset, Length, ClientPid],
-    proc_lib:spawn_link(?MODULE, execute_read, Args).
+    proc_lib:start_link(?MODULE, execute_read, Args).
 
 
 %% @doc Start a write request process.
@@ -29,7 +29,7 @@ start_read(TorrentID, Piece, Offset, Length, ClientPid) ->
 %% @end
 start_write(TorrentID, Piece, Offset, Length, Chunk, ClientPid) ->
     Args = [TorrentID, Piece, Offset, Length, Chunk, ClientPid],
-    proc_lib:spawn_link(?MODULE, execute_write, Args).
+    proc_lib:start_link(?MODULE, execute_write, Args).
 
 
 %% @private Execute a read request.
