@@ -1,8 +1,21 @@
-%% @author Magnus Klaar <magnus.klaar@sgsstudentbostader.se>
-%% @doc Wrap a file-handle
+%% @author Magnus Klaar <magnus.klaar@gmail.com>
+%% @doc File handle state machine.
 %%
-%% Server that wraps a file-handle and exposes an interface
+%% <p>
+%% State machine that wraps a file-handle and exposes an interface
 %% that enables clients to read and write data at specified offsets.
+%% An previously unstated benefit of using a server process to wrap
+%% a file handle is that the file handle is cached and reused. This
+%% reduces the number of open file handles to at most one per file
+%% instead of requiring one file handle per concurrent request.
+%% </p>
+%%
+%% <p>
+%% The state machine is a simple model of the open/closed state of the
+%% file handle which simplifies request handling and reduces the average
+%% number of calls sent to the directory server. The worst case is still
+%% at least one call to request permission to open the file.
+%% </p>
 %%
 %% @end
 -module(etorrent_io_file).
