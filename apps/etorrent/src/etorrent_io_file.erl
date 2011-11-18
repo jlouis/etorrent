@@ -149,8 +149,8 @@ opening(open, #state{handle=closed}=State) ->
     #state{fullpath=FullPath} = State,
     Handle = open_file_handle(FullPath),
     ok = dequeue_allocs(State#state.aqueue, Handle),
-    ok = dequeue_writes(State#state.rqueue, Handle),
-    ok = dequeue_reads(State#state.wqueue, Handle),
+    ok = dequeue_writes(State#state.wqueue, Handle),
+    ok = dequeue_reads(State#state.rqueue, Handle),
     NewState = State#state{handle=Handle, rqueue=[], wqueue=[]},
     {next_state, opened, NewState, ?GC_TIMEOUT};
 
