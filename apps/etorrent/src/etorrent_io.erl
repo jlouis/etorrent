@@ -65,10 +65,7 @@
          lookup_directory/1,
          await_directory/1,
          register_file_server/2,
-         lookup_file_server/2,
-         register_open_file/2,
-         unregister_open_file/2,
-         await_open_file/2]).
+         lookup_file_server/2]).
 
 -export([check_piece/3]).
 
@@ -136,7 +133,7 @@ allocate(TorrentID) ->
 -spec allocate(torrent_id(), string(), integer()) -> ok.
 allocate(TorrentId, FilePath, BytesToWrite) ->
     ok = schedule_io_operation(TorrentId, FilePath),
-    FilePid = await_open_file(TorrentId, FilePath),
+    FilePid = await_file_server(TorrentId, FilePath),
     ok = etorrent_io_file:allocate(FilePid, BytesToWrite).
 
 piece_sizes(Torrent) ->
@@ -222,16 +219,11 @@ awrite_chunk(TorrentID, Piece, Offset, Chunk) ->
 -spec read_file_blocks(torrent_id(), list(block_pos())) -> iolist().
 read_file_blocks(_, []) ->
     [];
-read_file_blocks(TorrentID, [{Path, Offset, Length}|T]=L) ->
+read_file_blocks(TorrentID, [{Path, Offset, Length}|T]) ->
     ok = schedule_io_operation(TorrentID, Path),
-    FilePid = await_open_file(TorrentID, Path),
-    case etorrent_io_file:read(FilePid, Offset, Length) of
-        {error, eagain} ->
-            %% XXX - potential race condition
-            read_file_blocks(TorrentID, L);
-        {ok, Block} ->
-            [Block|read_file_blocks(TorrentID, T)]
-    end.
+    FilePid = await_file_server(TorrentID, Path),
+    {ok, Block} = etorrent_io_file:read(FilePid, Offset, Length),
+    [Block|read_file_blocks(TorrentID, T)].
 
 %% @doc
 %% Write a list of blocks of a chunk seqeuntially to the file servers
@@ -241,16 +233,12 @@ read_file_blocks(TorrentID, [{Path, Offset, Length}|T]=L) ->
 -spec write_file_blocks(torrent_id(), chunk_bin(), list(block_pos())) -> 'ok'.
 write_file_blocks(_, <<>>, []) ->
     ok;
-write_file_blocks(TorrentID, Chunk, [{Path, Offset, Length}|T]=L) ->
+write_file_blocks(TorrentID, Chunk, [{Path, Offset, Length}|T]) ->
     ok = schedule_io_operation(TorrentID, Path),
-    FilePid = await_open_file(TorrentID, Path),
+    FilePid = await_file_server(TorrentID, Path),
     <<Block:Length/binary, Rest/binary>> = Chunk,
-    case etorrent_io_file:write(FilePid, Offset, Block) of
-        {error, eagain} ->
-            write_file_blocks(TorrentID, Chunk, L);
-        ok ->
-            write_file_blocks(TorrentID, Rest, T)
-    end.
+    ok = etorrent_io_file:write(FilePid, Offset, Block),
+    write_file_blocks(TorrentID, Rest, T).
 
 file_path_len(T) ->
     case etorrent_metainfo:get_files(T) of
@@ -283,8 +271,6 @@ directory_name(TorrentID) ->
 file_server_name(TorrentID, Path) ->
     {etorrent, TorrentID, Path, file}.
 
-open_server_name(TorrentID, Path) ->
-    {etorrent, TorrentID, Path, file, open}.
 
 %% @doc
 %% Register the current process as the directory server for
@@ -331,38 +317,12 @@ lookup_file_server(TorrentID, Path) ->
     etorrent_utils:lookup(file_server_name(TorrentID, Path)).
 
 %% @doc
-%% Register the current process as a file server as being
-%% in a state where it is ready to perform IO operations
-%% on behalf of clients.
-%% @end
--spec register_open_file(torrent_id(), file_path()) -> true.
-register_open_file(TorrentID, Path) ->
-    etorrent_utils:register(open_server_name(TorrentID, Path)).
-
-%% @doc
-%% Register that the current process is a file server that
-%% is not in a state where it can (successfully) perform
-%% IO operations on behalf of clients.
-%% @end
--spec unregister_open_file(torrent_id(), file_path()) -> true.
-unregister_open_file(TorrentID, Path) ->
-    etorrent_utils:unregister(open_server_name(TorrentID, Path)).
-
-%% @doc
 %% Wait for the file server responsible for the given file to start
 %% and return the process id of the file server.
 %% @end
 -spec await_file_server(torrent_id(), file_path()) -> pid().
 await_file_server(TorrentID, Path) ->
     etorrent_utils:await(file_server_name(TorrentID, Path), ?AWAIT_TIMEOUT).
-
-%% @doc
-%% Wait for the file server responsible for the given file
-%% to enter a state where it is able to perform IO operations.
-%% @end
--spec await_open_file(torrent_id(), file_path()) -> pid().
-await_open_file(TorrentID, Path) ->
-    etorrent_utils:await(open_server_name(TorrentID, Path), ?AWAIT_TIMEOUT).
 
 %% @doc
 %% Fetch the offsets and length of the file blocks of the piece
@@ -395,8 +355,6 @@ schedule_operation(TorrentID, Relpath) ->
 schedule_io_operation(Directory, RelPath) ->
     DirPid = await_directory(Directory),
     gen_server:cast(DirPid, {schedule_operation, RelPath}).
-
-
 
 
 %% @doc Validate a piece against a SHA1 hash.
@@ -490,11 +448,7 @@ handle_cast({schedule_operation, RelPath}, State) ->
 
 %% @private
 handle_info({'DOWN', FileMon, _, _, _}, State) ->
-    #state{
-        torrent=TorrentID,
-        files_open=FilesOpen} = State,
-    ClosedFile = lists:keyfind(FileMon, #io_file.monitor, FilesOpen),
-    #io_file{rel_path=RelPath} = ClosedFile,
+    #state{files_open=FilesOpen} = State,
     NewFilesOpen = lists:keydelete(FileMon, #io_file.monitor, FilesOpen),
     NewState = State#state{files_open=NewFilesOpen},
     {noreply, NewState}.
