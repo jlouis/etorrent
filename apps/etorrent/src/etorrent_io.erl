@@ -132,7 +132,6 @@ allocate(TorrentID) ->
 %% @end
 -spec allocate(torrent_id(), string(), integer()) -> ok.
 allocate(TorrentId, FilePath, BytesToWrite) ->
-    ok = schedule_io_operation(TorrentId, FilePath),
     FilePid = await_file_server(TorrentId, FilePath),
     ok = etorrent_io_file:allocate(FilePid, BytesToWrite).
 
@@ -220,7 +219,6 @@ awrite_chunk(TorrentID, Piece, Offset, Chunk) ->
 read_file_blocks(_, []) ->
     [];
 read_file_blocks(TorrentID, [{Path, Offset, Length}|T]) ->
-    ok = schedule_io_operation(TorrentID, Path),
     FilePid = await_file_server(TorrentID, Path),
     {ok, Block} = etorrent_io_file:read(FilePid, Offset, Length),
     [Block|read_file_blocks(TorrentID, T)].
@@ -234,7 +232,6 @@ read_file_blocks(TorrentID, [{Path, Offset, Length}|T]) ->
 write_file_blocks(_, <<>>, []) ->
     ok;
 write_file_blocks(TorrentID, Chunk, [{Path, Offset, Length}|T]) ->
-    ok = schedule_io_operation(TorrentID, Path),
     FilePid = await_file_server(TorrentID, Path),
     <<Block:Length/binary, Rest/binary>> = Chunk,
     ok = etorrent_io_file:write(FilePid, Offset, Block),

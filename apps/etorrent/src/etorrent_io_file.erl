@@ -146,7 +146,7 @@ closed(timeout, State) ->
 
 %% @private handle asynchronous event in opening state.
 opening(open, #state{handle=closed}=State) ->
-    #state{torrent=Torrent, relpath=RelPath, fullpath=FullPath} = State,
+    #state{fullpath=FullPath} = State,
     Handle = open_file_handle(FullPath),
     ok = dequeue_allocs(State#state.aqueue, Handle),
     ok = dequeue_writes(State#state.rqueue, Handle),
@@ -175,7 +175,6 @@ opening({allocate, Size}, From, #state{handle=closed}=State) ->
 
 %% @private handle asynchronous event in opened state.
 opened(close, #state{handle=Handle}=State) ->
-    #state{torrent=Torrent, relpath=RelPath} = State,
     ok = file:close(Handle),
     NewState = State#state{handle=closed},
     {next_state, closed, NewState, ?GC_TIMEOUT};
