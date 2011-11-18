@@ -60,6 +60,7 @@
          awrite_chunk/4,
          file_paths/1,
          file_sizes/1,
+         schedule_operation/2,
          register_directory/1,
          lookup_directory/1,
          await_directory/1,
@@ -378,15 +379,24 @@ get_positions(DirPid, Piece) ->
 get_files(Pid) ->
     gen_server:call(Pid, get_files).
 
-%% @doc
+
+%% @doc Request permission from the directory server to open a file handle.
+%% @end
+-spec schedule_operation(torrent_id(), file_path()) -> ok.
+schedule_operation(TorrentID, Relpath) ->
+    schedule_io_operation(TorrentID, Relpath).
+
+
+%% @private
 %% Notify the directory server that the current process intends
 %% to perform an IO-operation on a file. This is so that the directory
 %% can notify the file server to open it's file if needed.
-%% @end
 -spec schedule_io_operation(torrent_id(), file_path()) -> ok.
 schedule_io_operation(Directory, RelPath) ->
     DirPid = await_directory(Directory),
     gen_server:cast(DirPid, {schedule_operation, RelPath}).
+
+
 
 
 %% @doc Validate a piece against a SHA1 hash.
@@ -420,19 +430,7 @@ init([TorrentID, Torrent]) ->
         files_max=MaxFiles},
     {ok, InitState}.
 
-%%
-%% Add a no-op implementation of the the file-server protocol.
-%% This enables the directory server to unlock io-clients waiting
-%% for a file server to enter the open state when the file server
-%% crashed before it could enter the open state.
-%%
-
 %% @private
-handle_call({read, _, _}, _, State) ->
-    {reply, {error, eagain}, State};
-handle_call({write, _, _}, _, State) ->
-    {reply, {error, eagain}, State};
-
 handle_call(get_files, _From, #state { file_list = FL } = State) ->
     {reply, {ok, FL}, State};
 handle_call({get_positions, Piece}, _, State) ->
@@ -497,10 +495,6 @@ handle_info({'DOWN', FileMon, _, _, _}, State) ->
         files_open=FilesOpen} = State,
     ClosedFile = lists:keyfind(FileMon, #io_file.monitor, FilesOpen),
     #io_file{rel_path=RelPath} = ClosedFile,
-    %% Unlock clients that called schedule_io_operation before this
-    %% file server crashed and the file server received the open-notification.
-    true = register_open_file(TorrentID, RelPath),
-    true = unregister_open_file(TorrentID, RelPath),
     NewFilesOpen = lists:keydelete(FileMon, #io_file.monitor, FilesOpen),
     NewState = State#state{files_open=NewFilesOpen},
     {noreply, NewState}.
