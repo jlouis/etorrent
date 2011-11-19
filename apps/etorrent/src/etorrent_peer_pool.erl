@@ -11,7 +11,6 @@
 
 %% Supervisor callbacks
 -export([init/1]).
--ignore_xref([{'start_link', 1}]).
 -define(SERVER, ?MODULE).
 
 -type ipaddr() :: etorrent_types:ipaddr().

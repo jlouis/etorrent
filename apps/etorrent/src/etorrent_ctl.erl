@@ -23,7 +23,6 @@
 
 -type bcode() :: etorrent_types:bcode().
 -record(state, {local_peer_id :: binary() }).
--ignore_xref([{start_link, 1}]).
 
 %% API
 

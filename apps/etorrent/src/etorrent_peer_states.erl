@@ -48,8 +48,6 @@
                  global_send :: #peer_rate{}}).
 
 -define(SERVER, ?MODULE).
--ignore_xref([{'start_link', 0}]).
-
 %% ====================================================================
 
 %% @doc Start the server

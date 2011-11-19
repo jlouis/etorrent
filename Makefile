@@ -96,9 +96,6 @@ remsh:
 console-perf:
 	perf record -- dev/etorrent-dev/bin/etorrent console -pa ../../apps/etorrent/ebin
 
-xref: compile
-	rebar skip_deps=true xref
-
 graph: depgraph.png depgraph.pdf
 
 depgraph.dot: compile

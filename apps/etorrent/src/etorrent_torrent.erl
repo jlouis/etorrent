@@ -33,34 +33,33 @@
 %% A single torrent is represented as the 'torrent' record
 -record(torrent,
 	{ %% Unique identifier of torrent, monotonically increasing
-	  id :: non_neg_integer(),
-	  %% How many bytes are there left before we have the full torrent
-	  left = unknown :: non_neg_integer(),
-	  %% How many bytes are there in total
-	  total  :: non_neg_integer(),
-	  %% How many bytes have we uploaded
-	  uploaded :: non_neg_integer(),
-	  %% How many bytes have we downloaded
-	  downloaded :: non_neg_integer(),
-	  %% Uploaded and downloaded bytes, all time
-	  all_time_uploaded = 0 :: non_neg_integer(),
-	  all_time_downloaded = 0 :: non_neg_integer(),
-	  %% Number of pieces in torrent
-	  pieces = unknown :: non_neg_integer() | 'unknown',
-	  %% How many people have a completed file?
-	  seeders = 0 :: non_neg_integer(),
-	  %% How many people are downloaded
-	  leechers = 0 :: non_neg_integer(),
-	  %% This is a list of recent speeds present so we can plot them
-	  rate_sparkline = [0.0] :: [float()],
-	  %% BEP 27: is this torrent private
-	  is_private :: boolean(),
-	  state :: torrent_state()}).
+          id :: non_neg_integer(),
+          %% How many bytes are there left before we have the full torrent
+          left = unknown :: non_neg_integer(),
+          %% How many bytes are there in total
+          total  :: non_neg_integer(),
+          %% How many bytes have we uploaded
+          uploaded :: non_neg_integer(),
+          %% How many bytes have we downloaded
+          downloaded :: non_neg_integer(),
+          %% Uploaded and downloaded bytes, all time
+          all_time_uploaded = 0 :: non_neg_integer(),
+          all_time_downloaded = 0 :: non_neg_integer(),
+          %% Number of pieces in torrent
+          pieces = unknown :: non_neg_integer() | 'unknown',
+          %% How many people have a completed file?
+          seeders = 0 :: non_neg_integer(),
+          %% How many people are downloaded
+          leechers = 0 :: non_neg_integer(),
+          %% This is a list of recent speeds present so we can plot them
+          rate_sparkline = [0.0] :: [float()],
+          %% BEP 27: is this torrent private
+          is_private :: boolean(),
+          state :: torrent_state()}).
 
 -define(SERVER, ?MODULE).
 -define(TAB, ?MODULE).
 -record(state, { monitoring :: dict() }).
--ignore_xref([{'start_link', 0}]).
 
 %% ====================================================================
 

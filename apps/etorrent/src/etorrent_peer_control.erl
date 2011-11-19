@@ -58,12 +58,12 @@
     local  = exit(required) :: peerstate(),
     config = exit(required) :: peerconf()}).
 
-
--define(DEFAULT_CHUNK_SIZE, 16384). % Default size for a chunk. All clients use this.
--define(HIGH_WATERMARK, 30). % How many chunks to queue up to
--define(LOW_WATERMARK, 5).  % Requeue when there are less than this number of pieces in queue
-
--ignore_xref([{start_link, 6}]).
+%% Default size for a chunk. All clients use this.
+-define(DEFAULT_CHUNK_SIZE, 16384).
+%% How many chunks to queue up to
+-define(HIGH_WATERMARK, 30).
+%% Requeue when there are less than this number of pieces in queue
+-define(LOW_WATERMARK, 5).
 
 %%====================================================================
 

@@ -19,7 +19,6 @@
 
 %% API
 -export([start_link/5, completed/1]).
--ignore_xref([{'start_link', 5}]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,

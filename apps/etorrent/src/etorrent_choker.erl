@@ -42,7 +42,6 @@
 -define(ROUND_TIME, 10000).
 -define(DEFAULT_OPTIMISTIC_SLOTS, 1).
 
--ignore_xref([{start_link, 1}]).
 
 %%====================================================================
 

@@ -18,7 +18,6 @@
 -export([init/1]).
 
 -define(SERVER, ?MODULE).
--ignore_xref([{'start_link', 6}]).
 
 -type ipaddr() :: etorrent_types:ipaddr().
 -type portnum() :: etorrent_types:portnum().
