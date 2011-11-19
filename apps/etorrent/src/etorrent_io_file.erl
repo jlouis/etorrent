@@ -121,23 +121,26 @@ init([TorrentID, RelPath, FullPath]) ->
     {ok, closed, InitState}.
 
 
-%% @private handle asynchronous event in closed state.
+%% @private handle synchronous event in closed state.
 closed({read, Offset, Length}, From, #state{handle=closed}=State) ->
     #state{torrent=TorrentID, relpath=Relpath} = State,
     ok = etorrent_io:schedule_operation(TorrentID, Relpath),
-    NewState = enqueue_read(Offset, Length, From, State),
-    {next_state, opening, NewState, ?GC_TIMEOUT};
+    State1 = enqueue_read(Offset, Length, From, State),
+    State2 = start_delay_timer(State1),
+    {next_state, opening, State2, ?GC_TIMEOUT};
 
 closed({write, Offset, Chunk}, From, #state{handle=closed}=State) ->
     #state{torrent=TorrentID, relpath=Relpath} = State,
     ok = etorrent_io:schedule_operation(TorrentID, Relpath),
-    NewState = enqueue_write(Offset, Chunk, From, State),
-    {next_state, opening, NewState, ?GC_TIMEOUT};
+    State1 = enqueue_write(Offset, Chunk, From, State),
+    State2 = start_delay_timer(State1),
+    {next_state, opening, State2, ?GC_TIMEOUT};
 
 closed({allocate, Size}, From, #state{handle=closed}=State) ->
     %% @todo send request for permission to open file handle.
-    NewState = enqueue_alloc(Size, From, State),
-    {next_state, opening, NewState, ?GC_TIMEOUT}.
+    State1 = enqueue_alloc(Size, From, State),
+    State2 = start_delay_timer(State1),
+    {next_state, opening, State2, ?GC_TIMEOUT}.
 
 
 %% @private handle synchronous event in closed state.
@@ -227,6 +230,20 @@ open_file_handle(Fullpath) ->
     Opts = [read,write,binary,raw,read_ahead,{delayed_write,1024*1024,3000}],
     {ok, Handle} = file:open(Fullpath, Opts),
     Handle.
+
+
+%% @private Start a timer for delaying a set of request.
+%% A 'dequeue' event will be sent to self() at a later point in time.
+start_delay_timer(#state{delay=none}=State) ->
+    TRef = gen_fsm:send_event_after(10, dequeue),
+    State#state{delay=TRef};
+start_delay_timer(#state{delay=TRef}=State) when is_reference(TRef) ->
+    State.
+
+
+%% @private Remove a timer for delaying a set of requests.
+remove_delay_timer(#state{delay=TRef}=State) when is_reference(TRef) ->
+    State#state{delay=none}.
 
 
 %% @private Enqueue a file pre-allocation request in the server state.
