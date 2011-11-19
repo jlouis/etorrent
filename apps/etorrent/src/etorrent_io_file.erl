@@ -150,14 +150,20 @@ closed(timeout, State) ->
 
 
 %% @private handle asynchronous event in opening state.
+opening(open, #state{handle=closed, delay=none}=State) ->
+    Handle = open_file_handle(State#state.fullpath),
+    gen_fsm:send_event(self(), dequeue),
+    State1 = State#state{handle=Handle},
+    {next, state, opened, State1, ?GC_TIMEOUT};
+
 opening(open, #state{handle=closed}=State) ->
-    #state{fullpath=FullPath} = State,
-    Handle = open_file_handle(FullPath),
-    ok = dequeue_allocs(State#state.aqueue, Handle),
-    ok = dequeue_writes(State#state.wqueue, Handle),
-    ok = dequeue_reads(State#state.rqueue, Handle),
-    NewState = State#state{handle=Handle, rqueue=[], wqueue=[]},
-    {next_state, opened, NewState, ?GC_TIMEOUT};
+    Handle = open_file_handle(State#state.fullpath),
+    State1 = State#state{handle=Handle},
+    {next_state, opened, State1, ?GC_TIMEOUT};
+
+opening(dequeue, State) ->
+    State1 = remove_delay_timer(State),
+    {next_state, opening, State1, ?GC_TIMEOUT};
 
 opening(timeout, State) ->
     true = erlang:garbage_collect(),
@@ -179,10 +185,23 @@ opening({allocate, Size}, From, #state{handle=closed}=State) ->
 
 
 %% @private handle asynchronous event in opened state.
+opened(dequeue, #state{handle=Handle}=State) ->
+    ok = dequeue_allocs(State#state.aqueue, Handle),
+    ok = dequeue_writes(State#state.wqueue, Handle),
+    ok = dequeue_reads(State#state.rqueue, Handle),
+    State1 = State#state{aqueue=[], rqueue=[], wqueue=[]},
+    State2 = remove_delay_timer(State1),
+    {next_state, opened, State2, ?GC_TIMEOUT};
+
 opened(close, #state{handle=Handle}=State) ->
+    ok = dequeue_allocs(State#state.aqueue, Handle),
+    ok = dequeue_writes(State#state.wqueue, Handle),
+    ok = dequeue_reads(State#state.rqueue, Handle),
+    State1 = State#state{handle=closed, aqueue=[], rqueue=[], wqueue=[]},
+    State2 = remove_delay_timer(State1),
     ok = file:close(Handle),
-    NewState = State#state{handle=closed},
-    {next_state, closed, NewState, ?GC_TIMEOUT};
+    {next_state, closed, State2, ?GC_TIMEOUT};
+
 
 opened(timeout, State) ->
     true = erlang:garbage_collect(),
@@ -190,17 +209,20 @@ opened(timeout, State) ->
 
 
 %% @private handle synchronous event in opened state.
-opened({read, Offset, Length}, _From, #state{handle=Handle}=State) ->
-    {ok, Chunk} = file:pread(Handle, Offset, Length),
-    {reply, {ok, Chunk}, opened, State, ?GC_TIMEOUT};
+opened({read, Offset, Length}, From, State) ->
+    State1 = enqueue_read(Offset, Length, From, State),
+    State2 = start_delay_timer(State1),
+    {next_state, opened, State2, ?GC_TIMEOUT};
 
-opened({write, Offset, Chunk}, _From, #state{handle=Handle}=State) ->
-    ok = file:pwrite(Handle, Offset, Chunk),
-    {reply, ok, opened, State, ?GC_TIMEOUT};
+opened({write, Offset, Chunk}, From, State) ->
+    State1 = enqueue_write(Offset, Chunk, From, State),
+    State2 = start_delay_timer(State1),
+    {next_state, opened, State2, ?GC_TIMEOUT};
 
-opened({allocate, Size}, _From, #state{handle=Handle}=State) ->
-    fill_file(Handle, Size),
-    {reply, ok, opened, State, ?GC_TIMEOUT}.
+opened({allocate, Size}, From, State) ->
+    State1 = enqueue_alloc(Size, From, State),
+    State2 = start_delay_timer(State1),
+    {next_state, opened, State2, ?GC_TIMEOUT}.
 
 
 %% @private
@@ -243,6 +265,7 @@ start_delay_timer(#state{delay=TRef}=State) when is_reference(TRef) ->
 
 %% @private Remove a timer for delaying a set of requests.
 remove_delay_timer(#state{delay=TRef}=State) when is_reference(TRef) ->
+    gen_fsm:cancel_timer(TRef),
     State#state{delay=none}.
 
 
