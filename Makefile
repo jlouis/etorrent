@@ -27,7 +27,8 @@ plt-clean:
 	rm -f etorrent_dialyzer.plt
 
 build-plt:
-	dialyzer --build_plt -r deps -r apps --output_plt etorrent_dialyzer.plt \
+	dialyzer --build_plt -r deps -r apps \
+	--output_plt etorrent_dialyzer.plt \
 	--apps kernel crypto stdlib sasl inets tools xmerl erts
 
 dialyze: dialyze-etorrent
@@ -55,7 +56,8 @@ distclean: clean relclean devclean
 
 etorrent-dev: compile
 	mkdir -p dev
-	(cd rel && rebar generate target_dir=../dev/$@ overlay_vars=vars/$@_vars.config)
+	(cd rel \
+	&& rebar generate target_dir=../dev/$@ overlay_vars=vars/$@_vars.config)
 
 dev: etorrent-dev
 
@@ -91,10 +93,12 @@ console:
 		-pa ../../deps/riak_err/ebin
 
 remsh:
-	erl -name 'foo@127.0.0.1' -remsh 'etorrent@127.0.0.1' -setcookie etorrent
+	erl -name 'foo@127.0.0.1' \
+	-remsh 'etorrent@127.0.0.1' -setcookie etorrent
 
 console-perf:
-	perf record -- dev/etorrent-dev/bin/etorrent console -pa ../../apps/etorrent/ebin
+	perf record -- dev/etorrent-dev/bin/etorrent console\
+	-pa ../../apps/etorrent/ebin
 
 graph: depgraph.png depgraph.pdf
 
