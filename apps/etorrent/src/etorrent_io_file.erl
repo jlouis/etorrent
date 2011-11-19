@@ -54,6 +54,7 @@
 -record(state, {
     torrent :: torrent_id(),
     handle=closed :: closed | file:io_device(),
+    delay    :: none | reference(),
     aqueue   :: list(),
     rqueue   :: list(), %% @todo allocation "queue" - always zero or one elems
     wqueue   :: list(),
@@ -113,6 +114,7 @@ init([TorrentID, RelPath, FullPath]) ->
     InitState = #state{
         torrent=TorrentID,
         handle=closed,
+        delay=none,
         aqueue=[], rqueue=[], wqueue=[],
         relpath=RelPath,
         fullpath=FullPath},
