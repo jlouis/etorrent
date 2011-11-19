@@ -207,7 +207,7 @@ write_chunk(TorrentID, Piece, Offset, Chunk) ->
 awrite_chunk(TorrentID, Piece, Offset, Chunk) ->
     Length = byte_size(Chunk),
     {ok,_} = etorrent_io_req_sup:start_write(TorrentID, Piece, Offset, Length, Chunk),
-    receive {chunk, {written, Piece, Offset, Length}} -> ok end.
+    ok.
 
 
 %% @doc

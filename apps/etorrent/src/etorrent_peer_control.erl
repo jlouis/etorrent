@@ -425,6 +425,10 @@ handle_info({chunk, {contents, Index, Offset, Length, Data}}, State) ->
             {noreply, State}
     end;
 
+handle_info({chunk, {written, _Piece, _Offset, _Length}}, State) ->
+    %% @todo do something ... useful?
+    {noreply, State};
+
 handle_info({piece, {valid, Piece}}, State) ->
     #state{send_pid=SendPid, download=Download, local=Local, remote=Remote} = State,
     WithLocal = etorrent_peerstate:hasone(Piece, Local),
