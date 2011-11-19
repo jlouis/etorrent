@@ -137,7 +137,8 @@ closed({write, Offset, Chunk}, From, #state{handle=closed}=State) ->
     {next_state, opening, State2, ?GC_TIMEOUT};
 
 closed({allocate, Size}, From, #state{handle=closed}=State) ->
-    %% @todo send request for permission to open file handle.
+    #state{torrent=TorrentID, relpath=Relpath} = State,
+    ok = etorrent_io:schedule_operation(TorrentID, Relpath),
     State1 = enqueue_alloc(Size, From, State),
     State2 = start_delay_timer(State1),
     {next_state, opening, State2, ?GC_TIMEOUT}.
@@ -257,7 +258,7 @@ open_file_handle(Fullpath) ->
 %% @private Start a timer for delaying a set of request.
 %% A 'dequeue' event will be sent to self() at a later point in time.
 start_delay_timer(#state{delay=none}=State) ->
-    TRef = gen_fsm:send_event_after(10, dequeue),
+    TRef = gen_fsm:send_event_after(20, dequeue),
     State#state{delay=TRef};
 start_delay_timer(#state{delay=TRef}=State) when is_reference(TRef) ->
     State.
