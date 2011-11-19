@@ -29,8 +29,10 @@
                 opt_unchoke_chain = [] :: [pid()]}).
 
 -record(rechoke_info, {pid :: pid(),
-                       peer_state :: 'seeding' | 'leeching', % Is the peer seeding or leeching
-                       state :: 'seeding' | 'leeching' , % Are we seeding or leeching the torrent of the peer
+                       %% Peers state:
+                       peer_state :: 'seeding' | 'leeching',
+                       %% Our state:
+                       state :: 'seeding' | 'leeching' ,
                        peer_snubs :: boolean(),
                        r_interest_state :: 'interested' | 'not_interested',
                        r_choke_state :: 'choked' | 'unchoked' ,
@@ -69,18 +71,20 @@ monitor(Pid) ->
 %%% Internal functions
 %%--------------------------------------------------------------------
 
-%%--------------------------------------------------------------------
-%% Function: rechoke(Chain) -> ok
-%% Description: Recalculate the choke/unchoke state of peers
-%%--------------------------------------------------------------------
+%% @doc Recalculate the choke/unchoke state of peers.
+%% @end
 rechoke(Chain) ->
     Peers = build_rechoke_info(Chain),
     {PreferredDown, PreferredSeed} = split_preferred(Peers),
-    PreferredSet = prune_preferred_peers(PreferredDown, PreferredSeed),
+    PreferredSet = find_preferred_peers(PreferredDown, PreferredSeed),
     ToChoke = rechoke_unchoke(Peers, PreferredSet),
     rechoke_choke(ToChoke, 0, optimistics(PreferredSet)).
 
 
+%% TODO: It is not per se given that this function belongs here. It is
+%% a view on a peer, which tells us the given current state and the given
+%% current rate of that peer. I wonder if it really belongs in
+%% etorrent_peer_states, and not here.
 -spec lookup_info(set(), integer(), pid()) -> none | {seeding, float()}
                                                    | {leeching, float()}.
 lookup_info(Seeding, Id, Pid) ->
@@ -114,19 +118,23 @@ build_rechoke_info(Seeding, [Pid | Next]) ->
             {value, Snubbed, St} = etorrent_peer_states:get_state(Id, Pid),
             case lookup_info(Seeding, Id, Pid) of
                 none -> build_rechoke_info(Seeding, Next);
-                {State, R} -> [#rechoke_info {
-                                    pid = Pid,
-                                    peer_state = PeerState,
-                                    state = State,
-                                    rate = R,
-                                    r_interest_state = proplists:get_value(interest_state, St),
-                                    r_choke_state    = proplists:get_value(choke_state, St),
-                                    l_choke          = proplists:get_value(local_choke, St),
-                                    peer_snubs = Snubbed } |
-                            build_rechoke_info(Seeding, Next)]
+                {State, R} ->
+                    [#rechoke_info {
+                        pid = Pid,
+                        peer_state = PeerState,
+                        state = State,
+                        rate = R,
+                        r_interest_state =
+                            proplists:get_value(interest_state, St),
+                        r_choke_state    = proplists:get_value(choke_state, St),
+                        l_choke          = proplists:get_value(local_choke, St),
+                        peer_snubs = Snubbed } |
+                     build_rechoke_info(Seeding, Next)]
             end
     end.
 
+%% Move the chain (that is, circular buffer) so there is a new peer
+%% who is the one getting optimistically unchoked.
 advance_optimistic_unchoke(S) ->
     NewChain = move_cyclic_chain(S#state.opt_unchoke_chain),
     case NewChain of
@@ -145,15 +153,17 @@ move_cyclic_chain(Chain) ->
                     not_found -> true;
                     {peer_info, _Kind, Id} ->
                         PL = etorrent_peer_states:get_pids_interest(Id, Pid),
-			%% Peers not interested in us are skipped. Optimistically unchoking these
-			%% would not help as they would request nothing. Peers already not choking
-			%% us are in the valuation game, so they are also skipped.
-			( proplists:get_value(interested, PL) == not_interested
-			  orelse proplists:get_value(choking, PL) == unchoked )
+                        %% Peers not interested in us are skipped.
+                        %% Optimistically unchoking these would not
+                        %% help as they would request nothing. Peers
+                        %% already not choking us are in the valuation
+                        %% game, so they are also skipped.
+                        ( proplists:get_value(interested, PL) == not_interested
+                          orelse proplists:get_value(choking, PL) == unchoked )
                 end
         end,
     {Front, Back} = lists:splitwith(F, Chain),
-    %% Advance chain
+    %% Advance chain, happens rarely
     Back ++ Front.
 
 insert_new_peer_into_chain(Pid, []) ->
@@ -163,6 +173,7 @@ insert_new_peer_into_chain(Pid, [_|_] = Chain) ->
     {Front, Back} = lists:split(Index, Chain),
     Front ++ [Pid | Back].
 
+%% Upload slot calculation
 upload_slots() ->
     case etorrent_config:max_upload_slots() of
         auto ->
@@ -181,7 +192,8 @@ upload_slots() ->
 
 split_preferred(Peers) ->
     {Downs, Leechs} = split_preferred_peers(Peers, [], []),
-    %% Notice that the rate on which we sort is negative, so the fastest peer is actually first in the list
+    %% Notice that the rate on which we sort is negative,
+    %% so the fastest peer is actually first in the list
     {lists:keysort(#rechoke_info.rate, Downs),
      lists:keysort(#rechoke_info.rate, Leechs)}.
 
@@ -191,8 +203,8 @@ split_preferred(Peers) ->
 %% unchanged. Otherwise, shuffle some of the D slots onto the S slots.
 shuffle_leecher_slots(S, D, Len) ->
     case lists:max([0, D - Len ]) of
-	0 -> {S, D};
-	N -> {S + N, D - N}
+        0 -> {S, D};
+        N -> {S + N, D - N}
     end.
 
 %% Given S slots for seeding and D slots for leeching, where we have already
@@ -201,16 +213,21 @@ shuffle_leecher_slots(S, D, Len) ->
 %% Otherwise, We have K excess slots we can move from S to D.
 shuffle_seeder_slots(S, D, SLen) ->
     case lists:max([0, S - SLen]) of
-	0 -> {S, D};
-	K -> {S - K, D + K}
+        0 -> {S, D};
+        K -> {S - K, D + K}
     end.
 
-prune_preferred_peers(SDowns, SLeechs) ->
+%% Figure out how many seeder and leecher slots we need. If there is a surplus
+%% for Leechers, say, we push those onto the seeder group and vice versa.
+%% This ensures we use all the slots we can possibly use. We return a set
+%% of the peers we prefer.
+find_preferred_peers(SDowns, SLeechs) ->
     MaxUploads = upload_slots(),
     DSlots = lists:max([1, round(MaxUploads * 0.7)]),
     SSlots = lists:max([1, round(MaxUploads * 0.3)]),
     {SSlots2, DSlots2} = shuffle_leecher_slots(SSlots, DSlots, length(SDowns)),
-    {SSlots3, DSlots3} = shuffle_seeder_slots(SSlots2, DSlots2, length(SLeechs)),
+    {SSlots3, DSlots3} =
+        shuffle_seeder_slots(SSlots2, DSlots2, length(SLeechs)),
     {TSDowns, TSLeechs} = {lists:sublist(SDowns, DSlots3),
                            lists:sublist(SLeechs, SSlots3)},
     sets:union(sets:from_list(TSDowns), sets:from_list(TSLeechs)).
@@ -244,10 +261,10 @@ rechoke_choke([P | Next], Count, Optimistics) ->
             rechoke_choke(Next, Count, Optimistics);
         false ->
             etorrent_peer_control:unchoke(P#rechoke_info.pid),
-            case P#rechoke_info.r_interest_state =:= interested of
-                true ->
+            case P#rechoke_info.r_interest_state of
+                interested ->
                     rechoke_choke(Next, Count+1, Optimistics);
-                false ->
+                not_interested ->
                     rechoke_choke(Next, Count, Optimistics)
             end
     end.
@@ -257,25 +274,31 @@ rechoke_choke([P | Next], Count, Optimistics) ->
 %%  - Those we are Seeding to
 %% But in the process, skip over any peer which is unintersting
 split_preferred_peers([], L, S) -> {L, S};
-split_preferred_peers([#rechoke_info { peer_state = PeerState, r_interest_state = RemoteInterest,
-				       state = State, peer_snubs = Snubbed } = P | Next],
-		      WeLeech, WeSeed) ->
+split_preferred_peers(
+  [#rechoke_info { peer_state = PeerState, r_interest_state = RemoteInterest,
+                   state = State, peer_snubs = Snubbed } = P | Next],
+  WeLeech, WeSeed) ->
     case PeerState == seeding orelse RemoteInterest == not_interested of
         true ->
-	    %% Peer is seeding a torrent and we are connected to a peer not interested
-	    %% in downloading anything. Unchoking him would not help anything, skip.
+            %% Peer is seeding a torrent or we are connected to a
+            %% peer not interested in downloading anything. Unchoking
+            %% him would not help anything, skip.
+            %% NOTE: In the case he is not_interested, we will unchoke
+            %% him anyway at a later phase because we can then start
+            %% serving him as soon as possible if his state changes!
             split_preferred_peers(Next, WeLeech, WeSeed);
         false when State =:= seeding ->
-	    %% We are seeding this torrent, so throw the Peer into the group of peers we seed to
+            %% We are seeding this torrent, so throw the Peer into the
+            %% group of peers we seed to.
             split_preferred_peers(Next, WeLeech, [P | WeSeed]);
         false when Snubbed =:= true ->
-	    %% The peer has not sent us anything for 30 seconds, so we
-	    %% regard the peer as snubbing us. Thus, unchoking the peer would
-	    %% be rather insane. We'd rather use the slot for someone else.
+            %% The peer has not sent us anything for 30 seconds, so we
+            %% regard the peer as snubbing us. Thus, unchoking the peer would
+            %% be rather insane. We'd rather use the slot for someone else.
             split_preferred_peers(Next, WeLeech, WeSeed);
         false ->
-	    %% If none of the other cases match, we have a Peer we are leeching
-	    %% from, so throw the peer into the leecher set.
+            %% If none of the other cases match, we have a Peer we are leeching
+            %% from, so throw the peer into the leecher set.
             split_preferred_peers(Next, [P | WeLeech], WeSeed)
     end.
 
