@@ -87,11 +87,12 @@ stop(_State) ->
 
 start_webui() ->
     Dispatch = [ {'_', [{'_', etorrent_cowboy_handler, []}]} ],
-    {ok, _Pid} = cowboy:start_listener(http, 10,
-                                       cowboy_tcp_transport, [{port, 8080}],
-                                       cowboy_http_protocol, [{dispatch, Dispatch}]
-                                      ).
-    
+    {ok, _Pid} =
+        cowboy:start_listener(http, 10,
+                              cowboy_tcp_transport, [{port, 8080}],
+                              cowboy_http_protocol, [{dispatch, Dispatch}]
+                             ).
+
 %% @doc Generate a random peer id for use
 %% @end
 generate_peer_id() ->

@@ -48,8 +48,8 @@ handle_cast(_Msg, State) ->
 handle_info(timeout, #state { our_peer_id = PeerId } = S) ->
     case gen_tcp:accept(S#state.listen_socket) of
         {ok, Socket} ->
-	    {ok, _Pid} = etorrent_listen_sup:start_child(),
-	    handshake(Socket, PeerId);
+            {ok, _Pid} = etorrent_listen_sup:start_child(),
+            handshake(Socket, PeerId);
         {error, closed}       -> ok;
         {error, econnaborted} -> ok;
         {error, enotconn}     -> ok;
@@ -72,49 +72,49 @@ handshake(Socket, PeerId) ->
     %% if the check fails. Finally, control is handed over to the control
     %% pid or we handle an error by closing down.
     try
-	{ok, {IP, Port}} = inet:peername(Socket),
-	{ok, Caps, InfoHash, HisPeerId} = receive_handshake(Socket),
-	ok = check_infohash(InfoHash),
-	ok = check_peer(IP, Port, InfoHash, HisPeerId, PeerId),
-	ok = check_peer_count(),
-	{ok, RecvPid, ControlPid} =
-	    check_torrent_state(Socket, Caps, IP, Port, InfoHash, PeerId),
-	ok = handover_control(Socket, RecvPid, ControlPid)
+        {ok, {IP, Port}} = inet:peername(Socket),
+        {ok, Caps, InfoHash, HisPeerId} = receive_handshake(Socket),
+        ok = check_infohash(InfoHash),
+        ok = check_peer(IP, Port, InfoHash, HisPeerId, PeerId),
+        ok = check_peer_count(),
+        {ok, RecvPid, ControlPid} =
+            check_torrent_state(Socket, Caps, IP, Port, InfoHash, PeerId),
+        ok = handover_control(Socket, RecvPid, ControlPid)
     catch
         error:{badmatch, {error, enotconn}} ->
             ok;
-	throw:{error, _Reason} ->
-	    gen_tcp:close(Socket),
-	    ok;
-	throw:{bad_peer, HisPId} ->
-	    ?INFO([peer_id_is_bad, HisPId]),
-	    gen_tcp:close(Socket),
-	    ok
+        throw:{error, _Reason} ->
+            gen_tcp:close(Socket),
+            ok;
+        throw:{bad_peer, HisPId} ->
+            ?INFO([peer_id_is_bad, HisPId]),
+            gen_tcp:close(Socket),
+            ok
     end.
 
 receive_handshake(Socket) ->
     case etorrent_proto_wire:receive_handshake(Socket) of
         {ok, Caps, InfoHash, HisPeerId} ->
-	    {ok, Caps, InfoHash, HisPeerId};
-	{error, Reason} ->
-	    throw({error, Reason})
+            {ok, Caps, InfoHash, HisPeerId};
+        {error, Reason} ->
+            throw({error, Reason})
     end.
 
 check_infohash(InfoHash) ->
     case etorrent_table:get_torrent({infohash, InfoHash}) of
-	{value, _} ->
-	    ok;
-	not_found ->
-	    throw({error, infohash_not_found})
+        {value, _} ->
+            ok;
+        not_found ->
+            throw({error, infohash_not_found})
     end.
 
 handover_control(Socket, RPid, CPid) ->
     case gen_tcp:controlling_process(Socket, RPid) of
-	ok -> etorrent_peer_control:initialize(CPid, incoming),
-	      ok;
-	{error, enotconn} ->
-	    etorrent_peer_control:stop(CPid),
-	    throw({error, enotconn})
+        ok -> etorrent_peer_control:initialize(CPid, incoming),
+              ok;
+        {error, enotconn} ->
+            etorrent_peer_control:stop(CPid),
+            throw({error, enotconn})
     end.
 
 check_peer(_IP, _Port, _InfoHash, PeerId, PeerId) ->
@@ -123,27 +123,27 @@ check_peer(IP, Port, InfoHash, HisPeerId, _OurPeerId) ->
     {value, PL} = etorrent_table:get_torrent({infohash, InfoHash}),
     case etorrent_peer_mgr:is_bad_peer(IP, Port) of
         true ->
-	    throw({bad_peer, HisPeerId});
+            throw({bad_peer, HisPeerId});
         false ->
-	    ok
+            ok
     end,
     case etorrent_table:connected_peer(IP, Port, proplists:get_value(id, PL)) of
-	true -> throw({error, already_connected});
-	false -> ok
+        true -> throw({error, already_connected});
+        false -> ok
     end.
 
 check_torrent_state(Socket, Caps, IP, Port, InfoHash, OurPeerId) ->
     {value, PL} = etorrent_table:get_torrent({infohash, InfoHash}),
     case proplists:get_value(state, PL) of
-	started ->
-	    etorrent_peer_pool:start_child(
-	      OurPeerId,
-	      InfoHash,
-	      proplists:get_value(id, PL),
-	      {IP, Port},
-	      Caps,
-	      Socket);
-	_ -> throw({error, not_ready_for_connections})
+        started ->
+            etorrent_peer_pool:start_child(
+              OurPeerId,
+              InfoHash,
+              proplists:get_value(id, PL),
+              {IP, Port},
+              Caps,
+              Socket);
+        _ -> throw({error, not_ready_for_connections})
     end.
 
 check_peer_count() ->
@@ -151,5 +151,3 @@ check_peer_count() ->
         {value, 0} -> throw({error, already_enough_connections});
         {value, K} when is_integer(K) -> ok
     end.
-
-
