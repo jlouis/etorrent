@@ -187,16 +187,18 @@ opening({allocate, Size}, From, #state{handle=closed}=State) ->
 
 %% @private handle asynchronous event in opened state.
 opened(dequeue, #state{handle=Handle, delay=wait}=State) ->
-    ok = dequeue_allocs(State#state.aqueue, Handle),
-    ok = dequeue_writes(State#state.wqueue, Handle),
-    ok = dequeue_reads(State#state.rqueue, Handle),
+    #static{filesize=Filesize} = State#state.static,
+    ok = dequeue_allocs(State#state.aqueue, Handle, Filesize),
+    ok = dequeue_writes(State#state.wqueue, Handle, Filesize),
+    ok = dequeue_reads(State#state.rqueue, Handle, Filesize),
     State1 = State#state{delay=none, aqueue=[], rqueue=[], wqueue=[]},
     {next_state, opened, State1, ?GC_TIMEOUT};
 
 opened(close, #state{handle=Handle}=State) ->
-    ok = dequeue_allocs(State#state.aqueue, Handle),
-    ok = dequeue_writes(State#state.wqueue, Handle),
-    ok = dequeue_reads(State#state.rqueue, Handle),
+    #static{filesize=Filesize} = State#state.static,
+    ok = dequeue_allocs(State#state.aqueue, Handle, Filesize),
+    ok = dequeue_writes(State#state.wqueue, Handle, Filesize),
+    ok = dequeue_reads(State#state.rqueue, Handle, Filesize),
     ok = file:close(Handle),
     State1 = State#state{handle=closed, aqueue=[], rqueue=[], wqueue=[]},
     {next_state, closed, State1, ?GC_TIMEOUT};
@@ -281,7 +283,7 @@ enqueue_write(Offset, Chunk, From, State) ->
     NewState.
 
 %% @private Respond to all enqueued read requests.
-dequeue_reads(Reads, Handle) ->
+dequeue_reads(Reads, Handle, _Filesize) ->
     Reads1 = lists:sort(Reads),
     dequeue_reads_(Reads1, Handle).
 
@@ -294,7 +296,7 @@ dequeue_reads_([{Offset, Length, From}|T], Handle) ->
 
 
 %% @private Perform all enqueued write requests.
-dequeue_writes(Writes, Handle) ->
+dequeue_writes(Writes, Handle, _Filesize) ->
     Writes1 = lists:sort(Writes),
     dequeue_writes_(Writes1, Handle).
 
@@ -306,9 +308,9 @@ dequeue_writes_([{Offset, Chunk, From}|T], Handle) ->
     dequeue_writes_(T, Handle).
 
 %% @private Perform the enqueued allocation request.
-dequeue_allocs([], _Handle) ->
+dequeue_allocs([], _Handle, _Filesize) ->
     ok;
-dequeue_allocs([{Size, From}], Handle) ->
+dequeue_allocs([{Size, From}], Handle, _Filesize) ->
     ok = fill_file(Handle, Size),
     gen_fsm:reply(From, ok),
     ok.
