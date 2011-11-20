@@ -51,15 +51,19 @@
 -type block_bin() :: etorrent_types:block_bin().
 -type block_offset() :: etorrent_types:block_offset().
 
+-record(static, {
+    torrent  :: torrent_id(),
+    filesize :: non_neg_integer(),
+    relpath  :: file_path(),
+    fullpath :: file_path()}).
+
 -record(state, {
-    torrent :: torrent_id(),
+    static   :: #static{},
     handle=closed :: closed | file:io_device(),
     delay    :: none | reference(),
     aqueue   :: list(),
     rqueue   :: list(), %% @todo allocation "queue" - always zero or one elems
-    wqueue   :: list(),
-    relpath  :: file_path(),
-    fullpath :: file_path()}).
+    wqueue   :: list()}).
 
 
 -define(CALL_TIMEOUT, timer:seconds(30)).
@@ -111,33 +115,36 @@ allocate(FilePid, Size) ->
 %% @private
 init([TorrentID, RelPath, FullPath]) ->
     true = etorrent_io:register_file_server(TorrentID, RelPath),
-    InitState = #state{
+    StaticState = #static{
         torrent=TorrentID,
-        handle=closed,
-        delay=none,
-        aqueue=[], rqueue=[], wqueue=[],
+        filesize=none,
         relpath=RelPath,
         fullpath=FullPath},
+    InitState = #state{
+        static=StaticState,
+        handle=closed,
+        delay=none,
+        aqueue=[], rqueue=[], wqueue=[]},
     {ok, closed, InitState}.
 
 
 %% @private handle synchronous event in closed state.
 closed({read, Offset, Length}, From, #state{handle=closed}=State) ->
-    #state{torrent=TorrentID, relpath=Relpath} = State,
+    #static{torrent=TorrentID, relpath=Relpath} = State#state.static,
     ok = etorrent_io:schedule_operation(TorrentID, Relpath),
     State1 = enqueue_read(Offset, Length, From, State),
     State2 = start_delay_timer(State1),
     {next_state, opening, State2, ?GC_TIMEOUT};
 
 closed({write, Offset, Chunk}, From, #state{handle=closed}=State) ->
-    #state{torrent=TorrentID, relpath=Relpath} = State,
+    #static{torrent=TorrentID, relpath=Relpath} = State#state.static,
     ok = etorrent_io:schedule_operation(TorrentID, Relpath),
     State1 = enqueue_write(Offset, Chunk, From, State),
     State2 = start_delay_timer(State1),
     {next_state, opening, State2, ?GC_TIMEOUT};
 
 closed({allocate, Size}, From, #state{handle=closed}=State) ->
-    #state{torrent=TorrentID, relpath=Relpath} = State,
+    #static{torrent=TorrentID, relpath=Relpath} = State#state.static,
     ok = etorrent_io:schedule_operation(TorrentID, Relpath),
     State1 = enqueue_alloc(Size, From, State),
     State2 = start_delay_timer(State1),
@@ -151,14 +158,14 @@ closed(timeout, State) ->
 
 
 %% @private handle asynchronous event in opening state.
-opening(open, #state{handle=closed, delay=none}=State) ->
-    Handle = open_file_handle(State#state.fullpath),
+opening(open, #state{handle=closed, delay=none, static=Static}=State) ->
+    Handle = open_file_handle(Static#static.fullpath),
     gen_fsm:send_event(self(), dequeue),
     State1 = State#state{handle=Handle},
     {next, state, opened, State1, ?GC_TIMEOUT};
 
-opening(open, #state{handle=closed}=State) ->
-    Handle = open_file_handle(State#state.fullpath),
+opening(open, #state{handle=closed, static=Static}=State) ->
+    Handle = open_file_handle(Static#static.fullpath),
     State1 = State#state{handle=Handle},
     {next_state, opened, State1, ?GC_TIMEOUT};
 
