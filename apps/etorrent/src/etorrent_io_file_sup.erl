@@ -20,8 +20,8 @@
 %% @doc Start the file pool supervisor
 %% @end
 -spec start_link(torrent_id(), file_path(), list(file_path())) -> {'ok', pid()}.
-start_link(TorrentID, TorrentFile, Files) ->
-    supervisor:start_link(?MODULE, [TorrentID, TorrentFile, Files]).
+start_link(TorrentID, Workdir, Files) ->
+    supervisor:start_link(?MODULE, [TorrentID, Workdir, Files]).
 
 %% @private
 init([TorrentID, Workdir, Files]) ->
