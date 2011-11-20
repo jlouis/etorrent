@@ -133,24 +133,24 @@ closed({read, Offset, Length}, From, #state{handle=closed}=State) ->
     #static{torrent=TorrentID, relpath=Relpath} = State#state.static,
     ok = etorrent_io:schedule_operation(TorrentID, Relpath),
     State1 = enqueue_read(Offset, Length, From, State),
-    {next_state, opening, State1#state{delay=wait}, ?GC_TIMEOUT};
+    {next_state, opening, State1, ?GC_TIMEOUT};
 
 closed({write, Offset, Chunk}, From, #state{handle=closed}=State) ->
     #static{torrent=TorrentID, relpath=Relpath} = State#state.static,
     ok = etorrent_io:schedule_operation(TorrentID, Relpath),
     State1 = enqueue_write(Offset, Chunk, From, State),
-    {next_state, opening, State1#state{delay=wait}, ?GC_TIMEOUT};
+    {next_state, opening, State1, ?GC_TIMEOUT};
 
 closed({allocate, Size}, From, #state{handle=closed}=State) ->
     #static{torrent=TorrentID, relpath=Relpath} = State#state.static,
     ok = etorrent_io:schedule_operation(TorrentID, Relpath),
     State1 = enqueue_alloc(Size, From, State),
-    {next_state, opening, State1#state{delay=wait}, ?GC_TIMEOUT}.
+    {next_state, opening, State1, ?GC_TIMEOUT}.
 
 
 %% @private handle synchronous event in closed state.
 closed(dequeue, State) ->
-    {next_state, closed, State, ?GC_TIMEOUT};
+    {next_state, closed, State#state{delay=none}, ?GC_TIMEOUT};
 
 closed(timeout, State) ->
     true = erlang:garbage_collect(),
@@ -158,13 +158,13 @@ closed(timeout, State) ->
 
 
 %% @private handle asynchronous event in opening state.
-opening(open, #state{handle=closed, delay=wait, static=Static}=State) ->
-    gen_event:send_event(self(), dequeue),
+opening(open, #state{handle=closed, delay=Delay, static=Static}=State) ->
     Handle = open_file_handle(Static#static.fullpath),
-    {next, state, opened, State#state{handle=Handle}, ?GC_TIMEOUT};
+    Del1 = send_dequeue(Delay),
+    {next_state, opened, State#state{handle=Handle, delay=Del1}, ?GC_TIMEOUT};
 
 opening(dequeue, State) ->
-    {next_state, opening, State, ?GC_TIMEOUT};
+    {next_state, opening, State#state{delay=none}, ?GC_TIMEOUT};
 
 opening(timeout, State) ->
     true = erlang:garbage_collect(),
@@ -190,8 +190,8 @@ opened(dequeue, #state{handle=Handle, delay=wait}=State) ->
     ok = dequeue_allocs(State#state.aqueue, Handle),
     ok = dequeue_writes(State#state.wqueue, Handle),
     ok = dequeue_reads(State#state.rqueue, Handle),
-    State1 = State#state{aqueue=[], rqueue=[], wqueue=[]},
-    {next_state, opened, State1#state{delay=none}, ?GC_TIMEOUT};
+    State1 = State#state{delay=none, aqueue=[], rqueue=[], wqueue=[]},
+    {next_state, opened, State1, ?GC_TIMEOUT};
 
 opened(close, #state{handle=Handle}=State) ->
     ok = dequeue_allocs(State#state.aqueue, Handle),
@@ -248,6 +248,7 @@ open_file_handle(Fullpath) ->
     {ok, Handle} = file:open(Fullpath, Opts),
     Handle.
 
+%% @private Ensure that a dequeue event has been sent.
 send_dequeue(wait) ->
     wait;
 send_dequeue(none) ->
