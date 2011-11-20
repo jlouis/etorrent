@@ -23,7 +23,7 @@
 -define(GC_TIMEOUT, 5000).
 
 %% exported functions
--export([start_link/3,
+-export([start_link/4,
          open/1,
          close/1,
          read/3,
@@ -72,10 +72,10 @@
 %% <p>Of the two paths given, one is the partial path used internally
 %% and the other is the full path where to store the file in question.</p>
 %% @end
--spec start_link(torrent_id(), file_path(), file_path()) -> {'ok', pid()}.
-start_link(TorrentID, Path, FullPath) ->
+-spec start_link(torrent_id(), file_path(), file_path(), _) -> {'ok', pid()}.
+start_link(TorrentID, Path, FullPath, Filesize) ->
     FsmOpts = [{spawn_opt, [{fullsweep_after, 0}]}],
-    gen_fsm:start_link(?MODULE, [TorrentID, Path, FullPath], FsmOpts).
+    gen_fsm:start_link(?MODULE, [TorrentID, Path, FullPath, Filesize], FsmOpts).
 
 %% @doc Request to open the file
 %% @end
@@ -113,11 +113,11 @@ allocate(FilePid, Size) ->
     gen_fsm:sync_send_event(FilePid, {allocate, Size}, infinity).
 
 %% @private
-init([TorrentID, RelPath, FullPath]) ->
+init([TorrentID, RelPath, FullPath, Filesize]) ->
     true = etorrent_io:register_file_server(TorrentID, RelPath),
     StaticState = #static{
         torrent=TorrentID,
-        filesize=none,
+        filesize=Filesize,
         relpath=RelPath,
         fullpath=FullPath},
     InitState = #state{

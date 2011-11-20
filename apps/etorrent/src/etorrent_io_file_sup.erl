@@ -28,8 +28,8 @@ init([TorrentID, Workdir, Files]) ->
     FileSpecs  = [file_server_spec(TorrentID, Workdir, Path) || Path <- Files],
     {ok, {{one_for_all, 1, 60}, FileSpecs}}.
 
-file_server_spec(TorrentID, Workdir, Path) ->
+file_server_spec(TorrentID, Workdir, {Path, Size}) ->
     Fullpath = filename:join(Workdir, Path),
     {{TorrentID, Path},
-        {etorrent_io_file, start_link, [TorrentID, Path, Fullpath]},
+        {etorrent_io_file, start_link, [TorrentID, Path, Fullpath, Size]},
         permanent, 2000, worker, [etorrent_io_file]}.

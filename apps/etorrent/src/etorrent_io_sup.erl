@@ -25,7 +25,7 @@ start_link(TorrentID, Torrent) ->
 
 %% @private
 init([TorrentID, Torrent]) ->
-    Files     = etorrent_metainfo:file_paths(Torrent),
+    Files     = etorrent_io:file_sizes(Torrent),
     DirServer = directory_server_spec(TorrentID, Torrent),
     Dldir     = etorrent_config:download_dir(),
     FileSup   = file_server_sup_spec(TorrentID, Dldir, Files),

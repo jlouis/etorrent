@@ -464,7 +464,7 @@ code_change(_, _, _) ->
 %%
 make_piece_map(Torrent) ->
     PieceLength = etorrent_metainfo:get_piece_length(Torrent),
-    FileLengths = etorrent_metainfo:file_path_len(Torrent),
+    FileLengths = file_path_len(Torrent),
     MapEntries  = make_piece_map_(PieceLength, FileLengths),
     lists:foldl(fun({Path, Piece, Offset, Length}, Acc) ->
         Prev = array:get(Piece, Acc),
