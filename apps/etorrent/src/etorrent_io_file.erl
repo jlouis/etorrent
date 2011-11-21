@@ -288,12 +288,12 @@ dequeue_reads(Reads, Handle, Filesize) ->
     %% Join all overlapping and adjacent read requests into a list of blocks.
     Blockset = lists:foldl(fun({Offset, Length, _}, Acc) ->
         etorrent_chunkset:insert(Offset, Length, Acc)
-    end, etorrent_chunkset:new(Filesize, Filesize), Reads),
+    end, etorrent_chunkset:from_list(Filesize, Filesize, []), Reads),
     Blocklist = etorrent_chunkset:to_list(Blockset),
     %% Join each resulting block with the requests within each block.
-    Blocklist1 = [{Start, End - Start,
+    Blocklist1 = [{Start, (End - Start) + 1,
         [{Offset - Start, Length, From} || {Offset, Length, From} <- Reads1,
-         End1 <- [Offset + Length], Offset >= Start, End1 =< End]}
+         End1 <- [Offset + Length - 1], Offset >= Start, End1 =< End]}
         || {Start, End} <- Blocklist], %% O(N^2)
     dequeue_reads_(Blocklist1, Handle).
 
