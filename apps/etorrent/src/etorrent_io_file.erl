@@ -283,15 +283,26 @@ enqueue_write(Offset, Chunk, From, State) ->
     NewState.
 
 %% @private Respond to all enqueued read requests.
-dequeue_reads(Reads, Handle, _Filesize) ->
+dequeue_reads(Reads, Handle, Filesize) ->
     Reads1 = lists:sort(Reads),
-    dequeue_reads_(Reads1, Handle).
+    %% Join all overlapping and adjacent read requests into a list of blocks.
+    Blockset = lists:foldl(fun({Offset, Length, _}, Acc) ->
+        etorrent_chunkset:insert(Offset, Length, Acc)
+    end, etorrent_chunkset:new(Filesize, Filesize), Reads),
+    Blocklist = etorrent_chunkset:to_list(Blockset),
+    %% Join each resulting block with the requests within each block.
+    Blocklist1 = [{Start, End - Start,
+        [{Offset - Start, Length, From} || {Offset, Length, From} <- Reads1,
+         End1 <- [Offset + Length], Offset >= Start, End1 =< End]}
+        || {Start, End} <- Blocklist], %% O(N^2)
+    dequeue_reads_(Blocklist1, Handle).
 
 dequeue_reads_([], _Handle) ->
     ok;
-dequeue_reads_([{Offset, Length, From}|T], Handle) ->
-    {ok, Chunk} = file:pread(Handle, Offset, Length),
-    gen_fsm:reply(From, {ok, Chunk}),
+dequeue_reads_([{Start, Length, Reads}|T], Handle) ->
+    {ok, Chunk} = file:pread(Handle, Start, Length),
+    [gen_fsm:reply(From, {ok, Bin}) || {Offset, Length1, From} <- Reads,
+        Bin <- [binary:part(Chunk, Offset, Length1)]],
     dequeue_reads_(T, Handle).
 
 
