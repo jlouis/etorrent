@@ -8,39 +8,39 @@
 -module(etorrent_io_req).
 
 %% exported functions
--export([start_read/5,
-         start_write/6]).
+-export([start_read/6,
+         start_write/7]).
 
 %% internal functions
--export([execute_read/5,
-         execute_write/6]).
+-export([execute_read/6,
+         execute_write/7]).
 
 
 %% @doc Start a read request process.
 %% On success the chunk is sent to the client process.
 %% @end
-start_read(TorrentID, Piece, Offset, Length, ClientPid) ->
-    Args = [TorrentID, Piece, Offset, Length, ClientPid],
+start_read(TorrentID, Dirpid, Piece, Offset, Length, ClientPid) ->
+    Args = [TorrentID, Dirpid, Piece, Offset, Length, ClientPid],
     proc_lib:start_link(?MODULE, execute_read, Args).
 
 
 %% @doc Start a write request process.
 %% On success an acknowledgement is sent to the client process.
 %% @end
-start_write(TorrentID, Piece, Offset, Length, Chunk, ClientPid) ->
-    Args = [TorrentID, Piece, Offset, Length, Chunk, ClientPid],
+start_write(TorrentID, Dirpid, Piece, Offset, Length, Chunk, ClientPid) ->
+    Args = [TorrentID, Dirpid, Piece, Offset, Length, Chunk, ClientPid],
     proc_lib:start_link(?MODULE, execute_write, Args).
 
 
 %% @private Execute a read request.
-execute_read(TorrentID, Piece, Offset, Length, ClientPid) ->
+execute_read(TorrentID, _Dirpid, Piece, Offset, Length, ClientPid) ->
     ok = proc_lib:init_ack({ok, self()}),
     {ok, Chunk} = etorrent_io:read_chunk(TorrentID, Piece, Offset, Length),
     ok = etorrent_chunkstate:contents(Piece, Offset, Length, Chunk, ClientPid).
 
 
 %% @private Execute a write request.
-execute_write(TorrentID, Piece, Offset, Length, Chunk, ClientPid) ->
+execute_write(TorrentID, _Dirpid, Piece, Offset, Length, Chunk, ClientPid) ->
     ok = proc_lib:init_ack({ok, self()}),
     ok = etorrent_io:write_chunk(TorrentID, Piece, Offset, Chunk),
     ok = send_ack(Piece, Offset, Length, ClientPid).

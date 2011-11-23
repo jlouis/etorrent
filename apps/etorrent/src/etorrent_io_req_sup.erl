@@ -38,23 +38,24 @@ start_write(TorrentID, Piece, Offset, Length, Chunk) ->
 %% @private
 init([TorrentID, Operation]) ->
     etorrent_utils:register({etorrent_io_req_sup, Operation, TorrentID}),
-    ReqSpec = request_spec(TorrentID, Operation),
+    Dirpid = etorrent_io:await_directory(TorrentID),
+    ReqSpec = request_spec(TorrentID, Dirpid, Operation),
     {ok, {{simple_one_for_one, 1, 60}, [ReqSpec]}}.
 
 %% @private
-request_spec(TorrentID, read) ->
-    read_request_spec(TorrentID);
-request_spec(TorrentID, write) ->
-    write_request_spec(TorrentID).
+request_spec(TorrentID, Dirpid, read) ->
+    read_request_spec(TorrentID, Dirpid);
+request_spec(TorrentID, Dirpid, write) ->
+    write_request_spec(TorrentID, Dirpid).
 
 %% @private
-read_request_spec(TorrentID) ->
+read_request_spec(TorrentID, Dirpid) ->
     {undefined,
-        {etorrent_io_req, start_read, [TorrentID]},
+        {etorrent_io_req, start_read, [TorrentID, Dirpid]},
         transient, 2000, worker, [etorrent_io_req]}.
 
 %% @private
-write_request_spec(TorrentID) ->
+write_request_spec(TorrentID, Dirpid) ->
     {undefined,                                                    
-        {etorrent_io_req, start_write, [TorrentID]},
+        {etorrent_io_req, start_write, [TorrentID, Dirpid]},
         transient, 2000, worker, [etorrent_io_req]}.
