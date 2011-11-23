@@ -147,7 +147,7 @@ piece_sizes(Torrent) ->
 read_piece(TorrentID, Piece) ->
     DirPid = await_directory(TorrentID),
     {ok, Positions, Filepids} = get_positions(DirPid, Piece),
-    BlockList = read_file_blocks(TorrentID, Positions, Filepids),
+    BlockList = read_file_blocks(Positions, Filepids),
     {ok, iolist_to_binary(BlockList)}.
 
 %% @doc Request the size of a piece
@@ -164,13 +164,12 @@ piece_size(TorrentID, Piece) ->
 %% Read a chunk from a piece by reading each of the file
 %% blocks that make up the chunk and concatenating them.
 %% @end
--spec read_chunk(torrent_id(), piece_index(),
-                 chunk_offset(), chunk_len()) -> {'ok', chunk_bin()}.
-read_chunk(TorrentID, Piece, Offset, Length) ->
-    DirPid = await_directory(TorrentID),
-    {ok, Positions, Filepids} = get_positions(DirPid, Piece),
+-spec read_chunk(pid(), piece_index(), chunk_offset(),
+         chunk_len()) -> {'ok', chunk_bin()}.
+read_chunk(Dirpid, Piece, Offset, Length) ->
+    {ok, Positions, Filepids} = get_positions(Dirpid, Piece),
     ChunkPositions  = chunk_positions(Offset, Length, Positions),
-    BlockList = read_file_blocks(TorrentID, ChunkPositions, Filepids),
+    BlockList = read_file_blocks(ChunkPositions, Filepids),
     {ok, iolist_to_binary(BlockList)}.
 
 
@@ -186,14 +185,12 @@ aread_chunk(TorrentID, Piece, Offset, Length) ->
 %% Write a chunk to a piece by writing parts of the block
 %% to each file that the block occurs in.
 %% @end
--spec write_chunk(torrent_id(), piece_index(),
-                  chunk_offset(), chunk_bin()) -> 'ok'.
-write_chunk(TorrentID, Piece, Offset, Chunk) ->
-    DirPid = await_directory(TorrentID),
-    {ok, Positions, Filepids} = get_positions(DirPid, Piece),
+-spec write_chunk(pid(), piece_index(), chunk_offset(), chunk_bin()) -> 'ok'.
+write_chunk(Dirpid, Piece, Offset, Chunk) ->
+    {ok, Positions, Filepids} = get_positions(Dirpid, Piece),
     Length = byte_size(Chunk),
     ChunkPositions = chunk_positions(Offset, Length, Positions),
-    ok = write_file_blocks(TorrentID, Chunk, ChunkPositions, Filepids).
+    ok = write_file_blocks(Chunk, ChunkPositions, Filepids).
 
 
 %% @doc Write a chunk and send an acknowledgment to the calling process.
@@ -211,28 +208,27 @@ awrite_chunk(TorrentID, Piece, Offset, Chunk) ->
 %% servers in this directory responsible for each path the
 %% is included in the list of positions.
 %% @end
--spec read_file_blocks(torrent_id(), list(block_pos()), tuple()) -> iolist().
-read_file_blocks(_, [], _) ->
+-spec read_file_blocks(list(block_pos()), tuple()) -> iolist().
+read_file_blocks([], _) ->
     [];
-read_file_blocks(TorrentID, [{Index, Offset, Length}|T], Filepids) ->
+read_file_blocks([{Index, Offset, Length}|T], Filepids) ->
     Filepid = element(Index, Filepids),
     {ok, Block} = etorrent_io_file:read(Filepid, Offset, Length),
-    [Block|read_file_blocks(TorrentID, T, Filepids)].
+    [Block|read_file_blocks(T, Filepids)].
 
 %% @doc
 %% Write a list of blocks of a chunk seqeuntially to the file servers
 %% in this directory responsible for each path that is included
 %% in the lists of positions at which the block appears.
 %% @end
--spec write_file_blocks(torrent_id(), chunk_bin(),
-        list(block_pos()), tuple()) -> 'ok'.
-write_file_blocks(_, <<>>, [], _) ->
+-spec write_file_blocks(chunk_bin(), list(block_pos()), tuple()) -> 'ok'.
+write_file_blocks(<<>>, [], _) ->
     ok;
-write_file_blocks(TorrentID, Chunk, [{Index, Offset, Length}|T], Filepids) ->
+write_file_blocks(Chunk, [{Index, Offset, Length}|T], Filepids) ->
     Filepid = element(Index, Filepids),
     <<Block:Length/binary, Rest/binary>> = Chunk,
     ok = etorrent_io_file:write(Filepid, Offset, Block),
-    write_file_blocks(TorrentID, Rest, T, Filepids).
+    write_file_blocks(Rest, T, Filepids).
 
 file_path_len(T) ->
     case etorrent_metainfo:get_files(T) of
@@ -344,19 +340,18 @@ get_files(Pid) ->
 
 %% @doc Request permission from the directory server to open a file handle.
 %% @end
--spec schedule_operation(torrent_id(), file_path()) -> ok.
-schedule_operation(TorrentID, Relpath) ->
-    schedule_io_operation(TorrentID, Relpath).
+-spec schedule_operation(pid(), file_path()) -> ok.
+schedule_operation(Dirpid, Relpath) ->
+    schedule_io_operation(Dirpid, Relpath).
 
 
 %% @private
 %% Notify the directory server that the current process intends
 %% to perform an IO-operation on a file. This is so that the directory
 %% can notify the file server to open it's file if needed.
--spec schedule_io_operation(torrent_id(), file_path()) -> ok.
-schedule_io_operation(Directory, RelPath) ->
-    DirPid = await_directory(Directory),
-    gen_server:cast(DirPid, {schedule_operation, RelPath}).
+-spec schedule_io_operation(pid(), file_path()) -> ok.
+schedule_io_operation(Dirpid, RelPath) ->
+    gen_server:cast(Dirpid, {schedule_operation, RelPath}).
 
 
 %% @doc Validate a piece against a SHA1 hash.

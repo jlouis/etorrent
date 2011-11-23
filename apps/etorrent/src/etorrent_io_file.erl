@@ -136,20 +136,20 @@ init([TorrentID, Dirpid, Index, RelPath, FullPath, Filesize]) ->
 
 %% @private handle synchronous event in closed state.
 closed({read, Offset, Length}, From, #state{handle=closed}=State) ->
-    #static{torrent=TorrentID, index=Index} = State#state.static,
-    ok = etorrent_io:schedule_operation(TorrentID, Index),
+    #static{dirpid=Dirpid, index=Index} = State#state.static,
+    ok = etorrent_io:schedule_operation(Dirpid, Index),
     State1 = enqueue_read(Offset, Length, From, State),
     {next_state, opening, State1, ?GC_TIMEOUT};
 
 closed({write, Offset, Chunk}, From, #state{handle=closed}=State) ->
-    #static{torrent=TorrentID, index=Index} = State#state.static,
-    ok = etorrent_io:schedule_operation(TorrentID, Index),
+    #static{dirpid=Dirpid, index=Index} = State#state.static,
+    ok = etorrent_io:schedule_operation(Dirpid, Index),
     State1 = enqueue_write(Offset, Chunk, From, State),
     {next_state, opening, State1, ?GC_TIMEOUT};
 
 closed({allocate, Size}, From, #state{handle=closed}=State) ->
-    #static{torrent=TorrentID, index=Index} = State#state.static,
-    ok = etorrent_io:schedule_operation(TorrentID, Index),
+    #static{dirpid=Dirpid, index=Index} = State#state.static,
+    ok = etorrent_io:schedule_operation(Dirpid, Index),
     State1 = enqueue_alloc(Size, From, State),
     {next_state, opening, State1, ?GC_TIMEOUT}.
 

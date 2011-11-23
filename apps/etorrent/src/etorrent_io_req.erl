@@ -33,16 +33,16 @@ start_write(TorrentID, Dirpid, Piece, Offset, Length, Chunk, ClientPid) ->
 
 
 %% @private Execute a read request.
-execute_read(TorrentID, _Dirpid, Piece, Offset, Length, ClientPid) ->
+execute_read(_TorrentID, Dirpid, Piece, Offset, Length, ClientPid) ->
     ok = proc_lib:init_ack({ok, self()}),
-    {ok, Chunk} = etorrent_io:read_chunk(TorrentID, Piece, Offset, Length),
+    {ok, Chunk} = etorrent_io:read_chunk(Dirpid, Piece, Offset, Length),
     ok = etorrent_chunkstate:contents(Piece, Offset, Length, Chunk, ClientPid).
 
 
 %% @private Execute a write request.
-execute_write(TorrentID, _Dirpid, Piece, Offset, Length, Chunk, ClientPid) ->
+execute_write(_TorrentID, Dirpid, Piece, Offset, Length, Chunk, ClientPid) ->
     ok = proc_lib:init_ack({ok, self()}),
-    ok = etorrent_io:write_chunk(TorrentID, Piece, Offset, Chunk),
+    ok = etorrent_io:write_chunk(Dirpid, Piece, Offset, Chunk),
     ok = send_ack(Piece, Offset, Length, ClientPid).
 
 %% @private Send an acknowledgement as the response to a write request.
