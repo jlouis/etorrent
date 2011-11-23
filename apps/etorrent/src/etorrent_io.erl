@@ -99,6 +99,7 @@
     torrent :: torrent_id(),
     pieces  :: array(),
     file_list :: [{string(), pos_integer()}],
+    file_wheel :: queue(), %% queue(free | pid())
     files_open :: list(#io_file{}),
     files_max  :: pos_integer()}).
 
@@ -377,10 +378,12 @@ init([TorrentID, Torrent]) ->
     true = register_directory(TorrentID),
     PieceMap  = make_piece_map(Torrent),
     Files     = make_file_list(Torrent),
+    FileWheel = queue:from_list(lists:duplicate(MaxFiles, free)),
     InitState = #state{
         torrent=TorrentID,
         pieces=PieceMap,
         file_list=Files,
+        file_wheel=FileWheel,
         files_open=[],
         files_max=MaxFiles},
     {ok, InitState}.
