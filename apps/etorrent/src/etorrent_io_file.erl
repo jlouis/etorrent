@@ -52,6 +52,7 @@
 -type block_offset() :: etorrent_types:block_offset().
 
 -record(static, {
+    dirpid   :: pid(),
     torrent  :: torrent_id(),
     filesize :: non_neg_integer(),
     relpath  :: file_path(),
@@ -115,7 +116,9 @@ allocate(FilePid, Size) ->
 %% @private
 init([TorrentID, RelPath, FullPath, Filesize]) ->
     true = etorrent_io:register_file_server(TorrentID, RelPath),
+    Dirpid = etorrent_io:await_directory(TorrentID),
     StaticState = #static{
+        dirpid=Dirpid,
         torrent=TorrentID,
         filesize=Filesize,
         relpath=RelPath,
