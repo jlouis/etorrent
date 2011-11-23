@@ -380,7 +380,7 @@ init([TorrentID, Torrent]) ->
     InitState = #state{
         torrent=TorrentID,
         pieces=PieceMap,
-        file_list = Files,
+        file_list=Files,
         files_open=[],
         files_max=MaxFiles},
     {ok, InitState}.
