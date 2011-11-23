@@ -386,8 +386,8 @@ init([TorrentID, Torrent]) ->
     {ok, InitState}.
 
 %% @private
-handle_call(get_files, _From, #state { file_list = FL } = State) ->
-    {reply, {ok, FL}, State};
+handle_call(get_files, _From, #state{file_list=Filelist}=State) ->
+    {reply, {ok, Filelist}, State};
 handle_call({get_positions, Piece}, _, State) ->
     #state{pieces=PieceMap} = State,
     Positions = array:get(Piece, PieceMap),
