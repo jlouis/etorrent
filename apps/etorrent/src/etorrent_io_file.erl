@@ -115,8 +115,8 @@ allocate(FilePid, Size) ->
 
 %% @private
 init([TorrentID, RelPath, FullPath, Filesize]) ->
-    true = etorrent_io:register_file_server(TorrentID, RelPath),
     Dirpid = etorrent_io:await_directory(TorrentID),
+    true = etorrent_io:register_file_server(TorrentID, RelPath),
     StaticState = #static{
         dirpid=Dirpid,
         torrent=TorrentID,

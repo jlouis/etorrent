@@ -280,6 +280,8 @@ register_directory(TorrentID) ->
 %% @doc
 -spec register_file_server(torrent_id(), file_path()) -> true.
 register_file_server(TorrentID, Path) ->
+    Dirpid = await_directory(TorrentID),
+    ok = gen_server:cast(Dirpid, {register_filename, Path, self()}),
     etorrent_utils:register(file_server_name(TorrentID, Path)).
 
 %% @doc
@@ -391,14 +393,17 @@ handle_call({get_positions, Piece}, _, State) ->
     {reply, {ok, Positions}, State}.
 
 %% @private
+handle_cast({register_filename, Relpath, Pid}, State) ->
+    #state{file_pids=Filepids} = State,
+    Filepids1 = lists:keystore(Relpath, 1, Filepids, {Relpath, Pid}),
+    State1 = State#state{file_pids=Filepids1},
+    {noreply, State1};
+
 handle_cast({schedule_operation, Relpath}, State) ->
     #state{file_wheel=Filewheel, file_pids=Filepids} = State,
     {_, Filepid} = lists:keyfind(Relpath, 1, Filepids),
     {{value, Head}, Filewheel1} = queue:out(Filewheel),
-    case Head of
-        free -> ok;
-        Head -> etorrent_io_file:close(Head)
-    end,
+    is_pid(Head) andalso etorrent_io_file:close(Head),
     ok = etorrent_io_file:open(Filepid),
     Filewheel2 = queue:in(Filepid, Filewheel1),
     State1 = State#state{file_wheel=Filewheel2},
