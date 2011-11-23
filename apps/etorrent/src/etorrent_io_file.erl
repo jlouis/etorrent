@@ -23,7 +23,7 @@
 -define(GC_TIMEOUT, 5000).
 
 %% exported functions
--export([start_link/4,
+-export([start_link/5,
          open/1,
          close/1,
          read/3,
@@ -73,10 +73,11 @@
 %% <p>Of the two paths given, one is the partial path used internally
 %% and the other is the full path where to store the file in question.</p>
 %% @end
--spec start_link(torrent_id(), file_path(), file_path(), _) -> {'ok', pid()}.
-start_link(TorrentID, Path, FullPath, Filesize) ->
+-spec start_link(torrent_id(), pid(), file_path(), file_path(), _) -> {'ok', pid()}.
+start_link(TorrentID, Dirpid, Path, FullPath, Filesize) ->
     FsmOpts = [{spawn_opt, [{fullsweep_after, 0}]}],
-    gen_fsm:start_link(?MODULE, [TorrentID, Path, FullPath, Filesize], FsmOpts).
+    FsmArgs = [TorrentID, Dirpid, Path, FullPath, Filesize],
+    gen_fsm:start_link(?MODULE, FsmArgs, FsmOpts).
 
 %% @doc Request to open the file
 %% @end
@@ -114,8 +115,7 @@ allocate(FilePid, Size) ->
     gen_fsm:sync_send_event(FilePid, {allocate, Size}, infinity).
 
 %% @private
-init([TorrentID, RelPath, FullPath, Filesize]) ->
-    Dirpid = etorrent_io:await_directory(TorrentID),
+init([TorrentID, Dirpid, RelPath, FullPath, Filesize]) ->
     true = etorrent_io:register_file_server(TorrentID, RelPath),
     StaticState = #static{
         dirpid=Dirpid,

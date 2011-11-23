@@ -29,7 +29,9 @@ init([TorrentID, Workdir, Files]) ->
     {ok, {{one_for_all, 1, 60}, FileSpecs}}.
 
 file_server_spec(TorrentID, Workdir, {Path, Size}) ->
+    Dirpid = etorrent_io:await_directory(TorrentID),
     Fullpath = filename:join(Workdir, Path),
+    Fileargs = [TorrentID, Dirpid, Path, Fullpath, Size],
     {{TorrentID, Path},
-        {etorrent_io_file, start_link, [TorrentID, Path, Fullpath, Size]},
+        {etorrent_io_file, start_link, Fileargs},
         permanent, 2000, worker, [etorrent_io_file]}.
