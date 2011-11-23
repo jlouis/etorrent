@@ -25,13 +25,13 @@ start_link(TorrentID, Workdir, Files) ->
 
 %% @private
 init([TorrentID, Workdir, Files]) ->
-    FileSpecs  = [file_server_spec(TorrentID, Workdir, Path) || Path <- Files],
+    FileSpecs  = [file_server_spec(TorrentID, Workdir, File) || File <- Files],
     {ok, {{one_for_all, 1, 60}, FileSpecs}}.
 
-file_server_spec(TorrentID, Workdir, {Path, Size}) ->
+file_server_spec(TorrentID, Workdir, {Index, Path, Size}) ->
     Dirpid = etorrent_io:await_directory(TorrentID),
     Fullpath = filename:join(Workdir, Path),
-    Fileargs = [TorrentID, Dirpid, Path, Fullpath, Size],
+    Fileargs = [TorrentID, Dirpid, Index, Path, Fullpath, Size],
     {{TorrentID, Path},
         {etorrent_io_file, start_link, Fileargs},
         permanent, 2000, worker, [etorrent_io_file]}.

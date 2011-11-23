@@ -60,6 +60,7 @@
          awrite_chunk/4,
          file_paths/1,
          file_sizes/1,
+         file_indexes/1,
          schedule_operation/2,
          register_directory/1,
          lookup_directory/1,
@@ -94,7 +95,7 @@
     pieces  :: array(),
     file_list :: [{string(), pos_integer()}],
     file_wheel :: queue(), %% queue(free | pid())
-    file_pids  :: [{string(), pid()}],
+    file_pids  :: tuple(),
     files_max  :: pos_integer()}).
 
 %% @doc Start the File I/O Server
@@ -145,8 +146,8 @@ piece_sizes(Torrent) ->
 -spec read_piece(torrent_id(), piece_index()) -> {'ok', piece_bin()}.
 read_piece(TorrentID, Piece) ->
     DirPid = await_directory(TorrentID),
-    {ok, Positions} = get_positions(DirPid, Piece),
-    BlockList = read_file_blocks(TorrentID, Positions),
+    {ok, Positions, Filepids} = get_positions(DirPid, Piece),
+    BlockList = read_file_blocks(TorrentID, Positions, Filepids),
     {ok, iolist_to_binary(BlockList)}.
 
 %% @doc Request the size of a piece
@@ -155,7 +156,7 @@ read_piece(TorrentID, Piece) ->
 -spec piece_size(torrent_id(), piece_index()) -> {ok, integer()}.
 piece_size(TorrentID, Piece) ->
     DirPid = await_directory(TorrentID),
-    {ok, Positions} = get_positions(DirPid, Piece),
+    {ok, Positions, _Filepids} = get_positions(DirPid, Piece),
     {ok, lists:sum([L || {_, _, L} <- Positions])}.
 
 
@@ -167,9 +168,9 @@ piece_size(TorrentID, Piece) ->
                  chunk_offset(), chunk_len()) -> {'ok', chunk_bin()}.
 read_chunk(TorrentID, Piece, Offset, Length) ->
     DirPid = await_directory(TorrentID),
-    {ok, Positions} = get_positions(DirPid, Piece),
+    {ok, Positions, Filepids} = get_positions(DirPid, Piece),
     ChunkPositions  = chunk_positions(Offset, Length, Positions),
-    BlockList = read_file_blocks(TorrentID, ChunkPositions),
+    BlockList = read_file_blocks(TorrentID, ChunkPositions, Filepids),
     {ok, iolist_to_binary(BlockList)}.
 
 
@@ -189,10 +190,10 @@ aread_chunk(TorrentID, Piece, Offset, Length) ->
                   chunk_offset(), chunk_bin()) -> 'ok'.
 write_chunk(TorrentID, Piece, Offset, Chunk) ->
     DirPid = await_directory(TorrentID),
-    {ok, Positions} = get_positions(DirPid, Piece),
+    {ok, Positions, Filepids} = get_positions(DirPid, Piece),
     Length = byte_size(Chunk),
     ChunkPositions = chunk_positions(Offset, Length, Positions),
-    ok = write_file_blocks(TorrentID, Chunk, ChunkPositions).
+    ok = write_file_blocks(TorrentID, Chunk, ChunkPositions, Filepids).
 
 
 %% @doc Write a chunk and send an acknowledgment to the calling process.
@@ -210,27 +211,28 @@ awrite_chunk(TorrentID, Piece, Offset, Chunk) ->
 %% servers in this directory responsible for each path the
 %% is included in the list of positions.
 %% @end
--spec read_file_blocks(torrent_id(), list(block_pos())) -> iolist().
-read_file_blocks(_, []) ->
+-spec read_file_blocks(torrent_id(), list(block_pos()), tuple()) -> iolist().
+read_file_blocks(_, [], _) ->
     [];
-read_file_blocks(TorrentID, [{Path, Offset, Length}|T]) ->
-    FilePid = await_file_server(TorrentID, Path),
-    {ok, Block} = etorrent_io_file:read(FilePid, Offset, Length),
-    [Block|read_file_blocks(TorrentID, T)].
+read_file_blocks(TorrentID, [{Index, Offset, Length}|T], Filepids) ->
+    Filepid = element(Index, Filepids),
+    {ok, Block} = etorrent_io_file:read(Filepid, Offset, Length),
+    [Block|read_file_blocks(TorrentID, T, Filepids)].
 
 %% @doc
 %% Write a list of blocks of a chunk seqeuntially to the file servers
 %% in this directory responsible for each path that is included
 %% in the lists of positions at which the block appears.
 %% @end
--spec write_file_blocks(torrent_id(), chunk_bin(), list(block_pos())) -> 'ok'.
-write_file_blocks(_, <<>>, []) ->
+-spec write_file_blocks(torrent_id(), chunk_bin(),
+        list(block_pos()), tuple()) -> 'ok'.
+write_file_blocks(_, <<>>, [], _) ->
     ok;
-write_file_blocks(TorrentID, Chunk, [{Path, Offset, Length}|T]) ->
-    FilePid = await_file_server(TorrentID, Path),
+write_file_blocks(TorrentID, Chunk, [{Index, Offset, Length}|T], Filepids) ->
+    Filepid = element(Index, Filepids),
     <<Block:Length/binary, Rest/binary>> = Chunk,
-    ok = etorrent_io_file:write(FilePid, Offset, Block),
-    write_file_blocks(TorrentID, Rest, T).
+    ok = etorrent_io_file:write(Filepid, Offset, Block),
+    write_file_blocks(TorrentID, Rest, T, Filepids).
 
 file_path_len(T) ->
     case etorrent_metainfo:get_files(T) of
@@ -256,6 +258,11 @@ file_paths(Torrent) ->
 file_sizes(Torrent) ->
     file_path_len(Torrent).
 
+%% @doc Return a list of file indxes and the size.
+%% This function has the same purpose as the file_sizes function.
+%% @end
+file_indexes(Torrent) ->
+    file_indexes_(Torrent).
 
 directory_name(TorrentID) ->
     {etorrent, TorrentID, directory}.
@@ -281,7 +288,8 @@ register_directory(TorrentID) ->
 -spec register_file_server(torrent_id(), file_path()) -> true.
 register_file_server(TorrentID, Path) ->
     Dirpid = await_directory(TorrentID),
-    ok = gen_server:cast(Dirpid, {register_filename, Path, self()}),
+    is_integer(Path) andalso
+        gen_server:cast(Dirpid, {register_filename, Path, self()}),
     etorrent_utils:register(file_server_name(TorrentID, Path)).
 
 %% @doc
@@ -375,12 +383,13 @@ init([TorrentID, Torrent]) ->
     PieceMap  = make_piece_map(Torrent),
     Files     = make_file_list(Torrent),
     Filewheel = queue:from_list(lists:duplicate(MaxFiles, free)),
+    FilePids  = list_to_tuple(lists:duplicate(length(Files), undefined)),
     InitState = #state{
         torrent=TorrentID,
         pieces=PieceMap,
         file_list=Files,
         file_wheel=Filewheel,
-        file_pids=[],
+        file_pids=FilePids,
         files_max=MaxFiles},
     {ok, InitState}.
 
@@ -388,20 +397,20 @@ init([TorrentID, Torrent]) ->
 handle_call(get_files, _From, #state{file_list=Filelist}=State) ->
     {reply, {ok, Filelist}, State};
 handle_call({get_positions, Piece}, _, State) ->
-    #state{pieces=PieceMap} = State,
+    #state{pieces=PieceMap, file_pids=Filepids} = State,
     Positions = array:get(Piece, PieceMap),
-    {reply, {ok, Positions}, State}.
+    {reply, {ok, Positions, Filepids}, State}.
 
 %% @private
-handle_cast({register_filename, Relpath, Pid}, State) ->
+handle_cast({register_filename, Index, Pid}, State) ->
     #state{file_pids=Filepids} = State,
-    Filepids1 = lists:keystore(Relpath, 1, Filepids, {Relpath, Pid}),
+    Filepids1 = setelement(Index, Filepids, Pid),
     State1 = State#state{file_pids=Filepids1},
     {noreply, State1};
 
-handle_cast({schedule_operation, Relpath}, State) ->
+handle_cast({schedule_operation, Index}, State) ->
     #state{file_wheel=Filewheel, file_pids=Filepids} = State,
-    {_, Filepid} = lists:keyfind(Relpath, 1, Filepids),
+    Filepid = element(Index, Filepids),
     {{value, Head}, Filewheel1} = queue:out(Filewheel),
     is_pid(Head) andalso etorrent_io_file:close(Head),
     ok = etorrent_io_file:open(Filepid),
@@ -427,11 +436,12 @@ code_change(_, _, _) ->
 %%
 make_piece_map(Torrent) ->
     PieceLength = etorrent_metainfo:get_piece_length(Torrent),
-    FileLengths = file_path_len(Torrent),
-    MapEntries  = make_piece_map_(PieceLength, FileLengths),
-    lists:foldl(fun({Path, Piece, Offset, Length}, Acc) ->
+    Files = file_indexes_(Torrent),
+    Files1 = [{Index, Length} || {Index, _, Length} <- Files],
+    MapEntries  = make_piece_map_(PieceLength, Files1),
+    lists:foldl(fun({File, Piece, Offset, Length}, Acc) ->
         Prev = array:get(Piece, Acc),
-        With = Prev ++ [{Path, Offset, Length}],
+        With = Prev ++ [{File, Offset, Length}],
         array:set(Piece, With, Acc)
     end, array:new({default, []}), MapEntries).
 
@@ -458,23 +468,23 @@ make_piece_map_(PieceLength, FileLengths) ->
 
 make_piece_map_(_, _, _, _, []) ->
     [];
-make_piece_map_(PieceLen, PieceOffs, Piece, FileOffs, [{Path, Len}|T]=L) ->
+make_piece_map_(PieceLen, PieceOffs, Piece, FileOffs, [{File, Len}|T]=L) ->
     BytesToEnd = PieceLen - PieceOffs,
     case FileOffs + BytesToEnd of
         %% This piece ends at the end of this file
         NextOffs when NextOffs == Len ->
-            Entry = {Path, Piece, FileOffs, BytesToEnd},
+            Entry = {File, Piece, FileOffs, BytesToEnd},
             [Entry|make_piece_map_(PieceLen, 0, Piece+1, 0, T)];
         %% This piece ends in the middle of this file
         NextOffset when NextOffset < Len ->
             NewFileOffs  = FileOffs + BytesToEnd,
-            Entry = {Path, Piece, FileOffs, BytesToEnd},
+            Entry = {File, Piece, FileOffs, BytesToEnd},
             [Entry|make_piece_map_(PieceLen, 0, Piece+1, NewFileOffs, L)];
         %% This piece ends in the next file
         NextOffset when NextOffset > Len ->
             InThisFile = Len - FileOffs,
             NewPieceOffs = PieceOffs + InThisFile,
-            Entry = {Path, Piece, FileOffs, InThisFile},
+            Entry = {File, Piece, FileOffs, InThisFile},
             [Entry|make_piece_map_(PieceLen, NewPieceOffs, Piece, 0, T)]
     end.
 
@@ -507,6 +517,19 @@ chunk_positions(ChunkOffs, ChunkLen, [{Path, FileOffs, BlockLen}|T]) ->
             Entry = {Path, EffectiveOffs, OutBlockLen},
             [Entry|chunk_positions(0, NewChunkLen, T)]
     end.
+
+%%
+%% Each file has an alias which is the index of the file name within the
+%% torrent file. This is used internally within, and only within, the io
+%% subsystem because it uses less memory than the file name.
+%%
+file_indexes_(Torrent) ->
+    Filelengths = file_path_len(Torrent),
+    Paths = [Path || {Path, _} <- Filelengths],
+    Lenghts = [Length || {_, Length} <- Filelengths],
+    Indexes = lists:seq(1, length(Paths)),
+    lists:zip3(Indexes, Paths, Lenghts).
+
 
 -ifdef(TEST).
 piece_map_0_test() ->

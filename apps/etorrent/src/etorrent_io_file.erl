@@ -23,7 +23,7 @@
 -define(GC_TIMEOUT, 5000).
 
 %% exported functions
--export([start_link/5,
+-export([start_link/6,
          open/1,
          close/1,
          read/3,
@@ -53,6 +53,7 @@
 
 -record(static, {
     dirpid   :: pid(),
+    index    :: pos_integer(),
     torrent  :: torrent_id(),
     filesize :: non_neg_integer(),
     relpath  :: file_path(),
@@ -73,10 +74,10 @@
 %% <p>Of the two paths given, one is the partial path used internally
 %% and the other is the full path where to store the file in question.</p>
 %% @end
--spec start_link(torrent_id(), pid(), file_path(), file_path(), _) -> {'ok', pid()}.
-start_link(TorrentID, Dirpid, Path, FullPath, Filesize) ->
+-spec start_link(torrent_id(), pid(), pos_integer(), file_path(), file_path(), _) -> {'ok', pid()}.
+start_link(TorrentID, Dirpid, Index, Path, FullPath, Filesize) ->
     FsmOpts = [{spawn_opt, [{fullsweep_after, 0}]}],
-    FsmArgs = [TorrentID, Dirpid, Path, FullPath, Filesize],
+    FsmArgs = [TorrentID, Dirpid, Index, Path, FullPath, Filesize],
     gen_fsm:start_link(?MODULE, FsmArgs, FsmOpts).
 
 %% @doc Request to open the file
@@ -115,10 +116,12 @@ allocate(FilePid, Size) ->
     gen_fsm:sync_send_event(FilePid, {allocate, Size}, infinity).
 
 %% @private
-init([TorrentID, Dirpid, RelPath, FullPath, Filesize]) ->
+init([TorrentID, Dirpid, Index, RelPath, FullPath, Filesize]) ->
     true = etorrent_io:register_file_server(TorrentID, RelPath),
+    true = etorrent_io:register_file_server(TorrentID, Index),
     StaticState = #static{
         dirpid=Dirpid,
+        index=Index,
         torrent=TorrentID,
         filesize=Filesize,
         relpath=RelPath,
@@ -133,20 +136,20 @@ init([TorrentID, Dirpid, RelPath, FullPath, Filesize]) ->
 
 %% @private handle synchronous event in closed state.
 closed({read, Offset, Length}, From, #state{handle=closed}=State) ->
-    #static{torrent=TorrentID, relpath=Relpath} = State#state.static,
-    ok = etorrent_io:schedule_operation(TorrentID, Relpath),
+    #static{torrent=TorrentID, index=Index} = State#state.static,
+    ok = etorrent_io:schedule_operation(TorrentID, Index),
     State1 = enqueue_read(Offset, Length, From, State),
     {next_state, opening, State1, ?GC_TIMEOUT};
 
 closed({write, Offset, Chunk}, From, #state{handle=closed}=State) ->
-    #static{torrent=TorrentID, relpath=Relpath} = State#state.static,
-    ok = etorrent_io:schedule_operation(TorrentID, Relpath),
+    #static{torrent=TorrentID, index=Index} = State#state.static,
+    ok = etorrent_io:schedule_operation(TorrentID, Index),
     State1 = enqueue_write(Offset, Chunk, From, State),
     {next_state, opening, State1, ?GC_TIMEOUT};
 
 closed({allocate, Size}, From, #state{handle=closed}=State) ->
-    #static{torrent=TorrentID, relpath=Relpath} = State#state.static,
-    ok = etorrent_io:schedule_operation(TorrentID, Relpath),
+    #static{torrent=TorrentID, index=Index} = State#state.static,
+    ok = etorrent_io:schedule_operation(TorrentID, Index),
     State1 = enqueue_alloc(Size, From, State),
     {next_state, opening, State1, ?GC_TIMEOUT}.
 
