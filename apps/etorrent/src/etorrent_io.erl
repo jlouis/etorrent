@@ -89,18 +89,12 @@
 -type torrent_id() :: etorrent_types:torrent_id().
 -type block_pos() :: {string(), block_offset(), block_len()}.
 
--record(io_file, {
-    rel_path :: file_path(),
-    process  :: pid(),
-    monitor  :: reference(),
-    accessed :: {integer(), integer(), integer()}}).
-
 -record(state, {
     torrent :: torrent_id(),
     pieces  :: array(),
     file_list :: [{string(), pos_integer()}],
     file_wheel :: queue(), %% queue(free | pid())
-    files_open :: list(#io_file{}),
+    file_pids  :: [{string(), pid()}],
     files_max  :: pos_integer()}).
 
 %% @doc Start the File I/O Server
@@ -378,13 +372,13 @@ init([TorrentID, Torrent]) ->
     true = register_directory(TorrentID),
     PieceMap  = make_piece_map(Torrent),
     Files     = make_file_list(Torrent),
-    FileWheel = queue:from_list(lists:duplicate(MaxFiles, free)),
+    Filewheel = queue:from_list(lists:duplicate(MaxFiles, free)),
     InitState = #state{
         torrent=TorrentID,
         pieces=PieceMap,
         file_list=Files,
-        file_wheel=FileWheel,
-        files_open=[],
+        file_wheel=Filewheel,
+        file_pids=[],
         files_max=MaxFiles},
     {ok, InitState}.
 
@@ -397,61 +391,22 @@ handle_call({get_positions, Piece}, _, State) ->
     {reply, {ok, Positions}, State}.
 
 %% @private
-handle_cast({schedule_operation, RelPath}, State) ->
-    #state{
-        torrent=TorrentID,
-        files_open=FilesOpen,
-        files_max=MaxFiles} = State,
-
-    FileInfo  = lists:keyfind(RelPath, #io_file.rel_path, FilesOpen),
-    AtLimit   = length(FilesOpen) >= MaxFiles,
-
-    %% If the file that the client intends to operate on is not open and
-    %% the quota on the number of open files has been met, tell the least
-    %% recently used file complete all outstanding requests
-    OpenAfterClose = case {FileInfo, AtLimit} of
-        {_, false} ->
-            FilesOpen;
-        {false, true} ->
-            ByAccess = lists:keysort(#io_file.accessed, FilesOpen),
-            [LeastRecent|FilesToKeep] = lists:reverse(ByAccess),
-            #io_file{
-                process=ClosePid,
-                monitor=CloseMon} = LeastRecent,
-            ok = etorrent_io_file:close(ClosePid),
-            _  = erlang:demonitor(CloseMon, [flush]),
-            FilesToKeep;
-        {_, true} ->
-            FilesOpen
+handle_cast({schedule_operation, Relpath}, State) ->
+    #state{file_wheel=Filewheel, file_pids=Filepids} = State,
+    {_, Filepid} = lists:keyfind(Relpath, 1, Filepids),
+    {{value, Head}, Filewheel1} = queue:out(Filewheel),
+    case Head of
+        free -> ok;
+        Head -> etorrent_io_file:close(Head)
     end,
-
-    %% If the file that the client intends to operate on is not open;
-    %% Always tell the file server to open the file as soon as possbile.
-    %% If the file is open, just update the access time.
-    WithNewFile = case FileInfo of
-        false ->
-            NewPid = await_file_server(TorrentID, RelPath),
-            NewMon = erlang:monitor(process, NewPid),
-            ok = etorrent_io_file:open(NewPid),
-            NewFile = #io_file{
-                rel_path=RelPath,
-                process=NewPid,
-                monitor=NewMon,
-                accessed=now()},
-            [NewFile|OpenAfterClose];
-        _ ->
-            UpdatedFile = FileInfo#io_file{accessed=now()},
-            lists:keyreplace(RelPath, #io_file.rel_path, OpenAfterClose, UpdatedFile)
-    end,
-    NewState = State#state{files_open=WithNewFile},
-    {noreply, NewState}.
+    ok = etorrent_io_file:open(Filepid),
+    Filewheel2 = queue:in(Filepid, Filewheel1),
+    State1 = State#state{file_wheel=Filewheel2},
+    {noreply, State1}.
 
 %% @private
-handle_info({'DOWN', FileMon, _, _, _}, State) ->
-    #state{files_open=FilesOpen} = State,
-    NewFilesOpen = lists:keydelete(FileMon, #io_file.monitor, FilesOpen),
-    NewState = State#state{files_open=NewFilesOpen},
-    {noreply, NewState}.
+handle_info(Msg, State) ->
+    {stop, Msg, State}.
 
 %% @private
 terminate(_, _) ->
