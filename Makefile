@@ -27,18 +27,21 @@ plt-clean:
 	rm -f etorrent_dialyzer.plt
 
 build-plt:
-	dialyzer --build_plt -r deps -r apps \
+	dialyzer --build_plt \
 	--output_plt etorrent_dialyzer.plt \
 	--apps kernel crypto stdlib sasl inets tools xmerl erts
 
 dialyze: dialyze-etorrent
 
 dialyze-etorrent:
-	dialyzer --src -r apps/etorrent --plt etorrent_dialyzer.plt \
-	-Werror_handling -Wrace_conditions -Wbehaviours
+	dialyzer --plt etorrent_dialyzer.plt \
+	--src -r apps/etorrent/src -r deps/*/src
 
-typer:
-	typer --plt ~/.etorrent_dialyzer_plt -r apps -I apps/etorrent/include
+typer: typer-etorrent
+
+typer-etorrent:
+	typer --plt etorrent_dialyzer_plt \
+	-r apps/etorrent/src -I apps/etorrent/include
 
 rel: compile rel/etorrent
 
