@@ -22,9 +22,6 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
-%% types
--type bencode() :: etorrent_types:bencode().
-
 %% @doc Ensure that the dotfile directory exists.
 %% @end
 -spec make() -> ok.
@@ -74,7 +71,8 @@ copy_torrent(Torrentfile) when is_list(Torrentfile) ->
 
 %% @doc Return the contents of a torrent.
 %% @end
--spec read_torrent(Infohash::[byte()]) -> {ok, bencode()} | {error, _}.
+-spec read_torrent(Infohash::[byte()]) ->
+                          {ok, etorrent_types:bcode()} | {error, _}.
 read_torrent(Infohash) ->
     Path = torrent_path(Infohash),
     case file:read_file(Path) of
@@ -142,7 +140,8 @@ assert_hex_hash(Infohash) ->
 
 %% @doc Read the contents of the .info file of a torrent.
 %% @end
--spec read_info(Infohash :: [byte()]) -> {ok, bencode()} | {error, atom()}.
+-spec read_info(Infohash :: [byte()]) ->
+                       {ok, etorrent_types:bcode()} | {error, atom()}.
 read_info(Infohash) ->
     Path = info_path(Infohash),
     case file:read_file(Path) of
@@ -154,7 +153,8 @@ read_info(Infohash) ->
 
 %% @doc Rewrite the contents of the .info file of a torrent.
 %% @end
--spec write_info(Infohash :: [byte()], bencode()) -> ok | {error, atom()}.
+-spec write_info(Infohash :: [byte()], etorrent_types:bcode()) ->
+                        ok | {error, atom()}.
 write_info(Infohash, Data) ->
     Bin = etorrent_bcoding:encode(Data),
     File = info_path(Infohash),

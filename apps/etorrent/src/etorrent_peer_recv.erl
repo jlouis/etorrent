@@ -36,7 +36,7 @@
 
 -record(state, {
     id            :: integer(), %% TorrentID
-    socket        :: gen_tcp:socket(),
+    socket        :: inet:socket(),
     packet = none :: etorrent_proto_wire:continuation(),
     rate          :: etorrent_rate:rate(),
     controller    :: pid(),
@@ -56,19 +56,19 @@ start_link(TorrentId, Socket) ->
 
 
 %% @doc Register the local process as the decoder for a socket
--spec register_server(gen_tcp:socket()) -> true.
+-spec register_server(inet:socket()) -> true.
 register_server(Socket) ->
     etorrent_utils:register(server_name(Socket)).
 
 
 %% @doc Lookup the decoding process for a socket
--spec lookup_server(gen_tcp:socket()) -> pid().
+-spec lookup_server(inet:socket()) -> pid().
 lookup_server(Socket) ->
     etorrent_utils:lookup(server_name(Socket)).
 
 
 %% @doc Wait for the decoding process for a socket to register
--spec await_server(gen_tcp:socket()) -> pid().
+-spec await_server(inet:socket()) -> pid().
 await_server(Socket) ->
     etorrent_utils:await(server_name(Socket)).
 

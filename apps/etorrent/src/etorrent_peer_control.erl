@@ -48,7 +48,7 @@
 -record(state, {
     torrent_id = exit(required) :: integer(),
     info_hash = exit(required) ::  binary(),
-    socket = none  :: none | gen_tcp:socket(),
+    socket = none  :: none | inet:socket(),
     send_pid :: pid(),
 
     download = exit(required) :: tservices(),

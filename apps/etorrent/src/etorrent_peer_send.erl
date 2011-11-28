@@ -52,7 +52,7 @@
          code_change/3]).
 
 -record(state, {
-    socket     :: gen_tcp:socket(),
+    socket     :: inet:socket(),
     buffer     :: queue(),
     control    :: pid(),
     limiter    :: none | pid(),
@@ -73,17 +73,17 @@ start_link(Socket, TorrentId, FastExtension) ->
                           [Socket, TorrentId, FastExtension], []).
 
 %% @doc Register the local process as the encoder for a socket
--spec register_server(gen_tcp:socket()) -> true.
+-spec register_server(inet:socket()) -> true.
 register_server(Socket) ->
     etorrent_utils:register(server_name(Socket)).
 
 %% @doc Lookup the encoder process for a socket
--spec lookup_server(gen_tcp:socket()) -> pid().
+-spec lookup_server(inet:socket()) -> pid().
 lookup_server(Socket) ->
     etorrent_utils:lookup(server_name(Socket)).
 
 %% @doc Wait for the encoder process for a socket to register
--spec await_server(gen_tcp:socket()) -> pid().
+-spec await_server(inet:socket()) -> pid().
 await_server(Socket) ->
     etorrent_utils:await(server_name(Socket)).
 

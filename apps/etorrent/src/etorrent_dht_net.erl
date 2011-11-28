@@ -56,7 +56,6 @@
 -type trackerinfo() :: etorrent_types:trackerinfo().
 -type infohash() :: etorrent_types:infohash().
 -type token() :: etorrent_types:token().
--type bdict() :: etorrent_types:bdict().
 -type dht_qtype() :: etorrent_types:dht_qtype().
 -type ipaddr() :: etorrent_types:ipaddr().
 -type nodeid() :: etorrent_types:nodeid().
@@ -77,7 +76,7 @@
 
 
 -record(state, {
-    socket :: gen_udp:socket(),
+    socket :: inet:socket(),
     sent   :: gb_tree(),
     tokens :: queue()
 }).
@@ -503,7 +502,7 @@ common_values(Self) ->
     LSelf = etorrent_dht:list_id(Self),
     [{<<"id">>, list_to_binary(LSelf)}].
 
--spec handle_query(dht_qtype(), bdict(), ipaddr(),
+-spec handle_query(dht_qtype(), etorrent_types:bcode(), ipaddr(),
                   portnum(), transaction(), nodeid(), _) -> 'ok'.
 
 handle_query('ping', _, IP, Port, MsgID, Self, _Tokens) ->
