@@ -20,16 +20,18 @@
 %% @doc Start the file pool supervisor
 %% @end
 -spec start_link(torrent_id(), file_path(), list(file_path())) -> {'ok', pid()}.
-start_link(TorrentID, TorrentFile, Files) ->
-    supervisor:start_link(?MODULE, [TorrentID, TorrentFile, Files]).
+start_link(TorrentID, Workdir, Files) ->
+    supervisor:start_link(?MODULE, [TorrentID, Workdir, Files]).
 
 %% @private
 init([TorrentID, Workdir, Files]) ->
-    FileSpecs  = [file_server_spec(TorrentID, Workdir, Path) || Path <- Files],
+    FileSpecs  = [file_server_spec(TorrentID, Workdir, File) || File <- Files],
     {ok, {{one_for_all, 1, 60}, FileSpecs}}.
 
-file_server_spec(TorrentID, Workdir, Path) ->
+file_server_spec(TorrentID, Workdir, {Index, Path, Size}) ->
+    Dirpid = etorrent_io:await_directory(TorrentID),
     Fullpath = filename:join(Workdir, Path),
+    Fileargs = [TorrentID, Dirpid, Index, Path, Fullpath, Size],
     {{TorrentID, Path},
-        {etorrent_io_file, start_link, [TorrentID, Path, Fullpath]},
+        {etorrent_io_file, start_link, Fileargs},
         permanent, 2000, worker, [etorrent_io_file]}.

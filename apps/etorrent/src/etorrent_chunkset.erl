@@ -12,7 +12,8 @@
          delete/2,
          delete/3,
          insert/3,
-         from_list/3]).
+         from_list/3,
+         to_list/1]).
 
 -record(chunkset, {
     piece_len :: pos_integer(),
@@ -37,6 +38,15 @@ from_list(PieceLen, ChunkLen, Chunks) ->
         piece_len=PieceLen,
         chunk_len=ChunkLen,
         chunks=Chunks}.
+
+
+%% @doc Return a list of all chunks.
+%% @end
+-spec to_list(chunkset()) -> [{non_neg_integer(), non_neg_integer()}].
+to_list(Chunkset) ->
+    #chunkset{chunks=Chunks} = Chunkset,
+    Chunks.
+
 
 %% @doc
 %% Get sum of the size of all chunks in the chunkset.

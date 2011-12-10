@@ -424,6 +424,10 @@ handle_info({chunk, {contents, Index, Offset, Length, Data}}, State) ->
             {noreply, State}
     end;
 
+handle_info({chunk, {written, _Piece, _Offset, _Length}}, State) ->
+    %% @todo do something ... useful?
+    {noreply, State};
+
 handle_info({piece, {valid, Piece}}, State) ->
     #state{send_pid=SendPid, download=Download, local=Local, remote=Remote} = State,
     WithLocal = etorrent_peerstate:hasone(Piece, Local),
@@ -674,7 +678,7 @@ handle_message({piece, Index, Offset, Data}, State) ->
     NewLocal = case etorrent_rqueue:is_head(Index, Offset, Length, Requests) of
         true ->
             ok = etorrent_download:chunk_fetched(Index, Offset, Length, Download),
-            ok = etorrent_io:write_chunk(TorrentID, Index, Offset, Data),
+            ok = etorrent_io:awrite_chunk(TorrentID, Index, Offset, Data),
             ok = etorrent_download:chunk_stored(Index, Offset, Length, Download),
             NewRequests = etorrent_rqueue:pop(Requests),
             TmpLocal = etorrent_peerstate:requests(NewRequests, Local),
