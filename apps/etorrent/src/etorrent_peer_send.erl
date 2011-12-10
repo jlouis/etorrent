@@ -15,7 +15,6 @@
 -behaviour(gen_server).
 
 -include("etorrent_rate.hrl").
--include("log.hrl").
 
 %% Apart from standard gen_server things, the main idea of this module is
 %% to serve as a mediator for the peer in the send direction. Precisely,

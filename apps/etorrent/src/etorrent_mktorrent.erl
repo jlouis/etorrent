@@ -5,7 +5,6 @@
 -module(etorrent_mktorrent).
 
 -include_lib("kernel/include/file.hrl").
--include("log.hrl").
 
 %% API
 -export([create/3, create/4]).

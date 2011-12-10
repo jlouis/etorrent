@@ -7,7 +7,6 @@
 %% @end
 -module(etorrent_table).
 -behaviour(gen_server).
--include("log.hrl").
 
 
 %% API
@@ -337,40 +336,41 @@ handle_call({monitor_pid, Type, Pid}, _From, S) ->
        monitoring = dict:store(Ref, {Pid, Type}, S#state.monitoring)}};
 handle_call({acquire_check_token, Id}, _From, S) ->
     %% @todo This should definitely be a monitor on the _From process
-    R = case ets:match(tracking_map, #tracking_map { _ = '_', state = checking }) of
-	    [] ->
-		[O] = ets:lookup(tracking_map, Id),
-		ets:insert(tracking_map, O#tracking_map { state = checking }),
-		true;
-	    _ ->
-		false
-	end,
+    R = case ets:match(tracking_map,
+                       #tracking_map { _ = '_', state = checking }) of
+            [] ->
+                [O] = ets:lookup(tracking_map, Id),
+                ets:insert(tracking_map, O#tracking_map { state = checking }),
+                true;
+            _ ->
+                false
+        end,
     {reply, R, S};
 handle_call(Msg, _From, S) ->
-    ?WARN([unknown_msg, Msg]),
+    lager:error("Unknown handle_call: ~p", [Msg]),
     {noreply, S}.
 
 %% @private
 handle_cast(Msg, S) ->
-    ?WARN([unknown_msg, Msg]),
+    lager:error("Unknown handle_cast: ~p", [Msg]),
     {noreply, S}.
 
 %% @private
 handle_info({'DOWN', Ref, _, _, _}, S) ->
     {ok, {X, Type}} = dict:find(Ref, S#state.monitoring),
     case Type of
-	peer ->
-	    true = ets:delete(peers, X);
-	{torrent, Id} ->
-	    true = ets:delete(tracking_map, Id);
-    {upnp, Cat, Entity} ->
-        EntityId = etorrent_upnp_entity:id(Cat, Entity),
-        etorrent_upnp_entity:unsubscribe(Cat, Entity),
-        true = ets:delete(?TAB_UPNP, EntityId)
+        peer ->
+            true = ets:delete(peers, X);
+        {torrent, Id} ->
+            true = ets:delete(tracking_map, Id);
+        {upnp, Cat, Entity} ->
+            EntityId = etorrent_upnp_entity:id(Cat, Entity),
+            etorrent_upnp_entity:unsubscribe(Cat, Entity),
+            true = ets:delete(?TAB_UPNP, EntityId)
     end,
     {noreply, S#state { monitoring = dict:erase(Ref, S#state.monitoring) }};
 handle_info(Msg, S) ->
-    ?WARN([unknown_msg, Msg]),
+    lager:error("Unknown handle_info call: ~p", [Msg]),
     {noreply, S}.
 
 %% @private

@@ -11,7 +11,6 @@
 
 -include("rate_mgr.hrl").
 -include("etorrent_rate.hrl").
--include("log.hrl").
 
 -behaviour(gen_server).
 
@@ -233,7 +232,7 @@ init([]) ->
 
 %% @private
 handle_call(Request, _From, State) ->
-    ?INFO([unknown_request, ?MODULE, Request]),
+    lager:error("Unknown handle_call event: ~p", [Request]),
     {reply, ok, State}.
 
 %% @private
@@ -241,7 +240,7 @@ handle_cast({monitor, Pid}, S) ->
     erlang:monitor(process, Pid),
     {noreply, S};
 handle_cast(Msg, State) ->
-    ?INFO([unknown_cast, ?MODULE, Msg]),
+    lager:error("Unknown handle_cast event: ~p", [Msg]),
     {noreply, State}.
 
 %% @private

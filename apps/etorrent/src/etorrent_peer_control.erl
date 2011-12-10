@@ -13,7 +13,6 @@
 -behaviour(gen_server).
 
 -include("etorrent_rate.hrl").
--include("log.hrl").
 
 %% API
 -export([start_link/7,
@@ -375,7 +374,7 @@ handle_cast(stop, S) ->
     {stop, normal, S};
 
 handle_cast(Msg, State) ->
-    ?WARN([unknown_msg, Msg]),
+    lager:error("Unknown handle_cast: ~p", [Msg]),
     {noreply, State}.
 
 
@@ -452,11 +451,11 @@ handle_info({download, Update}, State) ->
     {noreply, NewState};
             
 handle_info({tcp, _, _}, State) ->
-    ?ERR([wrong_controller]),
+    lager:error("Detected wrong controller for TCP socket"),
     {noreply, State};
 
 handle_info(Info, State) ->
-    ?WARN([unknown_msg, Info]),
+    lager:error("Unkonwn handle_info: ~p", [Info]),
     {noreply, State}.
 
 %% @private
@@ -465,7 +464,7 @@ terminate(_Reason, _S) ->
 
 %% @private
 handle_call(Request, _From, State) ->
-    ?WARN([unknown_handle_call, Request]),
+    lager:error("Unknown handle_call: ~p", [Request]),
     {noreply, State}.
 
 %% @private
@@ -614,11 +613,14 @@ handle_message({cancel, Index, Offset, Length}, State) ->
 handle_message({suggest, Piece}, State) ->
     #state{config=Config} = State,
     PeerID = etorrent_peerconf:remoteid(Config),
-    ?INFO([{peer_id, PeerID}, {suggest, Piece}]),
+    lager:info(
+      "Peer ~p suggested piece ~B, but no support is currently available",
+      [PeerID, Piece]),
     {ok, State};
 
 handle_message({have, Piece}, State) ->
-    #state{torrent_id=TorrentID, send_pid=SendPid, download=Download, remote=Remote, local=Local} = State,
+    #state{torrent_id=TorrentID, send_pid=SendPid,
+           download=Download, remote=Remote, local=Local} = State,
     TmpRemote = etorrent_peerstate:hasone(Piece, Remote),
     Pieceset  = etorrent_peerstate:pieces(TmpRemote),
     %% TODO - see etorrent_peerstate:haspieces/1
@@ -695,7 +697,7 @@ handle_message({extended, 0, _Data}, State) ->
     {ok, State};
 
 handle_message(Unknown, State) ->
-    ?WARN([unknown_message, Unknown]),
+    lager:error("Unknown handle_message: ~p", [Unknown]),
     {stop, normal, State}.
 
 

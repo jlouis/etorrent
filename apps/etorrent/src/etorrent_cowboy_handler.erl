@@ -1,6 +1,5 @@
 -module(etorrent_cowboy_handler).
 
--include("log.hrl").
 
 -export([init/3, handle/2, terminate/2]).
 

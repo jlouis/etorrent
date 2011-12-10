@@ -14,7 +14,6 @@
 -behaviour(gen_server).
 
 -include("rate_mgr.hrl").
--include("log.hrl").
 
 %% API
 -export([start_link/0, perform_rechoke/0, monitor/1]).
@@ -316,7 +315,7 @@ handle_call({monitor, Pid}, _From, S) ->
     perform_rechoke(),
     {reply, ok, S#state { opt_unchoke_chain = NewChain }};
 handle_call(Request, _From, State) ->
-    ?ERR([unknown_peer_group_call, Request]),
+    lager:error([unknown_peer_group_call, Request]),
     Reply = ok,
     {reply, Reply, State}.
 
@@ -346,7 +345,7 @@ handle_info({'DOWN', _Ref, process, Pid, _Reason}, S) ->
     rechoke(NewChain),
     {noreply, S#state { opt_unchoke_chain = NewChain }};
 handle_info(Info, State) ->
-    ?INFO([unknown_info_msg, ?MODULE, Info]),
+    lager:info([unknown_info_msg, ?MODULE, Info]),
     {noreply, State}.
 
 %% @private

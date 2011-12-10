@@ -6,7 +6,6 @@
 %%        And rename to etorrent_upnp_httpd_sup?
 -module(etorrent_upnp_handler).
 
--include("log.hrl").
 
 -export([init/3, handle/2, terminate/2]).
 

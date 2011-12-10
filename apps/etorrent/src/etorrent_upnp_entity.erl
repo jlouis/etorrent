@@ -5,7 +5,6 @@
 -module(etorrent_upnp_entity).
 -behaviour(gen_server).
 
--include("log.hrl").
 
 -ifdef(TEST).
 -include_lib("proper/include/proper.hrl").
@@ -131,11 +130,16 @@ handle_info({add_port_mapping, Proto, Port}, State) ->
     #state{prop = Prop} = State,
     case etorrent_upnp_net:add_port_mapping(Prop, Proto, Port) of
         ok ->
-            ?INFO({port_mapping_added, Proto, Port}),
-            ?NOTIFY({port_mapping_added, Proto, Port});
+            lager:info("Port mapping added: ~p (~p)", [Proto, Port]),
+            etorrent_event:notify({port_mapping_added, Proto, Port});
         {failed, ErrCode, ErrDesc} ->
-            ?INFO({add_port_mapping_failed, Proto, Port, ErrCode, ErrDesc}),
-            ?NOTIFY({add_port_mapping_failed, Proto, Port, ErrCode, ErrDesc});
+            lager:info("Port mpping failed: ~p (~p) error(~B): ~p",
+                       [Proto, Port, ErrCode, ErrDesc]),
+            etorrent_event:notify({add_port_mapping_failed,
+                                   Proto,
+                                   Port,
+                                   ErrCode,
+                                   ErrDesc});
         _ -> ignore
     end,
     {noreply, State};
@@ -153,7 +157,7 @@ handle_info(subscribe, State) ->
     etorrent_table:update_upnp_entity(self(), Cat, NewProp),
     {noreply, State#state{prop = NewProp}};
 handle_info(Info, State) ->
-    ?WARN([unknown_info, Info]),
+    lager:error("Unknown handle_info event ~p", [Info]),
     {noreply, State}.
 
 

@@ -4,7 +4,6 @@
 %% @end
 -module(etorrent_file_logger).
 
--include("log.hrl").
 
 -behaviour(gen_event).
 
@@ -84,7 +83,9 @@ handle_info(_, State) ->
 terminate(_, State) ->
     case file:close(State#state.cur_fd) of
         ok -> State;
-        {error, R} -> ?WARN([cant_close_file,{reason, R}]), State
+        {error, R} ->
+            lager:warning("Can't close file: ~p", [R]),
+            State
     end.
 
 %% @private

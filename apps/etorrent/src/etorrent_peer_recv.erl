@@ -15,7 +15,6 @@
 -behaviour(gen_server).
 
 -include("etorrent_rate.hrl").
--include("log.hrl").
 
 %% exported functions
 -export([start_link/2]).

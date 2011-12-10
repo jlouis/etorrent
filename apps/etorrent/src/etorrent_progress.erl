@@ -48,8 +48,6 @@
 -module(etorrent_progress).
 -behaviour(gen_server).
 
--include("log.hrl").
-
 -include_lib("stdlib/include/ms_transform.hrl").
 
 -ifdef(TEST).
