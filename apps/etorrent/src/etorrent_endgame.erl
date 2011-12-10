@@ -20,10 +20,10 @@
         code_change/3]).
 
 -type torrent_id()  :: etorrent_types:torrent_id().
--type pieceindex()  :: etorrent_types:pieceindex().
--type chunkoffset() :: etorrent_types:chunkoffset().
--type chunklength() :: etorrent_types:chunklength().
--type chunkspec()   :: {pieceindex(), chunkoffset(), chunklength()}.
+-type pieceindex()  :: etorrent_types:piece_index().
+-type chunk_offset() :: etorrent_types:chunk_offset().
+-type chunk_length() :: etorrent_types:chunk_len().
+-type chunkspec()   :: {pieceindex(), chunk_offset(), chunk_length()}.
 
 -record(state, {
     torrent_id = exit(required) :: torrent_id(),

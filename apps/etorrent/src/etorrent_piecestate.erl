@@ -7,7 +7,7 @@
          stored/2,
          valid/2]).
 
--type pieceindex() :: etorrent_types:pieceindex().
+-type pieceindex() :: etorrent_types:piece_index().
 -type pieces() :: [pieceindex()] | pieceindex().
 -type pids() :: [pid()] | pid().
 
