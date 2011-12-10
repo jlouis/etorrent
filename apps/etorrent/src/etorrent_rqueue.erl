@@ -37,9 +37,8 @@
 
 
 -type pieceindex() :: etorrent_types:piece_index().
--type chunkoffset() :: non_neg_integer().
--type chunklength() :: pos_integer().
--type requestspec() :: {pieceindex(), chunkoffset(), chunklength()}.
+-type requestspec() :: {pieceindex(), etorrent_types:chunk_offset(),
+                                      etorrent_types:chunk_len()}.
 
 -record(requestqueue, {
     low_limit  :: non_neg_integer(),
@@ -99,8 +98,8 @@ pieces(Requestqueue) ->
 %% @doc Push a request onto the end of the request queue
 %% The queue returns a new queue including the new request.
 %% @end
--spec push(pieceindex(), chunkoffset(),
-           chunklength(), rqueue()) -> rqueue().
+-spec push(pieceindex(), etorrent_types:chunk_offset(),
+           etorrent_types:chunk_len(), rqueue()) -> rqueue().
 push(Pieceindex, Offset, Length, Requestqueue) ->
     #requestqueue{queue=Queue} = Requestqueue,
     NewQueue = queue:in({Pieceindex, Offset, Length}, Queue),
@@ -155,8 +154,8 @@ size(Requestqueue) ->
 
 %% @doc Check if a request is at the head of the request queue
 %% @end
--spec is_head(pieceindex(), chunkoffset(),
-              chunklength(), rqueue()) -> boolean().
+-spec is_head(pieceindex(), etorrent_types:chunk_offset(),
+              etorrent_types:chunk_len(), rqueue()) -> boolean().
 is_head(Pieceindex, Offset, Length, Requestqueue) ->
     I = Pieceindex,
     O = Offset,
@@ -170,7 +169,8 @@ is_head(Pieceindex, Offset, Length, Requestqueue) ->
 
 %% @doc Check if the offset of a request matches the head of the queue
 %% @end
--spec has_offset(pieceindex(), chunkoffset(), rqueue()) -> boolean().
+-spec has_offset(pieceindex(),
+                 etorrent_types:chunk_offset(), rqueue()) -> boolean().
 has_offset(Pieceindex, Offset, Requestqueue) ->
     I = Pieceindex,
     O = Offset,
@@ -244,8 +244,8 @@ view(#requestqueue { high_limit = Hi, low_limit = Lo, queue = Q }) ->
 
 %% @doc Check if a request queue contains a specific request
 %% @end
--spec member(pieceindex(), chunkoffset(),
-             chunklength(), rqueue()) -> boolean().
+-spec member(pieceindex(), etorrent_types:chunk_offset(),
+             etorrent_types:chunk_len(), rqueue()) -> boolean().
 member(Piece, Offset, Length, Requestqueue) ->
     %% The implementation of queue will not change in a 1000 years
     #requestqueue{queue=Queue} = Requestqueue,
@@ -255,8 +255,8 @@ member(Piece, Offset, Length, Requestqueue) ->
 
 %% @doc Delete a specific request from the request queue
 %% @end
--spec delete(pieceindex(), chunkoffset(),
-             chunklength(), rqueue()) -> rqueue().
+-spec delete(pieceindex(), etorrent_types:chunk_offset(),
+             etorrent_types:chunk_len(), rqueue()) -> rqueue().
 delete(Piece, Offset, Length, Requestqueue) ->
     %% The implementation of queue will not change in a 1000 years
     #requestqueue{queue=Queue} = Requestqueue,

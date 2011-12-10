@@ -98,7 +98,7 @@ all_torrents() ->
 
 %% @doc Return a status on all peers in the main table
 %% @end
--spec all_peers() -> [proplist:proplist()].
+-spec all_peers() -> [proplists:proplist()].
 all_peers() ->
     Objs = ets:match_object(peers, '_'),
     [proplistify_peers(O) || O <- Objs].

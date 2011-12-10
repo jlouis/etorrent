@@ -15,6 +15,7 @@
               from_tag/0,
               infohash/0,
               ipaddr/0,
+              nodeid/0,
               nodeinfo/0,
               peerinfo/0,
               piece_bin/0,

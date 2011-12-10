@@ -90,7 +90,6 @@
 -type pieceset()   :: etorrent_pieceset:pieceset().
 -type torrent_id() :: etorrent_types:torrent_id().
 -type chunk_len() :: etorrent_types:chunk_len().
--type chunk_offset() :: etorrent_types:chunk_offset().
 -type piece_index() :: etorrent_types:piece_index().
 -type piece_state() :: invalid | unassigned | begun | assigned | stored | valid.
 -type serverarg() ::

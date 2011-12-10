@@ -46,9 +46,6 @@
     table :: integer()}).
 
 -type torrent_id()  :: etorrent_types:torrent_id().
--type pieceindex()  :: etorrent_types:pieceindex().
--type chunkoffset() :: etorrent_types:chunkoffset().
--type chunklength() :: etorrent_types:chunklength().
 
 register_server(TorrentID) ->
     etorrent_utils:register(server_name(TorrentID)).

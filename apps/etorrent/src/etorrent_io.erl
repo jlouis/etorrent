@@ -502,11 +502,11 @@ handle_info({'DOWN', FileMon, _, _, _}, State) ->
 
 %% @private
 terminate(_, _) ->
-    not_implemented.
+    ok.
 
 %% @private
-code_change(_, _, _) ->
-    not_implemented.
+code_change(_OldVsn, State, _Extra) ->
+    {ok, State}.
 
 %% ----------------------------------------------------------------------
 

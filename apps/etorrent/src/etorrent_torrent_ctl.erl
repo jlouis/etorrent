@@ -33,7 +33,7 @@
 -type bcode() :: etorrent_types:bcode().
 -type torrentid() :: etorrent_types:torrent_id().
 -type pieceset() :: etorrent_pieceset:pieceset().
--type pieceindex() :: etorrent_types:pieceindex().
+-type pieceindex() :: etorrent_types:piece_index().
 -record(state, {
     id          :: integer(),    % Index of this torrent
     torrent     :: bcode(),      % Parsed torrent file

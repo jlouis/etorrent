@@ -143,12 +143,12 @@ handle_info(timeout, State) ->
     {noreply, State}.
 
 %% @private
-terminate(_, _) ->
-    not_implemented.
+terminate(_Reason, _State) ->
+    ok.
 
 %% @private
-code_change(_, _, _) ->
-    not_implemented.
+code_change(_OldVsn, State, _Extra) ->
+    {ok, State}.
 
 
 fill_file(FD, Missing) ->

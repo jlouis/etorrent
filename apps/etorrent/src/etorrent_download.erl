@@ -14,10 +14,10 @@
 
 -type torrent_id()  :: etorrent_types:torrent_id().
 -type pieceset()    :: etorrent_pieceset:pieceset().
--type pieceindex()  :: etorrent_types:pieceindex().
--type chunkoffset() :: etorrent_types:chunkoffset().
--type chunklength() :: etorrent_types:chunklength().
--type chunkspec()   :: {pieceindex(), chunkoffset(), chunklength()}.
+-type pieceindex()  :: etorrent_types:piece_index().
+-type chunk_offset() :: etorrent_types:chunk_offset().
+-type chunk_length() :: etorrent_types:chunk_len().
+-type chunkspec()   :: {pieceindex(), chunk_offset(), chunk_length()}.
 
 -type tupdate() :: {endgame, boolean()}.
 
@@ -83,7 +83,8 @@ request_chunks(Numchunks, Peerset, Handle) ->
 
 %% @doc
 %% @end
--spec chunk_dropped(pieceindex(), chunkoffset(), chunklength(), tservices()) -> ok.
+-spec chunk_dropped(pieceindex(),
+                    chunk_offset(), chunk_length(), tservices()) -> ok.
 chunk_dropped(Piece, Offset, Length, Handle) when ?endgame(Handle) ->
     #tservices{pending=Pending, endgame=Endgame} = Handle,
     ok = etorrent_chunkstate:dropped(Piece, Offset, Length, self(), Endgame),
@@ -111,7 +112,8 @@ chunks_dropped(Chunks, Handle) ->
 
 %% @doc
 %% @end
--spec chunk_fetched(pieceindex(), chunkoffset(), chunklength(), tservices()) -> ok.
+-spec chunk_fetched(pieceindex(),
+                    chunk_offset(), chunk_length(), tservices()) -> ok.
 chunk_fetched(Piece, Offset, Length, Handle) when ?endgame(Handle) ->
     #tservices{endgame=Endgame} = Handle,
     ok = etorrent_chunkstate:fetched(Piece, Offset, Length, self(), Endgame);
@@ -122,7 +124,9 @@ chunk_fetched(_, _, _, _) ->
 
 %% @doc
 %% @end
--spec chunk_stored(pieceindex(), chunkoffset(), chunklength(), tservices()) -> ok.
+-spec chunk_stored(pieceindex(),
+                   chunk_offset(), chunk_length(), tservices())
+                  -> ok.
 chunk_stored(Piece, Offset, Length, Handle) ->
     #tservices{pending=Pending, progress=Progress} = Handle,
     ok = etorrent_chunkstate:stored(Piece, Offset, Length, self(), Progress),
