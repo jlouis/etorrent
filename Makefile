@@ -32,6 +32,8 @@ build-plt:
 	-pa deps/gproc/ebin \
 	-pa deps/lhttpc/ebin \
 	-pa deps/lager/ebin \
+	-c deps/cowboy/ebin -c deps/gproc/ebin \
+	-c deps/lhttpc/ebin -c deps/lager/ebin \
 	--output_plt etorrent_dialyzer.plt \
 	--apps kernel crypto stdlib sasl inets tools xmerl erts
 
