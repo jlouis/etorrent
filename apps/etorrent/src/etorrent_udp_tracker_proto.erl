@@ -10,7 +10,6 @@
 %% @end
 -module(etorrent_udp_tracker_proto).
 
--include("log.hrl").
 
 -behaviour(gen_server).
 
@@ -137,31 +136,31 @@ decode(Packet) ->
     <<Ty:32/big, TID:4/binary, Rest/binary>> = Packet,
     Action = decode_action(Ty),
     case Action of
-	    connect ->
-		<<ConnectionID:64/big>> = Rest,
-		{TID, {conn_response, ConnectionID}};
-	    announce ->
-		<<Interval:32/big,
-		  Leechers:32/big,
-		  Seeders:32/big,
-		  IPs/binary>> = Rest,
-		{TID, {announce_response, etorrent_utils:decode_ips(IPs),
-		       [{interval, Interval},
-			{leechers, Leechers},
-			{seeders, Seeders}]}};
-	    scrape ->
-		{TID, {scrape_response, decode_scrape(Rest)}};
-	    error ->
-		{TID, {error_response, TID, binary_to_list(Rest)}}
-	end.
+        connect ->
+            <<ConnectionID:64/big>> = Rest,
+            {TID, {conn_response, ConnectionID}};
+        announce ->
+            <<Interval:32/big,
+              Leechers:32/big,
+              Seeders:32/big,
+              IPs/binary>> = Rest,
+            {TID, {announce_response, etorrent_utils:decode_ips(IPs),
+                   [{interval, Interval},
+                    {leechers, Leechers},
+                    {seeders, Seeders}]}};
+        scrape ->
+            {TID, {scrape_response, decode_scrape(Rest)}};
+        error ->
+            {TID, {error_response, TID, binary_to_list(Rest)}}
+    end.
 
 dispatch({Tid, Msg}) ->
     case etorrent_udp_tracker_mgr:lookup_transaction(Tid) of
-	{ok, Pid} ->
-	    etorrent_udp_tracker:msg(Pid, {Tid, Msg});
-	none ->
-	    ?INFO({ignoring_udp_message, Msg}),
-	    ignore %% Too old a message to care about it
+        {ok, Pid} ->
+            etorrent_udp_tracker:msg(Pid, {Tid, Msg});
+        none ->
+            lager:info("Ignoring UDP Message with no dispatcher: ~p", [Msg]),
+            ignore %% Too old a message to care about it
     end.
 
 encode_event(Event) ->

@@ -10,7 +10,6 @@
 -behaviour(supervisor).
 
 -include("supervisor.hrl").
--include("log.hrl").
 
 %% API
 -export([start_link/1]).
@@ -34,7 +33,7 @@ start_link(PeerId) ->
 
 %% @private
 init([PeerId]) ->
-    ?INFO([etorrent_supervisor_starting, PeerId]),
+    lager:info("Etorrent supervisor starting, PeerId: ~p", [PeerId]),
     Conf         = ?CHILD(etorrent_config),
     Tables       = ?CHILD(etorrent_table),
     Torrent      = ?CHILD(etorrent_torrent),
@@ -45,17 +44,17 @@ init([PeerId]) ->
     PeerStates   = ?CHILD(etorrent_peer_states),
     Choker       = ?CHILD(etorrent_choker),
     Listener     = {etorrent_listen_sup,
-		    {etorrent_listen_sup, start_link, [PeerId]},
-		    permanent, infinity, supervisor, [etorrent_listen_sup]},
+                    {etorrent_listen_sup, start_link, [PeerId]},
+                    permanent, infinity, supervisor, [etorrent_listen_sup]},
     UdpTracking = {udp_tracker_sup,
-		   {etorrent_udp_tracker_sup, start_link, []},
-		   transient, infinity, supervisor, [etorrent_udp_tracker_sup]},
+                   {etorrent_udp_tracker_sup, start_link, []},
+                   transient, infinity, supervisor, [etorrent_udp_tracker_sup]},
     TorrentPool = {torrent_pool_sup,
                    {etorrent_torrent_pool, start_link, []},
                    transient, infinity, supervisor, [etorrent_torrent_pool]},
     Ctl          = {etorrent_ctl,
-		    {etorrent_ctl, start_link, [PeerId]},
-		    permanent, 120*1000, worker, [etorrent_ctl]},
+                    {etorrent_ctl, start_link, [PeerId]},
+                    permanent, 120*1000, worker, [etorrent_ctl]},
     DirWatcherSup = {dirwatcher_sup,
                   {etorrent_dirwatcher_sup, start_link, []},
                   transient, infinity, supervisor, [etorrent_dirwatcher_sup]},
@@ -83,8 +82,8 @@ init([PeerId]) ->
            Counters, EventManager, PeerMgr,
            FastResume, PeerStates,
            Choker, Listener,
-	   UdpTracking, TorrentPool, Ctl,
-	   DirWatcherSup] ++ DHTSup ++ UPNPSup}}.
+           UdpTracking, TorrentPool, Ctl,
+           DirWatcherSup] ++ DHTSup ++ UPNPSup}}.
 
 
 

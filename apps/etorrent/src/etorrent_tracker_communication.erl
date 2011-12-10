@@ -10,7 +10,6 @@
 -module(etorrent_tracker_communication).
 
 -behaviour(gen_server).
--include("log.hrl").
 
 -ifdef(TEST).
 -include_lib("proper/include/proper.hrl").
@@ -121,7 +120,7 @@ handle_cast(Msg, #state { hard_timer = none } = S) ->
     NS = contact_tracker(Msg, S),
     {noreply, NS};
 handle_cast(Msg, S) ->
-    ?ERR([unknown_msg, Msg]),
+    lager:error("Unknown Msg: ~p", [Msg]),
     {noreply, S}.
 
 %% @private
@@ -147,7 +146,7 @@ terminate(Reason, S) when Reason =:= shutdown; Reason =:= normal ->
     _NS = contact_tracker(stopped, S),
     ok;
 terminate(Reason, _S) ->
-    ?WARN([terminating_due_to, Reason]),
+    lager:warning("Terminating due to ~p", [Reason]),
     ok.
 
 %% @private
@@ -213,7 +212,8 @@ identify_url_type(Url) ->
                     {udp, Host, Port}
             end;
         {error, Reason} ->
-            ?WARN([Reason, Url]),
+            lager:error("Unknown URL type for url ~s, error: ~p",
+                        [Url, Reason]),
             exit(identify_url_type)
 
     end.
@@ -249,11 +249,11 @@ contact_tracker_udp(Url, IP, Port, Event,
                 %% private tracking
                 {key, 0},
                 {event, Event}],
-    ?INFO([announcing_via_udp]),
+    lager:debug("Announcing via UDP"),
     case etorrent_udp_tracker_mgr:announce(
            {IP, Port}, PropList, timer:seconds(60)) of
         {ok, {announce, Peers, Status}} ->
-            ?INFO([udp_reply_handled]),
+            lager:debug("UDP reply handled"),
             {I, MI} = handle_udp_response(Url, Id, Peers, Status),
             {ok, handle_timeout(I, MI, S)};
         timeout ->
@@ -280,7 +280,7 @@ contact_tracker_http(Url, Event, S) ->
                     Msg = {error, [{contact_tracker, Err},
                                    {id, S#state.torrent_id}]},
                     etorrent_event:notify(Msg),
-                    ?INFO([Msg]),
+                    lager:info("Contact Tracker Error: ~p", [Msg]),
                     ignore
             end,
             error

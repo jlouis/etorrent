@@ -6,7 +6,6 @@
 -module(etorrent_counters).
 
 -behaviour(gen_server).
--include("log.hrl").
 
 %% API
 -export([start_link/0, next/1, obtain_peer_slot/0, slots_left/0]).
@@ -84,10 +83,7 @@ handle_cast(_Msg, State) ->
 %% @private
 handle_info({'DOWN', _Ref, process, _Pid, _Reason}, S) ->
     K = ets:update_counter(etorrent_counters, peer_slots, {2, -1, 0, 0}),
-    if
-        K >= 0 -> ok;
-        true -> ?ERR([counter_negative, K])
-    end,
+    true = K >= 0, % Assert the state of the counter
     {noreply, S};
 handle_info(_Info, State) ->
     {noreply, State}.

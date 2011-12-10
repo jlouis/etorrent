@@ -5,7 +5,6 @@
 -module(etorrent_upnp_sup).
 -behaviour(supervisor).
 
--include("log.hrl").
 
 -ifdef(TEST).
 -include_lib("proper/include/proper.hrl").

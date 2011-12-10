@@ -12,8 +12,6 @@
 -module(etorrent_upnp_net).
 -behaviour(gen_server).
 
--include("log.hrl").
-
 -ifdef(TEST).
 -include_lib("proper/include/proper.hrl").
 -include_lib("eunit/include/eunit.hrl").
@@ -109,7 +107,7 @@ subscribe(Service) ->
                                             {"NT", "upnp:event"},
                                             {"CALLBACK", PubUrl}], 30000) of
         {ok, {{_Status, _}, Headers, _Body}} ->
-            ?INFO({upnp_sub_done, SubUrl}),
+            lager:debug("uPnP subscription done: ~s", [SubUrl]),
             Sid = etorrent_upnp_proto:parse_sub_resp(Headers),
             {ok, Sid};
         {error, Reason} ->
@@ -119,16 +117,17 @@ subscribe(Service) ->
                     %% make best effort to guess whatever it returns.
                     case StatCode of
                         "200" ->
-                            ?INFO({upnp_sub_done, SubUrl}),
+                            lager:debug("uPnp subscription done: ~s", [SubUrl]),
                             Sid = etorrent_upnp_proto:guess_sub_resp(Headers),
                             {ok, Sid};
                         _ ->
-                            ?WARN([malformed_upnp_sub_resp, Headers]),
-                            ?NOTIFY({malformed_upnp_sub_resp, Headers}),
+                            lager:warning("Malformed uPnP subscription response ~p", [Headers]),
+                            etorrent_event:notify(
+                              {malformed_upnp_sub_resp, Headers}),
                             {error, Reason}
                     end;
                 _ ->
-                    ?NOTIFY({upnp_sub_error, Reason}),
+                    etorrent_event:notify({upnp_sub_error, Reason}),
                     {error, Reason}
             end
     end.
@@ -210,7 +209,7 @@ handle_call({invoke_action, Service, Action, Args}, _From, S) ->
             %% Unfortunately Erlang httpc module doesn't support HTTP
             %% extension method, yet; ignores it and doesn't retry.
             %% @todo: fix lhttpc? or the code here to do so
-            ?INFO({upnp_action_failed, 405, "M-POST not supported"}),
+            lager:warning("uPnP action failed, 405, M-POST not supported"),
             {reply, {failed, 405, "M-POST not supported"}, S};
         {error, Reason} ->
             {reply, {error, Reason}, S}
@@ -267,11 +266,11 @@ handle_info({udp, _Socket, _IP, _Port, Packet}, State) ->
         {ok, uuid} ->
             ok
         %% {error, _Reason} ->
-        %%     ?NOTIFY({malformed_upnp_msearch_resp, Packet})
+        %%     etorrent_event:notify({malformed_upnp_msearch_resp, Packet})
     end,
     {noreply, State};
 handle_info(Info, State) ->
-    ?WARN([unknown_info, Info]),
+    lager:warning("Unknown handle_info: ~p", [Info]),
     {noreply, State}.
 
 terminate(_Reason, _S) ->
@@ -327,11 +326,11 @@ recv_desc(D) ->
                 {ok, DS, SS} ->
                     {ok, DS, SS};
                 {error, Reason} ->
-                    ?NOTIFY({malformed_upnp_desc, Body}),
+                    etorrent_event:notify({malformed_upnp_desc, Body}),
                     {error, Reason}
             end
         %% {error, Reason} ->
-        %%     ?NOTIFY({upnp_desc_error, Reason}),
+        %%     etorrent_event:notify({upnp_desc_error, Reason}),
         %%     {error, Reason}
     end.
 

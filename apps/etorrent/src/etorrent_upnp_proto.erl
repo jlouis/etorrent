@@ -7,7 +7,6 @@
 
 -module(etorrent_upnp_proto).
 
--include("log.hrl").
 -include_lib("xmerl/include/xmerl.hrl").
 
 -ifdef(TEST).

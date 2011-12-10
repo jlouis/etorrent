@@ -3,7 +3,6 @@
 %% @end
 -module(etorrent_callback_handler).
 
--include("log.hrl").
 -behaviour(gen_event).
 %% API
 -export([add_handler/0, delete_handler/0]).
@@ -84,7 +83,7 @@ handle_call({install_callbacks, TorrentPid, IH, CBPropList},
     {ok, ok, S#state { table = NewT,
                        monitors = NewM }};
 handle_call(Request, State) ->
-    ?WARN([unknown_request, Request]),
+    lager:error("Unknown handle_call event: ~p", [Request]),
     Reply = ok,
     {ok, Reply, State}.
 
@@ -116,7 +115,8 @@ perform_callback({value, CBs}) ->
                   try CompFun ()
                   catch
                       ErrType:Error ->
-                          ?ERR([callback_error, ErrType, Error])
+                          lager:error("Callback error: ~p, ~p",
+                                      [ErrType, Error])
                   end
           end),
     ok.
