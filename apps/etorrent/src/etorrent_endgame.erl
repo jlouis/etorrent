@@ -99,7 +99,8 @@ handle_call(is_active, _, State) ->
 
 handle_call(activate, _, State) ->
     #state{active=false, torrent_id=TorrentID} = State,
-    etorrent_log:info(endgame, "Endgame active ~w", [TorrentID]),
+    lager:info([{endgame, TorrentID}],
+               "Endgame active ~w", [TorrentID]),
     NewState = State#state{active=true},
     Peers = etorrent_peer_control:lookup_peers(TorrentID),
     [etorrent_download:activate_endgame(Peer) || Peer <- Peers],
