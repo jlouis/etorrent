@@ -11,7 +11,6 @@
 %% @end
 -module(etorrent_torrent_ctl).
 -behaviour(gen_fsm).
--include("log.hrl").
 -define(CHECK_WAIT_TIME, 3000).
 
 
@@ -182,7 +181,8 @@ started(check_torrent, State) ->
     #state{id=TorrentID, valid=Pieces, hashes=Hashes} = State,
     Indexes =  etorrent_pieceset:to_list(Pieces),
     Invalid =  [I || I <- Indexes, is_valid_piece(TorrentID, I, Hashes)],
-    Invalid == [] orelse ?INFO([errornous_pieces, {Invalid}]),
+    Invalid == [] orelse
+        lager:info("Errornous piece: ~b", [Invalid]),
     {next_state, started, State};
 
 started(completed, #state{id=Id, tracker_pid=TrackerPid} = S) ->
@@ -220,7 +220,7 @@ handle_info({piece, {stored, Index}}, started, State) ->
             {next_state, started, State}
     end;
 handle_info(Info, StateName, State) ->
-    ?WARN([unknown_info, Info, StateName]),
+    lager:error("Unknown handle_info event: ~p", [Info]),
     {next_state, StateName, State}.
 
 

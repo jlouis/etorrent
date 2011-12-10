@@ -7,7 +7,6 @@
 %% @todo This module is missing some API-calls. They are in other modules.
 -module(etorrent_memory_logger).
 
--include("log.hrl").
 -include_lib("stdlib/include/ms_transform.hrl").
 
 -behaviour(gen_event).

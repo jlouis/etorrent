@@ -28,14 +28,25 @@ plt-clean:
 
 build-plt:
 	dialyzer --build_plt \
+	-pa deps/cowboy/ebin \
+	-pa deps/gproc/ebin \
+	-pa deps/lhttpc/ebin \
+	-pa deps/lager/ebin \
+	-c deps/cowboy/ebin -c deps/gproc/ebin \
+	-c deps/lhttpc/ebin -c deps/lager/ebin \
 	--output_plt etorrent_dialyzer.plt \
 	--apps kernel crypto stdlib sasl inets tools xmerl erts
 
 dialyze: dialyze-etorrent
 
-dialyze-etorrent:
+dialyze-etorrent: compile
 	dialyzer --plt etorrent_dialyzer.plt \
-	--src -r apps/etorrent/src -r deps/*/src
+	-c apps/etorrent/ebin
+	-c apps/rlimit/ebin
+	-pa deps/cowboy/ebin \
+	-pa deps/gproc/ebin \
+	-pa deps/lhttpc/ebin \
+	-pa deps/lager/ebin
 
 typer: typer-etorrent
 

@@ -18,7 +18,6 @@
 -module(etorrent_udp_tracker_mgr).
 
 -behaviour(gen_server).
--include("log.hrl").
 
 %% API
 -export([start_link/0, announce/2, announce/3]).
@@ -121,37 +120,37 @@ init([]) ->
 %% @private
 handle_call({announce, Tracker, PL}, From, S) ->
     case ets:lookup(?TAB, {conn_id, Tracker}) of
-	[] ->
-	    spawn_announce(From, Tracker, PL),
-	    spawn_requestor(Tracker),
-	    {noreply, S};
-	[{_Key, ConnId}] ->
-	    {ok, Pid} = spawn_announce(From, Tracker, PL),
-	    etorrent_udp_tracker:connid(Pid, ConnId),
-	    {noreply, S}
+        [] ->
+            spawn_announce(From, Tracker, PL),
+            spawn_requestor(Tracker),
+            {noreply, S};
+        [{_Key, ConnId}] ->
+            {ok, Pid} = spawn_announce(From, Tracker, PL),
+            etorrent_udp_tracker:connid(Pid, ConnId),
+            {noreply, S}
     end;
 handle_call(Request, _From, State) ->
-    ?WARN([unknown_call, Request]),
+    lager:error("Unknown handle_call ~p", [Request]),
     Reply = ok,
     {reply, Reply, State}.
 
 %% @private
 handle_cast({need_requestor, Tracker, N}, S) ->
     case ets:lookup(?TAB, {conn_id_req, Tracker}) of
-	[] ->
-	    spawn_requestor(Tracker, N);
-	[_|_] ->
-	    ignore
+        [] ->
+            spawn_requestor(Tracker, N);
+        [_|_] ->
+            ignore
     end,
     {noreply, S};
 handle_cast({announce_cancel, Tracker, PL}, S) ->
     case ets:lookup(?TAB, {Tracker, PL}) of
-	[] ->
-	    %% Already done
-	    {noreply, S};
-	[{_, Pid}] ->
-	    etorrent_udp_tracker:cancel(Pid),
-	    {noreply, S}
+        [] ->
+            %% Already done
+            {noreply, S};
+        [{_, Pid}] ->
+            etorrent_udp_tracker:cancel(Pid),
+            {noreply, S}
     end;
 handle_cast({distribute_connid, Tracker, ConnID}, S) ->
     Pids = ets:lookup(?TAB, {announce, Tracker}),
@@ -162,7 +161,7 @@ handle_cast({msg, {IP, Port}, M}, S) ->
     ok = gen_udp:send(S#state.socket, IP, Port, Encoded),
     {noreply, S};
 handle_cast(Msg, State) ->
-    ?WARN([unknown_msg, Msg]),
+    lager:error("Unknown handle_case ~p", [Msg]),
     {noreply, State}.
 
 %% @private
@@ -177,28 +176,28 @@ handle_info({remove_connid, Tracker, ConnID}, S) ->
 handle_info({'DOWN', _, _, Pid, _}, S) ->
     Objects = ets:lookup(?TAB, Pid),
     R = [case Obj of
-	     {Pid, Tid} when is_binary(Tid) ->
-		 [true] = delete_object(?TAB, [{Pid, Tid}, {Tid, Pid}]),
-		 none;
-	     {Pid, {conn_id_req, Tracker}} = Obj ->
-		 [true] = delete_object(?TAB, [Obj,
-					       {{conn_id_req, Tracker}, Pid}]),
-		 {announce, Tracker};
-	     {Pid, {Tracker, PL}} = Obj ->
-		 [true] = delete_object(?TAB, [Obj,
-					       {{Tracker, PL}, Pid},
-					       {{announce, Tracker}, Pid}]),
-		 {announce, Tracker}
-	 end || Obj <- Objects],
+             {Pid, Tid} when is_binary(Tid) ->
+                 [true] = delete_object(?TAB, [{Pid, Tid}, {Tid, Pid}]),
+                 none;
+             {Pid, {conn_id_req, Tracker}} = Obj ->
+                 [true] = delete_object(?TAB, [Obj,
+                                               {{conn_id_req, Tracker}, Pid}]),
+                 {announce, Tracker};
+             {Pid, {Tracker, PL}} = Obj ->
+                 [true] = delete_object(?TAB, [Obj,
+                                               {{Tracker, PL}, Pid},
+                                               {{announce, Tracker}, Pid}]),
+                 {announce, Tracker}
+         end || Obj <- Objects],
     [case ets:lookup(?TAB, {announce, Tr}) of
-	 [] ->
-	     cancel_conn_id_req(Tr);
-	 [_|_] ->
-	     ignore
+         [] ->
+             cancel_conn_id_req(Tr);
+         [_|_] ->
+             ignore
      end || {announce, Tr} <- lists:usort(R)],
     {noreply, S};
 handle_info(Info, State) ->
-    ?WARN([unknown_info, Info]),
+    lager:error("Unknown handle_info ~p", [Info]),
     {noreply, State}.
 
 %% @private

@@ -40,29 +40,28 @@ start(_Type, _Args) ->
     consider_profiling(),
     PeerId = generate_peer_id(),
     case etorrent_sup:start_link(PeerId) of
-	{ok, Pid} ->
-            etorrent_log:init_settings(),
-	    ok = etorrent_rlimit:init(),
-	    ok = etorrent_memory_logger:add_handler(),
-	    ok = etorrent_file_logger:add_handler(),
-	    ok = etorrent_callback_handler:add_handler(),
-	    case etorrent_config:webui() of
-		true -> start_webui();
-		false -> ignore
-	    end,
-	    {ok, Pid};
-	{error, Err} ->
-	    {error, Err}
+        {ok, Pid} ->
+            ok = etorrent_rlimit:init(),
+            ok = etorrent_memory_logger:add_handler(),
+            ok = etorrent_file_logger:add_handler(),
+            ok = etorrent_callback_handler:add_handler(),
+            case etorrent_config:webui() of
+                true -> start_webui();
+                false -> ignore
+            end,
+            {ok, Pid};
+        {error, Err} ->
+            {error, Err}
     end.
 
 %% Consider if the profiling should be enabled.
 consider_profiling() ->
     case etorrent_config:profiling() of
-	    true ->
+        true ->
             eprof:start(),
             eprof:start_profiling([self()]);
-	    false ->
-	        ignore
+            false ->
+                ignore
     end.
 
 %% @doc Output profile information

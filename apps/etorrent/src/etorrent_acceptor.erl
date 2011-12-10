@@ -9,7 +9,6 @@
 
 -behaviour(gen_server).
 
--include("log.hrl").
 
 %% API
 -export([start_link/2]).
@@ -53,7 +52,9 @@ handle_info(timeout, #state { our_peer_id = PeerId } = S) ->
         {error, closed}       -> ok;
         {error, econnaborted} -> ok;
         {error, enotconn}     -> ok;
-        {error, E}            -> ?WARN([{error, E}]), ok
+        {error, E}            ->
+            lager:info("TCP accept error: ~p", [E]),
+            ok
     end,
     {stop, normal, S}.
 
@@ -86,8 +87,8 @@ handshake(Socket, PeerId) ->
         throw:{error, _Reason} ->
             gen_tcp:close(Socket),
             ok;
-        throw:{bad_peer, HisPId} ->
-            ?INFO([peer_id_is_bad, HisPId]),
+        throw:{bad_peer, PeerPid} ->
+            lager:info("Bad Peer: ~p", [PeerPid]),
             gen_tcp:close(Socket),
             ok
     end.

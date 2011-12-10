@@ -8,7 +8,6 @@
 %% @end
 -module(etorrent).
 
--include("log.hrl").
 
 %% API
 %% Query
@@ -51,10 +50,11 @@ start(Filename) when is_list(Filename) ->
 %% @end
 start(Filename, {Ref, Pid})
   when is_list(Filename), is_reference(Ref), is_pid(Pid) ->
-    start(Filename, fun() ->
-                            ?INFO([completing_torrent_callback, Filename]),
-                            Pid ! {Ref, done}
-                    end);
+    start(Filename,
+          fun() ->
+                  lager:info("Completing torrent callback: ~s", [Filename]),
+                  Pid ! {Ref, done}
+          end);
 start(Filename, CallBack) when is_list(Filename), is_function(CallBack, 0) ->
     etorrent_ctl:start(Filename, CallBack).
 

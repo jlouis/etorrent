@@ -9,7 +9,6 @@
 -module(etorrent_ctl).
 -behaviour(gen_server).
 
--include("log.hrl").
 
 -export([start_link/1,
 
@@ -79,7 +78,7 @@ handle_cast({stop, F}, S) ->
 
 %% @private
 handle_call({start, F, CallBack}, _From, S) ->
-    ?INFO([starting, F]),
+    lager:info("Starting torrent in file ~s", [F]),
     case load_torrent(F) of
         duplicate -> {reply, duplicate, S};
         {ok, Torrent} ->
@@ -95,7 +94,7 @@ handle_call({start, F, CallBack}, _From, S) ->
                     {reply, Err, S}
             end;
         {error, Reason} ->
-            ?INFO([malformed_torrent_file, F]),
+            lager:info("Malformed torrent file ~s, error: ~p", [F, Reason]),
             etorrent_event:notify({malformed_torrent_file, F}),
             {reply, {error, Reason}, S}
     end;
@@ -107,7 +106,7 @@ handle_call(_A, _B, S) ->
 
 %% @private
 handle_info(Info, State) ->
-    ?WARN([unknown_info, Info]),
+    lager:error("Unknown handle_info event: ~p", [Info]),
     {noreply, State}.
 
 %% @private
@@ -121,20 +120,20 @@ code_change(_OldVsn, State, _Extra) ->
 
 %% =======================================================================
 stop_torrent(F) ->
-    ?INFO([stopping, F]),
+    lager:info("Stopping torrent in file ~s", [F]),
     case etorrent_table:get_torrent({filename, F}) of
-	not_found -> ok; % Was already removed, it is ok.
-	{value, PL} ->
-	    TorrentIH = proplists:get_value(info_hash, PL),
-	    etorrent_torrent_pool:terminate_child(TorrentIH),
-	    ok
+        not_found -> ok; % Was already removed, it is ok.
+        {value, PL} ->
+            TorrentIH = proplists:get_value(info_hash, PL),
+            etorrent_torrent_pool:terminate_child(TorrentIH),
+            ok
     end.
 
 stop_all() ->
     PLS = etorrent_table:all_torrents(),
     [begin
-	 F = proplists:get_value(filename, PL),
-	 stop_torrent(F)
+         F = proplists:get_value(filename, PL),
+         stop_torrent(F)
      end || PL <- PLS].
 
 -spec load_torrent(string()) -> duplicate

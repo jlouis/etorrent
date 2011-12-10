@@ -15,7 +15,6 @@
 %% udp_tracker processes.</p>
 %%@end
 -module(etorrent_udp_tracker).
--include("log.hrl").
 
 -behaviour(gen_server).
 
@@ -111,55 +110,56 @@ handle_call(_Request, _From, State) ->
 handle_cast(cancel, S) ->
     {stop, normal, S};
 handle_cast({connid, ConnID}, #state { ty = announce,
-				       properties = PL,
-				       tracker = Tracker } = S) ->
+                                       properties = PL,
+                                       tracker = Tracker } = S) ->
     Tid = announce_request(Tracker, ConnID, PL, 0),
     {noreply, S#state { connid = ConnID, try_count = 0, tid = Tid }};
 handle_cast({cancel_connid, ConnID}, #state { connid = ConnID} = S) ->
     {noreply, S#state { connid = none }};
 handle_cast({msg, {Tid, {announce_response, Peers, Status}}},
-	    #state { reply = R, ty = announce, tid = Tid } = S) ->
+            #state { reply = R, ty = announce, tid = Tid } = S) ->
     etorrent_udp_tracker_mgr:unreg_tr_id(Tid),
     announce_reply(R, Peers, Status),
     {stop, normal, S};
 handle_cast({msg, {Tid, {conn_response, ConnID}}},
-	    #state { tracker = Tracker, tid = Tid } = S) ->
+            #state { tracker = Tracker, tid = Tid } = S) ->
     etorrent_udp_tracker_mgr:unreg_tr_id(Tid),
     erlang:send_after(?CONNID_TIMEOUT, etorrent_udp_tracker_mgr, {remove_connid, Tracker, ConnID}),
     etorrent_udp_tracker_mgr:reg_connid(Tracker, ConnID),
     etorrent_udp_tracker_mgr:distribute_connid(Tracker, ConnID),
     {stop, normal, S};
 handle_cast(Msg, State) ->
-    ?WARN([unknown_msg, Msg]),
+    lager:error("Unknown handle_cast event ~p", [Msg]),
     {noreply, State}.
 
 %% @private
 handle_info(timeout, #state { tracker=Tracker,
-			      try_count=N,
-			      ty = announce,
-			      tid = OldTid,
-			      connid = ConnID } = S) ->
+                              try_count=N,
+                              ty = announce,
+                              tid = OldTid,
+                              connid = ConnID } = S) ->
     case OldTid of
-	none -> ignore;
-	T when is_binary(T) -> etorrent_udp_tracker_mgr:unreg_tr_id(OldTid)
+        none -> ignore;
+        T when is_binary(T) -> etorrent_udp_tracker_mgr:unreg_tr_id(OldTid)
     end,
     case ConnID of
-	none ->
-	    etorrent_udp_tracker_mgr:need_requestor(Tracker, N),
-	    {noreply, S#state { tid = none, try_count = 0 }};
-	K when is_integer(K) ->
-	    Tid = announce_request(Tracker, ConnID, S#state.properties, inc(N)),
-	    {noreply, S#state { tid = Tid, try_count = inc(N)}}
+        none ->
+            etorrent_udp_tracker_mgr:need_requestor(Tracker, N),
+            {noreply, S#state { tid = none, try_count = 0 }};
+        K when is_integer(K) ->
+            Tid = announce_request(Tracker, ConnID, S#state.properties, inc(N)),
+            {noreply, S#state { tid = Tid, try_count = inc(N)}}
     end;
-handle_info(timeout, #state { tracker=Tracker, try_count=N, ty = connid_gather, tid = OldTid } = S) ->
+handle_info(timeout, #state { tracker=Tracker, try_count=N,
+                              ty = connid_gather, tid = OldTid } = S) ->
     case OldTid of
-	none -> ignore;
-	T when is_binary(T) -> etorrent_udp_tracker_mgr:unreg_tr_id(OldTid)
+        none -> ignore;
+        T when is_binary(T) -> etorrent_udp_tracker_mgr:unreg_tr_id(OldTid)
     end,
     Tid = request_connid(Tracker, inc(N)),
     {noreply, S#state { tid = Tid, try_count = inc(N) }};
 handle_info(Info, State) ->
-    ?WARN([unknown, Info]),
+    lager:error("Unknown handle_info ~p", [Info]),
     {noreply, State}.
 
 %% @private

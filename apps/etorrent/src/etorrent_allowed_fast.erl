@@ -9,7 +9,6 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
--include("log.hrl").
 
 %% API
 -export([allowed_fast/4]).
