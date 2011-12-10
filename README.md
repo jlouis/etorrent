@@ -194,6 +194,17 @@ And then I enable it in stow:
     
 You may have to use `stow -D` on an old 
 
+Another way is to use [Basho kerl](https://github.com/dreverri/kerl), a simple shell script:
+
+``` bash
+$ curl -O https://raw.github.com/spawngrid/kerl/master/kerl; chmod a+x kerl
+$ ./kerl build R14B04 r14b04
+$ ./kerl install r14b04 /opt/erlang/r14b04
+$ . /opt/erlang/r14b04/activate
+```
+
+In the above example, kerl installs Erlang R14B04 to directory /opt/erlang/r14b04 and makes it default. For more information, please check [kerl readme](https://github.com/dreverri/kerl/blob/master/README.md).
+
 ## QUESTIONS??
 
 You can either mail them to `jesper.louis.andersen@gmail.com` or you
