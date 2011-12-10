@@ -1,5 +1,6 @@
 -module(etorrent_peerstate).
 -export([new/1,
+         new/3,
          choked/1,
          choked/2,
          interested/1,
@@ -36,11 +37,13 @@
 -opaque peerstate() :: #peerstate{}.
 -export_type([peerstate/0]).
 
-
-
 -spec new(integer()) -> peerstate().
-new(Numpieces) ->
-    Requests = etorrent_rqueue:new(),
+new(NumPieces) ->
+    new(NumPieces, 2, 250).
+
+-spec new(integer(), integer(), integer()) -> peerstate().
+new(Numpieces, QLow, QHigh) ->
+    Requests = etorrent_rqueue:new(QLow, QHigh),
     State = #peerstate{
         pieces=Numpieces,
         choked=true,

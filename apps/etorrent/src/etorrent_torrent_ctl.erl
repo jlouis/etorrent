@@ -15,8 +15,6 @@
 -define(CHECK_WAIT_TIME, 3000).
 
 
--ignore_xref([{'start_link', 3}, {start, 1}, {initializing, 2},
-              {started, 2}]).
 %% API
 -export([start_link/3,
          completed/1,

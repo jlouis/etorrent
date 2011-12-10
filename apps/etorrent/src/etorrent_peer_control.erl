@@ -48,7 +48,7 @@
 -record(state, {
     torrent_id = exit(required) :: integer(),
     info_hash = exit(required) ::  binary(),
-    socket = none  :: none | gen_tcp:socket(),
+    socket = none  :: none | inet:socket(),
     send_pid :: pid(),
 
     download = exit(required) :: tservices(),
@@ -58,12 +58,12 @@
     local  = exit(required) :: peerstate(),
     config = exit(required) :: peerconf()}).
 
-
--define(DEFAULT_CHUNK_SIZE, 16384). % Default size for a chunk. All clients use this.
--define(HIGH_WATERMARK, 30). % How many chunks to queue up to
--define(LOW_WATERMARK, 5).  % Requeue when there are less than this number of pieces in queue
-
--ignore_xref([{start_link, 6}]).
+%% Default size for a chunk. All clients use this.
+-define(DEFAULT_CHUNK_SIZE, 16384).
+%% How many chunks to queue up to
+-define(HIGH_WATERMARK, 30).
+%% Requeue when there are less than this number of pieces in queue
+-define(LOW_WATERMARK, 5).
 
 %%====================================================================
 
@@ -274,9 +274,9 @@ init([TrackerUrl, LocalPeerID, InfoHash, TorrentID, {IP, Port}, Caps, Socket]) -
     TorrentPid  = etorrent_torrent_ctl:await_server(TorrentID),
     {ok, Valid} = etorrent_torrent_ctl:valid_pieces(TorrentPid),
     Numpieces   = etorrent_pieceset:capacity(Valid),
-    Local0 = etorrent_peerstate:new(Numpieces),
+    Local0 = etorrent_peerstate:new(Numpieces, 3, 16),
     Local  = etorrent_peerstate:pieces(Valid, Local0),
-    Remote = etorrent_peerstate:new(Numpieces),
+    Remote = etorrent_peerstate:new(Numpieces, 2, 250),
 
     Extended = proplists:get_bool(extended_messaging, Caps),
     Config0  = etorrent_peerconf:new(),

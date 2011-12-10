@@ -21,7 +21,6 @@
          seeding_torrent/1]).
 
 -define(SERVER, ?MODULE).
--ignore_xref([{start_link, 0}, {event, 1}]).
 %% =======================================================================
 
 %% @doc Notify the event system of an event

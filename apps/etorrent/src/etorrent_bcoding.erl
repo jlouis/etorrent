@@ -28,8 +28,8 @@
 
 % Retrieval
 -export([get_value/2, get_value/3, get_info_value/2, get_info_value/3,
-	 get_binary_value/2, get_binary_value/3,
-	 get_string_value/2, get_string_value/3]).
+         get_binary_value/2, get_binary_value/3,
+         get_string_value/2, get_string_value/3]).
 
 -type bcode() :: etorrent_types:bcode().
 
@@ -89,7 +89,7 @@ get_info_value(Key, PL) when is_binary(Key) ->
     PL2 = proplists:get_value(<<"info">>, PL),
     proplists:get_value(Key, PL2).
 
-%% @doc Get a value from the "info" part of the dictionary, returning Default on err.
+%% @doc Get a value from the "info" part, with a Default
 %%   the 'info' dictionary is expected to be present.
 %% @end
 get_info_value(Key, PL, Def) when is_list(Key) ->
@@ -110,8 +110,8 @@ get_binary_value(Key, PL) ->
 %% @end
 get_binary_value(Key, PL, Default) ->
     case get_value(Key, PL) of
-	undefined -> Default;
-	B when is_binary(B) -> B
+        undefined -> Default;
+        B when is_binary(B) -> B
     end.
 
 %% @doc Read a string Value indexed by Key from the PL dict
@@ -123,8 +123,8 @@ get_string_value(Key, PL) -> binary_to_list(get_binary_value(Key, PL)).
 %% @end
 get_string_value(Key, PL, Default) ->
     case get_value(Key, PL) of
-	undefined -> Default;
-	V when is_binary(V) -> binary_to_list(V)
+        undefined -> Default;
+        V when is_binary(V) -> binary_to_list(V)
     end.
 
 %% @doc Parse a file into a Torrent structure.
@@ -197,15 +197,14 @@ decode_dict_items(String, Accum) ->
 
 prop_inv() ->
     ?FORALL(BC, bcode(),
-	    begin
-		Enc = iolist_to_binary(encode(BC)),
-		{ok, Dec} = decode(Enc),
-		encode(BC) =:= encode(Dec)
-	    end).
+            begin
+                Enc = iolist_to_binary(encode(BC)),
+                {ok, Dec} = decode(Enc),
+                encode(BC) =:= encode(Dec)
+            end).
 
 eqc_test() ->
     ?assert(proper:quickcheck(prop_inv())).
-
 
 -endif.
 -endif.

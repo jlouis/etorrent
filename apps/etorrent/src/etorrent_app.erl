@@ -15,8 +15,6 @@
 %% Callbacks
 -export([start/2, stop/1, prep_stop/1, profile_output/0]).
 
--ignore_xref([{'prep_stop', 1}, {stop, 0}, {check, 1}]).
-
 -define(RANDOM_MAX_SIZE, 999999999999).
 
 start() ->
@@ -89,11 +87,12 @@ stop(_State) ->
 
 start_webui() ->
     Dispatch = [ {'_', [{'_', etorrent_cowboy_handler, []}]} ],
-    {ok, _Pid} = cowboy:start_listener(http, 10,
-                                       cowboy_tcp_transport, [{port, 8080}],
-                                       cowboy_http_protocol, [{dispatch, Dispatch}]
-                                      ).
-    
+    {ok, _Pid} =
+        cowboy:start_listener(http, 10,
+                              cowboy_tcp_transport, [{port, 8080}],
+                              cowboy_http_protocol, [{dispatch, Dispatch}]
+                             ).
+
 %% @doc Generate a random peer id for use
 %% @end
 generate_peer_id() ->

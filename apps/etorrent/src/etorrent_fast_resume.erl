@@ -37,8 +37,6 @@
           table    = none :: atom()
 }).
 
--ignore_xref([{start_link, 0}]).
-
 %%====================================================================
 
 %% @doc Start up the server

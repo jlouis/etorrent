@@ -14,7 +14,6 @@
 
 %% Supervisor callbacks
 -export([init/1]).
--ignore_xref([{'start_link', 3}]).
 
 -type bcode() :: etorrent_types:bcode().
 -type tier() :: etorrent_types:tier().

@@ -25,14 +25,14 @@
 
 %% Internal API
 -export([msg/2, reg_connid_gather/1, reg_tr_id/1, unreg_tr_id/1,
-	 lookup_transaction/1, distribute_connid/2, reg_announce/2,
-	 need_requestor/2, reg_connid/2]).
+         lookup_transaction/1, distribute_connid/2, reg_announce/2,
+         need_requestor/2, reg_connid/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
-	 terminate/2, code_change/3]).
+         terminate/2, code_change/3]).
 
--record(state, { socket :: gen_udp:socket() }). % Might not be needed at all
+-record(state, { socket :: inet:socket() }). % Might not be needed at all
 
 -define(SERVER, ?MODULE).
 -define(TAB, etorrent_udp_transact).

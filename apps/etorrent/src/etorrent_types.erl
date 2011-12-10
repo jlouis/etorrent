@@ -1,33 +1,35 @@
 -module(etorrent_types).
 
 -export_type([
-    bcode/0,
-    tier/0,
-    bitfield/0,
-    capabilities/0,
-    torrent_id/0,
-    file_path/0,
-    from_tag/0,
-    piece_index/0,
-    piece_bin/0,
-    chunk_offset/0,
-    chunk_len/0,
-    chunk_bin/0,
-    block_len/0,
-    block_offset/0,
-    block_bin/0,
-    tracker_event/0,
-    infohash/0,
-    nodeinfo/0,
-    peerinfo/0,
-    transaction/0,
-    trackerinfo/0,
-    dht_qtype/0,
-    token/0,
-    portnum/0,
-    upnp_device/0,
-    upnp_service/0,
-    upnp_notify/0]).
+              bcode/0,
+              bitfield/0,
+              block_bin/0,
+              block_len/0,
+              block_offset/0,
+              capabilities/0,
+              chunk_bin/0,
+              chunk_len/0,
+              chunk_offset/0,
+              dht_qtype/0,
+              file_path/0,
+              from_tag/0,
+              infohash/0,
+              ipaddr/0,
+              nodeinfo/0,
+              peerinfo/0,
+              piece_bin/0,
+              piece_index/0,
+              portnum/0,
+              tier/0,
+              token/0,
+              torrent_id/0,
+              tracker_event/0,
+              trackerinfo/0,
+              transaction/0,
+              upnp_device/0,
+              upnp_notify/0,
+              upnp_service/0
+             ]).
 
 -type tier() :: [string()].
 -type bitfield() :: binary().
@@ -35,12 +37,7 @@
 
 % The bcode() type:
 -type bcode() ::
-    integer()
-	| binary()
-	| [bcode(),...]
-	| [{binary(), bcode()},...]
-        | {}.
-
+    integer() | binary() | [bcode(),...] | [{binary(), bcode()},...] | {}.
 -type torrent_id() :: integer().
 -type file_path() :: string().
 

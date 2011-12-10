@@ -18,9 +18,6 @@
 -export([start_app/0, start_app/1, stop_app/0]).
 -export([start/1, start/2]).
 
--ignore_xref([{h, 0}, {l, 0}, {s, 0}, {s, 1}, {check, 1},
-              {help, 0}, {list, 0}, {show, 0}, {show, 1}]).
-
 %%====================================================================
 
 %% @doc Start the etorrent application outside of the normal app framework

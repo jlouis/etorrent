@@ -21,7 +21,6 @@
 
 -define(SERVER, ?MODULE).
 
--ignore_xref([{start_link, 0}]).
 %%====================================================================
 
 %% @doc Starts the dirwatcher process.

@@ -34,7 +34,7 @@
          terminate/2,
          code_change/3]).
 
--record(state, {ssdp_sock :: gen_udp:socket()}).
+-record(state, {ssdp_sock :: inet:socket()}).
 
 -define(SERVER, ?MODULE).
 -define(HTTP_SCHEME, "http://").
