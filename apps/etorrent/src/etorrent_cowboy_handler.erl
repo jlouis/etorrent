@@ -181,10 +181,27 @@ conv_number(F) when is_float(F)   -> float_to_list(F).
 sanitize(Path) ->
     case lists:all(fun allowed/1, Path) of
         true ->
-            Path;
+            dot_check(Path);
         false ->
             "index.html"
     end.
+
+dot_check(Path) ->
+    case dot_check1(Path) of
+        ok ->
+            Path;
+        fail ->
+            "index.html"
+    end.
+
+dot_check1([$., $/ | _]) -> fail;
+dot_check1([$/, $/ | _]) -> fail;
+dot_check1([$/, $. | _]) -> fail;
+dot_check1([$., $. | _]) -> fail;
+dot_check1([_A, B | Next]) -> dot_check1([B | Next]);
+dot_check1(".") -> fail;
+dot_check1("/") -> fail;
+dot_check1(L) when is_list(L) -> ok.
 
 allowed(C) when C >= $a, C =< $z -> true;
 allowed(C) when C >= $A, C =< $Z -> true;
