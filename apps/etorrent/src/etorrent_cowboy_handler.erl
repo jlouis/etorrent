@@ -18,19 +18,22 @@ handle(Req, State) ->
         [<<"ajax">>, <<"etorrent_webui">>, <<"log">>] ->
             Entries = etorrent_query:log_list(),
             Rep = [format_log_entry(E) ||
-                      E <- lists:sort(fun(X, Y) ->
-                                              proplists:get_value(time, X)
-                                                  >= proplists:get_value(time, Y)
-                                      end,
-                                      Entries)],
-            {ok, RepReq} = cowboy_http_req:reply(200, [{'Content-Type', html_type()}],
-                                                 Rep, PathReq),
+                      E <- lists:sort(
+                             fun(X, Y) ->
+                                     proplists:get_value(time, X)
+                                         >= proplists:get_value(time, Y)
+                             end,
+                             Entries)],
+            {ok, RepReq} =
+                cowboy_http_req:reply(200, [{'Content-Type', html_type()}],
+                                      Rep, PathReq),
             {ok, RepReq, State};
         [<<"ajax">>, <<"etorrent_webui">>, <<"log_json">>] ->
             Entries = etorrent_query:log_list(),
             Rep = dwrap(Entries),
-            {ok, RepReq} = cowboy_http_req:reply(200, [{'Content-Type', html_type()}],
-                                                 Rep, PathReq),
+            {ok, RepReq} =
+                cowboy_http_req:reply(200, [{'Content-Type', html_type()}],
+                                      Rep, PathReq),
             {ok, RepReq, State};
         [<<"ajax">>, <<"etorrent_webui">>, <<"list">>] ->
             {ok, Rates} = list_rates(),
@@ -39,28 +42,36 @@ handle(Req, State) ->
                      Table,
                      table_footer(),
                      Rates],
-            {ok, RepReq} = cowboy_http_req:reply(200, [{'Content-Type', html_type()}],
-                                                 Reply, PathReq),
+            {ok, RepReq} = cowboy_http_req:reply(
+                             200, [{'Content-Type', html_type()}],
+                             Reply, PathReq),
             {ok, RepReq, State};
         [] ->
             handle_static_file(PathReq, State, ["index.html"]);
         OtherPath ->
-            handle_static_file(PathReq, State, [binary_to_list(X) || X <- OtherPath])
+            handle_static_file(PathReq,
+                               State,
+                               [binary_to_list(X) || X <- OtherPath])
     end.
 
 handle_static_file(Req, State, Path) ->
     Priv = code:priv_dir(etorrent),
-    F = filename:join([Priv, "webui", "htdocs" | Path]),
+    F = filename:join([Priv, "webui", "htdocs" | sanitize(Path)]),
     case file:read_file(F) of
         {ok, B} ->
             MimeType = case mimetypes:filename(F) of
                            unknown -> <<"text/plain">>;
                            [Otherwise]  -> Otherwise
                        end,
-            {ok, RepReq} = cowboy_http_req:reply(200, [{'Content-Type', MimeType }], B, Req),
+            {ok, RepReq} = cowboy_http_req:reply(
+                             200,
+                             [{'Content-Type', MimeType }], B, Req),
             {ok, RepReq, State};
         {error, enoent} ->
-            {ok, RepReq} = cowboy_http_req:reply(404, [{'Content-Type', <<"text/plain">>}], <<"Not found">>, Req),
+            {ok, RepReq} = cowboy_http_req:reply(
+                             404,
+                             [{'Content-Type', <<"text/plain">>}],
+                             <<"Not found">>, Req),
             {ok, RepReq, State}
     end.
 
@@ -108,41 +119,41 @@ list_torrents() ->
 		SL = proplists:get_value(rate_sparkline, R),
                 {value, PL} = etorrent_table:get_torrent(Id),
 		Uploaded = proplists:get_value(uploaded, R) +
-		           proplists:get_value(all_time_uploaded, R),
+                           proplists:get_value(all_time_uploaded, R),
 		Downloaded = proplists:get_value(downloaded, R) +
-		             proplists:get_value(all_time_downloaded, R),
+                             proplists:get_value(all_time_downloaded, R),
 		io_lib:format(
-		  "<tr><td>~3.B</td><td>~s</td><td>~11.1f</td>" ++
-		  "<td>~11.1f</td><td>~11.1f / ~11.1f</td>"++
-		  "<td>~.3f</td>"++
-		  "<td>~3.B / ~3.B</td><td>~7.1f%</td>" ++
-		  "<td><span id=\"~s\">~s</span>~9.B / ~9.B / ~9.B</td>" ++
-		  "<td><span id=\"boxplot\">~s</td></tr>~n",
-		  [Id,
-		   strip_torrent(proplists:get_value(filename, PL)),
-		   proplists:get_value(total, R) / (1024 * 1024),
-		   proplists:get_value(left, R) / (1024 * 1024),
-		   Uploaded / (1024 * 1024),
-		   Downloaded / (1024 * 1024),
-		   ratio(Uploaded, Downloaded),
-		   proplists:get_value(leechers, R),
-		   proplists:get_value(seeders, R),
-		   percent_complete(R),
-		   case proplists:get_value(state, R) of
-		       seeding  -> "sparkline-seed";
-		       leeching -> "sparkline-leech";
-		       endgame  -> "sparkline-leech";
-		       unknown ->  "sparkline-leech"
-		   end,
-		   show_sparkline(lists:reverse(SL)),
-		   round(lists:max(SL) / 1024),
-		   case SL of
-		       %% []      -> 0;
-		       [F | _] -> round(F / 1024)
-		   end,
-		   round(lists:min(SL) / 1024),
-		   show_sparkline(lists:reverse(SL))])
-	    end || R <- A],
+                  "<tr><td>~3.B</td><td>~s</td><td>~11.1f</td>" ++
+                  "<td>~11.1f</td><td>~11.1f / ~11.1f</td>"++
+                  "<td>~.3f</td>"++
+                  "<td>~3.B / ~3.B</td><td>~7.1f%</td>" ++
+                  "<td><span id=\"~s\">~s</span>~9.B / ~9.B / ~9.B</td>" ++
+                  "<td><span id=\"boxplot\">~s</td></tr>~n",
+                  [Id,
+                   strip_torrent(proplists:get_value(filename, PL)),
+                   proplists:get_value(total, R) / (1024 * 1024),
+                   proplists:get_value(left, R) / (1024 * 1024),
+                   Uploaded / (1024 * 1024),
+                   Downloaded / (1024 * 1024),
+                   ratio(Uploaded, Downloaded),
+                   proplists:get_value(leechers, R),
+                   proplists:get_value(seeders, R),
+                   percent_complete(R),
+                   case proplists:get_value(state, R) of
+                       seeding  -> "sparkline-seed";
+                       leeching -> "sparkline-leech";
+                       endgame  -> "sparkline-leech";
+                       unknown ->  "sparkline-leech"
+                   end,
+                   show_sparkline(lists:reverse(SL)),
+                   round(lists:max(SL) / 1024),
+                   case SL of
+                       %% []      -> 0;
+                       [F | _] -> round(F / 1024)
+                   end,
+                   round(lists:min(SL) / 1024),
+                   show_sparkline(lists:reverse(SL))])
+            end || R <- A],
     {ok, Rows}.
 
 percent_complete(R) ->
@@ -166,4 +177,21 @@ show_sparkline([I | R]) ->
 
 conv_number(I) when is_integer(I) -> integer_to_list(I);
 conv_number(F) when is_float(F)   -> float_to_list(F).
+
+sanitize(Path) ->
+    case lists:all(fun allowed/1, Path) of
+        true ->
+            Path;
+        false ->
+            "index.html"
+    end.
+
+allowed(C) when C >= $a, C =< $z -> true;
+allowed(C) when C >= $A, C =< $Z -> true;
+allowed(C) when C >= $0, C =< $9 -> true;
+allowed(C) when C == $/;
+                C == $.          -> true;
+allowed(_C)                      -> false.
+
+
 
