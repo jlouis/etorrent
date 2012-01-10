@@ -9,39 +9,43 @@
 # CONFIGFILE="rel/etorrent/etc/app.config"
 # ERL_FLAGS=""
 
-NODE=etorrent
-HOST=localhost
+NODE=etorrent@127.0.0.1
 
 BEAMDIR=%%%BEAMDIR%%%
 CONFIGFILE=%%%CONFIGFILE%%%
 ERL_FLAGS=%%%ERL_FLAGS%%%
 
+
+BEAMDIR="apps/*/ebin deps/*/ebin"
+CONFIGFILE="rel/etorrent/etc/app.config"
+ERL_FLAGS=""
+
 start () {
-    erl ${ERL_FLAGS} -sname ${NODE}@${HOST} -pa ${BEAMDIR} \
+    erl ${ERL_FLAGS} -name ${NODE} -pa ${BEAMDIR} \
 	-config ${CONFIGFILE} -noshell -noinput -detached \
 	-s etorrent_app
 }
 
 console () {
-    erl ${ERL_FLAGS} -sname ${NODE}@${HOST} -pa ${BEAMDIR} \
+    erl ${ERL_FLAGS} -name ${NODE} -pa ${BEAMDIR} \
 	-config ${CONFIGFILE}  \
  	-s etorrent_app
 }
 
 debug () {
-    erl -sname debug${NODE}@${HOST} \
+    erl -name debug${NODE} \
 	-pa ${BEAMDIR} \
-	-remsh ${NODE}@${HOST}
+	-remsh ${NODE}
 }
 
 ctl () {
-    erl -noinput -sname etorrentctl@${HOST} \
+    erl -noinput -name etorrentctl \
 	-pa ${BEAMDIR} \
-	-s etorrent_ctl start ${NODE}@${HOST} $@
+	-s etorrent_ctl start ${NODE} $@
 }
 
 usage () {
-    echo "Usage: $0 {start|stop|debug}"
+    echo "Usage: $0 {start|stop|debug|console}"
 }
 
 [ $# -lt 1 ] && usage
