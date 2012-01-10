@@ -355,16 +355,18 @@ build_tracker_url(Url, Event,
                completed -> [{"event", "completed"} | Request]
            end,
 
-    %% Url can already has `?'.
-    %% For example,
-    %% /announce.php?passkey=43c08a5dd9e70a19f62adfd0ad76dw04
-    FlatUrl = lists:flatten(Url),
-    Delim = case lists:member($?, FlatUrl) of
-                true -> "&";
-                false -> "?"
-            end,
-
+	% Url can already has `?'.
+	% For example, 
+	% /announce.php?passkey=43c08a5dd9e70a19f62adfd0ad76dw04
+	FlatUrl = lists:flatten(Url),
+	Delim = case lists:member($?, FlatUrl) of
+		true -> "&";
+		false -> "?"
+		end,
+	
     lists:concat([Url, Delim, etorrent_http:mk_header(EReq)]).
+
+
 
 %%% Tracker response lookup functions
 response_ips(BC) ->
