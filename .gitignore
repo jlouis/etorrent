@@ -8,7 +8,7 @@
 *.beam
 deps/*
 /dev
-/erl_crash.dump
+*.dump
 err.*log
 /priv/webui/*.log
 /rel/etorrent

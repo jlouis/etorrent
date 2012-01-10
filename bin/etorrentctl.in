@@ -3,6 +3,12 @@
 # Most of this file was taken from the ejabberd project and then changed
 #  until it matched what we had as a goal
 
+# Example:
+#
+# BEAMDIR="apps/*/ebin deps/*/ebin"
+# CONFIGFILE="rel/etorrent/etc/app.config"
+# ERL_FLAGS=""
+
 NODE=etorrent
 HOST=localhost
 
@@ -13,7 +19,13 @@ ERL_FLAGS=%%%ERL_FLAGS%%%
 start () {
     erl ${ERL_FLAGS} -sname ${NODE}@${HOST} -pa ${BEAMDIR} \
 	-config ${CONFIGFILE} -noshell -noinput -detached \
-	-s etorrent
+	-s etorrent_app
+}
+
+console () {
+    erl ${ERL_FLAGS} -sname ${NODE}@${HOST} -pa ${BEAMDIR} \
+	-config ${CONFIGFILE}  \
+ 	-s etorrent_app
 }
 
 debug () {
@@ -36,6 +48,7 @@ usage () {
 
 case $1 in
     start) start;;
+    console) console;;
     debug) debug;;
     *) ctl $@;;
 esac
