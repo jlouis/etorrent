@@ -22,6 +22,8 @@ start() ->
 
 start(Config) ->
     load_config(Config),
+    % Load app file.
+    application:load(etorrent),
     {ok, Deps} = application:get_key(etorrent, applications),
     true = lists:all(fun ensure_started/1, Deps),
     application:start(etorrent).
