@@ -10,7 +10,8 @@
 -export([start_link/3,
 
          start_child_tracker/5,
-         start_progress/4]).
+         start_progress/4,
+         pause/1]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -48,7 +49,7 @@ start_child_tracker(Pid, UrlTiers, InfoHash, Local_Peer_Id, TorrentId) ->
     Tracker = {tracker_communication,
                {etorrent_tracker_communication, start_link,
                 [self(), UrlTiers, InfoHash, Local_Peer_Id, TorrentId]},
-               permanent, 15000, worker, [etorrent_tracker_communication]},
+               transient, 15000, worker, [etorrent_tracker_communication]},
     supervisor:start_child(Pid, Tracker).
 
 -spec start_progress(pid(), etorrent_types:torrent_id(),
@@ -58,6 +59,15 @@ start_child_tracker(Pid, UrlTiers, InfoHash, Local_Peer_Id, TorrentId) ->
 start_progress(Pid, TorrentID, Torrent, ValidPieces) ->
     Spec = progress_spec(TorrentID, Torrent, ValidPieces),
     supervisor:start_child(Pid, Spec).
+
+
+pause(Pid) ->
+    ok = supervisor:terminate_child(Pid, tracker_communication),
+    ok = supervisor:delete_child(Pid, tracker_communication),
+    ok = supervisor:terminate_child(Pid, chunk_mgr),
+    ok = supervisor:delete_child(Pid, chunk_mgr),
+    ok.
+
     
 %% ====================================================================
 
@@ -89,7 +99,7 @@ progress_spec(TorrentID, Torrent, ValidPieces) ->
     Args = [TorrentID, ChunkSize, ValidPieces, PieceSizes, lookup],
     {chunk_mgr,
         {etorrent_progress, start_link, Args},
-        permanent, 20000, worker, [etorrent_progress]}.
+        transient, 20000, worker, [etorrent_progress]}.
 
 endgame_spec(TorrentID) ->
     {endgame,

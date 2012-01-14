@@ -17,6 +17,8 @@
 %% API
 -export([start_link/3,
          completed/1,
+         pause_torrent/1,
+         continue_torrent/1,
          check_torrent/1,
          valid_pieces/1]).
 
@@ -26,7 +28,7 @@
          await_server/1]).
 
 %% gen_fsm callbacks
--export([init/1, handle_event/3, initializing/2, started/2,
+-export([init/1, handle_event/3, initializing/2, started/2, paused/2,
          handle_sync_event/4, handle_info/3, terminate/3,
          code_change/4]).
 
@@ -82,6 +84,18 @@ check_torrent(Pid) ->
 completed(Pid) ->
     gen_fsm:send_event(Pid, completed).
 
+%% @doc Set the torrent on pause
+%% @end
+-spec pause_torrent(pid()) -> ok.
+pause_torrent(Pid) ->
+    gen_fsm:send_event(Pid, pause).
+
+%% @doc Continue leaching or seeding 
+%% @end
+-spec continue_torrent(pid()) -> ok.
+continue_torrent(Pid) ->
+    gen_fsm:send_event(Pid, continue).
+
 %% @doc Get the set of valid pieces for this torrent
 %% @end
 -spec valid_pieces(pid()) -> {ok, pieceset()}.
@@ -107,8 +121,7 @@ init([Parent, Id, {Torrent, TorrentFile, TorrentIH}, PeerId]) ->
     {ok, initializing, InitState, 0}.
 
 %% @private
-%% @todo Split and simplify this monster function
-initializing(timeout, #state{id=Id, torrent=Torrent, hashes=Hashes} = S0) ->
+initializing(timeout, #state{id=Id} = S0) ->
     Pending  = etorrent_pending:await_server(Id),
     Endgame  = etorrent_endgame:await_server(Id),
     S = S0#state{
@@ -119,62 +132,9 @@ initializing(timeout, #state{id=Id, torrent=Torrent, hashes=Hashes} = S0) ->
         false ->
             {next_state, initializing, S, ?CHECK_WAIT_TIME};
         true ->
-            %% @todo: Try to coalesce some of these operations together.
-
-            %% Read the torrent, check its contents for what we are missing
-            etorrent_table:statechange_torrent(Id, checking),
-            etorrent_event:checking_torrent(Id),
-            ValidPieces = read_and_check_torrent(Id, Hashes),
-            Left = calculate_amount_left(Id, ValidPieces, Torrent),
-            NumberOfPieces = etorrent_pieceset:capacity(ValidPieces),
-            {AU, AD} =
-                case etorrent_fast_resume:query_state(S#state.id) of
-                    unknown -> {0,0};
-                    {value, PL} ->
-                        {proplists:get_value(uploaded, PL),
-                         proplists:get_value(downloaded, PL)}
-                end,
-
-            %% Add a torrent entry for this torrent.
-            ok = etorrent_torrent:new(
-                   Id,
-                   {{uploaded, 0},
-                    {downloaded, 0},
-                    {all_time_uploaded, AU},
-                    {all_time_downloaded, AD},
-                    {left, Left},
-                    {total, etorrent_metainfo:get_length(Torrent)},
-                    {is_private, etorrent_metainfo:is_private(Torrent)},
-                    {pieces, ValidPieces}},
-                   NumberOfPieces),
-
-            %% Start the progress manager
-            {ok, ProgressPid} =
-                etorrent_torrent_sup:start_progress(
-                  S#state.parent_pid,
-                  Id,
-                  Torrent,
-                  ValidPieces),
-
-            %% Update the tracking map. This torrent has been started.
-            %% Altering this state marks the point where we will accept
-            %% Foreign connections on the torrent as well.
-            etorrent_table:statechange_torrent(Id, started),
-            etorrent_event:started_torrent(Id),
-
-            %% Start the tracker
-            {ok, TrackerPid} =
-                etorrent_torrent_sup:start_child_tracker(
-                  S#state.parent_pid,
-                  etorrent_metainfo:get_url(Torrent),
-                  S#state.info_hash,
-                  S#state.peer_id,
-                  Id),
-
-            NewState = S#state{tracker_pid=TrackerPid, valid=ValidPieces,
-                               progress = ProgressPid },
-            {next_state, started, NewState}
+            do_registration(S)
     end.
+
 
 %% @private
 started(check_torrent, State) ->
@@ -188,7 +148,31 @@ started(check_torrent, State) ->
 started(completed, #state{id=Id, tracker_pid=TrackerPid} = S) ->
     etorrent_event:completed_torrent(Id),
     etorrent_tracker_communication:completed(TrackerPid),
+    {next_state, started, S};
+
+started(pause, #state{id=Id} = SO) ->
+%   etorrent_event:paused_torrent(Id),
+    
+    etorrent_table:statechange_torrent(Id, stopped),
+    etorrent_event:stopped_torrent(Id),
+    ok = etorrent_torrent:statechange(Id, [paused]),
+    ok = etorrent_torrent_sup:pause(SO#state.parent_pid),
+
+    S = SO#state{ tracker_pid = undefined, progress = undefined },
+    {next_state, paused, S};
+started(continue, S) ->
     {next_state, started, S}.
+
+
+
+paused(continue, #state{id=Id} = S) ->
+    Ret = do_start(S),
+    ok = etorrent_torrent:statechange(Id, [continue]),
+    Ret;
+paused(pause, S) ->
+    {next_state, paused, S}.
+
+
 
 %% @private
 handle_event(Msg, SN, S) ->
@@ -232,6 +216,92 @@ terminate(_Reason, _StateName, _S) ->
 code_change(_OldVsn, StateName, State, _Extra) ->
     {ok, StateName, State}.
 
+
+
+
+
+
+%% --------------------------------------------------------------------
+
+do_registration(S=#state{id=Id, torrent=Torrent, hashes=Hashes}) ->
+    %% @todo: Try to coalesce some of these operations together.
+
+    %% Read the torrent, check its contents for what we are missing
+    FastResumePL = etorrent_fast_resume:query_state(Id),
+
+    etorrent_table:statechange_torrent(Id, checking),
+    etorrent_event:checking_torrent(Id),
+    ValidPieces = read_and_check_torrent(Id, Hashes, FastResumePL),
+    Left = calculate_amount_left(Id, ValidPieces, Torrent),
+    NumberOfPieces = etorrent_pieceset:capacity(ValidPieces),
+    NumberOfValidPieces = etorrent_pieceset:size(ValidPieces),
+    NumberOfMissingPieces = NumberOfPieces - NumberOfValidPieces,
+
+    AU = proplists:get_value(uploaded, FastResumePL, 0),
+    AD = proplists:get_value(downloaded, FastResumePL, 0),
+    TState = proplists:get_value(state, FastResumePL, unknown),
+
+    %% Add a torrent entry for this torrent.
+    %% @todo Minimize calculation in `etorrent_torrent' module.
+    ok = etorrent_torrent:new(
+           Id,
+           [{uploaded, 0},
+            {downloaded, 0},
+            {all_time_uploaded, AU},
+            {all_time_downloaded, AD},
+            {left, Left},
+            {total, etorrent_metainfo:get_length(Torrent)},
+            {is_private, etorrent_metainfo:is_private(Torrent)},
+            {pieces, NumberOfValidPieces},
+            {missing, NumberOfMissingPieces},
+            {state, TState}]),
+
+    NewState = S#state{ valid=ValidPieces },
+
+    case TState of
+        paused ->
+            etorrent_table:statechange_torrent(Id, stopped),
+            etorrent_event:stopped_torrent(Id),
+            {next_state, paused, NewState};
+        _ -> 
+        do_start(NewState)
+    end.
+
+
+do_start(S=#state{id=Id, torrent=Torrent, valid=ValidPieces}) ->
+
+    %% Start the progress manager
+    {ok, ProgressPid} =
+        etorrent_torrent_sup:start_progress(
+          S#state.parent_pid,
+          Id,
+          Torrent,
+          ValidPieces),
+
+    %% Update the tracking map. This torrent has been started.
+    %% Altering this state marks the point where we will accept
+    %% Foreign connections on the torrent as well.
+    etorrent_table:statechange_torrent(Id, started),
+    etorrent_event:started_torrent(Id),
+
+    %% Start the tracker
+    {ok, TrackerPid} =
+        etorrent_torrent_sup:start_child_tracker(
+          S#state.parent_pid,
+          etorrent_metainfo:get_url(Torrent),
+          S#state.info_hash,
+          S#state.peer_id,
+          Id),
+
+    NewState = S#state{tracker_pid=TrackerPid,
+                       progress = ProgressPid },
+
+    {next_state, started, NewState}.
+
+
+%% @todo run this when starting:
+%% etorrent_event:seeding_torrent(Id),
+
 %% --------------------------------------------------------------------
 
 %% @todo Does this function belong here?
@@ -252,23 +322,39 @@ calculate_amount_left(TorrentID, Valid, Torrent) ->
 %   system knows what is going on, use that information. Otherwise, form all possible
 %   pieces, but filter them through a correctness checker.</p>
 % @end
--spec read_and_check_torrent(integer(), binary()) -> pieceset().
-read_and_check_torrent(TorrentID, Hashes) ->
+-spec read_and_check_torrent(integer(), binary(), [{atom(), term()}]) -> pieceset().
+read_and_check_torrent(TorrentID, Hashes, PL) ->
     ok = etorrent_io:allocate(TorrentID),
     Numpieces = num_hashes(Hashes),
-    %% Check the contents of the torrent, updates the state of the piecemap
-    case etorrent_fast_resume:query_state(TorrentID) of
-        {value, PL} ->
-            case proplists:get_value(state, PL) of
-                seeding ->
-                    etorrent_pieceset:full(Numpieces);
-                {bitfield, Bin} ->
-                    etorrent_pieceset:from_binary(Bin, Numpieces)
-            end;
-        unknown ->
+
+    Stage = to_stage(PL),
+
+    case Stage of
+        unknown -> 
             All  = etorrent_pieceset:full(Numpieces),
-            filter_pieces(TorrentID, All, Hashes)
+            filter_pieces(TorrentID, All, Hashes);
+        completed -> 
+            etorrent_pieceset:full(Numpieces);
+        incompleted ->
+            Bin = proplists:get_value(bitfield, PL),
+            etorrent_pieceset:from_binary(Bin, Numpieces)
     end.
+    
+    
+%% @doc This simple function transforms the stored state of the torrent 
+%%      to the stage of the downloading process. PL is stored in 
+%%      the `etorrent_fast_resume' module.
+-spec to_stage([{atom(), term()}]) -> atom().
+to_stage([]) -> unknown;
+to_stage(PL) -> 
+    case proplists:get_value(bitfield, PL) of
+    undefined ->
+        completed;
+    _ ->
+        incompleted
+    end.
+        
+
 
 
 % @doc Filter a pieceset() w.r.t data on disk.

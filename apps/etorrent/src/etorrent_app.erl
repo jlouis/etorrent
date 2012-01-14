@@ -87,6 +87,8 @@ stop(_State) ->
     ok.
 
 start_webui() ->
+    application:start(cascadae),
+
     Dispatch = [ {'_', [{'_', etorrent_cowboy_handler, []}]} ],
     {ok, _Pid} =
         cowboy:start_listener(http, 10,

@@ -64,6 +64,8 @@ start_link(ControlPid, UrlTiers, InfoHash, PeerId, TorrentId)
 completed(Pid) ->
     gen_server:cast(Pid, completed).
 
+
+
 %%====================================================================
 
 %% @private
@@ -87,10 +89,12 @@ init([ControlPid, UrlTiers, InfoHash, PeerId, TorrentId]) ->
 
                 queued_message = started}}.
 
+
 %% @private
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
+
 
 %% @private
 handle_cast(completed, S) ->

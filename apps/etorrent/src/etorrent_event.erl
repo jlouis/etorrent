@@ -16,6 +16,7 @@
 %% Notifications
 -export([notify/1,
          started_torrent/1,
+         stopped_torrent/1,
          checking_torrent/1,
 	 completed_torrent/1,
          seeding_torrent/1]).
@@ -41,6 +42,10 @@ add_handler(Handler, Args) ->
 -spec delete_handler(atom() | pid(), [term()]) -> ok.
 delete_handler(Handler, Args) ->
     gen_event:delete_handler(?SERVER, Handler, Args).
+
+%% @equiv notify({stopped_torrent, Id})
+-spec stopped_torrent(integer()) -> ok.
+stopped_torrent(Id) -> notify({stopped_torrent, Id}).
 
 %% @equiv notify({started_torrent, Id})
 -spec started_torrent(integer()) -> ok.

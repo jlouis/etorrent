@@ -18,7 +18,7 @@
                    missing :: non_neg_integer()}). % Number of missing pieces
 %% API
 -export([start_link/0,
-         new/3, all/0, statechange/2,
+         new/2, all/0, statechange/2,
          num_pieces/1, decrease_not_fetched/1,
          is_seeding/1, seeding/0,
          lookup/1, is_endgame/1,
@@ -28,7 +28,7 @@
          handle_info/2, terminate/2]).
 
 %% The type of torrent records.
--type(torrent_state() :: 'leeching' | 'seeding' | 'endgame' | 'unknown').
+-type(torrent_state() :: 'leeching' | 'seeding' | 'endgame' | 'paused' | 'unknown').
 
 %% A single torrent is represented as the 'torrent' record
 -record(torrent,
@@ -74,18 +74,33 @@ start_link() ->
 %%   state as given. Pieces is the number of pieces for this torrent.
 %% </p>
 %% <p><emph>Precondition:</emph> The #piece table has been filled with the torrents pieces.</p>
+
+%%  Info is a proplist:
+%%
+%%  ```
+%% [{uploaded, integer()},
+%%  {downloaded, integer()},
+%%  {all_time_uploaded, non_neg_integer()},
+%%  {all_time_downloaded, non_neg_integer()},
+%%  {left, integer()},
+%%  {total, integer()},
+%%  {is_private, boolean()},
+%%  {pieces, integer()},
+%%  {missing, integer()},
+%%  {state, atom()}]
+%% '''
+%%
 %% @end
 -spec new(integer(),
-       {{uploaded, integer()},
-        {downloaded, integer()},
-        {all_time_uploaded, non_neg_integer()},
-        {all_time_downloaded, non_neg_integer()},
-        {left, integer()},
-        {total, integer()},
-        {is_private, boolean()},
-        {pieces, etorrent_pieceset:pieceset()}}, integer()) -> ok.
-new(Id, Info, NPieces) ->
-    gen_server:call(?SERVER, {new, Id, Info, NPieces}).
+       [{atom(), term()}]) -> ok.
+new(Id, PL) ->
+    T = props_to_record(Id, PL),
+
+    Missing = proplists:get_value(missing, PL),
+    P = #c_pieces{ id = Id, missing = Missing},
+
+    gen_server:call(?SERVER, {new, Id, T, P}).
+
 
 %% @doc Return all torrents, sorted by Id
 %% @end
@@ -179,46 +194,32 @@ init([]) ->
 		      rate_sparkline_update),
     {ok, #state{ monitoring = dict:new() }}.
 
+
 %% @private
-handle_call({new, Id, {{uploaded, U}, {downloaded, D},
-		               {all_time_uploaded, AU},
-		               {all_time_downloaded, AD},
-                       {left, L}, {total, T}, {is_private, P},
-                       {pieces, Valid}},
-                       NPieces}, {Pid, _Tag}, S) ->
-    State = case L of
-                0 -> etorrent_event:seeding_torrent(Id),
-                     seeding;
-                _ -> leeching
-            end,
-    true = ets:insert_new(?TAB,
-                #torrent { id = Id,
-                           left = L,
-                           total = T,
-                           uploaded = U,
-                           downloaded = D,
-			               all_time_uploaded = AU,
-			               all_time_downloaded = AD,
-                           pieces = NPieces,
-                           is_private = P,
-                           state = State }),
-    Missing = NPieces - etorrent_pieceset:size(Valid),
-    true = ets:insert_new(etorrent_c_pieces, #c_pieces{ id = Id, missing = Missing}),
+%% @todo Avoid downs. Let the called process die.
+handle_call({new, Id, T=#torrent{}, P=#c_pieces{}},  {Pid, _Tag},  S) ->
+    true = ets:insert_new(?TAB, T),
+    true = ets:insert_new(etorrent_c_pieces,  P),
+
     R = erlang:monitor(process, Pid),
     NS = S#state { monitoring = dict:store(R, Id, S#state.monitoring) },
     {reply, ok, NS};
+
 handle_call(all, _F, S) ->
     Q = all(#torrent.id),
     {reply, Q, S};
+
 handle_call({num_pieces, Id}, _F, S) ->
     Reply = case ets:lookup(?TAB, Id) of
 		[R] -> {value, R#torrent.pieces};
 		[] ->  not_found
 	    end,
     {reply, Reply, S};
+
 handle_call({statechange, Id, What}, _F, S) ->
     Q = state_change(Id, What),
     {reply, Q, S};
+
 handle_call({decrease, Id}, _F, S) ->
     N = ets:update_counter(etorrent_c_pieces, Id, {#c_pieces.missing, -1}),
     case N of
@@ -228,12 +229,15 @@ handle_call({decrease, Id}, _F, S) ->
         N when is_integer(N) ->
             {reply, ok, S}
     end;
+
 handle_call(_M, _F, S) ->
     {noreply, S}.
+
 
 %% @private
 handle_cast(_Msg, S) ->
     {noreply, S}.
+
 
 %% @private
 handle_info({'DOWN', Ref, _, _, _}, S) ->
@@ -241,22 +245,60 @@ handle_info({'DOWN', Ref, _, _, _}, S) ->
     ets:delete(?TAB, Id),
     ets:delete(etorrent_c_pieces, Id),
     {noreply, S#state { monitoring = dict:erase(Ref, S#state.monitoring) }};
+
 handle_info(rate_sparkline_update, S) ->
     for_each_torrent(fun update_sparkline_rate/1),
     erlang:send_after(timer:seconds(60), self(), rate_sparkline_update),
     {noreply, S};
+
 handle_info(_M, S) ->
     {noreply, S}.
+
 
 %% @private
 code_change(_OldVsn, S, _Extra) ->
     {ok, S}.
 
+
 %% @private
 terminate(_Reason, _S) ->
     ok.
 
+
 %% -----------------------------------------------------------------------
+
+
+props_to_record(Id, PL) ->
+
+    % Read optional value. 
+    % If it is undefined then use default value.
+    FO = fun(Key, Def) -> proplists:get_value(Key, PL, Def) end,
+
+    % Read required value.
+    FR = fun(Key) -> 
+            case proplists:get_value(Key, PL) of
+            X when (X =/= undefined) -> X
+            end
+        end,
+
+    L = FR(left),
+
+    DefState = case L of
+                0 -> seeding;
+                _ -> leeching
+            end,
+
+    #torrent { id = Id,
+               left = L,
+               total = FR('total'),
+               uploaded = FO('uploaded', 0),
+               downloaded = FO('downloaded', 0),
+			   all_time_uploaded = FO('all_time_uploaded', 0),
+			   all_time_downloaded = FO('all_time_downloaded', 0),
+               pieces = FO(pieces, 'unknown'),
+               is_private = FR('is_private'),
+               state = FO('state', DefState) }.
+
 
 %%--------------------------------------------------------------------
 %% Function: all(Pos) -> Rows
@@ -312,44 +354,78 @@ update_sparkline(NR, L) ->
             [NR | L]
     end.
 
+
 %% Change the state of the torrent with Id, altering it by the "What" part.
 %% Precondition: Torrent exists in the ETS table.
-state_change(_Id, []) ->
-    ok;
-state_change(Id, [What | Rest]) ->
+state_change(Id, List) ->
     %% @todo Be more protective here
     [T] = ets:lookup(?TAB, Id),
-    New = case What of
-              unknown ->
-                  T#torrent{state = unknown};
-              endgame ->
-                  T#torrent{state = endgame};
-              {add_downloaded, Amount} ->
-                  T#torrent{downloaded = T#torrent.downloaded + Amount};
-              {add_upload, Amount} ->
-                  T#torrent{uploaded = T#torrent.uploaded + Amount};
-              {subtract_left, Amount} ->
-                  Left = T#torrent.left - Amount,
-                  case Left of
-                      0 ->
-			  ControlPid = etorrent_torrent_ctl:lookup_server(Id),
-			  etorrent_torrent_ctl:completed(ControlPid),
-                          T#torrent { left = 0, state = seeding,
-				      rate_sparkline = [0.0] };
-                      N when N =< T#torrent.total ->
-                          T#torrent { left = N }
-                  end;
-              {tracker_report, Seeders, Leechers} ->
-                  T#torrent{seeders = Seeders, leechers = Leechers}
-          end,
-    ets:insert(?TAB, New),
-    case {T#torrent.state, New#torrent.state} of
+    NewT = do_state_change(List, T),
+    ets:insert(?TAB, NewT),
+
+    case {T#torrent.state, NewT#torrent.state} of
         {leeching, seeding} ->
             etorrent_event:seeding_torrent(Id),
             ok;
         _ ->
             ok
-    end,
-    state_change(Id, Rest).
+    end.
+
+
+
+
+
+
+do_state_change([unknown | Rem], T) ->
+    do_state_change(Rem, T#torrent{state = unknown});
+
+do_state_change([endgame | Rem], T) ->
+    do_state_change(Rem, T#torrent{state = endgame});
+
+do_state_change([paused | Rem], T) ->
+    do_state_change(Rem, T#torrent{state = paused});
+
+do_state_change([continue | Rem], T) ->
+    NewState = case T#torrent.left of
+            0 -> seeding;
+            _ -> leeching
+        end,
+    do_state_change(Rem, T#torrent{state = NewState});
+
+do_state_change([{add_downloaded, Amount} | Rem], T) ->
+    NewT = T#torrent{downloaded = T#torrent.downloaded + Amount},
+    do_state_change(Rem, NewT);
+
+do_state_change([{add_upload, Amount} | Rem], T) ->
+    NewT = T#torrent{uploaded = T#torrent.uploaded + Amount},
+    do_state_change(Rem, NewT);
+
+do_state_change([{subtract_left, Amount} | Rem], T) ->
+    Left = T#torrent.left - Amount,
+
+    NewT = case Left of
+        0 ->
+            Id = T#torrent.id,
+	        ControlPid = etorrent_torrent_ctl:lookup_server(Id),
+			etorrent_torrent_ctl:completed(ControlPid),
+            T#torrent { 
+                left = 0, 
+                state = seeding,
+                rate_sparkline = [0.0] };
+
+        N when N =< T#torrent.total ->
+           T#torrent { left = N }
+        end,
+
+    do_state_change(Rem, NewT);
+    
+do_state_change([{tracker_report, Seeders, Leechers} | Rem], T) ->
+    NewT = T#torrent{seeders = Seeders, leechers = Leechers},
+    do_state_change(Rem, NewT);
+
+do_state_change([], T) ->
+    T.
+
+
 
 

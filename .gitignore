@@ -19,7 +19,7 @@ webui/*.log
 /depgraph.dot
 /depgraph.pdf
 /depgraph.png
-/apps/etorrent/doc
+/apps/*/doc
 /documentation/sup_tree_20101220.pdf
 /documentation/sup_tree_20101220.png
 /documentation/sup_tree_20110106.pdf
