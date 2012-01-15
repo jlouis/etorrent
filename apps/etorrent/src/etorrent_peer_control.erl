@@ -415,7 +415,8 @@ handle_info({chunk, {contents, Index, Offset, Length, Data}}, State) ->
             NewRemote = etorrent_peerstate:requests(NewRequests, Remote),
             NewState = State#state{remote=NewRemote},
             ok = etorrent_peer_send:piece(SendPid, Index, Offset, Length, Data),
-            ok = etorrent_torrent:statechange(TorrentID, [{add_upload, Length}]),
+            % Already in peer_send? It cause double-rating!
+            % ok = etorrent_torrent:statechange(TorrentID, [{add_upload, Length}]),
             ok = pop_remote_rqueue_hook(TorrentID, NewRequests),
             {noreply, NewState};
         %% Same as clause #2. Peer returned to unchoked state. Non empty queue

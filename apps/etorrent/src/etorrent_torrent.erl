@@ -283,10 +283,16 @@ props_to_record(Id, PL) ->
 
     L = FR(left),
 
-    DefState = case L of
-                0 -> seeding;
-                _ -> leeching
-            end,
+    % If the `state' is `undefined' or `unknown' then use the default state.
+    State = case FO('state', 'unknown') of
+            'unknown' ->
+                case L of
+                    0 -> seeding;
+                    _ -> leeching
+                end;
+
+            X -> X
+        end,
 
     #torrent { id = Id,
                left = L,
@@ -297,7 +303,7 @@ props_to_record(Id, PL) ->
 			   all_time_downloaded = FO('all_time_downloaded', 0),
                pieces = FO(pieces, 'unknown'),
                is_private = FR('is_private'),
-               state = FO('state', DefState) }.
+               state = State }.
 
 
 %%--------------------------------------------------------------------
