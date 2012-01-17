@@ -121,13 +121,24 @@ init([]) ->
 handle_call({query_state, ID}, _From, State) ->
     #state{table=Table} = State,
     {value, Properties} = etorrent_table:get_torrent(ID),
-    Torrentfile = proplists:get_value(filename, Properties),
-    Reply = case dets:lookup(Table, Torrentfile) of
-        [] ->
-            [];
-        [{_, Torrentstate}] ->
-            Torrentstate
-    end,
+    TorrentFile = proplists:get_value(filename, Properties),
+
+    Reply = case dets:lookup(Table, TorrentFile) of
+			[{_, [_|_] = TorrentState}] ->
+				case proplists:get_value('state', TorrentState, 0) of
+				X when is_atom(X) -> 
+					% check the fact that state is atom, not a tuple.
+					TorrentState;
+				_ -> 
+					% data is from old version of code.
+					[]
+				end;
+
+			_ -> 
+				% there is no data.
+				[]
+		end,
+
     {reply, Reply, State};
 
 handle_call(list, _, #state { table = Table } = State) ->
