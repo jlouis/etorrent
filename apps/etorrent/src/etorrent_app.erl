@@ -87,7 +87,7 @@ stop(_State) ->
     ok.
 
 start_webui() ->
-    application:start(cascadae),
+    cascadae:start(),
 
     Dispatch = [ {'_', [{'_', etorrent_cowboy_handler, []}]} ],
     {ok, _Pid} =
