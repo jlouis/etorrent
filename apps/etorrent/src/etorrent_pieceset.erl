@@ -10,6 +10,7 @@
          empty/1,
          full/1,
          from_binary/2,
+         from_bitstring/1,
          to_binary/1,
          from_list/2,
          to_list/1,
@@ -81,6 +82,12 @@ from_binary(Bin, Size) when is_binary(Bin) ->
         0 -> #pieceset{size=Size, elements=Elements};
         _ -> erlang:error(badarg)
     end.
+
+%% @doc Construct pieceset from bitstring.
+from_bitstring(Bin) ->
+    Size = bit_size(Bin),
+    #pieceset{size=Size, elements=Bin}.
+
 
 %% @doc
 %% Convert a piece set to a bitfield, the bitfield will

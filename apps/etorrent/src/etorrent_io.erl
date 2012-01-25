@@ -66,7 +66,8 @@
          lookup_file_server/2,
          register_open_file/2,
          unregister_open_file/2,
-         await_open_file/2]).
+         await_open_file/2,
+         get_mask/2]).
 
 -export([check_piece/3]).
 
@@ -89,6 +90,7 @@
 -type file_path() :: etorrent_types:file_path().
 -type torrent_id() :: etorrent_types:torrent_id().
 -type block_pos() :: {string(), block_offset(), block_len()}.
+-type pieceset() :: etorrent_pieceset:pieceset().
 
 -record(io_file, {
     rel_path :: file_path(),
@@ -101,7 +103,9 @@
     pieces  :: array(),
     file_list :: [{string(), pos_integer()}],
     files_open :: list(#io_file{}),
-    files_max  :: pos_integer()}).
+    files_max  :: pos_integer(),
+    file_masks :: [{string(), pieceset()}]
+    }).
 
 %% @doc Start the File I/O Server
 %% @end
@@ -397,6 +401,14 @@ check_piece(TorrentID, Pieceindex, Piecehash) ->
         false -> wrong_hash
     end.
 
+
+%% @doc Build a mask of the file in the torrent.
+-spec get_mask(torrent_id(), string()) -> pieceset().
+get_mask(TorrentID, Filename) ->
+    DirPid = await_directory(TorrentID),
+    {ok, Mask} = gen_server:call(DirPid, {get_mask, Filename}),
+    Mask.
+
 %% ----------------------------------------------------------------------
 
 %% @private
@@ -407,10 +419,12 @@ init([TorrentID, Torrent]) ->
     true = register_directory(TorrentID),
     PieceMap  = make_piece_map(Torrent),
     Files     = make_file_list(Torrent),
+    Masks     = make_file_masks(Torrent),
     InitState = #state{
         torrent=TorrentID,
         pieces=PieceMap,
         file_list = Files,
+        file_masks = Masks, 
         files_open=[],
         files_max=MaxFiles},
     {ok, InitState}.
@@ -425,11 +439,22 @@ init([TorrentID, Torrent]) ->
 %% @private
 handle_call({read, _, _}, _, State) ->
     {reply, {error, eagain}, State};
+
 handle_call({write, _, _}, _, State) ->
     {reply, {error, eagain}, State};
 
 handle_call(get_files, _From, #state { file_list = FL } = State) ->
     {reply, {ok, FL}, State};
+
+handle_call({get_mask, Filename}, _, State) ->
+    #state{file_masks=Masks} = State,
+    case proplists:get_value(Filename, Masks) of
+        undefined ->
+            {reply, {error, badname}, State};
+        Mask ->
+            {reply, {ok, Mask}, State}
+    end;
+
 handle_call({get_positions, Piece}, _, State) ->
     #state{pieces=PieceMap} = State,
     Positions = array:get(Piece, PieceMap),
@@ -521,6 +546,62 @@ make_piece_map(Torrent) ->
         With = Prev ++ [{Path, Offset, Length}],
         array:set(Piece, With, Acc)
     end, array:new({default, []}), MapEntries).
+
+
+%% @private
+make_file_masks(Torrent) ->
+    PieceLength = etorrent_metainfo:get_piece_length(Torrent),
+    FileLengths = etorrent_metainfo:file_path_len(Torrent),
+    make_file_masks_(FileLengths, PieceLength, 1, []).
+
+
+%% @private
+%% Collect total count of bytes, transform `{Len, Pos}' to `{To, From}'.
+make_file_masks_([{Name, FLen} | T], PLen, From, Acc) ->
+    To = From + FLen,
+    % Element = {FileName, Start Position, Stop Position}
+    X = {Name, From, To},
+    make_file_masks_(T, PLen, To, [X|Acc]);
+
+make_file_masks_([], PieceLen, TotalLen, Acc) ->
+    make_file_masks__(Acc, PieceLen, TotalLen, []).
+
+
+%% @private
+make_file_masks__([H|T], PLen, TLen, Acc) ->
+    {Name, From, To} = H,
+    Mask = make_mask(From, To, PLen, TLen),
+    X = {Name, etorrent_pieceset:from_bitstring(Mask)},
+    make_file_masks__(T, PLen, TLen, [X|Acc]);
+
+make_file_masks__([], _PLen, _TLen, Acc) ->
+    Acc.
+    
+
+%% @private
+make_mask(From, To, PLen, TLen) 
+    when PLen =< TLen, From =< To, 
+           To =< TLen, From > 0 ->
+    %% __Bytes__: 1 <= From <= To <= TLen
+    %%
+    %% Calculate how many __pieces__ before, in and after the file.
+    %% Be greedy: when the file ends inside a piece, then put this piece
+    %% both into this file and into the next file.
+    %% [0..X1 ) [X1..X2] (X2..MaxPieces]
+    %% [before) [  in  ] (    after    ]
+    Total    = (TLen div PLen)  
+             + case TLen rem PLen of 0 -> 0; _ -> 1 end,
+    RemLeft  = case From rem PLen of 0 -> 1; _ -> 0 end,
+    RemRight = case To   rem PLen of 0 -> 0; _ -> 1 end,
+    X1       = From div PLen, 
+    X2       = To   div PLen,
+    Before   = X1 - RemLeft, 
+    In       = X2 - Before + RemRight,
+    After    = Total - Before - In,
+%   io:write([Before, After, In, Total, RemLeft, RemRight]),
+    <<0:Before, (bnot 0):In, 0:After>>.
+    
+
 
 make_file_list(Torrent) ->
     Files = etorrent_metainfo:get_files(Torrent),
@@ -641,5 +722,18 @@ chunk_post_3_test() ->
     Map  = [{a, 0, 3}, {b, 0, 13}],
     Pos  = [{b, 5, 5}],
     ?assertEqual(Pos, chunk_positions(Offs, Len, Map)). 
-    
+
+make_mask_test_() ->
+    F = fun make_mask/4,
+    % make_index(From, To, PLen, TLen)
+    [?_assertEqual(F(3,  6,  4, 10), <<2#110:3>>)
+    ,?_assertEqual(F(3,  6,  3, 10), <<2#1100:4>>)
+    ,?_assertEqual(F(3,  6,  2, 10), <<2#01100:5>>)
+    ,?_assertEqual(F(3,  6,  1, 10), <<2#0011110000:10>>)
+    ,?_assertEqual(F(3,  6, 10, 10), <<1:1>>)
+    ,?_assertEqual(F(3,  6,  9, 10), <<1:1, 0:1>>)
+    ,?_assertEqual(F(1,  6,  3, 10), <<2#1100:4>>)
+    ,?_assertEqual(F(9, 10,  3, 10), <<2#0011:4>>)
+    ].
+
 -endif.
