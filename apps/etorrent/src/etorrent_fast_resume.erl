@@ -95,6 +95,8 @@ srv_name() ->
 update() ->
     gen_server:call(srv_name(), update).
 
+
+
 %% ==================================================================
 
 %% @private
@@ -161,6 +163,7 @@ handle_call(update, _, State) ->
     dets:sync(Table),
     {reply, ok, State}.
 
+
 %% @private
 handle_cast(_, State) ->
     {noreply, State}.
@@ -178,38 +181,50 @@ code_change(_, State, _) ->
     {ok, State}.
 
 %% Enter a torrent into the tracking table
-track_torrent(ID, Filename, Table) ->
-    case etorrent_torrent:lookup(ID) of
+track_torrent(Id, Filename, Table) ->
+    case etorrent_torrent:lookup(Id) of
         not_found ->
             ignore;
         {value, Props} ->
-            UploadTotal = proplists:get_value(all_time_uploaded, Props),
-            UploadDiff  = proplists:get_value(uploaded, Props),
-            Uploaded    = UploadTotal + UploadDiff,
-
-            DownloadTotal = proplists:get_value(all_time_downloaded, Props),
-            DownloadDiff  = proplists:get_value(downloaded, Props),
-            Downloaded    = DownloadTotal + DownloadDiff,
-
-            Left = proplists:get_value(left, Props),
-
-            case proplists:get_value(state, Props) of
-                unknown ->
-                    ignore;
-                State when Left =:= 0 ->
-                    dets:insert(Table,
-                        {Filename, [
-                            {state, State},
-                                    {uploaded, Uploaded},
-                                    {downloaded, Downloaded}]});
-                State ->
-                    TorrentPid = etorrent_torrent_ctl:lookup_server(ID),
-                    {ok, Valid} = etorrent_torrent_ctl:valid_pieces(TorrentPid),
-                    Bitfield = etorrent_pieceset:to_binary(Valid),
-                    dets:insert(Table,
-                                {Filename, [{state, State},
-                                                {bitfield, Bitfield},
-                                                {uploaded, Uploaded},
-                                                {downloaded, Downloaded}]})
+            case form_entry(Id, Props) of
+                ignore -> ignore;
+                Entry -> 
+                    dets:insert(Table, {Filename, Entry})
             end
+    end.
+
+%% @private
+form_entry(Id, Props) ->
+    UploadTotal   = proplists:get_value(all_time_uploaded, Props),
+    UploadDiff    = proplists:get_value(uploaded, Props),
+    Uploaded      = UploadTotal + UploadDiff,
+
+    DownloadTotal = proplists:get_value(all_time_downloaded, Props),
+    DownloadDiff  = proplists:get_value(downloaded, Props),
+    Downloaded    = DownloadTotal + DownloadDiff,
+
+    Left = proplists:get_value(left, Props),
+
+    case proplists:get_value(state, Props) of
+        %% not prepared
+        unknown ->
+            ignore;
+
+        %% downloaded
+        State when Left =:= 0 ->
+            [{state, State}
+            ,{uploaded, Uploaded}
+            ,{downloaded, Downloaded}];
+
+        %% not downloaded
+        State ->
+            TorrentPid  = etorrent_torrent_ctl:lookup_server(Id),
+            {ok, Valid} = etorrent_torrent_ctl:valid_pieces(TorrentPid),
+            Bitfield    = etorrent_pieceset:to_binary(Valid),
+            Wishes      = etorrent_torrent_ctl:get_wishes(Id),
+            [{state, State}
+            ,{bitfield, Bitfield}
+            ,{wishes, Wishes}
+            ,{uploaded, Uploaded}
+            ,{downloaded, Downloaded}]
     end.

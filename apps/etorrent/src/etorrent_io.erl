@@ -67,7 +67,8 @@
          register_open_file/2,
          unregister_open_file/2,
          await_open_file/2,
-         get_mask/2]).
+         get_mask/2,
+         get_short_file_names/1]).
 
 -export([check_piece/3]).
 
@@ -89,6 +90,7 @@
 -type piece_index() :: etorrent_types:piece_index().
 -type file_path() :: etorrent_types:file_path().
 -type torrent_id() :: etorrent_types:torrent_id().
+-type file_id() :: etorrent_types:file_id().
 -type block_pos() :: {string(), block_offset(), block_len()}.
 -type pieceset() :: etorrent_pieceset:pieceset().
 
@@ -104,7 +106,9 @@
     file_list :: [{string(), pos_integer()}],
     files_open :: list(#io_file{}),
     files_max  :: pos_integer(),
-    file_masks :: [{string(), pieceset()}]
+    file_masks :: [{string(), pieceset()}],
+    name_array :: array(),
+    short_file_names :: [string()]
     }).
 
 %% @doc Start the File I/O Server
@@ -403,11 +407,17 @@ check_piece(TorrentID, Pieceindex, Piecehash) ->
 
 
 %% @doc Build a mask of the file in the torrent.
--spec get_mask(torrent_id(), string()) -> pieceset().
-get_mask(TorrentID, Filename) ->
+-spec get_mask(torrent_id(), file_id()) -> pieceset().
+get_mask(TorrentID, FileID) ->
     DirPid = await_directory(TorrentID),
-    {ok, Mask} = gen_server:call(DirPid, {get_mask, Filename}),
+    {ok, Mask} = gen_server:call(DirPid, {get_mask, FileID}),
     Mask.
+
+get_short_file_names(TorrentID) ->
+    DirPid = await_directory(TorrentID),
+    {ok, Names} = gen_server:call(DirPid, get_short_file_names),
+    Names.
+    
 
 %% ----------------------------------------------------------------------
 
@@ -419,6 +429,7 @@ init([TorrentID, Torrent]) ->
     true = register_directory(TorrentID),
     PieceMap  = make_piece_map(Torrent),
     Files     = make_file_list(Torrent),
+    Names     = make_short_file_names(Torrent),
     Masks     = make_file_masks(Torrent),
     InitState = #state{
         torrent=TorrentID,
@@ -426,7 +437,9 @@ init([TorrentID, Torrent]) ->
         file_list = Files,
         file_masks = Masks, 
         files_open=[],
-        files_max=MaxFiles},
+        files_max=MaxFiles,
+        name_array = array:from_list(Names),
+        short_file_names = Names},
     {ok, InitState}.
 
 %%
@@ -446,9 +459,13 @@ handle_call({write, _, _}, _, State) ->
 handle_call(get_files, _From, #state { file_list = FL } = State) ->
     {reply, {ok, FL}, State};
 
-handle_call({get_mask, Filename}, _, State) ->
+handle_call(get_short_file_names, _From, 
+        #state { short_file_names = NL } = State) ->
+    {reply, {ok, NL}, State};
+
+handle_call({get_mask, FileID}, _, State) ->
     #state{file_masks=Masks} = State,
-    case proplists:get_value(Filename, Masks) of
+    case array:get(FileID, Masks) of
         undefined ->
             {reply, {error, badname}, State};
         Mask ->
@@ -549,6 +566,7 @@ make_piece_map(Torrent) ->
 
 
 %% @private
+%% A mask is a set of pieces which contains the file.
 make_file_masks(Torrent) ->
     PieceLength = etorrent_metainfo:get_piece_length(Torrent),
     FileLengths = etorrent_metainfo:file_path_len(Torrent),
@@ -557,25 +575,29 @@ make_file_masks(Torrent) ->
 
 %% @private
 %% Collect total count of bytes, transform `{Len, Pos}' to `{To, From}'.
-make_file_masks_([{Name, FLen} | T], PLen, From, Acc) ->
+make_file_masks_([{_Name, FLen} | T], PLen, From, Acc) ->
     To = From + FLen,
     % Element = {FileName, Start Position, Stop Position}
-    X = {Name, From, To},
+    X = {From, To},
     make_file_masks_(T, PLen, To, [X|Acc]);
 
 make_file_masks_([], PieceLen, TotalLen, Acc) ->
     make_file_masks__(Acc, PieceLen, TotalLen, []).
 
 
+%% First argument is a reversed list.
 %% @private
 make_file_masks__([H|T], PLen, TLen, Acc) ->
-    {Name, From, To} = H,
+    {From, To} = H,
     Mask = make_mask(From, To, PLen, TLen),
-    X = {Name, etorrent_pieceset:from_bitstring(Mask)},
+    X = etorrent_pieceset:from_bitstring(Mask),
     make_file_masks__(T, PLen, TLen, [X|Acc]);
 
 make_file_masks__([], _PLen, _TLen, Acc) ->
-    Acc.
+    % We have a normal list of masks.
+    % [FirstFileMask, SecondFileMask, ..]
+    % Transform this list to array with numeration from zero.
+    array:from_list(Acc).
     
 
 %% @private
@@ -612,6 +634,13 @@ make_file_list(Torrent) ->
 	    [{filename:join([Name, Filename]), Size}
 	     || {Filename, Size} <- Files]
     end.
+
+
+%% @doc Returns filenames for cascadae file tree.
+%% @private 
+make_short_file_names(Torrent) ->
+    [Name || {Name, _Size} <- etorrent_metainfo:get_files(Torrent)].
+
 
 %%
 %% Calculate the positions where pieces start and continue in the

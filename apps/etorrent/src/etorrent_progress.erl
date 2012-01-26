@@ -56,7 +56,7 @@
 
 %% peer API
 -export([start_link/1,
-         start_link/5,
+         start_link/6,
          mark_valid/2]).
 
 %% stats API
@@ -67,6 +67,12 @@
          num_assigned/1,
          num_stored/1,
          num_valid/1]).
+
+%% wish API
+-export([set_wishes/2]).
+
+-export([show_assigned/1,
+         show_valid/1]).
 
 %% gproc registry entries
 -export([register_server/1,
@@ -126,7 +132,8 @@
     %% Chunk assignment processes
     pending     = exit(required) :: pid(),
     endgame     = exit(required) :: pid(),
-    in_endgame  = exit(required) :: boolean()}).
+    in_endgame  = exit(required) :: boolean(),
+    user_wishes = [] :: [pieceset()]}).
 
 %% # Piece states
 %% As the download of a torrent progresses, and regresses, each piece
@@ -245,13 +252,14 @@ start_link(Args) ->
 %% Start a new chunk server for a set of pieces, a subset of the
 %% pieces may already have been fetched.
 %% @end
-start_link(TorrentID, ChunkSize, Fetched, Sizes, TorrentPid) ->
+start_link(TorrentID, ChunkSize, Fetched, Sizes, TorrentPid, Wishes) ->
     Args = [
         {torrentid, TorrentID},
         {chunksize, ChunkSize},
         {fetched, Fetched},
         {piecesizes, Sizes},
-        {torrentpid, TorrentPid}],
+        {torrentpid, TorrentPid},
+        {user_wishes, Wishes}],
     start_link(Args).
 
 %% @doc
@@ -325,6 +333,21 @@ num_state_members(TorrentID, Piecestate) ->
     end.
 
 
+show_assigned(TorrentID) ->
+    Assigned = state_members(TorrentID, assigned),
+    etorrent_pieceset:to_string(Assigned).
+
+
+show_valid(TorrentID) ->
+    Valid = state_members(TorrentID, valid),
+    etorrent_pieceset:to_string(Valid).
+
+
+set_wishes(TorrentID, Wishes) ->
+    ChunkSrv = lookup_server(TorrentID),
+    ok = call(ChunkSrv, {set_wishes, Wishes}).
+
+
 %% @private
 init(Serverargs) ->
     Args = orddict:from_list(Serverargs),
@@ -333,6 +356,7 @@ init(Serverargs) ->
     ChunkSize = orddict:fetch(chunksize, Args),
     PiecesValid = orddict:fetch(fetched, Args),
     PieceSizes = orddict:fetch(piecesizes, Args),
+    Wishes = proplists:get_value(user_wishes, Serverargs, []),
 
     TorrentPid = etorrent_torrent_ctl:await_server(TorrentID),
     _ScarcityPid = etorrent_scarcity:await_server(TorrentID),
@@ -383,7 +407,9 @@ init(Serverargs) ->
         piece_priority=PiecePriority,
         pending=Pending,
         endgame=Endgame,
-        in_endgame=false},
+        in_endgame=false,
+        user_wishes=Wishes
+    },
     {ok, InitState}.
 
 
@@ -401,7 +427,8 @@ handle_call({chunk, {request, Numchunks, Peerset, PeerPid}}, _, State) ->
         chunks_assigned=AssignedChunks,
         piece_priority=PiecePriority,
         pending=Pending,
-        endgame=Endgame} = State,
+        endgame=Endgame,
+        user_wishes=UserWish} = State,
 
     %% If this peer has any pieces that we have begun downloading, pick
     %% one of those pieces over any unassigned pieces.
@@ -440,7 +467,7 @@ handle_call({chunk, {request, Numchunks, Peerset, PeerPid}}, _, State) ->
         %% but one ore more that we would want to download
         unassigned ->
             #pieceprio{pieces=UnassignedPriolist} = PiecePriority,
-            etorrent_pieceset:first(UnassignedPriolist, SubOptimal)
+            choose_best_piece(UserWish, UnassignedPriolist, SubOptimal)
     end,
 
     case PieceIndex of
@@ -525,8 +552,42 @@ handle_call({state_members, Piecestate}, _, State) ->
         stored -> State#state.pieces_stored;
         valid -> State#state.pieces_valid
     end,
-    {reply, Stateset, State}.
+    {reply, Stateset, State};
 
+handle_call({set_wishes, NewWishes}, _, State) ->
+    {reply, ok, State#state{user_wishes=NewWishes}}.
+
+
+
+%% @doc We have statistics about "popularity" of each piece from scarcity.
+%%      It is the second arg.
+%%      We also have user wishes: there is list of sets, first element is most
+%%      wanted, second less and so on. Lefted pieces have low priority.
+%%
+%%      It is the best way to make a decision based on scarcity data, but
+%%      some users want to set their own priorities on large torrents.
+%%
+%%      So, we need to choose the best piece. We have SubOptimal set, which 
+%%      contains pieces which the peer has and we has not.
+%%      
+%%      The best piece is a rear piece which we wish.
+%% @private
+choose_best_piece(UserWish, UnassignedPriolist, SubOptimal) ->
+    choose_best_piece_(UserWish, UnassignedPriolist, SubOptimal).
+
+%% Make decision based only on scarcity data.
+choose_best_piece_([], UPL, SO) ->
+    etorrent_pieceset:first(UPL, SO);
+
+choose_best_piece_([PS|T], UPL, SO) ->
+    Optimal = etorrent_pieceset:intersection(SO, PS),
+    HasOptimal = not etorrent_pieceset:is_empty(Optimal),
+    case HasOptimal of
+        true ->
+            etorrent_pieceset:first(UPL, Optimal);
+        false ->
+            choose_best_piece_(T, UPL, SO)
+    end.
 
 
 %% @private

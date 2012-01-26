@@ -24,6 +24,7 @@
               tier/0,
               token/0,
               torrent_id/0,
+              file_id/0,
               tracker_event/0,
               trackerinfo/0,
               transaction/0,
@@ -40,6 +41,7 @@
 -type bcode() ::
     integer() | binary() | [bcode(),...] | [{binary(), bcode()},...] | {}.
 -type torrent_id() :: integer().
+-type file_id() :: non_neg_integer().
 -type file_path() :: string().
 
 % Type returned by the From tag in gen_*:handle_call

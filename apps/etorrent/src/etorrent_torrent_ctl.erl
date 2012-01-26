@@ -28,9 +28,21 @@
          await_server/1]).
 
 %% gen_fsm callbacks
--export([init/1, handle_event/3, initializing/2, started/2, paused/2,
-         handle_sync_event/4, handle_info/3, terminate/3,
+-export([init/1, 
+         handle_event/3, 
+         initializing/2, 
+         started/2, 
+         paused/2,
+         handle_sync_event/4, 
+         handle_info/3, 
+         terminate/3,
          code_change/4]).
+
+%% wish API
+-export([get_wishes/1,
+         set_wishes/2,
+         wish_file/2]).
+
 
 -type bcode() :: etorrent_types:bcode().
 -type torrentid() :: etorrent_types:torrent_id().
@@ -47,7 +59,8 @@
     tracker_pid :: pid(),
     progress    :: pid(),
     pending     :: pid(),
-    endgame     :: pid()}).
+    endgame     :: pid(),
+    wishes = [] :: [{term(), pieceset()}]}).
 
 
 
@@ -102,6 +115,28 @@ continue_torrent(Pid) ->
 valid_pieces(Pid) ->
     gen_fsm:sync_send_all_state_event(Pid, valid_pieces).
 
+
+set_wishes(TorrentID, Wishes) ->
+    ChunkSrv = lookup_server(TorrentID),
+    ok = gen_fsm:sync_send_all_state_event(ChunkSrv, {set_wishes, Wishes}).
+
+
+get_wishes(TorrentID) ->
+    ChunkSrv = lookup_server(TorrentID),
+    {ok, Wishes} = gen_fsm:sync_send_all_state_event(ChunkSrv, get_wishes),
+    Wishes.
+
+
+wish_file(TorrentID, FileID) ->
+    OldWishes = get_wishes(TorrentID),
+    NewWishes = [ FileID | OldWishes ],
+    set_wishes(TorrentID, NewWishes),
+    ok.
+
+
+form_bitstring_wishes(TorrentID, Wishes) ->
+    [etorrent_io:get_mask(TorrentID, FileID) || FileID <- Wishes].
+    
 
 %% ====================================================================
 
@@ -182,17 +217,35 @@ handle_event(Msg, SN, S) ->
 %% @private
 handle_sync_event(valid_pieces, _, StateName, State) ->
     #state{valid=Valid} = State,
-    {reply, {ok, Valid}, StateName, State}.
+    {reply, {ok, Valid}, StateName, State};
+
+handle_sync_event(get_wishes, _From, SN, SD) ->
+    Wishes = SD#state.wishes,
+    {reply, {ok, Wishes}, SN, SD};
+
+handle_sync_event({set_wishes, NewWishes}, _From, SN, SD=#state{id=Id}) ->
+    case SN of
+        paused -> skip;
+        _ -> 
+            BitStrings = form_bitstring_wishes(Id, NewWishes),
+            etorrent_progress:set_wishes(Id, BitStrings)
+    end,
+    {reply, ok, SN, SD#state{wishes=NewWishes}}.
+
 
 %% @private
 %% Tell the controller we have stored an index for this torrent file
 handle_info({piece, {stored, Index}}, started, State) ->
-    #state{id=TorrentID, hashes=Hashes, progress=Progress, valid=ValidPieces} = State,
+    #state{id=TorrentID, 
+        hashes=Hashes, 
+        progress=Progress, 
+        valid=ValidPieces} = State,
     Piecehash = fetch_hash(Index, Hashes),
     case etorrent_io:check_piece(TorrentID, Index, Piecehash) of
         {ok, PieceSize} ->
             Peers = etorrent_peer_control:lookup_peers(TorrentID),
-            ok = etorrent_torrent:statechange(TorrentID, [{subtract_left, PieceSize}]),
+            ok = etorrent_torrent:statechange(TorrentID, 
+                [{subtract_left, PieceSize}]),
             ok = etorrent_piecestate:valid(Index, Peers),
             ok = etorrent_piecestate:valid(Index, Progress),
             NewValidState = etorrent_pieceset:insert(Index, ValidPieces),
@@ -203,6 +256,7 @@ handle_info({piece, {stored, Index}}, started, State) ->
             ok = etorrent_piecestate:unassigned(Index, Peers),
             {next_state, started, State}
     end;
+
 handle_info(Info, StateName, State) ->
     lager:error("Unknown handle_info event: ~p", [Info]),
     {next_state, StateName, State}.
@@ -240,6 +294,7 @@ do_registration(S=#state{id=Id, torrent=Torrent, hashes=Hashes}) ->
     AU = proplists:get_value(uploaded, FastResumePL, 0),
     AD = proplists:get_value(downloaded, FastResumePL, 0),
     TState = proplists:get_value(state, FastResumePL, unknown),
+    Wishes = proplists:get_value(wishes, FastResumePL, []),
 
     %% Add a torrent entry for this torrent.
     %% @todo Minimize calculation in `etorrent_torrent' module.
@@ -256,7 +311,7 @@ do_registration(S=#state{id=Id, torrent=Torrent, hashes=Hashes}) ->
             {missing, NumberOfMissingPieces},
             {state, TState}]),
 
-    NewState = S#state{ valid=ValidPieces },
+    NewState = S#state{ valid=ValidPieces, wishes=Wishes },
 
     case TState of
         paused ->
@@ -268,7 +323,7 @@ do_registration(S=#state{id=Id, torrent=Torrent, hashes=Hashes}) ->
     end.
 
 
-do_start(S=#state{id=Id, torrent=Torrent, valid=ValidPieces}) ->
+do_start(S=#state{id=Id, torrent=Torrent, valid=ValidPieces, wishes=Wishes}) ->
 
     %% Start the progress manager
     {ok, ProgressPid} =
@@ -276,7 +331,8 @@ do_start(S=#state{id=Id, torrent=Torrent, valid=ValidPieces}) ->
           S#state.parent_pid,
           Id,
           Torrent,
-          ValidPieces),
+          ValidPieces,
+          form_bitstring_wishes(Id, Wishes)),
 
     %% Update the tracking map. This torrent has been started.
     %% Altering this state marks the point where we will accept
@@ -356,7 +412,6 @@ to_stage(PL) ->
         
 
 
-
 % @doc Filter a pieceset() w.r.t data on disk.
 % <p>Given a set of pieces to check, `ToCheck', check each piece in there for validity.
 %  return a pieceset() where all invalid pieces have been filtered out.</p>
@@ -367,6 +422,7 @@ filter_pieces(TorrentID, ToCheck, Hashes) ->
     ValidIndexes = [I || I <- Indexes, is_valid_piece(TorrentID, I, Hashes)],
     Numpieces = etorrent_pieceset:capacity(ToCheck),
     etorrent_pieceset:from_list(ValidIndexes, Numpieces).
+
 
 -spec is_valid_piece(torrentid(), pieceindex(), binary()) -> boolean().
 is_valid_piece(TorrentID, Index, Hashes) ->
@@ -381,10 +437,12 @@ is_valid_piece(TorrentID, Index, Hashes) ->
 hashes_to_binary(Hashes) ->
     hashes_to_binary(Hashes, <<>>).
 
+
 hashes_to_binary([], Acc) ->
     Acc;
 hashes_to_binary([H=(<<_:160>>)|T], Acc) ->
     hashes_to_binary(T, <<Acc/binary, H/binary>>).
+
 
 fetch_hash(Piece, Hashes) ->
     Offset = 20 * Piece,
@@ -392,6 +450,7 @@ fetch_hash(Piece, Hashes) ->
         <<_:Offset/binary, Hash:20/binary, _/binary>> -> Hash;
         _ -> erlang:error(badarg)
     end.
+
 
 num_hashes(Hashes) ->
     byte_size(Hashes) div 20.

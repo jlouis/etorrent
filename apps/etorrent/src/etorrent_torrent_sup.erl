@@ -10,7 +10,7 @@
 -export([start_link/3,
 
          start_child_tracker/5,
-         start_progress/4,
+         start_progress/5,
          pause/1]).
 
 %% Supervisor callbacks
@@ -54,10 +54,11 @@ start_child_tracker(Pid, UrlTiers, InfoHash, Local_Peer_Id, TorrentId) ->
 
 -spec start_progress(pid(), etorrent_types:torrent_id(),
                             etorrent_types:bcode(),
-                            etorrent_pieceset:pieceset()) ->
+                            etorrent_pieceset:pieceset(),
+                            [etorrent_pieceset:pieceset()]) ->
                             {ok, pid()} | {ok, pid(), term()} | {error, term()}.
-start_progress(Pid, TorrentID, Torrent, ValidPieces) ->
-    Spec = progress_spec(TorrentID, Torrent, ValidPieces),
+start_progress(Pid, TorrentID, Torrent, ValidPieces, Wishes) ->
+    Spec = progress_spec(TorrentID, Torrent, ValidPieces, Wishes),
     supervisor:start_child(Pid, Spec).
 
 
@@ -93,10 +94,10 @@ scarcity_manager_spec(TorrentID, Torrent) ->
         {etorrent_scarcity, start_link, [TorrentID, Numpieces]},
         permanent, 5000, worker, [etorrent_scarcity]}.
 
-progress_spec(TorrentID, Torrent, ValidPieces) ->
+progress_spec(TorrentID, Torrent, ValidPieces, Wishes) ->
     PieceSizes  = etorrent_io:piece_sizes(Torrent), 
     ChunkSize   = ?DEFAULT_CHUNK_SIZE,
-    Args = [TorrentID, ChunkSize, ValidPieces, PieceSizes, lookup],
+    Args = [TorrentID, ChunkSize, ValidPieces, PieceSizes, lookup, Wishes],
     {chunk_mgr,
         {etorrent_progress, start_link, Args},
         transient, 20000, worker, [etorrent_progress]}.
