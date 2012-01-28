@@ -45,9 +45,12 @@
 
 
 -type bcode() :: etorrent_types:bcode().
--type torrentid() :: etorrent_types:torrent_id().
+-type torrent_id() :: etorrent_types:torrent_id().
+-type file_id() :: etorrent_types:file_id().
 -type pieceset() :: etorrent_pieceset:pieceset().
 -type pieceindex() :: etorrent_types:piece_index().
+
+
 -record(state, {
     id          :: integer() ,
     torrent     :: bcode(),   % Parsed torrent file
@@ -64,15 +67,15 @@
 
 
 
--spec register_server(torrentid()) -> true.
+-spec register_server(torrent_id()) -> true.
 register_server(TorrentID) ->
     etorrent_utils:register(server_name(TorrentID)).
 
--spec lookup_server(torrentid()) -> pid().
+-spec lookup_server(torrent_id()) -> pid().
 lookup_server(TorrentID) ->
     etorrent_utils:lookup(server_name(TorrentID)).
 
--spec await_server(torrentid()) -> pid().
+-spec await_server(torrent_id()) -> pid().
 await_server(TorrentID) ->
     etorrent_utils:await(server_name(TorrentID)).
 
@@ -118,24 +121,64 @@ valid_pieces(Pid) ->
 
 set_wishes(TorrentID, Wishes) ->
     ChunkSrv = lookup_server(TorrentID),
-    ok = gen_fsm:sync_send_all_state_event(ChunkSrv, {set_wishes, Wishes}).
+    gen_fsm:sync_send_all_state_event(ChunkSrv, {set_wishes, Wishes}).
 
 
 get_wishes(TorrentID) ->
     ChunkSrv = lookup_server(TorrentID),
-    {ok, Wishes} = gen_fsm:sync_send_all_state_event(ChunkSrv, get_wishes),
-    Wishes.
+    gen_fsm:sync_send_all_state_event(ChunkSrv, get_wishes).
 
+
+wish_file(TorrentID, [FileID]) when is_integer(FileID) ->
+    wish_file(TorrentID, FileID);
 
 wish_file(TorrentID, FileID) ->
-    OldWishes = get_wishes(TorrentID),
+    {ok, OldWishes} = get_wishes(TorrentID),
     NewWishes = [ FileID | OldWishes ],
-    set_wishes(TorrentID, NewWishes),
-    ok.
+    {ok, FilteredWishes} = set_wishes(TorrentID, NewWishes),
+    {ok, FilteredWishes}.
 
+
+%% @doc Convert list of file ids to list of masks.
+%%      Drop useless ids.
+%% @private
+-spec form_bitstring_wishes(torrent_id(), file_id()) -> 
+        {[file_id()], [pieceset()]}.
+
+form_bitstring_wishes(_TorrentID, []) ->
+    {[], []};
 
 form_bitstring_wishes(TorrentID, Wishes) ->
-    [etorrent_io:get_mask(TorrentID, FileID) || FileID <- Wishes].
+    Masks = [{FileID, etorrent_io:get_mask(TorrentID, FileID)} 
+            || FileID <- Wishes],
+    [Head|Tail] = Masks,
+    % Get sum pieceset
+    {_, Sum} = Head,
+    form_bitstring_wishes_(Tail, Sum, [Head]).
+
+
+%% If mask has not new pieces, skip it.
+%% @private
+form_bitstring_wishes_([{_FileID, Mask} = H | T], Sum, Valid) ->
+    case etorrent_pieceset:union(Mask, Sum) of
+        Sum -> 
+            form_bitstring_wishes_(T, Sum, Valid);
+        Sum1 -> 
+            form_bitstring_wishes_(T, Sum1, [H|Valid])
+    end;
+
+form_bitstring_wishes_([], _Sum, Valid) ->
+    form_bitstring_wishes_1(Valid, [], []).
+
+
+%% @doc Split elements on two arrays.
+%%      This function reverses the given list.
+%% @private
+form_bitstring_wishes_1([], IDs, Masks) ->
+    {IDs, Masks};
+
+form_bitstring_wishes_1([{ID, Mask}|T], IDs, Masks) ->
+    form_bitstring_wishes_1(T, [ID|IDs], [Mask|Masks]).
     
 
 %% ====================================================================
@@ -223,14 +266,16 @@ handle_sync_event(get_wishes, _From, SN, SD) ->
     Wishes = SD#state.wishes,
     {reply, {ok, Wishes}, SN, SD};
 
-handle_sync_event({set_wishes, NewWishes}, _From, SN, SD=#state{id=Id}) ->
+handle_sync_event({set_wishes, Wishes}, _From, SN, SD=#state{id=Id}) ->
+    {Wishes1, Masks} = form_bitstring_wishes(Id, Wishes),
+
     case SN of
         paused -> skip;
         _ -> 
-            BitStrings = form_bitstring_wishes(Id, NewWishes),
-            etorrent_progress:set_wishes(Id, BitStrings)
+            etorrent_progress:set_wishes(Id, Masks)
     end,
-    {reply, ok, SN, SD#state{wishes=NewWishes}}.
+
+    {reply, {ok, Wishes1}, SN, SD#state{wishes=Wishes1}}.
 
 
 %% @private
@@ -324,6 +369,7 @@ do_registration(S=#state{id=Id, torrent=Torrent, hashes=Hashes}) ->
 
 
 do_start(S=#state{id=Id, torrent=Torrent, valid=ValidPieces, wishes=Wishes}) ->
+    {Wishes1, Masks} = form_bitstring_wishes(Id, Wishes),
 
     %% Start the progress manager
     {ok, ProgressPid} =
@@ -332,7 +378,7 @@ do_start(S=#state{id=Id, torrent=Torrent, valid=ValidPieces, wishes=Wishes}) ->
           Id,
           Torrent,
           ValidPieces,
-          form_bitstring_wishes(Id, Wishes)),
+          Masks),
 
     %% Update the tracking map. This torrent has been started.
     %% Altering this state marks the point where we will accept
@@ -350,7 +396,8 @@ do_start(S=#state{id=Id, torrent=Torrent, valid=ValidPieces, wishes=Wishes}) ->
           Id),
 
     NewState = S#state{tracker_pid=TrackerPid,
-                       progress = ProgressPid },
+                       progress = ProgressPid,
+                       wishes = Wishes1 },
 
     {next_state, started, NewState}.
 
@@ -416,7 +463,7 @@ to_stage(PL) ->
 % <p>Given a set of pieces to check, `ToCheck', check each piece in there for validity.
 %  return a pieceset() where all invalid pieces have been filtered out.</p>
 % @end
--spec filter_pieces(torrentid(), pieceset(), binary()) -> pieceset().
+-spec filter_pieces(torrent_id(), pieceset(), binary()) -> pieceset().
 filter_pieces(TorrentID, ToCheck, Hashes) ->
     Indexes = etorrent_pieceset:to_list(ToCheck),
     ValidIndexes = [I || I <- Indexes, is_valid_piece(TorrentID, I, Hashes)],
@@ -424,7 +471,7 @@ filter_pieces(TorrentID, ToCheck, Hashes) ->
     etorrent_pieceset:from_list(ValidIndexes, Numpieces).
 
 
--spec is_valid_piece(torrentid(), pieceindex(), binary()) -> boolean().
+-spec is_valid_piece(torrent_id(), pieceindex(), binary()) -> boolean().
 is_valid_piece(TorrentID, Index, Hashes) ->
     Hash = fetch_hash(Index, Hashes),
     case etorrent_io:check_piece(TorrentID, Index, Hash) of

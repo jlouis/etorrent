@@ -68,7 +68,8 @@
          unregister_open_file/2,
          await_open_file/2,
          get_mask/2,
-         get_short_file_names/1]).
+         tree_children/2,
+         minimize_filelist/2]).
 
 -export([check_piece/3]).
 
@@ -106,10 +107,25 @@
     file_list :: [{string(), pos_integer()}],
     files_open :: list(#io_file{}),
     files_max  :: pos_integer(),
-    file_masks :: [{string(), pieceset()}],
-    name_array :: array(),
-    short_file_names :: [string()]
+    static_file_info :: array()
     }).
+
+
+-record(file_info, {
+    id :: file_id(),
+    name :: string(),
+    short_name :: binary(),
+    type      = file :: directory | file,
+    children  = [] :: [file_id()],
+    % How many files are in this node?
+    capacity  = 0,
+    size      = 0 :: non_neg_integer(),
+    % byte offset from 1
+    position  = 0 :: non_neg_integer(),
+    pieces :: pieceset()
+}).
+-type file_info() :: #file_info{}.
+
 
 %% @doc Start the File I/O Server
 %% @end
@@ -270,6 +286,7 @@ file_path_len(T) ->
 file_paths(Torrent) ->
     [Path || {Path, _} <- file_path_len(Torrent)].
 
+
 %% @doc
 %% Returns the relative paths and sizes of all files included in the .torrent.
 %% If the .torrent includes more than one file, the torrent name is prepended
@@ -408,15 +425,56 @@ check_piece(TorrentID, Pieceindex, Piecehash) ->
 
 %% @doc Build a mask of the file in the torrent.
 -spec get_mask(torrent_id(), file_id()) -> pieceset().
-get_mask(TorrentID, FileID) ->
+get_mask(TorrentID, FileID) when is_integer(FileID) ->
     DirPid = await_directory(TorrentID),
     {ok, Mask} = gen_server:call(DirPid, {get_mask, FileID}),
-    Mask.
+    Mask;
 
-get_short_file_names(TorrentID) ->
+%% List of files with same priority.
+get_mask(TorrentID, [_|_] = IdList) ->
+    true = lists:all(fun is_integer/1, IdList),
     DirPid = await_directory(TorrentID),
-    {ok, Names} = gen_server:call(DirPid, get_short_file_names),
-    Names.
+    MapFn = fun(FileID) ->
+            {ok, Mask} = gen_server:call(DirPid, {get_mask, FileID}),
+            Mask
+        end,
+
+    %% Do map
+    Masks = lists:map(MapFn, IdList),
+    %% Do reduce
+    etorrent_pieceset:union(Masks).
+    
+
+-spec tree_children(torrent_id(), file_id()) -> [{atom(), term()}].
+tree_children(TorrentID, FileID) ->
+    %% get children
+    DirPid = await_directory(TorrentID),
+    {ok, Records} = gen_server:call(DirPid, {tree_children, FileID}),
+
+    %% get valid pieceset
+    CtlPid = etorrent_torrent_ctl:lookup_server(TorrentID),    
+    {ok, Valid} = etorrent_torrent_ctl:valid_pieces(CtlPid),
+
+    lists:map(fun(X) ->
+            ValidFP = etorrent_pieceset:intersection(X#file_info.pieces, Valid),
+            SizeFP = etorrent_pieceset:size(X#file_info.pieces),
+            ValidSizeFP = etorrent_pieceset:size(ValidFP),
+            [{id, X#file_info.id}
+            ,{name, X#file_info.short_name}
+            ,{size, X#file_info.size}
+            ,{capacity, X#file_info.capacity}
+            ,{is_leaf, (X#file_info.children == [])}
+            ,{progress, ValidSizeFP / SizeFP}
+            ]
+        end, Records).
+    
+
+%% @doc Form minimal version of the filelist with the same pieceset.
+minimize_filelist(TorrentID, FileIds) ->
+    SortedFiles = lists:sort(FileIds),
+    DirPid = await_directory(TorrentID),
+    {ok, Ids} = gen_server:call(DirPid, {minimize_filelist, SortedFiles}),
+    Ids.
     
 
 %% ----------------------------------------------------------------------
@@ -428,18 +486,16 @@ init([TorrentID, Torrent]) ->
     MaxFiles = etorrent_config:max_files(),
     true = register_directory(TorrentID),
     PieceMap  = make_piece_map(Torrent),
-    Files     = make_file_list(Torrent),
-    Names     = make_short_file_names(Torrent),
-    Masks     = make_file_masks(Torrent),
+    Files = make_file_list(Torrent),
+    Static = collect_static_file_info(Torrent),
+    
     InitState = #state{
         torrent=TorrentID,
         pieces=PieceMap,
         file_list = Files,
-        file_masks = Masks, 
         files_open=[],
         files_max=MaxFiles,
-        name_array = array:from_list(Names),
-        short_file_names = Names},
+        static_file_info=Static},
     {ok, InitState}.
 
 %%
@@ -459,17 +515,29 @@ handle_call({write, _, _}, _, State) ->
 handle_call(get_files, _From, #state { file_list = FL } = State) ->
     {reply, {ok, FL}, State};
 
-handle_call(get_short_file_names, _From, 
-        #state { short_file_names = NL } = State) ->
-    {reply, {ok, NL}, State};
-
 handle_call({get_mask, FileID}, _, State) ->
-    #state{file_masks=Masks} = State,
-    case array:get(FileID, Masks) of
+    #state{static_file_info=Arr} = State,
+    case array:get(FileID, Arr) of
         undefined ->
             {reply, {error, badname}, State};
-        Mask ->
+        #file_info {pieces = Mask} ->
             {reply, {ok, Mask}, State}
+    end;
+
+handle_call({minimize_filelist, FileIDs}, _, State) ->
+    #state{static_file_info=Arr} = State,
+    RecList = [ array:get(FileID, Arr) || FileID <- FileIDs ],
+    FilteredIDs = [Rec#file_info.id || Rec <- minimize_reclist(RecList)],
+    {reply, {ok, FilteredIDs}, State};
+
+handle_call({tree_children, FileID}, _, State) ->
+    #state{static_file_info=Arr} = State,
+    case array:get(FileID, Arr) of
+        undefined ->
+            {reply, {error, badname}, State};
+        #file_info {children = Ids} ->
+            Children = [array:get(Id, Arr) || Id <- Ids],
+            {reply, {ok, Children}, State}
     end;
 
 handle_call({get_positions, Piece}, _, State) ->
@@ -565,66 +633,6 @@ make_piece_map(Torrent) ->
     end, array:new({default, []}), MapEntries).
 
 
-%% @private
-%% A mask is a set of pieces which contains the file.
-make_file_masks(Torrent) ->
-    PieceLength = etorrent_metainfo:get_piece_length(Torrent),
-    FileLengths = etorrent_metainfo:file_path_len(Torrent),
-    make_file_masks_(FileLengths, PieceLength, 1, []).
-
-
-%% @private
-%% Collect total count of bytes, transform `{Len, Pos}' to `{To, From}'.
-make_file_masks_([{_Name, FLen} | T], PLen, From, Acc) ->
-    To = From + FLen,
-    % Element = {FileName, Start Position, Stop Position}
-    X = {From, To},
-    make_file_masks_(T, PLen, To, [X|Acc]);
-
-make_file_masks_([], PieceLen, TotalLen, Acc) ->
-    make_file_masks__(Acc, PieceLen, TotalLen, []).
-
-
-%% First argument is a reversed list.
-%% @private
-make_file_masks__([H|T], PLen, TLen, Acc) ->
-    {From, To} = H,
-    Mask = make_mask(From, To, PLen, TLen),
-    X = etorrent_pieceset:from_bitstring(Mask),
-    make_file_masks__(T, PLen, TLen, [X|Acc]);
-
-make_file_masks__([], _PLen, _TLen, Acc) ->
-    % We have a normal list of masks.
-    % [FirstFileMask, SecondFileMask, ..]
-    % Transform this list to array with numeration from zero.
-    array:from_list(Acc).
-    
-
-%% @private
-make_mask(From, To, PLen, TLen) 
-    when PLen =< TLen, From =< To, 
-           To =< TLen, From > 0 ->
-    %% __Bytes__: 1 <= From <= To <= TLen
-    %%
-    %% Calculate how many __pieces__ before, in and after the file.
-    %% Be greedy: when the file ends inside a piece, then put this piece
-    %% both into this file and into the next file.
-    %% [0..X1 ) [X1..X2] (X2..MaxPieces]
-    %% [before) [  in  ] (    after    ]
-    Total    = (TLen div PLen)  
-             + case TLen rem PLen of 0 -> 0; _ -> 1 end,
-    RemLeft  = case From rem PLen of 0 -> 1; _ -> 0 end,
-    RemRight = case To   rem PLen of 0 -> 0; _ -> 1 end,
-    X1       = From div PLen, 
-    X2       = To   div PLen,
-    Before   = X1 - RemLeft, 
-    In       = X2 - Before + RemRight,
-    After    = Total - Before - In,
-%   io:write([Before, After, In, Total, RemLeft, RemRight]),
-    <<0:Before, (bnot 0):In, 0:After>>.
-    
-
-
 make_file_list(Torrent) ->
     Files = etorrent_metainfo:get_files(Torrent),
     Name = etorrent_metainfo:get_name(Torrent),
@@ -634,12 +642,6 @@ make_file_list(Torrent) ->
 	    [{filename:join([Name, Filename]), Size}
 	     || {Filename, Size} <- Files]
     end.
-
-
-%% @doc Returns filenames for cascadae file tree.
-%% @private 
-make_short_file_names(Torrent) ->
-    [Name || {Name, _Size} <- etorrent_metainfo:get_files(Torrent)].
 
 
 %%
@@ -705,6 +707,225 @@ chunk_positions(ChunkOffs, ChunkLen, [{Path, FileOffs, BlockLen}|T]) ->
             [Entry|chunk_positions(0, NewChunkLen, T)]
     end.
 
+
+%% -\/-----------------FILE INFO API----------------------\/-
+%% @private
+collect_static_file_info(Torrent) ->
+    PieceLength = etorrent_metainfo:get_piece_length(Torrent),
+    FileLengths = etorrent_metainfo:file_path_len(Torrent),
+    CurrentDirectory = "",
+    Acc = [],
+    Pos = 1,
+    %% Rec1, Rec2, .. are lists of nodes.
+    %% Calculate positions, create records. They are still not prepared.
+    {TLen, Rec1} = flen_to_record(FileLengths, Pos, Acc),
+    %% Add directories as additional nodes.
+    Rec2 = add_directories(Rec1),
+    %% Fill `pieces' field.
+    %% A mask is a set of pieces which contains the file.
+    Rec3 = fill_pieces(Rec2, PieceLength, TLen),
+    Rec4 = fill_ids(Rec3),
+    array:from_list(Rec4).
+
+
+%% @private
+flen_to_record([{Name, FLen} | T], From, Acc) ->
+    To = From + FLen,
+    X = #file_info {
+        type = file,
+        name = Name,
+        position = From,
+        size = FLen
+    },
+    flen_to_record(T, To, [X|Acc]);
+
+flen_to_record([], TotalLen, Acc) ->
+    {TotalLen, lists:reverse(Acc)}.
+
+
+%% @private
+add_directories(Rec1) ->
+    Idx = 1,
+    {Rec2, Children, Idx1, []} = add_directories_(Rec1, Idx, "", [], []),
+    [Last|_] = Rec2,
+    Rec3 = lists:reverse(Rec2),
+
+    #file_info {
+        size = LastSize,
+        position = LastPos
+    } = Last,
+
+    Root = #file_info {
+        name = "",
+        % total size
+        size = (LastSize + LastPos - 1),
+        position = 1,
+        children = Children,
+        capacity = Idx1 - Idx
+    },
+
+    [Root|Rec3].
+
+
+%% "test/t1.txt"
+%% "t2.txt"
+%% "dir1/dir/x.x"
+%% ==>
+%% "."
+%% "test"
+%% "test/t1.txt"
+%% "t2.txt"
+%% "dir1"
+%% "dir1/dir"
+%% "dir1/dir/x.x"
+
+%% @private
+dirname_(Name) ->
+    case filename:dirname(Name) of
+        "." -> "";
+        Dir -> Dir
+    end.
+
+%% @private
+first_token_(Path) ->
+    case filename:split(Path) of
+    ["/", Token | _] -> Token;
+    [Token | _] -> Token
+    end.
+
+%% @private
+file_join_(L, R) ->
+    case filename:join(L, R) of
+        "/" ++ X -> X;
+        X -> X
+    end.
+
+
+%% @private
+add_directories_([], Idx, Cur, Children, Acc) ->
+    {Acc, lists:reverse(Children), Idx, []};
+
+%% @private
+add_directories_([H|T], Idx, Cur, Children, Acc) ->
+    #file_info{ name = Name, position = CurPos } = H,
+    Dir = dirname_(Name),
+    Action = case Dir of
+            Cur -> 'equal';
+            _   ->
+                case lists:prefix(Cur, Dir) of
+                    true -> 'prefix';
+                    false -> 'other'
+                end
+        end,
+
+    case Action of
+        %% file is in the same directory
+        'equal' ->
+            add_directories_(T, Idx+1, Dir, [Idx|Children], [H|Acc]);
+
+        %% file is in child directory
+        'prefix' ->
+            Sub = Dir -- Cur,
+            Part = first_token_(Sub),
+            NextDir = file_join_(Cur, Part),
+
+            {SubAcc, SubCh, Idx1, SubT} 
+                = add_directories_([H|T], Idx+1, NextDir, [], []),
+            [#file_info{ position = LastPos, size = LastSize }|_] = SubAcc,
+
+            DirRec = #file_info {
+                name = NextDir,
+                size = (LastPos + LastSize - CurPos),
+                position = CurPos,
+                children = SubCh,
+                capacity = Idx1 - Idx
+            },
+            NewAcc = SubAcc ++ [DirRec|Acc],
+            add_directories_(SubT, Idx1, Cur, [Idx|Children], NewAcc);
+        
+        %% file is in the other directory
+        'other' ->
+            {Acc, lists:reverse(Children), Idx, [H|T]}
+    end.
+
+
+%% @private
+fill_pieces(RecList, PLen, TLen) ->
+    F = fun(#file_info{position = From, size = Size} = Rec) ->
+            To = From + Size,
+            Mask = make_mask(From, To, PLen, TLen),
+            Set = etorrent_pieceset:from_bitstring(Mask),
+            Rec#file_info{pieces = Set}
+        end,
+        
+    lists:map(F, RecList).    
+
+
+fill_ids(RecList) ->
+    fill_ids_(RecList, 0, []).
+
+
+fill_ids_([H1=#file_info{name=Name}|T], Id, Acc) ->
+    % set id, prepare name for cascadae
+    H2 = H1#file_info{
+        id = Id,
+        short_name = list_to_binary(filename:basename(Name))
+    },
+    fill_ids_(T, Id+1, [H2|Acc]);
+fill_ids_([], _Id, Acc) ->
+    lists:reverse(Acc).
+    
+
+%% @private
+make_mask(From, To, PLen, TLen) 
+    when PLen =< TLen, From =< To, 
+           To =< TLen, From > 0 ->
+    %% __Bytes__: 1 <= From <= To <= TLen
+    %%
+    %% Calculate how many __pieces__ before, in and after the file.
+    %% Be greedy: when the file ends inside a piece, then put this piece
+    %% both into this file and into the next file.
+    %% [0..X1 ) [X1..X2] (X2..MaxPieces]
+    %% [before) [  in  ] (    after    ]
+    Total    = (TLen div PLen)  
+             + case TLen rem PLen of 0 -> 0; _ -> 1 end,
+    RemLeft  = case From rem PLen of 0 -> 1; _ -> 0 end,
+    RemRight = case To   rem PLen of 0 -> 0; _ -> 1 end,
+    X1       = From div PLen, 
+    X2       = To   div PLen,
+    Before   = X1 - RemLeft, 
+    In       = X2 - Before + RemRight,
+    After    = Total - Before - In,
+%   io:write([Before, After, In, Total, RemLeft, RemRight]),
+    <<0:Before, (bnot 0):In, 0:After>>.
+
+
+%% @private
+minimize_reclist(RecList) ->
+    minimize_(RecList, []).
+
+
+minimize_([H|T], []) ->
+    minimize_(T, [H]);
+
+
+%% H is a ancestor of the previous element. Skip H.
+minimize_([H=#file_info{position=Pos}|T], 
+    [#file_info{size=PrevSize, position=PrevPos}|_] = Acc)
+    when Pos < (PrevPos + PrevSize) ->
+    minimize_(T, Acc);
+
+minimize_([H|T], Acc) ->
+    minimize_(T, [H|Acc]);
+
+minimize_([], Acc) ->
+    lists:reverse(Acc).
+    
+    
+%% -/\-----------------FILE INFO API----------------------/\-
+
+
+
 -ifdef(TEST).
 piece_map_0_test() ->
     Size  = 2,
@@ -764,5 +985,45 @@ make_mask_test_() ->
     ,?_assertEqual(F(1,  6,  3, 10), <<2#1100:4>>)
     ,?_assertEqual(F(9, 10,  3, 10), <<2#0011:4>>)
     ].
+
+add_directories_test_() ->
+    Rec = add_directories(
+        [#file_info{position=1, size=3, name="test/t1.txt"}
+        ,#file_info{position=4, size=2, name="t2.txt"}
+        ,#file_info{position=6, size=1, name="dir1/dir/x.x"}
+        ,#file_info{position=7, size=2, name="dir1/dir/x.y"}
+        ]),
+    Names = el(Rec, #file_info.name),
+    Sizes = el(Rec, #file_info.size),
+    Positions = el(Rec, #file_info.position),
+    Children  = el(Rec, #file_info.children),
+
+    [Root|Elems] = Rec,
+    MinNames  = el(minimize_reclist(Elems), #file_info.name),
+    
+    List = [{0, "",             8, 1, [1, 3, 4]}
+           ,{1, "test",         3, 1, [2]}
+           ,{2, "test/t1.txt",  3, 1, []}
+           ,{3, "t2.txt",       2, 4, []}
+           ,{4, "dir1",         3, 6, [5]}
+           ,{5, "dir1/dir",     3, 6, [6, 7]}
+           ,{6, "dir1/dir/x.x", 1, 6, []}
+           ,{7, "dir1/dir/x.y", 2, 7, []}
+        ],
+    ExpNames = el(List, 2),
+    ExpSizes = el(List, 3),
+    ExpPositions = el(List, 4),
+    ExpChildren  = el(List, 5),
+    
+    [?_assertEqual(Names, ExpNames)
+    ,?_assertEqual(Sizes, ExpSizes)
+    ,?_assertEqual(Positions, ExpPositions)
+    ,?_assertEqual(Children,  ExpChildren)
+    ,?_assertEqual(MinNames, ["test", "t2.txt", "dir1"])
+    ].
+
+
+el(List, Pos) ->
+    Children  = [element(Pos, X) || X <- List].
 
 -endif.

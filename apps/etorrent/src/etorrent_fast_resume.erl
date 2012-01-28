@@ -218,10 +218,10 @@ form_entry(Id, Props) ->
 
         %% not downloaded
         State ->
-            TorrentPid  = etorrent_torrent_ctl:lookup_server(Id),
-            {ok, Valid} = etorrent_torrent_ctl:valid_pieces(TorrentPid),
-            Bitfield    = etorrent_pieceset:to_binary(Valid),
-            Wishes      = etorrent_torrent_ctl:get_wishes(Id),
+            TorrentPid   = etorrent_torrent_ctl:lookup_server(Id),
+            {ok, Valid}  = etorrent_torrent_ctl:valid_pieces(TorrentPid),
+            Bitfield     = etorrent_pieceset:to_binary(Valid),
+            {ok, Wishes} = etorrent_torrent_ctl:get_wishes(Id),
             [{state, State}
             ,{bitfield, Bitfield}
             ,{wishes, Wishes}
