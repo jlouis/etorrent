@@ -50,6 +50,13 @@
 -type pieceset() :: etorrent_pieceset:pieceset().
 -type pieceindex() :: etorrent_types:piece_index().
 
+%% If wish is [file_id()], for example, [1,2,3], then create
+%% a mask which has all parts from files 1, 2, 3.
+%% There is some code in `etorrent_io', that tells about how
+%% numbering of files works.
+-type wish() :: [file_id()] | file_id().
+-type wish_list() :: [wish()].
+
 
 -record(state, {
     id          :: integer() ,
@@ -119,15 +126,25 @@ valid_pieces(Pid) ->
     gen_fsm:sync_send_all_state_event(Pid, valid_pieces).
 
 
+%% @doc Update wishlist.
+%%      This function returns __minimized__ version of wishlist.
+-spec set_wishes(torrent_id(), wish_list()) -> {ok, wish_list()}.
+
 set_wishes(TorrentID, Wishes) ->
     ChunkSrv = lookup_server(TorrentID),
     gen_fsm:sync_send_all_state_event(ChunkSrv, {set_wishes, Wishes}).
 
 
+-spec get_wishes(torrent_id()) -> {ok, wish_list()}.
+
 get_wishes(TorrentID) ->
     ChunkSrv = lookup_server(TorrentID),
     gen_fsm:sync_send_all_state_event(ChunkSrv, get_wishes).
 
+
+%% @doc Add a file at top of wishlist.
+%%      Added file will have highest priority inside this torrent.
+-spec wish_file(torrent_id(), wish()) -> {ok, wish_list()}.
 
 wish_file(TorrentID, [FileID]) when is_integer(FileID) ->
     wish_file(TorrentID, FileID);
@@ -140,7 +157,8 @@ wish_file(TorrentID, FileID) ->
 
 
 %% @doc Convert list of file ids to list of masks.
-%%      Drop useless ids.
+%%      A mask is a pieceset.
+%%      Drop useless ids (minimize).
 %% @private
 -spec form_bitstring_wishes(torrent_id(), file_id()) -> 
         {[file_id()], [pieceset()]}.
@@ -152,33 +170,38 @@ form_bitstring_wishes(TorrentID, Wishes) ->
     Masks = [{FileID, etorrent_io:get_mask(TorrentID, FileID)} 
             || FileID <- Wishes],
     [Head|Tail] = Masks,
-    % Get sum pieceset
-    {_, Sum} = Head,
-    form_bitstring_wishes_(Tail, Sum, [Head]).
+    % First pieceset will be union.
+    {_, Union} = Head,
+    minimize_wishes(Tail, Union, [Head]).
 
 
-%% If mask has not new pieces, skip it.
+%% @doc This function is pure, so we can test it.
+%%      Traverse a list of masks.
+%%      If a mask has not new pieces, skip it.
+%%      If a mask has unique parts, add them to Union pieceset.
 %% @private
-form_bitstring_wishes_([{_FileID, Mask} = H | T], Sum, Valid) ->
-    case etorrent_pieceset:union(Mask, Sum) of
-        Sum -> 
-            form_bitstring_wishes_(T, Sum, Valid);
-        Sum1 -> 
-            form_bitstring_wishes_(T, Sum1, [H|Valid])
+minimize_wishes([{_FileID, Mask} = H | T], Union, Valid) ->
+    case etorrent_pieceset:union(Mask, Union) of
+        %% nothing new
+        Union -> 
+            minimize_wishes(T, Union, Valid);
+
+        Union1 -> 
+            minimize_wishes(T, Union1, [H|Valid])
     end;
 
-form_bitstring_wishes_([], _Sum, Valid) ->
-    form_bitstring_wishes_1(Valid, [], []).
+minimize_wishes([], _Union, Valid) ->
+    minimize_wishes_1(Valid, [], []).
 
 
 %% @doc Split elements on two arrays.
 %%      This function reverses the given list.
 %% @private
-form_bitstring_wishes_1([], IDs, Masks) ->
-    {IDs, Masks};
+minimize_wishes_1([], Ids, Masks) ->
+    {Ids, Masks};
 
-form_bitstring_wishes_1([{ID, Mask}|T], IDs, Masks) ->
-    form_bitstring_wishes_1(T, [ID|IDs], [Mask|Masks]).
+minimize_wishes_1([{Id, Mask}|T], Ids, Masks) ->
+    minimize_wishes_1(T, [Id|Ids], [Mask|Masks]).
     
 
 %% ====================================================================
@@ -272,6 +295,7 @@ handle_sync_event({set_wishes, Wishes}, _From, SN, SD=#state{id=Id}) ->
     case SN of
         paused -> skip;
         _ -> 
+            %% Tell to the progress manager about new list of wanted pieces
             etorrent_progress:set_wishes(Id, Masks)
     end,
 
@@ -515,5 +539,31 @@ hashes_to_binary_test_() ->
      ?_assertEqual(3, num_hashes(Bin)),
      ?_assertError(badarg, fetch_hash(-1, Bin)),
      ?_assertError(badarg, fetch_hash(3, Bin))].
+
+%% Directory Structure:
+%%
+%% Num     Path      Pieceset (indexing from 1)
+%% --------------------------------------------
+%%  0  /              [1-4]
+%%  1  /Dir1          [1,2]
+%%  2  /Dir1/File1    [1]
+%%  3  /Dir1/File2    [2]
+%%  4  /Dir2          [3,4]
+%%  5  /Dir2/File3    [3,4]
+%%
+%% Check that wishlist [2, 1, 3] will be minimized to [2, 1]
+minimize_wishes_test_() ->
+    Dir1  = etorrent_pieceset:from_bitstring(<<2#1100>>),
+    File1 = etorrent_pieceset:from_bitstring(<<2#1000>>),
+    File2 = etorrent_pieceset:from_bitstring(<<2#0100>>),
+    Dir2 = File3 = etorrent_pieceset:from_bitstring(<<2#0011>>),
+
+    [Head|Tail] = [{2, File1}, {1, Dir1}, {3, File2}],
+    Union = File1,
+    
+    {WishFiles, _WishMasks} = minimize_wishes(Tail, Union, [Head]),
+
+    [?_assertEqual(WishFiles, [2,1])
+    ].
 
 -endif.
