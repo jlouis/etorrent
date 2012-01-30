@@ -101,6 +101,7 @@
     monitor  :: reference(),
     accessed :: {integer(), integer(), integer()}}).
 
+
 -record(state, {
     torrent :: torrent_id(),
     pieces  :: array(),
@@ -124,6 +125,7 @@
     position  = 0 :: non_neg_integer(),
     pieces :: pieceset()
 }).
+
 -type file_info() :: #file_info{}.
 
 
