@@ -290,7 +290,11 @@ handle_sync_event(get_wishes, _From, SN, SD) ->
     {reply, {ok, Wishes}, SN, SD};
 
 handle_sync_event({set_wishes, Wishes}, _From, SN, SD=#state{id=Id}) ->
-    {Wishes1, Masks} = form_bitstring_wishes(Id, Wishes),
+    Wishes1 = unique_list(Wishes),
+    
+    %% generate optimized version of masks.
+    %% save original version of masks, because they may be reordered.
+    {_Wishes2, Masks} = form_bitstring_wishes(Id, Wishes1),
 
     case SN of
         paused -> skip;
@@ -300,6 +304,12 @@ handle_sync_event({set_wishes, Wishes}, _From, SN, SD=#state{id=Id}) ->
     end,
 
     {reply, {ok, Wishes1}, SN, SD#state{wishes=Wishes1}}.
+
+
+unique_list(L) ->
+    U = lists:usort(L),
+    X = L -- U,
+    L -- X.
 
 
 %% @private

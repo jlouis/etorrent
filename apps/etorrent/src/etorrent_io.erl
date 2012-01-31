@@ -69,7 +69,8 @@
          await_open_file/2,
          get_mask/2,
          tree_children/2,
-         minimize_filelist/2]).
+         minimize_filelist/2,
+         long_file_name/2]).
 
 -export([check_piece/3]).
 
@@ -119,7 +120,7 @@
     type      = file :: directory | file,
     children  = [] :: [file_id()],
     % How many files are in this node?
-    capacity  = 0,
+    capacity  = 0 :: non_neg_integer(),
     size      = 0 :: non_neg_integer(),
     % byte offset from 1
     position  = 0 :: non_neg_integer(),
@@ -479,6 +480,17 @@ minimize_filelist(TorrentID, FileIds) ->
     Ids.
     
 
+%% @doc This name is used in cascadae wish view.
+-spec long_file_name(torrent_id(), file_id() | [file_id()]) -> binary().
+long_file_name(TorrentID, FileID) when is_integer(FileID) ->
+    long_file_name(TorrentID, [FileID]);
+
+long_file_name(TorrentID, FileID) when is_list(FileID) ->
+    DirPid = await_directory(TorrentID),
+    {ok, Name} = gen_server:call(DirPid, {long_file_name, FileID}),
+    Name.
+    
+
 %% ----------------------------------------------------------------------
 
 %% @private
@@ -525,6 +537,18 @@ handle_call({get_mask, FileID}, _, State) ->
         #file_info {pieces = Mask} ->
             {reply, {ok, Mask}, State}
     end;
+
+handle_call({long_file_name, FileIDs}, _, State) ->
+    #state{static_file_info=Arr} = State,
+
+    F = fun(FileID) -> 
+            Rec = array:get(FileID, Arr), 
+            Rec#file_info.name
+       end,
+
+    NameList = lists:map(F, FileIDs),
+    NameBinary = list_to_binary(string:join(NameList, ", ")),
+    {reply, {ok, NameBinary}, State};
 
 handle_call({minimize_filelist, FileIDs}, _, State) ->
     #state{static_file_info=Arr} = State,
