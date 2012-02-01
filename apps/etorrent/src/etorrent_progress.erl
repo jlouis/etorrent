@@ -554,8 +554,8 @@ handle_call({state_members, Piecestate}, _, State) ->
     end,
     {reply, Stateset, State};
 
-handle_call({set_wishes, NewWishes}, _, State) ->
-    {reply, ok, State#state{user_wishes=NewWishes}}.
+handle_call({set_wishes, NewWishes}, _, State=#state{pieces_valid=Valid}) ->
+    {reply, ok, State#state{user_wishes=minimize_masks(NewWishes, Valid, [])}}.
 
 
 
@@ -730,6 +730,25 @@ update_priority(TorrentID, Pieceprio, Pieceset) ->
     ok = etorrent_scarcity:unwatch(TorrentID, Ref),
     {ok, NewRef, NewList} = etorrent_scarcity:watch(TorrentID, Tag, Pieceset),
     #pieceprio{ref=NewRef, tag=Tag, pieces=NewList}.
+
+
+%% @doc This function is pure, so we can test it.
+%%      Traverse a list of masks.
+%%      If a mask has not new pieces, skip it.
+%%      If a mask has unique parts, add them to Union pieceset.
+%% @private
+minimize_masks([H|T], Union, Acc) ->
+    case etorrent_pieceset:union(H, Union) of
+        %% nothing new
+        Union -> 
+            minimize_masks(T, Union, Acc);
+
+        Union1 -> 
+            minimize_masks(T, Union1, [H|Acc])
+    end;
+
+minimize_masks([], _Union, Acc) ->
+    lists:reverse(Acc).
 
 
 -ifdef(TEST).
@@ -956,5 +975,32 @@ trigger_endgame_case() ->
     ok = ?chunkstate:fetched(2, 0, 1, self(), endgame()),
     ok = ?chunkstate:fetched(2, 1, 1, self(), endgame()),
     ?assertEqual(ok, etorrent_utils:ping(endgame())).
+
+
+%% Directory Structure:
+%%
+%% Num     Path      Pieceset (indexing from 1)
+%% --------------------------------------------
+%%  0  /              [1-4]
+%%  1  /Dir1          [1,2]
+%%  2  /Dir1/File1    [1]
+%%  3  /Dir1/File2    [2]
+%%  4  /Dir2          [3,4]
+%%  5  /Dir2/File3    [3,4]
+%%
+%% Check that wishlist [2, 1, 3] will be minimized to [2, 1]
+minimize_masks_test_() ->
+    Empty = etorrent_pieceset:new(4),
+    Dir1  = etorrent_pieceset:from_bitstring(<<2#1100>>),
+    File1 = etorrent_pieceset:from_bitstring(<<2#1000>>),
+    File2 = etorrent_pieceset:from_bitstring(<<2#0100>>),
+    Dir2 = File3 = etorrent_pieceset:from_bitstring(<<2#0011>>),
+
+    Masks = [File1, Dir1, File2],
+    Union = Empty,
+    
+    Masks1 = minimize_masks(Masks, Union, []),
+    [?_assertEqual(Masks1, [File1,Dir1])
+    ].
 
 -endif.

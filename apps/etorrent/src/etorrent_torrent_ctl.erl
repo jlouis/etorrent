@@ -126,20 +126,34 @@ valid_pieces(Pid) ->
     gen_fsm:sync_send_all_state_event(Pid, valid_pieces).
 
 
+
+
+%% =====================\/=== Wish API ===\/===========================
+
+-type file_wish()  :: [non_neg_integer()].
+-type piece_wish() :: [non_neg_integer()].
+
+-record(wish, {
+    type :: file | piece,
+    value :: file_wish() | piece_wish(),
+    is_completed = false :: boolean(),
+    pieceset :: pieceset()
+}).
+
 %% @doc Update wishlist.
 %%      This function returns __minimized__ version of wishlist.
 -spec set_wishes(torrent_id(), wish_list()) -> {ok, wish_list()}.
 
 set_wishes(TorrentID, Wishes) ->
-    ChunkSrv = lookup_server(TorrentID),
-    gen_fsm:sync_send_all_state_event(ChunkSrv, {set_wishes, Wishes}).
+    {ok, FilteredWishes} = set_record_wishes(TorrentID, to_records(Wishes)),
+    {ok, to_proplists(FilteredWishes)}.
 
 
 -spec get_wishes(torrent_id()) -> {ok, wish_list()}.
 
 get_wishes(TorrentID) ->
-    ChunkSrv = lookup_server(TorrentID),
-    gen_fsm:sync_send_all_state_event(ChunkSrv, get_wishes).
+    {ok, Wishes} = get_record_wishes(TorrentID),
+    {ok, to_proplists(Wishes)}.
 
 
 %% @doc Add a file at top of wishlist.
@@ -150,58 +164,127 @@ wish_file(TorrentID, [FileID]) when is_integer(FileID) ->
     wish_file(TorrentID, FileID);
 
 wish_file(TorrentID, FileID) ->
-    {ok, OldWishes} = get_wishes(TorrentID),
-    NewWishes = [ FileID | OldWishes ],
-    {ok, FilteredWishes} = set_wishes(TorrentID, NewWishes),
-    {ok, FilteredWishes}.
+    {ok, OldWishes} = get_record_wishes(TorrentID),
+    Wish = #wish {
+      type = file,
+      value = FileID
+    },
+    NewWishes = [ Wish | OldWishes ],
+    {ok, FilteredWishes} = set_record_wishes(TorrentID, NewWishes),
+    {ok, to_proplists(FilteredWishes)}.
+    
 
-
-%% @doc Convert list of file ids to list of masks.
-%%      A mask is a pieceset.
-%%      Drop useless ids (minimize).
 %% @private
--spec form_bitstring_wishes(torrent_id(), file_id()) -> 
-        {[file_id()], [pieceset()]}.
-
-form_bitstring_wishes(_TorrentID, []) ->
-    {[], []};
-
-form_bitstring_wishes(TorrentID, Wishes) ->
-    Masks = [{FileID, etorrent_io:get_mask(TorrentID, FileID)} 
-            || FileID <- Wishes],
-    [Head|Tail] = Masks,
-    % First pieceset will be union.
-    {_, Union} = Head,
-    minimize_wishes(Tail, Union, [Head]).
+get_record_wishes(TorrentID) ->
+    ChunkSrv = lookup_server(TorrentID),
+    gen_fsm:sync_send_all_state_event(ChunkSrv, get_wishes).
 
 
-%% @doc This function is pure, so we can test it.
-%%      Traverse a list of masks.
-%%      If a mask has not new pieces, skip it.
-%%      If a mask has unique parts, add them to Union pieceset.
 %% @private
-minimize_wishes([{_FileID, Mask} = H | T], Union, Valid) ->
-    case etorrent_pieceset:union(Mask, Union) of
-        %% nothing new
-        Union -> 
-            minimize_wishes(T, Union, Valid);
+set_record_wishes(TorrentID, Wishes) ->
+    ChunkSrv = lookup_server(TorrentID),
+    gen_fsm:sync_send_all_state_event(ChunkSrv, {set_wishes, Wishes}).
 
-        Union1 -> 
-            minimize_wishes(T, Union1, [H|Valid])
+
+to_proplists(Records) ->
+    [[{type, Type}
+     ,{value, Value}
+     ,{is_completed, IsCompleted}
+     ] || #wish{ type = Type, 
+                value = Value, 
+         is_completed = IsCompleted } <- Records].
+
+
+to_records(Props) ->
+    [#wish{type = proplists:get_value(type, X), 
+          value = proplists:get_value(value, X) } || X <- Props].
+
+
+to_pieceset(TorrentID, #wish{ type = file, value = FileIds }) ->
+    etorrent_io:get_mask(TorrentID, FileIds);
+
+to_pieceset(TorrentID, #wish{ type = piece, value = List }) ->
+    Pieceset = etorrent_io:get_mask(TorrentID, 0),
+    PSize = etorrent_pieceset:size(Pieceset),
+    etorrent_pieceset:from_list(List, PSize).
+
+
+%% @private
+validate_wishes(TorrentID, NewWishes, OldWishes, ValidPieces) ->
+    val_(TorrentID, NewWishes, OldWishes, ValidPieces, []).
+    
+
+%% @doc Fix incomplete wishes.
+%% @private
+val_(Tid, [NewH|NewT], Old, Valid, Acc) ->
+    case search_wish(NewH, Acc) of
+    %% Signature is already used
+    #wish{} -> 
+        val_(Tid, NewT, Old, Valid, Acc);
+
+    false ->
+        Rec = case search_wish(NewH, Old) of
+                %% New wish
+                false ->
+                    WishSet = to_pieceset(Tid, NewH),
+                    Left = etorrent_pieceset:difference(Valid, WishSet),
+                    IsCompleted = etorrent_pieceset:is_empty(Left),
+                    NewH#wish {
+                      is_completed = IsCompleted,
+                      pieceset = WishSet
+                    };
+
+                RecI -> RecI
+            end,
+        val_(Tid, NewT, Old, Valid, [Rec|Acc])
     end;
 
-minimize_wishes([], _Union, Valid) ->
-    minimize_wishes_1(Valid, [], []).
+val_(_Tid, [], _Old, _Valid, Acc) ->
+    lists:reverse(Acc).
+    
 
 
-%% @doc Split elements on two arrays.
-%%      This function reverses the given list.
+check_completed(RecList, Valid) ->
+    chk_(RecList, Valid, [], []).
+
+
+chk_([H=#wish{ is_completed = true }|T], Valid, RecAcc, Ready) ->
+   chk_(T, Valid, [H|RecAcc], Ready);
+
+chk_([H|T], Valid, RecAcc, Ready) ->
+    #wish{ is_completed = false, pieceset = WishSet } = H,
+ 
+    Left = etorrent_pieceset:difference(Valid, WishSet),
+    IsCompleted = etorrent_pieceset:is_empty(Left),
+    Rec = H#wish{ is_completed = IsCompleted },
+    Ready1 = case IsCompleted of 
+            true -> [Rec|Ready];
+            false -> Ready
+        end,
+    chk_(T, Valid, [Rec|RecAcc], Ready1);
+
+chk_([], _Valid, RecAcc, Ready) ->
+    {lists:reverse(RecAcc), lists:reverse(Ready)}.
+
+    
+
+%% @doc Search the element with the same signature in the array.
 %% @private
-minimize_wishes_1([], Ids, Masks) ->
-    {Ids, Masks};
+search_wish(#wish{ type = Type, value = Value },
+       [H = #wish{ type = Type, value = Value } | _T]) ->
+    H;
 
-minimize_wishes_1([{Id, Mask}|T], Ids, Masks) ->
-    minimize_wishes_1(T, [Id|Ids], [Mask|Masks]).
+search_wish(El, [_H|T]) ->
+    search_wish(El, T);
+
+search_wish(El, []) ->
+    false.
+
+
+
+
+
+%% =====================/\=== Wish API ===/\===========================
     
 
 %% ====================================================================
@@ -289,31 +372,31 @@ handle_sync_event(get_wishes, _From, SN, SD) ->
     Wishes = SD#state.wishes,
     {reply, {ok, Wishes}, SN, SD};
 
-handle_sync_event({set_wishes, Wishes}, _From, SN, SD=#state{id=Id}) ->
-    Wishes1 = unique_list(Wishes),
+handle_sync_event({set_wishes, NewWishes}, _From, SN, 
+    SD=#state{id=Id, wishes=OldWishes, valid=ValidPieces}) ->
+    Wishes = validate_wishes(Id, NewWishes, OldWishes, ValidPieces),
     
-    %% generate optimized version of masks.
-    %% save original version of masks, because they may be reordered.
-    {_Wishes2, Masks} = form_bitstring_wishes(Id, Wishes1),
-
     case SN of
         paused -> skip;
         _ -> 
+            Masks = [X#wish.pieceset || X <- Wishes, not X#wish.is_completed ],
+
             %% Tell to the progress manager about new list of wanted pieces
             etorrent_progress:set_wishes(Id, Masks)
     end,
 
-    {reply, {ok, Wishes1}, SN, SD#state{wishes=Wishes1}}.
+    {reply, {ok, Wishes}, SN, SD#state{wishes=Wishes}}.
 
 
+%% @private
 unique_list(L) ->
     U = lists:usort(L),
     X = L -- U,
     L -- X.
 
 
-%% @private
 %% Tell the controller we have stored an index for this torrent file
+%% @private
 handle_info({piece, {stored, Index}}, started, State) ->
     #state{id=TorrentID, 
         hashes=Hashes, 
@@ -390,7 +473,8 @@ do_registration(S=#state{id=Id, torrent=Torrent, hashes=Hashes}) ->
             {missing, NumberOfMissingPieces},
             {state, TState}]),
 
-    NewState = S#state{ valid=ValidPieces, wishes=Wishes },
+    WishRecordSet = validate_wishes(Id, to_records(Wishes), [], ValidPieces),
+    NewState = S#state{ valid=ValidPieces, wishes = WishRecordSet },
 
     case TState of
         paused ->
@@ -403,7 +487,7 @@ do_registration(S=#state{id=Id, torrent=Torrent, hashes=Hashes}) ->
 
 
 do_start(S=#state{id=Id, torrent=Torrent, valid=ValidPieces, wishes=Wishes}) ->
-    {Wishes1, Masks} = form_bitstring_wishes(Id, Wishes),
+    Masks = [X#wish.pieceset || X <- Wishes, not X#wish.is_completed ],
 
     %% Start the progress manager
     {ok, ProgressPid} =
@@ -430,8 +514,7 @@ do_start(S=#state{id=Id, torrent=Torrent, valid=ValidPieces, wishes=Wishes}) ->
           Id),
 
     NewState = S#state{tracker_pid=TrackerPid,
-                       progress = ProgressPid,
-                       wishes = Wishes1 },
+                       progress = ProgressPid },
 
     {next_state, started, NewState}.
 
@@ -550,30 +633,5 @@ hashes_to_binary_test_() ->
      ?_assertError(badarg, fetch_hash(-1, Bin)),
      ?_assertError(badarg, fetch_hash(3, Bin))].
 
-%% Directory Structure:
-%%
-%% Num     Path      Pieceset (indexing from 1)
-%% --------------------------------------------
-%%  0  /              [1-4]
-%%  1  /Dir1          [1,2]
-%%  2  /Dir1/File1    [1]
-%%  3  /Dir1/File2    [2]
-%%  4  /Dir2          [3,4]
-%%  5  /Dir2/File3    [3,4]
-%%
-%% Check that wishlist [2, 1, 3] will be minimized to [2, 1]
-minimize_wishes_test_() ->
-    Dir1  = etorrent_pieceset:from_bitstring(<<2#1100>>),
-    File1 = etorrent_pieceset:from_bitstring(<<2#1000>>),
-    File2 = etorrent_pieceset:from_bitstring(<<2#0100>>),
-    Dir2 = File3 = etorrent_pieceset:from_bitstring(<<2#0011>>),
-
-    [Head|Tail] = [{2, File1}, {1, Dir1}, {3, File2}],
-    Union = File1,
-    
-    {WishFiles, _WishMasks} = minimize_wishes(Tail, Union, [Head]),
-
-    [?_assertEqual(WishFiles, [2,1])
-    ].
 
 -endif.
