@@ -41,7 +41,9 @@
 %% wish API
 -export([get_wishes/1,
          set_wishes/2,
-         wish_file/2]).
+         wish_file/2,
+         wish_piece/2,
+         subscribe/3]).
 
 
 -type bcode() :: etorrent_types:bcode().
@@ -58,6 +60,17 @@
 -type wish_list() :: [wish()].
 
 
+-type file_wish()  :: [non_neg_integer()].
+-type piece_wish() :: [non_neg_integer()].
+
+-record(wish, {
+    type :: file | piece,
+    value :: file_wish() | piece_wish(),
+    is_completed = false :: boolean(),
+    subscribed = [] :: [pid()],
+    pieceset :: pieceset()
+}).
+
 -record(state, {
     id          :: integer() ,
     torrent     :: bcode(),   % Parsed torrent file
@@ -70,7 +83,9 @@
     progress    :: pid(),
     pending     :: pid(),
     endgame     :: pid(),
-    wishes = [] :: [{term(), pieceset()}]}).
+    wishes = [] :: [#wish{}],
+    interval    :: timer:interval()
+    }).
 
 
 
@@ -128,17 +143,8 @@ valid_pieces(Pid) ->
 
 
 
+
 %% =====================\/=== Wish API ===\/===========================
-
--type file_wish()  :: [non_neg_integer()].
--type piece_wish() :: [non_neg_integer()].
-
--record(wish, {
-    type :: file | piece,
-    value :: file_wish() | piece_wish(),
-    is_completed = false :: boolean(),
-    pieceset :: pieceset()
-}).
 
 %% @doc Update wishlist.
 %%      This function returns __minimized__ version of wishlist.
@@ -172,7 +178,32 @@ wish_file(TorrentID, FileID) ->
     NewWishes = [ Wish | OldWishes ],
     {ok, FilteredWishes} = set_record_wishes(TorrentID, NewWishes),
     {ok, to_proplists(FilteredWishes)}.
-    
+
+
+wish_piece(TorrentID, PieceID) ->
+    {ok, OldWishes} = get_record_wishes(TorrentID),
+    Wish = #wish {
+      type = piece,
+      value = PieceID
+    },
+    NewWishes = [ Wish | OldWishes ],
+    {ok, FilteredWishes} = set_record_wishes(TorrentID, NewWishes),
+    {ok, to_proplists(FilteredWishes)}.
+
+
+%% @doc If the wish {Type, Value} will be completed,
+%%      caller will receive {completed, Ref, Type, Value}.
+%%      Use wish_file of wish_piece functions before calling this function.
+subscribe(TorrentID, Type, Value) ->
+    ChunkSrv = lookup_server(TorrentID),
+    gen_fsm:sync_send_all_state_event(ChunkSrv, {subscribe, Type, Value}).
+
+  
+%% @doc Send information to the subscribed processes.
+%% @private
+alert_subscribed(Type, Value, Clients) ->
+    [Pid ! {completed, Ref, Type, Value} || {Pid, Ref} <- Clients].
+
 
 %% @private
 get_record_wishes(TorrentID) ->
@@ -197,7 +228,7 @@ to_proplists(Records) ->
 
 to_records(Props) ->
     [#wish{type = proplists:get_value(type, X), 
-          value = proplists:get_value(value, X) } || X <- Props].
+          value = proplists:get_value(value, X) } || X <- Props, is_list(X)].
 
 
 to_pieceset(TorrentID, #wish{ type = file, value = FileIds }) ->
@@ -205,8 +236,8 @@ to_pieceset(TorrentID, #wish{ type = file, value = FileIds }) ->
 
 to_pieceset(TorrentID, #wish{ type = piece, value = List }) ->
     Pieceset = etorrent_io:get_mask(TorrentID, 0),
-    PSize = etorrent_pieceset:size(Pieceset),
-    etorrent_pieceset:from_list(List, PSize).
+    Size = etorrent_pieceset:capacity(Pieceset),
+    etorrent_pieceset:from_list(List, Size).
 
 
 %% @private
@@ -227,7 +258,7 @@ val_(Tid, [NewH|NewT], Old, Valid, Acc) ->
                 %% New wish
                 false ->
                     WishSet = to_pieceset(Tid, NewH),
-                    Left = etorrent_pieceset:difference(Valid, WishSet),
+                    Left = etorrent_pieceset:difference(WishSet, Valid),
                     IsCompleted = etorrent_pieceset:is_empty(Left),
                     NewH#wish {
                       is_completed = IsCompleted,
@@ -243,7 +274,8 @@ val_(_Tid, [], _Old, _Valid, Acc) ->
     lists:reverse(Acc).
     
 
-
+%% @doc Check status of wishes.
+%%      This function will be called periditionally.
 check_completed(RecList, Valid) ->
     chk_(RecList, Valid, [], []).
 
@@ -254,19 +286,45 @@ chk_([H=#wish{ is_completed = true }|T], Valid, RecAcc, Ready) ->
 chk_([H|T], Valid, RecAcc, Ready) ->
     #wish{ is_completed = false, pieceset = WishSet } = H,
  
-    Left = etorrent_pieceset:difference(Valid, WishSet),
+    Left = etorrent_pieceset:difference(WishSet, Valid),
     IsCompleted = etorrent_pieceset:is_empty(Left),
     Rec = H#wish{ is_completed = IsCompleted },
-    Ready1 = case IsCompleted of 
-            true -> [Rec|Ready];
-            false -> Ready
-        end,
-    chk_(T, Valid, [Rec|RecAcc], Ready1);
+    case IsCompleted of 
+        true -> 
+            %% Subscribed clients will be alerted
+            chk_(T, Valid, [Rec#wish{ subscribed=[] }|RecAcc], [Rec|Ready]);
+        false -> 
+            chk_(T, Valid, [Rec|RecAcc], Ready)
+    end;
 
 chk_([], _Valid, RecAcc, Ready) ->
     {lists:reverse(RecAcc), lists:reverse(Ready)}.
 
     
+%% @doc Save pid() as subscriber
+%%      Client is {pid(), ref()}
+%% @private
+add_subscribtion(RecList, Type, Value, Client) ->
+    sub_(RecList, Type, Value, Client, []).
+
+
+sub_([#wish{ is_completed = true, type = Type, value = Value }|_]=T, 
+        Type, Value, _Client, Acc) ->
+    {completed, lists:reverse(Acc, T)};
+
+sub_([H=#wish{ is_completed = false, type = Type, value = Value, 
+        subscribed = S }|T], 
+        Type, Value, Client, Acc) ->
+
+    NewAcc = [H#wish { subscribed = [Client|S]} | Acc],
+    {subscribed, lists:reverse(NewAcc, T)};
+
+sub_([H|T], Type, Value, Client, Acc) ->
+    sub_(T, Type, Value, Client, [H|Acc]);
+
+sub_([], _Type, _Value, _Client, Acc) ->
+    {completed, lists:reverse(Acc)}.
+
 
 %% @doc Search the element with the same signature in the array.
 %% @private
@@ -334,16 +392,20 @@ started(completed, #state{id=Id, tracker_pid=TrackerPid} = S) ->
     etorrent_tracker_communication:completed(TrackerPid),
     {next_state, started, S};
 
-started(pause, #state{id=Id} = SO) ->
+started(pause, #state{id=Id, interval=I} = SO) ->
 %   etorrent_event:paused_torrent(Id),
     
     etorrent_table:statechange_torrent(Id, stopped),
     etorrent_event:stopped_torrent(Id),
     ok = etorrent_torrent:statechange(Id, [paused]),
     ok = etorrent_torrent_sup:pause(SO#state.parent_pid),
+    {ok, cancel} = timer:cancel(I),
 
-    S = SO#state{ tracker_pid = undefined, progress = undefined },
+    S = SO#state{ tracker_pid = undefined, 
+                     progress = undefined, 
+                     interval = undefined },
     {next_state, paused, S};
+
 started(continue, S) ->
     {next_state, started, S}.
 
@@ -367,6 +429,20 @@ handle_event(Msg, SN, S) ->
 handle_sync_event(valid_pieces, _, StateName, State) ->
     #state{valid=Valid} = State,
     {reply, {ok, Valid}, StateName, State};
+
+
+
+handle_sync_event({subscribe, Type, Value}, {_Pid, Ref} = Client, SN, SD) ->
+    OldWishes = SD#state.wishes,
+
+    case add_subscribtion(OldWishes, Type, Value, Client) of
+        {subscribed, NewWishes} ->
+            {reply, {ok, subscribed, Ref}, SN, SD#state{wishes=NewWishes}};
+
+        {completed, _NewWishes} ->
+            alert_subscribed(Type, Value, [Client]),
+            {reply, {ok, completed, Ref}, SN, SD}
+    end;
 
 handle_sync_event(get_wishes, _From, SN, SD) ->
     Wishes = SD#state.wishes,
@@ -397,6 +473,13 @@ unique_list(L) ->
 
 %% Tell the controller we have stored an index for this torrent file
 %% @private
+handle_info(check_completed, SN, SD=#state{valid = Valid, wishes = Wishes}) ->
+    {NewWishes, CompletedWishes} = check_completed(Wishes, Valid),
+    [alert_subscribed(Type, Value, Clients) 
+        || #wish{type = Type, value = Value, subscribed = Clients} 
+        <- CompletedWishes],
+    {next_state, SN, SD#state{wishes = NewWishes}};
+
 handle_info({piece, {stored, Index}}, started, State) ->
     #state{id=TorrentID, 
         hashes=Hashes, 
@@ -473,7 +556,13 @@ do_registration(S=#state{id=Id, torrent=Torrent, hashes=Hashes}) ->
             {missing, NumberOfMissingPieces},
             {state, TState}]),
 
-    WishRecordSet = validate_wishes(Id, to_records(Wishes), [], ValidPieces),
+    WishRecordSet = try
+        validate_wishes(Id, to_records(Wishes), [], ValidPieces)
+        catch error:Reason ->
+        error_logger:error_msg("Wishes from fast_resume "
+            "module are invalidate~n ~w", [Reason]),
+        []
+    end,
     NewState = S#state{ valid=ValidPieces, wishes = WishRecordSet },
 
     case TState of
@@ -513,8 +602,11 @@ do_start(S=#state{id=Id, torrent=Torrent, valid=ValidPieces, wishes=Wishes}) ->
           S#state.peer_id,
           Id),
 
-    NewState = S#state{tracker_pid=TrackerPid,
-                       progress = ProgressPid },
+    {ok, Timer} = timer:send_interval(10000, check_completed),
+
+    NewState = S#state{tracker_pid = TrackerPid,
+                          progress = ProgressPid,
+                          interval = Timer },
 
     {next_state, started, NewState}.
 

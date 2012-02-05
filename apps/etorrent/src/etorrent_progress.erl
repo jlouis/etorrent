@@ -69,7 +69,9 @@
          num_valid/1]).
 
 %% wish API
--export([set_wishes/2]).
+-export([set_wishes/2,
+        monitor_chunk/4,
+        wish_chunk/4]).
 
 -export([show_assigned/1,
          show_valid/1]).
@@ -133,7 +135,9 @@
     pending     = exit(required) :: pid(),
     endgame     = exit(required) :: pid(),
     in_endgame  = exit(required) :: boolean(),
-    user_wishes = [] :: [pieceset()]}).
+    user_wishes = [] :: [pieceset()],
+    interval    :: timer:interval(),
+    chunks_monitored = [] :: list()}).
 
 %% # Piece states
 %% As the download of a torrent progresses, and regresses, each piece
@@ -348,6 +352,16 @@ set_wishes(TorrentID, Wishes) ->
     ok = call(ChunkSrv, {set_wishes, Wishes}).
 
 
+wish_chunk(TorrentID, PieceID, Offset, Length) ->
+    ChunkSrv = lookup_server(TorrentID),
+    ok = call(ChunkSrv, {wish_chunk, PieceID, Offset, Length}).
+
+
+monitor_chunk(TorrentID, PieceID, Offset, Length) ->
+    ChunkSrv = lookup_server(TorrentID),
+    call(ChunkSrv, {monitor_chunk, PieceID, Offset, Length}).
+
+
 %% @private
 init(Serverargs) ->
     Args = orddict:from_list(Serverargs),
@@ -388,6 +402,7 @@ init(Serverargs) ->
     ChunkSets = array:from_orddict(ChunkList),
 
     PiecePriority = init_priority(TorrentID, unassigned, PiecesInvalid),
+    {ok, Timer} = timer:send_interval(10000, check_completed),
 
     InitState = #state{
         torrent_id=TorrentID,
@@ -408,7 +423,8 @@ init(Serverargs) ->
         pending=Pending,
         endgame=Endgame,
         in_endgame=false,
-        user_wishes=Wishes
+        user_wishes=Wishes,
+        interval=Timer
     },
     {ok, InitState}.
 
@@ -420,7 +436,6 @@ handle_call({chunk, {request, _, _, _}}, _, State) when State#state.in_endgame -
 handle_call({chunk, {request, Numchunks, Peerset, PeerPid}}, _, State) ->
     #state{
         torrent_id=TorrentID,
-        pieces_valid=Valid,
         pieces_unassigned=Unassigned,
         pieces_begun=Begun,
         pieces_assigned=Assigned,
@@ -462,12 +477,14 @@ handle_call({chunk, {request, Numchunks, Peerset, PeerPid}}, _, State) ->
             assigned;
         %% One or more that we are already downloading
         begun ->
-            etorrent_pieceset:min(Optimal);
+            Best = choose_best_piece(UserWish, Optimal),
+            etorrent_pieceset:min(Best);
         %% None that we are not already downloading
         %% but one ore more that we would want to download
         unassigned ->
             #pieceprio{pieces=UnassignedPriolist} = PiecePriority,
-            choose_best_piece(UserWish, UnassignedPriolist, SubOptimal)
+            Best = choose_best_piece(UserWish, SubOptimal),
+            etorrent_pieceset:first(UnassignedPriolist, Best)
     end,
 
     case PieceIndex of
@@ -486,10 +503,11 @@ handle_call({chunk, {request, Numchunks, Peerset, PeerPid}}, _, State) ->
             end;
         Index ->
             Chunkset = array:get(Index, AssignedChunks),
-            Offsets = etorrent_chunkset:min(Chunkset, Numchunks),
-            Chunks = [{Index, Offs, Len} || {Offs, Len} <- Offsets],
-            NewChunkset = etorrent_chunkset:delete(Offsets, Chunkset),
+            {Offsets, NewChunkset} = 
+                etorrent_chunkset:extract(Chunkset, Numchunks),
+                
             NewAssignedChunks = array:set(Index, NewChunkset, AssignedChunks),
+            Chunks = [{Index, Offs, Len} || {Offs, Len} <- Offsets],
             ok = etorrent_chunkstate:assigned(Chunks, PeerPid, Pending),
 
             %% We need to consider four transitions at this point:
@@ -554,6 +572,47 @@ handle_call({state_members, Piecestate}, _, State) ->
     end,
     {reply, Stateset, State};
 
+%% wish part of the piece
+handle_call({wish_chunk, Index, Offset, Length}, _, State) ->
+    #state{
+        chunks_assigned=AssignedChunks
+    } = State,
+    case array:get(Index, AssignedChunks) of
+    undefined -> {reply, {error, no_element}, State};
+    Chunkset1 ->
+        Chunkset2 = 
+            etorrent_chunkset:delete(Offset, Length, Chunkset1),
+        Chunkset3 = 
+            etorrent_chunkset:insert(Offset, Length, Chunkset2),
+        NewAssignedChunks = array:set(Index, Chunkset3, AssignedChunks),
+        {reply, ok, State#state{chunks_assigned=NewAssignedChunks}}
+    end;
+
+
+%% subscribe
+handle_call({monitor_chunk, Index, Offset, Length}, Client, State) ->
+    {_From, Ref} = Client,
+    #state{
+        chunks_monitored=WantedChunks,
+        chunks_stored=StoredChunks
+    } = State,
+    case array:get(Index, StoredChunks) of
+    undefined -> {reply, {error, no_element}, State};
+    PieceChunks ->
+        case etorrent_chunkset:in(Offset, Length, PieceChunks) of
+            %% still downloading
+            false ->
+                NewWantedChunks = [{Client, Index, Offset, Length}|WantedChunks],
+                {reply, {ok, subscribed, Ref}, 
+                    State#state{chunks_monitored=NewWantedChunks}};
+
+            %% already downloaded
+            true ->
+                %% alert?
+                {reply, {ok, completed, Ref}, State}
+        end
+    end;
+
 handle_call({set_wishes, NewWishes}, _, State=#state{pieces_valid=Valid}) ->
     {reply, ok, State#state{user_wishes=minimize_masks(NewWishes, Valid, [])}}.
 
@@ -572,21 +631,18 @@ handle_call({set_wishes, NewWishes}, _, State=#state{pieces_valid=Valid}) ->
 %%      
 %%      The best piece is a rear piece which we wish.
 %% @private
-choose_best_piece(UserWish, UnassignedPriolist, SubOptimal) ->
-    choose_best_piece_(UserWish, UnassignedPriolist, SubOptimal).
+choose_best_piece(UserWish, SubOptimal) ->
+    choose_best_piece_(UserWish, SubOptimal).
 
 %% Make decision based only on scarcity data.
-choose_best_piece_([], UPL, SO) ->
-    etorrent_pieceset:first(UPL, SO);
+choose_best_piece_([], SO) -> SO;
 
-choose_best_piece_([PS|T], UPL, SO) ->
+choose_best_piece_([PS|T], SO) ->
     Optimal = etorrent_pieceset:intersection(SO, PS),
     HasOptimal = not etorrent_pieceset:is_empty(Optimal),
     case HasOptimal of
-        true ->
-            etorrent_pieceset:first(UPL, Optimal);
-        false ->
-            choose_best_piece_(T, UPL, SO)
+        true ->  Optimal;
+        false -> choose_best_piece_(T, SO)
     end.
 
 
@@ -628,6 +684,8 @@ handle_info({chunk, {stored, Index, Offset, Length, Pid}}, State) ->
         chunks_stored=ChunksStored,
         in_endgame=InEndgame,
         endgame=Endgame} = State,
+
+%%  io:write({stored, Index, Offset, Length, Pid}),
 
     %% Update the set of chunks in the piece that has been written to disk.
     Chunks = array:get(Index, ChunksStored),
@@ -676,7 +734,6 @@ when State#state.in_endgame ->
 
 handle_info({chunk, {dropped, Piece, Offset, Length, _}}, State) ->
     #state{
-        torrent_id=TorrentID,
         pieces_begun=Begun,
         pieces_assigned=Assigned,
         chunks_assigned=AssignedChunks} = State,
@@ -697,7 +754,7 @@ handle_info({chunk, {dropped, Piece, Offset, Length, _}}, State) ->
     {noreply, NewState};
 
 
-handle_info({scarcity, Ref, Tag, Piecelist}, State) ->
+handle_info({scarcity, Ref, _Tag, Piecelist}, State) ->
     #state{piece_priority=PiecePriority} = State,
     %% Verify that the tag is valid before verifying the reference
     #pieceprio{ref=PrioRef} = PiecePriority,
@@ -710,8 +767,19 @@ handle_info({scarcity, Ref, Tag, Piecelist}, State) ->
         _ ->
             State
     end,
-    {noreply, NewState}.
+    {noreply, NewState};
 
+%% called every few seconds
+handle_info(check_completed, State) ->
+    #state{
+        chunks_monitored=WantedChunks,
+        chunks_stored=StoredChunks
+    } = State,
+    NewWantedChunks = alert_subscribed(WantedChunks, StoredChunks),    
+    NewState = State#state{
+        chunks_monitored=NewWantedChunks
+    },
+    {noreply, NewState}.
 
 %% @private
 terminate(_Reason, _State) ->
@@ -720,6 +788,34 @@ terminate(_Reason, _State) ->
 %% @private
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
+
+-spec alert_subscribed(list(), array()) -> array().
+
+alert_subscribed(WantedChunks, StoredChunks) ->   
+    alert_subscribed_(WantedChunks, StoredChunks, []).
+
+
+alert_subscribed_([H|T], SC, Acc) ->
+    {_Client, Index, Offset, Length} = H,
+    PieceChunks = array:get(Index, SC),
+    case etorrent_chunkset:in(Offset, Length, PieceChunks) of
+    %% stored
+    true -> 
+        send_alert(H),
+        alert_subscribed_(T, SC, Acc);
+    %% still subscribed
+    false -> 
+        alert_subscribed_(T, SC, [H|Acc])
+    end;
+
+alert_subscribed_([], _SC, Acc) ->
+    lists:reverse(Acc).
+
+
+send_alert({{Pid, Ref}, Index, Offset, Length}) ->
+    Pid ! {chunk_completed,  Ref, Index, Offset, Length}.
+
+
 
 init_priority(TorrentID, Tag, Pieceset) ->
     {ok, Ref, List} = etorrent_scarcity:watch(TorrentID, Tag, Pieceset),
@@ -991,10 +1087,10 @@ trigger_endgame_case() ->
 %% Check that wishlist [2, 1, 3] will be minimized to [2, 1]
 minimize_masks_test_() ->
     Empty = etorrent_pieceset:new(4),
-    Dir1  = etorrent_pieceset:from_bitstring(<<2#1100>>),
-    File1 = etorrent_pieceset:from_bitstring(<<2#1000>>),
-    File2 = etorrent_pieceset:from_bitstring(<<2#0100>>),
-    Dir2 = File3 = etorrent_pieceset:from_bitstring(<<2#0011>>),
+    Dir1  = etorrent_pieceset:from_bitstring(<<2#1100:4>>),
+    File1 = etorrent_pieceset:from_bitstring(<<2#1000:4>>),
+    File2 = etorrent_pieceset:from_bitstring(<<2#0100:4>>),
+    Dir2 = File3 = etorrent_pieceset:from_bitstring(<<2#0011:4>>),
 
     Masks = [File1, Dir1, File2],
     Union = Empty,

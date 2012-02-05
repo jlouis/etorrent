@@ -1,4 +1,4 @@
-%% @author Magnus Klaar <magnus.klaar@sgsstudentbostader.se>
+% @author Magnus Klaar <magnus.klaar@sgsstudentbostader.se>
 %% @doc File I/O subsystem.
 %% <p>A directory server (this module) is responsible for maintaining
 %% the opened/closed state for each file in a torrent.</p>
@@ -68,9 +68,14 @@
          unregister_open_file/2,
          await_open_file/2,
          get_mask/2,
+         get_mask/4,
          tree_children/2,
          minimize_filelist/2,
-         long_file_name/2]).
+         long_file_name/2,
+         file_name/2,
+         file_position/2,
+         file_size/2,
+         piece_size/1]).
 
 -export([check_piece/3]).
 
@@ -109,20 +114,24 @@
     file_list :: [{string(), pos_integer()}],
     files_open :: list(#io_file{}),
     files_max  :: pos_integer(),
-    static_file_info :: array()
+    static_file_info :: array(),
+    total_size :: non_neg_integer(),
+    piece_size :: non_neg_integer()
     }).
 
 
 -record(file_info, {
     id :: file_id(),
+    %% Relative name, used in file_sup
     name :: string(),
+    %% Label for nodes of cascadae file tree
     short_name :: binary(),
     type      = file :: directory | file,
     children  = [] :: [file_id()],
     % How many files are in this node?
     capacity  = 0 :: non_neg_integer(),
     size      = 0 :: non_neg_integer(),
-    % byte offset from 1
+    % byte offset from 0
     position  = 0 :: non_neg_integer(),
     pieces :: pieceset()
 }).
@@ -446,7 +455,33 @@ get_mask(TorrentID, [_|_] = IdList) ->
     Masks = lists:map(MapFn, IdList),
     %% Do reduce
     etorrent_pieceset:union(Masks).
-    
+   
+ 
+%% @doc Build a mask of the part of the file in the torrent.
+get_mask(TorrentID, FileID, PartStart, PartSize)
+    when PartStart >= 0, PartSize >= 0 ->
+    DirPid = await_directory(TorrentID),
+    {ok, Mask} = gen_server:call(DirPid, {get_mask, FileID, PartStart, PartSize}),
+    Mask.
+
+
+piece_size(TorrentID) ->
+    DirPid = await_directory(TorrentID),
+    {ok, Size} = gen_server:call(DirPid, piece_size),
+    Size.
+
+
+file_position(TorrentID, FileID) ->
+    DirPid = await_directory(TorrentID),
+    {ok, Pos} = gen_server:call(DirPid, {position, FileID}),
+    Pos.
+
+
+file_size(TorrentID, FileID) ->
+    DirPid = await_directory(TorrentID),
+    {ok, Size} = gen_server:call(DirPid, {size, FileID}),
+    Size.
+
 
 -spec tree_children(torrent_id(), file_id()) -> [{atom(), term()}].
 tree_children(TorrentID, FileID) ->
@@ -489,6 +524,12 @@ long_file_name(TorrentID, FileID) when is_list(FileID) ->
     DirPid = await_directory(TorrentID),
     {ok, Name} = gen_server:call(DirPid, {long_file_name, FileID}),
     Name.
+
+%% @doc Convert FileID to relative file name.
+file_name(TorrentID, FileID) ->
+    DirPid = await_directory(TorrentID),
+    {ok, Name} = gen_server:call(DirPid, {file_name, FileID}),
+    Name.
     
 
 %% ----------------------------------------------------------------------
@@ -499,9 +540,10 @@ init([TorrentID, Torrent]) ->
     % that will be open at the same time
     MaxFiles = etorrent_config:max_files(),
     true = register_directory(TorrentID),
-    PieceMap  = make_piece_map(Torrent),
+    PieceMap = make_piece_map(Torrent),
+    io:format("~p", [PieceMap]),
     Files = make_file_list(Torrent),
-    Static = collect_static_file_info(Torrent),
+    {Static, PLen, TLen} = collect_static_file_info(Torrent),
     
     InitState = #state{
         torrent=TorrentID,
@@ -509,7 +551,9 @@ init([TorrentID, Torrent]) ->
         file_list = Files,
         files_open=[],
         files_max=MaxFiles,
-        static_file_info=Static},
+        static_file_info=Static,
+        total_size=TLen, 
+        piece_size=PLen },
     {ok, InitState}.
 
 %%
@@ -529,11 +573,68 @@ handle_call({write, _, _}, _, State) ->
 handle_call(get_files, _From, #state { file_list = FL } = State) ->
     {reply, {ok, FL}, State};
 
+handle_call({get_info, FileID}, _, State) ->
+    #state{static_file_info=Arr} = State,
+    case array:get(FileID, Arr) of
+        undefined ->
+            {reply, {error, badid}, State};
+        X=#file_info{} ->
+            {reply, {ok, X}, State}
+    end;
+
+handle_call({position, FileID}, _, State) ->
+    #state{static_file_info=Arr} = State,
+    case array:get(FileID, Arr) of
+        undefined ->
+            {reply, {error, badid}, State};
+        #file_info{position=P} ->
+            {reply, {ok, P}, State}
+    end;
+
+handle_call({size, FileID}, _, State) ->
+    #state{static_file_info=Arr} = State,
+    case array:get(FileID, Arr) of
+        undefined ->
+            {reply, {error, badid}, State};
+        #file_info{size=Size} ->
+            {reply, {ok, Size}, State}
+    end;
+
+handle_call(piece_size, _, State=#state{piece_size=S}) ->
+    {reply, {ok, S}, State};
+
+handle_call({get_mask, FileID, PartStart, PartSize}, _, State) ->
+    #state{static_file_info=Arr, total_size=TLen, piece_size=PLen} = State,
+    case array:get(FileID, Arr) of
+        undefined ->
+            {reply, {error, badid}, State};
+        #file_info {position = FileStart, size = FileSize} ->
+            %% true = PartSize =< FileSize,
+
+            %% Start from beginning of the torrent
+            From = FileStart + PartStart,
+            To = From + PartSize,
+            Mask = make_mask(From, To, PLen, TLen),
+            Set = etorrent_pieceset:from_bitstring(Mask),
+
+            {reply, {ok, Set}, State}
+    end;
+
+    
 handle_call({get_mask, FileID}, _, State) ->
     #state{static_file_info=Arr} = State,
     case array:get(FileID, Arr) of
         undefined ->
-            {reply, {error, badname}, State};
+            {reply, {error, badid}, State};
+        #file_info {pieces = Mask} ->
+            {reply, {ok, Mask}, State}
+    end;
+
+handle_call({et_mask, FileID}, _, State) ->
+    #state{static_file_info=Arr} = State,
+    case array:get(FileID, Arr) of
+        undefined ->
+            {reply, {error, badid}, State};
         #file_info {pieces = Mask} ->
             {reply, {ok, Mask}, State}
     end;
@@ -549,6 +650,11 @@ handle_call({long_file_name, FileIDs}, _, State) ->
     NameList = lists:map(F, FileIDs),
     NameBinary = list_to_binary(string:join(NameList, ", ")),
     {reply, {ok, NameBinary}, State};
+
+handle_call({file_name, FileID}, _, State) ->
+    #state{static_file_info=Arr} = State,
+    Rec = array:get(FileID, Arr), 
+    {reply, {ok, Rec#file_info.name}, State};
 
 handle_call({minimize_filelist, FileIDs}, _, State) ->
     #state{static_file_info=Arr} = State,
@@ -741,7 +847,7 @@ collect_static_file_info(Torrent) ->
     FileLengths = etorrent_metainfo:file_path_len(Torrent),
     CurrentDirectory = "",
     Acc = [],
-    Pos = 1,
+    Pos = 0,
     %% Rec1, Rec2, .. are lists of nodes.
     %% Calculate positions, create records. They are still not prepared.
     {TLen, Rec1} = flen_to_record(FileLengths, Pos, Acc),
@@ -751,7 +857,7 @@ collect_static_file_info(Torrent) ->
     %% A mask is a set of pieces which contains the file.
     Rec3 = fill_pieces(Rec2, PieceLength, TLen),
     Rec4 = fill_ids(Rec3),
-    array:from_list(Rec4).
+    {array:from_list(Rec4), PieceLength, TLen}.
 
 
 %% @private
@@ -766,7 +872,7 @@ flen_to_record([{Name, FLen} | T], From, Acc) ->
     flen_to_record(T, To, [X|Acc]);
 
 flen_to_record([], TotalLen, Acc) ->
-    {TotalLen, lists:reverse(Acc)}.
+    {TotalLen+1, lists:reverse(Acc)}.
 
 
 %% @private
@@ -784,8 +890,8 @@ add_directories(Rec1) ->
     Root = #file_info {
         name = "",
         % total size
-        size = (LastSize + LastPos - 1),
-        position = 1,
+        size = (LastSize + LastPos),
+        position = 0,
         children = Children,
         capacity = Idx1 - Idx
     },
@@ -826,6 +932,9 @@ file_join_(L, R) ->
         X -> X
     end.
 
+file_prefix_(S1, S2) ->
+    lists:prefix(filename:split(S1), filename:split(S2)).
+
 
 %% @private
 add_directories_([], Idx, Cur, Children, Acc) ->
@@ -838,7 +947,7 @@ add_directories_([H|T], Idx, Cur, Children, Acc) ->
     Action = case Dir of
             Cur -> 'equal';
             _   ->
-                case lists:prefix(Cur, Dir) of
+                case file_prefix_(Cur, Dir) of
                     true -> 'prefix';
                     false -> 'other'
                 end
@@ -900,12 +1009,12 @@ fill_ids_([H1=#file_info{name=Name}|T], Id, Acc) ->
     fill_ids_(T, Id+1, [H2|Acc]);
 fill_ids_([], _Id, Acc) ->
     lists:reverse(Acc).
-    
+
 
 %% @private
 make_mask(From, To, PLen, TLen) 
     when PLen =< TLen, From =< To, 
-           To =< TLen, From > 0 ->
+           To  < TLen, From >= 0 ->
     %% __Bytes__: 1 <= From <= To <= TLen
     %%
     %% Calculate how many __pieces__ before, in and after the file.
@@ -913,17 +1022,17 @@ make_mask(From, To, PLen, TLen)
     %% both into this file and into the next file.
     %% [0..X1 ) [X1..X2] (X2..MaxPieces]
     %% [before) [  in  ] (    after    ]
-    Total    = (TLen div PLen)  
+    PTotal   = (TLen div PLen)  
              + case TLen rem PLen of 0 -> 0; _ -> 1 end,
-    RemLeft  = case From rem PLen of 0 -> 1; _ -> 0 end,
-    RemRight = case To   rem PLen of 0 -> 0; _ -> 1 end,
-    X1       = From div PLen, 
-    X2       = To   div PLen,
-    Before   = X1 - RemLeft, 
-    In       = X2 - Before + RemRight,
-    After    = Total - Before - In,
-%   io:write([Before, After, In, Total, RemLeft, RemRight]),
-    <<0:Before, (bnot 0):In, 0:After>>.
+
+    %% indexing from 0
+    PFrom = From div PLen,
+    PTo   = To   div PLen,
+
+    PBefore = PFrom,
+    PIn     = PTo - PFrom + 1,
+    PAfter  = PTotal - PFrom - PIn,
+    <<0:PBefore, (bnot 0):PIn, 0:PAfter>>.
 
 
 %% @private
@@ -1002,22 +1111,22 @@ chunk_post_3_test() ->
 make_mask_test_() ->
     F = fun make_mask/4,
     % make_index(From, To, PLen, TLen)
-    [?_assertEqual(F(3,  6,  4, 10), <<2#110:3>>)
-    ,?_assertEqual(F(3,  6,  3, 10), <<2#1100:4>>)
-    ,?_assertEqual(F(3,  6,  2, 10), <<2#01100:5>>)
-    ,?_assertEqual(F(3,  6,  1, 10), <<2#0011110000:10>>)
-    ,?_assertEqual(F(3,  6, 10, 10), <<1:1>>)
-    ,?_assertEqual(F(3,  6,  9, 10), <<1:1, 0:1>>)
-    ,?_assertEqual(F(1,  6,  3, 10), <<2#1100:4>>)
-    ,?_assertEqual(F(9, 10,  3, 10), <<2#0011:4>>)
+    [?_assertEqual(F(2, 5,  4, 10), <<2#110:3>>)
+    ,?_assertEqual(F(2, 5,  3, 10), <<2#1100:4>>)
+    ,?_assertEqual(F(2, 5,  2, 10), <<2#01100:5>>)
+    ,?_assertEqual(F(2, 5,  1, 10), <<2#0011110000:10>>)
+    ,?_assertEqual(F(2, 5, 10, 10), <<1:1>>)
+    ,?_assertEqual(F(2, 5,  9, 10), <<1:1, 0:1>>)
+    ,?_assertEqual(F(0, 5,  3, 10), <<2#1100:4>>)
+    ,?_assertEqual(F(8, 9,  3, 10), <<2#0011:4>>)
     ].
 
 add_directories_test_() ->
     Rec = add_directories(
-        [#file_info{position=1, size=3, name="test/t1.txt"}
-        ,#file_info{position=4, size=2, name="t2.txt"}
-        ,#file_info{position=6, size=1, name="dir1/dir/x.x"}
-        ,#file_info{position=7, size=2, name="dir1/dir/x.y"}
+        [#file_info{position=0, size=3, name="test/t1.txt"}
+        ,#file_info{position=3, size=2, name="t2.txt"}
+        ,#file_info{position=5, size=1, name="dir1/dir/x.x"}
+        ,#file_info{position=6, size=2, name="dir1/dir/x.y"}
         ]),
     Names = el(Rec, #file_info.name),
     Sizes = el(Rec, #file_info.size),
@@ -1027,14 +1136,15 @@ add_directories_test_() ->
     [Root|Elems] = Rec,
     MinNames  = el(minimize_reclist(Elems), #file_info.name),
     
-    List = [{0, "",             8, 1, [1, 3, 4]}
-           ,{1, "test",         3, 1, [2]}
-           ,{2, "test/t1.txt",  3, 1, []}
-           ,{3, "t2.txt",       2, 4, []}
-           ,{4, "dir1",         3, 6, [5]}
-           ,{5, "dir1/dir",     3, 6, [6, 7]}
-           ,{6, "dir1/dir/x.x", 1, 6, []}
-           ,{7, "dir1/dir/x.y", 2, 7, []}
+    %% {NumberOfFile, Name, Size, Position, ChildNumbers}
+    List = [{0, "",             8, 0, [1, 3, 4]}
+           ,{1, "test",         3, 0, [2]}
+           ,{2, "test/t1.txt",  3, 0, []}
+           ,{3, "t2.txt",       2, 3, []}
+           ,{4, "dir1",         3, 5, [5]}
+           ,{5, "dir1/dir",     3, 5, [6, 7]}
+           ,{6, "dir1/dir/x.x", 1, 5, []}
+           ,{7, "dir1/dir/x.y", 2, 6, []}
         ],
     ExpNames = el(List, 2),
     ExpSizes = el(List, 3),
@@ -1051,5 +1161,20 @@ add_directories_test_() ->
 
 el(List, Pos) ->
     Children  = [element(Pos, X) || X <- List].
+
+
+
+add_directories_test() ->
+    add_directories(
+        [#file_info{position=0, size=3, name=
+    "BBC.7.BigToe/Eoin Colfer. Artemis Fowl/artemis_04.mp3"}
+        ,#file_info{position=3, size=2, name=
+    "BBC.7.BigToe/Eoin Colfer. Artemis Fowl. The Arctic Incident/artemis2_03.mp3"}
+        ]).
+
+% H = {file_info,undefined,
+%           "BBC.7.BigToe/Eoin Colfer. Artemis Fowl. The Arctic Incident/artemis2_03.mp3",
+%           undefined,file,[],0,5753284,1633920175,undefined}
+% NextDir =  "BBC.7.BigToe/Eoin Colfer. Artemis Fowl/. The Arctic Incident
 
 -endif.

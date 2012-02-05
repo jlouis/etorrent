@@ -8,11 +8,13 @@
          size/1,
          min/1,
          min/2,
+         extract/2,
          is_empty/1,
          delete/2,
          delete/3,
          insert/3,
-         from_list/3]).
+         from_list/3,
+         in/3]).
 
 -record(chunkset, {
     piece_len :: pos_integer(),
@@ -89,6 +91,32 @@ min_(Chunkset, Numchunks) ->
         {Start, End}=Chunk ->
             Without = delete(Start, End, Chunkset),
             [Chunk|min_(Without, Numchunks - 1)]
+    end.
+
+
+%% @doc This operation combines min/2 and delete.
+extract(Chunkset, Numchunks) when Numchunks >= 0 ->
+    extract_(Chunkset, Numchunks, []).
+
+
+extract_(Chunkset, 0, Acc) ->
+    {lists:reverse(Acc), Chunkset};
+
+extract_(Chunkset, Numchunks, Acc) ->
+    case min_(Chunkset) of
+        none -> 
+            extract_(Chunkset, 0, Acc);
+
+        {Start, End}=Chunk ->
+            Without = delete(Start, End, Chunkset),
+            extract_(Without, Numchunks - 1, [Chunk|Acc])
+    end.
+
+
+in(Offset, Size, Chunkset) ->
+    case delete(Offset, Offset + Size, Chunkset) of
+    Chunkset -> true;
+    _ -> false
     end.
 
 
