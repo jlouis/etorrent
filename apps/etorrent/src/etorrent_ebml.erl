@@ -4,7 +4,7 @@
 -behaviour(gen_server).
 
 
--export([find_subtitles/2]).
+-export([tracks/2]).
 
 -export([init/1,
          handle_call/3,
@@ -15,21 +15,30 @@
     server,
     torrent_id,
     file_id,
-    size
+    size,
+    position,
+    piece_size
 }).
 
 
-start_link(Tid, Fid) ->
-    gen_server:start_link(?MODULE, [Tid, Fid], []).
+open(Tid, Fid) ->
+    application:start(ebml),
+    {ok, Fd} = gen_server:start_link(?MODULE, [Tid, Fid], []),
+    ebml_proxy:open(Fd).
+
+
+tracks(Tid, Fid) ->
+    {ok, Fd} = open(Tid, Fid),
+    ebml_file:track_list(Fd).
 
 
 find_subtitles(Tid, Fid) ->
-    application:start(ebml),
-    {ok, Fd} = start_link(Tid, Fid),
-    ebml_file:find_subtitles(Fd).
+    {ok, Fd} = open(Tid, Fid),
+    [ebml_file:extract_subtitle_binary(Fd, X) 
+        || X <- ebml_file:find_subtitles(Fd)].
 
 
-wait(Tid, Fid, Offset, Length) ->
+wait(Tid, Fid, Offset, Length, Pos, PSize) ->
     Wanted = etorrent_io:get_mask(Tid, Fid, Offset, Length),
     CtlPid = etorrent_torrent_ctl:lookup_server(Tid),
     {ok, Valid} = etorrent_torrent_ctl:valid_pieces(CtlPid),
@@ -38,15 +47,41 @@ wait(Tid, Fid, Offset, Length) ->
     case etorrent_pieceset:size(Diff) of
         %% Already downloaded
         0 -> ok;
+        %% Working with chunks
+        1 -> 
+            [PieceID] = Pieces = etorrent_pieceset:to_list(Diff),
+            %% Add a permanent wish
+            etorrent_torrent_ctl:wish_piece(Tid, Pieces, true),
+            %% Offset from beginning of the torrent
+            AbsOffset = Pos + Offset,
+            %% Offset from beginning of the piece
+            PieceOffset = AbsOffset rem PSize,
+            ok = etorrent_progress:wish_chunk(Tid, PieceID, PieceOffset, Length),
+            Status = etorrent_progress:monitor_chunk(Tid, PieceID, PieceOffset, Length),
+            case Status of
+                completed -> ok;
+                {subscribed, Ref} ->
+                    %% Waiting...
+                    receive
+                        {chunk_completed, Ref} -> ok
+                    end
+            end;
+
+        %% Many pieces
         _ -> 
             %% Set wish
             Pieces = etorrent_pieceset:to_list(Diff),
             io:format("Wish pieces ~w", [Pieces]),
-            etorrent_torrent_ctl:wish_piece(Tid, Pieces),
-            {ok, _Status, Ref} = etorrent_torrent_ctl:subscribe(Tid, piece, Pieces),
-            %% Waiting...
-            receive
-                {completed,Ref,piece,Pieces} -> ok
+            %% Add a permanent wish
+            etorrent_torrent_ctl:wish_piece(Tid, Pieces, true),
+            Status = etorrent_torrent_ctl:subscribe(Tid, piece, Pieces),
+            case Status of
+                completed -> ok;
+                {subscribed, Ref} ->
+                    %% Waiting...
+                    receive
+                        {completed,Ref} -> ok
+                    end
             end
     end.
 
@@ -62,14 +97,18 @@ init([Tid, Fid]) ->
         etorrent_io_file:read(FileServerI, Offset, Length)
         end,
 
-    Size = etorrent_io:file_size(Tid, Fid),
+    Size  = etorrent_io:file_size(Tid, Fid),
+    Pos   = etorrent_io:file_position(Tid, Fid),
+    PSize = etorrent_io:piece_size(Tid),
 
-    {ok, #state{ server=FileServer, torrent_id=Tid, file_id=Fid, size=Size }}.
+    {ok, #state{ server=FileServer, torrent_id=Tid, file_id=Fid, 
+                 size=Size, position=Pos, piece_size=PSize }}.
 
 
 handle_call({read, Offset, Length}, _, State) ->
-    #state{server=FileServer, torrent_id=Tid, file_id=Fid} = State,
-    wait(Tid, Fid, Offset, Length),
+    #state{server=FileServer, torrent_id=Tid, file_id=Fid, 
+            position=Pos, piece_size=PSize} = State,
+    wait(Tid, Fid, Offset, Length, Pos, PSize),
     %% @TODO rewrite
     case etorrent_io_file:read(FileServer, Offset, Length) of
     {ok, Chunk} ->

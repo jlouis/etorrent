@@ -39,10 +39,12 @@
          code_change/4]).
 
 %% wish API
--export([get_wishes/1,
+-export([get_permanent_wishes/1,
+         get_wishes/1,
          set_wishes/2,
          wish_file/2,
          wish_piece/2,
+         wish_piece/3,
          subscribe/3]).
 
 
@@ -67,6 +69,11 @@
     type :: file | piece,
     value :: file_wish() | piece_wish(),
     is_completed = false :: boolean(),
+    %% Transient wishes are 
+    %% * __small__  
+    %% * __hidden__ for fast_resume module
+    %% * always on top of the set of wishes.
+    is_transient = false :: boolean(),
     subscribed = [] :: [pid()],
     pieceset :: pieceset()
 }).
@@ -162,6 +169,11 @@ get_wishes(TorrentID) ->
     {ok, to_proplists(Wishes)}.
 
 
+get_permanent_wishes(TorrentID) ->
+    {ok, Wishes} = get_record_wishes(TorrentID),
+    {ok, to_proplists([X || X <- Wishes, not X#wish.is_transient])}.
+
+
 %% @doc Add a file at top of wishlist.
 %%      Added file will have highest priority inside this torrent.
 -spec wish_file(torrent_id(), wish()) -> {ok, wish_list()}.
@@ -181,10 +193,15 @@ wish_file(TorrentID, FileID) ->
 
 
 wish_piece(TorrentID, PieceID) ->
+    wish_piece(TorrentID, PieceID, false).
+
+
+wish_piece(TorrentID, PieceID, IsTemporary) ->
     {ok, OldWishes} = get_record_wishes(TorrentID),
     Wish = #wish {
       type = piece,
-      value = PieceID
+      value = PieceID,
+      is_transient = IsTemporary
     },
     NewWishes = [ Wish | OldWishes ],
     {ok, FilteredWishes} = set_record_wishes(TorrentID, NewWishes),
@@ -192,7 +209,7 @@ wish_piece(TorrentID, PieceID) ->
 
 
 %% @doc If the wish {Type, Value} will be completed,
-%%      caller will receive {completed, Ref, Type, Value}.
+%%      caller will receive {completed, Ref}.
 %%      Use wish_file of wish_piece functions before calling this function.
 subscribe(TorrentID, Type, Value) ->
     ChunkSrv = lookup_server(TorrentID),
@@ -201,8 +218,8 @@ subscribe(TorrentID, Type, Value) ->
   
 %% @doc Send information to the subscribed processes.
 %% @private
-alert_subscribed(Type, Value, Clients) ->
-    [Pid ! {completed, Ref, Type, Value} || {Pid, Ref} <- Clients].
+alert_subscribed(Clients) ->
+    [Pid ! {completed, Ref} || {Pid, Ref} <- Clients].
 
 
 %% @private
@@ -221,14 +238,18 @@ to_proplists(Records) ->
     [[{type, Type}
      ,{value, Value}
      ,{is_completed, IsCompleted}
+     ,{is_transient, IsTransient}
      ] || #wish{ type = Type, 
                 value = Value, 
-         is_completed = IsCompleted } <- Records].
+         is_completed = IsCompleted,
+         is_transient = IsTransient } <- Records].
 
 
 to_records(Props) ->
     [#wish{type = proplists:get_value(type, X), 
-          value = proplists:get_value(value, X) } || X <- Props, is_list(X)].
+          value = proplists:get_value(value, X),
+   is_transient = proplists:get_value(is_transient, X, false)
+   } || X <- Props, is_list(X)].
 
 
 to_pieceset(TorrentID, #wish{ type = file, value = FileIds }) ->
@@ -265,13 +286,17 @@ val_(Tid, [NewH|NewT], Old, Valid, Acc) ->
                       pieceset = WishSet
                     };
 
-                RecI -> RecI
+                RecI -> 
+                    %% If old wish is transient and new is permanent, then set as permanent.
+                    RecI#wish{is_transient=(NewH#wish.is_transient 
+                                        and RecI#wish.is_transient)}
             end,
         val_(Tid, NewT, Old, Valid, [Rec|Acc])
     end;
 
 val_(_Tid, [], _Old, _Valid, Acc) ->
-    lists:reverse(Acc).
+    %% Transient wishes are always on top of a query.
+    lists:keysort(#wish.is_transient, lists:reverse(Acc)).
     
 
 %% @doc Check status of wishes.
@@ -284,16 +309,21 @@ chk_([H=#wish{ is_completed = true }|T], Valid, RecAcc, Ready) ->
    chk_(T, Valid, [H|RecAcc], Ready);
 
 chk_([H|T], Valid, RecAcc, Ready) ->
-    #wish{ is_completed = false, pieceset = WishSet } = H,
+    #wish{ is_completed = false, pieceset = WishSet, is_transient = IsTransient } = H,
  
     Left = etorrent_pieceset:difference(WishSet, Valid),
     IsCompleted = etorrent_pieceset:is_empty(Left),
     Rec = H#wish{ is_completed = IsCompleted },
-    case IsCompleted of 
-        true -> 
-            %% Subscribed clients will be alerted
+    case {IsCompleted, IsTransient} of 
+        %% Subscribed clients will be alerted. 
+        %% Clear subscriptions.
+        {true, true} -> 
             chk_(T, Valid, [Rec#wish{ subscribed=[] }|RecAcc], [Rec|Ready]);
-        false -> 
+        %% Subscribed clients will be alerted. 
+        %% Delete element.
+        {true, false} -> 
+            chk_(T, Valid, RecAcc, [Rec|Ready]);
+        {false, _} -> 
             chk_(T, Valid, [Rec|RecAcc], Ready)
     end;
 
@@ -437,11 +467,10 @@ handle_sync_event({subscribe, Type, Value}, {_Pid, Ref} = Client, SN, SD) ->
 
     case add_subscribtion(OldWishes, Type, Value, Client) of
         {subscribed, NewWishes} ->
-            {reply, {ok, subscribed, Ref}, SN, SD#state{wishes=NewWishes}};
+            {reply, {subscribed, Ref}, SN, SD#state{wishes=NewWishes}};
 
         {completed, _NewWishes} ->
-            alert_subscribed(Type, Value, [Client]),
-            {reply, {ok, completed, Ref}, SN, SD}
+            {reply, completed, SN, SD}
     end;
 
 handle_sync_event(get_wishes, _From, SN, SD) ->
@@ -464,19 +493,13 @@ handle_sync_event({set_wishes, NewWishes}, _From, SN,
     {reply, {ok, Wishes}, SN, SD#state{wishes=Wishes}}.
 
 
-%% @private
-unique_list(L) ->
-    U = lists:usort(L),
-    X = L -- U,
-    L -- X.
-
 
 %% Tell the controller we have stored an index for this torrent file
 %% @private
 handle_info(check_completed, SN, SD=#state{valid = Valid, wishes = Wishes}) ->
     {NewWishes, CompletedWishes} = check_completed(Wishes, Valid),
-    [alert_subscribed(Type, Value, Clients) 
-        || #wish{type = Type, value = Value, subscribed = Clients} 
+    [alert_subscribed(Clients) 
+        || #wish{subscribed = Clients} 
         <- CompletedWishes],
     {next_state, SN, SD#state{wishes = NewWishes}};
 

@@ -402,7 +402,7 @@ init(Serverargs) ->
     ChunkSets = array:from_orddict(ChunkList),
 
     PiecePriority = init_priority(TorrentID, unassigned, PiecesInvalid),
-    {ok, Timer} = timer:send_interval(10000, check_completed),
+    {ok, Timer} = timer:send_interval(5000, check_completed),
 
     InitState = #state{
         torrent_id=TorrentID,
@@ -603,13 +603,13 @@ handle_call({monitor_chunk, Index, Offset, Length}, Client, State) ->
             %% still downloading
             false ->
                 NewWantedChunks = [{Client, Index, Offset, Length}|WantedChunks],
-                {reply, {ok, subscribed, Ref}, 
+                {reply, {subscribed, Ref}, 
                     State#state{chunks_monitored=NewWantedChunks}};
 
             %% already downloaded
             true ->
-                %% alert?
-                {reply, {ok, completed, Ref}, State}
+                %% do not send an alert
+                {reply, completed, State}
         end
     end;
 
@@ -796,12 +796,12 @@ alert_subscribed(WantedChunks, StoredChunks) ->
 
 
 alert_subscribed_([H|T], SC, Acc) ->
-    {_Client, Index, Offset, Length} = H,
+    {Client, Index, Offset, Length} = H,
     PieceChunks = array:get(Index, SC),
     case etorrent_chunkset:in(Offset, Length, PieceChunks) of
     %% stored
     true -> 
-        send_alert(H),
+        send_alert(Client),
         alert_subscribed_(T, SC, Acc);
     %% still subscribed
     false -> 
@@ -812,8 +812,8 @@ alert_subscribed_([], _SC, Acc) ->
     lists:reverse(Acc).
 
 
-send_alert({{Pid, Ref}, Index, Offset, Length}) ->
-    Pid ! {chunk_completed,  Ref, Index, Offset, Length}.
+send_alert({Pid, Ref}) ->
+    Pid ! {chunk_completed, Ref}.
 
 
 
