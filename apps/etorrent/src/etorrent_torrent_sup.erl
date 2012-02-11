@@ -11,6 +11,7 @@
 
          start_child_tracker/5,
          start_progress/5,
+         start_peer_sup/2,
          pause/1]).
 
 %% Supervisor callbacks
@@ -62,7 +63,14 @@ start_progress(Pid, TorrentID, Torrent, ValidPieces, Wishes) ->
     supervisor:start_child(Pid, Spec).
 
 
+start_peer_sup(Pid, TorrentID) ->
+    Spec = peer_pool_spec(TorrentID),
+    supervisor:start_child(Pid, Spec).
+
+
 pause(Pid) ->
+    ok = supervisor:terminate_child(Pid, peer_pool_sup),
+    ok = supervisor:delete_child(Pid, peer_pool_sup),
     ok = supervisor:terminate_child(Pid, tracker_communication),
     ok = supervisor:delete_child(Pid, tracker_communication),
     ok = supervisor:terminate_child(Pid, chunk_mgr),
@@ -79,8 +87,7 @@ init([{Torrent, TorrentPath, TorrentIH}, PeerID, TorrentID]) ->
         scarcity_manager_spec(TorrentID, Torrent),
         torrent_control_spec(TorrentID, Torrent, TorrentPath, TorrentIH, PeerID),
         endgame_spec(TorrentID),
-        io_sup_spec(TorrentID, Torrent),
-        peer_pool_spec(TorrentID)],
+        io_sup_spec(TorrentID, Torrent)],
     {ok, {{one_for_all, 1, 60}, Children}}.
 
 pending_spec(TorrentID) ->

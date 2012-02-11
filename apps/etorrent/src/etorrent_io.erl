@@ -73,6 +73,7 @@
          minimize_filelist/2,
          long_file_name/2,
          file_name/2,
+         full_file_name/2,
          file_position/2,
          file_size/2,
          piece_size/1]).
@@ -459,32 +460,33 @@ get_mask(TorrentID, [_|_] = IdList) ->
  
 %% @doc Build a mask of the part of the file in the torrent.
 get_mask(TorrentID, FileID, PartStart, PartSize)
-    when PartStart >= 0, PartSize >= 0 ->
+    when PartStart >= 0, PartSize >= 0, 
+            is_integer(TorrentID), is_integer(FileID) ->
     DirPid = await_directory(TorrentID),
     {ok, Mask} = gen_server:call(DirPid, {get_mask, FileID, PartStart, PartSize}),
     Mask.
 
 
-piece_size(TorrentID) ->
+piece_size(TorrentID) when is_integer(TorrentID) ->
     DirPid = await_directory(TorrentID),
     {ok, Size} = gen_server:call(DirPid, piece_size),
     Size.
 
 
-file_position(TorrentID, FileID) ->
+file_position(TorrentID, FileID) when is_integer(TorrentID), is_integer(FileID) ->
     DirPid = await_directory(TorrentID),
     {ok, Pos} = gen_server:call(DirPid, {position, FileID}),
     Pos.
 
 
-file_size(TorrentID, FileID) ->
+file_size(TorrentID, FileID) when is_integer(TorrentID), is_integer(FileID) ->
     DirPid = await_directory(TorrentID),
     {ok, Size} = gen_server:call(DirPid, {size, FileID}),
     Size.
 
 
 -spec tree_children(torrent_id(), file_id()) -> [{atom(), term()}].
-tree_children(TorrentID, FileID) ->
+tree_children(TorrentID, FileID) when is_integer(TorrentID), is_integer(FileID) ->
     %% get children
     DirPid = await_directory(TorrentID),
     {ok, Records} = gen_server:call(DirPid, {tree_children, FileID}),
@@ -508,7 +510,7 @@ tree_children(TorrentID, FileID) ->
     
 
 %% @doc Form minimal version of the filelist with the same pieceset.
-minimize_filelist(TorrentID, FileIds) ->
+minimize_filelist(TorrentID, FileIds) when is_integer(TorrentID) ->
     SortedFiles = lists:sort(FileIds),
     DirPid = await_directory(TorrentID),
     {ok, Ids} = gen_server:call(DirPid, {minimize_filelist, SortedFiles}),
@@ -520,13 +522,21 @@ minimize_filelist(TorrentID, FileIds) ->
 long_file_name(TorrentID, FileID) when is_integer(FileID) ->
     long_file_name(TorrentID, [FileID]);
 
-long_file_name(TorrentID, FileID) when is_list(FileID) ->
+long_file_name(TorrentID, FileID) when is_list(FileID), is_integer(TorrentID) ->
     DirPid = await_directory(TorrentID),
     {ok, Name} = gen_server:call(DirPid, {long_file_name, FileID}),
     Name.
 
+
+full_file_name(TorrentID, FileID) when is_integer(FileID), is_integer(TorrentID) ->
+    RelName = etorrent_io:file_name(TorrentID, FileID),
+    FileServer = etorrent_io:lookup_file_server(TorrentID, RelName),
+    {ok, Name} = etorrent_io_file:full_path(FileServer),
+    Name.
+
+
 %% @doc Convert FileID to relative file name.
-file_name(TorrentID, FileID) ->
+file_name(TorrentID, FileID) when is_integer(FileID) ->
     DirPid = await_directory(TorrentID),
     {ok, Name} = gen_server:call(DirPid, {file_name, FileID}),
     Name.
@@ -541,7 +551,6 @@ init([TorrentID, Torrent]) ->
     MaxFiles = etorrent_config:max_files(),
     true = register_directory(TorrentID),
     PieceMap = make_piece_map(Torrent),
-    io:format("~p", [PieceMap]),
     Files = make_file_list(Torrent),
     {Static, PLen, TLen} = collect_static_file_info(Torrent),
     
@@ -619,18 +628,8 @@ handle_call({get_mask, FileID, PartStart, PartSize}, _, State) ->
 
             {reply, {ok, Set}, State}
     end;
-
     
 handle_call({get_mask, FileID}, _, State) ->
-    #state{static_file_info=Arr} = State,
-    case array:get(FileID, Arr) of
-        undefined ->
-            {reply, {error, badid}, State};
-        #file_info {pieces = Mask} ->
-            {reply, {ok, Mask}, State}
-    end;
-
-handle_call({et_mask, FileID}, _, State) ->
     #state{static_file_info=Arr} = State,
     case array:get(FileID, Arr) of
         undefined ->
@@ -647,14 +646,26 @@ handle_call({long_file_name, FileIDs}, _, State) ->
             Rec#file_info.name
        end,
 
-    NameList = lists:map(F, FileIDs),
-    NameBinary = list_to_binary(string:join(NameList, ", ")),
-    {reply, {ok, NameBinary}, State};
+    Reply = try 
+        NameList = lists:map(F, FileIDs),
+        NameBinary = list_to_binary(string:join(NameList, ", ")),
+        {ok, NameBinary}
+        catch error:_ ->
+            lager:error("List of ids ~w caused an error.", 
+                [FileIDs]),
+            {error, badid}
+        end,
+            
+    {reply, Reply, State};
 
 handle_call({file_name, FileID}, _, State) ->
     #state{static_file_info=Arr} = State,
-    Rec = array:get(FileID, Arr), 
-    {reply, {ok, Rec#file_info.name}, State};
+    case array:get(FileID, Arr) of
+    undefined ->
+       {reply, {error, badid}, State};
+    #file_info {name = Name} ->
+       {reply, {ok, Name}, State}
+    end;
 
 handle_call({minimize_filelist, FileIDs}, _, State) ->
     #state{static_file_info=Arr} = State,
@@ -666,7 +677,7 @@ handle_call({tree_children, FileID}, _, State) ->
     #state{static_file_info=Arr} = State,
     case array:get(FileID, Arr) of
         undefined ->
-            {reply, {error, badname}, State};
+            {reply, {error, badid}, State};
         #file_info {children = Ids} ->
             Children = [array:get(Id, Arr) || Id <- Ids],
             {reply, {ok, Children}, State}
@@ -674,8 +685,13 @@ handle_call({tree_children, FileID}, _, State) ->
 
 handle_call({get_positions, Piece}, _, State) ->
     #state{pieces=PieceMap} = State,
-    Positions = array:get(Piece, PieceMap),
-    {reply, {ok, Positions}, State}.
+    case array:get(Piece, PieceMap) of
+        undefined ->
+            {reply, {error, badid}, State};
+        Positions ->
+            {reply, {ok, Positions}, State}
+    end.
+
 
 %% @private
 handle_cast({schedule_operation, RelPath}, State) ->

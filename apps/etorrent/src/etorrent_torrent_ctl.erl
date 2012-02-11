@@ -625,6 +625,8 @@ do_start(S=#state{id=Id, torrent=Torrent, valid=ValidPieces, wishes=Wishes}) ->
           S#state.peer_id,
           Id),
 
+    etorrent_torrent_sup:start_peer_sup(S#state.parent_pid, Id),
+
     {ok, Timer} = timer:send_interval(10000, check_completed),
 
     NewState = S#state{tracker_pid = TrackerPid,

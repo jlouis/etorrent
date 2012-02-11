@@ -136,7 +136,17 @@
     endgame     = exit(required) :: pid(),
     in_endgame  = exit(required) :: boolean(),
     user_wishes = [] :: [pieceset()],
+    %% == Reordering mode ==
+    %% All reordered chunks will be downloaded first.
+    %% This mode is specially for partical downloading inside the file.
+    reordering = false :: boolean(),
     interval    :: timer:interval(),
+    %% These pieces still have unassigned reordered chunks
+    pieces_reordered_chunked :: pieceset(),
+    %% These pieces have special handling of dropped parts.
+    %% Set pieces_all_reordered contains pieces_pending_reordered.
+    pieces_reordered :: pieceset(),
+    chunks_reordered :: array(),
     chunks_monitored = [] :: list()}).
 
 %% # Piece states
@@ -352,13 +362,11 @@ set_wishes(TorrentID, Wishes) ->
     ok = call(ChunkSrv, {set_wishes, Wishes}).
 
 
-wish_chunk(TorrentID, PieceID, Offset, Length) ->
-    ChunkSrv = lookup_server(TorrentID),
+wish_chunk(ChunkSrv, PieceID, Offset, Length) ->
     ok = call(ChunkSrv, {wish_chunk, PieceID, Offset, Length}).
 
 
-monitor_chunk(TorrentID, PieceID, Offset, Length) ->
-    ChunkSrv = lookup_server(TorrentID),
+monitor_chunk(ChunkSrv, PieceID, Offset, Length) ->
     call(ChunkSrv, {monitor_chunk, PieceID, Offset, Length}).
 
 
@@ -575,17 +583,41 @@ handle_call({state_members, Piecestate}, _, State) ->
 %% wish part of the piece
 handle_call({wish_chunk, Index, Offset, Length}, _, State) ->
     #state{
-        chunks_assigned=AssignedChunks
+        chunks_assigned=AssignedChunks,
+        chunks_reordered=ReorderedChunks,
+        pieces_reordered=ReorderedPieces,
+        pieces_reordered_chunked=ChunkedPieces
     } = State,
     case array:get(Index, AssignedChunks) of
     undefined -> {reply, {error, no_element}, State};
-    Chunkset1 ->
-        Chunkset2 = 
-            etorrent_chunkset:delete(Offset, Length, Chunkset1),
-        Chunkset3 = 
-            etorrent_chunkset:insert(Offset, Length, Chunkset2),
-        NewAssignedChunks = array:set(Index, Chunkset3, AssignedChunks),
-        {reply, ok, State#state{chunks_assigned=NewAssignedChunks}}
+    Chunkset ->
+        {NewChunkset, SubList} 
+            = etorrent_chunkset:subtract(Offset, Length, Chunkset),
+
+        %% Stores chunks with high priority
+        SubChunkset = case array:get(Index, AssignedChunks) of
+            undefined -> etorrent_chunkset:new(Chunkset);
+            SubChunksetI -> SubChunksetI
+        end,
+
+        %% Move elements from Chunkset to NewSubChunkset
+        NewSubChunkset = etorrent_chunkset:insert(SubList, SubChunkset),
+
+        NewAssignedChunks  = array:set(Index, NewChunkset, AssignedChunks),
+        NewReorderedChunks = array:set(Index, NewSubChunkset, ReorderedChunks),
+
+        %% Mark the piece that it has reordered chunks
+        NewChunkedPieces = etorrent_pieceset:insert(Index, ChunkedPieces),
+        %% Enable special handling of dropped chunks
+        NewReorderedPieces = etorrent_pieceset:insert(Index, ReorderedPieces),
+
+        NewState = State#state{
+            chunks_assigned=NewAssignedChunks,
+            chunks_reordered=NewReorderedChunks,
+            pieces_reordered=NewReorderedPieces,
+            pieces_reordered_chunked=NewChunkedPieces
+        },
+        {reply, ok, NewState}
     end;
 
 
@@ -733,6 +765,7 @@ when State#state.in_endgame ->
     {noreply, State};
 
 handle_info({chunk, {dropped, Piece, Offset, Length, _}}, State) ->
+    %% All dropped from reordered chunks will have high priority
     #state{
         pieces_begun=Begun,
         pieces_assigned=Assigned,
@@ -801,6 +834,7 @@ alert_subscribed_([H|T], SC, Acc) ->
     case etorrent_chunkset:in(Offset, Length, PieceChunks) of
     %% stored
     true -> 
+        io:write({'s', Offset, Length}),
         send_alert(Client),
         alert_subscribed_(T, SC, Acc);
     %% still subscribed

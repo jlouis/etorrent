@@ -10,16 +10,22 @@
 
 %% Installation/deinstallation of the event mgr
 -export([start_link/0,
-	 add_handler/2,
-	 delete_handler/2]).
+	     add_handler/2,
+	     delete_handler/2]).
 
-%% Notifications
+%% Torrent Notifications
 -export([notify/1,
          started_torrent/1,
          stopped_torrent/1,
          checking_torrent/1,
-	 completed_torrent/1,
+	     completed_torrent/1,
          seeding_torrent/1]).
+
+%% Task Notifications
+-export([added_task/1,
+         completed_task/1,
+         failed_task/2]).
+
 
 -define(SERVER, ?MODULE).
 %% =======================================================================
@@ -62,6 +68,11 @@ seeding_torrent(Id) -> notify({seeding_torrent, Id}).
 %% @equiv notify({completed_torrent, Id})
 -spec completed_torrent(integer()) -> ok.
 completed_torrent(Id) -> notify({completed_torrent, Id}).
+
+%% @doc New task was added.
+added_task(Props) -> notify({added_task, Props}).
+completed_task(Props) -> notify({completed_task, Props}).
+failed_task(Props, Reason) -> notify({failed_task, Props, Reason}).
 
 %% ====================================================================
 
