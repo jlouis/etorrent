@@ -2,9 +2,7 @@
 -behaviour(gen_server).
 
 %% exported functions
--export([start_link/1,
-         is_active/1,
-         activate/1]).
+-export([start_link/1]).
 
 %% gproc registry entries
 -export([register_server/1,
@@ -27,7 +25,6 @@
 
 -record(state, {
     torrent_id = exit(required) :: torrent_id(),
-    active     = exit(required) :: boolean(),
     pending    = exit(required) :: pid(),
     assigned   = exit(required) :: gb_tree(),
     fetched    = exit(required) :: gb_tree(),
@@ -64,27 +61,17 @@ start_link(TorrentID) ->
     gen_server:start_link(?MODULE, [TorrentID], []).
 
 
-%% @doc
-%% @end
--spec is_active(pid()) -> boolean().
-is_active(SrvPid) ->
-    gen_server:call(SrvPid, is_active).
-
-
-%% @doc
-%% @end
--spec activate(pid()) -> ok.
-activate(SrvPid) ->
-    gen_server:call(SrvPid, activate).
-
-
 %% @private
 init([TorrentID]) ->
+    lager:info([{endgame, TorrentID}],
+               "Endgame active ~w", [TorrentID]),
+
     true = register_server(TorrentID),
+    true = etorrent_download:register_server(TorrentID),
     Pending = etorrent_pending:await_server(TorrentID),
+    ok = etorrent_pending:receiver(self(), Pending),
     InitState = #state{
         torrent_id=TorrentID,
-        active=false,
         pending=Pending,
         assigned=gb_trees:empty(),
         fetched=gb_trees:empty(),
@@ -93,22 +80,8 @@ init([TorrentID]) ->
 
 
 %% @private
-handle_call(is_active, _, State) ->
-    #state{active=IsActive} = State,
-    {reply, IsActive, State};
-
-handle_call(activate, _, State) ->
-    #state{active=false, torrent_id=TorrentID} = State,
-    lager:info([{endgame, TorrentID}],
-               "Endgame active ~w", [TorrentID]),
-    NewState = State#state{active=true},
-    Peers = etorrent_peer_control:lookup_peers(TorrentID),
-    [etorrent_download:activate_endgame(Peer) || Peer <- Peers],
-    {reply, ok, NewState};
-
 handle_call({chunk, {request, _, Peerset, Pid}}, _, State) ->
     #state{
-        active=true,
         pending=Pending,
         assigned=Assigned} = State,
     Request = etorrent_utils:find(
@@ -178,7 +151,6 @@ handle_info({chunk, {dropped, Index, Offset, Length, Pid}}, State) ->
 
 handle_info({chunk, {fetched, Index, Offset, Length, Pid}}, State) ->
     #state{
-        active=true,
         assigned=Assigned,
         fetched=Fetched,
         stored=Stored} = State,
@@ -204,7 +176,6 @@ handle_info({chunk, {fetched, Index, Offset, Length, Pid}}, State) ->
 
 handle_info({chunk, {stored, Index, Offset, Length, Pid}}, State) ->
     #state{
-        active=true,
         fetched=Fetched,
         stored=Stored} = State,
     Chunk = {Index, Offset, Length},

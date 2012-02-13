@@ -2,6 +2,7 @@
 
 %% API for retriving information
 -behaviour(gen_server).
+-compile([export_all]).
 
 
 -export([tracks/2,
@@ -19,7 +20,7 @@
     torrent_id,
     file_id,
     size,
-    position,
+    file_start,
     piece_size,
     queries = [],
     chunk_server :: pid()
@@ -27,7 +28,7 @@
 
 -record(chunk_query, {
     id :: reference(),
-    client :: {pid(), reference()},
+    client :: [{pid(), reference()}],
     offset :: non_neg_integer(),
     length :: non_neg_integer()
 }).
@@ -35,7 +36,7 @@
 
 open(Tid, Fid) ->
     application:start(ebml),
-    {ok, Fd} = gen_server:start_link(?MODULE, [Tid, Fid], []),
+    {ok, Fd} = gen_server:start_link(?MODULE, [Tid, Fid], [{timeout, infinity}, {debug,[trace]}]),
     ebml_proxy:open(Fd).
 
 
@@ -59,7 +60,8 @@ find_subtitles(Tid, Fid) ->
     [ebml_file:extract_subtitle_binary(Fd, X) 
         || X <- ebml_file:find_subtitles(Fd)].
 
-wait(ChunkSrv, Tid, Fid, Offset, Length, Pos, PSize) ->
+
+wait(ChunkSrv, Tid, Fid, Offset, Length, FileStart, PSize) ->
     Wanted = etorrent_io:get_mask(Tid, Fid, Offset, Length),
     CtlPid = etorrent_torrent_ctl:lookup_server(Tid),
     {ok, Valid} = etorrent_torrent_ctl:valid_pieces(CtlPid),
@@ -68,38 +70,20 @@ wait(ChunkSrv, Tid, Fid, Offset, Length, Pos, PSize) ->
         %% Already downloaded
         0 -> ok;
         %% Working with chunks
-        1 -> 
-            [PieceID] = Pieces = etorrent_pieceset:to_list(Diff),
-            %% Add a permanent wish
-            etorrent_torrent_ctl:wish_piece(Tid, Pieces, true),
+        _PieceCount -> 
             %% Offset from beginning of the torrent
-            AbsOffset = Pos + Offset,
-            %% Offset from beginning of the piece
-            PieceOffset = AbsOffset rem PSize,
-            ok = etorrent_progress:wish_chunk(ChunkSrv, PieceID, 
-                PieceOffset, Length),
-            Status = etorrent_progress:monitor_chunk(ChunkSrv, PieceID, 
-                PieceOffset, Length),
+            AbsOffset = FileStart + Offset,
+            Chunks = range_to_chunks(AbsOffset, Length, PSize),
+
+            Status = etorrent_reordered:monitor_chunks(ChunkSrv, Chunks),
             case Status of
                 completed -> ok;
                 {subscribed, Ref} -> 
                     io:write({'-', Offset, Length}),
                     {subscribed, Ref}
-            end;
-
-        %% Many pieces
-        _ -> 
-            %% Set wish
-            Pieces = etorrent_pieceset:to_list(Diff),
-            io:format("Wish pieces ~w", [Pieces]),
-            %% Add a permanent wish
-            etorrent_torrent_ctl:wish_piece(Tid, Pieces, true),
-            Status = etorrent_torrent_ctl:subscribe(Tid, piece, Pieces),
-            case Status of
-                completed -> ok;
-                {subscribed, Ref} -> {subscribed, Ref}
             end
     end.
+    
 
 
 read(FileServer, Offset, Length) ->
@@ -119,31 +103,29 @@ init([Tid, Fid]) ->
     RelName = etorrent_io:file_name(Tid, Fid),
     FileServer = etorrent_io:lookup_file_server(Tid, RelName),
 
-    Fn = fun(Offset, Length) ->
-        %% Find server by filename
-        FileServerI = etorrent_io:lookup_file_server(Tid, RelName),
-        etorrent_io_file:read(FileServerI, Offset, Length)
-        end,
-
     Size  = etorrent_io:file_size(Tid, Fid),
     Pos   = etorrent_io:file_position(Tid, Fid),
     PSize = etorrent_io:piece_size(Tid),
 
+    CtlPid = etorrent_torrent_ctl:lookup_server(Tid),
+    etorrent_torrent_ctl:switch_mode(CtlPid, reordered),
+
     %% If chunk_server will fail, this process will fail too.
-    ChunkSrv = etorrent_progress:lookup_server(Tid),
+    ChunkSrv = etorrent_reordered:await_server(Tid),
     erlang:monitor(process, ChunkSrv),
+    erlang:monitor(process, FileServer),
 
     {ok, #state{ server=FileServer, torrent_id=Tid, file_id=Fid, 
-                 size=Size, position=Pos, piece_size=PSize,
+                 size=Size, file_start=Pos, piece_size=PSize,
                  chunk_server=ChunkSrv }}.
 
 
-handle_call({read, Offset, Length}, Client, State) ->
+handle_call({read, Offset, Length}, {Pid, _Ref}=Client, State) ->
     #state{server=FileServer, torrent_id=Tid, file_id=Fid, 
-            position=Pos, piece_size=PSize,
+            file_start=FileStart, piece_size=PSize,
             queries=Queries, chunk_server=ChunkSrv} = State,
 
-    case wait(ChunkSrv, Tid, Fid, Offset, Length, Pos, PSize) of
+    case wait(ChunkSrv, Tid, Fid, Offset, Length, FileStart, PSize) of
     ok ->
         Chunk = read(FileServer, Offset, Length),
         {reply, {ok, Chunk}, State};
@@ -162,9 +144,7 @@ handle_call(size, _, State) ->
     {reply, {ok, State#state.size}, State}.
 
 
-handle_info({Tag, Ref}, State) 
-    when Tag =:= completed; % piece
-         Tag =:= chunk_completed ->
+handle_info({completed, Ref}, State) ->
 
     #state{server=FileServer, 
             queries=Queries} = State,
@@ -182,7 +162,7 @@ handle_info({Tag, Ref}, State)
     Chunk = read(FileServer, Offset, Length),
     Reply = {ok, Chunk},
     gen_server:reply(Client, Reply),
-    {noreply, {ok, State#state.size}, State#state{queries=Rest}}.
+    {noreply, State#state{queries=Rest}}.
     
 
 terminate(_, _) ->
@@ -192,3 +172,50 @@ terminate(_, _) ->
 %% @private
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
+
+%% @doc Split a monolitic range to a list of pieces.
+%% @param Start      Offset from the beginning of the torrent.
+%% @param Length     of the unsplited range.
+%% @param PSize      Size of the piece.
+%% @return [{PieceId, PieceStartOffset, ChunkLength}
+range_to_chunks(Start, Length, PSize) ->
+    %% Offset from beginning of the piece
+    PieceOffset  = Start rem PSize,
+    FirstPieceId = Start div PSize,
+    ChunkLength  = min(PSize - PieceOffset, Length),
+    Left = Length - ChunkLength,
+    Chunk = {FirstPieceId, PieceOffset, ChunkLength},
+    to_chunks_(FirstPieceId + 1, Left, PSize, [Chunk]).
+
+
+to_chunks_(PieceId, Left, PSize, Acc) when Left =< 0 ->
+    lists:reverse(Acc);
+
+to_chunks_(PieceId, Left, PSize, Acc) when Left >= PSize ->
+    Chunk = {PieceId, 0, PSize},
+    to_chunks_(PieceId + 1, Left - PSize, PSize, [Chunk|Acc]);
+
+to_chunks_(PieceId, Left, PSize, Acc) ->
+    Chunk = {PieceId, 0, Left},
+    lists:reverse([Chunk|Acc]).
+    
+
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+
+range_to_chunks_test_() ->
+    % 012|345|678  Offset from the beginning of the torrent
+    % -----------
+    % xoo|
+    [ ?_assertEqual(range_to_chunks(0, 1, 3), [{0, 0, 1}])
+    % ooo|xoo
+    , ?_assertEqual(range_to_chunks(3, 1, 3), [{1, 0, 1}])
+    % oox|xoo
+    , ?_assertEqual(range_to_chunks(2, 2, 3), [{0, 2, 1}, {1, 0, 1}])
+    % xxx|xxx
+    , ?_assertEqual(range_to_chunks(0, 6, 3), [{0, 0, 3}, {1, 0, 3}])
+    % xxx|xxx|x
+    , ?_assertEqual(range_to_chunks(0, 7, 3), [{0, 0, 3}, {1, 0, 3}, {2, 0, 1}])
+    ].
+
+-endif.

@@ -96,8 +96,8 @@ min_(_, 0) ->
 min_(Chunkset, Numchunks) ->
     case min_(Chunkset) of
         none -> [];
-        {Start, End}=Chunk ->
-            Without = delete(Start, End, Chunkset),
+        {Start, Size}=Chunk ->
+            Without = delete(Start, Size, Chunkset),
             [Chunk|min_(Without, Numchunks - 1)]
     end.
 
@@ -108,15 +108,15 @@ extract(Chunkset, Numchunks) when Numchunks >= 0 ->
 
 
 extract_(Chunkset, 0, Acc) ->
-    {lists:reverse(Acc), Chunkset};
+    {lists:reverse(Acc), Chunkset, 0};
 
 extract_(Chunkset, Numchunks, Acc) ->
     case min_(Chunkset) of
         none -> 
-            extract_(Chunkset, 0, Acc);
+            {lists:reverse(Acc), Chunkset, Numchunks};
 
-        {Start, End}=Chunk ->
-            Without = delete(Start, End, Chunkset),
+        {Start, Size}=Chunk ->
+            Without = delete(Start, Size, Chunkset),
             extract_(Without, Numchunks - 1, [Chunk|Acc])
     end.
 

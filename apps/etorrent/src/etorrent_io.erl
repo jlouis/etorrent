@@ -40,6 +40,8 @@
 %% open file handle.
 %%
 %% @end
+-define(DEFAULT_CHUNK_SIZE, 16#4000). % TODO - get this value from a configuration file
+
 -module(etorrent_io).
 -behaviour(gen_server).
 
@@ -70,13 +72,19 @@
          get_mask/2,
          get_mask/4,
          tree_children/2,
-         minimize_filelist/2,
-         long_file_name/2,
+         minimize_filelist/2]).
+
+%% Info API
+-export([long_file_name/2,
          file_name/2,
          full_file_name/2,
          file_position/2,
          file_size/2,
-         piece_size/1]).
+         piece_size/1,
+         piece_count/1,
+         chunk_size/1
+        ]).
+
 
 -export([check_piece/3]).
 
@@ -117,7 +125,9 @@
     files_max  :: pos_integer(),
     static_file_info :: array(),
     total_size :: non_neg_integer(),
-    piece_size :: non_neg_integer()
+    piece_size :: non_neg_integer(),
+    chunk_size = ?DEFAULT_CHUNK_SIZE :: non_neg_integer(),
+    piece_count :: non_neg_integer()
     }).
 
 
@@ -134,7 +144,7 @@
     size      = 0 :: non_neg_integer(),
     % byte offset from 0
     position  = 0 :: non_neg_integer(),
-    pieces :: pieceset()
+    pieces :: array()
 }).
 
 -type file_info() :: #file_info{}.
@@ -473,6 +483,18 @@ piece_size(TorrentID) when is_integer(TorrentID) ->
     Size.
 
 
+chunk_size(TorrentID) when is_integer(TorrentID) ->
+    DirPid = await_directory(TorrentID),
+    {ok, Size} = gen_server:call(DirPid, chunk_size),
+    Size.
+
+
+piece_count(TorrentID) when is_integer(TorrentID) ->
+    DirPid = await_directory(TorrentID),
+    {ok, Count} = gen_server:call(DirPid, piece_count),
+    Count.
+
+
 file_position(TorrentID, FileID) when is_integer(TorrentID), is_integer(FileID) ->
     DirPid = await_directory(TorrentID),
     {ok, Pos} = gen_server:call(DirPid, {position, FileID}),
@@ -562,7 +584,10 @@ init([TorrentID, Torrent]) ->
         files_max=MaxFiles,
         static_file_info=Static,
         total_size=TLen, 
-        piece_size=PLen },
+        piece_size=PLen,
+        piece_count=(TLen div PLen) + 
+            (case TLen rem PLen of 0 -> 0; _ -> 1 end) 
+    },
     {ok, InitState}.
 
 %%
@@ -609,8 +634,14 @@ handle_call({size, FileID}, _, State) ->
             {reply, {ok, Size}, State}
     end;
 
+handle_call(chunk_size, _, State=#state{chunk_size=S}) ->
+    {reply, {ok, S}, State};
+
 handle_call(piece_size, _, State=#state{piece_size=S}) ->
     {reply, {ok, S}, State};
+
+handle_call(piece_count, _, State=#state{piece_count=C}) ->
+    {reply, {ok, C}, State};
 
 handle_call({get_mask, FileID, PartStart, PartSize}, _, State) ->
     #state{static_file_info=Arr, total_size=TLen, piece_size=PLen} = State,

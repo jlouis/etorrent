@@ -8,8 +8,14 @@
          chunk_fetched/4,
          chunk_stored/4]).
 
+%% gproc registry entries
+-export([register_server/1,
+         unregister_server/1,
+         lookup_server/1,
+         await_server/1]).
+
 %% update functions
--export([activate_endgame/1,
+-export([switch_assignor/2,
          update/2]).
 
 -type torrent_id()  :: etorrent_types:torrent_id().
@@ -18,19 +24,37 @@
 -type chunk_offset() :: etorrent_types:chunk_offset().
 -type chunk_length() :: etorrent_types:chunk_len().
 -type chunkspec()   :: {pieceindex(), chunk_offset(), chunk_length()}.
+-type update_query() :: {assignor, pid()}.
 
--type tupdate() :: {endgame, boolean()}.
 
 -record(tservices, {
     torrent_id :: torrent_id(),
-    in_endgame :: boolean(),
+    assignor   :: pid(),
     pending    :: pid(),
-    progress   :: pid(),
-    histogram  :: pid(),
-    endgame    :: pid()}).
--define(endgame(Handle), (Handle#tservices.in_endgame)).
+    histogram  :: pid()}).
 -opaque tservices() :: #tservices{}.
 -export_type([tservices/0]).
+
+
+-spec register_server(torrent_id()) -> true.
+register_server(TorrentID) ->
+    etorrent_utils:register(server_name(TorrentID)).
+
+-spec unregister_server(torrent_id()) -> true.
+unregister_server(TorrentID) ->
+    etorrent_utils:unregister(server_name(TorrentID)).
+
+-spec lookup_server(torrent_id()) -> pid().
+lookup_server(TorrentID) ->
+    etorrent_utils:lookup(server_name(TorrentID)).
+
+-spec await_server(torrent_id()) -> pid().
+await_server(TorrentID) ->
+    etorrent_utils:await(server_name(TorrentID)).
+
+server_name(TorrentID) ->
+    {etorrent, TorrentID, assignor}.
+
 
 
 %% @doc
@@ -38,75 +62,58 @@
 -spec await_servers(torrent_id()) -> tservices().
 await_servers(TorrentID) ->
     Pending   = etorrent_pending:await_server(TorrentID),
-    Progress  = etorrent_progress:await_server(TorrentID),
+    Assignor  = await_server(TorrentID),
     Histogram = etorrent_scarcity:await_server(TorrentID),
-    Endgame   = etorrent_endgame:await_server(TorrentID),
-    Inendgame = etorrent_endgame:is_active(Endgame),
     ok = etorrent_pending:register(Pending),
     Handle = #tservices{
         torrent_id=TorrentID,
-        in_endgame=Inendgame,
         pending=Pending,
-        progress=Progress,
-        histogram=Histogram,
-        endgame=Endgame},
+        assignor=Assignor,
+        histogram=Histogram},
     Handle.
 
 
-%% @doc
+%% @doc Run `update/2' for the peer with Pid.
+%%      It allows to change the Hangle tuple.
 %% @end
--spec activate_endgame(pid()) -> ok.
-activate_endgame(Pid) ->
-    Pid ! {download, {endgame, true}},
+-spec switch_assignor(pid(), pid()) -> ok.
+switch_assignor(PeerPid, Assignor) ->
+    PeerPid ! {download, {assignor, Assignor}},
     ok.
 
 
-%% @doc
+%% @doc This function is called by peer.
 %% @end
--spec update(tupdate(), tservices()) -> tservices().
-update({endgame, Inendgame}, Handle) when is_boolean(Inendgame) ->
-    Handle#tservices{in_endgame=Inendgame}.
+-spec update(update_query(), tservices()) -> tservices().
+update({assignor, Assignor}, Handle) when is_pid(Assignor) ->
+    Handle#tservices{assignor=Assignor}.
 
 
 %% @doc
 %% @end
 -spec request_chunks(non_neg_integer(), pieceset(), tservices()) ->
     {ok, assigned | not_interested | [chunkspec()]}.
-request_chunks(Numchunks, Peerset, Handle) when ?endgame(Handle) ->
-    #tservices{endgame=Endgame} = Handle,
-    etorrent_chunkstate:request(Numchunks, Peerset, Endgame);
-
 request_chunks(Numchunks, Peerset, Handle) ->
-    #tservices{progress=Progress} = Handle,
-    etorrent_chunkstate:request(Numchunks, Peerset, Progress).
+    #tservices{assignor=Assignor} = Handle,
+    etorrent_chunkstate:request(Numchunks, Peerset, Assignor).
 
 
 %% @doc
 %% @end
 -spec chunk_dropped(pieceindex(),
                     chunk_offset(), chunk_length(), tservices()) -> ok.
-chunk_dropped(Piece, Offset, Length, Handle) when ?endgame(Handle) ->
-    #tservices{pending=Pending, endgame=Endgame} = Handle,
-    ok = etorrent_chunkstate:dropped(Piece, Offset, Length, self(), Endgame),
-    ok = etorrent_chunkstate:dropped(Piece, Offset, Length, self(), Pending);
-
-chunk_dropped(Piece, Offset, Length, Handle) ->
-    #tservices{pending=Pending, progress=Progress} = Handle,
-    ok = etorrent_chunkstate:dropped(Piece, Offset, Length, self(), Progress),
+chunk_dropped(Piece, Offset, Length, Handle)->
+    #tservices{pending=Pending, assignor=Assignor} = Handle,
+    ok = etorrent_chunkstate:dropped(Piece, Offset, Length, self(), Assignor),
     ok = etorrent_chunkstate:dropped(Piece, Offset, Length, self(), Pending).
 
 
 %% @doc
 %% @end
 -spec chunks_dropped([chunkspec()], tservices()) -> ok.
-chunks_dropped(Chunks, Handle) when ?endgame(Handle) ->
-    #tservices{pending=Pending, endgame=Endgame} = Handle,
-    ok = etorrent_chunkstate:dropped(Chunks, self(), Endgame),
-    ok = etorrent_chunkstate:dropped(Chunks, self(), Pending);
-
 chunks_dropped(Chunks, Handle) ->
-    #tservices{pending=Pending, progress=Progress} = Handle,
-    ok = etorrent_chunkstate:dropped(Chunks, self(), Progress),
+    #tservices{pending=Pending, assignor=Assignor} = Handle,
+    ok = etorrent_chunkstate:dropped(Chunks, self(), Assignor),
     ok = etorrent_chunkstate:dropped(Chunks, self(), Pending).
 
 
@@ -114,12 +121,9 @@ chunks_dropped(Chunks, Handle) ->
 %% @end
 -spec chunk_fetched(pieceindex(),
                     chunk_offset(), chunk_length(), tservices()) -> ok.
-chunk_fetched(Piece, Offset, Length, Handle) when ?endgame(Handle) ->
-    #tservices{endgame=Endgame} = Handle,
-    ok = etorrent_chunkstate:fetched(Piece, Offset, Length, self(), Endgame);
-
-chunk_fetched(_, _, _, _) ->
-    ok.
+chunk_fetched(Piece, Offset, Length, Handle) ->
+    #tservices{assignor=Assignor} = Handle,
+    ok = etorrent_chunkstate:fetched(Piece, Offset, Length, self(), Assignor).
 
 
 %% @doc
@@ -128,6 +132,6 @@ chunk_fetched(_, _, _, _) ->
                    chunk_offset(), chunk_length(), tservices())
                   -> ok.
 chunk_stored(Piece, Offset, Length, Handle) ->
-    #tservices{pending=Pending, progress=Progress} = Handle,
-    ok = etorrent_chunkstate:stored(Piece, Offset, Length, self(), Progress),
+    #tservices{pending=Pending, assignor=Assignor} = Handle,
+    ok = etorrent_chunkstate:stored(Piece, Offset, Length, self(), Assignor),
     ok = etorrent_chunkstate:stored(Piece, Offset, Length, self(), Pending).

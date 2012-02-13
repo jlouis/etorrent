@@ -11,7 +11,10 @@
 
          start_child_tracker/5,
          start_progress/5,
+         start_endgame/2,
+         start_reordered/2,
          start_peer_sup/2,
+         stop_assignor/1,
          pause/1]).
 
 %% Supervisor callbacks
@@ -21,7 +24,6 @@
 -type tier() :: etorrent_types:tier().
 
 
--define(DEFAULT_CHUNK_SIZE, 16#4000). % TODO - get this value from a configuration file
 %% =======================================================================
 
 %% @doc Start up the supervisor
@@ -62,11 +64,17 @@ start_progress(Pid, TorrentID, Torrent, ValidPieces, Wishes) ->
     Spec = progress_spec(TorrentID, Torrent, ValidPieces, Wishes),
     supervisor:start_child(Pid, Spec).
 
+start_endgame(Pid, TorrentID) ->
+    Spec = endgame_spec(TorrentID),
+    supervisor:start_child(Pid, Spec).
+
+start_reordered(Pid, TorrentID) ->
+    Spec = reordered_spec(TorrentID),
+    supervisor:start_child(Pid, Spec).
 
 start_peer_sup(Pid, TorrentID) ->
     Spec = peer_pool_spec(TorrentID),
     supervisor:start_child(Pid, Spec).
-
 
 pause(Pid) ->
     ok = supervisor:terminate_child(Pid, peer_pool_sup),
@@ -77,6 +85,12 @@ pause(Pid) ->
     ok = supervisor:delete_child(Pid, chunk_mgr),
     ok.
 
+
+stop_assignor(Pid) ->
+    ok = supervisor:terminate_child(Pid, chunk_mgr),
+    ok = supervisor:delete_child(Pid, chunk_mgr).
+
+
     
 %% ====================================================================
 
@@ -86,7 +100,6 @@ init([{Torrent, TorrentPath, TorrentIH}, PeerID, TorrentID]) ->
         pending_spec(TorrentID),
         scarcity_manager_spec(TorrentID, Torrent),
         torrent_control_spec(TorrentID, Torrent, TorrentPath, TorrentIH, PeerID),
-        endgame_spec(TorrentID),
         io_sup_spec(TorrentID, Torrent)],
     {ok, {{one_for_all, 1, 60}, Children}}.
 
@@ -103,16 +116,21 @@ scarcity_manager_spec(TorrentID, Torrent) ->
 
 progress_spec(TorrentID, Torrent, ValidPieces, Wishes) ->
     PieceSizes  = etorrent_io:piece_sizes(Torrent), 
-    ChunkSize   = ?DEFAULT_CHUNK_SIZE,
+    ChunkSize   = etorrent_io:chunk_size(TorrentID),
     Args = [TorrentID, ChunkSize, ValidPieces, PieceSizes, lookup, Wishes],
     {chunk_mgr,
         {etorrent_progress, start_link, Args},
         transient, 20000, worker, [etorrent_progress]}.
 
 endgame_spec(TorrentID) ->
-    {endgame,
+    {chunk_mgr,
         {etorrent_endgame, start_link, [TorrentID]},
-        permanent, 5000, worker, [etorrent_endgame]}.
+        transient, 5000, worker, [etorrent_endgame]}.
+
+reordered_spec(TorrentID) ->
+    {chunk_mgr,
+        {etorrent_reordered, start_link, [TorrentID]},
+        transient, 5000, worker, [etorrent_endgame]}.
 
 torrent_control_spec(TorrentID, Torrent, TorrentFile, TorrentIH, PeerID) ->
     {control,

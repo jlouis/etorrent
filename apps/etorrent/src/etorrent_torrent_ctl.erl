@@ -12,6 +12,7 @@
 -module(etorrent_torrent_ctl).
 -behaviour(gen_fsm).
 -define(CHECK_WAIT_TIME, 3000).
+-define(LOG(X), io:write(X)).
 
 
 %% API
@@ -20,7 +21,8 @@
          pause_torrent/1,
          continue_torrent/1,
          check_torrent/1,
-         valid_pieces/1]).
+         valid_pieces/1,
+         switch_mode/2]).
 
 %% gproc registry entries
 -export([register_server/1,
@@ -89,9 +91,10 @@
     tracker_pid :: pid(),
     progress    :: pid(),
     pending     :: pid(),
-    endgame     :: pid(),
     wishes = [] :: [#wish{}],
-    interval    :: timer:interval()
+    interval    :: timer:interval(),
+    mode = progress 
+                :: 'progress' | 'endgame' | 'reordered' | atom()
     }).
 
 
@@ -147,6 +150,9 @@ continue_torrent(Pid) ->
 valid_pieces(Pid) ->
     gen_fsm:sync_send_all_state_event(Pid, valid_pieces).
 
+
+switch_mode(Pid, Mode) ->
+    gen_fsm:send_all_state_event(Pid, {switch_mode, Mode}).
 
 
 
@@ -212,8 +218,8 @@ wish_piece(TorrentID, PieceID, IsTemporary) ->
 %%      caller will receive {completed, Ref}.
 %%      Use wish_file of wish_piece functions before calling this function.
 subscribe(TorrentID, Type, Value) ->
-    ChunkSrv = lookup_server(TorrentID),
-    gen_fsm:sync_send_all_state_event(ChunkSrv, {subscribe, Type, Value}).
+    CtlSrv = lookup_server(TorrentID),
+    gen_fsm:sync_send_all_state_event(CtlSrv, {subscribe, Type, Value}).
 
   
 %% @doc Send information to the subscribed processes.
@@ -224,14 +230,14 @@ alert_subscribed(Clients) ->
 
 %% @private
 get_record_wishes(TorrentID) ->
-    ChunkSrv = lookup_server(TorrentID),
-    gen_fsm:sync_send_all_state_event(ChunkSrv, get_wishes).
+    CtlSrv = lookup_server(TorrentID),
+    gen_fsm:sync_send_all_state_event(CtlSrv, get_wishes).
 
 
 %% @private
 set_record_wishes(TorrentID, Wishes) ->
-    ChunkSrv = lookup_server(TorrentID),
-    gen_fsm:sync_send_all_state_event(ChunkSrv, {set_wishes, Wishes}).
+    CtlSrv = lookup_server(TorrentID),
+    gen_fsm:sync_send_all_state_event(CtlSrv, {set_wishes, Wishes}).
 
 
 to_proplists(Records) ->
@@ -365,7 +371,7 @@ search_wish(#wish{ type = Type, value = Value },
 search_wish(El, [_H|T]) ->
     search_wish(El, T);
 
-search_wish(El, []) ->
+search_wish(_El, []) ->
     false.
 
 
@@ -395,10 +401,8 @@ init([Parent, Id, {Torrent, TorrentFile, TorrentIH}, PeerId]) ->
 %% @private
 initializing(timeout, #state{id=Id} = S0) ->
     Pending  = etorrent_pending:await_server(Id),
-    Endgame  = etorrent_endgame:await_server(Id),
     S = S0#state{
-        pending=Pending,
-        endgame=Endgame},
+        pending=Pending},
 
     case etorrent_table:acquire_check_token(Id) of
         false ->
@@ -451,9 +455,52 @@ paused(pause, S) ->
 
 
 %% @private
+handle_event({switch_mode, Mode}, SN, S=#state{mode=Mode}) ->
+    {next_state, SN, S};
+
+handle_event({switch_mode, NewMode}, SN, S=#state{mode=OldMode}) ->
+    lager:info("Switch mode: ~p => ~p ~n", [OldMode, NewMode]),
+    #state{mode=OldMode, parent_pid=Sup, id=TorrentID} = S,
+    etorrent_torrent_sup:stop_assignor(Sup),
+
+    {ok, Assignor} = 
+        case NewMode of
+        'progress' ->
+            #state{torrent=Torrent, 
+                     valid=ValidPieces, 
+                    wishes=Wishes} = S,
+            Masks = wishes_to_masks(Wishes),
+
+            %% Start the progress manager
+            etorrent_torrent_sup:start_progress(
+              Sup,
+              TorrentID,
+              Torrent,
+              ValidPieces,
+              Masks);
+
+        'endgame' ->
+            etorrent_torrent_sup:start_endgame(
+              Sup,
+              TorrentID);
+
+        'reordered' ->
+            etorrent_torrent_sup:start_reordered(
+              Sup,
+              TorrentID)
+        end,
+        
+    
+    Peers = etorrent_peer_control:lookup_peers(TorrentID),
+    [etorrent_download:switch_assignor(Peer, Assignor) || Peer <- Peers],
+
+    {next_state, SN, S#state{mode=NewMode}};
+
 handle_event(Msg, SN, S) ->
-    io:format("Problem: ~p~n", [Msg]),
+    lager:error("Problem: ~p~n", [Msg]),
     {next_state, SN, S}.
+
+
 
 %% @private
 handle_sync_event(valid_pieces, _, StateName, State) ->
@@ -484,14 +531,16 @@ handle_sync_event({set_wishes, NewWishes}, _From, SN,
     case SN of
         paused -> skip;
         _ -> 
-            Masks = [X#wish.pieceset || X <- Wishes, not X#wish.is_completed ],
-
+            Masks = wishes_to_masks(Wishes),
             %% Tell to the progress manager about new list of wanted pieces
             etorrent_progress:set_wishes(Id, Masks)
     end,
 
     {reply, {ok, Wishes}, SN, SD#state{wishes=Wishes}}.
 
+
+wishes_to_masks(Wishes) ->
+    [X#wish.pieceset || X <- Wishes, not X#wish.is_completed ].
 
 
 %% Tell the controller we have stored an index for this torrent file
@@ -504,6 +553,7 @@ handle_info(check_completed, SN, SD=#state{valid = Valid, wishes = Wishes}) ->
     {next_state, SN, SD#state{wishes = NewWishes}};
 
 handle_info({piece, {stored, Index}}, started, State) ->
+    ?LOG({c,s, Index}),
     #state{id=TorrentID, 
         hashes=Hashes, 
         progress=Progress, 
@@ -599,7 +649,7 @@ do_registration(S=#state{id=Id, torrent=Torrent, hashes=Hashes}) ->
 
 
 do_start(S=#state{id=Id, torrent=Torrent, valid=ValidPieces, wishes=Wishes}) ->
-    Masks = [X#wish.pieceset || X <- Wishes, not X#wish.is_completed ],
+    Masks = wishes_to_masks(Wishes),
 
     %% Start the progress manager
     {ok, ProgressPid} =
