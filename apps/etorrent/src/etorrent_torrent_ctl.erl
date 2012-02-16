@@ -460,14 +460,20 @@ handle_event({switch_mode, Mode}, SN, S=#state{mode=Mode}) ->
 
 handle_event({switch_mode, NewMode}, SN, S=#state{mode=OldMode}) ->
     lager:info("Switch mode: ~p => ~p ~n", [OldMode, NewMode]),
-    #state{mode=OldMode, parent_pid=Sup, id=TorrentID} = S,
+    #state{mode=OldMode, parent_pid=Sup, id=TorrentID,
+        valid=ValidPieceSet} = S,
+
+    ValidChunkArr = case OldMode of
+        'progress' -> etorrent_progress:stored_chunks(TorrentID);
+        _ -> array:new()
+    end,
+
     etorrent_torrent_sup:stop_assignor(Sup),
 
     {ok, Assignor} = 
         case NewMode of
         'progress' ->
             #state{torrent=Torrent, 
-                     valid=ValidPieces, 
                     wishes=Wishes} = S,
             Masks = wishes_to_masks(Wishes),
 
@@ -476,7 +482,7 @@ handle_event({switch_mode, NewMode}, SN, S=#state{mode=OldMode}) ->
               Sup,
               TorrentID,
               Torrent,
-              ValidPieces,
+              ValidPieceSet,
               Masks);
 
         'endgame' ->
@@ -487,7 +493,9 @@ handle_event({switch_mode, NewMode}, SN, S=#state{mode=OldMode}) ->
         'reordered' ->
             etorrent_torrent_sup:start_reordered(
               Sup,
-              TorrentID)
+              TorrentID,
+              ValidPieceSet,
+              ValidChunkArr)
         end,
         
     

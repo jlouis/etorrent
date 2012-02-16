@@ -21,6 +21,7 @@
         initialize/2,
         incoming_msg/2,
         check_choke/1,
+        update_queue/1,
         stop/1]).
 
 %% gproc registry entries
@@ -119,6 +120,13 @@ choke(Pid) ->
 %% @end
 unchoke(Pid) ->
     gen_server:cast(Pid, unchoke).
+
+%% @doc Rerun `poll_local_rqueue'.
+%% <p>The intended caller of this function is the {@link etorrent_reordered}</p>
+%% @end
+update_queue(Pid) ->
+    gen_server:cast(Pid, update_queue).
+
 
 %% @doc Initialize the connection.
 %% <p>The `Way' parameter tells the client of the connection is
@@ -435,6 +443,13 @@ handle_info({piece, {valid, Piece}}, State) ->
     {noreply, NewState};
 
 handle_info({piece, {unassigned, _}}, State) ->
+    #state{download=Download, send_pid=SendPid, local=Local, remote=Remote} = State,
+    NewLocal = poll_local_rqueue(Download, SendPid, Remote, Local),
+    NewState = State#state{local=NewLocal},
+    {noreply, NewState};
+
+%% The chunk manager wants new chunks.
+handle_info(update_queue, State) ->
     #state{download=Download, send_pid=SendPid, local=Local, remote=Remote} = State,
     NewLocal = poll_local_rqueue(Download, SendPid, Remote, Local),
     NewState = State#state{local=NewLocal},

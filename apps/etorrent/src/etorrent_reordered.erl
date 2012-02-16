@@ -13,7 +13,7 @@
 -endif.
 
 %% peer API
--export([start_link/1,
+-export([start_link/3,
         monitor_chunks/2]).
 
 
@@ -39,7 +39,7 @@
 -type chunk_len() :: etorrent_types:chunk_len().
 -type piece_index() :: etorrent_types:piece_index().
 -type chunk() :: {piece_index(), non_neg_integer(), non_neg_integer()}.
-
+-type chunkset()   :: etorrent_chunkset:chunkset().
 
 -record(wish, {
     ref :: reference(),
@@ -55,10 +55,21 @@
     piece_size :: non_neg_integer(),
     chunk_size :: non_neg_integer(),
     chunk_len :: chunk_len(),
+    chunkset :: chunkset(),
+
+    %% These parts are already downloaded.
+    valid_pieces :: pieceset(),
+    valid_chunks :: array(), % of chunkset()
+
+    %% We want them, but nobody is assigned on them.
     wanted_pieces :: pieceset(),
-    wanted_chunks :: array(), % of chunksets
+    wanted_chunks :: array(), 
+
+    %% List of assigned but not stored yet wanted parts.
+    %% We will check them in cron.
     lefted_pieces :: pieceset(),
     lefted_chunks :: array(),
+
     monitored_chunks :: [wish()],
     interval    :: timer:interval()
 }).
@@ -86,8 +97,8 @@ server_name(TorrentID) ->
 
 %% @doc Start a new torrent progress server
 %% @end
-start_link(TorrentId) ->
-    Args = [TorrentId],
+start_link(TorrentId, ValidPieceSet, ValidChunkArr) ->
+    Args = [TorrentId, ValidPieceSet, ValidChunkArr],
     gen_server:start_link(?MODULE, Args, []).
 
 
@@ -97,7 +108,7 @@ monitor_chunks(ChunkSrv, Chunks) ->
 
 %% @private
 
-init([TorrentID]) ->
+init([TorrentID, ValidPieceSet, ValidChunkArr]) ->
     true = register_server(TorrentID),
     true = etorrent_download:register_server(TorrentID),
     Pending = etorrent_pending:await_server(TorrentID),
@@ -106,15 +117,19 @@ init([TorrentID]) ->
     CSize = etorrent_io:chunk_size(TorrentID),
     PSize = etorrent_io:piece_size(TorrentID),
     {ok, Timer} = timer:send_interval(5000, check_completed),
+    ChunkSetPrototype = etorrent_chunkset:from_list(PSize, CSize, []),
+
     State = #state{
         torrent_id=TorrentID,
 
         piece_size=PSize,
         chunk_size=CSize,
+        chunkset=ChunkSetPrototype,
 
+        valid_pieces=ValidPieceSet,
+        valid_chunks=ValidChunkArr,
         wanted_pieces=etorrent_pieceset:empty(PCount),
         wanted_chunks=array:new(),
-        %% List of assigned but not stored wanted parts
         lefted_pieces=etorrent_pieceset:empty(PCount),
         lefted_chunks=array:new(),
         monitored_chunks=[],
@@ -123,39 +138,48 @@ init([TorrentID]) ->
     {ok, State}.
 
 
+%% This function will be called by `etorrent_ebml'.
 handle_call({monitor_chunks, ChunkList}, {Pid, _Ref}, State) ->
     #state{
+        chunkset=ChunkSetPrototype,
         wanted_pieces=WantedPieceSet,
         wanted_chunks=WantedChunkArr,
         lefted_pieces=LeftedPieceSet,
         lefted_chunks=LeftedChunkArr,
+        valid_pieces=ValidPieceSet,
+        valid_chunks=ValidChunkArr,
         monitored_chunks=Monitored,
         piece_size=PSize,
         chunk_size=CSize} = State,
-%   Ref = erlang:monitor(process, Pid),
-    Ref = erlang:make_ref(),
-    ChunkSetPrototype = etorrent_chunkset:from_list(PSize, CSize, []),
 
-    {NewWantedPieceSet, NewWantedChunkArr} = insert_chunks(
-            ChunkList, WantedPieceSet, WantedChunkArr, ChunkSetPrototype),
-    {NewLeftedPieceSet, NewLeftedChunkArr} = insert_chunks(
-            ChunkList, LeftedPieceSet, LeftedChunkArr, ChunkSetPrototype),
+    case difference(ChunkList, ValidPieceSet, ValidChunkArr) of
+    [] -> {reply, completed, State};
+    NewChunkList ->
 
-    Query = #wish{
-        pid = Pid,
-        ref = Ref,
-        chunks = ChunkList
-    },
+%       Ref = erlang:monitor(process, Pid),
+        Ref = erlang:make_ref(),
 
-    NewState = State#state{
-        wanted_pieces=NewWantedPieceSet,
-        wanted_chunks=NewWantedChunkArr,
-        lefted_pieces=NewLeftedPieceSet,
-        lefted_chunks=NewLeftedChunkArr,
-        monitored_chunks=[Query|Monitored]},
+        {NewWantedPieceSet, NewWantedChunkArr} = insert_chunks(
+            NewChunkList, WantedPieceSet, WantedChunkArr, ChunkSetPrototype),
+        {NewLeftedPieceSet, NewLeftedChunkArr} = insert_chunks(
+            NewChunkList, LeftedPieceSet, LeftedChunkArr, ChunkSetPrototype),
 
-    ?LOG({r, o, ChunkList}),
-    {reply, {subscribed, Ref}, NewState};
+        Query = #wish{
+            pid = Pid,
+            ref = Ref,
+            chunks = NewChunkList
+        },
+
+        NewState = State#state{
+            wanted_pieces=NewWantedPieceSet,
+            wanted_chunks=NewWantedChunkArr,
+            lefted_pieces=NewLeftedPieceSet,
+            lefted_chunks=NewLeftedChunkArr,
+            monitored_chunks=[Query|Monitored]},
+
+        ?LOG({r, o, ChunkList}),
+        {reply, {subscribed, Ref}, NewState}
+    end;
 
 
 handle_call({chunk, {request, Numchunks, PeerSet, _PeerPid}}, _, State) ->
@@ -165,6 +189,12 @@ handle_call({chunk, {request, Numchunks, PeerSet, _PeerPid}}, _, State) ->
         wanted_chunks=ChunkArr} = State,
 
     case etorrent_pieceset:size(PieceSet) of
+        %% If the queue is empty, then the manager will call 
+        %% `etorrent_peer_control:update_queue(PeerPid)'
+        %% when new wanted pieces will appear.
+        %% It will call this function again with the same message 
+        %% `{chunk, {request'.
+        %% We can calculate how many chunks we can request in the future.
         0 -> {reply, {ok, assigned}, State};
         _ -> 
             Valid = etorrent_pieceset:intersection(PeerSet, PieceSet),
@@ -196,43 +226,35 @@ handle_info({chunk, {fetched,Index,Offset, Length,_PeerPid}}, State) ->
 handle_info({chunk, {stored,Index,Offset,Length,_PeerPid}}, State) ->
 %   ?LOG({r, cs, Index, Offset, Length}),
     #state{
-        lefted_pieces=PieceSet,
-        lefted_chunks=ChunkArr
+        chunkset=ChunkSetPrototype,
+        lefted_pieces=LeftedPieceSet,
+        lefted_chunks=LeftedChunkArr,
+        valid_pieces=ValidPieceSet,
+        valid_chunks=ValidChunkArr
     } = State,
-    case array:get(Index, ChunkArr) of
-    %% Don't care
-    undefined -> {noreply, State};
-    ChunkSet ->
-        NewChunkSet = etorrent_chunkset:delete(Offset, Length, ChunkSet),
-        {NewPieceSet, NewChunkArr} = 
-            case etorrent_chunkset:is_empty(NewChunkSet) of
-            %% The piece has no lefted chunks.
-            true ->
-                NewPieceSetI = etorrent_pieceset:delete(
-                    Index, PieceSet),
-                NewChunkArrI = array:reset(Index, ChunkArr),
-                {NewPieceSetI, NewChunkArrI};
-            false ->
-                NewChunkArrI = array:set(Index, NewChunkSet, ChunkArr),
-                {PieceSet, NewChunkArrI}
-            end,
-        NewState = State#state{
-            lefted_pieces=NewPieceSet,
-            lefted_chunks=NewChunkArr
-        },
-        {noreply, NewState}
-    end;
+
+    ChunkList = [{Index, Offset, Length}],
+
+    {NewLeftedPieceSet, NewLeftedChunkArr} = delete_chunks(
+            ChunkList, LeftedPieceSet, LeftedChunkArr),
+    {NewValidPieceSet, NewValidChunkArr} = insert_chunks(
+            ChunkList, ValidPieceSet, ValidChunkArr, ChunkSetPrototype),
+
+    NewState = State#state{
+        lefted_pieces=NewLeftedPieceSet,
+        lefted_chunks=NewLeftedChunkArr,
+        valid_pieces=NewValidPieceSet,
+        valid_chunks=NewValidChunkArr
+    },
+    {noreply, NewState};
 
 handle_info({chunk, {dropped,Index,Offset,Length,_PeerPid}}, State) ->
     %% Add dropped parts back to the query
     ?LOG({r, cd, Index, Offset, Length}),
     #state{
+        chunkset=ChunkSetPrototype,
         wanted_pieces=PieceSet,
-        wanted_chunks=ChunkArr,
-        piece_size=PSize,
-        chunk_size=CSize} = State,
-
-    ChunkSetPrototype = etorrent_chunkset:from_list(PSize, CSize, []),
+        wanted_chunks=ChunkArr} = State,
 
     NewPieceSet = etorrent_pieceset:insert(Index, PieceSet),
     Chunks = case etorrent_pieceset:is_member(Index, PieceSet) of
@@ -274,7 +296,11 @@ code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 
-insert_chunks([H|T], PieceSet, ChunkArr, ChunkSetPrototype) ->
+%% Inserts Chunks into PieceSet and ChunkArr.
+-spec insert_chunks([chunk()], pieceset(), array(), chunkset()) -> 
+        {pieceset(), array()}.
+
+insert_chunks([H|T] = _Chunks, PieceSet, ChunkArr, ChunkSetPrototype) ->
     {Index, Offset, Length} = H,
     Chunks = case etorrent_pieceset:is_member(Index, PieceSet) of
             false -> ChunkSetPrototype;
@@ -287,6 +313,35 @@ insert_chunks([H|T], PieceSet, ChunkArr, ChunkSetPrototype) ->
 
 insert_chunks([], PieceSet, ChunkArr, _) ->
     {PieceSet, ChunkArr}.
+
+
+-spec delete_chunks([chunk()], pieceset(), array()) -> 
+        {pieceset(), array()}.
+
+delete_chunks([H|T] = _ChunkList, PieceSet, ChunkArr) ->
+    {Index, Offset, Length} = H,
+    case array:get(Index, ChunkArr) of
+    %% Don't care
+    undefined ->
+        delete_chunks(T, PieceSet, ChunkArr);
+    ChunkSet ->
+        NewChunkSet = etorrent_chunkset:delete(Offset, Length, ChunkSet),
+        {NewPieceSet, NewChunkArr} = 
+            case etorrent_chunkset:is_empty(NewChunkSet) of
+            %% The piece has no lefted chunks.
+            true ->
+                NewPieceSetI = etorrent_pieceset:delete(
+                    Index, PieceSet),
+                NewChunkArrI = array:reset(Index, ChunkArr),
+                {NewPieceSetI, NewChunkArrI};
+            false ->
+                NewChunkArrI = array:set(Index, NewChunkSet, ChunkArr),
+                {PieceSet, NewChunkArrI}
+            end,
+        delete_chunks(T, NewPieceSet, NewChunkArr)
+    end;
+
+delete_chunks([], PieceSet, ChunkArr) -> {PieceSet, ChunkArr}.
 
 
 retrieve_chunks(NumChunks, Valid, ChunkArr, Acc) when NumChunks>0 ->
@@ -348,6 +403,9 @@ check_completed([], _PieceSet, _ChunkArr, Acc) -> Acc.
 %%      `PieceSet' and `ChunkArr'.
 intersection(Chunks, PieceSet, ChunkArr) ->
     lists:filter(fun(X) -> in(X, PieceSet, ChunkArr) end, Chunks).
+
+difference(Chunks, PieceSet, ChunkArr) ->
+    lists:filter(fun(X) -> not in(X, PieceSet, ChunkArr) end, Chunks).
 
 
 in({Index, Offset, Length}, PieceSet, ChunkArr) ->

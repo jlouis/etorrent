@@ -89,6 +89,9 @@
          terminate/2,
          code_change/3]).
 
+%% Private 
+-export([stored_chunks/1]).
+
 
 -type pieceset()   :: etorrent_pieceset:pieceset().
 -type torrent_id() :: etorrent_types:torrent_id().
@@ -345,6 +348,12 @@ set_wishes(TorrentID, Wishes) ->
     ok = gen_server:call(ChunkSrv, {set_wishes, Wishes}).
 
 
+stored_chunks(TorrentID) ->
+    ChunkSrv = lookup_server(TorrentID),
+    {ok, Chunks} = gen_server:call(ChunkSrv, stored_chunks),
+    Chunks.
+
+
 %% @private
 init(Serverargs) ->
     Args = orddict:from_list(Serverargs),
@@ -549,7 +558,10 @@ handle_call({state_members, Piecestate}, _, State) ->
     {reply, Stateset, State};
 
 handle_call({set_wishes, NewWishes}, _, State=#state{pieces_valid=Valid}) ->
-    {reply, ok, State#state{user_wishes=minimize_masks(NewWishes, Valid, [])}}.
+    {reply, ok, State#state{user_wishes=minimize_masks(NewWishes, Valid, [])}};
+
+handle_call(stored_chunks, _, State=#state{chunks_stored=StoredChunks}) ->
+    {reply, {ok, StoredChunks}, State}.
 
 
 

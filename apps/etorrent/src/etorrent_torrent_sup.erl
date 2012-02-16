@@ -12,7 +12,7 @@
          start_child_tracker/5,
          start_progress/5,
          start_endgame/2,
-         start_reordered/2,
+         start_reordered/4,
          start_peer_sup/2,
          stop_assignor/1,
          pause/1]).
@@ -68,8 +68,8 @@ start_endgame(Pid, TorrentID) ->
     Spec = endgame_spec(TorrentID),
     supervisor:start_child(Pid, Spec).
 
-start_reordered(Pid, TorrentID) ->
-    Spec = reordered_spec(TorrentID),
+start_reordered(Pid, TorrentID, ValidPieceSet, ValidChunkList) ->
+    Spec = reordered_spec(TorrentID, ValidPieceSet, ValidChunkList),
     supervisor:start_child(Pid, Spec).
 
 start_peer_sup(Pid, TorrentID) ->
@@ -127,10 +127,11 @@ endgame_spec(TorrentID) ->
         {etorrent_endgame, start_link, [TorrentID]},
         transient, 5000, worker, [etorrent_endgame]}.
 
-reordered_spec(TorrentID) ->
+reordered_spec(TorrentID, ValidPieceSet, ValidChunkList) ->
     {chunk_mgr,
-        {etorrent_reordered, start_link, [TorrentID]},
-        transient, 5000, worker, [etorrent_endgame]}.
+        {etorrent_reordered, start_link, 
+            [TorrentID, ValidPieceSet, ValidChunkList]},
+        transient, 5000, worker, [etorrent_reordered]}.
 
 torrent_control_spec(TorrentID, Torrent, TorrentFile, TorrentIH, PeerID) ->
     {control,
