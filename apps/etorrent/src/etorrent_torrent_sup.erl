@@ -97,10 +97,11 @@ stop_assignor(Pid) ->
 %% @private
 init([{Torrent, TorrentPath, TorrentIH}, PeerID, TorrentID]) ->
     Children = [
+        info_spec(TorrentID, Torrent),
+        io_sup_spec(TorrentID, Torrent),
         pending_spec(TorrentID),
         scarcity_manager_spec(TorrentID, Torrent),
-        torrent_control_spec(TorrentID, Torrent, TorrentPath, TorrentIH, PeerID),
-        io_sup_spec(TorrentID, Torrent)],
+        torrent_control_spec(TorrentID, Torrent, TorrentPath, TorrentIH, PeerID)],
     {ok, {{one_for_all, 1, 60}, Children}}.
 
 pending_spec(TorrentID) ->
@@ -116,7 +117,7 @@ scarcity_manager_spec(TorrentID, Torrent) ->
 
 progress_spec(TorrentID, Torrent, ValidPieces, Wishes) ->
     PieceSizes  = etorrent_io:piece_sizes(Torrent), 
-    ChunkSize   = etorrent_io:chunk_size(TorrentID),
+    ChunkSize   = etorrent_info:chunk_size(TorrentID),
     Args = [TorrentID, ChunkSize, ValidPieces, PieceSizes, lookup, Wishes],
     {chunk_mgr,
         {etorrent_progress, start_link, Args},
@@ -143,6 +144,11 @@ io_sup_spec(TorrentID, Torrent) ->
     {fs_pool,
         {etorrent_io_sup, start_link, [TorrentID, Torrent]},
         transient, 5000, supervisor, [etorrent_io_sup]}.
+
+info_spec(TorrentID, Torrent) ->
+    {info,
+        {etorrent_info, start_link, [TorrentID, Torrent]},
+        transient, 5000, worker, [etorrent_info]}.
 
 peer_pool_spec(TorrentID) ->
     {peer_pool_sup,

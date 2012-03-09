@@ -29,7 +29,7 @@ init([TorrentID, Torrent]) ->
     DirServer = directory_server_spec(TorrentID, Torrent),
     Dldir     = etorrent_config:download_dir(),
     FileSup   = file_server_sup_spec(TorrentID, Dldir, Files),
-    {ok, {{one_for_one, 1, 60}, [DirServer, FileSup]}}.
+    {ok, {{one_for_one, 1, 60}, [FileSup, DirServer]}}.
 
 %% ----------------------------------------------------------------------
 directory_server_spec(TorrentID, Torrent) ->

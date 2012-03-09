@@ -113,9 +113,9 @@ init([TorrentID, ValidPieceSet, ValidChunkArr]) ->
     true = etorrent_download:register_server(TorrentID),
     Pending = etorrent_pending:await_server(TorrentID),
     ok = etorrent_pending:receiver(self(), Pending),
-    PCount = etorrent_io:piece_count(TorrentID),
-    CSize = etorrent_io:chunk_size(TorrentID),
-    PSize = etorrent_io:piece_size(TorrentID),
+    PCount = etorrent_info:piece_count(TorrentID),
+    CSize = etorrent_info:chunk_size(TorrentID),
+    PSize = etorrent_info:piece_size(TorrentID),
     {ok, Timer} = timer:send_interval(5000, check_completed),
     ChunkSetPrototype = etorrent_chunkset:from_list(PSize, CSize, []),
 

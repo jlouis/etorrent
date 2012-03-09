@@ -259,10 +259,10 @@ to_records(Props) ->
 
 
 to_pieceset(TorrentID, #wish{ type = file, value = FileIds }) ->
-    etorrent_io:get_mask(TorrentID, FileIds);
+    etorrent_info:get_mask(TorrentID, FileIds);
 
 to_pieceset(TorrentID, #wish{ type = piece, value = List }) ->
-    Pieceset = etorrent_io:get_mask(TorrentID, 0),
+    Pieceset = etorrent_info:get_mask(TorrentID, 0),
     Size = etorrent_pieceset:capacity(Pieceset),
     etorrent_pieceset:from_list(List, Size).
 
@@ -704,7 +704,7 @@ calculate_amount_left(TorrentID, Valid, Torrent) ->
     Total = etorrent_metainfo:get_length(Torrent),
     Indexes = etorrent_pieceset:to_list(Valid),
     Sizes = [begin
-        {ok, Size} = etorrent_io:piece_size(TorrentID, I),
+        {ok, Size} = etorrent_info:piece_size(TorrentID, I),
         Size
     end || I <- Indexes],
     Downloaded = lists:sum(Sizes),

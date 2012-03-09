@@ -62,7 +62,7 @@ find_subtitles(Tid, Fid) ->
 
 
 wait(ChunkSrv, Tid, Fid, Offset, Length, FileStart, PSize) ->
-    Wanted = etorrent_io:get_mask(Tid, Fid, Offset, Length),
+    Wanted = etorrent_info:get_mask(Tid, Fid, Offset, Length),
     CtlPid = etorrent_torrent_ctl:lookup_server(Tid),
     {ok, Valid} = etorrent_torrent_ctl:valid_pieces(CtlPid),
     Diff = etorrent_pieceset:difference(Wanted, Valid),
@@ -100,12 +100,12 @@ read(FileServer, Offset, Length) ->
 
 
 init([Tid, Fid]) ->
-    RelName = etorrent_io:file_name(Tid, Fid),
+    RelName = etorrent_info:file_name(Tid, Fid),
     FileServer = etorrent_io:lookup_file_server(Tid, RelName),
 
-    Size  = etorrent_io:file_size(Tid, Fid),
-    Pos   = etorrent_io:file_position(Tid, Fid),
-    PSize = etorrent_io:piece_size(Tid),
+    Size  = etorrent_info:file_size(Tid, Fid),
+    Pos   = etorrent_info:file_position(Tid, Fid),
+    PSize = etorrent_info:piece_size(Tid),
 
     CtlPid = etorrent_torrent_ctl:lookup_server(Tid),
     etorrent_torrent_ctl:switch_mode(CtlPid, reordered),

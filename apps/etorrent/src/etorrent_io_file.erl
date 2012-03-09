@@ -48,7 +48,9 @@
 %% @end
 -spec start_link(torrent_id(), file_path(), file_path()) -> {'ok', pid()}.
 start_link(TorrentID, Path, FullPath) ->
-    gen_server:start_link(?MODULE, [TorrentID, Path, FullPath], [{spawn_opt, [{fullsweep_after, 0}]}]).
+    Args = [TorrentID, Path, FullPath],
+    Opts =[{spawn_opt, [{fullsweep_after, 0}]}], 
+    gen_server:start_link(?MODULE, Args, Opts).
 
 %% @doc Request to open the file
 %% @end
@@ -106,8 +108,15 @@ handle_call({read, _, _}, _, State) when State#state.handle == closed ->
 handle_call({write, _, _}, _, State) when State#state.handle == closed ->
     {reply, {error, eagain}, State, ?GC_TIMEOUT};
 
+%% Who was call it?
+%% It is a mini hack for files with an actual length of zero.
+handle_call({read, 0, 0}, _, State) ->
+    Chunk = <<>>,
+    {reply, {ok, Chunk}, State, ?GC_TIMEOUT};
+
 handle_call({read, Offset, Length}, _, State) ->
     #state{handle=Handle} = State,
+    %% If file length is 0, then this function will returns eof (badmatch)
     {ok, Chunk} = file:pread(Handle, Offset, Length),
     {reply, {ok, Chunk}, State, ?GC_TIMEOUT};
 
