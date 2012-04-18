@@ -265,20 +265,32 @@ assertNoMessage() ->
     end.
 
 
-instant_send_test() ->
+%% @doc Run tests inside clean processes.
+timer_test_() ->
+    {spawn, [ ?_test(instant_send_case())
+            , ?_test(instant_timeout_case())
+            , ?_test(step_and_fire_case())
+            , ?_test(cancel_and_step_case())
+            , ?_test(step_and_cancel_case())
+            , ?_test(duplicate_cancel_case())
+            ]}.
+
+
+instant_send_case() ->
     {ok, Pid} = ?timer:start_link(instant),
     Msg = make_ref(),
     Ref = ?timer:send_after(Pid, 1000, self(), Msg),
     assertMessage(Msg).
 
 
-instant_timeout_test() ->
+instant_timeout_case() ->
     {ok, Pid} = ?timer:start_link(instant),
     Msg = make_ref(),
     Ref = ?timer:start_timer(Pid, 1000, self(), Msg),
     assertMessage({timeout, Ref, Msg}).
 
-step_and_fire_test() ->
+
+step_and_fire_case() ->
     {ok, Pid} = ?timer:start_link(queue),
     ?timer:send_after(Pid, 1000, self(), a),
     Ref = ?timer:start_timer(Pid, 3000, self(), b),
@@ -299,7 +311,8 @@ step_and_fire_test() ->
     ?assertEqual(1, ?timer:fire(Pid)),
     assertMessage(c).
 
-cancel_and_step_test() ->
+
+cancel_and_step_case() ->
     {ok, Pid} = ?timer:start_link(queue),
     Msg = make_ref(),
     Ref = ?timer:start_timer(Pid, 6000, self(), Msg),
@@ -307,14 +320,16 @@ cancel_and_step_test() ->
     ?assertEqual(0, ?timer:step(Pid)),
     assertNoMessage().
 
-step_and_cancel_test() ->
+
+step_and_cancel_case() ->
     {ok, Pid} = ?timer:start_link(queue),
     Ref = ?timer:send_after(Pid, 500, self(), a),
     500 = ?timer:step(Pid),
     ?assertEqual(false, ?timer:cancel(Pid, Ref)),
     assertMessage(a).
 
-duplicate_cancel_test() ->
+
+duplicate_cancel_case() ->
     {ok, Pid} = ?timer:start_link(queue),
     Ref = ?timer:send_after(Pid, 500, self(), b),
     ?assertEqual(500, ?timer:cancel(Pid, Ref)),

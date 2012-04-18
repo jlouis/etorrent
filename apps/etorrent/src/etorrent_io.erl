@@ -47,7 +47,7 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
--define(AWAIT_TIMEOUT, 10*1000).
+-define(AWAIT_TIMEOUT, 60*1000).
 
 -export([start_link/2,
 	     allocate/1,
@@ -107,7 +107,7 @@
 %% @end
 -spec start_link(torrent_id(), bcode()) -> {'ok', pid()}.
 start_link(TorrentID, Torrent) ->
-    gen_server:start_link(?MODULE, [TorrentID, Torrent], []).
+    gen_server:start_link(?MODULE, [TorrentID, Torrent], [{timeout, 10000}]).
 
 %% @doc Allocate bytes in the end of files in a torrent
 %% @end
@@ -296,6 +296,7 @@ register_directory(TorrentID) ->
 %% @doc
 -spec register_file_server(torrent_id(), file_path()) -> true.
 register_file_server(TorrentID, Path) ->
+%   io:format("Register ~p ~p ~n", [TorrentID, Path]),
     etorrent_utils:register(file_server_name(TorrentID, Path)).
 
 %% @doc
@@ -348,6 +349,7 @@ unregister_open_file(TorrentID, Path) ->
 %% @end
 -spec await_file_server(torrent_id(), file_path()) -> pid().
 await_file_server(TorrentID, Path) ->
+%   io:format("Await file ~p ~p ~n", [TorrentID, Path]),
     etorrent_utils:await(file_server_name(TorrentID, Path), ?AWAIT_TIMEOUT).
 
 %% @doc
@@ -404,9 +406,9 @@ init([TorrentID, Torrent]) ->
     % Let the user define a limit on the amount of files
     % that will be open at the same time
     MaxFiles = etorrent_config:max_files(),
-    true = register_directory(TorrentID),
     PieceMap  = make_piece_map(Torrent),
     Files     = make_file_list(Torrent),
+    true = register_directory(TorrentID),
     InitState = #state{
         torrent=TorrentID,
         pieces=PieceMap,

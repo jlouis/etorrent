@@ -8,7 +8,7 @@
 *.beam
 deps/*
 /dev
-/erl_crash.dump
+*.dump
 err.*log
 /priv/webui/*.log
 /rel/etorrent
@@ -19,7 +19,7 @@ webui/*.log
 /depgraph.dot
 /depgraph.pdf
 /depgraph.png
-/apps/etorrent/doc
+/apps/*/doc
 /documentation/sup_tree_20101220.pdf
 /documentation/sup_tree_20101220.png
 /documentation/sup_tree_20110106.pdf
@@ -27,5 +27,6 @@ webui/*.log
 /test/etorrent_SUITE_data/test_file_30M.random
 /test/etorrent_SUITE_data/test_file_30M.random.torrent
 /logs/
+/log/
 .eunit/
 /etorrent_dialyzer.plt

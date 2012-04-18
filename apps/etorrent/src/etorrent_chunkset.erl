@@ -5,14 +5,18 @@
 -endif.
 
 -export([new/2,
+         new/1,
          size/1,
          min/1,
          min/2,
+         extract/2,
          is_empty/1,
          delete/2,
          delete/3,
          insert/3,
-         from_list/3]).
+         from_list/3,
+         in/3,
+         subtract/3]).
 
 -record(chunkset, {
     piece_len :: pos_integer(),
@@ -31,6 +35,12 @@ new(PieceLen, ChunkLen) ->
         piece_len=PieceLen,
         chunk_len=ChunkLen,
         chunks=[{0, PieceLen - 1}]}.
+
+
+%% @doc Create am empty copy of the chunkset.
+new(Prototype) ->
+    Prototype#chunkset{chunks=[]}.
+
 
 from_list(PieceLen, ChunkLen, Chunks) ->
     #chunkset{
@@ -86,11 +96,88 @@ min_(_, 0) ->
 min_(Chunkset, Numchunks) ->
     case min_(Chunkset) of
         none -> [];
-        {Start, End}=Chunk ->
-            Without = delete(Start, End, Chunkset),
+        {Start, Size}=Chunk ->
+            Without = delete(Start, Size, Chunkset),
             [Chunk|min_(Without, Numchunks - 1)]
     end.
 
+
+%% @doc This operation combines min/2 and delete.
+extract(Chunkset, Numchunks) when Numchunks >= 0 ->
+    extract_(Chunkset, Numchunks, []).
+
+
+extract_(Chunkset, 0, Acc) ->
+    {lists:reverse(Acc), Chunkset, 0};
+
+extract_(Chunkset, Numchunks, Acc) ->
+    case min_(Chunkset) of
+        none -> 
+            {lists:reverse(Acc), Chunkset, Numchunks};
+
+        {Start, Size}=Chunk ->
+            Without = delete(Start, Size, Chunkset),
+            extract_(Without, Numchunks - 1, [Chunk|Acc])
+    end.
+
+
+
+in(Offset, Size, Chunkset) ->
+    NewChunkset = delete(Offset, Size, Chunkset),
+    OldSize = ?MODULE:size(Chunkset),
+    NewSize = ?MODULE:size(NewChunkset),
+    Size =:= (OldSize - NewSize).
+
+
+%% @doc This operation run `delete/3' and return result and 
+%%      the list of the deleted values.
+subtract(Offset, Length, Chunkset) when Length > 0, Offset >= 0 ->
+    #chunkset{chunks=Chunks} = Chunkset,
+    {NewChunks, Deleted} = sub_(Offset, Offset + Length - 1, Chunks, [], []),
+    {Chunkset#chunkset{chunks=NewChunks}, rev_deleted_(Deleted, [])}.
+
+%% E = S + L - 1.
+%% L = E - S + 1.
+rev_deleted_([{S, E}|T], Acc) ->
+    L = E - S + 1,
+    rev_deleted_(T, [{S, L}|Acc]);
+
+rev_deleted_([], Acc) -> Acc.
+
+
+sub_(CS, CE, [{S, E}=H|T], Res, Acc) 
+    when is_integer(S), is_integer(CS), 
+         is_integer(E), is_integer(CE) ->
+    if
+    CS =< S, CE =:= E ->
+        % full match
+        {lists:reverse(Res, T), [H|Acc]}; % H
+    CS =< S, CE < E, CE > S ->
+        % try delete smaller piece
+        {lists:reverse(Res, [{CE+1, E}|T]), [{S, CE}|Acc]};
+    CS =< S, CE < S ->
+        % skip range
+        {lists:reverse(Res, [H|T]), Acc};
+    CS =< S, CE > E ->
+        % try delete bigger piece
+        sub_(E+1, CE, T, Res, [H|Acc]);
+    CS > S, CE =:= E ->
+        % try delete smaller piece
+        {lists:reverse(Res, [{S, CS-1}|T]), [{CS, E}|Acc]};
+    CS > S, CE < E ->
+        % try delete smaller piece
+        {lists:reverse(Res, [{S, CS-1},{CE+1, E}|T]), 
+         [{CS, CE}|Acc]};
+    CS > S, CS < E, CE > E ->
+        % try delete bigger piece
+        sub_(E+1, CE, T, [{S, CS-1}|Res], [{CS, E}|Acc]);
+    CS > E ->
+        % chunk is higher
+        sub_(E+1, CE, T, [H|Res], Acc)
+    end;
+sub_(_CS, _CE, [], Res, Acc) ->
+    {lists:reverse(Res), Acc}.
+    
 
 %% @doc Check is a chunkset is empty
 %% @end
@@ -108,12 +195,16 @@ delete([{Offset, Length}|T], Chunkset) ->
     delete(T, delete(Offset, Length, Chunkset)).
 
 
+insert([], Chunkset) ->
+    Chunkset;
+insert([{Offset, Length}|T], Chunkset) ->
+    insert(T, insert(Offset, Length, Chunkset)).
+
+
 %% @doc
 %% 
 %% @end
-delete(_, Length, _) when Length < 1 ->
-    erlang:error(badarg);
-delete(Offset, _, _) when Offset < 0 ->
+delete(Offset, Length, Chunkset) when Length < 1; Offset < 0 ->
     erlang:error(badarg);
 delete(Offset, Length, Chunkset) ->
     #chunkset{chunks=Chunks} = Chunkset,
@@ -286,5 +377,28 @@ insert_with_middle_test() ->
 insert_past_end_test() ->
     Set0 = ?set:new(32, 2),
     ?assertError(badarg, ?set:insert(0, 33, Set0)).
+
+in_test_() ->
+    Set0 = ?set:from_list(32, 2, [{0, 31}]),
+    Set1 = ?set:from_list(32, 2, [{0, 10}, {20, 31}]),
+    [ ?_assertEqual(true,  ?set:in(5, 6, Set0))
+    , ?_assertEqual(true,  ?set:in(0, 32, Set0))
+    , ?_assertEqual(false, ?set:in(0, 35, Set0))
+    , ?_assertEqual(false, ?set:in(0, 55, Set0))
+
+    , ?_assertEqual(true,  ?set:in(3, 4, Set1))
+    , ?_assertEqual(false, ?set:in(10, 4, Set1))
+    , ?_assertEqual(false, ?set:in(10, 21, Set1))
+    , ?_assertEqual(false, ?set:in(0, 31, Set1))
+    ].
+
+subtract_test_() ->
+    T0 = ?set:from_list(32, 2, [{10, 20}]),
+    T1 = ?set:from_list(32, 2, [{10, 10}, {15, 20}]),
+    T2 = ?set:from_list(32, 2, [{15, 20}]),
+    [ ?_assertEqual(subtract(11, 4, T0), {T1, [{11,4}]})
+    , ?_assertEqual(subtract(5, 10, T0), {T2, [{10,5}]})
+    , ?_assertEqual(subtract(21, 5, T0), {T0, []})
+    ].
 
 -endif.

@@ -240,7 +240,8 @@ handle_cast({discover, ST}, #state{ssdp_sock = Sock} = S) ->
                 "MX: 1\r\n"
                 "ST: '">>, list_to_binary(ST), <<"'\r\n"
                 "\r\n">>],
-    ok = gen_udp:send(Sock, ?SSDP_ADDR, ?SSDP_PORT, iolist_to_binary(MSearch)),
+    %% If the connection is not ready, then we will have an error.
+    gen_udp:send(Sock, ?SSDP_ADDR, ?SSDP_PORT, iolist_to_binary(MSearch)),
     {noreply, S};
 handle_cast({description, Device}, State) ->
     {ok, Devices, Services} = recv_desc(Device),

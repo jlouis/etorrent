@@ -15,7 +15,9 @@
          close/1,
          read/3,
          write/3,
-	 allocate/2]).
+         full_path/1,
+	     allocate/2]).
+
 
 -export([init/1,
          handle_call/3,
@@ -46,7 +48,9 @@
 %% @end
 -spec start_link(torrent_id(), file_path(), file_path()) -> {'ok', pid()}.
 start_link(TorrentID, Path, FullPath) ->
-    gen_server:start_link(?MODULE, [TorrentID, Path, FullPath], [{spawn_opt, [{fullsweep_after, 0}]}]).
+    Args = [TorrentID, Path, FullPath],
+    Opts =[{spawn_opt, [{fullsweep_after, 0}]}], 
+    gen_server:start_link(?MODULE, Args, Opts).
 
 %% @doc Request to open the file
 %% @end
@@ -83,6 +87,10 @@ write(FilePid, Offset, Chunk) ->
 allocate(FilePid, Size) ->
     gen_server:call(FilePid, {allocate, Size}, infinity).
 
+full_path(FilePid) ->
+    gen_server:call(FilePid, full_path, ?CALL_TIMEOUT).
+
+
 %% @private
 init([TorrentID, RelPath, FullPath]) ->
     true = etorrent_io:register_file_server(TorrentID, RelPath),
@@ -96,21 +104,38 @@ init([TorrentID, RelPath, FullPath]) ->
 %% @private
 handle_call({read, _, _}, _, State) when State#state.handle == closed ->
     {reply, {error, eagain}, State, ?GC_TIMEOUT};
+
 handle_call({write, _, _}, _, State) when State#state.handle == closed ->
     {reply, {error, eagain}, State, ?GC_TIMEOUT};
+
+%% Who was call it?
+%% It is a mini hack for files with an actual length of zero.
+handle_call({read, 0, 0}, _, State) ->
+    Chunk = <<>>,
+    {reply, {ok, Chunk}, State, ?GC_TIMEOUT};
+
 handle_call({read, Offset, Length}, _, State) ->
     #state{handle=Handle} = State,
+    %% If file length is 0, then this function will returns eof (badmatch)
     {ok, Chunk} = file:pread(Handle, Offset, Length),
     {reply, {ok, Chunk}, State, ?GC_TIMEOUT};
+
 handle_call({write, Offset, Chunk}, _, State) ->
     #state{handle=Handle} = State,
     ok = file:pwrite(Handle, Offset, Chunk),
     {reply, ok, State, ?GC_TIMEOUT};
+
+handle_call(full_path, _, State) ->
+    #state{fullpath=Path} = State,
+    {reply, {ok, Path}, State, ?GC_TIMEOUT};
+
 handle_call({allocate, _Sz}, _From, #state { handle = closed } = S) ->
     {reply, {error, eagain}, S, ?GC_TIMEOUT};
+
 handle_call({allocate, Sz}, _From, #state { handle = FD } = S) ->
     fill_file(FD, Sz),
     {reply, ok, S, ?GC_TIMEOUT}.
+
 
 %% @private
 handle_cast(open, State) ->

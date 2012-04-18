@@ -132,7 +132,8 @@ list_torrents() ->
 		       seeding  -> "sparkline-seed";
 		       leeching -> "sparkline-leech";
 		       endgame  -> "sparkline-leech";
-		       unknown ->  "sparkline-leech"
+		       unknown ->  "sparkline-leech";
+		       paused ->  "sparkline-leech"
 		   end,
 		   show_sparkline(lists:reverse(SL)),
 		   round(lists:max(SL) / 1024),

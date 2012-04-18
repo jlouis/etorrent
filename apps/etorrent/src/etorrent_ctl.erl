@@ -13,7 +13,7 @@
 -export([start_link/1,
 
          start/1, start/2, stop/1,
-         check/1]).
+         check/1, pause/1, continue/1]).
 
 -export([handle_cast/2, handle_call/3, init/1, terminate/2]).
 -export([handle_info/2, code_change/3]).
@@ -53,6 +53,18 @@ start(File, CallBack) ->
 check(Id) ->
     gen_server:cast(?SERVER, {check, Id}).
 
+% @doc Set the torrent on pause
+% @end
+-spec pause(integer()) -> ok.
+pause(Id) ->
+    gen_server:cast(?SERVER, {pause, Id}).
+
+% @doc Set the torrent on play :)
+% @end
+-spec continue(integer()) -> ok.
+continue(Id) ->
+    gen_server:cast(?SERVER, {continue, Id}).
+
 % @doc Ask the manager process to stop a torrent, identified by File.
 % @end
 -spec stop(string()) -> ok.
@@ -69,9 +81,20 @@ init([PeerId]) ->
 
 %% @private
 handle_cast({check, Id}, S) ->
-    Child = gproc:lookup_local_name({torrent, Id, control}),
+    Child = etorrent_torrent_ctl:lookup_server(Id),
     etorrent_torrent_ctl:check_torrent(Child),
     {noreply, S};
+
+handle_cast({pause, Id}, S) ->
+    Child = etorrent_torrent_ctl:lookup_server(Id),
+    etorrent_torrent_ctl:pause_torrent(Child),
+    {noreply, S};
+
+handle_cast({continue, Id}, S) ->
+    Child = etorrent_torrent_ctl:lookup_server(Id),
+    etorrent_torrent_ctl:continue_torrent(Child),
+    {noreply, S};
+
 handle_cast({stop, F}, S) ->
     stop_torrent(F),
     {noreply, S}.

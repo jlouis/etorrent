@@ -56,7 +56,7 @@
 
 %% peer API
 -export([start_link/1,
-         start_link/5,
+         start_link/6,
          mark_valid/2]).
 
 %% stats API
@@ -67,6 +67,12 @@
          num_assigned/1,
          num_stored/1,
          num_valid/1]).
+
+%% wish API
+-export([set_wishes/2]).
+
+-export([show_assigned/1,
+         show_valid/1]).
 
 %% gproc registry entries
 -export([register_server/1,
@@ -83,9 +89,9 @@
          terminate/2,
          code_change/3]).
 
--import(gen_server, [call/2, cast/2]).
--compile({no_auto_import,[monitor/2, error/1]}).
--import(erlang, [monitor/2, error/1]).
+%% Private 
+-export([stored_chunks/1]).
+
 
 -type pieceset()   :: etorrent_pieceset:pieceset().
 -type torrent_id() :: etorrent_types:torrent_id().
@@ -123,8 +129,11 @@
     piece_priority  :: #pieceprio{},
     %% Chunk assignment processes
     pending     = exit(required) :: pid(),
-    endgame     = exit(required) :: pid(),
-    in_endgame  = exit(required) :: boolean()}).
+    user_wishes = [] :: [pieceset()],
+    %% If active = false, the process will not handle messages.
+    %% When we want to switch assignor, we mark active as `false'
+    %% and wait when the torrent supervisor kills this process.
+    active = true :: boolean()}).
 
 %% # Piece states
 %% As the download of a torrent progresses, and regresses, each piece
@@ -243,13 +252,14 @@ start_link(Args) ->
 %% Start a new chunk server for a set of pieces, a subset of the
 %% pieces may already have been fetched.
 %% @end
-start_link(TorrentID, ChunkSize, Fetched, Sizes, TorrentPid) ->
+start_link(TorrentID, ChunkSize, Fetched, Sizes, TorrentPid, Wishes) ->
     Args = [
         {torrentid, TorrentID},
         {chunksize, ChunkSize},
         {fetched, Fetched},
         {piecesizes, Sizes},
-        {torrentpid, TorrentPid}],
+        {torrentpid, TorrentPid},
+        {user_wishes, Wishes}],
     start_link(Args).
 
 %% @doc
@@ -307,7 +317,7 @@ num_valid(TorrentID) ->
 -spec state_members(torrent_id(), piece_state()) -> pieceset().
 state_members(TorrentID, Piecestate) ->
     ChunkSrv = lookup_server(TorrentID),
-    call(ChunkSrv, {state_members, Piecestate}).
+    gen_server:call(ChunkSrv, {state_members, Piecestate}).
 
 %% @private
 -spec num_state_members(torrent_id(), piece_state()) -> integer().
@@ -323,19 +333,41 @@ num_state_members(TorrentID, Piecestate) ->
     end.
 
 
+show_assigned(TorrentID) ->
+    Assigned = state_members(TorrentID, assigned),
+    etorrent_pieceset:to_string(Assigned).
+
+
+show_valid(TorrentID) ->
+    Valid = state_members(TorrentID, valid),
+    etorrent_pieceset:to_string(Valid).
+
+
+set_wishes(TorrentID, Wishes) ->
+    ChunkSrv = lookup_server(TorrentID),
+    ok = gen_server:call(ChunkSrv, {set_wishes, Wishes}).
+
+
+stored_chunks(TorrentID) ->
+    ChunkSrv = lookup_server(TorrentID),
+    {ok, Chunks} = gen_server:call(ChunkSrv, stored_chunks),
+    Chunks.
+
+
 %% @private
 init(Serverargs) ->
     Args = orddict:from_list(Serverargs),
     TorrentID = orddict:fetch(torrentid, Args),
     true = register_server(TorrentID),
+    true = etorrent_download:register_server(TorrentID),
     ChunkSize = orddict:fetch(chunksize, Args),
     PiecesValid = orddict:fetch(fetched, Args),
     PieceSizes = orddict:fetch(piecesizes, Args),
+    Wishes = proplists:get_value(user_wishes, Serverargs, []),
 
     TorrentPid = etorrent_torrent_ctl:await_server(TorrentID),
     _ScarcityPid = etorrent_scarcity:await_server(TorrentID),
     Pending = etorrent_pending:await_server(TorrentID),
-    Endgame = etorrent_endgame:await_server(TorrentID),
     ok = etorrent_pending:receiver(self(), Pending),
 
     NumPieces = length(PieceSizes),
@@ -380,26 +412,26 @@ init(Serverargs) ->
         chunks_stored=ChunkSets,
         piece_priority=PiecePriority,
         pending=Pending,
-        endgame=Endgame,
-        in_endgame=false},
+        user_wishes=Wishes
+    },
     {ok, InitState}.
 
 
-%% Ignore all chunk requests while we are in endgame
-handle_call({chunk, {request, _, _, _}}, _, State) when State#state.in_endgame ->
+%% Ignore all chunk requests while we are inactive
+handle_call({chunk, {request, _, _, _}}, _, State) 
+    when not State#state.active ->
     {reply, {ok, assigned}, State};
 
 handle_call({chunk, {request, Numchunks, Peerset, PeerPid}}, _, State) ->
     #state{
         torrent_id=TorrentID,
-        pieces_valid=Valid,
         pieces_unassigned=Unassigned,
         pieces_begun=Begun,
         pieces_assigned=Assigned,
         chunks_assigned=AssignedChunks,
         piece_priority=PiecePriority,
         pending=Pending,
-        endgame=Endgame} = State,
+        user_wishes=UserWish} = State,
 
     %% If this peer has any pieces that we have begun downloading, pick
     %% one of those pieces over any unassigned pieces.
@@ -433,12 +465,14 @@ handle_call({chunk, {request, Numchunks, Peerset, PeerPid}}, _, State) ->
             assigned;
         %% One or more that we are already downloading
         begun ->
-            etorrent_pieceset:min(Optimal);
+            Best = choose_best_piece(UserWish, Optimal),
+            etorrent_pieceset:min(Best);
         %% None that we are not already downloading
         %% but one ore more that we would want to download
         unassigned ->
             #pieceprio{pieces=UnassignedPriolist} = PiecePriority,
-            etorrent_pieceset:first(UnassignedPriolist, SubOptimal)
+            Best = choose_best_piece(UserWish, SubOptimal),
+            etorrent_pieceset:first(UnassignedPriolist, Best)
     end,
 
     case PieceIndex of
@@ -450,17 +484,18 @@ handle_call({chunk, {request, Numchunks, Peerset, PeerPid}}, _, State) ->
                 false ->
                     {reply, {ok, assigned}, State};
                 true ->
-                    ok = etorrent_pending:receiver(Endgame, Pending),
-                    ok = etorrent_endgame:activate(Endgame),
-                    NewState = State#state{in_endgame=true},
+                    CtlPid = etorrent_torrent_sup:lookup_server(TorrentID),
+                    etorrent_torrent_ctl:switch_mode(CtlPid, endgame),
+                    NewState = State#state{active=false},
                     {reply, {ok, assigned}, NewState}
             end;
         Index ->
             Chunkset = array:get(Index, AssignedChunks),
-            Offsets = etorrent_chunkset:min(Chunkset, Numchunks),
-            Chunks = [{Index, Offs, Len} || {Offs, Len} <- Offsets],
-            NewChunkset = etorrent_chunkset:delete(Offsets, Chunkset),
+            {Offsets, NewChunkset, _LeftNumChunks} = 
+                etorrent_chunkset:extract(Chunkset, Numchunks),
+                
             NewAssignedChunks = array:set(Index, NewChunkset, AssignedChunks),
+            Chunks = [{Index, Offs, Len} || {Offs, Len} <- Offsets],
             ok = etorrent_chunkstate:assigned(Chunks, PeerPid, Pending),
 
             %% We need to consider four transitions at this point:
@@ -476,27 +511,24 @@ handle_call({chunk, {request, Numchunks, Peerset, PeerPid}}, _, State) ->
                 false -> begun
             end,
             %% Update piece sets and keep track of which sets were updated
+            {NewUnassigned, NewBegun, NewAssigned, UnassignedUpdated} =
             case {Targetstate, Transitionstate} of
                 {unassigned, begun} ->
-                    NewUnassigned = etorrent_pieceset:delete(Index, Unassigned),
-                    NewBegun = etorrent_pieceset:insert(Index, Begun),
-                    NewAssigned = Assigned,
-                    UnassignedUpdated = true;
+                    { etorrent_pieceset:delete(Index, Unassigned)
+                    , etorrent_pieceset:insert(Index, Begun)
+                    , Assigned, true};
                 {unassigned, assigned} ->
-                    NewUnassigned = etorrent_pieceset:delete(Index, Unassigned),
-                    NewBegun = Begun,
-                    NewAssigned = etorrent_pieceset:insert(Index, Assigned),
-                    UnassignedUpdated = true;
+                    { etorrent_pieceset:delete(Index, Unassigned)
+                    , Begun
+                    , etorrent_pieceset:insert(Index, Assigned)
+                    , true};
                 {begun, begun} ->
-                    NewUnassigned = Unassigned,
-                    NewBegun = Begun,
-                    NewAssigned = Assigned,
-                    UnassignedUpdated = false;
+                    { Unassigned, Begun, Assigned, false};
                 {begun, assigned} ->
-                    NewUnassigned = Unassigned,
-                    NewBegun = etorrent_pieceset:delete(Index, Begun),
-                    NewAssigned = etorrent_pieceset:insert(Index, Assigned),
-                    UnassignedUpdated = false
+                    { Unassigned
+                    , etorrent_pieceset:delete(Index, Begun)
+                    , etorrent_pieceset:insert(Index, Assigned)
+                    , false}
             end,
 
             %% Only update the piece priority lists if a piece in the
@@ -523,7 +555,42 @@ handle_call({state_members, Piecestate}, _, State) ->
         stored -> State#state.pieces_stored;
         valid -> State#state.pieces_valid
     end,
-    {reply, Stateset, State}.
+    {reply, Stateset, State};
+
+handle_call({set_wishes, NewWishes}, _, State=#state{pieces_valid=Valid}) ->
+    {reply, ok, State#state{user_wishes=minimize_masks(NewWishes, Valid, [])}};
+
+handle_call(stored_chunks, _, State=#state{chunks_stored=StoredChunks}) ->
+    {reply, {ok, StoredChunks}, State}.
+
+
+
+%% @doc We have statistics about "popularity" of each piece from scarcity.
+%%      It is the second arg.
+%%      We also have user wishes: there is list of sets, first element is most
+%%      wanted, second less and so on. Lefted pieces have low priority.
+%%
+%%      It is the best way to make a decision based on scarcity data, but
+%%      some users want to set their own priorities on large torrents.
+%%
+%%      So, we need to choose the best piece. We have SubOptimal set, which 
+%%      contains pieces which the peer has and we has not.
+%%      
+%%      The best piece is a rear piece which we wish.
+%% @private
+choose_best_piece(UserWish, SubOptimal) ->
+    choose_best_piece_(UserWish, SubOptimal).
+
+%% Make decision based only on scarcity data.
+choose_best_piece_([], SO) -> SO;
+
+choose_best_piece_([PS|T], SO) ->
+    Optimal = etorrent_pieceset:intersection(SO, PS),
+    HasOptimal = not etorrent_pieceset:is_empty(Optimal),
+    case HasOptimal of
+        true ->  Optimal;
+        false -> choose_best_piece_(T, SO)
+    end.
 
 
 %% @private
@@ -556,14 +623,13 @@ handle_info({piece, {valid, Index}}, State) ->
     end;
 
 
-handle_info({chunk, {stored, Index, Offset, Length, Pid}}, State) ->
+handle_info({chunk, {stored, Index, Offset, Length, _Pid}}, State) ->
     #state{
         torrent_pid=TorrentPid,
         pieces_assigned=Assigned,
         pieces_stored=Stored,
-        chunks_stored=ChunksStored,
-        in_endgame=InEndgame,
-        endgame=Endgame} = State,
+        chunks_stored=ChunksStored} = State,
+
 
     %% Update the set of chunks in the piece that has been written to disk.
     Chunks = array:get(Index, ChunksStored),
@@ -572,7 +638,7 @@ handle_info({chunk, {stored, Index, Offset, Length, Pid}}, State) ->
     
     %% If we are in endgame, forward all stored notifications to
     %% the endgame process to ensure that it is not requested again.
-    InEndgame andalso etorrent_chunkstate:stored(Index, Offset, Length, Pid, Endgame),
+%   InEndgame andalso etorrent_chunkstate:stored(Index, Offset, Length, Pid, Endgame),
 
     %% If all chunks in this piece has been written to disk we want
     %% to move the piece from the Assigned state to the Stored state.
@@ -604,15 +670,18 @@ handle_info({chunk, {stored, Index, Offset, Length, Pid}}, State) ->
     end,
     {noreply, NewState};
 
-handle_info({chunk, {dropped, Piece, Offset, Length, Peerpid}}, State)
-when State#state.in_endgame ->
-    #state{endgame=Endgame} = State,
-    ok = etorrent_chunkstate:dropped(Piece, Offset, Length, Peerpid, Endgame),
+handle_info({chunk, {fetched, _, _, _, _}}, State) ->
+    {noreply, State};
+
+handle_info({chunk, {dropped, _, _, _, _}}, State)
+    when not State#state.active ->
+    {noreply, State};
+
+handle_info({chunk, {assigned,_,_,_,_}}, State) ->
     {noreply, State};
 
 handle_info({chunk, {dropped, Piece, Offset, Length, _}}, State) ->
     #state{
-        torrent_id=TorrentID,
         pieces_begun=Begun,
         pieces_assigned=Assigned,
         chunks_assigned=AssignedChunks} = State,
@@ -633,7 +702,7 @@ handle_info({chunk, {dropped, Piece, Offset, Length, _}}, State) ->
     {noreply, NewState};
 
 
-handle_info({scarcity, Ref, Tag, Piecelist}, State) ->
+handle_info({scarcity, Ref, _Tag, Piecelist}, State) ->
     #state{piece_priority=PiecePriority} = State,
     %% Verify that the tag is valid before verifying the reference
     #pieceprio{ref=PrioRef} = PiecePriority,
@@ -657,6 +726,7 @@ terminate(_Reason, _State) ->
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
+
 init_priority(TorrentID, Tag, Pieceset) ->
     {ok, Ref, List} = etorrent_scarcity:watch(TorrentID, Tag, Pieceset),
     #pieceprio{ref=Ref, tag=Tag, pieces=List}.
@@ -668,6 +738,25 @@ update_priority(TorrentID, Pieceprio, Pieceset) ->
     #pieceprio{ref=NewRef, tag=Tag, pieces=NewList}.
 
 
+%% @doc This function is pure, so we can test it.
+%%      Traverse a list of masks.
+%%      If a mask has not new pieces, skip it.
+%%      If a mask has unique parts, add them to Union pieceset.
+%% @private
+minimize_masks([H|T], Union, Acc) ->
+    case etorrent_pieceset:union(H, Union) of
+        %% nothing new
+        Union -> 
+            minimize_masks(T, Union, Acc);
+
+        Union1 -> 
+            minimize_masks(T, Union1, [H|Acc])
+    end;
+
+minimize_masks([], _Union, Acc) ->
+    lists:reverse(Acc).
+
+
 -ifdef(TEST).
 -define(progress, ?MODULE).
 -define(scarcity, etorrent_scarcity).
@@ -675,7 +764,6 @@ update_priority(TorrentID, Pieceprio, Pieceset) ->
 -define(pending, etorrent_pending).
 -define(chunkstate, etorrent_chunkstate).
 -define(piecestate, etorrent_piecestate).
--define(endgame, etorrent_endgame).
 
 
 chunk_server_test_() ->
@@ -713,11 +801,12 @@ testid() -> 2.
 setup_env() ->
     Sizes = [{0, 2}, {1, 2}, {2, 2}],
     Valid = etorrent_pieceset:empty(length(Sizes)),
+    Wishes = [],
     {ok, Time} = ?timer:start_link(queue),
     {ok, PPid} = ?pending:start_link(testid()),
     {ok, EPid} = ?endgame:start_link(testid()),
     {ok, SPid} = ?scarcity:start_link(testid(), Time, 8),
-    {ok, CPid} = ?progress:start_link(testid(), 1, Valid, Sizes, self()),
+    {ok, CPid} = ?progress:start_link(testid(), 1, Valid, Sizes, self(), Wishes),
     ok = ?pending:register(PPid),
     ok = ?pending:receiver(CPid, PPid),
     {Time, EPid, PPid, SPid, CPid}.
@@ -891,5 +980,32 @@ trigger_endgame_case() ->
     ok = ?chunkstate:fetched(2, 0, 1, self(), endgame()),
     ok = ?chunkstate:fetched(2, 1, 1, self(), endgame()),
     ?assertEqual(ok, etorrent_utils:ping(endgame())).
+
+
+%% Directory Structure:
+%%
+%% Num     Path      Pieceset (indexing from 1)
+%% --------------------------------------------
+%%  0  /              [1-4]
+%%  1  /Dir1          [1,2]
+%%  2  /Dir1/File1    [1]
+%%  3  /Dir1/File2    [2]
+%%  4  /Dir2          [3,4]
+%%  5  /Dir2/File3    [3,4]
+%%
+%% Check that wishlist [2, 1, 3] will be minimized to [2, 1]
+minimize_masks_test_() ->
+    Empty = etorrent_pieceset:new(4),
+    Dir1  = etorrent_pieceset:from_bitstring(<<2#1100:4>>),
+    File1 = etorrent_pieceset:from_bitstring(<<2#1000:4>>),
+    File2 = etorrent_pieceset:from_bitstring(<<2#0100:4>>),
+    Dir2 = File3 = etorrent_pieceset:from_bitstring(<<2#0011:4>>),
+
+    Masks = [File1, Dir1, File2],
+    Union = Empty,
+    
+    Masks1 = minimize_masks(Masks, Union, []),
+    [?_assertEqual(Masks1, [File1,Dir1])
+    ].
 
 -endif.

@@ -3,6 +3,7 @@
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
 -undef(LET).
+-define(PROPER_NO_IMPORTS, true).
 -include_lib("proper/include/proper.hrl").
 -endif.
 
@@ -10,6 +11,7 @@
          empty/1,
          full/1,
          from_binary/2,
+         from_bitstring/1,
          to_binary/1,
          from_list/2,
          to_list/1,
@@ -25,7 +27,10 @@
          capacity/1,
          first/2,
          foldl/3,
-         min/1]).
+         min/1,
+         union/1,
+         union/2,
+         progress/1]).
 
 -record(pieceset, {
     size :: non_neg_integer(),
@@ -81,6 +86,12 @@ from_binary(Bin, Size) when is_binary(Bin) ->
         0 -> #pieceset{size=Size, elements=Elements};
         _ -> erlang:error(badarg)
     end.
+
+%% @doc Construct pieceset from bitstring.
+from_bitstring(Bin) ->
+    Size = bit_size(Bin),
+    #pieceset{size=Size, elements=Bin}.
+
 
 %% @doc
 %% Convert a piece set to a bitfield, the bitfield will
@@ -253,6 +264,26 @@ intersection(Set0, Set1) ->
             #pieceset{size=Size0, elements=Intersection}
     end.
 
+-spec union(pieceset(), pieceset()) -> pieceset().
+union(Set0, Set1) ->
+    #pieceset{size=Size, elements = Elements0} = Set0,
+    #pieceset{size=Size, elements = Elements1} = Set1,
+    <<E0:Size>> = Elements0,
+    <<E1:Size>> = Elements1,
+    Union = <<(E0 bor E1):Size>>,
+    #pieceset{size=Size, elements=Union}.
+
+union([H|T]) ->
+    #pieceset{size=Size, elements = ElementsH} = H,
+    <<EH:Size>> = ElementsH,
+    F = fun(X, Acc) ->
+        #pieceset{size=Size, elements = <<EX:Size>>} = X,
+        EX bor Acc
+        end,
+    Union = lists:foldl(F, EH, T),
+    #pieceset{size = Size, elements = <<Union:Size>>}.
+    
+
 %% @doc
 %% Return a piece set where each member is a member of the first
 %% but not a member of the second set.
@@ -294,6 +325,13 @@ size(<<>>, Acc) ->
 capacity(Pieceset) ->
     #pieceset{size=Size} = Pieceset,
     Size.
+
+
+%% @doc Return float from 0 to 1.
+-spec progress(pieceset()) -> float().
+progress(Pieceset) ->
+    etorrent_pieceset:size(Pieceset) / capacity(Pieceset).
+
 
 %% @doc Return the first member of the list that is a member of the set
 %% If no element of the list is a member of the set the function exits

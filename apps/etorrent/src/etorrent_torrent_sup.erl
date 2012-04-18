@@ -10,7 +10,12 @@
 -export([start_link/3,
 
          start_child_tracker/5,
-         start_progress/4]).
+         start_progress/5,
+         start_endgame/2,
+         start_reordered/4,
+         start_peer_sup/2,
+         stop_assignor/1,
+         pause/1]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -19,7 +24,6 @@
 -type tier() :: etorrent_types:tier().
 
 
--define(DEFAULT_CHUNK_SIZE, 16#4000). % TODO - get this value from a configuration file
 %% =======================================================================
 
 %% @doc Start up the supervisor
@@ -48,28 +52,56 @@ start_child_tracker(Pid, UrlTiers, InfoHash, Local_Peer_Id, TorrentId) ->
     Tracker = {tracker_communication,
                {etorrent_tracker_communication, start_link,
                 [self(), UrlTiers, InfoHash, Local_Peer_Id, TorrentId]},
-               permanent, 15000, worker, [etorrent_tracker_communication]},
+               transient, 15000, worker, [etorrent_tracker_communication]},
     supervisor:start_child(Pid, Tracker).
 
 -spec start_progress(pid(), etorrent_types:torrent_id(),
                             etorrent_types:bcode(),
-                            etorrent_pieceset:pieceset()) ->
+                            etorrent_pieceset:pieceset(),
+                            [etorrent_pieceset:pieceset()]) ->
                             {ok, pid()} | {ok, pid(), term()} | {error, term()}.
-start_progress(Pid, TorrentID, Torrent, ValidPieces) ->
-    Spec = progress_spec(TorrentID, Torrent, ValidPieces),
+start_progress(Pid, TorrentID, Torrent, ValidPieces, Wishes) ->
+    Spec = progress_spec(TorrentID, Torrent, ValidPieces, Wishes),
     supervisor:start_child(Pid, Spec).
+
+start_endgame(Pid, TorrentID) ->
+    Spec = endgame_spec(TorrentID),
+    supervisor:start_child(Pid, Spec).
+
+start_reordered(Pid, TorrentID, ValidPieceSet, ValidChunkList) ->
+    Spec = reordered_spec(TorrentID, ValidPieceSet, ValidChunkList),
+    supervisor:start_child(Pid, Spec).
+
+start_peer_sup(Pid, TorrentID) ->
+    Spec = peer_pool_spec(TorrentID),
+    supervisor:start_child(Pid, Spec).
+
+pause(Pid) ->
+    ok = supervisor:terminate_child(Pid, peer_pool_sup),
+    ok = supervisor:delete_child(Pid, peer_pool_sup),
+    ok = supervisor:terminate_child(Pid, tracker_communication),
+    ok = supervisor:delete_child(Pid, tracker_communication),
+    ok = supervisor:terminate_child(Pid, chunk_mgr),
+    ok = supervisor:delete_child(Pid, chunk_mgr),
+    ok.
+
+
+stop_assignor(Pid) ->
+    ok = supervisor:terminate_child(Pid, chunk_mgr),
+    ok = supervisor:delete_child(Pid, chunk_mgr).
+
+
     
 %% ====================================================================
 
 %% @private
 init([{Torrent, TorrentPath, TorrentIH}, PeerID, TorrentID]) ->
     Children = [
+        info_spec(TorrentID, Torrent),
+        io_sup_spec(TorrentID, Torrent),
         pending_spec(TorrentID),
         scarcity_manager_spec(TorrentID, Torrent),
-        torrent_control_spec(TorrentID, Torrent, TorrentPath, TorrentIH, PeerID),
-        endgame_spec(TorrentID),
-        io_sup_spec(TorrentID, Torrent),
-        peer_pool_spec(TorrentID)],
+        torrent_control_spec(TorrentID, Torrent, TorrentPath, TorrentIH, PeerID)],
     {ok, {{one_for_all, 1, 60}, Children}}.
 
 pending_spec(TorrentID) ->
@@ -83,18 +115,24 @@ scarcity_manager_spec(TorrentID, Torrent) ->
         {etorrent_scarcity, start_link, [TorrentID, Numpieces]},
         permanent, 5000, worker, [etorrent_scarcity]}.
 
-progress_spec(TorrentID, Torrent, ValidPieces) ->
+progress_spec(TorrentID, Torrent, ValidPieces, Wishes) ->
     PieceSizes  = etorrent_io:piece_sizes(Torrent), 
-    ChunkSize   = ?DEFAULT_CHUNK_SIZE,
-    Args = [TorrentID, ChunkSize, ValidPieces, PieceSizes, lookup],
+    ChunkSize   = etorrent_info:chunk_size(TorrentID),
+    Args = [TorrentID, ChunkSize, ValidPieces, PieceSizes, lookup, Wishes],
     {chunk_mgr,
         {etorrent_progress, start_link, Args},
-        permanent, 20000, worker, [etorrent_progress]}.
+        transient, 20000, worker, [etorrent_progress]}.
 
 endgame_spec(TorrentID) ->
-    {endgame,
+    {chunk_mgr,
         {etorrent_endgame, start_link, [TorrentID]},
-        permanent, 5000, worker, [etorrent_endgame]}.
+        transient, 5000, worker, [etorrent_endgame]}.
+
+reordered_spec(TorrentID, ValidPieceSet, ValidChunkList) ->
+    {chunk_mgr,
+        {etorrent_reordered, start_link, 
+            [TorrentID, ValidPieceSet, ValidChunkList]},
+        transient, 5000, worker, [etorrent_reordered]}.
 
 torrent_control_spec(TorrentID, Torrent, TorrentFile, TorrentIH, PeerID) ->
     {control,
@@ -106,6 +144,11 @@ io_sup_spec(TorrentID, Torrent) ->
     {fs_pool,
         {etorrent_io_sup, start_link, [TorrentID, Torrent]},
         transient, 5000, supervisor, [etorrent_io_sup]}.
+
+info_spec(TorrentID, Torrent) ->
+    {info,
+        {etorrent_info, start_link, [TorrentID, Torrent]},
+        transient, 5000, worker, [etorrent_info]}.
 
 peer_pool_spec(TorrentID) ->
     {peer_pool_sup,
