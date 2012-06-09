@@ -8,7 +8,7 @@ version=1.2.1
 
 all: compile
 
-deps:
+get-deps:
 	rebar get-deps
 
 compile:
