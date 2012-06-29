@@ -71,7 +71,7 @@ distclean: clean relclean devclean
 etorrent-dev: compile
 	mkdir -p dev
 	(cd rel \
-	&& rebar generate target_dir=../dev/$@ overlay_vars=vars/$@_vars.config)
+	&& rebar generate target_dir=../dev/$@ overlay_vars=dev.config)
 
 dev: etorrent-dev
 
@@ -103,8 +103,7 @@ common_test: ct_setup rel
 
 console:
 	dev/etorrent-dev/bin/etorrent console \
-		-pa ../../apps/etorrent/ebin \
-		-pa ../../deps/riak_err/ebin
+		-pa ../deps/etorrent_core/ebin
 
 remsh:
 	erl -name 'foo@127.0.0.1' \
