@@ -103,7 +103,7 @@ common_test: ct_setup rel
 
 console:
 	dev/etorrent-dev/bin/etorrent console \
-		-pa ../deps/etorrent_core/ebin
+		-pa ../../deps/etorrent_core/ebin
 
 remsh:
 	erl -name 'foo@127.0.0.1' \
