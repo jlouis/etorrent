@@ -94,7 +94,7 @@
     wishes = [] :: [#wish{}],
     interval    :: timer:interval(),
     mode = progress 
-                :: 'progress' | 'endgame' | 'reordered' | atom()
+                :: 'progress' | 'endgame' | atom()
     }).
 
 
@@ -488,14 +488,7 @@ handle_event({switch_mode, NewMode}, SN, S=#state{mode=OldMode}) ->
         'endgame' ->
             etorrent_torrent_sup:start_endgame(
               Sup,
-              TorrentID);
-
-        'reordered' ->
-            etorrent_torrent_sup:start_reordered(
-              Sup,
-              TorrentID,
-              ValidPieceSet,
-              ValidChunkArr)
+              TorrentID)
         end,
         
     
