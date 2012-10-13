@@ -47,7 +47,6 @@ build_plt: compile
 		deps/lhttpc/ebin\
 		deps/meck/ebin\
 		deps/proper/ebin\
-		deps/ranch/ebin\
 		deps/rlimit/ebin
 
 dialyzer:
