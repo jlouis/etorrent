@@ -2,6 +2,8 @@
 ## Try to keep it so simple it can be run with BSD-make as well as
 ## GNU-make
 
+REPO=etorrent
+
 # Version here is used by the test suite. It should be possible to figure
 # it out automatically, but for now, hardcode.
 version=1.2.1
@@ -23,36 +25,47 @@ eunit:
 doc:
 	rebar skip_deps=true doc
 
-plt-clean:
-	rm -f etorrent_dialyzer.plt
+APPS = kernel stdlib sasl erts ssl tools os_mon runtime_tools crypto inets \
+	xmerl webtool snmp public_key mnesia eunit syntax_tools compiler
+COMBO_PLT = $(HOME)/.$(REPO)_combo_dialyzer_plt
 
-build-plt:
-	dialyzer --build_plt \
-	-pa deps/cowboy/ebin \
-	-pa deps/gproc/ebin \
-	-pa deps/lhttpc/ebin \
-	-pa deps/lager/ebin \
-	-c deps/cowboy/ebin -c deps/gproc/ebin \
-	-c deps/lhttpc/ebin -c deps/lager/ebin \
-	--output_plt etorrent_dialyzer.plt \
-	--apps kernel crypto stdlib sasl inets tools xmerl erts
+check_plt: compile
+	dialyzer --check_plt --plt $(COMBO_PLT) --apps $(APPS) \
+		deps/*/ebin
 
-dialyze: dialyze-etorrent
+build_plt: compile
+	dialyzer --build_plt --output_plt $(COMBO_PLT) --apps $(APPS) \
+		deps/bullet/ebin\
+		deps/cascadae/ebin\
+		deps/cowboy/ebin\
+		deps/edown/ebin\
+		deps/etorrent_core/ebin\
+		deps/gen_leader/ebin\
+		deps/gproc/ebin\
+		deps/jsx/ebin\
+		deps/lager/ebin\
+		deps/lhttpc/ebin\
+		deps/meck/ebin\
+		deps/proper/ebin\
+		deps/ranch/ebin\
+		deps/rlimit/ebin
 
-dialyze-etorrent: compile
-	dialyzer --plt etorrent_dialyzer.plt \
-	-c apps/etorrent/ebin
-	-c apps/rlimit/ebin
-	-pa deps/cowboy/ebin \
-	-pa deps/gproc/ebin \
-	-pa deps/lhttpc/ebin \
-	-pa deps/lager/ebin
+dialyzer:
+	@echo
+	@echo Use "'make check_plt'" to check PLT prior to using this target.
+	@echo Use "'make build_plt'" to build PLT prior to using this target.
+	@echo
+	@sleep 1
+	dialyzer -Wno_return --plt $(COMBO_PLT) deps/*/ebin | \
+	    fgrep -v -f ./dialyzer.ignore-warnings
 
-typer: typer-etorrent
-
-typer-etorrent:
-	typer --plt etorrent_dialyzer_plt \
-	-r apps/etorrent/src -I apps/etorrent/include
+cleanplt:
+	@echo
+	@echo "Are you sure?  It takes about 1/2 hour to re-build."
+	@echo Deleting $(COMBO_PLT) in 5 seconds.
+	@echo
+	sleep 5
+	rm $(COMBO_PLT)
 
 rel: compile rel/etorrent
 
@@ -97,7 +110,6 @@ ct_setup: rel
 	mkdir -p ${ct_src_dir} && \
 		cp -r apps/etorrent/src/* ${ct_src_dir}
 # Run cover test
-
 common_test: ct_setup rel
 	${CT_RUN} -spec etorrent_test.spec
 
