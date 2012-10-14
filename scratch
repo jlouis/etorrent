@@ -1,0 +1,78 @@
+Links:
+
+http://github.com/jlouis/etorrent
+http://github.com/jlouis/etorrent_core
+http://localhost:8888 - Normal old-style webui code here.
+
+TODO:
+
+· GH/jlouis/etorrent_core#8 Fix the problem when completing a torrent:
+	  {{badarg,[{etorrent_peerstate,choked,2,
+	                              [{file,"src/etorrent_peerstate.erl"},
+	                               {line,120}]},
+	          {etorrent_peer_control,handle_message,2,
+	                                 [{file,"src/etorrent_peer_control.erl"},
+	                                  {line,535}]},
+	          {etorrent_peer_control,handle_cast,2,
+	                                 [{file,"src/etorrent_peer_control.erl"},
+	                                  {line,319}]},
+	          {gen_server,handle_msg,5,[{file,"gen_server.erl"},{line,607}]},
+	          {proc_lib,init_p_do_apply,3,[{file,"proc_lib.erl"},{line,227}]}]},
+	 [{gen_server,terminate,6,[{file,"gen_server.erl"},{line,747}]},
+	  {proc_lib,init_p_do_apply,3,[{file,"proc_lib.erl"},{line,227}]}]}
+
+· Test single-torrent download of something
+	This ought to work if we try it out. Let us try with an ubuntu image:
+	
+	http://releases.ubuntu.com/12.04/ubuntu-12.04.1-alternate-i386.iso.torrent
+
+· Split webui into its own piece.
+	There is no need to have this in the main etorrent application, since it is a thing
+	which is UI.
+· Consider how to split etorrent_core into multiple pieces.
+	· DHT
+	· WebUI stuff
+· Think about how to run a system like cascadae together with etorrent.
+  	· Analysis:
+	  Obviously, we should not need to have a dependency on cascadae in etorrent.
+	  It is the other way around: cascadae should use etorrent as a dependency, specifically
+	  it should be etorrent_core.
+	
+	  Also, etorrent should not have to be bound together with cascadae. It is the wrong
+	  type of coupling we are looking into there. Instead, we would like to have a thin
+	  modular layer of commands which can be used by cascadae to communicate
+	  with etorrent_core and obtain information about it.
+	· Solution:
+	  Make etorrent non-dependent on cascadae. We should be able to build a release
+	  entirely without any mention of it. Otherwise we failed decoupling.
+· Ranch support, see GH/jlouis/etorrent_core#5
+· Wrong supervisor kills, see GH/jlouis/etorrent_core#7
+
+DONE:
+
+· Make new dialyzer code part of etorrent
+· Make it possible to dialyze etorrent again.
+	The problem here is mimetypes which can not be dialyzed,
+	so we probably need to exclude it from the list of things we want
+	to consider when we are running dialyzer checks.
+· Make etorrent_core non-dependent on cascadae.
+	This should not be the case.
+· GH/jlouis/etorrent#136
+  · This makes the release construction fail
+· GH/jlouis/etorrent_core#4
+  · Make the code compile again
+	This requires a step where the cascadae code gets updated.
+	We have prodded Mr. Uvarov about it.
+· Fix the following error: GH/jlouis/etorrent_core#6
+	(etorrent@127.0.0.1)1> 2012-10-14 18:04:22.347 [error] <0.1072.0>
+	CRASH REPORT Process <0.1072.0> with 0 neighbours exited with reason:
+		no case clause matching
+			{error,{file_error,"/Users/jlouis/etorrent/spool/fast_resume_state.dets",
+                   	  enoent}}
+ 		in etorrent_fast_resume:init/1 line 107 in gen_server:init_it/6 line 328
+· Test etorrent
+	· First step: Compile Erlang for Myrddraal
+	· Second step: Compile etorrent on Myrddraal so we have a working beast.
+	· Third step: Test etorrent on Myrddraal, make sure the correct hole is punched in the FW
+	  There is a hole in the firewall.
+	  
