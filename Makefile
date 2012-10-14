@@ -55,8 +55,9 @@ dialyzer:
 	@echo Use "'make build_plt'" to build PLT prior to using this target.
 	@echo
 	@sleep 1
-	dialyzer -Wno_return --plt $(COMBO_PLT) deps/*/ebin | \
-	    fgrep -v -f ./dialyzer.ignore-warnings
+	dialyzer -Wno_return --plt $(COMBO_PLT) \
+		deps/etorrent_core/ebin | \
+			fgrep -v -f ./dialyzer.ignore-warnings
 
 cleanplt:
 	@echo
