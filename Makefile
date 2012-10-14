@@ -57,7 +57,7 @@ dialyzer:
 	@sleep 1
 	dialyzer -Wno_return --plt $(COMBO_PLT) \
 		deps/etorrent_core/ebin | \
-			fgrep -v -f ./dialyzer.ignore-warnings
+			grep -F -v -f ./dialyzer.ignore-warnings
 
 cleanplt:
 	@echo
