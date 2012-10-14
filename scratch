@@ -47,6 +47,16 @@ TODO:
 	  entirely without any mention of it. Otherwise we failed decoupling.
 · Ranch support, see GH/jlouis/etorrent_core#5
 · Wrong supervisor kills, see GH/jlouis/etorrent_core#7
+· Use more canonical t() types.
+· Kill renames of types where possible.
+	I don't like to have to dig for a type. I'd much rather know the exact type
+	at the beginning. Writing it down is not much more space and it is way more
+	readable if you have the full type right there. It is easier to read and it is easier
+	to understand what is going on then.
+	
+	Aliasing and renames does not help readability. It lowers it. The sacrifice is that
+	it takes longer to write the code, but I don't care that much about that. Code is read
+	more than it is written anyway.
 
 DONE:
 
