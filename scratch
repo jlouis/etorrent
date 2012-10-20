@@ -5,7 +5,14 @@ http://github.com/jlouis/etorrent_core
 http://localhost:8888 - Normal old-style webui code here.
 
 TODO:
-
+· Wrong supervisor kills, see GH/jlouis/etorrent_core#7
+  There is a problem when closing down which generates crashes. This is wrong:
+	2012-10-14 19:57:10.201 [error] <0.26576.0>
+		Supervisor etorrent_peer_sup had child receiver started with
+		  etorrent_peer_recv:start_link(1, #Port<0.5987>) at <0.26579.0> exit with reason normal
+		  in context child_terminated
+  The solution to this problem is to avoid having a supervisor called `etorrent_peer_sup` for it. We should
+  just use the peer_control process to manage the subtree.
 · GH/jlouis/etorrent_core#8 Fix the problem when completing a torrent:
 	  {{badarg,[{etorrent_peerstate,choked,2,
 	                              [{file,"src/etorrent_peerstate.erl"},
@@ -20,7 +27,17 @@ TODO:
 	          {proc_lib,init_p_do_apply,3,[{file,"proc_lib.erl"},{line,227}]}]},
 	 [{gen_server,terminate,6,[{file,"gen_server.erl"},{line,747}]},
 	  {proc_lib,init_p_do_apply,3,[{file,"proc_lib.erl"},{line,227}]}]}
+· Split off the DHT code after looking a bit at it.
+	It does not look like the DHT code should be part of etorrent directly. Rather,
+	I'd like it to be separate and then take it from there.
 
+	So, it turns out that we can probably move it out. You need to grab dht_state and
+	dht_net and pick them outside as well as their general supervisor. The dht_tracker
+	code is actually the etorrent-proper parts.
+	
+	But it also means we must redefine the code such that configuration becomes injected
+	rather than asked for. This way, it should be possible to maintain a proper, separate,
+	application which maintains the state of the DHT tables for us inside the application.
 · Test single-torrent download of something
 	This ought to work if we try it out. Let us try with an ubuntu image:
 	
@@ -46,7 +63,6 @@ TODO:
 	  Make etorrent non-dependent on cascadae. We should be able to build a release
 	  entirely without any mention of it. Otherwise we failed decoupling.
 · Ranch support, see GH/jlouis/etorrent_core#5
-· Wrong supervisor kills, see GH/jlouis/etorrent_core#7
 · Use more canonical t() types.
 · Kill renames of types where possible.
 	I don't like to have to dig for a type. I'd much rather know the exact type
