@@ -5,14 +5,6 @@ http://github.com/jlouis/etorrent_core
 http://localhost:8888 - Normal old-style webui code here.
 
 TODO:
-· Wrong supervisor kills, see GH/jlouis/etorrent_core#7
-  There is a problem when closing down which generates crashes. This is wrong:
-	2012-10-14 19:57:10.201 [error] <0.26576.0>
-		Supervisor etorrent_peer_sup had child receiver started with
-		  etorrent_peer_recv:start_link(1, #Port<0.5987>) at <0.26579.0> exit with reason normal
-		  in context child_terminated
-  The solution to this problem is to avoid having a supervisor called `etorrent_peer_sup` for it. We should
-  just use the peer_control process to manage the subtree.
 · GH/jlouis/etorrent_core#8 Fix the problem when completing a torrent:
 	  {{badarg,[{etorrent_peerstate,choked,2,
 	                              [{file,"src/etorrent_peerstate.erl"},
@@ -27,6 +19,117 @@ TODO:
 	          {proc_lib,init_p_do_apply,3,[{file,"proc_lib.erl"},{line,227}]}]},
 	 [{gen_server,terminate,6,[{file,"gen_server.erl"},{line,747}]},
 	  {proc_lib,init_p_do_apply,3,[{file,"proc_lib.erl"},{line,227}]}]}
+· Investigate the following crash report:
+
+	The problem here seems to manifest itself just after a switch to endgame mode. This is
+	peculiar since it looks like this endgame mode switch messes up the current state.
+
+	2012-10-20 17:52:16 =CRASH REPORT====
+	  crasher:
+	    initial call: etorrent_peer_control:init/1
+	    pid: <0.3631.0>
+	    registered_name: []
+	    exception exit:
+		{{noproc,
+		     {gen_server,call,
+		         ['<0.1110.0>',
+		          {chunk,
+		              {request,15,
+		                  {pieceset,1385,undefined,
+		                      «255,255,255,255,255,255,255,255,255,255,255,255,255,
+		                        255,255,255,255,255,255,255,255,255,255,255,255,255,
+		                        255,255,255,255,255,255,255,255,255,255,255,255,255,
+		                        255,255,255,255,255,255,255,255,255,255,255,255,255,
+		                        255,255,255,255,255,255,255,255,255,255,255,255,255,
+		                        255,255,255,255,255,255,255,255,255,255,255,255,255,
+		                        255,255,255,255,255,255,255,255,255,255,255,255,255,
+		                        255,255,255,255,255,255,255,255,255,255,255,255,255,
+		                        255,255,255,255,255,255,255,255,255,255,255,255,255,
+		                        255,255,255,255,255,255,255,255,255,255,255,255,255,
+		                        255,255,255,255,255,255,255,255,255,255,255,255,255,
+		                        255,255,255,255,255,255,255,255,255,255,255,255,255,
+		                        255,255,255,255,255,255,255,255,255,255,255,255,255,
+		                        255,255,255,255,1:1»},
+		                  '<0.3631.0>'}}]}},
+		 [{gen_server,terminate,6,[{file,"gen_server.erl"},{line,747}]},
+		  {proc_lib,init_p_do_apply,3,[{file,"proc_lib.erl"},{line,227}]}]}
+
+	    ancestors: [<0.1113.0>,<0.1099.0>,etorrent_torrent_pool,etorrent_sup,<0.1064.0>]
+	    messages: []
+	    links: [<0.3632.0>,<0.3634.0>,<0.1113.0>]
+	    dictionary: [{random_seed,{1351,20413,9934}}]
+	    trap_exit: false
+	    status: running
+	    heap_size: 2584
+	    stack_size: 24
+	    reductions: 177260
+	  neighbours:
+	    neighbour:
+		[{pid,'<0.3634.0>'},
+		 {registered_name,[]},
+		 {initial_call,{etorrent_peer_send,init,['Argument__1']}},
+		 {current_function,{gen_server,loop,6}},
+		 {ancestors,['<0.3631.0>','<0.1113.0>','<0.1099.0>',etorrent_torrent_pool,
+		             etorrent_sup,'<0.1064.0>']},
+		 {messages,[]},
+		 {links,['<0.3631.0>']},
+		 {dictionary,[]},
+		 {trap_exit,false},
+		 {status,waiting},
+		 {heap_size,610},
+		 {stack_size,9},
+		 {reductions,210956}]
+
+	    neighbour:
+		[{pid,'<0.3632.0>'},
+		 {registered_name,[]},
+		 {initial_call,{etorrent_peer_recv,init,['Argument__1']}},
+		 {current_function,{gen_server,loop,6}},
+		 {ancestors,['<0.3631.0>','<0.1113.0>','<0.1099.0>',etorrent_torrent_pool,
+		             etorrent_sup,'<0.1064.0>']},
+		 {messages,[]},
+		 {links,['<0.3631.0>','<0.10258.19>','#Port<0.5951>']},
+		 {dictionary,[]},
+		 {trap_exit,false},
+		 {status,waiting},
+		 {heap_size,1597},
+		 {stack_size,9},
+		 {reductions,486780}]
+
+	2012-10-20 17:52:16 =SUPERVISOR REPORT====
+	     Supervisor: {<0.1113.0>,etorrent_peer_pool}
+	     Context:    child_terminated
+
+	     Reason:     {noproc,
+				    {gen_server,call,
+				        ['<0.1110.0>',
+				         {chunk,
+				             {request,15,
+				                 {pieceset,1385,undefined,
+				                     «255,255,255,255,255,255,255,255,255,255,255,255,255,
+				                       255,255,255,255,255,255,255,255,255,255,255,255,255,
+				                       255,255,255,255,255,255,255,255,255,255,255,255,255,
+				                       255,255,255,255,255,255,255,255,255,255,255,255,255,
+				                       255,255,255,255,255,255,255,255,255,255,255,255,255,
+				                       255,255,255,255,255,255,255,255,255,255,255,255,255,
+				                       255,255,255,255,255,255,255,255,255,255,255,255,255,
+				                       255,255,255,255,255,255,255,255,255,255,255,255,255,
+				                       255,255,255,255,255,255,255,255,255,255,255,255,255,
+				                       255,255,255,255,255,255,255,255,255,255,255,255,255,
+				                       255,255,255,255,255,255,255,255,255,255,255,255,255,
+				                       255,255,255,255,255,255,255,255,255,255,255,255,255,
+				                       255,255,255,255,255,255,255,255,255,255,255,255,255,
+				                       255,255,255,255,1:1»},
+				                 '<0.3631.0>'}}]}}
+
+	     Offender:   
+		[{pid,'<0.3631.0>'},
+		 {name,child},
+		 {mfargs,{etorrent_peer_control,start_link,undefined}},
+		 {restart_type,temporary},
+		 {shutdown,5000},
+		 {child_type,worker}]
+
 · Split off the DHT code after looking a bit at it.
 	It does not look like the DHT code should be part of etorrent directly. Rather,
 	I'd like it to be separate and then take it from there.
@@ -75,6 +178,14 @@ TODO:
 	more than it is written anyway.
 
 DONE:
+· Wrong supervisor kills, see GH/jlouis/etorrent_core#7
+  There is a problem when closing down which generates crashes. This is wrong:
+	2012-10-14 19:57:10.201 [error] <0.26576.0>
+		Supervisor etorrent_peer_sup had child receiver started with
+		  etorrent_peer_recv:start_link(1, #Port<0.5987>) at <0.26579.0> exit with reason normal
+		  in context child_terminated
+  The solution to this problem is to avoid having a supervisor called `etorrent_peer_sup` for it. We should
+  just use the peer_control process to manage the subtree.
 
 · Make new dialyzer code part of etorrent
 · Make it possible to dialyze etorrent again.

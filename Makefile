@@ -59,7 +59,7 @@ dialyzer:
 		deps/etorrent_core/ebin | \
 			grep -F -v -f ./dialyzer.ignore-warnings
 
-cleanplt:
+clean_plt:
 	@echo
 	@echo "Are you sure?  It takes about 1/2 hour to re-build."
 	@echo Deleting $(COMBO_PLT) in 5 seconds.
@@ -140,9 +140,9 @@ tabs:
 	@$(TABFILES)
 
 
-.PHONY: all compile tags dialyze run tracer clean \
+.PHONY: all compile tags dialyzer run tracer clean \
 	 deps eunit rel xref dev console console-perf graph \
-	 test testclean common_test ct_setup
+	 test testclean common_test ct_setup build_plt check_plt clean_plt
 
 %.png: %.dot
 	dot -Tpng $< > $@
