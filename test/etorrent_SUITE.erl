@@ -43,6 +43,14 @@ init_per_suite(Config) ->
     Pid = start_opentracker(Directory),
     {ok, SeedNode} = test_server:start_node('seeder', slave, []),
     {ok, LeechNode} = test_server:start_node('leecher', slave, []),
+    rpc:call(SeedNode,  code, set_path, [code:get_path()]),
+    rpc:call(LeechNode, code, set_path, [code:get_path()]),
+    %% Start SASL before lager, because SASL will set its error_handler
+    %% otherwise.
+%   ok = rpc:call(SeedNode,  application, start, [sasl]),
+%   ok = rpc:call(LeechNode, application, start, [sasl]),
+%   ok = rpc:call(SeedNode,  lager, start, []),
+%   ok = rpc:call(LeechNode, lager, start, []),
     [{tracker_port, Pid},
      {leech_node, LeechNode},
      {seed_node, SeedNode} | Config].
@@ -61,8 +69,12 @@ end_locations(Config) ->
     PrivDir = ?config(priv_dir, Config),
 
     %% Remove locations
+    %% 
+    ok = file:delete(filename:join([PrivDir, ?ET_WORK_DIR, ?TESTFILE30M])),
     ok = file:del_dir(filename:join([PrivDir, ?ET_WORK_DIR])),
 
+    io:format(user, "WTF: ~p~n", 
+              [file:list_dir(filename:join([PrivDir, ?TR_WORK_DIR]))]),
     ok = file:delete(filename:join([PrivDir, ?TR_WORK_DIR, "settings.json"])),
     ok = file:del_dir(filename:join([PrivDir, ?TR_WORK_DIR])).
 
@@ -71,6 +83,7 @@ init_locations(Config) ->
     %% Setup locations that some of the test cases use
     DataDir = ?config(data_dir, Config),
     PrivDir = ?config(priv_dir, Config),
+    io:format(user, "PrivDir: ~p~n", [PrivDir]),
 
     %% Create locations
     file:make_dir(filename:join([PrivDir, ?ET_WORK_DIR])),
@@ -145,10 +158,14 @@ init_per_testcase(_Case, Config) ->
     Config.
 
 end_per_testcase(leech_transmission, Config) ->
+    {_Ref, Pid} = ?config(transmission_port, Config),
+    stop_transmission(Config, Pid),
     stop_leecher(Config),
     ?line ok = file:delete(?config(tr_file, Config)),
     ?line ok = file:delete(?config(et_leech_file, Config));
 end_per_testcase(seed_transmission, Config) ->
+    {_Ref, Pid} = ?config(transmission_port, Config),
+    stop_transmission(Config, Pid),
     stop_seeder(Config),
     ?line ok = file:delete(?config(tr_file, Config));
 end_per_testcase(seed_leech, Config) ->
@@ -186,7 +203,8 @@ leech_configuration(Config, CConf, PrivDir, DownloadSuffix) ->
 %% Tests
 %% ----------------------------------------------------------------------
 groups() ->
-    [{main_group, [shuffle], [seed_transmission, seed_leech, leech_transmission]}].
+%   [{main_group, [shuffle], [seed_transmission, seed_leech, leech_transmission]}].
+    [{main_group, [], [leech_transmission]}].
 
 all() ->
     [{group, main_group}].
@@ -194,26 +212,30 @@ all() ->
 seed_transmission() ->
     [{require, common_conf, etorrent_common_config}].
 
+%% Etorrent => Transmission
 seed_transmission(Config) ->
+    io:format(user, "~n======START SEED TRANSMISSION TEST CASE======~n", []),
     {Ref, Pid} = ?config(transmission_port, Config),
     receive
-	{Ref, done} -> ok = stop_transmission(Config, Pid)
+	{Ref, done} -> ok
     after
 	120*1000 -> exit(timeout_error)
     end,
     sha1_file(?config(seed_file, Config))
 	=:= sha1_file(?config(tr_file, Config)).
 
+%% Transmission => Etorrent
 leech_transmission() ->
     [{require, common_conf, etorrent_common_config}].
 
 leech_transmission(Config) ->
+    io:format(user, "~n======START LEECH TRANSMISSION TEST CASE======~n", []),
     {Ref, Pid} = {make_ref(), self()},
     ok = rpc:call(?config(leech_node, Config),
 		  etorrent, start,
 		  [?config(seed_torrent, Config), {Ref, Pid}]),
     receive
-	{Ref, done} -> ok = stop_transmission(Config, Pid)
+	{Ref, done} -> ok
     after
 	120*1000 -> exit(timeout_error)
     end,
@@ -224,6 +246,7 @@ seed_leech() ->
     [{require, common_conf, etorrent_common_config}].
 
 seed_leech(Config) ->
+    io:format(user, "~n======START SEED AND LEECHING TEST CASE======~n", []),
     {Ref, Pid} = {make_ref(), self()},
     ok = rpc:call(?config(leech_node, Config),
 		  etorrent, start,
@@ -277,6 +300,7 @@ stop_transmission(Config, Pid) when is_pid(Pid) ->
     ok.
 
 end_transmission_locations(Config) ->
+    io:format(user, "Cleaning transmission directory~n", []),
     PrivDir = ?config(priv_dir, Config),
 
     %% Transmission dir needs some help:
