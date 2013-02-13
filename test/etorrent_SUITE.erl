@@ -65,21 +65,20 @@ end_per_suite(Config) ->
     ok.
 
 end_locations(Config) ->
+    io:format(user, "Cleaning private directory~n", []),
     DataDir = ?config(data_dir, Config),
     PrivDir = ?config(priv_dir, Config),
 
     %% Remove locations
     %% 
-    ok = file:delete(filename:join([PrivDir, ?ET_WORK_DIR, ?TESTFILE30M])),
-    ok = file:del_dir(filename:join([PrivDir, ?ET_WORK_DIR])),
-
-    io:format(user, "WTF: ~p~n", 
-              [file:list_dir(filename:join([PrivDir, ?TR_WORK_DIR]))]),
+%   ok = file:delete(filename:join([PrivDir, ?ET_WORK_DIR, ?TESTFILE30M])),
+    ok = del_dir(filename:join([PrivDir, ?ET_WORK_DIR])),
     ok = file:delete(filename:join([PrivDir, ?TR_WORK_DIR, "settings.json"])),
-    ok = file:del_dir(filename:join([PrivDir, ?TR_WORK_DIR])).
+    ok = del_dir(filename:join([PrivDir, ?TR_WORK_DIR])).
 
 
 init_locations(Config) ->
+    io:format(user, "Init locations~n", []),
     %% Setup locations that some of the test cases use
     DataDir = ?config(data_dir, Config),
     PrivDir = ?config(priv_dir, Config),
@@ -203,8 +202,7 @@ leech_configuration(Config, CConf, PrivDir, DownloadSuffix) ->
 %% Tests
 %% ----------------------------------------------------------------------
 groups() ->
-%   [{main_group, [shuffle], [seed_transmission, seed_leech, leech_transmission]}].
-    [{main_group, [], [leech_transmission]}].
+    [{main_group, [shuffle], [seed_transmission, seed_leech, leech_transmission]}].
 
 all() ->
     [{group, main_group}].
@@ -230,6 +228,7 @@ leech_transmission() ->
 
 leech_transmission(Config) ->
     io:format(user, "~n======START LEECH TRANSMISSION TEST CASE======~n", []),
+    %% Set callback and wait for torrent completion.
     {Ref, Pid} = {make_ref(), self()},
     ok = rpc:call(?config(leech_node, Config),
 		  etorrent, start,
@@ -278,6 +277,7 @@ quote(Str) ->
     lists:concat(["'", Str, "'"]).
 
 start_transmission(DataDir, DownDir, Torrent) ->
+    io:format(user, "Start transmission~n", []),
     ToSpawn = ["run_transmission-cli.sh ", quote(Torrent),
 	       " -w ", quote(DownDir),
 	       " -g ", quote(DownDir),
@@ -290,29 +290,26 @@ start_transmission(DataDir, DownDir, Torrent) ->
 			Port = open_port(
 				 {spawn, Spawn},
 				 [stream, binary, eof]),
-			transmission_loop(Port, Ref, Self, <<>>)
+            transmission_loop(Port, Ref, Self, <<>>, <<>>)
 		     end),
     {Ref, Pid}.
 
 stop_transmission(Config, Pid) when is_pid(Pid) ->
+    io:format(user, "Stop transmission~n", []),
     Pid ! close,
     end_transmission_locations(Config),
     ok.
 
 end_transmission_locations(Config) ->
-    io:format(user, "Cleaning transmission directory~n", []),
+    io:format(user, "Cleaning transmission directory.", []),
     PrivDir = ?config(priv_dir, Config),
 
     %% Transmission dir needs some help:
-    ok = file:delete(filename:join([PrivDir, ?TR_WORK_DIR, "resume",
-				    "test_file_30M.random.ce953adee1a11f83.resume"])),
-    ok = file:del_dir(filename:join([PrivDir, ?TR_WORK_DIR, "resume"])),
+    ok = del_dir_r(filename:join([PrivDir, ?TR_WORK_DIR, "resume"])),
+    ok = del_dir_r(filename:join([PrivDir, ?TR_WORK_DIR, "torrents"])),
+    ok = del_dir_r(filename:join([PrivDir, ?TR_WORK_DIR, "blocklists"])),
+    ok.
 
-    ok = file:delete(filename:join([PrivDir, ?TR_WORK_DIR, "torrents",
-				    "test_file_30M.random.ce953adee1a11f83.torrent"])),
-    ok = file:del_dir(filename:join([PrivDir, ?TR_WORK_DIR, "torrents"])),
-
-    ok = file:del_dir(filename:join([PrivDir, ?TR_WORK_DIR, "blocklists"])).
 
 stop_leecher(Config) ->
     ok = rpc:call(?config(leech_node, Config), etorrent, stop_app, []),
@@ -327,28 +324,31 @@ stop_seeder(Config) ->
     ok = file:delete(?config(seed_fast_resume, Config)).
 
 transmission_complete_criterion() ->
-    "Seeding, uploading to".
+%   "Seeding, uploading to".
+    "Verifying local files (0.00%, 100.00% valid)".
 
-transmission_loop(Port, Ref, ReturnPid, OldBin) ->
+transmission_loop(Port, Ref, ReturnPid, OldBin, OldLine) ->
     case binary:split(OldBin, [<<"\r">>, <<"\n">>]) of
 	[OnePart] ->
 	    receive
 		{Port, {data, Data}} ->
 		    transmission_loop(Port, Ref, ReturnPid, <<OnePart/binary,
-							      Data/binary>>);
+							      Data/binary>>, OldLine);
 		close ->
 		    port_close(Port);
 		M ->
 		    error_logger:error_report([received_unknown_msg, M]),
-		    transmission_loop(Port, Ref, ReturnPid, OnePart)
+		    transmission_loop(Port, Ref, ReturnPid, OnePart, OldLine)
 	    end;
 	[L, Rest] ->
+        %% Is it a different line? than show it.
+        [io:format(user, "TRANS: ~s.~n", [L]) || L =/= OldLine],
 	    case string:str(binary_to_list(L), transmission_complete_criterion()) of
 		0 -> ok;
 		N when is_integer(N) ->
 		    ReturnPid ! {Ref, done}
 	    end,
-	    transmission_loop(Port, Ref, ReturnPid, Rest)
+	    transmission_loop(Port, Ref, ReturnPid, Rest, L)
     end.
 
 stop_opentracker(Pid) ->
@@ -392,3 +392,20 @@ sha1_round(_FD, eof, Ctx) ->
 sha1_round(FD, {ok, Data}, Ctx) ->
     sha1_round(FD, file:read(FD, 1024*1024), crypto:sha_update(Ctx, Data)).
 
+
+
+del_dir_r(DirName) ->
+    {ok, SubFiles} = file:list_dir(DirName),
+    [file:delete(X) || X <- SubFiles],
+    del_dir(DirName).
+
+del_dir(DirName) ->
+    io:format(user, "Try to delete directory ~p.~n", [DirName]),
+    case file:del_dir(DirName) of
+        {error,eexist} ->
+            io:format(user, "Directory is not empty. Content: ~n~p~n", 
+                      [element(2, file:list_dir(DirName))]),
+            ok;
+        ok ->
+            ok
+    end.
