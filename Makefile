@@ -38,15 +38,13 @@ build_plt: compile
 		deps/bullet/ebin\
 		deps/cascadae/ebin\
 		deps/cowboy/ebin\
-		deps/edown/ebin\
 		deps/etorrent_core/ebin\
-		deps/gen_leader/ebin\
 		deps/gproc/ebin\
 		deps/jsx/ebin\
 		deps/lager/ebin\
-		deps/lhttpc/ebin\
 		deps/meck/ebin\
 		deps/proper/ebin\
+		deps/upnp/ebin\
 		deps/rlimit/ebin
 
 dialyzer:
@@ -55,7 +53,7 @@ dialyzer:
 	@echo Use "'make build_plt'" to build PLT prior to using this target.
 	@echo
 	@sleep 1
-	dialyzer -Wno_return --plt $(COMBO_PLT) \
+	dialyzer --fullpath --plt $(COMBO_PLT) \
 		deps/etorrent_core/ebin | \
 			grep -F -v -f ./dialyzer.ignore-warnings
 
