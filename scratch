@@ -11,8 +11,12 @@ TODO:
     Push!
   · DONE Push change to etorrent_core since it refers cascadae as part of it. We then need this dependency.
   · DONE Push changes to etorrent which will fix stuff.
-  · Make it possible to run tests from etorrent release again.
-  
+  · DONE Make it possible to run tests from etorrent release again.
+  · DONE We need common_test in the release.
+ 
+· [GH/jlouis/etorrent#143] make test investigation
+  · Investigate what happens on a `make test'
+
 · GH/jlouis/etorrent_core#8 Fix the problem when completing a torrent:
 	  {{badarg,[{etorrent_peerstate,choked,2,
 	                              [{file,"src/etorrent_peerstate.erl"},
