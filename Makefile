@@ -103,10 +103,10 @@ ct_setup: rel
 	echo ${ct_src_dir}
 	mkdir -p logs
 # Unpack stuff.
-	rm -fr rel/etorrent/lib/etorrent-*/ebin
-	cd rel/etorrent/lib && unzip -o etorrent-*.ez
+	rm -fr rel/etorrent/lib/etorrent_core-*/ebin
+	cd rel/etorrent/lib && unzip -o etorrent_core-*.ez
 	mkdir -p ${ct_src_dir} && \
-		cp -r apps/etorrent/src/* ${ct_src_dir}
+		cp -r deps/etorrent_core/src/* ${ct_src_dir}
 # Run cover test
 common_test: ct_setup rel
 	${CT_RUN} -spec etorrent_test.spec
