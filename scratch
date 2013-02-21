@@ -5,6 +5,18 @@ http://github.com/jlouis/etorrent_core
 http://localhost:8888 - Normal old-style webui code here.
 
 TODO:
+· [GH/jlouis/etorrent#140] Fix the release!
+  · DONE Push change to the upnp repository: It needs ranch!
+    fork!
+    Push!
+  · DONE Push change to etorrent_core since it refers cascadae as part of it. We then need this dependency.
+  · DONE Push changes to etorrent which will fix stuff.
+  · DONE Make it possible to run tests from etorrent release again.
+  · DONE We need common_test in the release.
+ 
+· [GH/jlouis/etorrent#143] make test investigation
+  · Investigate what happens on a `make test'
+
 · GH/jlouis/etorrent_core#8 Fix the problem when completing a torrent:
 	  {{badarg,[{etorrent_peerstate,choked,2,
 	                              [{file,"src/etorrent_peerstate.erl"},
@@ -213,3 +225,8 @@ DONE:
 	· Third step: Test etorrent on Myrddraal, make sure the correct hole is punched in the FW
 	  There is a hole in the firewall.
 	  
+
+
+DONE
+----------------------------------------------------
+
