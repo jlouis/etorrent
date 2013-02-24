@@ -26,6 +26,7 @@ webui/*.log
 /documentation/sup_tree_20110106.png
 .eunit/
 /etorrent_dialyzer.plt
+log/*
 # Common tests
 /test/etorrent_SUITE_data/test_file_30M.random
 /test/etorrent_SUITE_data/test_file_30M.random.torrent
