@@ -8,6 +8,7 @@
 	 init_per_testcase/2, end_per_testcase/2]).
 
 -export([seed_leech/0, seed_leech/1,
+     slow_seed_leech/0, slow_seed_leech/1,
 	 seed_transmission/0, seed_transmission/1,
 	 leech_transmission/0, leech_transmission/1,
      bep9/0, bep9/1,
@@ -55,13 +56,15 @@ init_per_suite(Config) ->
     {ok, SeedNode} = test_server:start_node('seeder', slave, []),
     {ok, LeechNode} = test_server:start_node('leecher', slave, []),
     {ok, MiddlemanNode} = test_server:start_node('middleman', slave, []),
+    {ok, SlowSeedNode} = test_server:start_node('slow_seeder', slave, []),
     [prepare_node(Node)
-     || Node <- [SeedNode, LeechNode, MiddlemanNode]],
+     || Node <- [SeedNode, LeechNode, MiddlemanNode, SlowSeedNode]],
     [{info_hash, TorrentIH},
      {dir_info_hash, DirTorrentIH},
      {tracker_port, Pid},
      {leech_node, LeechNode},
      {middleman_node, MiddlemanNode},
+     {slow_seed_node, SlowSeedNode},
      {seed_node, SeedNode} | Config].
 
 
@@ -102,6 +105,7 @@ init_locations(Config) ->
     SeedTorrent = filename:join([DataDir, ?TESTFILE30M ++ ".torrent"]),
     SeedFile    = filename:join([DataDir, ?TESTFILE30M]),
     SeedFastResume = filename:join([PrivDir, "seed_fast_resume"]),
+    SlowSeedFastResume = filename:join([PrivDir, "slow_seed_fast_resume"]),
 
     DirTorrent = filename:join([DataDir, ?TESTDIR2x30M ++ ".torrent"]),
 
@@ -129,6 +133,7 @@ init_locations(Config) ->
      {leech_file,    LeechFile},
      {leech_fast_resume, LeechFastResume},
      {middleman_fast_resume, InterFastResume},
+     {slow_seed_fast_resume, SlowSeedFastResume},
      {et_work_dir, EtorrentWorkDir},
      {et_leech_file, EtorrentLeechFile},
      {et_leech_dir, EtorrentLeechDir},
@@ -150,6 +155,14 @@ spawn_seeder(Config) ->
 				    ?config(priv_dir, Config),
 				    ?config(data_dir, Config)),
     ok = rpc:call(?config(seed_node, Config), etorrent, start_app, [SeedConfig]).
+
+spawn_slow_seeder(Config) ->
+    CommonConf = ct:get_config(common_conf),
+    SeedConfig = slow_seed_configuration(Config,
+				    CommonConf,
+				    ?config(priv_dir, Config),
+				    ?config(data_dir, Config)),
+    ok = rpc:call(?config(slow_seed_node, Config), etorrent, start_app, [SeedConfig]).
 
 spawn_middleman(Config) ->
     CommonConf = ct:get_config(common_conf),
@@ -179,6 +192,11 @@ init_per_testcase(seed_leech, Config) ->
     spawn_seeder(Config),
     spawn_leecher(Config),
     Config;
+init_per_testcase(slow_seed_leech, Config) ->
+    spawn_seeder(Config),
+    spawn_slow_seeder(Config),
+    spawn_leecher(Config),
+    Config;
 init_per_testcase(partial_downloading, Config) ->
     spawn_seeder(Config),
     spawn_leecher(Config),
@@ -204,6 +222,11 @@ end_per_testcase(seed_transmission, Config) ->
     ?line ok = file:delete(?config(tr_file, Config));
 end_per_testcase(seed_leech, Config) ->
     stop_seeder(Config),
+    stop_leecher(Config),
+    ?line ok = file:delete(?config(et_leech_file, Config));
+end_per_testcase(slow_seed_leech, Config) ->
+    stop_seeder(Config),
+    stop_slow_seeder(Config),
     stop_leecher(Config),
     ?line ok = file:delete(?config(et_leech_file, Config));
 end_per_testcase(partial_downloading, Config) ->
@@ -233,7 +256,8 @@ seed_configuration(Config, CConf, PrivDir, DataDir) ->
      {download_dir, DataDir},
      {logger_dir, PrivDir},
      {logger_fname, "seed_etorrent.log"},
-     {fast_resume_file, ?config(seed_fast_resume, Config)} | CConf].
+     {fast_resume_file, ?config(seed_fast_resume, Config)},
+     {max_upload_rate, 1000} | CConf].
 
 leech_configuration(Config, CConf, PrivDir, DownloadSuffix) ->
     [{listen_ip, {127,0,0,3}},
@@ -259,11 +283,25 @@ middleman_configuration(Config, CConf, PrivDir, DownloadSuffix) ->
      {logger_fname, "middleman_etorrent.log"},
      {fast_resume_file, ?config(middleman_fast_resume, Config)} | CConf].
 
+slow_seed_configuration(Config, CConf, PrivDir, DataDir) ->
+    [{listen_ip, {127,0,0,5}},
+     {port, 1771 },
+     {udp_port, 1772 },
+     {dht_port, 1773 },
+     {dht_state, filename:join([PrivDir, "slow_seeder_state.persistent"])},
+     {dir, DataDir},
+     {download_dir, DataDir},
+     {logger_dir, PrivDir},
+     {logger_fname, "slow_seed_etorrent.log"},
+     {fast_resume_file, ?config(slow_seed_fast_resume, Config)},
+     {max_upload_rate, 1000} | CConf].
+
 %% Tests
 %% ----------------------------------------------------------------------
 groups() ->
-    Tests = [seed_transmission, seed_leech, leech_transmission, bep9,
-             partial_downloading],
+%   Tests = [seed_transmission, seed_leech, leech_transmission, bep9,
+%            partial_downloading, slow_seed_leech],
+    Tests = [slow_seed_leech],
     [{main_group, [shuffle], Tests}].
 
 all() ->
@@ -312,6 +350,55 @@ seed_leech(Config) ->
     ok = rpc:call(?config(leech_node, Config),
 		  etorrent, start,
 		  [?config(seed_torrent, Config), {Ref, Pid}]),
+    receive
+	{Ref, done} -> ok
+    after
+	120*1000 -> exit(timeout_error)
+    end,
+    sha1_file(?config(et_leech_file, Config))
+	=:= sha1_file(?config(seed_file, Config)).
+
+slow_seed_leech() ->
+    [{require, common_conf, etorrent_common_config}].
+
+%% The idea of this test is to get request on a chunk from the slow seeder and
+%% to chunk this server.
+%% After that, the leecher will wait in engame mode for a long period of time.
+%% Warning: this test CAN be passed accidently.
+slow_seed_leech(Config) ->
+    io:format(user, "~n======START SLOW SEED AND LEECHING TEST CASE======~n", []),
+    {Ref, Pid} = {make_ref(), self()},
+
+    SlowSeedNode = ?config(slow_seed_node, Config),
+    LeechNode = ?config(leech_node, Config),
+    HexIH = ?config(info_hash, Config),
+    IntIH = list_to_integer(HexIH, 16),
+    BinIH = <<IntIH:160>>,
+    {value, Props} = rpc:call(SlowSeedNode, etorrent_table, get_torrent,
+                              [{infohash, BinIH}]),
+    SSTorrentID = proplists:get_value(id, Props),
+    io:format(user, "TorrentID on the slow_seed node is ~p.~n", [SSTorrentID]),
+
+    ok = rpc:call(LeechNode,
+		  etorrent, start,
+		  [?config(seed_torrent, Config), {Ref, Pid}]),
+
+    {value, Props1} = rpc:call(LeechNode, etorrent_table, get_torrent,
+                              [{infohash, BinIH}]),
+    LTorrentID = proplists:get_value(id, Props1),
+    io:format(user, "TorrentID on the leech node is ~p.~n", [LTorrentID]),
+
+    wait_torrent(LeechNode, LTorrentID),
+    wait_progress(LeechNode, LTorrentID, 50),
+    io:format(user, "50% are downloaded.", []),
+
+    PeerPids = [_,_] = 
+    rpc:call(SlowSeedNode, etorrent_peer_control, lookup_peers,
+                              [SSTorrentID]),
+
+    [rpc:call(SlowSeedNode, etorrent_peer_control, choke,
+              [PeerPid]) || PeerPid <- PeerPids],
+
     receive
 	{Ref, done} -> ok
     after
@@ -475,6 +562,12 @@ stop_seeder(Config) ->
 				    "seed_etorrent.log"])),
     ok = file:delete(?config(seed_fast_resume, Config)).
 
+stop_slow_seeder(Config) ->
+    ok = rpc:call(?config(slow_seed_node, Config), etorrent, stop_app, []),
+    ok = file:delete(filename:join([?config(priv_dir, Config),
+				    "slow_seed_etorrent.log"])),
+    ok = file:delete(?config(slow_seed_fast_resume, Config)).
+
 stop_middleman(Config) ->
     ok = rpc:call(?config(middleman_node, Config), etorrent, stop_app, []),
     ok = file:delete(filename:join([?config(priv_dir, Config),
@@ -614,7 +707,25 @@ prepare_node(Node) ->
 
 lager_handlers(NodeName) ->
 %   [Node|_] = string:tokens(atom_to_list(NodeName), "@"),
-    Node   = [hd(atom_to_list(NodeName))],
+    [A,B|_] = atom_to_list(NodeName),
+    Node   = [A,B],
     Format = [Node, "> ", time, " [",severity,"] ", message, "\n"],
     [{lager_console_backend, [debug, {lager_default_formatter, Format}]}].
+
+
+wait_torrent(Node, TorrentID) ->
+    case rpc:call(Node, etorrent_torrent, lookup, [TorrentID]) of
+        {value, _Props} ->
+            ok;
+        not_found -> timer:sleep(500), wait_torrent(Node, TorrentID)
+    end.
+
+
+wait_progress(Node, TorrentID, Percent) ->
+    {value, Props} = rpc:call(Node, etorrent_torrent, lookup, [TorrentID]),
+    Left = proplists:get_value(left, Props),
+    Want = proplists:get_value(wanted, Props),
+    if (Want - Left) / Want * 100 >= Percent -> ok;
+        true -> timer:sleep(500), wait_progress(Node, TorrentID, Percent)
+    end.
 
