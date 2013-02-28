@@ -59,8 +59,12 @@ init_per_suite(Config) ->
     {ok, SlowSeedNode} = test_server:start_node('slow_seeder', slave, []),
     [prepare_node(Node)
      || Node <- [SeedNode, LeechNode, MiddlemanNode, SlowSeedNode]],
-    [{info_hash, TorrentIH},
-     {dir_info_hash, DirTorrentIH},
+    [{info_hash_hex, TorrentIH},
+     {dir_info_hash_hex, DirTorrentIH},
+     {info_hash_int, hex_to_int_hash(TorrentIH)},
+     {dir_info_hash_int, hex_to_int_hash(DirTorrentIH)},
+     {info_hash_bin, hex_to_bin_hash(TorrentIH)},
+     {dir_info_hash_bin, hex_to_bin_hash(DirTorrentIH)},
      {tracker_port, Pid},
      {leech_node, LeechNode},
      {middleman_node, MiddlemanNode},
@@ -239,7 +243,6 @@ end_per_testcase(bep9, Config) ->
     stop_middleman(Config),
     file:delete(?config(bep9_torrent, Config)),
     ?line ok = file:delete(?config(et_leech_file, Config)),
-%   ?line ok = file:delete(?config(et_leech_file, Config)),
     ok;
 end_per_testcase(_Case, _Config) ->
     ok.
@@ -299,9 +302,8 @@ slow_seed_configuration(Config, CConf, PrivDir, DataDir) ->
 %% Tests
 %% ----------------------------------------------------------------------
 groups() ->
-%   Tests = [seed_transmission, seed_leech, leech_transmission, bep9,
-%            partial_downloading, slow_seed_leech],
-    Tests = [slow_seed_leech],
+    Tests = [seed_transmission, seed_leech, leech_transmission, bep9,
+             partial_downloading, slow_seed_leech],
     [{main_group, [shuffle], Tests}].
 
 all() ->
@@ -371,26 +373,20 @@ slow_seed_leech(Config) ->
 
     SlowSeedNode = ?config(slow_seed_node, Config),
     LeechNode = ?config(leech_node, Config),
-    HexIH = ?config(info_hash, Config),
-    IntIH = list_to_integer(HexIH, 16),
-    BinIH = <<IntIH:160>>,
-    {value, Props} = rpc:call(SlowSeedNode, etorrent_table, get_torrent,
-                              [{infohash, BinIH}]),
-    SSTorrentID = proplists:get_value(id, Props),
+    BinIH = ?config(info_hash_bin, Config),
+    SSTorrentID = wait_torrent_registration(SlowSeedNode, BinIH),
     io:format(user, "TorrentID on the slow_seed node is ~p.~n", [SSTorrentID]),
 
     ok = rpc:call(LeechNode,
 		  etorrent, start,
 		  [?config(seed_torrent, Config), {Ref, Pid}]),
 
-    {value, Props1} = rpc:call(LeechNode, etorrent_table, get_torrent,
-                              [{infohash, BinIH}]),
-    LTorrentID = proplists:get_value(id, Props1),
+    LTorrentID = wait_torrent_registration(LeechNode, BinIH),
     io:format(user, "TorrentID on the leech node is ~p.~n", [LTorrentID]),
 
     wait_torrent(LeechNode, LTorrentID),
     wait_progress(LeechNode, LTorrentID, 50),
-    io:format(user, "50% are downloaded.", []),
+    io:format(user, "50% were downloaded.~n", []),
 
     PeerPids = [_,_] = 
     rpc:call(SlowSeedNode, etorrent_peer_control, lookup_peers,
@@ -417,12 +413,8 @@ partial_downloading(Config) ->
     ok = rpc:call(LeechNode,
 		  etorrent, start,
 		  [?config(dir_torrent, Config), {Ref, Pid}]),
-    HexIH = ?config(dir_info_hash, Config),
-    IntIH = list_to_integer(HexIH, 16),
-    BinIH = <<IntIH:160>>,
-    {value, Props} = rpc:call(LeechNode, etorrent_table, get_torrent,
-                              [{infohash, BinIH}]),
-    TorrentID = proplists:get_value(id, Props),
+    BinIH = ?config(dir_info_hash_bin, Config),
+    TorrentID = wait_torrent_registration(LeechNode, BinIH),
     io:format(user, "TorrentID on the leech node is ~p.~n", [TorrentID]),
     rpc:call(LeechNode, etorrent_torrent_ctl, skip_file, [TorrentID, 2]),
     receive
@@ -437,9 +429,9 @@ bep9() ->
 
 bep9(Config) ->
     io:format(user, "~n======START SEED AND LEECHING BEP-9 TEST CASE======~n", []),
-    IH = ?config(info_hash, Config),
-    error_logger:info_msg("Infohash is ~p.", [IH]),
-    IntegerIH = literal_infohash_to_integer(IH),
+    HexIH = ?config(info_hash_hex, Config),
+    IntIH = ?config(info_hash_int, Config),
+    error_logger:info_msg("Infohash is ~p.", [HexIH]),
 
     LeechNode     = ?config(leech_node, Config),
     SeedNode      = ?config(seed_node, Config),
@@ -477,7 +469,7 @@ bep9(Config) ->
     %%      135913333321098763031843201180023309283666486509),
     {ok, MetaInfo} = rpc:call(LeechNode,
     	  etorrent_magnet, download_meta_info,
-    	  [LeechPeerId, IntegerIH]),
+    	  [LeechPeerId, IntIH]),
     io:format(user, "Metainfo:~n~p~n", [MetaInfo]),
 
     %% Create a torrent file
@@ -690,10 +682,6 @@ del_dir(DirName) ->
     end.
 
 
-literal_infohash_to_integer(X) ->
-    list_to_integer(X, 16).
-
-
 prepare_node(Node) ->
     io:format(user, "Prepare node ~p.~n", [Node]),
     rpc:call(Node, code, set_path, [code:get_path()]),
@@ -721,6 +709,17 @@ wait_torrent(Node, TorrentID) ->
     end.
 
 
+%% Returns torrent_id.
+wait_torrent_registration(Node, BinIH) ->
+    case rpc:call(Node, etorrent_table, get_torrent, [{infohash, BinIH}]) of
+        {value, Props} ->
+            proplists:get_value(id, Props);
+        not_found -> timer:sleep(500), wait_torrent_registration(Node, BinIH)
+    end.
+
+
+-spec wait_progress(Node::node(), TorrentID::non_neg_integer(),
+                    Percent:: 0 .. 100) -> ok.
 wait_progress(Node, TorrentID, Percent) ->
     {value, Props} = rpc:call(Node, etorrent_torrent, lookup, [TorrentID]),
     Left = proplists:get_value(left, Props),
@@ -728,4 +727,13 @@ wait_progress(Node, TorrentID, Percent) ->
     if (Want - Left) / Want * 100 >= Percent -> ok;
         true -> timer:sleep(500), wait_progress(Node, TorrentID, Percent)
     end.
+
+hex_to_bin_hash(HexIH) ->
+    IntIH = list_to_integer(HexIH, 16),
+    <<IntIH:160>>.
+
+%% Convert a literal infohash to integer.
+hex_to_int_hash(X) ->
+    list_to_integer(X, 16).
+
 
