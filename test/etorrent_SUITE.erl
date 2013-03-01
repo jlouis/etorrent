@@ -302,8 +302,9 @@ slow_seed_configuration(Config, CConf, PrivDir, DataDir) ->
 %% Tests
 %% ----------------------------------------------------------------------
 groups() ->
-    Tests = [seed_transmission, seed_leech, leech_transmission, bep9,
-             partial_downloading, slow_seed_leech],
+%   Tests = [seed_transmission, seed_leech, leech_transmission, bep9,
+%            partial_downloading, slow_seed_leech],
+    Tests = [slow_seed_leech],
     [{main_group, [shuffle], Tests}].
 
 all() ->
@@ -388,12 +389,15 @@ slow_seed_leech(Config) ->
     wait_progress(LeechNode, LTorrentID, 50),
     io:format(user, "50% were downloaded.~n", []),
 
-    PeerPids = [_,_] = 
-    rpc:call(SlowSeedNode, etorrent_peer_control, lookup_peers,
-                              [SSTorrentID]),
+    %% Leech peer control process on the slow node.
+    LeechId   = rpc:call(LeechNode, etorrent_ctl, local_peer_id, []),
+    SSPeerPid = wait_peer_registration(SlowSeedNode, SSTorrentID, LeechId),
+    io:format(user, "Peer registered.~n", []),
+    true = is_fast_peer(SlowSeedNode, SSPeerPid),
+    io:format(user, "Using fast protocol.~n", []),
 
-    [rpc:call(SlowSeedNode, etorrent_peer_control, choke,
-              [PeerPid]) || PeerPid <- PeerPids],
+    choke_in_the_middle(SlowSeedNode, SSPeerPid),
+    io:format(user, "Leecher choked.~n", []),
 
     receive
 	{Ref, done} -> ok
@@ -717,6 +721,22 @@ wait_torrent_registration(Node, BinIH) ->
         not_found -> timer:sleep(500), wait_torrent_registration(Node, BinIH)
     end.
 
+%% Returns pid of the conrol process.
+wait_peer_registration(Node, TorrentID, PeerId) ->
+    case rpc:call(Node, etorrent_table, get_peer, [{peer_id, TorrentID, PeerId}]) of
+        {value, Props} ->
+            proplists:get_value(pid, Props);
+        not_found ->
+            timer:sleep(500), wait_peer_registration(Node, TorrentID, PeerId)
+    end.
+
+is_fast_peer(Node, PeerPid) ->
+    case rpc:call(Node, etorrent_table, get_peer, [{pid, PeerPid}]) of
+        {value, Props} ->
+            proplists:get_bool(is_fast, Props)
+    end.
+
+
 
 -spec wait_progress(Node::node(), TorrentID::non_neg_integer(),
                     Percent:: 0 .. 100) -> ok.
@@ -737,3 +757,15 @@ hex_to_int_hash(X) ->
     list_to_integer(X, 16).
 
 
+%% Block the remote peer, while having unserved requests from it.
+choke_in_the_middle(Node, PeerPid) ->
+    rpc:call(Node, etorrent_peer_control, choke, [PeerPid]),
+    HasRequests = rpc:call(Node, etorrent_peer_control,
+                           has_incoming_requests, [PeerPid]),
+    case HasRequests of
+        true -> ok;
+        false ->
+            rpc:call(Node, etorrent_peer_control, unchoke, [PeerPid]),
+            timer:sleep(100),
+            choke_in_the_middle(Node, PeerPid)
+    end.
