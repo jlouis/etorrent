@@ -302,9 +302,8 @@ slow_seed_configuration(Config, CConf, PrivDir, DataDir) ->
 %% Tests
 %% ----------------------------------------------------------------------
 groups() ->
-%   Tests = [seed_transmission, seed_leech, leech_transmission, bep9,
-%            partial_downloading, slow_seed_leech],
-    Tests = [slow_seed_leech],
+    Tests = [seed_transmission, seed_leech, leech_transmission, bep9,
+             partial_downloading, slow_seed_leech],
     [{main_group, [shuffle], Tests}].
 
 all() ->
@@ -476,11 +475,19 @@ bep9(Config) ->
     	  [LeechPeerId, IntIH]),
     io:format(user, "Metainfo:~n~p~n", [MetaInfo]),
 
+    {ok, DecodedMetainfo} = rpc:call(LeechNode,
+    	  etorrent_bcoding, decode,
+    	  [MetaInfo]),
+
     %% Create a torrent file
     TorrentFileName = ?config(bep9_torrent, Config),
-    ok = rpc:call(LeechNode,
-    	  etorrent_magnet, save_meta_info,
-    	  [MetaInfo, TorrentFileName]),
+    {ok, DecodedTorrent} = rpc:call(LeechNode,
+          etorrent_magnet, build_torrent,
+          [DecodedMetainfo, []]),
+
+    {ok, TorrentFileName} = rpc:call(LeechNode,
+          etorrent_magnet, write_torrent,
+          [TorrentFileName, DecodedTorrent]),
 
 
     %% Try to download using a trackerless torrent file
