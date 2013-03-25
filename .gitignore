@@ -28,9 +28,6 @@ webui/*.log
 /etorrent_dialyzer.plt
 log/*
 # Common tests
-/test/etorrent_SUITE_data/test_file_30M.random
-/test/etorrent_SUITE_data/test_file_30M.random.torrent
-test/etorrent_SUITE_data/test_dir_2x30M
-test/etorrent_SUITE_data/test_dir_2x30M.torrent
+/test/etorrent_SUITE_data/autogen
 /logs/*
 test/etorrent_SUITE_data/log/

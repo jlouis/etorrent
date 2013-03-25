@@ -36,18 +36,17 @@ init_per_suite(Config) ->
     AutoDir = filename:join(Directory, autogen),
     file:make_dir(AutoDir),
     Fn            = filename:join([AutoDir, "file30m.random"]),
-    Dir           = filename:join([AutoDir, "dir2x30m.random"]),
+    Dir           = filename:join([AutoDir, "dir2x30m"]),
     DumpTorrentFn = filename:join([AutoDir, "file30m-trackerless.torrent"]),
     HTTPTorrentFn = filename:join([AutoDir, "file30m-http.torrent"]),
     UDPTorrentFn  = filename:join([AutoDir, "file30m-udp.torrent"]),
     DirTorrentFn  = filename:join([AutoDir, "dir2x30m.torrent"]),
     ensure_random_file(Fn),
-    ensure_random_file(Fn),
     ensure_random_dir(Dir),
     ensure_torrent_file(Fn,  HTTPTorrentFn, "http"),
     ensure_torrent_file(Fn,  UDPTorrentFn,  "udp"),
     ensure_torrent_file(Dir, DirTorrentFn,  "http"),
-    ensure_torrent_file(Dir, DumpTorrentFn),
+    ensure_torrent_file(Fn, DumpTorrentFn),
     %% Literal infohash.
     %% Both HTTP and UDP versions have the same infohash.
     {ok, TorrentIH}    = etorrent_dotdir:info_hash(HTTPTorrentFn),
@@ -106,11 +105,11 @@ init_per_testcase(leech_transmission, Config) ->
     Node      = ?config(leech_node, Config),
     Fn        = ?config(data_filename, Config),
     %% Transmission's working directory
-    TranDir = file:join([PrivDir, transmission]),
+    TranDir = filename:join([PrivDir, transmission]),
     NodeDir = filename:join([PrivDir,  leech]),
     BaseFn  = filename:basename(Fn),
-    SrcFn   = filename:join([NodeDir, "downloads", BaseFn]),
-    DestFn  = filename:join([TranDir, BaseFn]),
+    SrcFn   = filename:join([TranDir, BaseFn]),
+    DestFn  = filename:join([NodeDir, "downloads", BaseFn]),
     file:make_dir(TranDir),
     {ok, _} = copy_to(filename:join([DataDir, "transmission", "settings.json"]),
 	             	  TranDir),
@@ -126,7 +125,6 @@ init_per_testcase(leech_transmission, Config) ->
      {dest_filename, DestFn},
      {transmission_dir, TranDir},
      {node_dir, NodeDir} | Config];
-
 init_per_testcase(seed_transmission, Config) ->
     %% etorrent => transmission
     PrivDir   = ?config(priv_dir, Config),
@@ -135,11 +133,11 @@ init_per_testcase(seed_transmission, Config) ->
     Node      = ?config(seed_node, Config),
     Fn        = ?config(data_filename, Config),
     %% Transmission's working directory
-    TranDir = file:join([PrivDir, transmission]),
+    TranDir = filename:join([PrivDir, transmission]),
     NodeDir = filename:join([PrivDir,  seed]),
     BaseFn  = filename:basename(Fn),
-    DestFn  = filename:join([NodeDir, "downloads", BaseFn]),
-    SrcFn   = filename:join([TranDir, BaseFn]),
+    SrcFn   = filename:join([NodeDir, "downloads", BaseFn]),
+    DestFn  = filename:join([TranDir, BaseFn]),
     file:make_dir(TranDir),
     {ok, _} = copy_to(filename:join([DataDir, "transmission", "settings.json"]),
 	             	  TranDir),
@@ -158,7 +156,6 @@ init_per_testcase(seed_transmission, Config) ->
      {dest_filename, DestFn},
      {transmission_dir, TranDir},
      {node_dir, NodeDir} | Config];
-
 init_per_testcase(seed_leech, Config) ->
     %% etorrent => etorrent
     PrivDir   = ?config(priv_dir, Config),
@@ -186,7 +183,6 @@ init_per_testcase(seed_leech, Config) ->
      {dest_filename, DestFn},
      {seed_node_dir, SNodeDir},
      {leech_node_dir, LNodeDir} | Config];
-
 init_per_testcase(choked_seed_leech, Config) ->
     %% etorrent => etorrent, one seed is choked (refuse to work).
     PrivDir   = ?config(priv_dir, Config),
@@ -375,11 +371,11 @@ create_standard_directory_layout(Dir) ->
     ok.
 
 clean_standard_directory_layout(Dir) ->
-    del_dir_r(Dir),
+    del_r(Dir),
     ok.
 
 clean_transmission_directory(Dir) ->
-    del_dir_r(Dir),
+    del_r(Dir),
     ok.
     
     
@@ -419,9 +415,10 @@ choked_seed_configuration(Dir) ->
 %% Tests
 %% ----------------------------------------------------------------------
 groups() ->
-    Tests = [seed_transmission, seed_leech, leech_transmission, bep9,
+    Tests = [leech_transmission, seed_transmission, seed_leech, bep9,
              partial_downloading, choked_seed_leech],
-    [{main_group, [shuffle], Tests}].
+%   [{main_group, [shuffle], Tests}].
+    [{main_group, [], Tests}].
 
 all() ->
     [{group, main_group}].
@@ -451,14 +448,14 @@ leech_transmission(Config) ->
     {Ref, Pid} = {make_ref(), self()},
     {ok, _} = rpc:call(?config(leech_node, Config),
 		  etorrent, start,
-		  [?config(seed_torrent, Config), {Ref, Pid}]),
+		  [?config(http_torrent_file, Config), {Ref, Pid}]),
     receive
 	{Ref, done} -> ok
     after
 	120*1000 -> exit(timeout_error)
     end,
-    sha1_file(?config(tr_file, Config))
-	=:= sha1_file(?config(et_leech_file, Config)).
+    sha1_file(?config(src_filename, Config))
+	=:= sha1_file(?config(dest_filename, Config)).
 
 seed_leech() ->
     [{require, common_conf, etorrent_common_config}].
@@ -468,7 +465,7 @@ seed_leech(Config) ->
     {Ref, Pid} = {make_ref(), self()},
     {ok, _} = rpc:call(?config(leech_node, Config),
 		  etorrent, start,
-		  [?config(seed_torrent, Config), {Ref, Pid}]),
+		  [?config(http_torrent_file, Config), {Ref, Pid}]),
     receive
 	{Ref, done} -> ok
     after
@@ -496,7 +493,7 @@ choked_seed_leech(Config) ->
 
     {ok, LTorrentID} = rpc:call(LeechNode,
 		  etorrent, start,
-		  [?config(seed_torrent, Config), {Ref, Pid}]),
+		  [?config(http_torrent_file, Config), {Ref, Pid}]),
 
     io:format("TorrentID on the leech node is ~p.~n", [LTorrentID]),
 
@@ -531,7 +528,7 @@ partial_downloading(Config) ->
     LeechNode = ?config(leech_node, Config),
     {ok, TorrentID} = rpc:call(LeechNode,
 		  etorrent, start,
-		  [?config(dir_torrent, Config), {Ref, Pid}]),
+		  [?config(dir_torrent_file, Config), {Ref, Pid}]),
     io:format("TorrentID on the leech node is ~p.~n", [TorrentID]),
     rpc:call(LeechNode, etorrent_torrent_ctl, skip_file, [TorrentID, 2]),
     receive
@@ -729,21 +726,15 @@ sha1_round(FD, {ok, Data}, Ctx) ->
     sha1_round(FD, file:read(FD, 1024*1024), crypto:sha_update(Ctx, Data)).
 
 
+del_dir_r(Dir) ->
+    {ok, Files} = file:list_dir(Dir),
+    [ok = del_r(filename:join(Dir, X)) || X <- Files],
+    ok.
 
-del_dir_r(DirName) ->
-    {ok, SubFiles} = file:list_dir(DirName),
-    [file:delete(filename:join(DirName, X)) || X <- SubFiles],
-    del_dir(DirName).
-
-del_dir(DirName) ->
-    io:format("Try to delete directory ~p.~n", [DirName]),
-    case file:del_dir(DirName) of
-        {error,eexist} ->
-            io:format("Directory is not empty. Content: ~n~p~n", 
-                      [element(2, file:list_dir(DirName))]),
-            ok;
-        ok ->
-            ok
+del_r(File) ->
+    case filelib:is_dir(File) of
+        true  -> del_dir_r(File);
+        false -> file:delete(File)
     end.
 
 
@@ -772,7 +763,9 @@ lager_handlers(NodeName) ->
 %   [Node|_] = string:tokens(atom_to_list(NodeName), "@"),
     [A,B|_] = atom_to_list(NodeName),
     Node   = [A,B],
-    Format = [Node, "> ", time, " [",severity,"] ", message, "\n"],
+    Format = [Node, "> ", "[", time, "] [",severity,"] ",
+              {pid, [pid, " "], ""}, {module, [module, ":", line, " "], ""},
+              message, "\n"],
     [{lager_console_backend, [debug, {lager_default_formatter, Format}]}].
 
 
@@ -845,7 +838,7 @@ choke_in_the_middle(Node, PeerPid) ->
 copy_to(SrcFileName, DestDirName) ->
     SrcBaseName = filename:basename(SrcFileName),
     DestFileName = filename:join([DestDirName, SrcBaseName]),
-    file:copy(SrcBaseName, DestFileName).
+    file:copy(SrcFileName, DestFileName).
 
 
 %% Recursively copy directories
