@@ -60,7 +60,6 @@ init_per_suite(Config) ->
     %% Run logger on the slave nodes
     [prepare_node(Node)
      || Node <- [SeedNode, LeechNode, MiddlemanNode, ChokedSeedNode]],
-    TrackerPid = start_opentracker(Directory),
     [{trackerless_torrent_file, DumpTorrentFn},
      {http_torrent_file, HTTPTorrentFn},
      {udp_torrent_file, UDPTorrentFn},
@@ -79,8 +78,6 @@ init_per_suite(Config) ->
      {info_hash_bin, hex_to_bin_hash(TorrentIH)},
      {dir_info_hash_bin, hex_to_bin_hash(DirTorrentIH)},
 
-     {tracker_port, TrackerPid},
-
      {leech_node, LeechNode},
      {middleman_node, MiddlemanNode},
      {choked_seed_node, ChokedSeedNode},
@@ -89,12 +86,14 @@ init_per_suite(Config) ->
 
 
 end_per_suite(Config) ->
-    Pid = ?config(tracker_port, Config),
     LN = ?config(leech_node, Config),
     SN = ?config(seed_node, Config),
-    stop_opentracker(Pid),
+    MN = ?config(middleman_node, Config),
+    CN = ?config(choked_seed_node, Config),
     test_server:stop_node(SN),
     test_server:stop_node(LN),
+    test_server:stop_node(MN),
+    test_server:stop_node(CN),
     ok.
 
 
@@ -105,6 +104,7 @@ init_per_testcase(leech_transmission, Config) ->
     TorrentFn = ?config(http_torrent_file, Config),
     Node      = ?config(leech_node, Config),
     Fn        = ?config(data_filename, Config),
+    TrackerPid = start_opentracker(DataDir),
     %% Transmission's working directory
     TranDir = filename:join([PrivDir, transmission]),
     NodeDir = filename:join([PrivDir,  leech]),
@@ -121,7 +121,8 @@ init_per_testcase(leech_transmission, Config) ->
     create_standard_directory_layout(NodeDir),
     NodeConf = leech_configuration(NodeDir),
     start_app(Node, NodeConf), %% Start etorrent on the leecher node
-    [{transmission_port, {Ref, Pid}},
+    [{tracker_port, TrackerPid},
+     {transmission_port, {Ref, Pid}},
      {src_filename, SrcFn},
      {dest_filename, DestFn},
      {transmission_dir, TranDir},
@@ -133,6 +134,7 @@ init_per_testcase(seed_transmission, Config) ->
     TorrentFn = ?config(http_torrent_file, Config),
     Node      = ?config(seed_node, Config),
     Fn        = ?config(data_filename, Config),
+    TrackerPid = start_opentracker(DataDir),
     %% Transmission's working directory
     TranDir = filename:join([PrivDir, transmission]),
     NodeDir = filename:join([PrivDir,  seed]),
@@ -152,7 +154,8 @@ init_per_testcase(seed_transmission, Config) ->
     %% Copy torrent-file to torrents-directory
     {ok, _} = copy_to(TorrentFn, ?config(dir, NodeConf)),
     start_app(Node, NodeConf),
-    [{transmission_port, {Ref, Pid}},
+    [{tracker_port, TrackerPid},
+     {transmission_port, {Ref, Pid}},
      {src_filename, SrcFn},
      {dest_filename, DestFn},
      {transmission_dir, TranDir},
@@ -160,11 +163,13 @@ init_per_testcase(seed_transmission, Config) ->
 init_per_testcase(seed_leech, Config) ->
     %% etorrent => etorrent
     PrivDir   = ?config(priv_dir, Config),
+    DataDir   = ?config(data_dir, Config),
     TorrentFn = ?config(http_torrent_file, Config),
     SNode     = ?config(seed_node, Config),
     LNode     = ?config(leech_node, Config),
     Fn        = ?config(data_filename, Config),
     %% Transmission's working directory
+    TrackerPid = start_opentracker(DataDir),
     SNodeDir = filename:join([PrivDir,  seed]),
     LNodeDir = filename:join([PrivDir,  leech]),
     BaseFn   = filename:basename(Fn),
@@ -180,17 +185,20 @@ init_per_testcase(seed_leech, Config) ->
     {ok, _} = copy_to(TorrentFn, ?config(dir, SNodeConf)),
     start_app(SNode, SNodeConf),
     start_app(LNode, LNodeConf),
-    [{src_filename, SrcFn},
+    [{tracker_port, TrackerPid},
+     {src_filename, SrcFn},
      {dest_filename, DestFn},
      {seed_node_dir, SNodeDir},
      {leech_node_dir, LNodeDir} | Config];
 init_per_testcase(udp_seed_leech, Config) ->
     %% etorrent => etorrent
     PrivDir   = ?config(priv_dir, Config),
+    DataDir   = ?config(data_dir, Config),
     TorrentFn = ?config(udp_torrent_file, Config),
     SNode     = ?config(seed_node, Config),
     LNode     = ?config(leech_node, Config),
     Fn        = ?config(data_filename, Config),
+    TrackerPid = start_opentracker(DataDir),
     %% Transmission's working directory
     SNodeDir = filename:join([PrivDir,  seed]),
     LNodeDir = filename:join([PrivDir,  leech]),
@@ -207,18 +215,22 @@ init_per_testcase(udp_seed_leech, Config) ->
     {ok, _} = copy_to(TorrentFn, ?config(dir, SNodeConf)),
     start_app(SNode, SNodeConf),
     start_app(LNode, LNodeConf),
-    [{src_filename, SrcFn},
+    ok = ct:sleep({seconds, 5}),
+    [{tracker_port, TrackerPid},
+     {src_filename, SrcFn},
      {dest_filename, DestFn},
      {seed_node_dir, SNodeDir},
      {leech_node_dir, LNodeDir} | Config];
 init_per_testcase(choked_seed_leech, Config) ->
     %% etorrent => etorrent, one seed is choked (refuse to work).
     PrivDir   = ?config(priv_dir, Config),
+    DataDir   = ?config(data_dir, Config),
     TorrentFn = ?config(http_torrent_file, Config),
     SNode     = ?config(seed_node, Config),
     CNode     = ?config(choked_seed_node, Config),
     LNode     = ?config(leech_node, Config),
     Fn        = ?config(data_filename, Config),
+    TrackerPid = start_opentracker(DataDir),
     %% Transmission's working directory
     SNodeDir = filename:join([PrivDir,  seed]),
     LNodeDir = filename:join([PrivDir,  leech]),
@@ -242,7 +254,9 @@ init_per_testcase(choked_seed_leech, Config) ->
     start_app(CNode, CNodeConf),
     start_app(SNode, SNodeConf),
     start_app(LNode, LNodeConf),
-    [{src_filename, SSrcFn},
+    ok = ct:sleep({seconds, 5}),
+    [{tracker_port, TrackerPid},
+     {src_filename, SSrcFn},
      {dest_filename, DestFn},
      {choked_seed_node_dir, CNodeDir},
      {seed_node_dir, SNodeDir},
@@ -251,10 +265,12 @@ init_per_testcase(partial_downloading, Config) ->
     %% etorrent => etorrent
     %% passing a part of a directory
     PrivDir   = ?config(priv_dir, Config),
-    TorrentFn = ?config(http_torrent_file, Config),
+    DataDir   = ?config(data_dir, Config),
+    TorrentFn = ?config(dir_torrent_file, Config),
     SNode     = ?config(seed_node, Config),
     LNode     = ?config(leech_node, Config),
     Fn        = ?config(data_dirname, Config),
+    TrackerPid = start_opentracker(DataDir),
     %% Transmission's working directory
     SNodeDir = filename:join([PrivDir,  seed]),
     LNodeDir = filename:join([PrivDir,  leech]),
@@ -271,7 +287,9 @@ init_per_testcase(partial_downloading, Config) ->
     {ok, _} = copy_to(TorrentFn, ?config(dir, SNodeConf)),
     start_app(SNode, SNodeConf),
     start_app(LNode, LNodeConf),
-    [{src_filename, SrcFn},
+    ok = ct:sleep({seconds, 5}),
+    [{tracker_port, TrackerPid},
+     {src_filename, SrcFn},
      {dest_filename, DestFn},
      {seed_node_dir, SNodeDir},
      {leech_node_dir, LNodeDir} | Config];
@@ -294,9 +312,9 @@ init_per_testcase(bep9, Config) ->
     create_standard_directory_layout(SNodeDir),
     create_standard_directory_layout(LNodeDir),
     create_standard_directory_layout(MNodeDir),
-    SNodeConf = seed_configuration(SNodeDir),
-    LNodeConf = leech_configuration(LNodeDir),
-    MNodeConf = middleman_configuration(MNodeDir),
+    SNodeConf = enable_dht(seed_configuration(SNodeDir)),
+    LNodeConf = enable_dht(leech_configuration(LNodeDir)),
+    MNodeConf = enable_dht(middleman_configuration(MNodeDir)),
     %% Feed etorrent the file to work with
     {ok, _} = file:copy(Fn, SrcFn),
     %% Copy torrent-file to torrents-directory
@@ -308,9 +326,8 @@ init_per_testcase(bep9, Config) ->
      {dest_filename, DestFn},
      {middleman_node_dir, MNodeDir},
      {seed_node_dir, SNodeDir},
-     {leech_node_dir, LNodeDir} | Config];
-init_per_testcase(_Case, Config) ->
-    Config.
+     {leech_node_dir, LNodeDir} | Config].
+
 
 end_per_testcase(leech_transmission, Config) ->
     LNode       = ?config(leech_node, Config),
@@ -321,6 +338,7 @@ end_per_testcase(leech_transmission, Config) ->
     stop_app(LNode),
     clean_transmission_directory(TranDir),
     clean_standard_directory_layout(NodeDir),
+    stop_opentracker(?config(tracker_port, Config)),
     ok;
 end_per_testcase(seed_transmission, Config) ->
     SNode       = ?config(seed_node, Config),
@@ -331,6 +349,7 @@ end_per_testcase(seed_transmission, Config) ->
     stop_app(SNode),
     clean_transmission_directory(TranDir),
     clean_standard_directory_layout(NodeDir),
+    stop_opentracker(?config(tracker_port, Config)),
     ok;
 end_per_testcase(seed_leech, Config) ->
     SNode       = ?config(seed_node, Config),
@@ -341,6 +360,7 @@ end_per_testcase(seed_leech, Config) ->
     stop_app(LNode),
     clean_standard_directory_layout(SNodeDir),
     clean_standard_directory_layout(LNodeDir),
+    stop_opentracker(?config(tracker_port, Config)),
     ok;
 end_per_testcase(udp_seed_leech, Config) ->
     SNode       = ?config(seed_node, Config),
@@ -351,6 +371,7 @@ end_per_testcase(udp_seed_leech, Config) ->
     stop_app(LNode),
     clean_standard_directory_layout(SNodeDir),
     clean_standard_directory_layout(LNodeDir),
+    stop_opentracker(?config(tracker_port, Config)),
     ok;
 end_per_testcase(choked_seed_leech, Config) ->
     SNode       = ?config(seed_node, Config),
@@ -365,6 +386,7 @@ end_per_testcase(choked_seed_leech, Config) ->
     clean_standard_directory_layout(SNodeDir),
     clean_standard_directory_layout(LNodeDir),
     clean_standard_directory_layout(CNodeDir),
+    stop_opentracker(?config(tracker_port, Config)),
     ok;
 end_per_testcase(partial_downloading, Config) ->
     SNode       = ?config(seed_node, Config),
@@ -375,6 +397,7 @@ end_per_testcase(partial_downloading, Config) ->
     stop_app(LNode),
     clean_standard_directory_layout(SNodeDir),
     clean_standard_directory_layout(LNodeDir),
+    stop_opentracker(?config(tracker_port, Config)),
     ok;
 end_per_testcase(bep9, Config) ->
     SNode       = ?config(seed_node, Config),
@@ -389,8 +412,6 @@ end_per_testcase(bep9, Config) ->
     clean_standard_directory_layout(SNodeDir),
     clean_standard_directory_layout(LNodeDir),
     clean_standard_directory_layout(MNodeDir),
-    ok;
-end_per_testcase(_Case, _Config) ->
     ok.
 
 %% Configuration
@@ -404,9 +425,13 @@ standard_directory_layout(Dir, AppConf) ->
      {logger_fname, "leech_etorrent.log"} | AppConf].
 
 create_standard_directory_layout(Dir) ->
-    [filelib:ensure_dir(filename:join([Dir, SubDir, x]))
-     || SubDir <- ["torrents", "downloads", "spool", "logs"]],
-    ok.
+    case filelib:is_dir(Dir) of
+        true -> ct:pal("Directory exists ~ts.", [Dir]), error(dir_exists);
+        false ->
+            [filelib:ensure_dir(filename:join([Dir, SubDir, x]))
+             || SubDir <- ["torrents", "downloads", "spool", "logs"]],
+            ok
+    end.
 
 clean_standard_directory_layout(Dir) ->
     del_r(Dir),
@@ -431,7 +456,8 @@ leech_configuration(Dir) ->
     [{listen_ip, {127,0,0,3}},
      {port, 1751 },
      {udp_port, 1752 },
-     {dht_port, 1753 }
+     {dht_port, 1753 },
+     {max_download_rate, 1000}
     | standard_directory_layout(Dir, ct:get_config(common_conf))].
 
 middleman_configuration(Dir) ->
@@ -453,8 +479,8 @@ choked_seed_configuration(Dir) ->
 %% Tests
 %% ----------------------------------------------------------------------
 groups() ->
-    Tests = [udp_seed_leech, leech_transmission, seed_transmission, seed_leech, bep9,
-             partial_downloading, choked_seed_leech],
+    Tests = [seed_transmission, leech_transmission, seed_leech,
+             partial_downloading, udp_seed_leech, bep9, choked_seed_leech],
 %   [{main_group, [shuffle], Tests}].
     [{main_group, [], Tests}].
 
@@ -781,16 +807,18 @@ sha1_round(FD, {ok, Data}, Ctx) ->
     sha1_round(FD, file:read(FD, 1024*1024), crypto:sha_update(Ctx, Data)).
 
 
-del_dir_r(Dir) ->
-    {ok, Files} = file:list_dir(Dir),
-    [ok = del_r(filename:join(Dir, X)) || X <- Files],
-    ok.
-
 del_r(File) ->
     case filelib:is_dir(File) of
         true  -> del_dir_r(File);
         false -> file:delete(File)
     end.
+
+del_dir_r(Dir) ->
+    {ok, Files} = file:list_dir(Dir),
+    [ok = del_r(filename:join(Dir, X)) || X <- Files],
+    %% Delete the empty directory
+    ok = file:del_dir(Dir),
+    ok.
 
 
 prepare_node(Node) ->
@@ -927,3 +955,8 @@ stop_app(Node) ->
 
 start_app(Node, AppConfig) ->
     ok = rpc:call(Node, etorrent, start_app, [AppConfig]).
+
+
+enable_dht(AppConfig) ->
+    [{dht, true}|AppConfig].
+
