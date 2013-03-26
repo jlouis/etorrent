@@ -8,6 +8,7 @@
 	 init_per_testcase/2, end_per_testcase/2]).
 
 -export([seed_leech/0, seed_leech/1,
+     udp_seed_leech/0, udp_seed_leech/1,
      choked_seed_leech/0, choked_seed_leech/1,
 	 seed_transmission/0, seed_transmission/1,
 	 leech_transmission/0, leech_transmission/1,
@@ -183,6 +184,33 @@ init_per_testcase(seed_leech, Config) ->
      {dest_filename, DestFn},
      {seed_node_dir, SNodeDir},
      {leech_node_dir, LNodeDir} | Config];
+init_per_testcase(udp_seed_leech, Config) ->
+    %% etorrent => etorrent
+    PrivDir   = ?config(priv_dir, Config),
+    TorrentFn = ?config(udp_torrent_file, Config),
+    SNode     = ?config(seed_node, Config),
+    LNode     = ?config(leech_node, Config),
+    Fn        = ?config(data_filename, Config),
+    %% Transmission's working directory
+    SNodeDir = filename:join([PrivDir,  seed]),
+    LNodeDir = filename:join([PrivDir,  leech]),
+    BaseFn   = filename:basename(Fn),
+    SrcFn    = filename:join([SNodeDir, "downloads", BaseFn]),
+    DestFn   = filename:join([LNodeDir, "downloads", BaseFn]),
+    create_standard_directory_layout(SNodeDir),
+    create_standard_directory_layout(LNodeDir),
+    SNodeConf = seed_configuration(SNodeDir),
+    LNodeConf = leech_configuration(LNodeDir),
+    %% Feed etorrent the file to work with
+    {ok, _} = file:copy(Fn, SrcFn),
+    %% Copy torrent-file to torrents-directory
+    {ok, _} = copy_to(TorrentFn, ?config(dir, SNodeConf)),
+    start_app(SNode, SNodeConf),
+    start_app(LNode, LNodeConf),
+    [{src_filename, SrcFn},
+     {dest_filename, DestFn},
+     {seed_node_dir, SNodeDir},
+     {leech_node_dir, LNodeDir} | Config];
 init_per_testcase(choked_seed_leech, Config) ->
     %% etorrent => etorrent, one seed is choked (refuse to work).
     PrivDir   = ?config(priv_dir, Config),
@@ -314,6 +342,16 @@ end_per_testcase(seed_leech, Config) ->
     clean_standard_directory_layout(SNodeDir),
     clean_standard_directory_layout(LNodeDir),
     ok;
+end_per_testcase(udp_seed_leech, Config) ->
+    SNode       = ?config(seed_node, Config),
+    LNode       = ?config(leech_node, Config),
+    SNodeDir    = ?config(seed_node_dir, Config),
+    LNodeDir    = ?config(leech_node_dir, Config),
+    stop_app(SNode),
+    stop_app(LNode),
+    clean_standard_directory_layout(SNodeDir),
+    clean_standard_directory_layout(LNodeDir),
+    ok;
 end_per_testcase(choked_seed_leech, Config) ->
     SNode       = ?config(seed_node, Config),
     LNode       = ?config(leech_node, Config),
@@ -415,7 +453,7 @@ choked_seed_configuration(Dir) ->
 %% Tests
 %% ----------------------------------------------------------------------
 groups() ->
-    Tests = [leech_transmission, seed_transmission, seed_leech, bep9,
+    Tests = [udp_seed_leech, leech_transmission, seed_transmission, seed_leech, bep9,
              partial_downloading, choked_seed_leech],
 %   [{main_group, [shuffle], Tests}].
     [{main_group, [], Tests}].
@@ -466,6 +504,23 @@ seed_leech(Config) ->
     {ok, _} = rpc:call(?config(leech_node, Config),
 		  etorrent, start,
 		  [?config(http_torrent_file, Config), {Ref, Pid}]),
+    receive
+	{Ref, done} -> ok
+    after
+	120*1000 -> exit(timeout_error)
+    end,
+    sha1_file(?config(src_filename, Config))
+	=:= sha1_file(?config(dest_filename, Config)).
+
+udp_seed_leech() ->
+    [{require, common_conf, etorrent_common_config}].
+
+udp_seed_leech(Config) ->
+    io:format("~n======START SEED AND LEECHING USING UDP-ANNOUNCE TEST CASE======~n", []),
+    {Ref, Pid} = {make_ref(), self()},
+    {ok, _} = rpc:call(?config(leech_node, Config),
+		  etorrent, start,
+		  [?config(udp_torrent_file, Config), {Ref, Pid}]),
     receive
 	{Ref, done} -> ok
     after
@@ -556,7 +611,7 @@ bep9(Config) ->
     true = rpc:call(MiddlemanNode, etorrent_config, dht, []),
 
     timer:sleep(2000),
-    %% Form DHT network.
+    %% Form a DHT network.
     %% etorrent_dht_state:safe_insert_node({127,0,0,1}, 6881).
     MiddlemanDhtPort = rpc:call(MiddlemanNode, etorrent_config, dht_port, []),
     MiddlemanIP      = rpc:call(MiddlemanNode, etorrent_config, listen_ip, []),
