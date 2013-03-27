@@ -230,7 +230,6 @@ init_per_testcase(udp_seed_leech, Config) ->
      {leech_node_dir, LNodeDir} | Config];
 init_per_testcase(down_udp_tracker, Config) ->
     PrivDir   = ?config(priv_dir, Config),
-    DataDir   = ?config(data_dir, Config),
     LNode     = ?config(leech_node, Config),
     LNodeDir = filename:join([PrivDir,  leech]),
     create_standard_directory_layout(LNodeDir),
@@ -499,9 +498,9 @@ choked_seed_configuration(Dir) ->
 %% Tests
 %% ----------------------------------------------------------------------
 groups() ->
-    Tests = [down_udp_tracker,
-             choked_seed_leech, seed_transmission, leech_transmission,
-             seed_leech, partial_downloading, udp_seed_leech, bep9],
+    Tests = [choked_seed_leech, seed_transmission, leech_transmission,
+             seed_leech, partial_downloading, udp_seed_leech, bep9,
+             down_udp_tracker],
 %   [{main_group, [shuffle], Tests}].
     [{main_group, [], Tests}].
 
@@ -613,31 +612,39 @@ choked_seed_leech(Config) ->
     io:format("~n======START SLOW SEED AND LEECHING TEST CASE======~n", []),
     {Ref, Pid} = {make_ref(), self()},
 
-    ChokedSeedNode = ?config(choked_seed_node, Config),
-    LeechNode = ?config(leech_node, Config),
+    CNode = ?config(choked_seed_node, Config),
+    LNode = ?config(leech_node, Config),
+    SNode = ?config(seed_node, Config),
     BinIH = ?config(info_hash_bin, Config),
-    SSTorrentID = wait_torrent_registration(ChokedSeedNode, BinIH),
-    io:format("TorrentID on the choked_seed node is ~p.~n", [SSTorrentID]),
+    CTorrentID = wait_torrent_registration(CNode, BinIH),
+    STorrentID = wait_torrent_registration(SNode, BinIH),
+    io:format("TorrentID on the choked_seed node is ~p.~n", [CTorrentID]),
 
-    {ok, LTorrentID} = rpc:call(LeechNode,
-		  etorrent, start,
+    {ok, LTorrentID} = rpc:call(LNode, etorrent, start,
 		  [?config(http_torrent_file, Config), {Ref, Pid}]),
 
     io:format("TorrentID on the leech node is ~p.~n", [LTorrentID]),
 
-    wait_torrent(LeechNode, LTorrentID),
-    wait_progress(LeechNode, LTorrentID, 50),
+    %% Leech peer control process on the slow node.
+    LeechId  = rpc:call(LNode, etorrent_ctl, local_peer_id, []),
+    CPeerPid = wait_peer_registration(CNode, CTorrentID, LeechId),
+    SPeerPid = wait_peer_registration(SNode, STorrentID, LeechId),
+    io:format("Peer registered.~n", []),
+    rpc:call(SNode, etorrent_peer_control, choke, [SPeerPid]),
+
+    wait_torrent(LNode, LTorrentID),
+    wait_progress(LNode, LTorrentID, 50),
     io:format("50% were downloaded.~n", []),
 
-    %% Leech peer control process on the slow node.
-    LeechId   = rpc:call(LeechNode, etorrent_ctl, local_peer_id, []),
-    SSPeerPid = wait_peer_registration(ChokedSeedNode, SSTorrentID, LeechId),
-    io:format("Peer registered.~n", []),
-    true = is_fast_peer(ChokedSeedNode, SSPeerPid),
+    true = is_fast_peer(CNode, CPeerPid),
     io:format("Using fast protocol.~n", []),
 
-    choke_in_the_middle(ChokedSeedNode, SSPeerPid),
+
+    choke_in_the_middle(CNode, CPeerPid),
     io:format("Leecher choked.~n", []),
+
+    %% Let the leacher to download the torrent from SNode.
+    rpc:call(SNode, etorrent_peer_control, unchoke, [SPeerPid]),
 
     receive
 	{Ref, done} -> ok
@@ -960,6 +967,7 @@ choke_in_the_middle(Node, PeerPid) ->
         false ->
             rpc:call(Node, etorrent_peer_control, unchoke, [PeerPid]),
             timer:sleep(100),
+            io:format("Try to choke again."),
             choke_in_the_middle(Node, PeerPid)
     end.
 
