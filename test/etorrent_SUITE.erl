@@ -9,6 +9,7 @@
 
 -export([seed_leech/0, seed_leech/1,
      udp_seed_leech/0, udp_seed_leech/1,
+     down_udp_tracker/0, down_udp_tracker/1,
      choked_seed_leech/0, choked_seed_leech/1,
 	 seed_transmission/0, seed_transmission/1,
 	 leech_transmission/0, leech_transmission/1,
@@ -18,7 +19,7 @@
 
 
 suite() ->
-    [{timetrap, {minutes, 3}}].
+    [{timetrap, {minutes, 5}}].
 
 %% Setup/Teardown
 %% ----------------------------------------------------------------------
@@ -36,18 +37,24 @@ init_per_suite(Config) ->
     ct:pal("Data directory: ~s~n", [Directory]),
     AutoDir = filename:join(Directory, autogen),
     file:make_dir(AutoDir),
-    Fn            = filename:join([AutoDir, "file30m.random"]),
-    Dir           = filename:join([AutoDir, "dir2x30m"]),
-    DumpTorrentFn = filename:join([AutoDir, "file30m-trackerless.torrent"]),
-    HTTPTorrentFn = filename:join([AutoDir, "file30m-http.torrent"]),
-    UDPTorrentFn  = filename:join([AutoDir, "file30m-udp.torrent"]),
-    DirTorrentFn  = filename:join([AutoDir, "dir2x30m.torrent"]),
+    Fn                 = filename:join([AutoDir, "file30m.random"]),
+    Dir                = filename:join([AutoDir, "dir2x30m"]),
+    DumpTorrentFn      = filename:join([AutoDir, "file30m-trackerless.torrent"]),
+    HTTPTorrentFn      = filename:join([AutoDir, "file30m-http.torrent"]),
+    UDPTorrentFn       = filename:join([AutoDir, "file30m-udp.torrent"]),
+    DirTorrentFn       = filename:join([AutoDir, "dir2x30m.torrent"]),
+    BadUDPTorrentFn    = filename:join([AutoDir, "file30m-bad-udp.torrent"]),
+    BadUDPDirTorrentFn = filename:join([AutoDir, "dir2x30m-bad-udp.torrent"]),
+
     ensure_random_file(Fn),
     ensure_random_dir(Dir),
-    ensure_torrent_file(Fn,  HTTPTorrentFn, "http"),
-    ensure_torrent_file(Fn,  UDPTorrentFn,  "udp"),
-    ensure_torrent_file(Dir, DirTorrentFn,  "http"),
-    ensure_torrent_file(Fn, DumpTorrentFn),
+
+    ensure_torrent_file(Fn,  HTTPTorrentFn, "http://localhost:6969/announce"),
+    ensure_torrent_file(Fn,  UDPTorrentFn,  "udp://localhost:6969/announce"),
+    ensure_torrent_file(Dir, DirTorrentFn,  "http://localhost:6969/announce"),
+    ensure_torrent_file(Fn,  BadUDPTorrentFn,  "udp://localhost:6666/announce"),
+    ensure_torrent_file(Dir, BadUDPDirTorrentFn,  "udp://localhost:6666/announce"),
+    ensure_torrent_file(Fn,  DumpTorrentFn),
     %% Literal infohash.
     %% Both HTTP and UDP versions have the same infohash.
     {ok, TorrentIH}    = etorrent_dotdir:info_hash(HTTPTorrentFn),
@@ -64,6 +71,8 @@ init_per_suite(Config) ->
      {http_torrent_file, HTTPTorrentFn},
      {udp_torrent_file, UDPTorrentFn},
      {dir_torrent_file, DirTorrentFn},
+     {bad_udp_torrent_file, BadUDPTorrentFn},
+     {bad_udp_dir_torrent_file, BadUDPDirTorrentFn},
 
      %% Names of data on which torrents are based.
      {data_filename, Fn},
@@ -168,7 +177,6 @@ init_per_testcase(seed_leech, Config) ->
     SNode     = ?config(seed_node, Config),
     LNode     = ?config(leech_node, Config),
     Fn        = ?config(data_filename, Config),
-    %% Transmission's working directory
     TrackerPid = start_opentracker(DataDir),
     SNodeDir = filename:join([PrivDir,  seed]),
     LNodeDir = filename:join([PrivDir,  leech]),
@@ -199,7 +207,6 @@ init_per_testcase(udp_seed_leech, Config) ->
     LNode     = ?config(leech_node, Config),
     Fn        = ?config(data_filename, Config),
     TrackerPid = start_opentracker(DataDir),
-    %% Transmission's working directory
     SNodeDir = filename:join([PrivDir,  seed]),
     LNodeDir = filename:join([PrivDir,  leech]),
     BaseFn   = filename:basename(Fn),
@@ -221,6 +228,16 @@ init_per_testcase(udp_seed_leech, Config) ->
      {dest_filename, DestFn},
      {seed_node_dir, SNodeDir},
      {leech_node_dir, LNodeDir} | Config];
+init_per_testcase(down_udp_tracker, Config) ->
+    PrivDir   = ?config(priv_dir, Config),
+    DataDir   = ?config(data_dir, Config),
+    LNode     = ?config(leech_node, Config),
+    LNodeDir = filename:join([PrivDir,  leech]),
+    create_standard_directory_layout(LNodeDir),
+    LNodeConf = leech_configuration(LNodeDir),
+    start_app(LNode, LNodeConf),
+    ok = ct:sleep({seconds, 5}),
+    [{leech_node_dir, LNodeDir} | Config];
 init_per_testcase(choked_seed_leech, Config) ->
     %% etorrent => etorrent, one seed is choked (refuse to work).
     PrivDir   = ?config(priv_dir, Config),
@@ -231,7 +248,6 @@ init_per_testcase(choked_seed_leech, Config) ->
     LNode     = ?config(leech_node, Config),
     Fn        = ?config(data_filename, Config),
     TrackerPid = start_opentracker(DataDir),
-    %% Transmission's working directory
     SNodeDir = filename:join([PrivDir,  seed]),
     LNodeDir = filename:join([PrivDir,  leech]),
     CNodeDir = filename:join([PrivDir,  choked_seed]),
@@ -271,7 +287,6 @@ init_per_testcase(partial_downloading, Config) ->
     LNode     = ?config(leech_node, Config),
     Fn        = ?config(data_dirname, Config),
     TrackerPid = start_opentracker(DataDir),
-    %% Transmission's working directory
     SNodeDir = filename:join([PrivDir,  seed]),
     LNodeDir = filename:join([PrivDir,  leech]),
     BaseFn   = filename:basename(Fn),
@@ -302,7 +317,6 @@ init_per_testcase(bep9, Config) ->
     MNode     = ?config(middleman_node, Config),
     LNode     = ?config(leech_node, Config),
     Fn        = ?config(data_filename, Config),
-    %% Transmission's working directory
     SNodeDir = filename:join([PrivDir,  seed]),
     LNodeDir = filename:join([PrivDir,  leech]),
     MNodeDir = filename:join([PrivDir,  middleman]),
@@ -372,6 +386,12 @@ end_per_testcase(udp_seed_leech, Config) ->
     clean_standard_directory_layout(SNodeDir),
     clean_standard_directory_layout(LNodeDir),
     stop_opentracker(?config(tracker_port, Config)),
+    ok;
+end_per_testcase(down_udp_tracker, Config) ->
+    LNode       = ?config(leech_node, Config),
+    LNodeDir    = ?config(leech_node_dir, Config),
+    stop_app(LNode),
+    clean_standard_directory_layout(LNodeDir),
     ok;
 end_per_testcase(choked_seed_leech, Config) ->
     SNode       = ?config(seed_node, Config),
@@ -479,8 +499,9 @@ choked_seed_configuration(Dir) ->
 %% Tests
 %% ----------------------------------------------------------------------
 groups() ->
-    Tests = [seed_transmission, leech_transmission, seed_leech,
-             partial_downloading, udp_seed_leech, bep9, choked_seed_leech],
+    Tests = [down_udp_tracker,
+             choked_seed_leech, seed_transmission, leech_transmission,
+             seed_leech, partial_downloading, udp_seed_leech, bep9],
 %   [{main_group, [shuffle], Tests}].
     [{main_group, [], Tests}].
 
@@ -554,6 +575,32 @@ udp_seed_leech(Config) ->
     end,
     sha1_file(?config(src_filename, Config))
 	=:= sha1_file(?config(dest_filename, Config)).
+
+down_udp_tracker() ->
+    [{require, common_conf, etorrent_common_config}].
+
+down_udp_tracker(Config) ->
+    io:format("~n======START DOWN-UDP-TRACKER TEST CASE======~n", []),
+    LeechNode = ?config(leech_node, Config),
+    %% This test case was added, because of the error in etorrent_core.
+    %% GIT revision is f25a965205f8dfd2f71897a09cdd0b4ac9f677ae.
+    %%
+    %% etorrent_udp_tracker_mgr terminated with reason: no case clause matching 
+    %% [{{conn_id_req,{"localhost",6666}},<0.178.0>},{{conn_id_req,{"localhost",6666}},<0.198.0>}]
+    %% in etorrent_udp_tracker_mgr:cancel_conn_id_req/1 line 250
+    Ref = erlang:monitor(process, {etorrent_udp_tracker_mgr, LeechNode}),
+
+    {ok, _} = rpc:call(LeechNode, etorrent_ctl, start,
+          [?config(bad_udp_torrent_file, Config),
+           [{udp_tracker_connection_timeout, 5000}]]),
+    {ok, _} = rpc:call(LeechNode, etorrent_ctl, start,
+          [?config(bad_udp_dir_torrent_file, Config),
+           [{udp_tracker_connection_timeout, 5000}]]),
+    receive
+	{'DOWN', Ref, _, _, Reason} -> error({manager_crashed, Reason})
+    after 30000 -> ok
+    end,
+    true.
 
 choked_seed_leech() ->
     [{require, common_conf, etorrent_common_config}].
@@ -764,8 +811,7 @@ ensure_torrent_file(Fn, TorrentFn) ->
     end,
     ok.
 
-ensure_torrent_file(Fn, TorrentFn, Proto) ->
-    AnnounceUrl = Proto ++ "://localhost:6969/announce",
+ensure_torrent_file(Fn, TorrentFn, AnnounceUrl) ->
     case filelib:is_regular(TorrentFn) of
 	true  -> ok;
 	false -> etorrent_mktorrent:create(Fn, AnnounceUrl, TorrentFn)
