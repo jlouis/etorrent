@@ -630,7 +630,8 @@ choked_seed_leech(Config) ->
     CPeerPid = wait_peer_registration(CNode, CTorrentID, LeechId),
     SPeerPid = wait_peer_registration(SNode, STorrentID, LeechId),
     io:format("Peer registered.~n", []),
-    rpc:call(SNode, etorrent_peer_control, choke, [SPeerPid]),
+    ok = rpc:call(SNode, etorrent_choker, set_upload_slots, [0, 0]),
+    ok = rpc:call(SNode, etorrent_peer_control, choke, [SPeerPid]),
 
     wait_torrent(LNode, LTorrentID),
     wait_progress(LNode, LTorrentID, 50),
@@ -639,9 +640,10 @@ choked_seed_leech(Config) ->
     true = is_fast_peer(CNode, CPeerPid),
     io:format("Using fast protocol.~n", []),
 
-
     choke_in_the_middle(CNode, CPeerPid),
     io:format("Leecher choked.~n", []),
+
+    rpc:call(SNode, etorrent_config, set_upload_slots, [1, 1]),
 
     %% Let the leacher to download the torrent from SNode.
     rpc:call(SNode, etorrent_peer_control, unchoke, [SPeerPid]),
