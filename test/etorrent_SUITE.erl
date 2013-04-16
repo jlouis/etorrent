@@ -11,6 +11,7 @@
      udp_seed_leech/0, udp_seed_leech/1,
      down_udp_tracker/0, down_udp_tracker/1,
      choked_seed_leech/0, choked_seed_leech/1,
+     choked_reject/0, choked_reject/1,
 	 seed_transmission/0, seed_transmission/1,
 	 leech_transmission/0, leech_transmission/1,
      bep9/0, bep9/1,
@@ -276,6 +277,36 @@ init_per_testcase(choked_seed_leech, Config) ->
      {choked_seed_node_dir, CNodeDir},
      {seed_node_dir, SNodeDir},
      {leech_node_dir, LNodeDir} | Config];
+init_per_testcase(choked_reject, Config) ->
+    %% etorrent => etorrent, seed is choked (refuse to work).
+    PrivDir   = ?config(priv_dir, Config),
+    DataDir   = ?config(data_dir, Config),
+    TorrentFn = ?config(http_torrent_file, Config),
+    SNode     = ?config(seed_node, Config),
+    LNode     = ?config(leech_node, Config),
+    Fn        = ?config(data_filename, Config),
+    TrackerPid = start_opentracker(DataDir),
+    SNodeDir = filename:join([PrivDir,  seed]),
+    LNodeDir = filename:join([PrivDir,  leech]),
+    BaseFn   = filename:basename(Fn),
+    SSrcFn   = filename:join([SNodeDir, "downloads", BaseFn]),
+    DestFn   = filename:join([LNodeDir, "downloads", BaseFn]),
+    create_standard_directory_layout(SNodeDir),
+    create_standard_directory_layout(LNodeDir),
+    SNodeConf = seed_configuration(SNodeDir),
+    LNodeConf = leech_configuration(LNodeDir),
+    %% Feed etorrent the file to work with
+    {ok, _} = file:copy(Fn, SSrcFn),
+    %% Copy torrent-file to torrents-directory
+    {ok, _} = copy_to(TorrentFn, ?config(dir, SNodeConf)),
+    start_app(SNode, SNodeConf),
+    start_app(LNode, LNodeConf),
+    ok = ct:sleep({seconds, 5}),
+    [{tracker_port, TrackerPid},
+     {src_filename, SSrcFn},
+     {dest_filename, DestFn},
+     {seed_node_dir, SNodeDir},
+     {leech_node_dir, LNodeDir} | Config];
 init_per_testcase(partial_downloading, Config) ->
     %% etorrent => etorrent
     %% passing a part of a directory
@@ -407,6 +438,17 @@ end_per_testcase(choked_seed_leech, Config) ->
     clean_standard_directory_layout(CNodeDir),
     stop_opentracker(?config(tracker_port, Config)),
     ok;
+end_per_testcase(choked_reject, Config) ->
+    SNode       = ?config(seed_node, Config),
+    LNode       = ?config(leech_node, Config),
+    SNodeDir    = ?config(seed_node_dir, Config),
+    LNodeDir    = ?config(leech_node_dir, Config),
+    stop_app(SNode),
+    stop_app(LNode),
+    clean_standard_directory_layout(SNodeDir),
+    clean_standard_directory_layout(LNodeDir),
+    stop_opentracker(?config(tracker_port, Config)),
+    ok;
 end_per_testcase(partial_downloading, Config) ->
     SNode       = ?config(seed_node, Config),
     LNode       = ?config(leech_node, Config),
@@ -498,9 +540,9 @@ choked_seed_configuration(Dir) ->
 %% Tests
 %% ----------------------------------------------------------------------
 groups() ->
-    Tests = [choked_seed_leech, seed_transmission, leech_transmission,
+    Tests = [choked_reject, seed_transmission, leech_transmission,
              seed_leech, partial_downloading, udp_seed_leech, bep9,
-             down_udp_tracker],
+             down_udp_tracker, choked_seed_leech],
 %   [{main_group, [shuffle], Tests}].
     [{main_group, [], Tests}].
 
@@ -630,23 +672,32 @@ choked_seed_leech(Config) ->
     CPeerPid = wait_peer_registration(CNode, CTorrentID, LeechId),
     SPeerPid = wait_peer_registration(SNode, STorrentID, LeechId),
     io:format("Peer registered.~n", []),
-    ok = rpc:call(SNode, etorrent_choker, set_upload_slots, [0, 0]),
-    ok = rpc:call(SNode, etorrent_peer_control, choke, [SPeerPid]),
+
+    %% Disable optimistic unchoking.
+    ok = rpc:call(SNode, etorrent_choker, set_round_time, [1000000]),
+    ok = rpc:call(CNode, etorrent_choker, set_round_time, [1000000]),
+    ok = rpc:call(CNode, etorrent_peer_control, unchoke, [CPeerPid]),
+    ok = rpc:call(SNode, etorrent_peer_control, unchoke, [SPeerPid]),
 
     wait_torrent(LNode, LTorrentID),
     wait_progress(LNode, LTorrentID, 50),
     io:format("50% were downloaded.~n", []),
 
+    ok = rpc:call(SNode, etorrent_choker, set_upload_slots, [0, 0]),
+    ok = rpc:call(SNode, etorrent_peer_control, choke, [SPeerPid]),
+
     true = is_fast_peer(CNode, CPeerPid),
     io:format("Using fast protocol.~n", []),
 
+    ok = rpc:call(CNode, etorrent_choker, set_upload_slots, [0, 0]),
     choke_in_the_middle(CNode, CPeerPid),
     io:format("Leecher choked.~n", []),
 
-    rpc:call(SNode, etorrent_config, set_upload_slots, [1, 1]),
+    ok = rpc:call(SNode, etorrent_choker, set_upload_slots, [1, 1]),
+    ok = rpc:call(SNode, etorrent_choker, set_round_time, [1000]),
 
     %% Let the leacher to download the torrent from SNode.
-    rpc:call(SNode, etorrent_peer_control, unchoke, [SPeerPid]),
+    ok = rpc:call(SNode, etorrent_peer_control, unchoke, [SPeerPid]),
 
     receive
 	{Ref, done} -> ok
@@ -655,6 +706,38 @@ choked_seed_leech(Config) ->
     end,
     sha1_file(?config(src_filename, Config))
 	=:= sha1_file(?config(dest_filename, Config)).
+
+choked_reject() ->
+    [{require, common_conf, etorrent_common_config}].
+
+choked_reject(Config) ->
+    io:format("~n======START CHOCKER REJECT TEST CASE======~n", []),
+    {Ref, Pid} = {make_ref(), self()},
+
+    LNode = ?config(leech_node, Config),
+    SNode = ?config(seed_node, Config),
+    BinIH = ?config(info_hash_bin, Config),
+    STorrentID = wait_torrent_registration(SNode, BinIH),
+    io:format("TorrentID on the choked_seed node is ~p.~n", [STorrentID]),
+
+    {ok, LTorrentID} = rpc:call(LNode, etorrent, start,
+		  [?config(http_torrent_file, Config), {Ref, Pid}]),
+
+    io:format("TorrentID on the leech node is ~p.~n", [LTorrentID]),
+
+    %% Leech peer control process on the slow node.
+    LeechId  = rpc:call(LNode, etorrent_ctl, local_peer_id, []),
+    SPeerPid = wait_peer_registration(SNode, STorrentID, LeechId),
+    io:format("Peer registered.~n", []),
+    ok = rpc:call(SNode, etorrent_choker, set_round_time, [1000000]),
+    ok = rpc:call(SNode, etorrent_choker, set_upload_slots, [0, 0]),
+    ok = rpc:call(SNode, etorrent_peer_control, choke, [SPeerPid]),
+
+    receive
+	{Ref, done} -> error(marked_chocked_but_unchocked)
+    after
+    20*1000 -> ct:pal("PASSED"), ok
+    end.
 
 partial_downloading() ->
     [{require, common_conf, etorrent_common_config}].
@@ -679,6 +762,7 @@ bep9() ->
     [{require, common_conf, etorrent_common_config}].
 
 bep9(Config) ->
+    %% Trackerless, download using infohash
     io:format("~n======START SEED AND LEECHING BEP-9 TEST CASE======~n", []),
     HexIH = ?config(info_hash_hex, Config),
     IntIH = ?config(info_hash_int, Config),
@@ -697,17 +781,16 @@ bep9(Config) ->
     %% etorrent_dht_state:safe_insert_node({127,0,0,1}, 6881).
     MiddlemanDhtPort = rpc:call(MiddlemanNode, etorrent_config, dht_port, []),
     MiddlemanIP      = rpc:call(MiddlemanNode, etorrent_config, listen_ip, []),
+    ct:pal("DHT-middleman address is ~p:~p.", [MiddlemanIP, MiddlemanDhtPort]),
     true = rpc:call(SeedNode,
     	  etorrent_dht_state, safe_insert_node,
     	  [MiddlemanIP, MiddlemanDhtPort]),
     true = rpc:call(LeechNode,
     	  etorrent_dht_state, safe_insert_node,
     	  [MiddlemanIP, MiddlemanDhtPort]),
-    timer:sleep(1000),
+    timer:sleep(3000),
     io:format("ANNOUNCE FROM SEED~n", []),
-    ok = rpc:call(SeedNode,
-    	  etorrent_dht_tracker, trigger_announce,
-    	  []),
+    ok = rpc:call(SeedNode, etorrent_dht_tracker, trigger_announce, []),
 
     %% Wait for announce.
     timer:sleep(3000),
@@ -968,7 +1051,7 @@ choke_in_the_middle(Node, PeerPid) ->
         true -> ok;
         false ->
             rpc:call(Node, etorrent_peer_control, unchoke, [PeerPid]),
-            timer:sleep(100),
+            timer:sleep(300),
             io:format("Try to choke again."),
             choke_in_the_middle(Node, PeerPid)
     end.
