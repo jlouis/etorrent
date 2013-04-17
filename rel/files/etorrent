@@ -66,13 +66,15 @@ if [ -z "$COOKIE_ARG" ]; then
 fi
 
 # Add ERTS bin dir to our path
-ERTS_PATH=$RUNNER_BASE_DIR/erts-$ERTS_VSN/bin
+ERTS_PATH=$RUNNER_BASE_DIR/erts-$ERTS_VSN
+ERTS_PATH=$(escript $RUNNER_BASE_DIR/custom/erts_dir)
 
 # Setup command to control the node
-NODETOOL="$ERTS_PATH/escript $ERTS_PATH/nodetool $NAME_ARG $COOKIE_ARG"
+NODETOOL="$ERTS_PATH/bin/escript $RUNNER_BASE_DIR/custom/nodetool $NAME_ARG $COOKIE_ARG"
 
 # Setup remote shell command to control node
-REMSH="$ERTS_PATH/erl $REMSH_NAME_ARG $REMSH_REMSH_ARG $COOKIE_ARG"
+REMSH="$ERTS_PATH/bin/erl $REMSH_NAME_ARG $REMSH_REMSH_ARG $COOKIE_ARG"
+SLIMOPTIONS=" -boot_var RELTOOL_EXT_LIB $RUNNER_BASE_DIR/lib "
 
 # Check the first argument for instructions
 case "$1" in
@@ -88,7 +90,7 @@ case "$1" in
         HEART_COMMAND="$RUNNER_BASE_DIR/bin/$SCRIPT start $RUN_PARAM"
         export HEART_COMMAND
         mkdir -p $PIPE_DIR
-        $ERTS_PATH/run_erl -daemon $PIPE_DIR $RUNNER_LOG_DIR "exec $RUNNER_BASE_DIR/bin/$SCRIPT console $RUN_PARAM" 2>&1
+        $ERTS_PATH/bin/run_erl -daemon $PIPE_DIR $RUNNER_LOG_DIR "exec $RUNNER_BASE_DIR/bin/$SCRIPT console $RUN_PARAM" 2>&1
         ;;
 
     stop)
@@ -157,7 +159,7 @@ case "$1" in
         fi
 
         shift
-        exec $ERTS_PATH/to_erl $PIPE_DIR
+        exec $ERTS_PATH/bin/to_erl $PIPE_DIR
         ;;
 
     remote_console)
@@ -192,7 +194,7 @@ case "$1" in
         node_name=`echo $NAME_ARG | awk '{print $2}'`
         erlang_cookie=`echo $COOKIE_ARG | awk '{print $2}'`
 
-        $ERTS_PATH/escript $RUNNER_BASE_DIR/bin/install_upgrade.escript $node_name $erlang_cookie $2
+        $ERTS_PATH/bin/escript $RUNNER_BASE_DIR/bin/install_upgrade.escript $node_name $erlang_cookie $2
         ;;
 
     console|console_clean)
@@ -203,19 +205,16 @@ case "$1" in
             console_clean)  BOOTFILE=start_clean ;;
         esac
         # Setup beam-required vars
-        ROOTDIR=$RUNNER_BASE_DIR
-        BINDIR=$ROOTDIR/erts-$ERTS_VSN/bin
+        BINDIR=$ERTS_PATH/bin
         EMU=beam
         PROGNAME=`echo $0 | sed 's/.*\\///'`
-        CMD="$BINDIR/erlexec -boot $RUNNER_BASE_DIR/releases/$APP_VSN/$BOOTFILE -mode embedded -config $CONFIG_PATH -args_file $VMARGS_PATH"
+        CMD="$BINDIR/erlexec $SLIMOPTIONS -boot $RUNNER_BASE_DIR/releases/$APP_VSN/$BOOTFILE -mode embedded -config $CONFIG_PATH -args_file $VMARGS_PATH"
         export EMU
-        export ROOTDIR
         export BINDIR
         export PROGNAME
 
         # Dump environment info for logging purposes
         echo "Exec: $CMD" -- ${1+"$@"}
-        echo "Root: $ROOTDIR"
 
         # Log the startup
         logger -t "$SCRIPT[$$]" "Starting up"
@@ -232,19 +231,16 @@ case "$1" in
         FOREGROUNDOPTIONS="-noinput +Bd"
 
         # Setup beam-required vars
-        ROOTDIR=$RUNNER_BASE_DIR
-        BINDIR=$ROOTDIR/erts-$ERTS_VSN/bin
+        BINDIR=$ERTS_PATH/bin
         EMU=beam
         PROGNAME=`echo $0 | sed 's/.*\///'`
-        CMD="$BINDIR/erlexec $FOREGROUNDOPTIONS -boot $RUNNER_BASE_DIR/releases/$APP_VSN/$BOOTFILE -config $CONFIG_PATH -args_file $VMARGS_PATH"
+        CMD="$BINDIR/erlexec $FOREGROUNDOPTIONS $SLIMOPTIONS -boot $RUNNER_BASE_DIR/releases/$APP_VSN/$BOOTFILE -config $CONFIG_PATH -args_file $VMARGS_PATH"
         export EMU
-        export ROOTDIR
         export BINDIR
         export PROGNAME
 
         # Dump environment info for logging purposes
         echo "Exec: $CMD" -- ${1+"$@"}
-        echo "Root: $ROOTDIR"
 
         # Start the VM
         exec $CMD -- ${1+"$@"}
