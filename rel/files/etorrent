@@ -36,11 +36,14 @@ else
     VMARGS_PATH="$RUNNER_ETC_DIR/vm.args"
 fi
 
-# Use releases/VSN/sys.config if it exists otherwise use etc/app.config
+# Use releases/VSN/sys.config if it exists otherwise use etc/app.config 
+# or ~/.config/etorrent.config
 if [ -e "$RUNNER_BASE_DIR/releases/$APP_VSN/sys.config" ]; then
     CONFIG_PATH="$RUNNER_BASE_DIR/releases/$APP_VSN/sys.config"
-else
+elif [ -e "$RUNNER_ETC_DIR/app.config" ]; then
     CONFIG_PATH="$RUNNER_ETC_DIR/app.config"
+else
+    CONFIG_PATH=~/.config/etorrent.config
 fi
 
 # Extract the target node name from node.args
