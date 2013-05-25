@@ -57,6 +57,8 @@ init_per_suite(Config) ->
 
     ensure_random_file(Fn),
     ensure_broken_file(Fn, BrokenFn),
+    ct:pal("Checking, that a broken version is different... "),
+    [error(files_are_equal) || compare_file_contents(Fn, BrokenFn)],
     ensure_random_dir(Dir),
 
     ensure_torrent_file(Fn,  HTTPTorrentFn, "http://localhost:6969/announce"),
@@ -231,6 +233,7 @@ init_per_testcase(checking, Config) ->
     %% Feed etorrent the file to work with
     {ok, _} = file:copy(Fn, SrcFn),
     {ok, _} = file:copy(BrokenFn, DestFn),
+    [error(files_are_equal) || compare_file_contents(SrcFn, DestFn)],
     %% Copy torrent-file to torrents-directory
     {ok, _} = copy_to(TorrentFn, ?config(dir, SNodeConf)),
     start_app(SNode, SNodeConf),
@@ -592,9 +595,9 @@ choked_seed_configuration(Dir) ->
 %% Tests
 %% ----------------------------------------------------------------------
 groups() ->
-    Tests = [checking, choked_reject, seed_transmission, leech_transmission,
+    Tests = [choked_reject, seed_transmission, leech_transmission,
              seed_leech, partial_downloading, udp_seed_leech, bep9,
-             down_udp_tracker, choked_seed_leech],
+             down_udp_tracker, choked_seed_leech, checking],
 %   [{main_group, [shuffle], Tests}].
     [{main_group, [], Tests}].
 
@@ -1006,13 +1009,13 @@ ensure_random_dir(DName) ->
 ensure_broken_file(Fn, BrokenFn) ->
     case filelib:is_regular(BrokenFn) of
 	true  -> ok;
-	false -> file:copy(Fn, BrokenFn), broke_file(BrokenFn)
+	false -> file:copy(Fn, BrokenFn), break_file(BrokenFn)
     end.
 
 
-broke_file(BrokenFn) ->
+break_file(BrokenFn) ->
     random:seed(now()),
-    {ok, Fd} = file:open(BrokenFn, [write, binary, append]),
+    {ok, Fd} = file:open(BrokenFn, [write, read, binary]),
     {ok, TotalSize} = file:position(Fd, eof),
     %% Modify 10 chunks in the file.
     write_bad_chunks(Fd, TotalSize, 10),
@@ -1029,6 +1032,7 @@ write_bad_chunk(Fd, TotalSize) ->
     %% Len :: 1 .. 16#FFFF.
     Len  = random:uniform(16#FFFF),
     From = random:uniform(TotalSize - Len),
+    ct:pal("write_bad_chunk of length ~p from ~p.", [Len, From]),
     file:pwrite(Fd, From, crypto:rand_bytes(Len)).
 
 
@@ -1200,3 +1204,20 @@ start_app(Node, AppConfig) ->
 enable_dht(AppConfig) ->
     [{dht, true}|AppConfig].
 
+
+%% Returns true, if files are equal.
+compare_file_contents(Fn1, Fn2) ->
+    {ok, Fd1} = file:open(Fn1, [binary, read]),
+    {ok, Fd2} = file:open(Fn2, [binary, read]),
+    IsEqual = compare_file_contents_1(Fd1, Fd2, 0, 100000),
+    file:close(Fd1),
+    file:close(Fd2),
+    IsEqual.
+
+compare_file_contents_1(Fd1, Fd2, Offset, ChunkSize) ->
+    case {file:pread(Fd1, Offset, ChunkSize),
+          file:pread(Fd2, Offset, ChunkSize)} of
+        {eof, eof} -> true;
+        {{ok, X}, {ok, X}} -> compare_file_contents_1(Fd1, Fd2, Offset+ChunkSize, ChunkSize);
+        {{ok, _}, {ok, _}} -> false
+    end.
