@@ -10,7 +10,6 @@
 -export([seed_leech/0, seed_leech/1,
      udp_seed_leech/0, udp_seed_leech/1,
      down_udp_tracker/0, down_udp_tracker/1,
-     choked_seed_leech/0, choked_seed_leech/1,
      choked_reject/0, choked_reject/1,
 	 seed_transmission/0, seed_transmission/1,
 	 leech_transmission/0, leech_transmission/1,
@@ -595,9 +594,9 @@ choked_seed_configuration(Dir) ->
 %% Tests
 %% ----------------------------------------------------------------------
 groups() ->
-    Tests = [choked_reject, seed_transmission, leech_transmission,
-             seed_leech, partial_downloading, udp_seed_leech, bep9,
-             down_udp_tracker, choked_seed_leech, checking],
+    Tests = [seed_transmission, leech_transmission, seed_leech,
+             partial_downloading, udp_seed_leech, bep9,
+             down_udp_tracker, checking, choked_reject],
 %   [{main_group, [shuffle], Tests}].
     [{main_group, [], Tests}].
 
@@ -697,70 +696,6 @@ down_udp_tracker(Config) ->
     after 30000 -> ok
     end,
     true.
-
-choked_seed_leech() ->
-    [{require, common_conf, etorrent_common_config}].
-
-%% The idea of this test is to get request on a chunk from the slow seeder and
-%% to chunk this server.
-%% After that, the leecher will wait in engame mode for a long period of time.
-%% Warning: this test CAN be passed accidently.
-choked_seed_leech(Config) ->
-    io:format("~n======START SLOW SEED AND LEECHING TEST CASE======~n", []),
-    {Ref, Pid} = {make_ref(), self()},
-
-    CNode = ?config(choked_seed_node, Config),
-    LNode = ?config(leech_node, Config),
-    SNode = ?config(seed_node, Config),
-    BinIH = ?config(info_hash_bin, Config),
-    CTorrentID = wait_torrent_registration(CNode, BinIH),
-    STorrentID = wait_torrent_registration(SNode, BinIH),
-    io:format("TorrentID on the choked_seed node is ~p.~n", [CTorrentID]),
-
-    {ok, LTorrentID} = rpc:call(LNode, etorrent, start,
-		  [?config(http_torrent_file, Config), {Ref, Pid}]),
-
-    io:format("TorrentID on the leech node is ~p.~n", [LTorrentID]),
-
-    %% Leech peer control process on the slow node.
-    LeechId  = rpc:call(LNode, etorrent_ctl, local_peer_id, []),
-    CPeerPid = wait_peer_registration(CNode, CTorrentID, LeechId),
-    SPeerPid = wait_peer_registration(SNode, STorrentID, LeechId),
-    io:format("Peer registered.~n", []),
-
-    %% Disable optimistic unchoking.
-    ok = rpc:call(SNode, etorrent_choker, set_round_time, [1000000]),
-    ok = rpc:call(CNode, etorrent_choker, set_round_time, [1000000]),
-    ok = rpc:call(CNode, etorrent_peer_control, unchoke, [CPeerPid]),
-    ok = rpc:call(SNode, etorrent_peer_control, unchoke, [SPeerPid]),
-
-    wait_torrent(LNode, LTorrentID),
-    wait_progress(LNode, LTorrentID, 50),
-    io:format("50% were downloaded.~n", []),
-
-    ok = rpc:call(SNode, etorrent_choker, set_upload_slots, [0, 0]),
-    ok = rpc:call(SNode, etorrent_peer_control, choke, [SPeerPid]),
-
-    true = is_fast_peer(CNode, CPeerPid),
-    io:format("Using fast protocol.~n", []),
-
-    ok = rpc:call(CNode, etorrent_choker, set_upload_slots, [0, 0]),
-    choke_in_the_middle(CNode, CPeerPid),
-    io:format("Leecher choked.~n", []),
-
-    ok = rpc:call(SNode, etorrent_choker, set_upload_slots, [1, 1]),
-    ok = rpc:call(SNode, etorrent_choker, set_round_time, [1000]),
-
-    %% Let the leacher to download the torrent from SNode.
-    ok = rpc:call(SNode, etorrent_peer_control, unchoke, [SPeerPid]),
-
-    receive
-	{Ref, done} -> ok
-    after
-	120*1000 -> exit(timeout_error)
-    end,
-    sha1_file(?config(src_filename, Config))
-	=:= sha1_file(?config(dest_filename, Config)).
 
 choked_reject() ->
     [{require, common_conf, etorrent_common_config}].
@@ -1095,14 +1030,6 @@ lager_handlers(NodeName) ->
     [{lager_console_backend, [debug, {lager_default_formatter, Format}]}].
 
 
-wait_torrent(Node, TorrentID) ->
-    case rpc:call(Node, etorrent_torrent, lookup, [TorrentID]) of
-        {value, _Props} ->
-            ok;
-        not_found -> timer:sleep(500), wait_torrent(Node, TorrentID)
-    end.
-
-
 %% Returns torrent_id.
 wait_torrent_registration(Node, BinIH) ->
     case rpc:call(Node, etorrent_table, get_torrent, [{infohash, BinIH}]) of
@@ -1120,24 +1047,6 @@ wait_peer_registration(Node, TorrentID, PeerId) ->
             timer:sleep(500), wait_peer_registration(Node, TorrentID, PeerId)
     end.
 
-is_fast_peer(Node, PeerPid) ->
-    case rpc:call(Node, etorrent_table, get_peer, [{pid, PeerPid}]) of
-        {value, Props} ->
-            proplists:get_bool(is_fast, Props)
-    end.
-
-
-
--spec wait_progress(Node::node(), TorrentID::non_neg_integer(),
-                    Percent:: 0 .. 100) -> ok.
-wait_progress(Node, TorrentID, Percent) ->
-    {value, Props} = rpc:call(Node, etorrent_torrent, lookup, [TorrentID]),
-    Left = proplists:get_value(left, Props),
-    Want = proplists:get_value(wanted, Props),
-    if (Want - Left) / Want * 100 >= Percent -> ok;
-        true -> timer:sleep(500), wait_progress(Node, TorrentID, Percent)
-    end.
-
 hex_to_bin_hash(HexIH) ->
     IntIH = list_to_integer(HexIH, 16),
     <<IntIH:160>>.
@@ -1145,21 +1054,6 @@ hex_to_bin_hash(HexIH) ->
 %% Convert a literal infohash to integer.
 hex_to_int_hash(X) ->
     list_to_integer(X, 16).
-
-
-%% Block the remote peer, while having unserved requests from it.
-choke_in_the_middle(Node, PeerPid) ->
-    rpc:call(Node, etorrent_peer_control, choke, [PeerPid]),
-    HasRequests = rpc:call(Node, etorrent_peer_control,
-                           has_incoming_requests, [PeerPid]),
-    case HasRequests of
-        true -> ok;
-        false ->
-            rpc:call(Node, etorrent_peer_control, unchoke, [PeerPid]),
-            timer:sleep(300),
-            io:format("Try to choke again."),
-            choke_in_the_middle(Node, PeerPid)
-    end.
 
 
 copy_to(SrcFileName, DestDirName) ->
