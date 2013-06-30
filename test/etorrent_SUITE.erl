@@ -15,7 +15,8 @@
 	 leech_transmission/0, leech_transmission/1,
      bep9/0, bep9/1,
      partial_downloading/0, partial_downloading/1,
-     checking/0, checking/1
+     checking/0, checking/1,
+     find_local_peers/0, find_local_peers/1
      ]).
 
 
@@ -381,6 +382,32 @@ init_per_testcase(partial_downloading, Config) ->
      {dest_filename, DestFn},
      {seed_node_dir, SNodeDir},
      {leech_node_dir, LNodeDir} | Config];
+init_per_testcase(find_local_peers, Config) ->
+    %% etorrent => etorrent, using mDNS and bep26.
+    PrivDir   = ?config(priv_dir, Config),
+    TorrentFn = ?config(trackerless_torrent_file, Config),
+    SNode     = ?config(seed_node, Config),
+    LNode     = ?config(leech_node, Config),
+    Fn        = ?config(data_filename, Config),
+    SNodeDir = filename:join([PrivDir,  seed]),
+    LNodeDir = filename:join([PrivDir,  leech]),
+    BaseFn   = filename:basename(Fn),
+    SrcFn    = filename:join([SNodeDir, "downloads", BaseFn]),
+    DestFn   = filename:join([LNodeDir, "downloads", BaseFn]),
+    create_standard_directory_layout(SNodeDir),
+    create_standard_directory_layout(LNodeDir),
+    SNodeConf = enable_mdns(seed_configuration(SNodeDir)),
+    LNodeConf = enable_mdns(leech_configuration(LNodeDir)),
+    %% Feed etorrent the file to work with
+    {ok, _} = file:copy(Fn, SrcFn),
+    %% Copy torrent-file to torrents-directory
+    {ok, _} = copy_to(TorrentFn, ?config(dir, SNodeConf)),
+    start_app(SNode, SNodeConf),
+    start_app(LNode, LNodeConf),
+    [{src_filename, SrcFn},
+     {dest_filename, DestFn},
+     {seed_node_dir, SNodeDir},
+     {leech_node_dir, LNodeDir} | Config];
 init_per_testcase(bep9, Config) ->
     %% etorrent => etorrent, using DHT and bep9.
     %% Middleman is an empty node.
@@ -514,6 +541,16 @@ end_per_testcase(partial_downloading, Config) ->
     clean_standard_directory_layout(LNodeDir),
     stop_opentracker(?config(tracker_port, Config)),
     ok;
+end_per_testcase(find_local_peers, Config) ->
+    SNode       = ?config(seed_node, Config),
+    LNode       = ?config(leech_node, Config),
+    SNodeDir    = ?config(seed_node_dir, Config),
+    LNodeDir    = ?config(leech_node_dir, Config),
+    stop_app(SNode),
+    stop_app(LNode),
+    clean_standard_directory_layout(SNodeDir),
+    clean_standard_directory_layout(LNodeDir),
+    ok;
 end_per_testcase(bep9, Config) ->
     SNode       = ?config(seed_node, Config),
     LNode       = ?config(leech_node, Config),
@@ -594,7 +631,8 @@ choked_seed_configuration(Dir) ->
 %% Tests
 %% ----------------------------------------------------------------------
 groups() ->
-    Tests = [seed_transmission, leech_transmission, seed_leech,
+    Tests = [find_local_peers,
+             seed_transmission, leech_transmission, seed_leech,
              partial_downloading, udp_seed_leech, bep9,
              down_udp_tracker, checking, choked_reject],
 %   [{main_group, [shuffle], Tests}].
@@ -803,6 +841,33 @@ bep9(Config) ->
     %% Wait for announce.
     timer:sleep(3000),
     io:format("SEARCH FROM LEECH~n", []),
+
+    Self = self(),
+    Ref = make_ref(),
+    CB = fun() -> Self ! {Ref, done} end,
+    {ok, _TorrentID} = rpc:call(LeechNode,
+    	  etorrent_magnet, download, [{infohash, IntIH}, [{callback, CB}]]),
+    receive
+	{Ref, done} -> ok
+    after
+	120*1000 -> exit(timeout_error)
+    end,
+    sha1_file(?config(src_filename, Config))
+	=:= sha1_file(?config(dest_filename, Config)).
+
+
+find_local_peers() ->
+    [{require, common_conf, etorrent_common_config}].
+
+find_local_peers(Config) ->
+    %% Trackerless, download using infohash
+    io:format("~n======START SEED AND LEECHING BEP-26 TEST CASE======~n", []),
+    HexIH = ?config(info_hash_hex, Config),
+    IntIH = ?config(info_hash_int, Config),
+    error_logger:info_msg("Infohash is ~p.", [HexIH]),
+
+    LeechNode     = ?config(leech_node, Config),
+    SeedNode      = ?config(seed_node, Config),
 
     Self = self(),
     Ref = make_ref(),
@@ -1098,6 +1163,8 @@ start_app(Node, AppConfig) ->
 enable_dht(AppConfig) ->
     [{dht, true}|AppConfig].
 
+enable_mdns(AppConfig) ->
+    [{mdns, true}|AppConfig].
 
 %% Returns true, if files are equal.
 compare_file_contents(Fn1, Fn2) ->
