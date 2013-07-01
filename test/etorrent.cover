@@ -1,1 +1,1 @@
-{incl_app, etorrent, details}.
+{incl_app, etorrent_core, details}.
