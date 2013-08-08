@@ -1,9 +1,0 @@
-* Clean up the Makefile
-  We need to do:
-  ; Dialyzer targets
-  ; Staging for test
-  ; General cleanup of targets we don't use anymore.
-
-* Release fixes.
-  The release code is probably wrong now. Go through it and fix it, carefully
-
